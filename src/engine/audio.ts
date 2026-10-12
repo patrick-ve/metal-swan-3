@@ -1,0 +1,117 @@
+/**
+ * Shared audio contract (docs/ARCHITECTURE.md §5.7), pre-written by the orchestrator.
+ * The media-core agent owns this file: extend it (recipes, songs, registries), but do not rename
+ * or remove members of AudioOut — the simulation side codes against them in parallel.
+ * The Web Audio implementation lives in audio.browser.ts.
+ */
+
+export type VolumeKind = 'master' | 'music' | 'sfx' | 'voice';
+
+export interface SfxOpts {
+  /** 0..1 multiplier, default 1. */
+  vol?: number;
+  /** Playback-rate multiplier, default 1. */
+  pitch?: number;
+  /** -1 (left) .. 1 (right), default 0. */
+  pan?: number;
+}
+
+export interface MusicOpts {
+  fadeTicks?: number;
+  /** Restart even if the same song is already playing. */
+  restart?: boolean;
+  /**
+   * Start at this index of the song's order list (default 0: the top). The song then loops as
+   * usual (to its `loop` slot). Ignored when the same song keeps playing (no `restart`).
+   */
+  from?: number;
+}
+
+export interface AudioOut {
+  sfx(id: string, o?: SfxOpts): void;
+  /** Start a song by id, or stop music with null. */
+  music(id: string | null, o?: MusicOpts): void;
+  /** Announcer line (speech synthesis when available and enabled). */
+  voice(line: string): void;
+  setVolume(kind: VolumeKind, v: number): void;
+  stopAll(): void;
+  /** Called once per simulation tick; may be a no-op. */
+  update?(): void;
+  /** Pause / resume the current song, keeping its position (pause menu). */
+  pauseMusic?(): void;
+  resumeMusic?(): void;
+  /**
+   * A looping sound under a key (engines, rotors, drones, a held laser). The same key with the
+   * same id keeps playing (vol / pitch / pan are updated); a new id replaces it. Stop it with
+   * `stopSfx(key)`; owners stop their loops when they die or leave (e.g. in `onRemove`).
+   */
+  sfxLoop?(key: string, id: string, o?: SfxOpts): void;
+  /** Stop the looping sound of a key, fading over `fadeTicks` (default 4). */
+  stopSfx?(key: string, fadeTicks?: number): void;
+  /** Music level factor on top of the music volume (pause menu 0.5; 1 = normal). */
+  duckMusic?(factor: number): void;
+  /** Silence everything without losing the volume settings. */
+  setMuted?(muted: boolean): void;
+  /** Suspend / resume all audio output (hidden tab). */
+  suspend?(): void;
+  resume?(): void;
+}
+
+// Registries live next to their implementations; re-exported here for one-stop imports.
+export { defineSfx, hasSfx, jitterPitch, listSfx, renderSfx, sfxJitter } from './synth';
+export type { SfxLayer, SfxRecipe } from './synth';
+export { defineSong, hasSong, listSongs, orderTime } from './music';
+export type { ChannelDef, InstrumentDef, InstrumentId, SongDef } from './music';
+
+/** Silent implementation for headless runs. Keeps a short log so tests can assert on calls. */
+export class NullAudio implements AudioOut {
+  readonly log: string[] = [];
+  private readonly maxLog = 256;
+
+  private push(entry: string): void {
+    this.log.push(entry);
+    if (this.log.length > this.maxLog) this.log.shift();
+  }
+
+  sfx(id: string): void {
+    this.push(`sfx:${id}`);
+  }
+
+  /** Logs `music:<id>` (`music:stop` for null), plus `@<from>` when `from` is given. */
+  music(id: string | null, o?: MusicOpts): void {
+    const from = o?.from !== undefined && id !== null ? `@${o.from}` : '';
+    this.push(`music:${id ?? 'stop'}${from}`);
+  }
+
+  voice(line: string): void {
+    this.push(`voice:${line}`);
+  }
+
+  setVolume(): void {}
+
+  stopAll(): void {
+    this.push('stopAll');
+  }
+
+  pauseMusic(): void {
+    this.push('pauseMusic');
+  }
+
+  resumeMusic(): void {
+    this.push('resumeMusic');
+  }
+
+  sfxLoop(key: string, id: string): void {
+    this.push(`loop:${key}:${id}`);
+  }
+
+  stopSfx(key: string): void {
+    this.push(`stopLoop:${key}`);
+  }
+
+  duckMusic(factor: number): void {
+    this.push(`duck:${factor}`);
+  }
+
+  setMuted(): void {}
+}

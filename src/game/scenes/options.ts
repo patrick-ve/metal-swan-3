@@ -1,0 +1,261 @@
+/**
+ * Options (GDD §13.13): `OPTIONS` (big, C, y 16); rows (small) from y 44, 14 px apart, labels
+ * left-aligned at x 64, values right-aligned at x 320 between `<` and `>`; left / right change,
+ * fire confirms. DIFFICULTY · CREDITS · MUSIC VOLUME · SFX VOLUME · ANNOUNCER · SPEECH BUBBLES ·
+ * BOSS BAR · SCREEN SHAKE · REDUCE FLASHES · CONTROLS (the rebind screen) · RESET HIGH SCORES
+ * (`ARE YOU SURE?` → `YES` / `NO`) · BACK. Changes apply at once and are saved on the way out;
+ * difficulty and credits apply to the next game.
+ */
+import { PAL } from '../../engine/palette';
+import type { Renderer } from '../../engine/render';
+import type { Scene } from '../../engine/scene';
+import { applyAudioSettings, blinkOn, centerText, defaultHighScores, drawCursor, drawPanel, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { CREDIT_STEPS, saveSettings, type GameSettings, type ShakeLevel } from '../settings';
+import { ControlsScene } from './controls';
+import { DIFFICULTIES, DIFFICULTY_INFO } from './flow-data';
+import { drawLake, veil } from './lake';
+import { titleClock } from './title';
+
+export type OptionId =
+  | 'difficulty'
+  | 'credits'
+  | 'music'
+  | 'sfx'
+  | 'announcer'
+  | 'bubbles'
+  | 'bossBar'
+  | 'shake'
+  | 'flashes'
+  | 'controls'
+  | 'reset'
+  | 'back';
+
+interface Row {
+  id: OptionId;
+  label: string;
+}
+
+export const OPTION_ROWS: readonly Row[] = [
+  { id: 'difficulty', label: 'DIFFICULTY' },
+  { id: 'credits', label: 'CREDITS' },
+  { id: 'music', label: 'MUSIC VOLUME' },
+  { id: 'sfx', label: 'SFX VOLUME' },
+  { id: 'announcer', label: 'ANNOUNCER' },
+  { id: 'bubbles', label: 'SPEECH BUBBLES' },
+  { id: 'bossBar', label: 'BOSS BAR' },
+  { id: 'shake', label: 'SCREEN SHAKE' },
+  { id: 'flashes', label: 'REDUCE FLASHES' },
+  { id: 'controls', label: 'CONTROLS' },
+  { id: 'reset', label: 'RESET HIGH SCORES' },
+  { id: 'back', label: 'BACK' },
+];
+
+const SHAKES: readonly ShakeLevel[] = ['full', 'low', 'off'];
+const TOP = 44;
+const STEP = 14;
+const LABEL_X = 64;
+const VALUE_X = 320;
+
+/** The value text of a row ('' for the action rows). */
+export function optionValue(s: GameSettings, id: OptionId): string {
+  switch (id) {
+    case 'difficulty':
+      return DIFFICULTY_INFO[s.difficulty].name;
+    case 'credits':
+      return s.credits === 'free' ? 'FREE PLAY' : String(s.credits);
+    case 'music':
+      return String(s.musicVolume);
+    case 'sfx':
+      return String(s.sfxVolume);
+    case 'announcer':
+      return s.announcer ? 'ON' : 'OFF';
+    case 'bubbles':
+      return s.speechBubbles ? 'ON' : 'OFF';
+    case 'bossBar':
+      return s.bossBar ? 'ON' : 'OFF';
+    case 'shake':
+      return s.screenShake.toUpperCase();
+    case 'flashes':
+      return s.reduceFlashes ? 'ON' : 'OFF';
+    default:
+      return '';
+  }
+}
+
+/** Change one setting by one step (`d` = −1 / +1). Returns true when something changed. */
+export function stepOption(s: GameSettings, id: OptionId, d: number): boolean {
+  const cycle = <T>(list: readonly T[], v: T): T => list[(list.indexOf(v) + d + list.length) % list.length];
+  switch (id) {
+    case 'difficulty':
+      s.difficulty = cycle(DIFFICULTIES, s.difficulty);
+      return true;
+    case 'credits':
+      s.credits = cycle(CREDIT_STEPS, s.credits);
+      return true;
+    case 'music':
+    case 'sfx': {
+      const key = id === 'music' ? 'musicVolume' : 'sfxVolume';
+      const v = Math.max(0, Math.min(10, s[key] + d));
+      if (v === s[key]) return false;
+      s[key] = v;
+      return true;
+    }
+    case 'announcer':
+      s.announcer = !s.announcer;
+      return true;
+    case 'bubbles':
+      s.speechBubbles = !s.speechBubbles;
+      return true;
+    case 'bossBar':
+      s.bossBar = !s.bossBar;
+      return true;
+    case 'shake':
+      s.screenShake = cycle(SHAKES, s.screenShake);
+      return true;
+    case 'flashes':
+      s.reduceFlashes = !s.reduceFlashes;
+      return true;
+    default:
+      return false;
+  }
+}
+
+export interface OptionsOpts {
+  /** Opened from the pause menu: the frozen game shows dimmed behind the panel. */
+  inGame?: boolean;
+  /** Called after every change (the pause menu applies SCREEN SHAKE to the running camera). */
+  onChange?: (s: GameSettings) => void;
+}
+
+export class OptionsScene implements Scene {
+  private readonly app: GameApp;
+  private readonly opts: OptionsOpts;
+  readonly transparent: boolean;
+  private sel = 0;
+  private t = 0;
+  /** RESET HIGH SCORES asks first: null = no question, 0 = YES, 1 = NO. */
+  private confirm: number | null = null;
+  private leaving = false;
+
+  constructor(app: GameApp, opts: OptionsOpts = {}) {
+    this.app = app;
+    this.opts = opts;
+    this.transparent = opts.inGame === true;
+  }
+
+  enter(): void {
+    this.app.input.suppress();
+  }
+
+  resume(): void {
+    this.app.input.suppress();
+  }
+
+  update(): void {
+    this.t++;
+    if (this.leaving) return;
+    const app = this.app;
+    const k = menuKeys(app.input);
+    if (this.confirm !== null) {
+      if (k.left || k.right || k.up || k.down) {
+        this.confirm = 1 - this.confirm;
+        app.audio.sfx('ui/move');
+      }
+      if (k.back) {
+        this.confirm = null;
+        app.audio.sfx('ui/cancel');
+      } else if (k.confirm) {
+        if (this.confirm === 0) {
+          app.highScores.entries = defaultHighScores().entries;
+          app.highScores.save(app.store);
+          app.audio.sfx('ui/confirm');
+        } else app.audio.sfx('ui/cancel');
+        this.confirm = null;
+      }
+      return;
+    }
+    const n = OPTION_ROWS.length;
+    if (k.up) this.move(-1, n);
+    if (k.down) this.move(1, n);
+    const row = OPTION_ROWS[this.sel];
+    if (k.left || k.right) this.change(row.id, k.left ? -1 : 1);
+    if (k.back) {
+      this.close();
+      return;
+    }
+    if (!k.confirm) return;
+    switch (row.id) {
+      case 'controls':
+        app.audio.sfx('ui/confirm');
+        app.scenes.push(new ControlsScene(app), { fade: 12 });
+        break;
+      case 'reset':
+        app.audio.sfx('ui/confirm');
+        this.confirm = 1;
+        break;
+      case 'back':
+        this.close();
+        break;
+      default:
+        this.change(row.id, 1);
+    }
+  }
+
+  private move(d: number, n: number): void {
+    this.sel = (this.sel + d + n) % n;
+    this.app.audio.sfx('ui/move');
+  }
+
+  private change(id: OptionId, d: number): void {
+    const s = this.app.settings;
+    if (!stepOption(s, id, d)) return;
+    if (id === 'music' || id === 'sfx') applyAudioSettings(this.app.audio, s);
+    this.app.audio.sfx('ui/move');
+    this.opts.onChange?.(s);
+  }
+
+  private close(): void {
+    this.leaving = true;
+    saveSettings(this.app.store, this.app.settings);
+    this.app.audio.sfx('ui/cancel');
+    this.app.scenes.pop({ fade: 12 });
+  }
+
+  draw(r: Renderer): void {
+    if (this.opts.inGame) r.fade(0x05060aff, 0.6);
+    else {
+      drawLake(r, titleClock() + this.t);
+      veil(r, 0.7);
+    }
+    drawPanel(r, 40, 8, 304, 200, 0.9);
+    centerText(r, 'OPTIONS', 16, UI_GOLD, 'big');
+    const s = this.app.settings;
+    for (let i = 0; i < OPTION_ROWS.length; i++) {
+      const row = OPTION_ROWS[i];
+      const y = TOP + i * STEP;
+      const sel = i === this.sel;
+      const col = sel ? UI_GOLD : PAL.snow[1];
+      uiText(r, row.label, LABEL_X, y, col);
+      if (sel) drawCursor(r, LABEL_X - 4, y + 3, this.t);
+      const v = optionValue(s, row.id);
+      if (v) {
+        uiText(r, '>', VALUE_X, y, sel ? UI_GOLD : PAL.stone[2], 'right');
+        uiText(r, v, VALUE_X - 9, y, sel ? UI_WHITE : PAL.snow[2], 'right');
+        uiText(r, '<', VALUE_X - 9 - (v.length * 6 + 4) - 4, y, sel ? UI_GOLD : PAL.stone[2], 'right');
+      }
+    }
+    if (this.opts.inGame && (OPTION_ROWS[this.sel].id === 'difficulty' || OPTION_ROWS[this.sel].id === 'credits')) {
+      centerText(r, 'APPLIES TO THE NEXT GAME', 212 - 12, PAL.stone[3]);
+    }
+    if (this.confirm !== null) this.drawConfirm(r);
+  }
+
+  private drawConfirm(r: Renderer): void {
+    drawPanel(r, 112, 84, 160, 48, 0.98);
+    centerText(r, 'ARE YOU SURE?', 92, UI_WHITE);
+    const yes = this.confirm === 0;
+    uiText(r, 'YES', 168, 112, yes ? UI_GOLD : PAL.stone[2], 'center');
+    uiText(r, 'NO', 216, 112, !yes ? UI_GOLD : PAL.stone[2], 'center');
+    if (blinkOn(this.t, 15)) r.rect(yes ? 159 : 208, 121, yes ? 18 : 16, 1, UI_GOLD, { screen: true });
+  }
+}

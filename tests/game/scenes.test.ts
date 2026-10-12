@@ -1,0 +1,309 @@
+import { describe, expect, it } from 'vitest';
+import { NullAudio } from '../../src/engine/audio';
+import { InputManager, ScriptedSource, timeline, type Button, type InputTimeline } from '../../src/engine/input';
+import { SoftRenderer } from '../../src/engine/render-soft';
+import { MemoryStore } from '../../src/engine/storage';
+import { terrain } from '../../src/engine/terrain';
+import { createApp, GameAudio, loadHighScores, newCampaign, type GameApp } from '../../src/game/app';
+import type { MissionDef } from '../../src/game/mission/index';
+import { DEFAULT_PARAMS } from '../../src/game/params';
+import { defineMission } from '../../src/game/registry';
+import { BootScene, ContinueScene, GameplayScene, MissionCompleteScene, PauseScene, TitleScene, startNewGame } from '../../src/game/scenes/index';
+import { CharacterSelectScene } from '../../src/game/scenes/character-select';
+import { EndingScene, LAST_NOTE_TICKS } from '../../src/game/scenes/ending';
+import { FinalTallyScene } from '../../src/game/scenes/final-tally';
+import { GameOverScene } from '../../src/game/scenes/game-over';
+import { HighScoresScene } from '../../src/game/scenes/high-scores';
+import { MissionIntroScene, INTRO_TICKS } from '../../src/game/scenes/mission-intro';
+import { ModeSelectScene } from '../../src/game/scenes/mode-select';
+import { NameEntryScene } from '../../src/game/scenes/name-entry';
+import { loadSettings } from '../../src/game/settings';
+import { FLOOR } from './helpers';
+
+const t = terrain(1200, 216);
+t.ground().at(0, FLOOR).flat(1200);
+const MISSION: MissionDef = {
+  id: 'm1',
+  name: 'SCENE TEST',
+  music: 'm1',
+  start: 'a',
+  sections: {
+    a: {
+      id: 'a',
+      width: 1200,
+      height: 216,
+      scroll: 'right',
+      background: { sky: 0x102030ff, layers: [] },
+      terrain: t.build(),
+      terrainStyle: { ground: 'dirt' },
+      playerStart: { x: 40, y: FLOOR },
+      script: function* scenes(ctx) {
+        yield 60;
+        yield ctx.missionComplete();
+      },
+    },
+  },
+};
+defineMission(MISSION);
+
+type SceneClass = abstract new (...args: never[]) => unknown;
+
+interface Harness {
+  app: GameApp;
+  r: SoftRenderer;
+  step: (n: number) => void;
+  /** Press a button for one tick (slot 0 by default), then release it for one tick. */
+  tap: (b: Button, slot?: 0 | 1) => void;
+  /** Step until the top scene is an instance of `cls` (at most `max` ticks); true when it got there. */
+  until: (cls: SceneClass, max: number) => boolean;
+  log: () => string[];
+}
+
+function app(tl: InputTimeline = timeline().idle(1), store = new MemoryStore()): Harness {
+  const input = new InputManager();
+  input.addSource(new ScriptedSource(tl, 0));
+  const held: Button[][] = [[], []];
+  input.addSource(new ScriptedSource(() => held[0], 0));
+  input.addSource(new ScriptedSource(() => held[1], 1));
+  const a = createApp({ input, audio: new NullAudio(), store, params: { ...DEFAULT_PARAMS } });
+  const r = new SoftRenderer();
+  const step = (n: number): void => {
+    for (let i = 0; i < n; i++) {
+      input.update();
+      a.scenes.update();
+      r.begin();
+      a.scenes.draw(r);
+      r.end();
+    }
+  };
+  const tap = (b: Button, slot: 0 | 1 = 0): void => {
+    held[slot] = [b];
+    step(1);
+    held[slot] = [];
+    step(1);
+  };
+  const until = (cls: SceneClass, max: number): boolean => {
+    for (let i = 0; i < max; i++) {
+      if (a.scenes.top instanceof cls) return true;
+      step(1);
+    }
+    return a.scenes.top instanceof cls;
+  };
+  const log = (): string[] => ((a.audio as GameAudio).inner as NullAudio).log;
+  return { app: a, r, step, tap, until, log };
+}
+
+describe('scenes (headless)', () => {
+  it('the GDD §13.1 flow: title → mode select → character select → intro card → gameplay → tally → ending → final tally → high scores → title', () => {
+    const { app: a, step, tap, until } = app();
+    a.scenes.reset(new TitleScene(a));
+    step(20);
+    tap('start');
+    expect(until(ModeSelectScene, 40)).toBe(true);
+    step(20);
+    tap('fire'); // 1 PLAYER
+    expect(until(CharacterSelectScene, 40)).toBe(true);
+    step(20);
+    tap('right');
+    tap('fire'); // the second roster character
+    expect(until(MissionIntroScene, 100)).toBe(true);
+    expect(a.session?.slots[0].character).toBe('mittens');
+    expect(a.campaign).not.toBeNull();
+    step(70);
+    tap('start'); // start skips the card after 60 ticks
+    expect(until(GameplayScene, 60)).toBe(true);
+    expect(a.session?.activeCount).toBe(1);
+    // The mission script completes after 60 ticks; victory poses, then the newspaper tally.
+    expect(until(MissionCompleteScene, 600)).toBe(true);
+    // The tally moves on by itself; m1 is the last registered mission here, so the ending follows.
+    expect(until(EndingScene, 900)).toBe(true);
+    const end = a.scenes.top as EndingScene;
+    expect(end.phase).toBe('last-note');
+    // Start skips each part of the ending after 60 ticks of it.
+    for (let i = 0; i < 5 && a.scenes.top === end; i++) {
+      step(65);
+      tap('start');
+    }
+    expect(until(FinalTallyScene, 60)).toBe(true);
+    // Lives left and ONE-TAKE WONDER push the score into the table: name entry, then the table, then the title.
+    expect(until(NameEntryScene, 900)).toBe(true);
+    for (let i = 0; i < 3; i++) tap('fire');
+    expect(until(HighScoresScene, 60)).toBe(true);
+    expect(a.highScores.entries.some((e) => e.mission === 'all')).toBe(true);
+    step(40);
+    tap('fire');
+    expect(until(TitleScene, 120)).toBe(true);
+    expect(a.session).toBeNull();
+  });
+
+  it('the intro card lasts at most 360 ticks and plays the briefing music', () => {
+    const { app: a, until, log } = app();
+    a.session = null;
+    a.campaign = newCampaign();
+    a.scenes.reset(new MissionIntroScene(a, 'm1'));
+    expect(until(GameplayScene, INTRO_TICKS + 60)).toBe(true);
+    expect(log()).toContain('music:briefing');
+  });
+
+  it('pause overlay: Escape-like pause, then resume', () => {
+    const { app: a, step } = app(timeline().idle(40).tap('start').idle(10).tap('fire'));
+    startNewGame(a, { mission: 'm1' });
+    step(45);
+    expect(a.scenes.top).toBeInstanceOf(PauseScene);
+    const game = a.scenes.top as unknown as { transparent?: boolean };
+    expect(game.transparent).toBe(true);
+    step(10);
+    expect(a.scenes.top).toBeInstanceOf(GameplayScene);
+  });
+
+  it('pause → QUIT TO TITLE asks first (default NO); YES stops the music and returns to the title', () => {
+    const { app: a, step, tap, until, log } = app(timeline().idle(40).tap('start'));
+    startNewGame(a, { mission: 'm1' });
+    step(45);
+    const pause = a.scenes.top as PauseScene;
+    expect(pause).toBeInstanceOf(PauseScene);
+    tap('down');
+    tap('down');
+    expect(pause.selected).toBe('QUIT TO TITLE');
+    tap('fire');
+    expect(pause.asking).toBe(true);
+    tap('fire'); // NO is the default
+    expect(pause.asking).toBe(false);
+    expect(a.scenes.top).toBe(pause);
+    tap('fire');
+    tap('left'); // → YES
+    const before = log().length;
+    tap('fire');
+    expect(log().slice(before)).toContain('music:stop');
+    expect(until(TitleScene, 60)).toBe(true);
+    expect(a.session).toBeNull();
+  });
+
+  it('losing the window focus pauses a game in progress', () => {
+    const { app: a, step } = app(timeline().idle(200));
+    startNewGame(a, { mission: 'm1' });
+    step(40);
+    a.focusLost = true;
+    step(2);
+    expect(a.scenes.top).toBeInstanceOf(PauseScene);
+  });
+
+  it('game over: the continue screen; time runs out → GAME OVER → high scores → title', () => {
+    const { app: a, step, until } = app(timeline().idle(1));
+    startNewGame(a, { mission: 'm1' });
+    step(20);
+    const game = a.scenes.top as GameplayScene;
+    a.session!.slots[0].lives = 1;
+    game.runner.players[0].kill('impact');
+    step(80);
+    expect(a.scenes.top).toBeInstanceOf(ContinueScene);
+    expect(until(GameOverScene, 11 * 60 + 200)).toBe(true);
+    // A score of 0 does not make the table: straight to the high scores, then the title.
+    expect(until(HighScoresScene, 300)).toBe(true);
+    expect(until(TitleScene, 700)).toBe(true);
+  });
+
+  it('the tally pays the bonus lines into the score and records the golden record for the final tally', () => {
+    const { app: a, step, until } = app(timeline().idle(1));
+    startNewGame(a, { mission: 'm1' });
+    expect(until(GameplayScene, 60)).toBe(true);
+    step(5);
+    const slot = a.session!.slots[0];
+    slot.rescued = 2;
+    slot.mission.goldenRecord = true;
+    const before = slot.score;
+    a.scenes.reset(new MissionCompleteScene(a, (a.scenes.top as GameplayScene).runner));
+    step(5);
+    expect(until(EndingScene, 900)).toBe(true);
+    // HOSTAGES 2 × 10,000 + FLAWLESS 30,000 (NORMAL × 1.0).
+    expect(slot.score - before).toBe(50000);
+    expect(slot.rescued).toBe(0);
+    expect(a.campaign?.goldenRecords[0].has('m1')).toBe(true);
+    expect(a.campaign?.missions).toEqual(['m1']);
+  });
+
+  it('the ending runs its five parts in order by itself', () => {
+    const { app: a, step } = app(timeline().idle(1));
+    startNewGame(a, { mission: 'm1', characters: ['grace'] });
+    step(2);
+    const end = new EndingScene(a);
+    a.scenes.reset(end);
+    const seen: string[] = [];
+    for (let i = 0; i < 6000 && a.scenes.top === end; i++) {
+      if (seen[seen.length - 1] !== end.phase) seen.push(end.phase);
+      step(1);
+      if (i === LAST_NOTE_TICKS - 2) expect(end.phase).toBe('last-note');
+    }
+    expect(seen).toEqual(['last-note', 'splashdown', 'parade', 'captions', 'poses']);
+    step(45);
+    expect(a.scenes.top).toBeInstanceOf(FinalTallyScene);
+  });
+
+  it('boot waits for a click or key before the title (it unlocks audio)', async () => {
+    const input = new InputManager();
+    const held: Button[] = [];
+    input.addSource(new ScriptedSource(() => held, 0));
+    const a = createApp({ input, audio: new NullAudio(), store: new MemoryStore(), params: { ...DEFAULT_PARAMS }, gesture: false });
+    const boot = new BootScene(a);
+    a.scenes.reset(boot);
+    const tick = (): void => {
+      input.update();
+      a.scenes.update();
+    };
+    const t0 = Date.now();
+    while (!boot.ready && Date.now() - t0 < 50000) {
+      tick();
+      await new Promise((res) => setTimeout(res, 0));
+    }
+    expect(boot.progress).toBe(1);
+    for (let i = 0; i < 40; i++) tick();
+    expect(a.scenes.top).toBe(boot);
+    held.push('fire');
+    tick();
+    held.length = 0;
+    for (let i = 0; i < 40; i++) tick();
+    expect(a.scenes.top).toBeInstanceOf(TitleScene);
+  }, 60000);
+  it('2 PLAYERS: start on pad 2 joins an empty slot mid-mission (a free credit), never pausing', () => {
+    const { app: a, step, tap, until } = app(timeline().idle(1));
+    startNewGame(a, { mission: 'm1', players: 2, characters: ['grace'] });
+    expect(until(GameplayScene, 60)).toBe(true);
+    // Past the 30-tick fade in (no join while a scene change runs); the test mission ends at 60.
+    step(32);
+    const game = a.scenes.top as GameplayScene;
+    expect(game.runner.players.length).toBe(1);
+    tap('start', 1);
+    expect(a.scenes.top).toBe(game);
+    expect(game.runner.players.length).toBe(2);
+    expect(a.session!.slots[1].joined).toBe(true);
+  });
+
+  it('a name entered for a high score is saved and survives a restart', () => {
+    const store = new MemoryStore();
+    const { app: a, step, tap, until } = app(timeline().idle(1), store);
+    startNewGame(a, { mission: 'm1', characters: ['grace'] });
+    step(2);
+    const slot = a.session!.slots[0];
+    slot.score = 9_000_000;
+    a.scenes.reset(new NameEntryScene(a, [slot], true));
+    step(2);
+    for (let i = 0; i < 3; i++) tap('fire');
+    expect(until(HighScoresScene, 120)).toBe(true);
+    const top = loadHighScores(store).entries[0];
+    expect(top.score).toBe(9_000_000);
+    expect(top.name).toBe('AAA');
+    expect(top.mission).toBe('all');
+  });
+
+  it('the menu difficulty is saved at once and loads on the next boot', () => {
+    const store = new MemoryStore();
+    const { app: a, step, tap } = app(timeline().idle(1), store);
+    a.scenes.reset(new ModeSelectScene(a));
+    step(2);
+    tap('down');
+    tap('down');
+    tap('right');
+    expect(a.settings.difficulty).toBe('hard');
+    expect(loadSettings(store).difficulty).toBe('hard');
+  });
+});
