@@ -13,6 +13,9 @@
  *   rust (streaks), tiles
  * - platform (4-px band): wood, metal (grating + brackets), rock (drips), ice (icicles)
  * - solid: metal (panels, rivets), concrete, crate, rock, brick
+ * - Amsterdam (mission `ams`): ground `klinker` (grey brick street pavement in perspective rows
+ *   over a dark brick quay wall), edges `bikepath` (red bike path with a white kerb line) and
+ *   `kerb` (grey granite kerb), platform `whitewood` (white painted drawbridge planks)
  */
 import type { Color } from '../../engine/color';
 import { PixelBuffer } from '../../engine/pixel';
@@ -115,6 +118,36 @@ const GROUND: Readonly<Record<string, Paint>> = {
     if ((gx + gy * 2) % 6 === 0 && gy > 1 && gy < 7) v += 0.7;
     return dz(r, v, p.x, p.y, 0.4);
   },
+  klinker: (p) => {
+    const d = p.up;
+    if (d < KLINKER_ROWS[KLINKER_ROWS.length - 1]) {
+      // Street bricks in perspective: the rows grow taller and wider toward the viewer.
+      let r = 0;
+      while (KLINKER_ROWS[r + 1] <= d) r++;
+      const yIn = d - KLINKER_ROWS[r];
+      const rh = KLINKER_ROWS[r + 1] - KLINKER_ROWS[r];
+      const bw = 5 + r * 2;
+      const xs = p.x + (r % 2) * (bw >> 1);
+      const bx = Math.floor(xs / bw);
+      const xIn = ((xs % bw) + bw) % bw;
+      if (yIn === rh - 1 || xIn === 0) return PAL.stone[1];
+      const h = hash2(bx, r, p.seed + 41);
+      if (h > 0.9) return yIn === 0 ? PAL.rust[2] : PAL.brown[2]; // a reddish klinker
+      if (yIn === 0 || xIn === 1) return PAL.stone[3];
+      return h < 0.25 ? PAL.stone[1] : PAL.stone[2];
+    }
+    // The quay wall under the street: a granite kerb, then dark brick going darker down.
+    const k = d - KLINKER_ROWS[KLINKER_ROWS.length - 1];
+    if (k === 0) return PAL.stone[3];
+    if (k === 1) return PAL.stone[2];
+    if (k === 2) return PAL.ink[1];
+    const row = (k - 3) >> 2;
+    const by = (k - 3) & 3;
+    const xs = p.x + (row % 2) * 4;
+    if (by === 3 || ((xs % 8) + 8) % 8 === 0) return PAL.ink[1];
+    const v = 2.2 - k / 14 + (hash2(xs >> 3, row, p.seed + 5) - 0.5) * 0.9;
+    return dz([PAL.ink[1], PAL.brown[0], PAL.rust[0], PAL.brown[1]], v, p.x, p.y, 0.5);
+  },
   concrete: (p) => {
     const r = PAL.stone;
     let v = 2.2 + deep(p.up) + (noise2(p.x, p.y, 5, p.seed) - 0.5) * 0.8;
@@ -123,6 +156,9 @@ const GROUND: Readonly<Record<string, Paint>> = {
     return dz(r, v, p.x, p.y, 0.6);
   },
 };
+
+/** Klinker pavement row boundaries (depth below the surface); the quay wall starts at the last. */
+const KLINKER_ROWS = [0, 3, 6, 9, 13, 17, 22, 28];
 
 // ------------------------------------------------------------------------------------ edges
 
@@ -198,6 +234,29 @@ const EDGE: Readonly<Record<string, EdgeMat>> = {
     tuftH: 0,
     lip: null,
   },
+  bikepath: {
+    depth: 6,
+    ragged: 0,
+    paint: (p) => {
+      // Red asphalt with grit, a lit top row, then a white kerb line and its shadow.
+      if (p.up === 0) return hash1(p.x, p.seed + 3) > 0.85 ? PAL.red[3] : PAL.red[2];
+      if (p.up === 4) return PAL.snow[2];
+      if (p.up === 5) return PAL.stone[1];
+      const g = hash2(p.x, p.y, p.seed + 7);
+      return g > 0.86 ? PAL.rust[1] : g < 0.08 ? PAL.red[0] : PAL.red[1];
+    },
+    tuft: null,
+    tuftH: 0,
+    lip: null,
+  },
+  kerb: {
+    depth: 3,
+    ragged: 0,
+    paint: (p) => (p.up === 0 ? PAL.stone[3] : p.up === 1 ? (((p.x % 24) + 24) % 24 === 0 ? PAL.stone[1] : PAL.stone[2]) : PAL.stone[0]),
+    tuft: null,
+    tuftH: 0,
+    lip: null,
+  },
 };
 
 // ------------------------------------------------------------------------------------ platforms
@@ -243,6 +302,19 @@ const PLATFORM: Readonly<Record<string, PlatMat>> = {
       return dz(r, 2 - (p.up - 1) * 0.5 + (noise2(p.x, p.y, 4, p.seed) - 0.5), p.x, p.y);
     },
     hang: (x, k, seed) => (k < Math.floor(hash1(x, seed + 5) * 4) - 1 ? PAL.stone[1] : 0),
+  },
+  whitewood: {
+    paint: (p) => {
+      if (p.left === 1 || p.right === 1) return PAL.snow[0];
+      if (p.up === 1) return PAL.snow[3];
+      if (p.down === 1) return PAL.steel[3];
+      return ((p.x % 12) + 12) % 12 === 0 ? PAL.snow[1] : PAL.snow[2];
+    },
+    hang: (x, k) => {
+      // Cross beams every 32 px under the deck.
+      const m = ((x % 32) + 32) % 32;
+      return k < 3 && m < 3 ? (m === 0 ? PAL.snow[2] : PAL.snow[1]) : 0;
+    },
   },
   ice: {
     paint: (p) => (p.up === 1 ? PAL.snow[3] : p.up === 2 ? PAL.snow[2] : PAL.sky[2]),

@@ -1,8 +1,8 @@
 /**
- * Mission cards (GDD §2.4, §12.3, §13.6, §13.11): for m0–m5 the intro card label, name, place
+ * Mission cards (GDD §2.4, §12.3, §13.6, §13.11): for m0–m5 and ams the intro card label, name, place
  * and time, Gusto's two briefing lines, the announcer line of the start banner and the newspaper
- * headline of the tally. All six share one line map of Lowmere and Crescendia; each card puts its
- * blinking dot on its own region.
+ * headline of the tally. m0–m5 share one line map of Lowmere and Crescendia; each card puts its
+ * blinking dot on its own region; ams has its own map of the Amsterdam canal ring.
  *
  * Mission modules may replace a card with their own `defineMissionCard` (the last one wins).
  */
@@ -73,10 +73,51 @@ function map(dot: readonly [number, number]): NonNullable<MissionCard['map']> {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The ams map: Amsterdam's canal ring (its own small map; the mission is a prologue abroad)
+// ---------------------------------------------------------------------------------------------
+
+/** A polyline arc round (cx, cy) from angle a0 to a1 (degrees, 0 = east, 90 = south). */
+function arc(cx: number, cy: number, r: number, a0: number, a1: number, step = 15): MapLine {
+  const out: number[] = [];
+  for (let a = a0; a <= a1 + 0.01; a += step) {
+    const t = (a * Math.PI) / 180;
+    out.push(Math.round(cx + Math.cos(t) * r), Math.round(cy + Math.sin(t) * r * 0.8));
+  }
+  return out;
+}
+
+/** The IJ waterfront in the north, the three canal rings, the Amstel from the south, the Singel. */
+const AMS_CX = 186;
+const AMS_CY = 68;
+const AMS_LINES: readonly MapLine[] = [
+  [96, 68, 140, 66, 186, 68, 232, 66, 280, 68],
+  arc(AMS_CX, AMS_CY, 20, 0, 180),
+  arc(AMS_CX, AMS_CY, 34, 0, 180),
+  arc(AMS_CX, AMS_CY, 48, 0, 180),
+  arc(AMS_CX, AMS_CY, 60, 0, 180),
+  [212, 118, 206, 106, 202, 96, 198, 86],
+];
+const AMS_LABELS: readonly (readonly [string, number, number])[] = [
+  ['AMSTERDAM', 252, 100],
+  ['IJ', 102, 72],
+];
+
+// ---------------------------------------------------------------------------------------------
 // The cards
 // ---------------------------------------------------------------------------------------------
 
 export const MISSION_CARDS: readonly MissionCard[] = [
+  {
+    id: 'ams',
+    label: 'MISSION 1',
+    name: 'THE FRYING DUTCHMAN',
+    place: 'AMSTERDAM - 1100 HOURS',
+    briefing: ['SHORE LEAVE IN AMSTERDAM. THE CYGNETS WANT FRIES.', 'THE BEST FRY SHOP IN TOWN NEEDS HELP. GO!'],
+    headline: 'ROBO-MAYOR SCRAPPED! THE FRYER STAYS ON!',
+    announce: 'MISSION ONE. FRIES FIRST, CYGNETS!',
+    startSub: 'START!',
+    map: { lines: AMS_LINES, dot: [AMS_CX - 30, 90], labels: AMS_LABELS },
+  },
   {
     id: 'm0',
     label: 'MISSION 0',
@@ -90,45 +131,45 @@ export const MISSION_CARDS: readonly MissionCard[] = [
   },
   {
     id: 'm1',
-    label: 'MISSION 1',
+    label: 'MISSION 2',
     name: 'BRASS ON THE RIVERBANK',
     place: 'PUDDLEWICK, LOWMERE - 0900 HOURS',
     briefing: ['THE LEGION HIJACKED THE PUDDLEWICK DUCK REGATTA.', 'FREE THE CRITICS, SINK THEIR FLAGSHIP, MIND THE DUCKS.'],
     headline: 'RIVERBOAT SUNK! REGATTA RESUMES!',
-    announce: 'MISSION ONE. LOOK SHARP, CYGNETS!',
+    announce: 'MISSION TWO. LOOK SHARP, CYGNETS!',
     startSub: 'START!',
     map: map([122, 92]),
   },
   {
     id: 'm2',
-    label: 'MISSION 2',
+    label: 'MISSION 3',
     name: 'DUNE BUGLE',
     place: 'RATTLEBONE FLATS, CRESCENDIA - 1200 HOURS',
     briefing: ['THEIR DRUM CORPS IS TESTING A DRUM THE SIZE OF A HOUSE.', "STOP IT. AND DO NOT LAUGH AT THE COLONEL'S JOKES."],
     headline: "DRUM TANK SILENCED! COLONEL'S JOKES STILL BAD!",
-    announce: 'MISSION TWO. STAY HYDRATED, CYGNETS!',
+    announce: 'MISSION THREE. STAY HYDRATED, CYGNETS!',
     startSub: 'START!',
     map: map([232, 104]),
   },
   {
     id: 'm3',
-    label: 'MISSION 3',
+    label: 'MISSION 4',
     name: 'THE HIGH NOTE',
     place: 'MOUNT MURMUR, CRESCENDIA - 1700 HOURS',
     briefing: ['THE WOODWINDS HAVE TAKEN MOUNT MURMUR AND ITS SKI LIFT.', 'SOMETHING HUGE AND TARTAN FLOATS AT THE TOP. DEFLATE IT.'],
     headline: 'WINDBAG DEFLATED ON MOUNT MURMUR!',
-    announce: 'MISSION THREE. WRAP UP WARM, CYGNETS!',
+    announce: 'MISSION FOUR. WRAP UP WARM, CYGNETS!',
     startSub: 'START!',
     map: map([262, 64]),
   },
   {
     id: 'm4',
-    label: 'MISSION 4',
+    label: 'MISSION 5',
     name: 'OPENING NIGHT',
     place: 'FANFARONI CITY - 2100 HOURS',
     briefing: ['TONIGHT FANFARONI REHEARSES THE ANTHEM AT THE OPERA.', 'CRASH THE DRESS REHEARSAL. FORMAL WEAR OPTIONAL.'],
     headline: 'PREMIERE CANCELLED! PIANO "UNPLAYABLE"!',
-    announce: 'MISSION FOUR. BREAK A LEG, CYGNETS!',
+    announce: 'MISSION FIVE. BREAK A LEG, CYGNETS!',
     startSub: 'START!',
     map: map([306, 82]),
   },
@@ -145,7 +186,7 @@ export const MISSION_CARDS: readonly MissionCard[] = [
   },
 ];
 
-/** Register the six cards. */
+/** Register the seven cards. */
 export function defineMissionCards(): void {
   for (const card of MISSION_CARDS) defineMissionCard(card);
 }

@@ -151,7 +151,7 @@ Body space: origin at the feet centre, x forward (sprites face right), y down; d
 | `armN`, `armF` | `{ sh, el, hand? }` (upper arm from straight down, + forward, 180 = up; elbow + turns the forearm up) or `{ to: [x, y], bend? }` = hand target relative to the shoulder (two-bone IK) |
 | `hand` (in an arm) | `fist`, `grip`, `open`, `point`, `thumb` |
 | `weapon` | `pistol`, `heavy`, `rifle`, `none` — places the gun and both hands |
-| `aim` | `fwd`, `up`, `down`, `diag-up`, `diag-down` (45°, heavy gun only: the machine-gun sweep); `recoil` (px), `lowGun` (rifle at the hip), `gunAngle`, `gunHand: 'far'` (gun carried low while the near arm throws or stabs) |
+| `aim` | `fwd`, `up`, `down`, `diag-up` (45° up: pistol and heavy gun, the up + forward aim), `diag-down` (45° down, heavy gun only: the machine-gun sweep); `recoil` (px), `lowGun` (rifle at the hip), `gunAngle`, `gunHand: 'far'` (gun carried low while the near arm throws or stabs) |
 | `held` | `grenade`, `knife` (`heldAngle`), `snack`, `gift` |
 | `expr` | `normal`, `shout`, `panic`, `hurt`, `happy`, `blink`, `yawn`, `chew`, `dazed`, `soot` |
 | `lean`, `hunch` | torso tilt (+ forward); shorten the torso (breathing) |
@@ -171,8 +171,10 @@ applies — so death frames lie ON the floor. Use `grounded: false` for frames t
 Every rig frame carries the points `hand` (near wrist, or the held item) and `head` (head
 centre); gun frames also carry `muzzle`. Points are relative to the anchor.
 
-Pistol aim-up frames hold the pistol two-handed at the chin (the face stays visible); the
-heavy gun has extra diagonal frames (`torso-heavy-diag-up` …) for the machine-gun sweep. A
+Pistol aim-up frames hold the pistol two-handed at the chin (the face stays visible). Both guns
+have 45° up frames (`torso-<w>-diag-up`, `torso-<w>-shoot-diag-up`: the pistol two-handed in
+front of the chest, tilted up, the barrel clear of the face) for the up + forward aim; only the
+heavy gun has the 45° down frames (`torso-heavy-diag-down` …) for the machine-gun sweep. A
 status effect may swap a strip for `<art>/<infix>-<anim>` (`StatusDef.art`; e.g.
 `char/<id>/helium-legs-run`). The Helium Head strips are not drawn yet: render them with
 `headScale: 2` and register them under that infix — the player falls back to the normal

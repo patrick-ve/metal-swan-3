@@ -20,6 +20,7 @@
  */
 import { defineSfx } from '../../../engine/audio';
 import { hashSeed, type SfxRecipe } from '../../../engine/synth';
+import { AMS } from './ams';
 import { BOSSES } from './bosses';
 import { st } from './kit';
 import { ENEMIES } from './legion';
@@ -84,6 +85,7 @@ export const SFX: Readonly<Record<string, SfxRecipe>> = pinSeeds({
   ...BOSSES,
   ...ENV,
   ...UI,
+  ...AMS,
 });
 
 /** Seamless loops: play them with `audio.sfxLoop(key, id)` and stop them with `stopSfx(key)`. */

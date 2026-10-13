@@ -540,7 +540,9 @@ export class TubaRing extends Projectile {
 
   override init(o: ProjectileOpts): void {
     super.init({ ...o, look: 'anim', impact: 'none', kind: 'impact', tags: SONIC, pierce: Infinity, life: o.life ?? TUBA.life, offscreen: 48 });
-    this.horizontal = Math.abs(o.vx) >= Math.abs(o.vy);
+    // Side ring unless it flies (nearly) straight up / down: the 45° diagonal is a side ring
+    // too (no float tie at 45°), it travels along its velocity and pushes along its x.
+    this.horizontal = Math.abs(o.vx) > Math.abs(o.vy) * 0.5;
     this.erased = 0;
     this.grow();
   }

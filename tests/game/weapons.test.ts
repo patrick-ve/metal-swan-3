@@ -56,6 +56,50 @@ describe('shooting', () => {
     expect(angleDeg(shots.list[0])).toBeCloseTo(-90, 5);
   });
 
+  it('fires 45° up with up + right and 135° with up + left, feet planted (GDD 4.3)', () => {
+    const rig = new Rig({ x: 200 });
+    const shots = countSpawns(rig, 'pistol');
+    const x0 = rig.p.x;
+    rig.hold(['up', 'right']).run(4).tap(['fire']);
+    expect(angleDeg(shots.list[0])).toBeCloseTo(-45, 5);
+    expect(rig.p.x, 'stands still while aiming diagonally').toBe(x0);
+    expect(rig.p.vx).toBe(0);
+    rig.run(20).hold(['up', 'left']).run(4).tap(['fire']);
+    expect(angleDeg(shots.list[1])).toBeCloseTo(-135, 5);
+    expect(rig.p.vx).toBe(0);
+    expect(rig.p.facing).toBe(-1);
+    // Up alone (standing) is straight up again.
+    rig.run(20).hold(['up']).run(4).tap(['fire']);
+    expect(angleDeg(shots.list[2])).toBeCloseTo(-90, 5);
+  });
+
+  it('the diagonal pistol shot leaves the diagonal muzzle: above the forward one, ahead of the up one', () => {
+    const at = (buttons: Array<'up' | 'right'>): { x: number; y: number } => {
+      const rig = new Rig();
+      const shots = countSpawns(rig, 'pistol');
+      rig.hold(buttons).run(1).tap(['fire']);
+      const b = shots.list[0];
+      // Undo the first tick of flight.
+      return { x: b.x - rig.p.x - b.vx, y: b.y - rig.p.y - b.vy };
+    };
+    const fwd = at([]);
+    const up = at(['up']);
+    const diag = at(['up', 'right']);
+    expect(diag.y).toBeLessThan(fwd.y - 3);
+    expect(diag.y).toBeGreaterThan(up.y);
+    expect(diag.x).toBeGreaterThan(up.x);
+  });
+
+  it('machine-gun sweep stops at 45° with up + forward', () => {
+    const rig = new Rig();
+    rig.p.giveWeapon('machine-gun', 200, false);
+    rig.hold(['fire']).run(12);
+    rig.hold(['fire', 'up', 'right']).run(12);
+    expect((rig.p.elev * 180) / Math.PI).toBeCloseTo(-45, 5);
+    rig.hold(['fire', 'up']).run(4);
+    expect((rig.p.elev * 180) / Math.PI).toBeCloseTo(-90, 5);
+  });
+
   it('kills a soft enemy with one pistol bullet and scores', () => {
     const rig = new Rig();
     const d = rig.dummy(200);
@@ -180,6 +224,21 @@ describe('grenades', () => {
     expect(near.hits.length).toBe(1);
     expect(near.hits[0]).toEqual({ kind: 'explosion', amount: TUNING.grenade.direct });
     expect(close.hits).toEqual([{ kind: 'explosion', amount: TUNING.grenade.splash }]);
+  });
+
+  it('up + forward keeps the high up lob (no diagonal throw)', () => {
+    const lob = (buttons: Array<'up' | 'right'>): { vx: number; vy: number } => {
+      const rig = new Rig();
+      rig.hold(buttons).run(1).tap(['bomb']);
+      const g = rig.ofType('grenade')[0] as Grenade;
+      return { vx: g.vx - rig.p.vx * TUNING.grenade.inherit, vy: g.vy };
+    };
+    const up = lob(['up']);
+    const diag = lob(['up', 'right']);
+    const fwd = lob([]);
+    expect(diag.vy).toBeLessThan(fwd.vy);
+    expect(diag.vy).toBeCloseTo(up.vy, 0);
+    expect(Math.sign(diag.vx)).toBe(1);
   });
 
   it('allows only two grenades in the air', () => {

@@ -168,7 +168,8 @@ describe('THE BA-DUM BEHEMOTH', () => {
       const b: Button[] = [];
       if (Math.abs(p.x - wantX) > 6) b.push(p.x < wantX ? 'right' : 'left');
       else if (p.facing < 0) b.push('right'); // face the boss again
-      if (!phase2) b.push('up');
+      // Up + a direction aims 45° (GDD §4.3): aim straight up only while standing still.
+      if (!phase2 && b.length === 0) b.push('up');
       if (t % 2 === 0) b.push('fire');
       if (t % 240 === 120) b.push('bomb');
       if (phase2 && t % 90 === 45) b.push('jump');

@@ -488,6 +488,13 @@ function weaponRig(pose: Pose, sk: Skeleton): { gun: GunPlacement | null; armN?:
       const g: V = [P[0] + 9, P[1] - 15 + rc];
       return { gun: { kind: 'pistol', angle: -90, grip: g }, armN: toN(g), armF: toF([g[0] - 1, g[1] + 2]) };
     }
+    if (aim === 'diag-up') {
+      // 45° up (GDD §4.3: up + forward): both hands, the gun tilted up in front of the chest,
+      // the barrel clear of the face.
+      const k = Math.SQRT1_2;
+      const g: V = [S[0] + 10 - Math.round(rc * k), S[1] + Math.round(rc * k)];
+      return { gun: { kind: 'pistol', angle: -45, grip: g }, armN: toN(g), armF: toF([g[0] - 1, g[1] + 2]) };
+    }
     if (aim === 'down') {
       const g: V = [S[0] + 2, S[1] + 10 - rc];
       return { gun: { kind: 'pistol', angle: 90, grip: g }, armN: toN(g), armF: { sh: -20, el: 60, hand: 'fist' } };

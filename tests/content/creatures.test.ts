@@ -19,7 +19,7 @@ import { attackTokenLimit } from '../../src/game/enemy';
 import { Player } from '../../src/game/player/player';
 import { getEntityMeta } from '../../src/game/registry';
 import type { Difficulty } from '../../src/game/session';
-import { FLOOR, TestWorld } from './helpers';
+import { FLOOR, TestWorld, watchFairness, type FairnessOpts, type FairnessWatch } from './helpers';
 
 const IDS = ['bullfrog', 'windup-bot', 'rattler', 'echo-bat', 'ram-goat', 'usher-bot', 'kazoo-drone'] as const;
 const SCORES: Record<string, number> = {
@@ -63,56 +63,11 @@ const SCENES: Scene[] = [
   { id: 'kazoo-drone', x: 330, y: 110, params: { formation: 'sine', shooter: true } },
 ];
 
-interface Watch {
-  /** Every telegraph run (ticks) that ended while the creature was alive. */
-  tells: number[];
-  /** Attacks: the mode, the telegraph run before it, whether the creature was in view. */
-  attacks: Array<{ id: string; mode: string; tell: number; prev: string; inView: boolean }>;
-  /** Enemy shots that appeared outside the view (8 px margin). */
-  outsideShots: number;
-  /** Self-destructs (windup-bots removed while alive) with the telegraph run before them. */
-  bursts: number[];
-  maxTokens: number;
-}
+/** The shared fairness watcher (tests/content/helpers.ts) with the creature modes. */
+const FAIR: FairnessOpts = { attacks: ATTACKS, tells: TELLS, watched: (e: Entity) => e instanceof Creature, burst: (e: Entity) => e instanceof WindupBot };
 
-/** Run a world and record mode changes of every creature, enemy shots and attack tokens. */
-function watch(tw: TestWorld, ticks: number, each?: (t: number) => void): Watch {
-  const w: Watch = { tells: [], attacks: [], outsideShots: 0, bursts: [], maxTokens: 0 };
-  const state = new Map<Entity, { mode: string; n: number }>();
-  const seenShots = new Set<Entity>();
-  for (let t = 0; t < ticks; t++) {
-    tw.run(1);
-    each?.(t);
-    let tokens = 0;
-    for (const e of tw.world.entities) {
-      if (e.team === 'enemy' && e.hasTag('shot') && !seenShots.has(e)) {
-        seenShots.add(e);
-        if (!tw.world.camera.containsPoint(e.x, e.y, -8)) w.outsideShots++;
-      }
-      if (e instanceof Creature && !state.has(e)) state.set(e, { mode: e.mode, n: 0 });
-    }
-    for (const [e, s] of state) {
-      if (!(e instanceof Creature)) continue;
-      if (e.holdsToken) tokens++;
-      if (e.removed) {
-        // A bandbot that burst (removed without a killing hit) right after its telegraph.
-        if (!e.killedBy && s.mode === 'tell' && e instanceof WindupBot) w.bursts.push(s.n);
-        state.delete(e);
-        continue;
-      }
-      if (e.dead) continue;
-      if (e.mode === s.mode) {
-        s.n++;
-        continue;
-      }
-      if (TELLS.has(s.mode)) w.tells.push(s.n);
-      if (ATTACKS[e.mode]) w.attacks.push({ id: e.type, mode: e.mode, tell: s.n, prev: s.mode, inView: e.onScreen(0) });
-      s.mode = e.mode;
-      s.n = 1;
-    }
-    w.maxTokens = Math.max(w.maxTokens, tokens);
-  }
-  return w;
+function watch(tw: TestWorld, ticks: number, each?: (t: number) => void): FairnessWatch {
+  return watchFairness(tw, ticks, FAIR, each);
 }
 
 function scene(sc: Scene, difficulty: Difficulty = 'normal', seed = 5): { tw: TestWorld; e: Creature } {

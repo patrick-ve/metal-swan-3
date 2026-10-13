@@ -12,7 +12,7 @@ import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { blinkOn, centerText, menuKeys, scoreText, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import type { HighScoreEntry } from '../session';
-import { rankLabel } from './flow-data';
+import { missionNumber, rankLabel } from './flow-data';
 import { toTitle } from './flow';
 import { headIcon } from './heads';
 import { drawLake, veil } from './lake';
@@ -31,9 +31,14 @@ export interface HighScoresOpts {
 export const ATTRACT_SCORES_TICKS = 300;
 const AFTER_GAME_TICKS = 600;
 
-/** The mission column: 'ALL' for a finished game, else the mission number ('M3'). */
+/**
+ * The mission column: 'ALL' for a finished game, else the mission number by its place in the
+ * campaign ('ams' → 'M1', 'm1' → 'M2' … 'm5' → 'M6'); other `mN` ids → 'MN'.
+ */
 export function missionColumn(e: HighScoreEntry): string {
   if (e.mission === 'all') return 'ALL';
+  const n = missionNumber(e.mission);
+  if (n > 0) return `M${n}`;
   const m = /^m(\d+)$/.exec(e.mission);
   return m ? `M${m[1]}` : e.mission.toUpperCase().slice(0, 3);
 }

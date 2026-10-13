@@ -23,13 +23,13 @@ import { sectionC } from './section-c';
 export const M1: MissionDef = {
   id: 'm1',
   name: 'BRASS ON THE RIVERBANK',
-  subtitle: 'MISSION 1',
+  subtitle: 'MISSION 2',
   music: 'm1',
   bossMusic: 'boss',
   start: 'a',
   bossSection: 'c',
   next: 'm2',
-  announce: 'MISSION ONE. LOOK SHARP, CYGNETS!',
+  announce: 'MISSION TWO. LOOK SHARP, CYGNETS!',
   sections: { a: sectionA, b1: sectionB1, b2: sectionB2, c: sectionC },
   // Hostages per section (GDD §11.1: 10 per route — a 4 incl. the composer, b1 / b2 3, c 3).
   hostages: { a: 4, b1: 3, b2: 3, c: 3 },

@@ -49,8 +49,25 @@ export function hasMissionCard(id: string): boolean {
   return cards.has(id);
 }
 
-/** 'm3' → 'MISSION 3'; other ids → their upper-case name. */
+/**
+ * The campaign's missions in play order (the Amsterdam prologue `ams` first). Mission numbers on
+ * the cards, labels and the high-score column come from the place in this list.
+ */
+export const CAMPAIGN_MISSIONS: readonly string[] = ['ams', 'm1', 'm2', 'm3', 'm4', 'm5'];
+
+/** The number of a campaign mission (1-based place in CAMPAIGN_MISSIONS), 0 when it is not one. */
+export function missionNumber(id: string): number {
+  return CAMPAIGN_MISSIONS.indexOf(id) + 1;
+}
+
+/**
+ * 'ams' → 'MISSION 1', 'm1' → 'MISSION 2' … 'm4' → 'MISSION 5'; the last campaign mission (m5)
+ * → 'FINAL MISSION'; other ids `mN` → 'MISSION N' (m0), else their upper-case name.
+ */
 export function missionLabel(id: string): string {
+  const n = missionNumber(id);
+  if (n === CAMPAIGN_MISSIONS.length) return 'FINAL MISSION';
+  if (n > 0) return `MISSION ${n}`;
   const m = /^m(\d+)$/.exec(id);
   return m ? `MISSION ${m[1]}` : id.toUpperCase();
 }
@@ -85,6 +102,7 @@ export const TAGLINES: readonly string[] = [
 /** HOW TO PLAY card (GDD §13.3, §15.9 item 5): [keys, action]; an empty action = one line. */
 export const HOW_TO_PLAY: readonly (readonly [string, string])[] = [
   ['ARROWS / WASD', 'MOVE AND AIM'],
+  ['UP + LEFT / RIGHT', 'AIM DIAGONALLY'],
   ['FIRE', 'SHOOT (KNIFE UP CLOSE)'],
   ['JUMP', 'JUMP'],
   ['HOLD JUMP', 'GLIDE (SWAN)'],

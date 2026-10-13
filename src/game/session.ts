@@ -504,7 +504,7 @@ function defaultEntries(): HighScoreEntry[] {
   return names.map((name, i) => ({
     name,
     score: (10 - i) * 10000,
-    mission: 'm1',
+    mission: 'ams',
     character: 'recruit',
     continues: 0,
   }));

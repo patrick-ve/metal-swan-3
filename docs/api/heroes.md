@@ -40,6 +40,13 @@ Weapons (registered, used by the vehicles; never give them to a player on foot):
 - Sprites `char/<id>/…` (ARCHITECTURE §6.1 + `bored`, `salute` 2 f, `portrait` 32×32, `helium-*`,
   nine `ride-*` strips). A scene that shows a hero still frame: `char/<id>/portrait` (top-left
   anchor) or `char/<id>/victory`.
+- **Aim on foot** (GDD §4.3, `player.ts` `updateAim`): up alone → `elev` −π/2 (straight up);
+  up + left/right → −π/4 (45° up toward the pressed side; the player keeps walking; also in the
+  air); down in the air → +π/2. Crouched, up stands the player up first. Sweep weapons turn
+  22.5° per 2 ticks toward the new aim. The torso shows `torso-<w>-diag-up` / `shoot-diag-up`
+  (pistol and heavy, plain and the helium variants: 22 torso strips per set) and shots leave
+  from that frame's `muzzle`. Bombs keep the up lob whenever up is held. Vehicles keep their own
+  aiming (the Swan's neck, 8.2).
 - **Idle fidget** (`bored`): plays after 300 ticks without input (`TUNING.player.boredTicks`).
   Gramps' boot then squeaks for 120 ticks when he walks again (status `squeaky-boot`, applied by
   the player). Pure cosmetics; no rule changes.

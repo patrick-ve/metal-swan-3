@@ -90,7 +90,7 @@ export const DEFAULT_HIGH_SCORES: readonly Readonly<HighScoreEntry>[] = [
   { name: 'RIM', score: 200000, mission: 'm3', character: '', continues: 0, difficulty: 'easy' },
   { name: 'PUF', score: 150000, mission: 'm2', character: '', continues: 3, difficulty: 'normal' },
   { name: 'PIZ', score: 100000, mission: 'm2', character: '', continues: 0, difficulty: 'normal' },
-  { name: 'DOL', score: 50000, mission: 'm1', character: '', continues: 0, difficulty: 'easy' },
+  { name: 'DOL', score: 50000, mission: 'ams', character: '', continues: 0, difficulty: 'easy' },
 ];
 
 /** A fresh table with the GDD defaults. */

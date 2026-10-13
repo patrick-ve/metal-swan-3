@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SolidBox } from '../../src/engine/physics';
 import { Projectile } from '../../src/game/projectile';
 import { TUNING } from '../../src/game/tuning';
 import { FLOOR, Rig } from './helpers';
@@ -83,6 +84,20 @@ describe('death and respawn', () => {
     const g = rig.world.terrain.groundY(rig.p.x);
     expect(Number.isFinite(g)).toBe(true);
     expect(rig.p.y).toBe(g);
+  });
+
+  it('never respawns into a hole under a closed hatch (a dynamic solid) or below the view', () => {
+    // A 40-px hole whose floor (FLOOR + 60) is below the view, closed by a hatch at floor level
+    // (the m4-b subway hatch soft-lock): the drop-in would fall through the hatch and be sealed in.
+    const rig = new Rig({ noFloor: true, build: (t) => t.ground().at(0, FLOOR).flat(200).step(60).flat(40).step(-60).flat(2000) });
+    rig.world.addSolid(new SolidBox(200, FLOOR, 40, 8));
+    rig.p.placeAt(220, FLOOR, 0);
+    rig.run(2);
+    rig.p.kill('impact');
+    rig.until(() => rig.p.state === 'play', 300);
+    expect(rig.p.y).toBe(FLOOR);
+    rig.run(30);
+    expect(rig.p.y).toBe(FLOOR);
   });
 
   it('spikes kill through the damage pipeline; deep water drowns', () => {

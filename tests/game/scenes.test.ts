@@ -13,7 +13,8 @@ import { CharacterSelectScene } from '../../src/game/scenes/character-select';
 import { EndingScene, LAST_NOTE_TICKS } from '../../src/game/scenes/ending';
 import { FinalTallyScene } from '../../src/game/scenes/final-tally';
 import { GameOverScene } from '../../src/game/scenes/game-over';
-import { HighScoresScene } from '../../src/game/scenes/high-scores';
+import { HighScoresScene, missionColumn } from '../../src/game/scenes/high-scores';
+import { CAMPAIGN_MISSIONS, missionLabel } from '../../src/game/scenes/flow-data';
 import { MissionIntroScene, INTRO_TICKS } from '../../src/game/scenes/mission-intro';
 import { ModeSelectScene } from '../../src/game/scenes/mode-select';
 import { NameEntryScene } from '../../src/game/scenes/name-entry';
@@ -305,5 +306,14 @@ describe('scenes (headless)', () => {
     tap('right');
     expect(a.settings.difficulty).toBe('hard');
     expect(loadSettings(store).difficulty).toBe('hard');
+  });
+});
+
+describe('campaign numbering (docs/design/amsterdam.md §8)', () => {
+  it('ams comes first; labels and the high-score column number missions by their campaign place', () => {
+    expect(CAMPAIGN_MISSIONS).toEqual(['ams', 'm1', 'm2', 'm3', 'm4', 'm5']);
+    expect(['ams', 'm1', 'm2', 'm3', 'm4', 'm5', 'm0'].map(missionLabel)).toEqual(['MISSION 1', 'MISSION 2', 'MISSION 3', 'MISSION 4', 'MISSION 5', 'FINAL MISSION', 'MISSION 0']);
+    const col = (mission: string): string => missionColumn({ name: 'AAA', score: 0, mission, character: '', continues: 0, difficulty: 'normal' });
+    expect(['ams', 'm1', 'm4', 'm5', 'all'].map(col)).toEqual(['M1', 'M2', 'M5', 'M6', 'ALL']);
   });
 });

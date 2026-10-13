@@ -32,10 +32,17 @@ Weapon ids (`player.giveWeapon(id, ammo?)`, `pickup-weapon { weapon }`, crate le
 | `flamethrower` | F | 30 / +15 | 10 per 2 ticks (≤ 12 hits/press) | 24 | 96 px stream, pierces, 128 px floor run when fired down near the floor; ≈ 290 dps |
 | `laser` | L | 200 / +150 | 8 per 2 ticks | hold | to first solid or 384 px, pierces, tap = 12-tick pulse (3 ammo); 240 dps |
 | `homing` | H | 40 / +20 | 30 + 10 r 8 | 20 | 2 per press (±15°), locks the nearest **in-view** `enemy` within 220 px ahead, 4°/tick, 120 ticks |
-| `tuba` | T | 25 / +15 | 60 once per enemy | 30 | ring 12 → 40 px, 2.5 px/tick, 70 ticks, max 3; **erases** `erasable` enemy shots; pushes ≤ 40 HP enemies 8 px |
+| `tuba` | T | 25 / +15 | 60 once per enemy | 30 | ring 12 → 40 px, 2.5 px/tick, 70 ticks, max 3; **erases** `erasable` enemy shots; pushes ≤ 40 HP enemies 8 px along its x (side rings, the 45° ring included: \|vx\| > \|vy\|/2; straight up / down rings push nothing) |
 | `bounce-mine` | B | 30 / +10 | 30 + 40 r 20 | 20 | hops 32 px gaps / 12 px steps; blows on contact, 4th landing or 150 ticks; max 3 |
 | `grenade` (bomb) | — | 10 per life (EASY 15), cap 99 | 100 + 100 r 24 | 10 | 2 in the air, 2nd ground contact or 120-tick fuse; infantry within 36 px `panic` |
 | `knife` (melee) | — | — | 30 | 20 | box 26 × 28 ahead (crouch 26 × 18); knife kill = 5 × kill score |
+
+**Aim (GDD §4.3).** Every weapon fires along `FireContext.angle`: forward, straight up (up alone),
+**45° up** with up + left/right (world −45° facing right, −135° facing left; the player keeps walking)
+and straight down in the air. `FireContext.aim` (`aimDirOf(elev)`) stays `'forward'` for the 45°
+diagonal (strict ±45° threshold), so aim-keyed throws treat it as forward: the bounce mine throws low.
+Bombs (`throwGrenade`) get `aim: 'up'` whenever up is held (the player turns the diagonal into the up
+lob before the throw).
 
 Vehicle guns kept from the slice: `vulcan`, `cannon` (the fleet and Swan define their own weapons).
 

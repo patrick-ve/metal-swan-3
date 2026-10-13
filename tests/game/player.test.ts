@@ -137,6 +137,24 @@ describe('player movement', () => {
     expect(rig.p.aim).toBe('down');
   });
 
+  it('aims 45° up with up + left/right (feet planted), 90° with up alone (GDD 4.3)', () => {
+    const rig = new Rig();
+    rig.hold(['up', 'right']).run(2);
+    expect(rig.p.elev).toBeCloseTo(-Math.PI / 4, 9);
+    expect(rig.p.aimAngle).toBeCloseTo(-Math.PI / 4, 9);
+    expect(rig.p.vx).toBe(0);
+    rig.hold(['up', 'left']).run(2);
+    expect(rig.p.facing).toBe(-1);
+    expect(rig.p.vx).toBe(0);
+    expect((Math.atan2(Math.sin(rig.p.aimAngle), Math.cos(rig.p.aimAngle)) * 180) / Math.PI).toBeCloseTo(-135, 9);
+    rig.hold(['up']).run(1);
+    expect(rig.p.elev).toBeCloseTo(-Math.PI / 2, 9);
+    // In the air: up + side is the diagonal too, down is straight down (no down-diagonal).
+    rig.release().run(1).tap(['jump']);
+    rig.hold(['down', 'right']).run(2);
+    expect(rig.p.elev).toBeCloseTo(Math.PI / 2, 9);
+  });
+
   it('is kept inside the view by the camera edges', () => {
     const rig = new Rig({ x: 40 });
     rig.hold(['left']).run(80);

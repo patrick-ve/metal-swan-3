@@ -53,7 +53,7 @@ describe('mission m2 DUNE BUGLE', () => {
     expect(M2.bossSection).toBe('d');
     expect(M2.music).toBe('m2');
     expect(M2.bossMusic).toBe('boss');
-    expect(M2.announce).toBe('MISSION TWO. STAY HYDRATED, CYGNETS!');
+    expect(M2.announce).toBe('MISSION THREE. STAY HYDRATED, CYGNETS!');
   });
 
   it('places 8 hostages on either route (GDD §11.2)', () => {

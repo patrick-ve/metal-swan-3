@@ -25,6 +25,7 @@ import type { Scene } from '../engine/scene';
 import type { World } from '../engine/world';
 import type { MissionRunner } from '../game/mission/runner';
 import type { ExitDef } from '../game/mission/types';
+import { Boss } from '../game/boss';
 import type { Player } from '../game/player/player';
 import { ContinueScene } from '../game/scenes/continue';
 import { GameplayScene } from '../game/scenes/gameplay';
@@ -82,6 +83,10 @@ const UP = BUTTON_BIT.up;
 const DOWN = BUTTON_BIT.down;
 const FIRE = BUTTON_BIT.fire;
 const JUMP = BUTTON_BIT.jump;
+/** A thin boss contact lane (a lash) as a moving threat: its trailing length and front speed. */
+const BOSS_LANE_LEAD = 100;
+const BOSS_LANE_SPEED = 12;
+const BOSS_LANE_MEMO = 16;
 const BOMB = BUTTON_BIT.bomb;
 const START = BUTTON_BIT.start;
 
@@ -126,6 +131,18 @@ export class Bot implements InputSource {
   private dynCount = 0;
   private readonly landing: Landing = { ok: false, x: 0, y: 0, t: 0, box: null };
   private readonly endPt = { x: 0, y: 0 };
+  /** Where to shoot: the target centre or the lowest open boss part (set by `aimPoint`). */
+  private readonly aimPt = { x: 0, y: 0 };
+  /** The fighting boss's lowest open part (arena stand-off), when there is one. */
+  private readonly bossPt = { x: 0, y: 0, ok: false };
+  /** Boss part choice: the boss, the part aimed at, since when it took no damage, skipped parts. */
+  private bossRef: Boss | null = null;
+  private bossPart = -1;
+  private bossHpMark = 0;
+  private bossMarkT = 0;
+  private bossSkip = 0;
+  /** Ticks spent standing under a target to shoot straight up (capped, then walk on). */
+  private overheadT = 0;
   /** Vehicles that threw this bot's player out (a body wall, 0 cells): never boarded again. */
   private readonly leftVehicles = new WeakSet<object>();
   /** Mode helpers. */
@@ -221,6 +238,7 @@ export class Bot implements InputSource {
     this.dynCount = dynamicLedges(world, this.dyn);
     let mask = 0;
     const target = this.pickTarget(world, p);
+    this.findBossPart(world);
     const goal = this.goal(runner, p);
     this.goalX = goal.x;
     this.goalY = goal.y;
@@ -320,16 +338,51 @@ export class Bot implements InputSource {
 
     // ---- facing: turn toward a target behind (on the ground only)
     let press = dir;
+    /** Toward the target at about 45° (up + toward = the diagonal, GDD §4.3). */
+    let diagSide = 0;
     if (target) {
-      const tdx = target.x - p.x;
-      const behind = Math.sign(tdx) !== 0 && Math.sign(tdx) !== p.facing && Math.abs(tdx) > 10;
+      const a = this.aimPoint(target);
+      const tdx = a.x - p.x;
+      const s = Math.sign(tdx);
+      const behind = s !== 0 && s !== p.facing && Math.abs(tdx) > 10;
+      const free = p.onGround && this.airDir === null && !riding && !jump;
       // Turn only on the ground (pressing back in the air would cut a jump short over a pit),
       // and never step off a ride or a ledge edge to do it.
-      if (behind && p.onGround && this.airDir === null && !riding && this.edgeOk(world, p, Math.sign(tdx))) press = Math.sign(tdx);
-      // Aim up at targets above.
-      const ty = target.y + target.hitbox.y + target.hitbox.h * 0.5;
-      if (p.y - 22 - ty > 44 && Math.abs(tdx) < 110) mask |= UP;
-    }
+      if (behind && p.onGround && this.airDir === null && !riding && this.edgeOk(world, p, s)) press = s;
+      // Aim up at targets above (GDD §4.3): straight up only while standing still, so stop
+      // under a target nearly overhead (a while, then walk on); up + toward fires at 45°.
+      const dy = p.y - 22 - a.y;
+      const adx = Math.abs(tdx);
+      if (dy > 16 && adx < 24) {
+        // Already holding still (an arena spot, a reached goal, a goal close by): no cap.
+        if (free && (dir === 0 || Math.abs(goal.x - p.x) < 24 || this.overheadT < 60)) {
+          this.overheadT++;
+          dir = 0;
+          // Straight up needs the feet planted right under it (up + a side would be the
+          // diagonal), so first step in under the target, then hold up.
+          if (adx > 6 && this.edgeOk(world, p, s)) press = s;
+          else {
+            press = 0;
+            mask |= UP;
+          }
+        }
+      } else {
+        this.overheadT = 0;
+        if (dy > adx * 0.5 && dy < adx * 2 && adx < 240) {
+          if (free && dir === 0 && this.edgeOk(world, p, s)) {
+            // Holding a spot: step toward the target on the firing ticks only (no drift away).
+            press = this.t % 2 === 0 || p.facing !== s ? s : 0;
+            diagSide = s;
+          } else if (press === s && (!p.onGround || Math.abs(goal.x - p.x) < 32 || this.t % 6 < 2)) {
+            // Walking on: on the ground the diagonal plants the feet (GDD §4.3), so aim it in
+            // short bursts and keep moving in between; near the goal (an arena spot, often up
+            // against a body wall) plant and fire; in the air it never stops the player.
+            diagSide = s;
+          }
+          if (diagSide !== 0) mask |= UP;
+        }
+      }
+    } else this.overheadT = 0;
 
     // ---- dodging: pick a move that no incoming shot hits
     if (this.opts.dodge && p.onGround && !jump && !air.active && !riding) {
@@ -337,6 +390,8 @@ export class Bot implements InputSource {
       if (d) {
         press = d.press;
         if (d.crouch) mask = (mask & ~UP) | DOWN;
+        // A dodge away from the target: no diagonal the wrong way.
+        if (diagSide !== 0 && press !== diagSide) mask &= ~UP;
         if (d.jump) {
           jump = true;
           this.jumpWhy = 'dodge';
@@ -400,6 +455,139 @@ export class Bot implements InputSource {
     if (scroll === 'up') return -y;
     if (scroll === 'down') return y;
     return x;
+  }
+
+  /**
+   * The point to shoot at: the lowest alive, unarmoured part of a boss (the one a player on the
+   * floor reaches), else the target's centre.
+   */
+  private aimPoint(target: Entity): { x: number; y: number } {
+    const a = this.aimPt;
+    if (target === this.bossRef && this.bossPt.ok) {
+      a.x = this.bossPt.x;
+      a.y = this.bossPt.y;
+      return a;
+    }
+    a.x = target.x + target.hitbox.x + target.hitbox.w * 0.5;
+    a.y = target.y + target.hitbox.y + target.hitbox.h * 0.5;
+    return a;
+  }
+
+  /**
+   * Index of the lowest hittable, unarmoured part of a boss (centre into `out`) that is not in
+   * the `skip` bit mask; -1 if none.
+   */
+  private lowestPart(b: Boss, skip: number, out: { x: number; y: number }): number {
+    let found = -1;
+    for (let i = 0; i < b.parts.length; i++) {
+      const part = b.parts[i];
+      if (!part.enabled || part.destroyed || part.armored || (i < 31 && (skip & (1 << i)) !== 0)) continue;
+      const r = b.partRect(part);
+      if (r.w <= 0) continue;
+      const cy = r.y + r.h * 0.5;
+      if (found < 0 || cy > out.y) {
+        out.x = r.x + r.w * 0.5;
+        out.y = cy;
+        found = i;
+      }
+    }
+    return found;
+  }
+
+  private readonly spot = { x: 0, y: 0 };
+
+  /**
+   * Nearest terrain ledge spot (into `spot`) with a clear 45° or straight-up line to the boss
+   * part `b` (balconies, crate steps); false if none.
+   */
+  private ledgeSpot(world: World, p: { x: number; y: number }, b: { x: number; y: number }, lo: number, hi: number): boolean {
+    const ls = terrainLedges(world.terrain);
+    let best = Infinity;
+    for (let i = 0; i < ls.length; i++) {
+      const l = ls[i];
+      const eye = l.y - 22;
+      if (eye < b.y - 16 || l.x1 < lo || l.x0 > hi || l.y > p.y + 40) continue;
+      const a = Math.max(lo, l.x0 + 6);
+      const z = Math.min(hi, l.x1 - 6);
+      if (z < a) continue;
+      const d = eye - b.y;
+      // Straight up, 45° from either side, or level with it (a forward shot from the ledge end).
+      for (let k = 0; k < 4; k++) {
+        if (k < 3 && d < 12) continue;
+        if (k === 3 && d > 16) continue;
+        const x = k === 0 ? b.x : k === 3 ? Math.max(a, Math.min(z, b.x)) : b.x + (k === 1 ? -d : d);
+        const ey = k === 3 ? b.y : eye;
+        if (x < a || x > z || Math.abs(x - b.x) < 8 && k === 3 || !this.lineClear(x, ey, b.x, b.y)) continue;
+        const cost = Math.abs(x - p.x) + Math.abs(l.y - p.y) * 2;
+        if (cost < best) {
+          best = cost;
+          this.spot.x = x;
+          this.spot.y = l.y;
+        }
+      }
+    }
+    return best < Infinity;
+  }
+
+  /** No other hittable part of the current boss on the line (x0, y0) → (x1, y1) (6 px steps). */
+  private lineClear(x0: number, y0: number, x1: number, y1: number): boolean {
+    const boss = this.bossRef;
+    if (!boss) return true;
+    const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 6));
+    for (let k = 1; k < n; k++) {
+      const x = x0 + ((x1 - x0) * k) / n;
+      const y = y0 + ((y1 - y0) * k) / n;
+      for (let i = 0; i < boss.parts.length; i++) {
+        if (i === this.bossPart) continue;
+        const part = boss.parts[i];
+        if (!part.enabled || part.destroyed) continue;
+        const r = boss.partRect(part);
+        if (r.w > 0 && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * The fighting boss's lowest open part (aim point and arena stand-off). A part that takes no
+   * damage for 5 s (damped, shielded, out of reach) is skipped for the next one; when every
+   * part was skipped the round starts over.
+   */
+  private findBossPart(world: World): void {
+    const b = this.bossPt;
+    b.ok = false;
+    let boss: Boss | null = null;
+    const list = world.byTag('boss');
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e instanceof Boss && e.alive && e.state === 'fight') {
+        boss = e;
+        break;
+      }
+    }
+    if (boss !== this.bossRef) {
+      this.bossRef = boss;
+      this.bossPart = -1;
+      this.bossSkip = 0;
+    }
+    if (!boss) return;
+    let idx = this.lowestPart(boss, this.bossSkip, b);
+    if (idx < 0 && this.bossSkip !== 0) {
+      this.bossSkip = 0;
+      idx = this.lowestPart(boss, 0, b);
+    }
+    if (idx < 0) return;
+    b.ok = true;
+    const part = boss.parts[idx];
+    const hp = boss.hp + (Number.isFinite(part.hp) ? part.hp : 0);
+    if (idx !== this.bossPart || hp < this.bossHpMark) {
+      this.bossPart = idx;
+      this.bossHpMark = hp;
+      this.bossMarkT = this.t;
+    } else if (this.t - this.bossMarkT > 300 && idx < 31) {
+      this.bossSkip |= 1 << idx;
+      this.bossPart = -1;
+    }
   }
 
   /** Nearest hostile target on screen, preferring the facing side and the same height. */
@@ -471,8 +659,34 @@ export class Bot implements InputSource {
       }
     }
     if (item) return this.setGoal(item.x, item.y, 'item');
-    // Locked arena: hold a spot left of centre and let the enemies come.
-    if (cam.locked && sec.scroll !== 'up' && sec.scroll !== 'down') return this.setGoal(cam.left + 120, p.y, 'arena');
+    // Locked arena: hold a spot left of centre and let the enemies come; against a boss part
+    // well above, stand off so it is on a 45° line (up + toward fires at it, GDD §4.3).
+    if (cam.locked && sec.scroll !== 'up' && sec.scroll !== 'down') {
+      const b = this.bossPt;
+      const dy = p.y - 22 - b.y;
+      if (b.ok && dy > 40) {
+        // A side whose 45° line reaches the part without crossing another part (shots stop at
+        // the first part they touch), else straight under it, else the near side anyway.
+        const off = Math.min(160, dy);
+        const lo = cam.left + 24;
+        const hi = cam.right - 24;
+        const eyeY = p.y - 22;
+        const near = Math.sign(p.x - b.x) || -1;
+        let x = NaN;
+        for (let k = 0; k < 2 && Number.isNaN(x); k++) {
+          const sx = b.x + (k === 0 ? near : -near) * off;
+          if (sx >= lo && sx <= hi && this.lineClear(sx, eyeY, b.x, b.y)) x = sx;
+        }
+        if (Number.isNaN(x) && b.x >= lo && b.x <= hi && this.lineClear(b.x, eyeY, b.x, b.y)) x = b.x;
+        if (Number.isNaN(x) && this.ledgeSpot(world, p, b, lo, hi)) return this.setGoal(this.spot.x, this.spot.y, 'arena');
+        if (Number.isNaN(x)) {
+          const side = b.x + near * off < lo || b.x + near * off > hi ? -near : near;
+          x = Math.max(lo, Math.min(hi, b.x + side * off));
+        }
+        return this.setGoal(x, p.y, 'arena');
+      }
+      return this.setGoal(cam.left + 120, p.y, 'arena');
+    }
     // An open exit: the chosen route.
     const ex = this.pickExit(runner);
     if (ex) {
@@ -757,6 +971,42 @@ export class Bot implements InputSource {
       if (n === 0) from = Math.sign(-s.vx) || Math.sign(s.x - p.x) || 1;
       n++;
     }
+    // Thin boss contact lanes (a lashing chain, a stomp landing): a lash grows toward the
+    // player, so each is modelled as a front moving at him.
+    const bosses = world.byTag('boss');
+    for (let i = 0; i < bosses.length && n < 8; i++) {
+      const b = bosses[i];
+      if (!(b instanceof Boss) || !b.alive) continue;
+      const boxes = b.contactBoxes();
+      for (let k = 0; k < boxes.length && n < 8; k++) {
+        const r = boxes[k];
+        if (r.h > 20) continue;
+        // Only a box that is growing (or grew in the last BOSS_LANE_MEMO ticks) is a sweep: a
+        // tread, a deck or a stomp landing keeps its size and is left to the normal steering.
+        let m = this.laneMemo.get(r);
+        if (!m) this.laneMemo.set(r, (m = { w: r.w, grew: -BOSS_LANE_MEMO - 1 }));
+        else if (r.w !== m.w) {
+          m.w = r.w;
+          m.grew = world.tick;
+        }
+        if (world.tick - m.grew > BOSS_LANE_MEMO) continue;
+        if (Math.abs(r.x + r.w / 2 - p.x) > r.w / 2 + 2 * BOSS_LANE_LEAD) continue;
+        const t = threats[n] ?? (threats[n] = { x: 0, y: 0, vx: 0, vy: 0, g: 0, hw: 0, hh: 0 });
+        // The lane's front (the edge toward the player) sweeps on at BOSS_LANE_SPEED px/tick,
+        // trailing a body BOSS_LANE_LEAD px long behind it.
+        const side = p.x < b.x ? -1 : 1;
+        const front = side < 0 ? r.x : r.x + r.w;
+        t.x = front - side * (BOSS_LANE_LEAD / 2);
+        t.y = r.y + r.h / 2;
+        t.vx = side * BOSS_LANE_SPEED;
+        t.vy = 0;
+        t.g = 0;
+        t.hw = BOSS_LANE_LEAD / 2;
+        t.hh = r.h / 2;
+        if (n === 0) from = side;
+        n++;
+      }
+    }
     if (n === 0) return null;
     const planned = this.firstHit(p, n, press, 'stand');
     if (planned === Infinity) return null;
@@ -775,6 +1025,8 @@ export class Bot implements InputSource {
   }
 
   private readonly dodge = { press: 0, crouch: false, jump: false };
+  /** Last width of each boss contact box and the tick it last changed (sweep detection). */
+  private readonly laneMemo = new WeakMap<object, { w: number; grew: number }>();
   private bestHit = 0;
 
   /** Test one move; keep it in `dodge` when it is hit later than the best so far. True = safe. */

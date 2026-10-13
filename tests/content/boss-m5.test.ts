@@ -459,8 +459,9 @@ describe('THE MAESTRO', () => {
     while (!boss.defeated && ticks < 30000) {
       const b: Button[] = [];
       const want = boss.x;
+      // Up + a direction aims 45° (GDD §4.3): walk into place, then stand and aim straight up.
       if (Math.abs(p.x - want) > 6) b.push(p.x < want ? 'right' : 'left');
-      b.push('up');
+      else b.push('up');
       if (ticks % 2 === 0) b.push('fire');
       if (ticks % 240 === 120) b.push('bomb');
       if (ticks % 40 === 0) b.push('jump');

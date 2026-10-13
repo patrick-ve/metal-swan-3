@@ -32,7 +32,7 @@ Design: GDD §3, §4.13, §6.2, §13.5; ARCHITECTURE §6.1; `docs/design/swan-mo
 ## 2. Sprites (`characters/art.ts`), `char/<id>/…` for all five characters
 
 - The ARCHITECTURE §6.1 contract: `legs-*` (point `hip`), `torso-{pistol,heavy}-*` (aim / shoot:
-  `muzzle`; throw / knife: `hand`; heavy diagonals included), `die` (6–7 f), `die-burn`,
+  `muzzle`; throw / knife: `hand`; diag-up strips for pistol and heavy; diag-down for heavy only), `die` (6–7 f), `die-burn`,
   `die-blast`, `victory`, `spawn`, `bored`, `mount`, `salute` (2 f), `portrait` (32×32, top-left
   anchor).
 - The knife strips `torso-<w>-knife` hold the hero's prop (5 frames); `recruit` holds the knife.

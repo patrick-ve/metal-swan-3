@@ -607,6 +607,22 @@ describe('tuba', () => {
     expect(rig.p.alive).toBe(true);
   });
 
+  it('a 45° ring is a side ring: it flies along the diagonal and pushes along its x; straight up is the up ring', () => {
+    const rig = new Rig({ width: 4000 });
+    arm(rig, 'tuba');
+    const rings = spawned<TubaRing>(rig, 'tuba');
+    rig.hold(['up', 'right']).run(2).tap(['fire']);
+    const r = rings[0];
+    expect((Math.atan2(r.vy, r.vx) * 180) / Math.PI).toBeCloseTo(-45, 5);
+    expect(r.horizontal).toBe(true);
+    const [x0, y0] = [r.x, r.y];
+    rig.run(10);
+    expect(r.x - x0).toBeCloseTo(-(r.y - y0), 5);
+    rig.run(TUBA.cooldown + 20).hold(['up']).run(4).tap(['fire']);
+    expect(rings[1].horizontal).toBe(false);
+    expect(rings[1].vx).toBeCloseTo(0, 6);
+  });
+
   it('at most 3 rings on screen', () => {
     const rig = new Rig({ width: 4000 });
     arm(rig, 'tuba');

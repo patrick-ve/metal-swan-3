@@ -2,7 +2,7 @@
  * Gameplay scene: a MissionRunner (world + section + players) with the HUD, the pause overlay,
  * 2-player join / continue (a credit each when credits are limited), debug hooks (F4 skip, F5
  * weapons) and the hand-offs to the continue screen and the mission-complete tally. It also
- * plays the attract-mode demo (GDD §13.3): a bot on m1-a with `DEMO PLAY`, ended by any key.
+ * plays the attract-mode demo (GDD §13.3): a bot on ams-a (m1-a without it) with `DEMO PLAY`, ended by any key.
  *
  * Missions that have a mission card (flow-data.ts) start with the card's banner (`MISSION 1` /
  * `START!`, 120 ticks, GDD §13.6) and announcer line, and end with `MISSION COMPLETE! BRAVO!`,
@@ -36,8 +36,9 @@ export interface NewGameOpts {
   characters?: readonly string[];
 }
 
-/** The mission a new game starts with. */
+/** The mission a new game starts with: the Amsterdam prologue `ams`, else m1. */
 export function firstMission(): string {
+  if (hasMission('ams')) return 'ams';
   if (hasMission('m1')) return 'm1';
   const ids = listMissions();
   return ids.find((id) => id !== 'm0') ?? ids[0] ?? 'm0';

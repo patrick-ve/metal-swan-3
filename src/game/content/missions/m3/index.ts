@@ -25,14 +25,14 @@ import { sectionC } from './section-c';
 export const M3: MissionDef = {
   id: 'm3',
   name: 'THE HIGH NOTE',
-  subtitle: 'MISSION 3',
+  subtitle: 'MISSION 4',
   music: 'm3',
   bossMusic: 'boss',
   start: 'a',
   bossSection: 'c',
   next: 'm4',
-  startBanner: { text: 'MISSION 3', sub: 'START!' },
-  announce: 'MISSION THREE. WRAP UP WARM, CYGNETS!',
+  startBanner: { text: 'MISSION 4', sub: 'START!' },
+  announce: 'MISSION FOUR. WRAP UP WARM, CYGNETS!',
   sections: { a: sectionA, b1: sectionB1, b2: sectionB2, c: sectionC },
   // GDD §11.3: 8 per route (a 4 incl. the composer, b1 / b2 3, c 1).
   hostages: { a: 4, b1: 3, b2: 3, c: 1 },

@@ -59,7 +59,7 @@ tenor who built an army out of a marching band. His **Fanfare Legion** wants to 
 attention and salute him, forever. The Cygnets are immune — eleven years of their commander's
 karaoke nights made them deaf to bad music.
 
-The squad fights through five missions of brass bands, drum tanks, bagpipe airships and a piano
+The squad fights through six missions (a fried-food fight in Amsterdam, then brass bands, drum tanks, bagpipe airships and a piano
 that bites, on foot and on the back of the **SWAN-3**: a robot swan that sprints, leaps, glides,
 swims and honks, with a machine gun in her beak. She is the third prototype of the "Metal Swan"
 programme. (Mk1 sank. Mk2 flew south for the winter and never came back.)
@@ -92,13 +92,17 @@ Attract-mode alternates (cycled under the logo, 300 ticks each):
 
 | Mission | Name | Biome | Sections played | Vehicle | Boss | Time (good player) |
 |---|---|---|---|---|---|---|
+| ams | THE FRYING DUTCHMAN (MISSION 1, prologue) | Amsterdam canals, morning → sunset | `a` → `b` → `c` → `d` | SWAN-3 (parked in `b`, may continue to `c`, `d`) | ROBO-HALSEMA (robot mayor) | 4:00 |
 | m1 | BRASS ON THE RIVERBANK | river town, spring morning | `a` → `b1`/`b2` → `c` | SWAN-3 (`c`) | THE ENCORE (riverboat) | 4:00 |
 | m2 | DUNE BUGLE | desert flats and canyon, noon | `a` → `b` → `c1`/`c2` → `d` | SUNDAE DRIVER (`b`, may continue) | THE BA-DUM BEHEMOTH (drum tank) | 5:00 |
 | m3 | THE HIGH NOTE | ski resort mountain, sunset | `a` → `b1`/`b2` (vertical) → `c` | SWAN-3 (`a`; `c` if she survives `a`) | THE WINDBAG (bagpipe airship) | 4:30 |
 | m4 | OPENING NIGHT | the capital at night | `a` → `b` → `c1`/`c2` → `d` | BANDWAGON (`b`) | THE GRAND GRAND (piano mech) | 5:00 |
 | m5 | SWAN SONG | above the clouds, inside the organ | `a` (shoot-em-up) → `b` (vertical) → `c` | TRUMPETER (`a`) | THE GRAND ORGAN → THE CONSOLE → THE MAESTRO | 6:00 |
 
-- One-credit clear by a good player on NORMAL: **≈ 26 minutes** including cards and tallies.
+- Campaign order (`CAMPAIGN_MISSIONS`): `ams`, `m1` … `m5`. The cards number them MISSION 1–5
+  (`ams` = 1, `m1` = 2 … `m4` = 5) and `m5` stays FINAL MISSION; detail of `ams`:
+  `docs/design/amsterdam.md`.
+- One-credit clear by a good player on NORMAL: **≈ 26 minutes** (+ ≈ 4 for `ams`) including cards and tallies.
   A first clear with continues: 40–45 minutes.
 - 4 route branches (m1, m2, m3, m4); every branch rejoins before the boss.
 - Vertical sections: `m3-b1` and `m3-b2` (scroll up; one of them per run), `m5-b` (scroll down).
@@ -186,6 +190,7 @@ the player, holds up a card with stars and hands over a gift (section 7).
 
 | Mission | Line 1 | Line 2 |
 |---|---|---|
+| ams THE FRYING DUTCHMAN | `SHORE LEAVE IN AMSTERDAM. THE CYGNETS WANT FRIES.` | `THE BEST FRY SHOP IN TOWN NEEDS HELP. GO!` |
 | m1 BRASS ON THE RIVERBANK | `THE LEGION HIJACKED THE PUDDLEWICK DUCK REGATTA.` | `FREE THE CRITICS, SINK THEIR FLAGSHIP, MIND THE DUCKS.` |
 | m2 DUNE BUGLE | `THEIR DRUM CORPS IS TESTING A DRUM THE SIZE OF A HOUSE.` | `STOP IT. AND DO NOT LAUGH AT THE COLONEL'S JOKES.` |
 | m3 THE HIGH NOTE | `THE WOODWINDS HAVE TAKEN MOUNT MURMUR AND ITS SKI LIFT.` | `SOMETHING HUGE AND TARTAN FLOATS AT THE TOP. DEFLATE IT.` |
@@ -341,7 +346,7 @@ Engine buttons `left right up down fire jump bomb start` (default keys in ARCHIT
 | Input | On foot | In a ground vehicle | In the Trumpeter (flight) |
 |---|---|---|---|
 | left / right | walk; in the air steer (facing follows the pressed side at once) | drive | fly |
-| up | aim up (hold; also while walking and in the air) | aim up (turret; the Swan's neck: up −90°, up + forward −45°, up + back −135°; up locks her facing) | fly up |
+| up | aim straight up (hold; standing or in the air); **up + left/right aims 45° up** (135° facing left) with the feet planted (the side only turns the player) |  aim up (turret; the Swan's neck: up −90°, up + forward −45°, up + back −135°; up locks her facing) | fly up |
 | down | crouch on the ground; aim down in the air | crouch (the Swan: crouch on the ground, duck in water, aim forward-down +45° in the air) / aim down where possible | fly down |
 | fire | shoot; becomes the knife when an enemy is in melee range | main gun | main gun |
 | jump | jump | hop (the Swan: a full jump; hold jump while she falls to glide) | — |
@@ -381,18 +386,23 @@ fire is always a plain jump: her squat starts and fire is a shot (8.2).
 
 ### 4.3 Aiming and firing
 
-- **Directions:** forward, **up** (standing, walking or in the air) and **down** (only in the
-  air). No diagonal aiming on foot. Legs and torso are separate: the player can walk one way
-  with the torso aiming up.
+- **Directions:** forward, **up** (up alone: straight up, standing or in the air), **diagonal
+  up** (up + left/right: 45° up toward the pressed side, i.e. 45° facing right and 135° facing
+  left; on the ground the feet stay planted: the side only turns the player, who brakes to a stop;
+  in the air it steers as usual) and **down** (only in the air, down
+  alone or with a side: straight down). There are no down-diagonals. Every weapon fires along the
+  diagonal; the torso shows the diagonal frames (`torso-<w>-diag-up`, `shoot-diag-up`).
+- **Grenades** keep the high **up lob** whenever up is held, also with up + left/right (no
+  diagonal throw). The bounce mine (a fire weapon) counts the diagonal as forward: up +
+  left/right throws it low and forward, up alone lobs it.
 - **Crouch:** shots leave at crouch height (muzzle 14 px above the feet). Pressing up while
   crouched stands the player up.
 - **Air facing:** in the air, shots and grenades go toward the currently pressed side (drift
   one way, shoot the other); with no side pressed, toward the facing.
 - **Aim sweep** (`machine-gun`, `laser`, Swan beak gun): when the aim changes while fire is
   held, the gun turns 22.5° per 2 ticks toward the new aim, and rounds fired in between go out
-  at the in-between angles (forward → up takes 8 ticks: 22.5°, 45°, 67.5°, 90°). This is the
-  only way to get diagonal shots on foot. (The Swan's neck turns at this rate whether or not fire
-  is held, 8.2.)
+  at the in-between angles (forward → up takes 8 ticks: 22.5°, 45°, 67.5°, 90°; forward →
+  diagonal takes 4). (The Swan's neck turns at this rate whether or not fire is held, 8.2.)
 - **Tap vs. hold:** every weapon fires on the press when its cooldown is ready; holding fire
   auto-fires at the weapon's hold rate (section 5). A press during another attack is stored for
   6 ticks and fires when possible.
@@ -1329,6 +1339,22 @@ Props that can be damaged are on the `enemy` team (not knifeable unless noted); 
 
 ---
 
+### 9.6 Amsterdam locals (mission `ams` only; not Legion)
+
+Spec: `docs/design/amsterdam.md` §2, API `docs/api/locals.md`. One-hit melee kills, GDD 4.11
+fairness (tell ≥ 18 ticks in view, attack tokens, only the attack box kills).
+
+| id | HP | score | in short |
+|---|---|---|---|
+| `fatbike-youth` | 20 (pair 30) | 300 (500) | fat-tyre e-bike, brakes near the player, wheelie + `OI!` (T 24), a shin kick (jump it); gag `circles`; `pair` = a passenger kicks |
+| `delivery-rider` | 10 | 200 | fast pass at 2.2 px/tick, `TRING TRING!` (T 20) in view, a kick while passing; `from: 'behind'`; drops `pickup-food` |
+| `seagull` | 10 | 150 | perches on lamps / roofs (`perch`), steals fries (`gag: 'fries'`), `KAW!` (T 20) then a dive (contact only while diving); `flock: n` |
+| `handhaver` | 20 | 300 | walks in, licks the pencil (T 24), throws a fluttering `boete-ticket` at chest height (crouch it); sections `c`, `d` and the boss adds |
+
+Friendly NPCs and city life (`missions/ams/entities.ts`): the Fabel Friet baker (the briefing),
+the hot-dog vendor (salutes), the staff (the finale), tour boats, rideable `ams-boat-platform`s,
+background cyclists, pigeons, window wavers; breakable stalls and bike racks.
+
 ## 10. Bosses
 
 ### 10.0 Shared boss rules
@@ -1361,6 +1387,23 @@ Props that can be damaged are on the `enemy` team (not knifeable unless noted); 
 | `grand-organ` (m5) | shoot-em-up dodging | a flying cathedral organ |
 | `organ-console` (m5) | reading the sheet-music lanes | the telegraph is the score itself |
 | `maestro` (m5) | using cover | a tiny man with a giant scream |
+
+### 10.0a ams — `ams-mayor` — ROBO-HALSEMA, THE IRON MAYOR
+
+Spec `docs/design/amsterdam.md` §3, code `src/game/content/bosses/ams/`. A ~140 px walking robot
+caricature with a recognisable likeness of the burgemeester (big wavy dark-brown hair as a wig
+over a steel skull, arched brows, red lips, a gold disc earring, a cream boucle jacket over a
+crimson blouse, the chain of office with the city-arms medallion). Parts:
+`stamp-arm` 1,200, `chain` 1,050, `medallion` 1,350 (core, armoured until the arm and the chain
+are broken), optional `head` 750 (the brief's HP ×3: 60–120 s for a pistol + grenade player).
+Phase 1 STAMP SLAM (T 30, floor waves) + LETTER RAIN (T 24) + `handhaver` adds (≤ 3); phase 2
+CHAIN WHIP high / low (T 28, 124-px lash) + gull flocks; phase 3 SHIELD FAN (T 24; 5 shots at 6/12/30/54/72°
+below the horizon, HARD + 42°: safe lanes standing 149–189 px and crouching 69–80 / 149–236 px in
+front of the muzzle) and a 48 px STOMP (shadow, T 24) + rider passes. **Arena:** `LOCK 896–1280`
+in front of the Stopera, a weapon crate at 960, a body wall 100 px in front of her while the arm
+or the chain stands (a 45° shot reaches the chain), 60 px once both are broken (the medallion).
+**Death:** the wig flies, the head boings, she sits and powers off. Score 20,000 + parts. Then
+the baker and the staff cheer (`FABEL FRIET / BLIJFT OPEN!`).
 
 ### 10.1 m1 — `encore` — THE ENCORE (Commodore Blare)
 
@@ -1731,6 +1774,30 @@ the player drops back into the current stage, and destroyed parts stay destroyed
   the fade, no extra animation required.
 - **Pacing check:** a checkpoint at least every ~1,200 px (or ~700 px vertically).
 
+### 11.0a ams — THE FRYING DUTCHMAN (MISSION 1)
+
+Full layout, art brief and texts: `docs/design/amsterdam.md` §6–§8; API `docs/api/missions-ams.md`.
+Music `ams` (street-organ waltz), boss `ams-boss`. `next: 'm1'`. Hostages a 4 / b 3 / c 3
+(mostly `tourist`). Golden record on the gable ledge of `ams-a` (x 2334, y 66).
+
+- **`a` Grachtengordel** (3584, checkpoints 1300, 2500): quay street (crate M @420, tourist at
+  the bike rack, a gull asleep on a lamp), bridge 1, the side canal (two houseboats and a little
+  boat), `LOCK 1520–1904` PLEINTJE (fatbike gang from both sides, a gull, a rider from behind),
+  the shopping street (riders both ways, a gull flock, tulip stall, herring cart, awnings up to
+  the record), bridge 2, `LOCK 3200–3584` FABEL FRIET (the last wave), THE BRIEFING (input
+  locked, timer paused, 6 hint lines, fire skips; the baker tosses a flamethrower: "FRIES FOR THE
+  ROAD"), `exitTo('b')`.
+- **`b` Museumplein** (3072, 1100, 2300): riders through the Rijksmuseum passage, the hot-dog
+  vendor and THE SWAN parked at 1080 (2P: the Mute), Gramps `I BROUGHT HER ALONG.` /
+  `DON'T TELL ACCOUNTING.`, the glide lesson on the first mount (records `ams/swan-met`,
+  `m1/swan-lesson`; m1-c greets her as an old friend), the gull set piece, youths on the lawn,
+  the canal road; the exit opens after the last squad.
+- **`c` Amstel** (3328, 1200, 2400, 3100; vehicles `swan`): the handhavers arrive, the canal
+  with six houseboats and two little boats, the shop quay, the white Amstel bridge, the
+  Blauwbrug; the exit opens after the last squad.
+- **`d` Stopera** (1280, checkpoint 896; vehicles `swan`): the flea market (stalls, a few
+  handhavers), then ROBO-HALSEMA (10.0a), the cheering finale and MISSION COMPLETE.
+
 ### 11.1 m1 — BRASS ON THE RIVERBANK
 
 - **Biome and mood:** Puddlewick, a little brick river town on the river Wend on a bright spring
@@ -1762,7 +1829,7 @@ the player drops back into the current stage, and destroyed parts stay destroyed
 
 | Trigger | Events |
 |---|---|
-| start | Players drop in at x 48. Card `MISSION 1` / `START!`. Music `m1`. |
+| start | Players drop in at x 48. Card `MISSION 2` / `START!`. Music `m1`. |
 | @0 | 2 `rifleman` @300, @324, gag `cards` (`card-table` @312). 1 `rifleman` @520, gag `kazoo`. `crate @470 (M)`. |
 | @160 | 3 `rifleman` from `R+16`, 40 ticks apart. |
 | @380 | `triangle` on the balcony @790 (y 128), gag `counting` (alarm: 3 `rifleman` from `R+16`). 2 `rifleman` @700, @730, gag `rehearse`. |
@@ -1914,7 +1981,7 @@ barrage) need the 8.2 values or more: see the tuning floor (15.9 item 7).
 
 | Trigger | Events |
 |---|---|
-| start | Players drop in at x 48. Card `MISSION 2` / `START!`. |
+| start | Players drop in at x 48. Card `MISSION 3` / `START!`. |
 | @0 | 3 `rifleman` (`outfit: desert`): one gag `nap` under a parasol (decor) @320, a pair gag `cards` @420 and @444 (`card-table` @432). `crate @260 (M)`. |
 | @200 | 2 `rattler` hidden @520, @620. |
 | @400 | `anthem-speaker` @760. 3 `rifleman` @800, @850, @900. `triangle` @820, gag `counting`. |
@@ -2066,7 +2133,7 @@ barrage) need the 8.2 values or more: see the tuning floor (15.9 item 7).
 
 | Trigger | Events |
 |---|---|
-| start | Card `MISSION 3`. The `swan` arrives by cargo parachute at x 200 wearing Mittens' knitted socks (`params.socks: true`; `[2P]` the Mute, also in socks, at x 152). Bubble: `MITTENS KNITTED HER SOCKS.` `crate @300 (M)`. |
+| start | Card `MISSION 4`. The `swan` arrives by cargo parachute at x 200 wearing Mittens' knitted socks (`params.socks: true`; `[2P]` the Mute, also in socks, at x 152). Bubble: `MITTENS KNITTED HER SOCKS.` `crate @300 (M)`. |
 | @0 | 3 `rifleman` (`outfit: snow`), entry `ski`, from `R+16` (each crashes into a snowbank first). |
 | @250 | 4 `windup-bot` (variant `ski`) downhill from `R+16`. |
 | @450 | 2 `cymbalist` from `R+16`. `triangle` @700, gag `counting`. `crate @620 (S)`. |
@@ -2189,7 +2256,7 @@ low corner only a near-full glide passes it (2546).
 
 | Trigger | Events |
 |---|---|
-| start | Card `MISSION 4`. Players drop in at x 48. |
+| start | Card `MISSION 5`. Players drop in at x 48. |
 | @0 | 3 `rifleman` (`outfit: night`) @300, @330, @360, gag `rehearse`. `anthem-speaker` @420. `crate @200 (M)`. |
 | @200 | `drummer` + 2 `rifleman` from `R+16`. |
 | @400 | `helium-tank` @640. **Secret:** `pickup-gem` `golden-record` on the high balcony (570, 64). |
@@ -2580,6 +2647,8 @@ Instrument names are the engine presets (`pulse12`, `pulse25`, `pulse50`, `trian
 | `ending` | the parade | happy march | 116 | D major | the Cygnet hook as a full march; the anthem melody as a counter-line on `bell` (finally in tune, except one note) | 32 bars, then `credits` |
 | `credits` | credits roll | relaxed | 100 | G major | swing version of the `title` theme: `pulse25` + `triangle` + brushed drums | 32-bar loop |
 | `high-score` | name entry, high scores | perky | 132 | A major | short `pulse25` melody, `triangle` bass | 8-bar loop |
+| `ams` | mission `ams` (THE FRYING DUTCHMAN) | a cheerful Amsterdam street-organ waltz | 150 | F major, 3/4 (`rowsPerBeat: 3`, 9 rows per bar) | organ (`pad`) lead doubled by a `pulse12` piping rank an octave up, FM glockenspiel counter-line, `triangle` oom on 1, `pulse25` chords on 2 and 3, kick + rim | intro 4 → A 16 → B 16 (B♭ major) → A′ 16 (glockenspiel in thirds, a second organ voice) → loop to A |
+| `ams-boss` | ROBO-HALSEMA (`ams-mayor`) | driving, bossy, a little pompous | 160 | D minor | 16th-note `saw` bass ostinato, organ stabs in a 3+3+2 push, bold `pulse12` lead, snare rolls into each phrase | intro 4 → A 16 → B 16 ("rules are rules" call) → C 8 (organ break, rising build) → loop to A |
 
 ### 12.3 Announcer lines (`audio.voice`; jingle fallback)
 
@@ -2636,12 +2705,12 @@ after m5: `Ending` → `Credits` → final tally → `NameEntry` (if the score q
 - **Top** (small, C, y 4): `HI 0500000` (best score).
 - **Footer** (small): `(C) 2026 THE METAL SWAN 3 TEAM` at C, y 206; right-aligned at (380, 206):
   `FREE PLAY` or `CREDITS 05`.
-- **Attract loop** after 600 idle ticks: demo play (bot on `m1-a`, 1200 ticks, `DEMO PLAY` big
+- **Attract loop** after 600 idle ticks: demo play (bot on `ams-a`; `m1-a` in a build without `ams`; 1200 ticks, `DEMO PLAY` big
   blinking at C, y 40) → HOW TO PLAY card (300 ticks) → high scores (300 ticks) → title with the
   next alternate tagline (1.3).
-- **HOW TO PLAY** (small, left-aligned at x 40, from y 40, 12 px line spacing; 9 lines, the last
-  at y 136):
-  `ARROWS / WASD   MOVE AND AIM` · `FIRE   SHOOT (KNIFE UP CLOSE)` · `JUMP   JUMP` ·
+- **HOW TO PLAY** (small, left-aligned at x 40, from y 40, 12 px line spacing; 10 lines, the last
+  at y 148):
+  `ARROWS / WASD   MOVE AND AIM` · `UP + LEFT / RIGHT   AIM DIAGONALLY` · `FIRE   SHOOT (KNIFE UP CLOSE)` · `JUMP   JUMP` ·
   `HOLD JUMP   GLIDE (SWAN)` · `DOWN + JUMP   DROP DOWN / LEAVE A VEHICLE` · `BOMB   THROW A GRENADE` ·
   `FIRE + BOMB   VEHICLE SPECIAL` · `FIRE + JUMP   RAM!` · `FREE THE CRITICS. STOP THE ANTHEM.`
 
@@ -2795,7 +2864,8 @@ and lightning at 30 % alpha) · `CONTROLS` (rebind screen: `PRESS A KEY FOR FIRE
 
 - Title (big, C, y 16): `TOP PERFORMERS`. Ten rows from y 40, 14 px apart (small): rank (`1ST` …
   `10TH`) at x 32, initials at x 80, 7-digit score right-aligned at x 220, character head icon at
-  x 228, mission reached (`M3` or `ALL`) at x 252, difficulty (`E`, `N`, `H`) at x 284, continues
+  x 228, mission reached (`M3` or `ALL`; numbered by campaign place, `ams` = `M1`, `m1` = `M2`;
+  saved rows keep their mission id, so a pre-Amsterdam `m1` row now reads `M2`) at x 252, difficulty (`E`, `N`, `H`) at x 284, continues
   used (`C2`, blank if none) at x 304.
 - Default table: `GRC 1000000`, `MIT 0800000`, `PIP 0600000`, `GPS 0500000`, `HIS 0400000`,
   `BLR 0300000`, `RIM 0200000`, `PUF 0150000`, `PIZ 0100000`, `DOL 0050000`.
@@ -2879,7 +2949,7 @@ player. In-game scores are the same on every difficulty; only the mission tally 
 | Line | Points |
 |---|---|
 | `LIVES LEFT` | lives in reserve × 50,000 |
-| `ALL GOLDEN RECORDS` | 100,000 if the player picked up the golden record of all 5 missions |
+| `ALL GOLDEN RECORDS` | 100,000 if the player picked up the golden record of all 6 missions (ams included) |
 | `ONE-TAKE WONDER` | 500,000 if the player used no continue |
 | `CONTINUES USED` | shown, no points |
 
@@ -2945,9 +3015,16 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
   `fly`), `rattler`, `echo-bat`, `ram-goat`, `usher-bot`, `kazoo-drone` (params `formation`:
   `v` | `sine` | `loop` | `dive`; `shooter`).
 - **Player vehicles** (`vehicles/`): `swan`, `sundae-driver`, `bandwagon`, `trumpeter`.
+- **Amsterdam locals** (`locals/`, mission `ams`): `fatbike-youth`, `delivery-rider`, `seagull`,
+  `handhaver` and its projectile `boete-ticket` (see `docs/api/locals.md`). Friendly NPCs and
+  set dressing (`missions/ams/`): `ams-hotdog-vendor`, `ams-baker`, `ams-staff`,
+  `ams-window-waver`, `ams-cyclist-bg`, `ams-pigeons`, `ams-ducks`, `ams-tour-boat`, `ams-boat-platform`.
+  Breakables: `ams-tulip-stall`, `ams-market-stall`, `ams-herring-cart`, `ams-bike-rack`.
 - **Mini-bosses:** `golden-goose` (`bosses/m2`; parts `neck`, `hull`), `big-head` (`bosses/m4`;
   parts `moustache-left`, `moustache-right`, `mouth-speaker`, `head`).
 - **Bosses:**
+  - `bosses/ams`: `ams-mayor` (ROBO-HALSEMA) — parts `stamp-arm`, `chain`, `medallion`, `head`
+    (optional); projectile entities `noise-letter`, `shield-shot` (the stamp wave is internal).
   - `bosses/m1`: `encore` — parts `horn`, `calliope`, `wheel`.
   - `bosses/m2`: `ba-dum-behemoth` — `hihat-arm`, `tom-left`, `tom-right`, `crash-shield`,
     `bass-drum`.
@@ -2975,6 +3052,8 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
 ### 15.5 Missions and sections (`missions/`)
 
 - `m0` (test range, unchanged).
+- `ams` THE FRYING DUTCHMAN (MISSION 1): `a` Grachtengordel · `b` Museumplein · `c` Amstel ·
+  `d` Stopera (boss).
 - `m1` BRASS ON THE RIVERBANK: `a` Puddlewick Quay · `b1` Chimney Chase · `b2` Storm Drain ·
   `c` River Run (boss).
 - `m2` DUNE BUGLE: `a` Rattlebone Flats · `b` Rocky Road · `c1` Canyon Floor · `c2` Mesa Top ·
@@ -2987,12 +3066,13 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
   `c` The Console (final boss).
 - **Background generators.** Standard (art agent): `sky-gradient`, `clouds`, `mountains`,
   `hills`, `treeline`, `jungle`, `city`, `ruins`, `dunes`, `ice-peaks`, `sea`. Custom (mission
-  agents): m1 `town-rooftops`, `sewer-brick`, `far-bank`, `reeds` · m2 `cacti`, `canyon-walls`,
+  agents): ams `ams-skyline`, `ams-canal-houses`, `ams-elms`, `ams-plein` · m1 `town-rooftops`, `sewer-brick`, `far-bank`, `reeds` · m2 `cacti`, `canyon-walls`,
   `rock-pillars`, `quarry-terraces` · m3 `chalets`, `ice-cave`, `cable-cars` · m4 `neon-signs`,
   `crowd-barrier`, `subway-tiles`, `opera-hall` · m5 `organ-pipes`, `organ-deep`,
   `console-room`. The title lake scene reuses `sky-gradient`, `hills` and `sea`.
-- **Terrain materials used:** ground `concrete`, `mud`, `sand`, `rock`, `snow`, `ice`, `metal` ·
-  edge `tiles`, `grass`, `moss`, `sand`, `snow`, `rust` · platform `wood`, `metal`, `rock`, `ice` ·
+- **Terrain materials used:** ground `concrete`, `mud`, `sand`, `rock`, `snow`, `ice`, `metal`,
+  `klinker` (ams) · edge `tiles`, `grass`, `moss`, `sand`, `snow`, `rust`, `bikepath`, `kerb`
+  (ams) · platform `wood`, `metal`, `rock`, `ice`, `whitewood` (ams) ·
   solid `brick`, `crate`, `rock`, `metal`, `concrete`.
 
 ### 15.6 Sprite id prefixes
@@ -3010,6 +3090,7 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
 | `proj/<id>` | every projectile, player and enemy |
 | `fx/<id>` | `explosion-s`, `explosion-m`, `explosion-l`, `smoke`, `soot`, `poof`, `dust`, `confetti`, `music-note`, `steam-puff`, `helium-cloud`, `splash`, `spark`, `shadow`, `aim-line`, `stars-dizzy`, `flying-shako`, `stick-on-moustache`, `snow-puff`, `ice-cubes`, `tin-feather` (the Swan's stamped ivory feather plate, 4 turning frames), `muzzle-<weapon>` (also `muzzle-swan-beak-gun`) |
 | `ui/<id>` | `logo`, `cursor-swan`, `icon-life`, `icon-hostage`, `icon-bomb`, `icon-shell`, `icon-cell`, `icon-balloon`, `icon-weapon-<weapon>`, `onward`, `ride`, `bubble`, `newspaper`, `star`, `portrait-gusto` |
+| `npc/ams/<id>/…` | the Amsterdam friendly NPCs (vendor, baker, staff, window wavers, background cyclists, pigeons, ducks) |
 | `decor/<mission>/<id>` | static props and set-piece art per mission (banners, posters, signs, tents, the parked Trumpeters …; for the Swan beats: `m1/sign-no-diving`, `m1/judges-box`, `m1/sign-timpani`, `m3/sign-piste-closed`, `m3/k-line-blue`, `m3/k-line-red`, `m3/judges-stand`, `m3/snow-mound`, `m3/cable-car-cabin`) |
 
 ### 15.7 Sound effects
@@ -3050,9 +3131,12 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
 `mission/time-up`; engine drum hits `drum/kick`, `drum/snare`, `drum/hat`, `drum/ohat`,
 `drum/crash`, `drum/tom`, `drum/clap`, `drum/rim`.
 
+Mission `ams` (docs/design/amsterdam.md §4; `src/game/content/sfx/ams.ts`): `ams/bell`,
+`ams/bass-thump`, `ams/gull`, `ams/kick`, `ams/stamp`, `ams/chain`, `ams/ticket`.
+
 ### 15.8 Music
 
-`title`, `select`, `briefing`, `m1`, `m2`, `m3`, `m4`, `m5-sky`, `m5-organ`, `mini-boss`, `boss`,
+`title`, `select`, `briefing`, `ams`, `ams-boss`, `m1`, `m2`, `m3`, `m4`, `m5-sky`, `m5-organ`, `mini-boss`, `boss`,
 `boss-final`, `boss-final-fast`, `anthem`, `mission-complete`, `continue`, `game-over`, `ending`,
 `credits`, `high-score`. (`m0` uses `m1`.)
 

@@ -18,14 +18,14 @@ import { sectionD } from './section-d';
 export const M4: MissionDef = {
   id: 'm4',
   name: 'OPENING NIGHT',
-  subtitle: 'MISSION 4',
+  subtitle: 'MISSION 5',
   music: 'm4',
   bossMusic: 'boss',
   start: 'a',
   bossSection: 'd',
   next: 'm5',
-  startBanner: { text: 'MISSION 4', sub: 'START!' },
-  announce: 'MISSION FOUR. BREAK A LEG, CYGNETS!',
+  startBanner: { text: 'MISSION 5', sub: 'START!' },
+  announce: 'MISSION FIVE. BREAK A LEG, CYGNETS!',
   sections: { a: sectionA, b: sectionB, c1: sectionC1, c2: sectionC2, d: sectionD },
   // GDD §11.4: 10 per route (a 3, b 2, c1 / c2 2, d 3 incl. the composer).
   hostages: { a: 3, b: 2, c1: 2, c2: 2, d: 3 },

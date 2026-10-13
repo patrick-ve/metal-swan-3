@@ -743,7 +743,7 @@ vertical respawn, drop-in holes, ice ranges, y checkpoints, several boss section
 
 - Respawn is on the spot (reference behaviour) unless the section has a `respawn` rule (or is vertical: §10);
   checkpoints refill the timer and serve as the fallback point.
-- Diagonal machine-gun rounds use the `torso-heavy-diag-*` frames when drawn; the pistol has no diagonal frames
+- Diagonal machine-gun rounds use the `torso-heavy-diag-*` frames when drawn; the pistol and heavy have `torso-*-diag-up` frames (up + left/right aims at 45°); diag-down is heavy only
   (it does not sweep).
 - A player pushed by the camera's left edge into a wall is held by the wall (it may sit slightly outside the view).
 - `timeLimit` is in HUD counts of 256 ticks (set `TUNING.timer.ticksPerCount = 60` for seconds).

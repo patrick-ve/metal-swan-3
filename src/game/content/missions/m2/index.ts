@@ -16,13 +16,13 @@ import { sectionD } from './section-d';
 export const M2: MissionDef = {
   id: 'm2',
   name: 'DUNE BUGLE',
-  subtitle: 'MISSION 2',
+  subtitle: 'MISSION 3',
   music: 'm2',
   bossMusic: 'boss',
   start: 'a',
   bossSection: 'd',
-  startBanner: { text: 'MISSION 2', sub: 'START!' },
-  announce: 'MISSION TWO. STAY HYDRATED, CYGNETS!',
+  startBanner: { text: 'MISSION 3', sub: 'START!' },
+  announce: 'MISSION THREE. STAY HYDRATED, CYGNETS!',
   sections: { a: sectionA, b: sectionB, c1: sectionC1, c2: sectionC2, d: sectionD },
   // GDD §11.2: 8 per route (a 3 incl. Mrs. Dollop, b 1, c1 / c2 2, d 2 incl. the composer).
   hostages: { a: 3, b: 1, c1: 2, c2: 2, d: 2 },

@@ -48,7 +48,7 @@ describe('mission m3 THE HIGH NOTE', () => {
     expect(M3.bossSection).toBe('c');
     expect(M3.music).toBe('m3');
     expect(M3.bossMusic).toBe('boss');
-    expect(M3.announce).toBe('MISSION THREE. WRAP UP WARM, CYGNETS!');
+    expect(M3.announce).toBe('MISSION FOUR. WRAP UP WARM, CYGNETS!');
   });
 
   it('places 8 hostages on either route (GDD §11.3)', () => {

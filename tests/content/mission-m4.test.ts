@@ -49,7 +49,7 @@ describe('mission m4 OPENING NIGHT', () => {
     expect(M4.bossSection).toBe('d');
     expect(M4.music).toBe('m4');
     expect(M4.bossMusic).toBe('boss');
-    expect(M4.announce).toBe('MISSION FOUR. BREAK A LEG, CYGNETS!');
+    expect(M4.announce).toBe('MISSION FIVE. BREAK A LEG, CYGNETS!');
   });
 
   it('places 10 hostages on either route (GDD §11.4)', () => {

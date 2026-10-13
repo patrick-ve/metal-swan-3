@@ -49,10 +49,13 @@ Start the sound on the first telegraph tick; it ends when the attack comes.
 | 40 | `enemy/bassoon-aim`, `creature/croak-build`, `boss/calliope-scale`, `boss/beater-pull`, `boss/piano-rattle` |
 | 45 | `enemy/piccolo-whistle`, `machine/tank-charge`, `creature/rattle` (three "chk-chk"), `boss/harp-charge` |
 | 50 | `enemy/windup`, `machine/piano-whistle`, `boss/foghorn`, `boss/goose-wiggle` |
+| 20–30 (`ams`) | `ams/bell` (delivery rider, 20; two dings), `ams/gull` (seagull, 20; "KAW!"), `ams/bass-thump` (fatbike youth, 24; two sub thumps + muffled beat), `ams/chain` (CHAIN WHIP, 26; rattle), `ams/stamp` (STAMP SLAM, 30: the creak is the tell and the slam lands at 0.5 s = tick 30, so play it once on the first telegraph tick and no separate hit sound) |
 
 The attack sounds that follow: `enemy/tuba-blast`, `enemy/cymbal-crash`, `enemy/drum-hit`,
 `enemy/rifle`, `enemy/piccolo-shot`, `creature/croak`, `machine/piano-crash`, `boss/hihat-open`,
 `boss/organ-chord`, `boss/goose-honk`, `boss/scream` (1.2 s), `boss/voice-crack`, `boss/deflate` (1.5 s).
+Mission `ams` attacks: `ams/kick` (the fatbike kick: whoosh + thud, the thud at 0.1 s),
+`ams/ticket` (a thrown `boete-ticket`: a paper flutter); cheering reuses `env/applause`.
 
 ## 3. Aliases (`SFX_ALIASES`)
 
@@ -99,7 +102,7 @@ exactly as before (`tests/content/sfx.test.ts` keeps fingerprints of the engine 
 
 Recipes live per family: `weapons.ts`, `player.ts` (player, items, hostages), `vehicles.ts`
 (vehicles, Swan, fleet), `legion.ts`, `machines.ts` (machines, creatures), `bosses.ts`,
-`world.ts` (`env/*`), `ui.ts`. `kit.ts` has the builders: `tone`, `noise`, `click`, `clack`,
+`world.ts` (`env/*`), `ui.ts`, `ams.ts` (mission `ams`: `ams/*`). `kit.ts` has the builders: `tone`, `noise`, `click`, `clack`,
 `bell`, `fmBell`, `note`, `seq`, `hits`, `scatter` (fixed pseudo-random times), `loopRecipe`
 (seamless loops: pick tones and LFO rates that make whole cycles in the loop length) and
 `honk` (the SWAN-3 horn: `swan/honk`, `swan/migrate`, `boss/goose-honk`, `trumpeter/bail`,

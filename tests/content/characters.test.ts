@@ -62,6 +62,11 @@ const TORSO: ReadonlyArray<[string, number, readonly string[]]> = [
   ['throw', 4, ['hand']],
   ['knife', 4, ['hand']],
 ];
+/** Up + forward aims 45° up with every gun (GDD §4.3): the pistol has the up diagonal too. */
+const PISTOL_DIAG: ReadonlyArray<[string, number]> = [
+  ['diag-up', 1],
+  ['shoot-diag-up', 2],
+];
 const HEAVY_DIAG: ReadonlyArray<[string, number]> = [
   ['diag-up', 1],
   ['shoot-diag-up', 2],
@@ -202,11 +207,41 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
       for (const [a, n, pts] of TORSO) strip(`char/${c}/torso-${w}-${a}`, n, false, pts);
     }
     for (const [a, n] of HEAVY_DIAG) strip(`char/${c}/torso-heavy-${a}`, n, false, ['muzzle']);
+    for (const [a, n] of PISTOL_DIAG) strip(`char/${c}/torso-pistol-${a}`, n, false, ['muzzle']);
+    expect(listSprites(`char/${c}/torso-pistol-diag-down`)).toEqual([]);
+    // The diagonal muzzle sits between the forward and the up muzzle: ahead of the up one and
+    // above the forward one.
+    for (const w of ['pistol', 'heavy']) {
+      const m = (a: string): readonly number[] => getFrames(`char/${c}/torso-${w}-${a}`)[0].pts!.muzzle!;
+      const [fwd, up, diag] = [m('shoot'), m('shoot-up'), m('shoot-diag-up')];
+      expect(diag[0], `${c} ${w} diag muzzle ahead of the up muzzle`).toBeGreaterThan(up[0]);
+      expect(diag[1], `${c} ${w} diag muzzle above the forward muzzle`).toBeLessThan(fwd[1]);
+      expect(diag[1], `${c} ${w} diag muzzle under the up muzzle`).toBeGreaterThan(up[1]);
+    }
     // Hip anchor: the torso ends a few px under the hip.
     for (const f of getFrames(`char/${c}/torso-pistol-idle`)) {
       expect(bounds(f).bottom).toBeGreaterThanOrEqual(1);
       expect(bounds(f).bottom).toBeLessThanOrEqual(6);
     }
+  });
+
+  it('in play, up + forward shows the diagonal torso and shoots from its muzzle (GDD §4.3)', () => {
+    const rig = new Rig();
+    const shots: Array<{ x: number; y: number; vx: number; vy: number }> = [];
+    rig.world.events.on('spawn', (e) => {
+      if (e.type === 'pistol') shots.push({ x: e.x, y: e.y, vx: e.vx, vy: e.vy });
+    });
+    rig.hold(['up', 'right']).run(3);
+    expect(rig.p.torso.id).toBe('char/recruit/torso-pistol-diag-up');
+    const m = rig.p.muzzleWorld([0, 0]);
+    rig.tap(['fire']);
+    expect(rig.p.torso.id).toBe('char/recruit/torso-pistol-shoot-diag-up');
+    expect(shots.length).toBe(1);
+    expect((Math.atan2(shots[0].vy, shots[0].vx) * 180) / Math.PI).toBeCloseTo(-45, 5);
+    // The shot starts at the diagonal muzzle (plus one tick of walking).
+    expect(shots[0].x - m[0]).toBeGreaterThanOrEqual(0);
+    expect(shots[0].x - m[0]).toBeLessThan(4);
+    expect(Math.abs(shots[0].y - m[1])).toBeLessThan(1);
   });
 
   it.each(ALL)('%s: full-body strips, salute (2 f) and the 32×32 portrait', (c) => {
@@ -260,6 +295,7 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
         }
       }
       for (const [a, n] of HEAVY_DIAG) strip(`char/${c}/${infix}-torso-heavy-${a}`, n, false, ['muzzle']);
+      for (const [a, n] of PISTOL_DIAG) strip(`char/${c}/${infix}-torso-pistol-${a}`, n, false, ['muzzle']);
       expect(frameCount(`char/${c}/${infix}-bored`)).toBe(frameCount(`char/${c}/bored`));
       expect(frameCount(`char/${c}/${infix}-victory`)).toBe(frameCount(`char/${c}/victory`));
     }
@@ -316,10 +352,11 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
 
   it('all character art: palette colours only, inside 128 px, no generator errors', () => {
     const ids = listSprites('char/');
-    // Per character: legs 7, torsos 20 (+ 20 helium, + 20 helium-wob), bored and victory (× 3),
-    // die, die-burn, die-blast, spawn, mount, salute, portrait and the 9 rider strips.
-    for (const c of ALL) expect(listSprites(`char/${c}/`).length, c).toBe(7 + 60 + 6 + 7 + 9);
-    expect(ids.length).toBeGreaterThanOrEqual(ALL.length * 89);
+    // Per character: legs 7, torsos 22 (pistol 10 with the up diagonal, heavy 12 with both;
+    // + 22 helium, + 22 helium-wob), bored and victory (× 3), die, die-burn, die-blast, spawn,
+    // mount, salute, portrait and the 9 rider strips.
+    for (const c of ALL) expect(listSprites(`char/${c}/`).length, c).toBe(7 + 66 + 6 + 7 + 9);
+    expect(ids.length).toBeGreaterThanOrEqual(ALL.length * 95);
     for (const id of ids) {
       for (const f of getFrames(id)) {
         expect(f.buf.w, id).toBeLessThanOrEqual(128);

@@ -147,12 +147,11 @@ export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtO
       def(t + 'shoot-up', upper(P.seq({ ...base, aim: 'up' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
       def(t + 'down', upper([{ ...base, aim: 'down' }]), { ticksPerFrame: 30 });
       def(t + 'shoot-down', upper(P.seq({ ...base, aim: 'down' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
-      if (w === 'heavy') {
-        // Machine-gun sweep diagonals (GDD §4.3): rounds at 22.5°–67.5° use these frames.
-        for (const d of ['diag-up', 'diag-down'] as const) {
-          def(t + d, upper([{ ...base, aim: d }]), { ticksPerFrame: 30 });
-          def(t + 'shoot-' + d, upper(P.seq({ ...base, aim: d }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
-        }
+      // Diagonals (GDD §4.3): up + forward aims at 45° with every gun; the machine-gun sweep
+      // also passes 45° down, so only the heavy pose has the down diagonal.
+      for (const d of w === 'heavy' ? (['diag-up', 'diag-down'] as const) : (['diag-up'] as const)) {
+        def(t + d, upper([{ ...base, aim: d }]), { ticksPerFrame: 30 });
+        def(t + 'shoot-' + d, upper(P.seq({ ...base, aim: d }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
       }
       const carry: Pose = { ...o.torso, weapon: w, gunHand: 'far' };
       def(t + 'throw', upper(P.seq(carry, P.THROW)), { durations: [5, 4, 3, 5, 6], loop: false });

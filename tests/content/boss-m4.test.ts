@@ -445,8 +445,10 @@ describe('THE BIG HEAD', () => {
     // Follow the blimp and shoot up: under the speaker first, then the head beside it.
     while (!h.defeated && ticks < 12000) {
       const wantX = h.partAlive('mouth-speaker') ? h.x : h.x + (h.partAlive('moustache-right') ? 66 : 34);
-      const b: Button[] = ['up'];
+      // Up + a direction aims 45° (GDD §4.3): walk into place, then stand and aim straight up.
+      const b: Button[] = [];
       if (Math.abs(p.x - wantX) > 3) b.push(p.x < wantX ? 'right' : 'left');
+      else b.push('up');
       if (ticks % 2 === 0) b.push('fire');
       if (ticks % 240 === 120) b.push('bomb');
       tw.hold(...b);

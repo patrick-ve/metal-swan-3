@@ -128,38 +128,47 @@ describe('ui sprites (GDD §15.6, ARCHITECTURE §7.1)', () => {
 });
 
 describe('mission cards (GDD §2.4, §12.3, §13.6, §13.11)', () => {
+  // This wave: the Amsterdam prologue `ams` is MISSION 1; m1–m4 became MISSION 2–5.
   const gdd: Record<string, { label: string; name: string; place: string; briefing: [string, string]; headline: string; announce: string }> = {
-    m1: {
+    ams: {
       label: 'MISSION 1',
+      name: 'THE FRYING DUTCHMAN',
+      place: 'AMSTERDAM - 1100 HOURS',
+      briefing: ['SHORE LEAVE IN AMSTERDAM. THE CYGNETS WANT FRIES.', 'THE BEST FRY SHOP IN TOWN NEEDS HELP. GO!'],
+      headline: 'ROBO-MAYOR SCRAPPED! THE FRYER STAYS ON!',
+      announce: 'MISSION ONE. FRIES FIRST, CYGNETS!',
+    },
+    m1: {
+      label: 'MISSION 2',
       name: 'BRASS ON THE RIVERBANK',
       place: 'PUDDLEWICK, LOWMERE - 0900 HOURS',
       briefing: ['THE LEGION HIJACKED THE PUDDLEWICK DUCK REGATTA.', 'FREE THE CRITICS, SINK THEIR FLAGSHIP, MIND THE DUCKS.'],
       headline: 'RIVERBOAT SUNK! REGATTA RESUMES!',
-      announce: 'MISSION ONE. LOOK SHARP, CYGNETS!',
+      announce: 'MISSION TWO. LOOK SHARP, CYGNETS!',
     },
     m2: {
-      label: 'MISSION 2',
+      label: 'MISSION 3',
       name: 'DUNE BUGLE',
       place: 'RATTLEBONE FLATS, CRESCENDIA - 1200 HOURS',
       briefing: ['THEIR DRUM CORPS IS TESTING A DRUM THE SIZE OF A HOUSE.', "STOP IT. AND DO NOT LAUGH AT THE COLONEL'S JOKES."],
       headline: "DRUM TANK SILENCED! COLONEL'S JOKES STILL BAD!",
-      announce: 'MISSION TWO. STAY HYDRATED, CYGNETS!',
+      announce: 'MISSION THREE. STAY HYDRATED, CYGNETS!',
     },
     m3: {
-      label: 'MISSION 3',
+      label: 'MISSION 4',
       name: 'THE HIGH NOTE',
       place: 'MOUNT MURMUR, CRESCENDIA - 1700 HOURS',
       briefing: ['THE WOODWINDS HAVE TAKEN MOUNT MURMUR AND ITS SKI LIFT.', 'SOMETHING HUGE AND TARTAN FLOATS AT THE TOP. DEFLATE IT.'],
       headline: 'WINDBAG DEFLATED ON MOUNT MURMUR!',
-      announce: 'MISSION THREE. WRAP UP WARM, CYGNETS!',
+      announce: 'MISSION FOUR. WRAP UP WARM, CYGNETS!',
     },
     m4: {
-      label: 'MISSION 4',
+      label: 'MISSION 5',
       name: 'OPENING NIGHT',
       place: 'FANFARONI CITY - 2100 HOURS',
       briefing: ['TONIGHT FANFARONI REHEARSES THE ANTHEM AT THE OPERA.', 'CRASH THE DRESS REHEARSAL. FORMAL WEAR OPTIONAL.'],
       headline: 'PREMIERE CANCELLED! PIANO "UNPLAYABLE"!',
-      announce: 'MISSION FOUR. BREAK A LEG, CYGNETS!',
+      announce: 'MISSION FIVE. BREAK A LEG, CYGNETS!',
     },
     m5: {
       label: 'FINAL MISSION',
@@ -290,10 +299,14 @@ describe('tally numbers (GDD §14.4, §14.6)', () => {
     const slot = new PlayerSlot(0);
     slot.lives = 4;
     const camp = newCampaign();
-    for (const m of ['m1', 'm2', 'm3', 'm4', 'm5']) camp.goldenRecords[0].add(m);
+    for (const m of ['ams', 'm1', 'm2', 'm3', 'm4', 'm5']) camp.goldenRecords[0].add(m);
     const a = finalTallyLines(slot, camp);
     expect(a.lines.map((l) => l.points)).toEqual([150000, 100000, 500000, null]);
     expect(a.total).toBe(750000);
+    // All 6 campaign missions count, Amsterdam (mission 1) included.
+    camp.goldenRecords[0].delete('ams');
+    expect(finalTallyLines(slot, camp).lines[1].points).toBeNull();
+    camp.goldenRecords[0].add('ams');
     slot.continues = 2;
     camp.goldenRecords[0].delete('m3');
     const b = finalTallyLines(slot, camp);
@@ -303,8 +316,9 @@ describe('tally numbers (GDD §14.4, §14.6)', () => {
 });
 
 describe('flow texts (GDD §13.3, §2.6, §13.12)', () => {
-  it('HOW TO PLAY has the 9 lines with the Swan glide', () => {
-    expect(HOW_TO_PLAY.length).toBe(9);
+  it('HOW TO PLAY has the 10 lines with the diagonal aim and the Swan glide', () => {
+    expect(HOW_TO_PLAY.length).toBe(10);
+    expect(HOW_TO_PLAY).toContainEqual(['UP + LEFT / RIGHT', 'AIM DIAGONALLY']);
     expect(HOW_TO_PLAY).toContainEqual(['HOLD JUMP', 'GLIDE (SWAN)']);
   });
 

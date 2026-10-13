@@ -5,8 +5,8 @@
  * y 160, blinking), `HI 0500000` (small, C, y 4) and the footer (`(C) 2026 THE METAL SWAN 3 TEAM`
  * at C, y 206; `FREE PLAY` / `CREDITS 05` right-aligned at (380, 206)). Music `title`.
  *
- * After 600 idle ticks the attract loop runs: demo play (the bot on m1-a, 1200 ticks; m0 until
- * m1 exists) → HOW TO PLAY (300 ticks) → high scores (300 ticks) → the title with the next
+ * After 600 idle ticks the attract loop runs: demo play (the bot on ams-a, 1200 ticks; m1-a
+ * or m0-a when it is missing) → HOW TO PLAY (300 ticks) → high scores (300 ticks) → the title with the next
  * tagline. Start → the mode select.
  */
 import { INK, PAL } from '../../engine/palette';
@@ -120,14 +120,14 @@ export class TitleScene implements Scene {
   }
 
   /**
-   * The demo game on m1-a (m0-a until m1 exists). The GDD's riding demo on m1-c for every
+   * The demo game on ams-a (m1-a, else m0-a, when it is missing). The GDD's riding demo on m1-c for every
    * second loop waits for a bot that can ride the Swan.
    */
   private makeDemo(loop: number): Scene | null {
     const Bot = botModule?.Bot;
     if (!Bot) return null;
     const app = this.app;
-    const mission = hasMission('m1') ? 'm1' : 'm0';
+    const mission = hasMission('ams') ? 'ams' : hasMission('m1') ? 'm1' : 'm0';
     const section = 'a';
     const ids = ROSTER.filter((id) => hasCharacter(id));
     const char = ids.length ? ids[loop % ids.length] : 'recruit';

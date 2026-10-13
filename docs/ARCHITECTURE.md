@@ -282,8 +282,10 @@ Playable characters — `char/<id>/…`:
 - Upper body, anchored at the **hip**, for weapon pose `<w>` ∈ `pistol | heavy`:
   `torso-<w>-idle` (≥2f), `torso-<w>-shoot` (≥2f), `torso-<w>-up`, `torso-<w>-shoot-up` (≥2f),
   `torso-<w>-down`, `torso-<w>-shoot-down` (≥2f), `torso-<w>-throw` (≥4f), `torso-<w>-knife`
-  (≥4f); heavy only, optional: `torso-heavy-diag-up|diag-down` and `torso-heavy-shoot-diag-up|
-  shoot-diag-down` (the machine-gun sweep at 22.5°–67.5°). Aim and shoot frames have a `muzzle`
+  (≥4f); the 45° up diagonal for both poses: `torso-<w>-diag-up` and `torso-<w>-shoot-diag-up`
+  (≥2f; up + left/right, GDD §4.3); heavy only: `torso-heavy-diag-down` and
+  `torso-heavy-shoot-diag-down` (the machine-gun sweep). Aims between 22.5° and 67.5° use the
+  diagonal strips when registered (else the nearest of forward / up / down). Aim and shoot frames have a `muzzle`
   point; throw frames have a `hand` point. A status effect may swap any strip for
   `<art>/<infix>-<anim>` (e.g. `helium-legs-run`) when that variant is registered.
 - Full body (feet anchor): `die` (≥6f), `die-burn` (≥4f), optional `die-blast` (explosions),
@@ -402,7 +404,8 @@ entries, so one broken sub-area never takes its siblings down; the category's to
 | `vehicles/swan/` | the ridden SWAN-3 `swan` (GDD §8.2, `docs/design/swan-mount/`) |
 | `vehicles/fleet/` | `sundae-driver`, `bandwagon`, `trumpeter` and their weapons |
 | `music/missions.ts`, `music/finale.ts` | more songs (GDD §15.8), each file its own manifest entry |
-| `missions/m0` … `missions/m5` | mission data (m0 = test range) |
+| `missions/m0` … `missions/m5`, `missions/ams` | mission data (m0 = test range; ams = Amsterdam, played first) |
+| `locals`, `locals/art`, `bosses/ams`, `music/ams` | the Amsterdam cast, boss and songs (docs/design/amsterdam.md) |
 | `bosses/m1` … `bosses/m5` | one boss per mission |
 
 Modules register content at import time with the `define*` functions. Order between modules

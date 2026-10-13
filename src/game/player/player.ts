@@ -129,6 +129,7 @@ const FULL = ['die', 'die-burn', 'die-blast', 'victory', 'spawn', 'bored', 'moun
 type FullAnim = (typeof FULL)[number];
 
 const HALF_PI = Math.PI / 2;
+const QUARTER_PI = Math.PI / 4;
 const drawOpts: DrawOpts = {};
 const tintOpts: DrawOpts = {};
 const hipPt: [number, number] = [0, 0];
@@ -451,9 +452,11 @@ export class Player extends Entity {
     if (b.onGround) {
       const top = (this.crouching ? T.crawlSpeed : T.runSpeed) * speedMul;
       if (ax !== 0) this.facing = ax as 1 | -1;
+      // Diagonal aim (up + left/right) plants the feet: the side only turns the player.
+      const move = up && !this.crouching ? 0 : ax;
       const ice = iceAt(this.world, this.x);
-      const braking = ax === 0 || ax * this.vx < 0;
-      this.vx = approach(this.vx, ax * top, ice ? (braking ? T.iceDecel : T.iceAccel) : T.runAccel);
+      const braking = move === 0 || move * this.vx < 0;
+      this.vx = approach(this.vx, move * top, ice ? (braking ? T.iceDecel : T.iceAccel) : T.runAccel);
     } else if (ax !== 0) {
       this.facing = ax as 1 | -1;
       const top = T.airMaxSpeed * speedMul;
@@ -488,7 +491,7 @@ export class Player extends Entity {
     this.clampToView();
     if (this.checkHazards()) return;
 
-    this.updateAim(up, down);
+    this.updateAim(up, down, ax);
     // The legs strip first: shots leave from the hip of THIS tick's pose (crouch + fire together).
     const legs = this.updateLegs(ax);
     this.updateArms();
@@ -627,8 +630,12 @@ export class Player extends Entity {
 
   // ------------------------------------------------------------------------------- aiming & arms
 
-  private updateAim(up: boolean, down: boolean): void {
-    this.elevTarget = up && !this.crouching ? -HALF_PI : down && !this.body.onGround ? HALF_PI : 0;
+  /**
+   * Aim rule (GDD §4.3): up + left/right aims 45° up (the player keeps walking), up alone aims
+   * straight up, down in the air aims straight down. Crouched, up stands the player up first.
+   */
+  private updateAim(up: boolean, down: boolean, ax: number): void {
+    this.elevTarget = up && !this.crouching ? (ax !== 0 ? -QUARTER_PI : -HALF_PI) : down && !this.body.onGround ? HALF_PI : 0;
     const sweeping = this.weapon.sweep === true && this.gun.active(this.input.held('fire'));
     if (!sweeping || this.elev === this.elevTarget) {
       this.elev = this.elevTarget;
@@ -730,7 +737,9 @@ export class Player extends Entity {
 
   private throwBomb(): void {
     const h = this.handWorld(pt);
-    this.bombGun.fire(this.fireArgs(h[0], h[1], aimAngle(this.facing, this.elevTarget), aimDirOf(this.elevTarget)));
+    // Bombs keep the high 'up' lob whenever up is held (also with up + forward, GDD §4.3).
+    const elev = this.elevTarget < 0 ? -HALF_PI : this.elevTarget;
+    this.bombGun.fire(this.fireArgs(h[0], h[1], aimAngle(this.facing, elev), aimDirOf(elev)));
     this.slot.bombs--;
     this.slot.stats.bombsThrown++;
     this.action = 'throw';
@@ -801,8 +810,16 @@ export class Player extends Entity {
       const d = aimDirOf(this.elev);
       const T = TUNING.player;
       const fb = d === 'up' ? T.fallbackMuzzleUp : d === 'down' ? T.fallbackMuzzleDown : T.fallbackMuzzle;
-      out[0] = flip ? -fb[0] : fb[0];
+      out[0] = fb[0];
       out[1] = fb[1];
+      // No diagonal frame: halfway between the forward and the up / down muzzle.
+      const a = Math.abs(this.elev);
+      if (a >= DIAG_MIN && a <= DIAG_MAX) {
+        const o = this.elev < 0 ? T.fallbackMuzzleUp : T.fallbackMuzzleDown;
+        out[0] = Math.round((T.fallbackMuzzle[0] + o[0]) / 2);
+        out[1] = Math.round((T.fallbackMuzzle[1] + o[1]) / 2);
+      }
+      if (flip) out[0] = -out[0];
       m = out;
     }
     out[0] = this.x + hip[0] + m[0];
@@ -1052,6 +1069,9 @@ export class Player extends Entity {
         let y = t.surfaceY(x, cam.top + 8, bottom);
         while (Number.isFinite(y) && !this.standsFree(x, y)) y = t.surfaceY(x, y + 1, bottom);
         if (!Number.isFinite(y)) continue;
+        // The feet must land inside the view, and no dynamic solid (a closed hatch, a lift) may
+        // cover the spot: the drop-in falls through it and the player would be sealed below.
+        if (y > cam.bottom - 8 || this.roofedBySolid(x, y)) continue;
         rectScratch.x = x - 8;
         rectScratch.y = y - 30;
         rectScratch.w = 16;
@@ -1061,6 +1081,18 @@ export class Player extends Entity {
       }
     }
     return null;
+  }
+
+  /** Is there an enabled dynamic solid (not one-way, not ours) above the feet at (x, y)? */
+  private roofedBySolid(x: number, y: number): boolean {
+    const half = TUNING.player.bodyW / 2;
+    const solids = this.world.solids;
+    for (let i = 0; i < solids.length; i++) {
+      const s = solids[i];
+      if (!s.enabled || s.oneWay || s.owner === this) continue;
+      if (x - half < s.x + s.w && x + half > s.x && s.y + s.h <= y && s.y + s.h >= this.world.camera.top) return true;
+    }
+    return false;
   }
 
   /** Would a standing body with its feet at (x, y) be clear of solid rects and dynamic solids? */

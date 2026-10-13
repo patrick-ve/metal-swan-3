@@ -91,8 +91,17 @@ const decor: DecorDef[] = [
 // Script pieces
 // ---------------------------------------------------------------------------------------------
 
-function swansIn(ctx: SectionContext): Entity[] {
-  return ctx.world.byTag('vehicle').filter((v) => isSwan(v) && v.alive);
+/** A live player within 64 px of a live Swan (no allocation: this runs every tick). */
+function playerAtSwan(ctx: SectionContext): Player | null {
+  const vs = ctx.world.byTag('vehicle');
+  for (let i = 0; i < vs.length; i++) {
+    const s = vs[i];
+    if (!isSwan(s) || !s.alive) continue;
+    for (const p of ctx.players) {
+      if (p.alive && p.state === 'play' && Math.abs(p.x - s.x) < 64) return p;
+    }
+  }
+  return null;
 }
 
 /** Gramps on the radio: a navy bubble over a player. */
@@ -108,21 +117,14 @@ function hasGramps(ctx: SectionContext): boolean {
 function* swanGreeting(ctx: SectionContext): ScriptGen {
   let near: Player | null = null;
   yield 150; // after the start banner
-  yield () => {
-    for (const s of swansIn(ctx)) {
-      for (const p of ctx.players) {
-        if (p.alive && p.state === 'play' && Math.abs(p.x - s.x) < 64) {
-          near = p;
-          return true;
-        }
-      }
-    }
-    return false;
-  };
+  yield () => (near = playerAtSwan(ctx)) !== null;
   if (!near) return;
-  hudOf(ctx.world).bubble({ x: 196, y: 140 }, 'SWAN-3. PLEASE RETURN BY 6 PM. -G.', { kind: 'hint', ticks: 150 });
+  // Met her already in Amsterdam (ams-b): a "welcome back" variant.
+  const met = ctx.records.get<boolean>('ams/swan-met', false);
+  hudOf(ctx.world).bubble({ x: 196, y: 140 }, met ? 'SWAN-3. BACK FROM SHORE LEAVE. -G.' : 'SWAN-3. PLEASE RETURN BY 6 PM. -G.', { kind: 'hint', ticks: 150 });
   yield 30;
-  radio(ctx, near, hasGramps(ctx) ? 'GRAMPS: THERE SHE IS!' : 'GRAMPS: BE GENTLE WITH HER!');
+  if (met) radio(ctx, near, 'GRAMPS: SHE MISSED YOU ALREADY!');
+  else radio(ctx, near, hasGramps(ctx) ? 'GRAMPS: THERE SHE IS!' : 'GRAMPS: BE GENTLE WITH HER!');
 }
 
 /** The first mount of a Swan in this mission: the glide lesson on the radio. */
