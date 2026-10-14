@@ -365,7 +365,8 @@ export class Hostage extends Entity {
     if (this.removed || this.state !== 'tied') return;
     // A wriggle and a muffled cry now and then (a gag bubble; GDD §7.2 step 1).
     if (this.stateT % WRIGGLE_EVERY === 60 && this.onScreen(0)) {
-      hudOf(this.world).bubble(this, 'MMF!', { ticks: 40, kind: 'gag' });
+      // Voiced by the kind's sample when one is loaded (the ams tourist).
+      hudOf(this.world).bubble(this, 'MMF!', { ticks: 40, kind: 'gag', speaker: this.kind?.id });
       this.shakeT = WRIGGLE_TICKS;
     }
     if (this.shakeT > 0) this.shakeT--;
@@ -559,7 +560,7 @@ export class Hostage extends Entity {
     this.bind.drawBack?.(this, r);
     drawOpts.flipX = this.facing < 0;
     const shake = this.shakeT > 0 ? (this.shakeT % 2 === 0 ? 1 : -1) : 0;
-    r.sprite(this.anim.id, this.frameToDraw(), Math.round(this.x + this.offX + shake), Math.round(this.y + this.offY), drawOpts);
+    r.sprite(this.anim.id, this.frameToDraw(), this.x + this.offX + shake, this.y + this.offY, drawOpts);
     this.bind.drawFront?.(this, r);
     this.kind?.drawFront?.(this, r);
   }

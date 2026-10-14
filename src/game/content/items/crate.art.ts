@@ -15,7 +15,8 @@ import type { Color } from '../../../engine/color';
 import { PixelBuffer, type Ramp } from '../../../engine/pixel';
 import { INK, PAL } from '../../../engine/palette';
 import type { Frame } from '../../../engine/render';
-import { defineSprite } from '../../../engine/sprites';
+import { defineHiSprite, defineSprite, getFrames } from '../../../engine/sprites';
+import { HI, HiPen, asHi, outlineHi } from '../../art/hi';
 import { hash2 } from '../../art/paint';
 
 /** Crate size including the outline (GDD §7.1). */
@@ -31,6 +32,24 @@ const SWAN = [
   '##..##...',
   '#######..',
   '.#####...',
+];
+
+/** The swan stencil at 2× (18×14, hand-drawn on the 2× grid: a rounder S-neck and head). */
+const SWAN_HI = [
+  '............###...',
+  '...........#####..',
+  '...........#######',
+  '...........###....',
+  '..........###.....',
+  '..........##......',
+  '#.........##......',
+  '##........##......',
+  '###......###......',
+  '####....####......',
+  '#############.....',
+  '##############....',
+  '.############.....',
+  '...#########......',
 ];
 
 /** The Legion's note stencil (an eighth note, 5×7). */
@@ -170,28 +189,34 @@ function hitFrames(look: CrateLook): Frame[] {
   ];
 }
 
+/** Break frames 1–3: [x, y (top-left from the anchor), length, vertical] per plank. */
+const BREAK_PLANKS: ReadonlyArray<ReadonlyArray<readonly [number, number, number, boolean]>> = [
+  [[-15, -24, 13, false], [-2, -28, 11, false], [-17, -16, 10, true], [10, -17, 10, true], [-9, -10, 15, false], [4, -21, 7, false]],
+  [[-21, -27, 13, false], [-1, -33, 11, false], [-23, -13, 10, true], [15, -13, 10, true], [-10, -7, 15, false], [9, -25, 7, false]],
+  [[-24, -5, 13, false], [-7, -6, 11, false], [-26, -9, 10, true], [17, -9, 10, true], [4, -5, 15, false], [13, -5, 7, false]],
+];
+
+/** Break frames 1–3: top-left of the two band bits. */
+const BREAK_BITS: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [
+  [[-8, -30], [6, -12]],
+  [[-12, -38], [12, -8]],
+  [[-14, -4], [20, -4]],
+];
+/** Break frame size (anchor at the bottom centre, x 33). */
+const BREAK_W = 66;
+const BREAK_H = 42;
+
 /** It bursts: split seams, then planks, bands and the stencilled board fly apart and settle. */
 function breakFrames(look: CrateLook): Frame[] {
   const out: Frame[] = [];
   const burst = crateBuf(look, 1, 3);
   out.push({ buf: burst, ox: burst.w >> 1, oy: burst.h });
-  // [x, y (top-left from the anchor), length, vertical] — planks; the last two are band bits.
-  const layouts: Array<Array<[number, number, number, boolean]>> = [
-    [[-15, -24, 13, false], [-2, -28, 11, false], [-17, -16, 10, true], [10, -17, 10, true], [-9, -10, 15, false], [4, -21, 7, false]],
-    [[-21, -27, 13, false], [-1, -33, 11, false], [-23, -13, 10, true], [15, -13, 10, true], [-10, -7, 15, false], [9, -25, 7, false]],
-    [[-24, -5, 13, false], [-7, -6, 11, false], [-26, -9, 10, true], [17, -9, 10, true], [4, -5, 15, false], [13, -5, 7, false]],
-  ];
-  const bits: Array<Array<[number, number]>> = [
-    [[-8, -30], [6, -12]],
-    [[-12, -38], [12, -8]],
-    [[-14, -4], [20, -4]],
-  ];
-  const W = 66;
-  const H = 42;
-  layouts.forEach((lay, i) => {
+  const W = BREAK_W;
+  const H = BREAK_H;
+  BREAK_PLANKS.forEach((lay, i) => {
     const b = new PixelBuffer(W, H);
     for (const [x, y, len, v] of lay) b.blit(plank(look, len, v), 33 + x, H + y);
-    for (const [x, y] of bits[i]) b.blit(bandBit(look, 7), 33 + x, H + y);
+    for (const [x, y] of BREAK_BITS[i]) b.blit(bandBit(look, 7), 33 + x, H + y);
     out.push({ buf: b, ox: 33, oy: H });
   });
   return out;
@@ -281,6 +306,177 @@ function chuteFoldFrames(): Frame[] {
   return out;
 }
 
+// ------------------------------------------------------------------------------------ 2× (ams)
+
+/**
+ * The 2× crate (mission ams; docs/ART_GUIDE.md "2x art (mission ams)"): the 1× crate on the
+ * 2× grid with finer detail — wood grain streaks, split plank seams, nail heads with a glint,
+ * a twisted rope with diagonal strands, a knot with a loop, a hand-drawn 2× swan stencil with
+ * worn paint. `line`: outline width in 2× px (2 = the 1× weight).
+ */
+function crateBufHi(look: CrateLook, squash: number, cracks: number, line: number): PixelBuffer {
+  const w = CRATE_W - 2 + squash;
+  const h = CRATE_H - 2 - squash;
+  const b = new PixelBuffer((w + 2) * HI, (h + 2) * HI);
+  const p = new HiPen(b, 0, 0);
+  const wd = look.wood;
+  // Lid: lit top face with a pale front edge, the shadow line under it.
+  p.rect(1, 1, w, 3, wd[3]);
+  p.hline(1, w, 1, look === LEGION ? wd[3] : PAL.sand[2]);
+  p.fine(1, 1, w + 0.5, 1, look === LEGION ? wd[3] : PAL.sand[3]);
+  for (let i = 0; i < 4; i++) {
+    const x = 3 + Math.floor(hash2(i, 3, 21) * (w - 8));
+    p.fine(x, 2.5 + (i & 1) * 0.5, x + 2 + Math.floor(hash2(i, 5, 21) * 4), 2.5 + (i & 1) * 0.5, wd[2]);
+  }
+  p.rect(1, 4, w, h - 3, wd[2]);
+  p.hline(1, w, 4, wd[1]);
+  p.fine(1, 4, w + 0.5, 4, wd[0]);
+  // Planks: a split seam (dark over darker) and a thin lit edge under it.
+  for (let y = 9; y < h; y += 5) {
+    p.hline(3, w - 2, y, wd[1]);
+    p.fine(3, y, w - 1.5, y, wd[0]);
+    p.fine(3, y + 1, w - 1.5, y + 1, wd[3]);
+  }
+  // Grain: short dark and light streaks on the front boards (deterministic).
+  for (let i = 0; i < 14; i++) {
+    const gx = 4 + Math.floor(hash2(i, 1, 31) * (w - 9));
+    const gy = 5 + Math.floor(hash2(i, 2, 31) * (h - 6)) + (hash2(i, 4, 31) > 0.5 ? 0.5 : 0);
+    if ((gy - 9) % 5 < 2 && gy >= 9) continue;
+    const len = 1.5 + Math.floor(hash2(i, 3, 31) * 4);
+    p.fine(gx, gy, gx + len, gy, i % 3 === 0 ? wd[3] : wd[1]);
+  }
+  // Frame boards at the sides (lit left, shaded right) with an inner edge.
+  p.rect(1, 5, 2, h - 4, wd[3]);
+  p.fine(2.5, 5, 2.5, h, wd[2]);
+  p.rect(w - 1, 5, 2, h - 4, wd[1]);
+  p.fine(w - 1, 5, w - 1, h, wd[2]);
+  p.hline(1, w, h, wd[0]);
+  for (let y = 7; y < h; y += 5) {
+    for (const x of [3, w - 2]) {
+      p.px(x, y, wd[0]);
+      p.dot(x, y, PAL.steel[2]);
+    }
+  }
+  // Stencil: the hand-drawn 2× swan (the 1× shape for other stencils, doubled), the paint
+  // worn through in a few spots.
+  const st = look.stencil === SWAN ? ascii(SWAN_HI, { '#': look.mark }) : ascii(look.stencil, { '#': look.mark }).scaled(HI);
+  const sx = Math.floor((w + 2 - look.stencil[0].length) / 2) * HI;
+  const sy = (6 + Math.max(0, Math.floor((h - 18) / 2))) * HI;
+  for (let y = 0; y < st.h; y++) {
+    for (let x = 0; x < st.w; x++) {
+      if ((st.get(x, y) & 255) === 0) continue;
+      b.set(sx + x, sy + y, hash2(x, y, 41) < 0.06 ? wd[2] : look.mark);
+    }
+  }
+  // Bands over the lid and down the front.
+  const bx0 = Math.round((BAND_X[0] * w) / 22);
+  const bx1 = Math.round((BAND_X[1] * w) / 22);
+  for (const bx of [bx0, bx1]) drawBandHi(b, look, bx, h);
+  if (look.rope) {
+    // The knot: a wrapped bundle with a loop and a hanging end.
+    const r = look.band;
+    p.rect(bx0 - 1, 4, 4, 3, r[2]);
+    p.fine(bx0 - 1, 4, bx0 + 2.5, 4, r[3]);
+    p.fine(bx0 - 1, 4, bx0 - 1, 6.5, r[3]);
+    p.fine(bx0 - 0.5, 5, bx0 + 2.5, 6.5, r[1]);
+    p.fine(bx0, 5.5, bx0 + 1, 5, r[3]);
+    p.fine(bx0 + 2.5, 4.5, bx0 + 2.5, 6.5, r[1]);
+    p.fine(bx0 + 2, 6.5, bx0 + 1, 8.5, r[1]);
+    p.fine(bx0 + 1.5, 7, bx0 + 0.5, 8.5, r[2]);
+  } else {
+    p.rect(bx0 - 1, 9, 4, 3, PAL.steel[3]);
+    p.px(bx0, 10, PAL.steel[1]);
+    p.px(bx0 + 1, 10, PAL.steel[1]);
+    p.fine(bx0 - 1, 9, bx0 + 2.5, 9, PAL.steel[4]);
+  }
+  // Cracks: the 1× paths as fine splits with a splinter lit on one side.
+  for (let i = 0; i < cracks; i++) {
+    let x = 5 + Math.floor(hash2(i, 1, 9) * (w - 8));
+    let y = 5;
+    for (let k = 0; k < h - 6; k++) {
+      const nx = hash2(i, k, 4) > 0.6 ? x + (hash2(k, i, 2) > 0.5 ? 1 : -1) : x;
+      p.fine(x + 0.5, y, nx + 0.5, y + 1, wd[0]);
+      if (k % 3 === 1) p.dot(x + 1, y + 0.5, wd[3]);
+      x = nx;
+      y++;
+    }
+  }
+  return outlineHi(b, line);
+}
+
+/** One 2× band: twisted rope with diagonal strands, or a flat strap with rivets. */
+function drawBandHi(b: PixelBuffer, look: CrateLook, x: number, h: number): void {
+  const r = look.band;
+  for (let y = HI; y < (h + 1) * HI; y++) {
+    for (let c = 0; c < 2 * HI; c++) {
+      let col: Color;
+      if (look.rope) {
+        const s = (c + y) % 4;
+        col = s === 0 ? r[3] : s === 3 ? r[1] : r[2];
+        if (c === 2 * HI - 1 && s !== 0) col = r[1];
+      } else col = c < HI ? r[2] : r[1];
+      b.set(x * HI + c, y, col);
+    }
+  }
+  if (!look.rope) for (const y of [2, h - 1]) b.rect(x * HI, y * HI, HI, HI, r[3]);
+}
+
+/** A 2× loose plank: lit top, shaded bottom, a grain streak and end grain. */
+function plankHi(look: CrateLook, len: number, vertical: boolean, line: number): PixelBuffer {
+  const wd = look.wood;
+  const b = new PixelBuffer((vertical ? 5 : len + 2) * HI, (vertical ? len + 2 : 5) * HI);
+  const p = new HiPen(b, 0, 0);
+  if (vertical) {
+    p.rect(1, 1, 3, len, wd[2]);
+    p.vline(1, 1, len, wd[3]);
+    p.vline(3, 1, len, wd[1]);
+    p.fine(2.5, 2, 2.5, 1 + len * 0.6, wd[1]);
+    p.fine(1, len + 0.5, 3.5, len + 0.5, wd[1]);
+  } else {
+    p.rect(1, 1, len, 3, wd[2]);
+    p.hline(1, len, 1, wd[3]);
+    p.hline(1, len, 3, wd[1]);
+    p.fine(1, 1, len + 0.5, 1, look === LEGION ? wd[3] : PAL.sand[2]);
+    p.fine(2, 2.5, 1 + len * 0.6, 2.5, wd[1]);
+    p.fine(len + 0.5, 1.5, len + 0.5, 3.5, wd[1]);
+  }
+  return outlineHi(b, line);
+}
+
+/** A 2× bit of band. */
+function bandBitHi(look: CrateLook, len: number, line: number): PixelBuffer {
+  const b = new PixelBuffer((len + 2) * HI, 4 * HI);
+  const r = look.band;
+  for (let x = HI; x < (len + 1) * HI; x++) {
+    for (let y = HI; y < 3 * HI; y++) {
+      const s = (x + y) % 4;
+      b.set(x, y, look.rope ? (s === 0 ? r[3] : y >= 2 * HI + 1 ? r[1] : r[2]) : y < 2 * HI ? r[3] : r[1]);
+    }
+  }
+  return outlineHi(b, line);
+}
+
+/** The 2× ids of the crate (the supply crate: the one mission ams uses). */
+export const CRATE_HI_IDS = ['item/crate', 'item/crate-hit', 'item/crate-break'];
+
+/** The 2× strip of a crate id (`CRATE_HI_IDS`), each frame matched to its 1× frame in `lo`. */
+export function crateStripHi(id: string, line: number, lo: readonly Frame[]): Frame[] {
+  const look = SUPPLY;
+  if (id === 'item/crate') return [asHi(crateBufHi(look, 0, 0, line), lo[0])];
+  if (id === 'item/crate-hit') return [asHi(crateBufHi(look, 2, 0, line), lo[0]), asHi(crateBufHi(look, 0, 0, line), lo[1])];
+  if (id === 'item/crate-break') {
+    const out: Frame[] = [asHi(crateBufHi(look, 1, 3, line), lo[0])];
+    BREAK_PLANKS.forEach((lay, i) => {
+      const b = new PixelBuffer(BREAK_W * HI, BREAK_H * HI);
+      for (const [x, y, len, v] of lay) b.blit(plankHi(look, len, v, line), (33 + x) * HI, (BREAK_H + y) * HI);
+      for (const [x, y] of BREAK_BITS[i]) b.blit(bandBitHi(look, 7, line), (33 + x) * HI, (BREAK_H + y) * HI);
+      out.push(asHi(b, lo[i + 1]));
+    });
+    return out;
+  }
+  throw new Error(`no 2× crate "${id}"`);
+}
+
 // ------------------------------------------------------------------------------------ register
 
 export function defineCrateSprites(): void {
@@ -291,4 +487,6 @@ export function defineCrateSprites(): void {
   }
   defineSprite('item/crate-chute', () => [chuteBuf(0), chuteBuf(1)], { ticksPerFrame: 10 });
   defineSprite('item/crate-chute-fold', chuteFoldFrames, { ticksPerFrame: 6, loop: false });
+  // 2× (mission ams only): the supply crate, 2-px outline (the 1× weight). m0–m5 keep the 1× art.
+  for (const id of CRATE_HI_IDS) defineHiSprite(id, () => crateStripHi(id, 2, getFrames(id, 1)));
 }

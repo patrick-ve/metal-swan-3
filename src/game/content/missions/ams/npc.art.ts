@@ -14,6 +14,11 @@
  * `npc/ams/ams-window-waver/person` (4: empty, idle, wave a, wave b), `…/cat` (2).
  * Decor: `decor/ams/ams-boat-platform` (2, wake), breakables `decor/ams/<id>` (0 intact,
  * 1 broken) for ams-herring-cart, ams-tulip-stall, ams-market-stall, ams-bike-rack.
+ *
+ * 2× art (docs/ART_GUIDE.md "2x art (mission ams)"): every NPC strip, the counter, the background
+ * cyclists and the window waver's person have 2× twins — the rig at 2×, the aprons, scoop, saluting
+ * forearm, counter, omafiets and window redrawn on the 2× grid (`…Hi` below). The ambient pigeons,
+ * ducks, tour boat and window cat have their 2× twins in npc-hi.art.ts.
  */
 import type { Color } from '../../../../engine/color';
 import { drawText } from '../../../../engine/font';
@@ -21,9 +26,10 @@ import { INK, PAL } from '../../../../engine/palette';
 import { PixelBuffer } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
 import { defineSprite } from '../../../../engine/sprites';
+import { HI, outlineHi } from '../../../art/hi';
 import { withPieces, type Piece } from '../../../art/human-fx';
 import { withSwing } from '../../../art/human-sprites';
-import { renderHuman, stackFrames, type ArmPose, type HumanStyle, type LegPose, type Pose } from '../../../art/humanoid';
+import { renderHuman, stackFrames, type ArmPose, type Density, type HumanStyle, type LegPose, type Pose } from '../../../art/humanoid';
 import * as P from '../../../art/poses';
 
 type V2 = readonly [number, number];
@@ -167,28 +173,105 @@ function scoop(): PixelBuffer {
   return b.outline(INK);
 }
 
+/**
+ * The 2× aprons (each the box of its 1× twin with the outline, on the 2× grid). Dark Fabel Friet
+ * apron: gold piping with a lit edge, two soft fold lines, a stitched pocket under the gold "F".
+ */
+function darkApronHi(): PixelBuffer {
+  const K = PAL.black;
+  const G = PAL.gold;
+  const b = new PixelBuffer(16, 26);
+  b.rect(0, 0, 16, 26, K[2]);
+  b.vline(0, 0, 25, K[3]);
+  b.vline(15, 0, 25, K[1]);
+  b.vline(14, 2, 23, K[1]);
+  for (const x of [5, 11]) for (let y = 4; y < 23; y++) if (y % 6 !== 0) b.set(x, y, K[1]);
+  b.rect(0, 0, 16, 2, G[1]);
+  b.hline(0, 15, 0, G[2]);
+  b.rect(0, 24, 16, 2, G[1]);
+  b.hline(0, 15, 24, G[2]);
+  // Pocket with stitches, and the gold "F" on it (as at 1×, with 1-px strokes).
+  for (let x = 4; x <= 11; x += 2) b.set(x, 7, K[3]);
+  for (let y = 8; y <= 16; y += 2) {
+    b.set(4, y, K[3]);
+    b.set(11, y, K[3]);
+  }
+  b.vline(6, 8, 15, G[2]);
+  b.vline(7, 8, 15, G[1]);
+  b.hline(6, 10, 8, G[3]);
+  b.hline(7, 10, 9, G[1]);
+  b.hline(6, 9, 11, G[2]);
+  return outlineHi(b.padded(HI), 2);
+}
+
+/** The vendor's 2× white apron: hems, two fold lines, a mustard smear and a ketchup drop. */
+function whiteApronHi(): PixelBuffer {
+  const C = PAL.cloth;
+  const b = new PixelBuffer(18, 22);
+  b.rect(0, 0, 18, 22, C[2]);
+  b.rect(0, 0, 18, 2, C[3]);
+  b.hline(0, 17, 2, C[1]);
+  b.vline(16, 2, 21, C[1]);
+  b.vline(17, 1, 21, C[1]);
+  b.hline(0, 17, 21, C[1]);
+  for (const x of [5, 12]) for (let y = 4; y < 20; y++) if (y % 5 !== 2) b.set(x, y, C[1]);
+  // Mustard smear (a short streak with a highlight) and a ketchup drop.
+  b.hline(10, 13, 12, PAL.gold[2]);
+  b.hline(11, 14, 13, PAL.gold[1]);
+  b.set(10, 12, PAL.gold[3]);
+  b.rect(4, 6, 2, 2, PAL.red[2]);
+  b.set(4, 6, PAL.red[3]);
+  b.set(5, 8, PAL.red[1]);
+  return outlineHi(b.padded(HI), 2);
+}
+
+/**
+ * The 2× fry scoop (same 9 × 10 box with its outline): single fries with a lit side, a steel
+ * scoop with a bright rim and a darker belly, a handle.
+ */
+function scoopHi(): PixelBuffer {
+  const b = new PixelBuffer(18, 20);
+  // Fries: 2-px sticks of different heights and slants, each lit on the left.
+  for (const [x, top] of [[6, 1], [8, 3], [10, 1], [12, 4], [14, 2], [7, 4], [11, 3]] as const) {
+    b.vline(x, top + 2, 11, PAL.gold[2]);
+    b.vline(x + 1, top + 2, 11, PAL.gold[1]);
+    b.set(x, top + 2, PAL.gold[3]);
+  }
+  b.poly([[4, 8], [17, 8], [15, 17], [6, 17]], PAL.steel[3]);
+  b.hline(4, 17, 8, PAL.steel[4]);
+  b.hline(5, 16, 9, PAL.steel[4]);
+  for (let y = 13; y <= 17; y++) b.hline(Math.round(6 + (y - 13) * 0.3) + 6, 15 - Math.round((17 - y) * 0.3), y, PAL.steel[2]);
+  b.hline(6, 15, 17, PAL.steel[1]);
+  b.thickLine(2, 14, 6, 12, 2, PAL.steel[2]);
+  b.line(2, 14, 6, 12, PAL.steel[3]);
+  return outlineHi(b, 2);
+}
+
 /** Lower body with an apron hung at the hip, then the torso on top (like the hostage aprons). */
-function figure(style: HumanStyle, pose: Pose, apron: PixelBuffer | null): Frame {
-  if (!apron || pose.rot) return renderHuman(style, pose, 'full');
-  const lower = renderHuman(style, pose, 'lower');
-  const upper = renderHuman(style, pose, 'upper');
+function figure(style: HumanStyle, pose: Pose, apron: PixelBuffer | null, d: Density = 1): Frame {
+  if (!apron || pose.rot) return renderHuman(style, pose, 'full', d);
+  const lower = renderHuman(style, pose, 'lower', d);
+  const upper = renderHuman(style, pose, 'upper', d);
   const hip = lower.pts?.hip ?? [0, -15];
-  const legs = withPieces(lower, [{ buf: apron, x: hip[0] - 4, y: hip[1] - 1 }]);
+  const piece: Piece = { buf: apron, x: hip[0] - 4, y: hip[1] - 1 };
+  if (d !== 1) piece.density = HI;
+  const legs = withPieces(lower, [piece]);
   return stackFrames(legs, upper);
 }
 
-/** The scoop in the near hand. */
-function withScoop(f: Frame, sc: PixelBuffer): Frame {
+/** The scoop in the near hand (`d` 2: a 2× scoop). */
+function withScoop(f: Frame, sc: PixelBuffer, d: Density = 1): Frame {
   const h: V2 = f.pts?.hand ?? [4, -16];
-  const pieces: Piece[] = [{ buf: sc, x: h[0] - 2, y: h[1] - 8 }];
+  const pieces: Piece[] = [d === 1 ? { buf: sc, x: h[0] - 2, y: h[1] - 8 } : { buf: sc, x: h[0] - 2, y: h[1] - 8, density: HI }];
   return withPieces(f, pieces);
 }
 
 /** The saluting forearm: a sleeve from the chest up to a flat hand at the cap peak. */
-function withSaluteArm(f: Frame, style: HumanStyle): Frame {
+function withSaluteArm(f: Frame, style: HumanStyle, d: Density = 1): Frame {
   const h: V2 = f.pts?.hand ?? [6, -28];
   const top: readonly Color[] = typeof style.top === 'string' ? PAL[style.top as keyof typeof PAL] : PAL.sky;
   const skin: readonly Color[] = typeof style.skin === 'string' && PAL[style.skin as keyof typeof PAL].length >= 4 ? PAL[style.skin as keyof typeof PAL] : PAL.skinA;
+  if (d !== 1) return withPieces(f, [{ buf: saluteArmHi(top, skin), x: Math.round(h[0]) - 6, y: Math.round(h[1]) - 2, density: HI }]);
   const b = new PixelBuffer(10, 13);
   b.thickLine(2, 10, 5, 4, 2, top[Math.min(2, top.length - 1)]);
   b.line(1, 11, 4, 5, top[Math.min(1, top.length - 1)]);
@@ -198,26 +281,48 @@ function withSaluteArm(f: Frame, style: HumanStyle): Frame {
   return withPieces(f, [{ buf: b, x: Math.round(h[0]) - 6, y: Math.round(h[1]) - 1 }]);
 }
 
+/**
+ * The 2× saluting forearm: a sleeve with a lit edge and a cuff, a flat hand with finger lines.
+ * The hand sits 1 logical px higher than at 1× (on the cap peak) and the forearm rises steeply in
+ * front of the face, narrowed to 1 logical px, so the eye and the moustache stay clear. Placed 1
+ * logical px higher than the 1× piece (the buffer is 1 logical px taller).
+ */
+function saluteArmHi(top: readonly Color[], skin: readonly Color[]): PixelBuffer {
+  const t = (i: number): Color => top[Math.min(i, top.length - 1)];
+  const b = new PixelBuffer(20, 28);
+  b.thickLine(6, 24, 9, 17, 4, t(2));
+  b.thickLine(4, 25, 7, 18, 2, t(1));
+  b.thickLine(10, 17, 14, 8, 2, t(2));
+  b.line(8, 21, 13, 9, t(3));
+  b.hline(12, 14, 8, t(1));
+  b.rect(10, 2, 7, 5, skin[2]);
+  b.hline(10, 16, 2, skin[3]);
+  b.vline(10, 2, 6, skin[3]);
+  for (const y of [4, 6]) b.hline(12, 16, y, skin[1]);
+  return outlineHi(b, 2);
+}
+
 /** Paint the vendor's cap red (crown) / white (band) / navy (peak): the cap is the red area over the head. */
 function tricolorCap(f: Frame): Frame {
   const head = f.pts?.head;
   if (!head) return f;
+  const d = f.density ?? 1;
   const b = f.buf.clone();
   const reds = new Set<number>([PAL.red[0], PAL.red[1], PAL.red[2], PAL.red[3]]);
-  const yMax = f.oy + head[1] - 1;
+  const yMax = (f.oy + head[1]) * d - 1;
   let top = -1;
   for (let y = 0; y <= yMax && top < 0; y++) for (let x = 0; x < b.w; x++) if (reds.has(b.get(x, y))) { top = y; break; }
   if (top < 0) return f;
-  for (let y = top; y <= Math.min(yMax, top + 6); y++) {
+  for (let y = top; y <= Math.min(yMax, top + 7 * d - 1); y++) {
     for (let x = 0; x < b.w; x++) {
       const c = b.get(x, y);
       if (!reds.has(c)) continue;
-      const row = y - top;
+      const row = Math.floor((y - top) / d);
       if (row === 2) b.set(x, y, c === PAL.red[3] || c === PAL.red[2] ? PAL.snow[3] : PAL.cloth[1]);
       else if (row >= 3) b.set(x, y, c === PAL.red[3] || c === PAL.red[2] ? PAL.sky[1] : PAL.navy[1]);
     }
   }
-  return { buf: b, ox: f.ox, oy: f.oy, pts: f.pts };
+  return { ...f, buf: b };
 }
 
 // ------------------------------------------------------------------------------------ NPC strips
@@ -231,27 +336,27 @@ interface Strip {
   salute?: boolean;
 }
 
-function defineStrips(prefix: string, style: HumanStyle, apron: () => PixelBuffer | null, strips: Readonly<Record<string, Strip>>, post?: (f: Frame) => Frame): void {
-  let ap: PixelBuffer | null | undefined;
-  let sc: PixelBuffer | null = null;
+function defineStrips(prefix: string, style: HumanStyle, apron: (d: Density) => PixelBuffer | null, strips: Readonly<Record<string, Strip>>, post?: (f: Frame) => Frame): void {
+  const ap: Array<PixelBuffer | null | undefined> = [];
+  const sc: Array<PixelBuffer | undefined> = [];
+  const gen = (s: Strip, d: Density) => (): Frame[] => {
+    if (ap[d] === undefined) ap[d] = apron(d);
+    return s.poses.map((p) => {
+      let f = figure(style, { weapon: 'none', ...p }, ap[d] ?? null, d);
+      if (s.scoop) f = withScoop(f, (sc[d] ??= d === 1 ? scoop() : scoopHi()), d);
+      if (s.salute) f = withSaluteArm(f, style, d);
+      return post ? post(f) : f;
+    });
+  };
   for (const [name, s] of Object.entries(strips)) {
-    defineSprite(
-      `${prefix}/${name}`,
-      () => {
-        if (ap === undefined) ap = apron();
-        return s.poses.map((p) => {
-          let f = figure(style, { weapon: 'none', ...p }, ap ?? null);
-          if (s.scoop) f = withScoop(f, (sc ??= scoop()));
-          if (s.salute) f = withSaluteArm(f, style);
-          return post ? post(f) : f;
-        });
-      },
-      { ticksPerFrame: s.ticks, loop: s.loop ?? true },
-    );
+    defineSprite(`${prefix}/${name}`, gen(s, 1), { ticksPerFrame: s.ticks, loop: s.loop ?? true, hi: gen(s, 2) });
   }
 }
 
-defineStrips('npc/ams/ams-baker', BAKER_STYLE, darkApron, {
+const dark = (d: Density): PixelBuffer => (d === 1 ? darkApron() : darkApronHi());
+const white = (d: Density): PixelBuffer => (d === 1 ? whiteApron() : whiteApronHi());
+
+defineStrips('npc/ams/ams-baker', BAKER_STYLE, dark, {
   idle: { poses: HOLD_SCOOP, ticks: 30, scoop: true },
   talk: { poses: TALK, ticks: 8, scoop: true },
   toss: { poses: TOSS, ticks: TOSS_TICKS, loop: false },
@@ -264,7 +369,7 @@ defineStrips('npc/ams/ams-baker', BAKER_STYLE, darkApron, {
 defineStrips(
   'npc/ams/ams-hotdog-vendor',
   VENDOR_STYLE,
-  whiteApron,
+  white,
   {
     idle: { poses: IDLE, ticks: 30 },
     salute: { poses: SALUTE_CALM, ticks: 20, salute: true },
@@ -275,7 +380,7 @@ defineStrips(
 );
 
 STAFF_STYLES.forEach((style, i) => {
-  defineStrips(`npc/ams/ams-staff/${i}`, style, darkApron, {
+  defineStrips(`npc/ams/ams-staff/${i}`, style, dark, {
     idle: { poses: IDLE, ticks: 30 + i * 4 },
     walk: { poses: WALK_POSES, ticks: 6 },
     clap: { poses: CLAP, ticks: 6 + (i % 2) },
@@ -301,7 +406,43 @@ defineSprite('npc/ams/counter', () => {
   b.vline(26, 9, 16, PAL.stone[3]);
   b.hline(1, 26, 16, PAL.stone[2]);
   return { buf: b.outline(INK), ox: 14, oy: 18 };
-});
+}, { hi: counterHi });
+
+/**
+ * The 2× counter: the same cream box and fry cones on the 2× grid — single fries in the cones,
+ * a red-white striped paper cone, a lit counter top with a gold trim, inset panels with a lit
+ * and a shaded edge, a stone kick plate.
+ */
+function counterHi(): Frame {
+  const b = new PixelBuffer(56, 36);
+  const C = PAL.cloth;
+  for (const cx of [6, 20]) {
+    const x = cx * HI + 1;
+    // Cone (paper) with a white stripe, then the fries above it.
+    b.poly([[x - 5, 10], [x + 4, 10], [x, 19]], PAL.red[2]);
+    b.line(x - 4, 10, x, 18, PAL.red[3]);
+    b.line(x - 1, 11, x + 1, 15, C[3]);
+    b.hline(x - 5, x + 4, 10, C[3]);
+    for (const [dx, top, c] of [[-4, 6, 2], [-2, 4, 3], [0, 5, 2], [1, 3, 3], [3, 6, 2], [-1, 7, 1]] as const) {
+      b.vline(x + dx, top, 9, PAL.gold[c]);
+      b.set(x + dx, top, PAL.gold[3]);
+    }
+  }
+  b.rect(2, 16, 52, 18, C[2]);
+  b.rect(2, 16, 52, 2, C[3]);
+  b.rect(2, 18, 52, 2, PAL.gold[1]);
+  b.hline(2, 53, 18, PAL.gold[2]);
+  for (const x0 of [8, 30]) {
+    b.rect(x0, 22, 18, 10, C[1]);
+    b.rect(x0 + 1, 23, 16, 8, C[2]);
+    b.hline(x0 + 1, x0 + 16, 30, C[3]);
+    b.vline(x0 + 16, 23, 30, C[3]);
+  }
+  b.rect(52, 18, 2, 16, PAL.stone[3]);
+  b.rect(2, 32, 52, 2, PAL.stone[2]);
+  b.hline(2, 53, 33, PAL.stone[1]);
+  return { buf: outlineHi(b, 2), ox: 14, oy: 18, density: HI };
+}
 
 // ------------------------------------------------------------------------------------ tour boat
 
@@ -429,29 +570,87 @@ const PEDAL: readonly Pose[] = [
   { legN: L(60, 70), legF: L(55, 100), armN: { to: [9, 2], hand: 'grip' }, armF: { to: [8, 2], hand: 'grip' }, lean: 14, grounded: false },
 ];
 
+/**
+ * The 2× omafiets (the `bike` box on the 2× grid): spoked wheels with a tyre and a silver rim,
+ * 2-px frame tubes with a lit edge, a sprung saddle, a wicker basket, the crank.
+ */
+function bikeHi(frame: Color, phase: number): PixelBuffer {
+  const b = new PixelBuffer(68, 40);
+  for (const cx of [7, 26]) {
+    const X = cx * HI + 1;
+    const Y = 13 * HI + 1;
+    // Tyre (the 1× ink ring) and the silver rim (the 1× stone ring, with a lit inner line).
+    b.ellipse(X - 12, Y - 12, 24, 24, PAL.ink[1], false);
+    b.ellipse(X - 11, Y - 11, 22, 22, PAL.ink[1], false);
+    b.ellipse(X - 10, Y - 10, 20, 20, PAL.stone[2], false);
+    b.ellipse(X - 9, Y - 9, 18, 18, PAL.stone[3], false);
+    for (let k = 0; k < 4; k++) {
+      const a = ((k + phase / 2) / 4) * Math.PI;
+      const dx = Math.round(Math.cos(a) * 8);
+      const dy = Math.round(Math.sin(a) * 8);
+      b.line(X - dx, Y - dy, X + dx, Y + dy, PAL.stone[1]);
+    }
+    b.rect(X - 1, Y - 1, 2, 2, PAL.steel[3]);
+  }
+  const tube = (x0: number, y0: number, x1: number, y1: number): void => {
+    b.thickLine(x0 * HI, y0 * HI, x1 * HI, y1 * HI, 2, frame);
+  };
+  tube(7, 13, 14, 13);
+  tube(14, 13, 12, 4);
+  tube(14, 13, 24, 6);
+  tube(24, 3, 26, 13);
+  tube(12, 4, 7, 13);
+  // Saddle with springs, bars with a grip, the basket (wicker weave).
+  b.rect(20, 6, 10, 2, PAL.brown[1]);
+  b.hline(21, 28, 6, PAL.brown[2]);
+  b.set(22, 8, PAL.steel[3]);
+  b.set(26, 8, PAL.steel[3]);
+  b.rect(44, 4, 8, 2, PAL.steel[3]);
+  b.rect(44, 4, 2, 2, PAL.black[2]);
+  b.rect(52, 8, 10, 8, PAL.brown[2]);
+  b.hline(52, 61, 8, PAL.brown[3]);
+  for (let y = 10; y < 16; y += 2) for (let x = 52 + ((y >> 1) & 1); x < 62; x += 2) b.set(x, y, PAL.brown[1]);
+  // Crank and pedal.
+  const a = (phase / 4) * Math.PI * 2;
+  const cx = 14 * HI + 1;
+  const cy = 13 * HI + 1;
+  const px = Math.round(cx + Math.cos(a) * 6);
+  const py = Math.round(cy + Math.sin(a) * 6);
+  b.thickLine(cx - 1, cy - 1, px - 1, py - 1, 2, PAL.steel[2]);
+  b.rect(px - 3, py - 1, 6, 2, PAL.black[3]);
+  b.ellipse(cx - 2, cy - 2, 4, 4, PAL.steel[3]);
+  return outlineHi(b, 2);
+}
+
+/** One background cyclist frame (`d` 2: the 2× rider on the 2× omafiets). */
+function cyclist(c: { style: HumanStyle; bike: Color }, pose: Pose, i: number, d: Density): Frame {
+  const upper = renderHuman(c.style, { weapon: 'none', ...pose }, 'upper', d);
+  const lower = renderHuman(c.style, { weapon: 'none', ...pose }, 'lower', d);
+  const body = stackFrames(lower, upper);
+  const hip = lower.pts?.hip ?? [0, -15];
+  // Wheels rest on the anchor line; the saddle (12, 3) under the hip.
+  const bk = d === 1 ? bike(c.bike, i) : bikeHi(c.bike, i);
+  const out = new PixelBuffer(44 * d, 46 * d);
+  const ox = 18;
+  const oy = 45;
+  out.blit(bk, (ox - 16) * d, (oy - 20) * d);
+  // Place the hip 1 px over the saddle: saddle at (ox − 16 + 12, oy − 20 + 3).
+  const hx = ox - 16 + 12;
+  const hy = oy - 20 + 2;
+  if (d === 1) {
+    out.blitFrame(body, hx - hip[0], hy - hip[1]);
+    return { buf: out, ox, oy };
+  }
+  out.blitFrame(body, (hx - hip[0]) * d, (hy - hip[1]) * d, undefined, d);
+  return { buf: out, ox, oy, density: d };
+}
+
 CYCLISTS.forEach((c, look) => {
-  defineSprite(
-    `npc/ams/ams-cyclist-bg/${look}`,
-    () =>
-      PEDAL.map((pose, i) => {
-        const upper = renderHuman(c.style, { weapon: 'none', ...pose }, 'upper');
-        const lower = renderHuman(c.style, { weapon: 'none', ...pose }, 'lower');
-        const body = stackFrames(lower, upper);
-        const hip = lower.pts?.hip ?? [0, -15];
-        // Wheels rest on the anchor line; the saddle (12, 3) under the hip.
-        const bk = bike(c.bike, i);
-        const out = new PixelBuffer(44, 46);
-        const ox = 18;
-        const oy = 45;
-        out.blit(bk, ox - 16, oy - 20);
-        // Place the hip 1 px over the saddle: saddle at (ox − 16 + 12, oy − 20 + 3).
-        const hx = ox - 16 + 12;
-        const hy = oy - 20 + 2;
-        out.blitFrame(body, hx - hip[0], hy - hip[1]);
-        return { buf: out, ox, oy };
-      }),
-    { ticksPerFrame: 6, trim: true },
-  );
+  defineSprite(`npc/ams/ams-cyclist-bg/${look}`, () => PEDAL.map((pose, i) => cyclist(c, pose, i, 1)), {
+    ticksPerFrame: 6,
+    trim: true,
+    hi: () => PEDAL.map((pose, i) => cyclist(c, pose, i, 2)),
+  });
 });
 
 // ------------------------------------------------------------------------------------ pigeons
@@ -541,23 +740,68 @@ function windowDone(b: PixelBuffer, inner: PixelBuffer | null): Frame {
   return { buf: b, ox: 10, oy: 24 };
 }
 
+/** The 2× sash window (the `windowFrame` box): a painted frame with a lit edge, folded curtains. */
+export function windowFrameHi(): PixelBuffer {
+  const b = new PixelBuffer(40, 52);
+  b.rect(2, 2, 36, 44, PAL.cloth[3]);
+  b.vline(37, 2, 45, PAL.cloth[2]);
+  b.rect(6, 6, 28, 32, PAL.navy[0]);
+  b.hline(6, 33, 6, PAL.cloth[1]);
+  b.vline(6, 6, 37, PAL.cloth[1]);
+  for (const x0 of [6, 28]) {
+    b.rect(x0, 6, 6, 32, PAL.red[1]);
+    for (let y = 6; y < 38; y++) {
+      b.set(x0 + 2, y, PAL.red[2]);
+      b.set(x0 + 3, y, (y & 3) === 0 ? PAL.red[3] : PAL.red[2]);
+      b.set(x0 + 5, y, PAL.red[0]);
+    }
+    // Tie-backs.
+    b.hline(x0, x0 + 5, 24, PAL.gold[2]);
+  }
+  return b;
+}
+
+/** `windowDone` at 2×: sash bar, a flower box with plank lines and tulips, the 2-px outline. */
+export function windowDoneHi(b: PixelBuffer, inner: PixelBuffer | null): Frame {
+  if (inner) b.blit(inner, 6, 6);
+  b.rect(6, 12, 28, 2, PAL.cloth[2]);
+  b.hline(6, 33, 12, PAL.cloth[3]);
+  b.rect(2, 38, 36, 8, PAL.brown[1]);
+  b.rect(2, 38, 36, 2, PAL.brown[2]);
+  b.hline(2, 37, 38, PAL.brown[3]);
+  b.hline(2, 37, 43, PAL.brown[0]);
+  const tulips: readonly Color[] = [PAL.red[2], PAL.gold[2], PAL.pink[2], PAL.red[3], PAL.orange[2]];
+  for (let i = 0; i < 5; i++) {
+    const x = (3 + i * 3) * HI;
+    b.vline(x + 1, 32, 37, PAL.green[2]);
+    b.set(x, 35, PAL.green[3]);
+    b.rect(x, 30, 3, 3, tulips[i]);
+    b.set(x + 1, 29, tulips[i]);
+    b.set(x, 30, PAL.snow[3]);
+  }
+  return { buf: outlineHi(b, 2), ox: 10, oy: 24, density: HI };
+}
+
 const WAVER_STYLE: HumanStyle = { skin: 'skinA', hair: 'hairC', hairStyle: 'bob', headgear: 'none', top: 'teal', topType: 'sweater', pants: 'slate', boots: 'black', gloves: null, build: 'slim' };
 
-defineSprite('npc/ams/ams-window-waver/person', () => {
+/** The window waver's person strip (`d` 2: the 2× window and the rig at 2×). */
+function waverFrames(d: Density): Frame[] {
   const out: Frame[] = [];
   const poses: (Pose | null)[] = [null, { armN: A(6, 30, 'open'), armF: A(-4, 30, 'open'), expr: 'normal' }, { ...WAVE[0] }, { ...WAVE[1] }];
   for (const p of poses) {
     let inner: PixelBuffer | null = null;
     if (p) {
-      const f = renderHuman(WAVER_STYLE, { weapon: 'none', ...p }, 'upper');
-      inner = new PixelBuffer(14, 16);
+      const f = renderHuman(WAVER_STYLE, { weapon: 'none', ...p }, 'upper', d);
+      inner = new PixelBuffer(14 * d, 16 * d);
       // Hip 9 px below the window bottom: the chest, head and a raised hand show.
-      inner.blitFrame(f, 7, 16 + 1);
+      inner.blitFrame(f, 7 * d, (16 + 1) * d, undefined, d);
     }
-    out.push(windowDone(windowFrame(), inner));
+    out.push(d === 1 ? windowDone(windowFrame(), inner) : windowDoneHi(windowFrameHi(), inner));
   }
   return out;
-}, { ticksPerFrame: 10 });
+}
+
+defineSprite('npc/ams/ams-window-waver/person', () => waverFrames(1), { ticksPerFrame: 10, hi: () => waverFrames(2) });
 
 defineSprite('npc/ams/ams-window-waver/cat', () =>
   [0, 1].map((t) => {

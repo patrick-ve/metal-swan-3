@@ -88,7 +88,7 @@ function poofFrames(): Frame[] {
 
 // ------------------------------------------------------------------------------------ confetti
 
-const CONFETTI_COLORS: readonly Color[] = [PAL.red[3], PAL.gold[3], PAL.sky[2], PAL.pink[2], PAL.green[3], PAL.snow[3]];
+export const CONFETTI_COLORS: readonly Color[] = [PAL.red[3], PAL.gold[3], PAL.sky[2], PAL.pink[2], PAL.green[3], PAL.snow[3]];
 
 /** A confetti pop (6 frames): a gold star, then bits flying out and starting to fall. */
 function confettiFrames(): Frame[] {

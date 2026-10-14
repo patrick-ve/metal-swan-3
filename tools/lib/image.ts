@@ -7,7 +7,7 @@ import { dirname } from 'node:path';
 import type { Color } from '../../src/engine/color';
 import { drawText, measure } from '../../src/engine/font';
 import { PixelBuffer } from '../../src/engine/pixel';
-import type { Frame } from '../../src/engine/render';
+import { frameDensity, frameH, frameW, type Frame } from '../../src/engine/render';
 import { encodePNG } from './png';
 
 /** Contact-sheet colours (tool chrome, deliberately outside the art palette). */
@@ -53,6 +53,12 @@ export interface SheetOpts {
   /** Page width / max height in unscaled pixels. */
   width?: number;
   maxHeight?: number;
+  /**
+   * Sheet pixels per logical pixel (default 1). 2 shows 2× art (density-2 frames) pixel for
+   * pixel; 1× frames are enlarged (each pixel a 2 × 2 block) and 2× frames are reduced at 1, both
+   * as PixelBuffer.blitFrame does. Marks cover the whole logical pixel.
+   */
+  density?: number;
 }
 
 interface Box {
@@ -62,14 +68,14 @@ interface Box {
   maxY: number;
 }
 
-/** Union (relative to the anchor) of every frame's pixels, anchor and points. */
+/** Union (relative to the anchor, logical px) of every frame's pixels, anchor and points. */
 function unionBox(frames: readonly Frame[]): Box {
   const b: Box = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
   for (const f of frames) {
     b.minX = Math.min(b.minX, -f.ox);
     b.minY = Math.min(b.minY, -f.oy);
-    b.maxX = Math.max(b.maxX, f.buf.w - 1 - f.ox);
-    b.maxY = Math.max(b.maxY, f.buf.h - 1 - f.oy);
+    b.maxX = Math.max(b.maxX, frameW(f) - 1 - f.ox);
+    b.maxY = Math.max(b.maxY, frameH(f) - 1 - f.oy);
     for (const p of Object.values(f.pts ?? {})) {
       b.minX = Math.min(b.minX, p[0]);
       b.minY = Math.min(b.minY, p[1]);
@@ -92,11 +98,12 @@ const INDEX_H = 9;
 export function composeSheets(items: readonly SheetItem[], o: SheetOpts): PixelBuffer[] {
   const width = o.width ?? 640;
   const maxHeight = o.maxHeight ?? 720;
+  const d = Math.max(1, Math.floor(o.density ?? 1));
   type Placed = { item: SheetItem; box: Box; cw: number; ch: number; rows: number[][]; height: number };
   const placed: Placed[] = items.map((item) => {
     const box = unionBox(item.frames);
-    const cw = box.maxX - box.minX + 3;
-    const ch = box.maxY - box.minY + 3;
+    const cw = (box.maxX - box.minX + 1) * d + 2;
+    const ch = (box.maxY - box.minY + 1) * d + 2;
     const perRow = Math.max(1, Math.floor((width - PAD * 2 + GAP) / (cw + GAP)));
     const rows: number[][] = [];
     item.frames.forEach((_, i) => {
@@ -143,7 +150,7 @@ export function composeSheets(items: readonly SheetItem[], o: SheetOpts): PixelB
       const ptsNames = new Set<string>();
       for (const f of item.frames) for (const k of Object.keys(f.pts ?? {})) ptsNames.add(k);
       const f0 = item.frames[0];
-      let label = `${item.id}  ${item.frames.length}f  ${f0.buf.w}x${f0.buf.h}`;
+      let label = `${item.id}  ${item.frames.length}f  ${frameW(f0)}x${frameH(f0)}${frameDensity(f0) > 1 ? ` @${frameDensity(f0)}x` : ''}`;
       if (ptsNames.size > 0) label += `  pts: ${[...ptsNames].join(', ')}`;
       drawText(buf, label, PAD, cy, { color: item.error ? SHEET.error : SHEET.label });
       if (item.error) {
@@ -156,12 +163,13 @@ export function composeSheets(items: readonly SheetItem[], o: SheetOpts): PixelB
         for (const i of row) {
           const f = item.frames[i];
           drawChecker(buf, cx, cy, cw, ch);
-          const ax = cx + 1 - box.minX;
-          const ay = cy + 1 - box.minY;
-          buf.blit(f.buf, ax - f.ox, ay - f.oy);
+          // The anchor pixel's top-left in sheet px.
+          const ax = cx + 1 - box.minX * d;
+          const ay = cy + 1 - box.minY * d;
+          buf.blitFrame(f, ax, ay, undefined, d);
           if (o.marks) {
-            buf.set(ax, ay, SHEET.anchor);
-            for (const pt of Object.values(f.pts ?? {})) buf.set(ax + pt[0], ay + pt[1], SHEET.point);
+            buf.rect(ax, ay, d, d, SHEET.anchor);
+            for (const pt of Object.values(f.pts ?? {})) buf.rect(ax + pt[0] * d, ay + pt[1] * d, d, d, SHEET.point);
           }
           drawText(buf, String(i), cx, cy + ch + 1, { color: SHEET.dim });
           cx += cw + GAP;

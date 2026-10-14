@@ -133,6 +133,8 @@ export interface BossSayOpts {
   at?: readonly [number, number];
   /** 'gag' (default; hidden with SPEECH BUBBLES OFF) or 'radio' (always shown). */
   kind?: BubbleKind;
+  /** false: the line is never voiced (BubbleOpts.voice). */
+  voice?: boolean;
 }
 
 /** The point a boss speaks from (followed while the boss moves). */
@@ -462,7 +464,7 @@ export class Boss extends Entity {
     const sp = this.speaker ?? (this.speaker = new BossSpeaker(this));
     sp.dx = o.at ? o.at[0] : this.hitbox.x + this.hitbox.w / 2;
     sp.dy = o.at ? o.at[1] : this.hitbox.y;
-    hudOf(this.world).bubble(sp, text, { ticks: o.ticks ?? 120, kind: o.kind ?? 'gag' });
+    hudOf(this.world).bubble(sp, text, { ticks: o.ticks ?? 120, kind: o.kind ?? 'gag', voice: o.voice });
   }
 
   /** Remove the boss's speech bubble. */

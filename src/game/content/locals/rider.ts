@@ -22,15 +22,16 @@ import { Creature, contactHit, entryParam } from '../creatures/common';
 /**
  * A gag bubble over `e`, unless another live gag bubble already hangs within 56 × 32 px (two
  * riders side by side would print their lines on top of each other). Returns false when skipped.
+ * A shown line is voiced by its `speaker`'s sample when one is loaded (`HudState.onBubble`).
  */
-export function gagBubble(world: World, e: { x: number; y: number }, text: string, ticks: number): boolean {
+export function gagBubble(world: World, e: { x: number; y: number }, text: string, ticks: number, speaker = ''): boolean {
   const list = hudOf(world).bubbles;
   for (let i = 0; i < list.length; i++) {
     const b = list[i];
     if (b.kind !== 'gag' || b.ticks <= 0 || b.target === e) continue;
     if (Math.abs(b.target.x - e.x) < 56 && Math.abs(b.target.y - e.y) < 32) return false;
   }
-  hudOf(world).bubble(e, text, { ticks, kind: 'gag' });
+  hudOf(world).bubble(e, text, { ticks, kind: 'gag', speaker: speaker || undefined });
   return true;
 }
 
@@ -46,12 +47,17 @@ export interface RiderOpts {
 }
 
 export abstract class Rider extends Creature {
+  /** One sprite per draw: drawn at the sub-pixel position (Enemy.fineDraw). */
+  protected override fineDraw = true;
+
   protected readonly kickHit: Damage;
   protected readonly touch: Damage;
   private readonly kickBoxes: Rect[] = [{ x: 0, y: 0, w: 0, h: 0 }];
   private readonly noBoxes: Rect[] = [];
   /** Ticks of the running telegraph (difficulty-scaled). */
   protected telegraph = 20;
+  /** Who speaks the rider's lines (the voice sample's speaker). */
+  protected speaker = '';
   /** Bike speed before death (the wreck carries it on). */
   protected lastSpeed = 0;
   /** Ticks the bike has been blocked by a wall. */
@@ -109,7 +115,7 @@ export abstract class Rider extends Creature {
     this.setMode('tell');
     this.play('tell', { restart: true });
     this.world.audio.sfx(sfx);
-    gagBubble(this.world, this, bubble, Math.min(40, this.telegraph + 10));
+    gagBubble(this.world, this, bubble, Math.min(40, this.telegraph + 10), this.speaker);
   }
 
   /** Start the kick (its box is live for `active` ticks, see thinkKick). */
@@ -145,6 +151,7 @@ export abstract class Rider extends Creature {
 
   /** Hook for the bike wreck: it skids on along the old heading and fades. */
   protected wreckBike(): void {
+    this.world.audio.sfx('ams/rider-crash');
     FxEntity.spawn(this.world, {
       sprite: `${this.art}/bike`,
       x: this.x,

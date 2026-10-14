@@ -80,6 +80,20 @@ function anthemBar(): SfxLayer[] {
 }
 
 export const ENV: Recipes = {
+  // The title lake at dusk (loop, 2.5 s; 2026-10-14): soft lapping at the bank and a faint high
+  // shimmer of reeds. The tremolo rates make whole cycles in the loop.
+  'env/title-lake': loopRecipe(
+    2.5,
+    1.0,
+    [
+      { wave: 'noise', vol: 0.45, filter: LP(380), tremolo: { rate: 2 / 2.5, depth: 0.5 } },
+      { wave: 'noise', vol: 0.05, filter: HP(4500), tremolo: { rate: 3 / 2.5, depth: 0.8 } },
+    ],
+    [0.3, 1.15, 1.8].flatMap((d, i) => [
+      { wave: 'sine' as const, freq: 170 + i * 40, to: 110 + i * 25, sweep: 0.1, env: { a: 0.01, d: 0.15 }, vol: 0.3, delay: d },
+      noise(0.12, 0.2, LP(650, 300), { delay: d }),
+    ]),
+  ),
   // Crowd clapping from random noise bursts over a soft low-passed bed, 2 s.
   'env/applause': applause(1.932),
   // "Ba-dum-tss": two drum hits and a cymbal hiss.

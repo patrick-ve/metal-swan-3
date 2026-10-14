@@ -13,12 +13,25 @@
 import type { MissionDef } from '../../../mission/index';
 import { defineMission } from '../../../registry';
 import './art';
+// 2× decor of sections c and d and the breakables (art-hi-cd*.ts).
+import './art-hi-cd';
 import './backgrounds';
+// 2× background layers and terrain materials (art-hi-bg.ts, art-hi-terrain.ts).
+import './art-hi-bg';
+// 2× canal houses, elms, Museumplein, sky and clouds (backgrounds-hi.ts, art-hi-sky.ts).
+import './backgrounds-hi';
+import './art-hi-sky';
+import './art-hi-terrain';
+// 2× ambient life: pigeons, ducks, the tour boat, the window cat (npc-hi.art.ts).
+import './npc-hi.art';
+import './art-hi-boat';
 import './entities';
 import { sectionA } from './section-a';
 import { sectionB } from './section-b';
 import { sectionC } from './section-c';
 import { sectionD } from './section-d';
+// After the sections: the 2× decor twins also cover the sized ids the section files registered.
+import './art-hi-ab';
 
 export const AMS: MissionDef = {
   id: 'ams',
@@ -29,9 +42,21 @@ export const AMS: MissionDef = {
   start: 'a',
   bossSection: 'd',
   next: 'm1',
-  announce: 'MISSION ONE. FRIES FIRST, CYGNETS!',
+  announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
   sections: { a: sectionA, b: sectionB, c: sectionC, d: sectionD },
   hostages: { a: 4, b: 3, c: 3 },
+  // 2× art (docs/ART_GUIDE.md "2x art (mission ams)"): only this mission draws it.
+  artDensity: 2,
+  // Footsteps on the cobbles (`player/step`; 2026-10-14, with the sampled ams audio).
+  footsteps: true,
+  // The 2× preload during the intro card: after the players' characters, the Swan and what
+  // section a shows first; the boss last. The small explosion goes before the big ones: the first
+  // explosion generated pays the JIT warm-up of the 2× explosion code (about 1 ms more for s,
+  // while l first costs about 16 ms instead of 8).
+  preloadFirst: ['vehicle/swan', 'enemy/delivery-rider', 'enemy/seagull/', 'item/', 'enemy/fatbike-youth', 'npc/ams/', 'decor/ams/', 'fx/explosion-s'],
+  preloadLast: ['boss/', 'enemy/handhaver', 'enemy/boete-ticket/'],
+  // Sampled music, sounds and dialogue (src/game/content/samples), loaded on the intro card.
+  audioGroup: 'mission:ams',
 };
 
 defineMission(AMS);

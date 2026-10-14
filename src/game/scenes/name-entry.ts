@@ -2,7 +2,7 @@
  * Name entry (GDD §13.14): `ENTER YOUR INITIALS` (big, C, y 40); three letter slots (big) at
  * x 168, 184, 200, y 80; up / down cycles A–Z, 0–9, `.` and `END`; fire (or jump / start)
  * confirms a slot, bomb steps back; a 30-second timer (small, right-aligned at (380, 4)); music
- * `high-score`; the announcer says "NEW HIGH SCORE! ENCORE!" when the screen opens. Co-op: one
+ * `high-score`; the announcer says "NEW HIGH SCORE! YOU'RE GREAT!" when the screen opens. Co-op: one
  * entry per qualifying player, one after the other, each on their own controls.
  */
 import { PAL } from '../../engine/palette';

@@ -1,0 +1,79 @@
+{
+  "announcer": {
+    "voice_id": "B5M8Itwdp3m1hNs6TIsq",
+    "name": "MS3 Announcer",
+    "generated_voice_id": "B5M8Itwdp3m1hNs6TIsq",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:38:56.934Z"
+  },
+  "baker": {
+    "voice_id": "uHPpsCTsutr3BR13nDrd",
+    "name": "MS3 Baker",
+    "generated_voice_id": "uHPpsCTsutr3BR13nDrd",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:38:58.750Z"
+  },
+  "gramps": {
+    "voice_id": "qPQAwWgeGD5YK7OeYYkb",
+    "name": "MS3 Gramps",
+    "generated_voice_id": "qPQAwWgeGD5YK7OeYYkb",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:39:01.518Z"
+  },
+  "gusto": {
+    "voice_id": "Yjqp9vhcp4nOqTK9MUJ5",
+    "name": "MS3 Brigadier Gusto",
+    "generated_voice_id": "Yjqp9vhcp4nOqTK9MUJ5",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:39:03.365Z"
+  },
+  "handhaver": {
+    "voice_id": "Xh6VW8QTqb3RuIy95PD4",
+    "name": "MS3 Handhaver",
+    "generated_voice_id": "Xh6VW8QTqb3RuIy95PD4",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:39:05.159Z"
+  },
+  "rider": {
+    "voice_id": "rrroHixH4RZbRXFjpcrE",
+    "name": "MS3 Delivery Rider",
+    "generated_voice_id": "rrroHixH4RZbRXFjpcrE",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:39:07.744Z"
+  },
+  "staff1": {
+    "voice_id": "MI1rdb3kxKs1miZJeoTS",
+    "name": "MS3 Fry Staff 1",
+    "generated_voice_id": "MI1rdb3kxKs1miZJeoTS",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:39:09.655Z"
+  },
+  "staff2": {
+    "voice_id": "9KvJFnMdGGqSbICwSHVN",
+    "name": "MS3 Fry Staff 2",
+    "generated_voice_id": "9KvJFnMdGGqSbICwSHVN",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:39:11.482Z"
+  },
+  "tourist": {
+    "voice_id": "QoE0qKkPIuI9ZABg45I2",
+    "name": "MS3 Tourist",
+    "generated_voice_id": "QoE0qKkPIuI9ZABg45I2",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:39:14.220Z"
+  },
+  "vendor": {
+    "voice_id": "7wD7hp2GDTVlGjCcZ6Fw",
+    "name": "MS3 Hot-Dog Vendor",
+    "generated_voice_id": "7wD7hp2GDTVlGjCcZ6Fw",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:39:16.169Z"
+  },
+  "youth": {
+    "voice_id": "mEQpraK4w2pR7tEcUSKQ",
+    "name": "MS3 Fatbike Youth",
+    "generated_voice_id": "mEQpraK4w2pR7tEcUSKQ",
+    "preview": 1,
+    "savedAt": "2026-10-14T10:39:18.939Z"
+  }
+}

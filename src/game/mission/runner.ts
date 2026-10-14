@@ -25,6 +25,7 @@ import type { Renderer } from '../../engine/render';
 import { hashString } from '../../engine/rng';
 import type { ScriptGen, Wait } from '../../engine/script';
 import { Terrain, terrain as terrainBuilder } from '../../engine/terrain';
+import { withArtDensity } from '../../engine/sprites';
 import { World } from '../../engine/world';
 import { Boss } from '../boss';
 import { attachGame, HudState, type BannerOpts, type CalloutOpts, type GameContext, type GoDir } from '../context';
@@ -80,6 +81,8 @@ export interface RunnerOptions {
   bossRush?: boolean;
   /** Player options (speech bubbles, shake …); default DEFAULT_SETTINGS. */
   settings?: GameSettings;
+  /** Art density override (the attract demo passes 1); default the mission's `artDensity`. */
+  artDensity?: number;
 }
 
 interface PendingExit {
@@ -118,6 +121,7 @@ export class MissionRunner {
   readonly bodyWalls: BodyWall[] = [];
 
   private readonly startSection: string | undefined;
+  private readonly density: number;
   private fadeT = 0;
   private fadeLen = TUNING.transition.fadeTicks;
   private pending: PendingExit | null = null;
@@ -130,6 +134,10 @@ export class MissionRunner {
   private readonly exitOn = new Map<ExitDef, boolean>();
   private music: string | null = null;
   private musicFrom: number | undefined = undefined;
+  /** The ambience loop playing under the audio key 'ambience' (SectionDef.ambience), or null. */
+  private ambience: string | null = null;
+  /** The GO arrow was visible last tick (its cue plays when it comes up). */
+  private goShown = false;
   /** Boss-fight timing over the boss sections: start tick of the running fight, ticks so far. */
   private fightStart = -1;
   private fightTicks = 0;
@@ -147,6 +155,15 @@ export class MissionRunner {
     this.bossRush = o.bossRush ?? false;
     this.settings = o.settings ?? { ...DEFAULT_SETTINGS };
     this.startSection = o.section;
+    this.density = o.artDensity ?? this.mission.artDensity ?? 1;
+    // Speech bubbles that show are voiced when a voice sample exists (audio only; the headless
+    // outputs have no `say`). Gag bubbles hide with SPEECH BUBBLES OFF and stay silent then.
+    // Hint and radio bubbles are important: a gag bark never cuts them off (SpeechLane).
+    this.hud.onBubble = (text, kind, speaker) => {
+      if (kind === 'gag' && !this.settings.speechBubbles) return;
+      if (kind === 'gag') this.audio.say?.(text, speaker);
+      else this.audio.say?.(text, speaker, { important: true });
+    };
   }
 
   /** Load the first section and show the mission banner. */
@@ -180,6 +197,7 @@ export class MissionRunner {
     this.game = attachGame(world, this.session, this.hud, this.settings);
     this.game.runner = this;
     this.game.ice = def.iceRanges ?? [];
+    this.game.footsteps = this.mission.footsteps === true;
     const cam = world.camera;
     const C = TUNING.camera;
     cam.scroll = def.scroll;
@@ -193,7 +211,9 @@ export class MissionRunner {
     cam.shakeScale = shakeScaleOf(this.settings.screenShake);
     this.world = world;
     this.section = def;
-    this.view = new SectionView(def, terrain, seed);
+    // The old view's queued 2× scenery jobs are of no use any more.
+    this.view?.dispose();
+    this.view = new SectionView(def, terrain, seed, this.density);
     this.exitOn.clear();
     for (const ex of def.exits ?? []) this.exitOn.set(ex, !ex.disabled);
     this.nextCheckpoint = 0;
@@ -216,6 +236,7 @@ export class MissionRunner {
     this.resetTimer();
     this.timerPaused = false;
     this.playMusic(def.music ?? this.mission.music);
+    this.setAmbience(def.ambience ?? null);
     this.session.sectionId = def.id;
     const ctx = this.ctx;
     world.scripts.run(() => def.script(ctx), { name: `section ${this.mission.id}/${def.id}` });
@@ -395,6 +416,10 @@ export class MissionRunner {
   update(): void {
     this.ticks++;
     this.hud.update();
+    // The GO arrow comes up: a short cue (once per showing; its blinking does not repeat it).
+    const go = this.hud.goVisible;
+    if (go && !this.goShown) this.audio.sfx('ui/go', { vol: 0.6 });
+    this.goShown = go;
     switch (this.state) {
       case 'playing':
         if (this.autoSpeed !== 0) this.advanceAutoScroll();
@@ -427,15 +452,25 @@ export class MissionRunner {
     }
   }
 
-  /** Draw scenery, entities and the transition fade (the HUD is drawn by the scene). */
+  /** Art density of the drawing: `RunnerOptions.artDensity`, else `MissionDef.artDensity`, else 1. */
+  get artDensity(): number {
+    return this.density;
+  }
+
+  /**
+   * Draw scenery, entities and the transition fade (the HUD is drawn by the scene), with the
+   * mission's art density (restored afterwards: nothing outside the drawing sees it).
+   */
   draw(r: Renderer): void {
-    const cam = this.world.camera;
-    r.setCamera(cam.renderX, cam.renderY);
-    this.view.drawBack(r, this.ticks);
-    this.world.draw(r);
-    this.view.drawFront(r, this.ticks);
-    const a = this.fadeAlpha;
-    if (a > 0) r.fade(0x000000ff, a);
+    withArtDensity(this.artDensity, () => {
+      const cam = this.world.camera;
+      r.setCamera(cam.viewX, cam.viewY);
+      this.view.drawBack(r, this.ticks);
+      this.world.draw(r);
+      this.view.drawFront(r, this.ticks);
+      const a = this.fadeAlpha;
+      if (a > 0) r.fade(0x000000ff, a);
+    });
   }
 
   /** Background clear colour of the current section. */
@@ -602,6 +637,7 @@ export class MissionRunner {
     this.fadeT = 0;
     this.fadeLen = transition === 'cut' ? 1 : Math.max(2, Math.floor(TUNING.transition.fadeTicks / 2));
     this.world.events.emit('sectionExit', { from: this.section.id, to });
+    this.world.events.emit('stopLoops', { fadeTicks: this.fadeLen });
   }
 
   private switchSection(): void {
@@ -612,6 +648,7 @@ export class MissionRunner {
       return;
     }
     if (p.to === 'complete') {
+      this.stopLoops();
       this.state = 'complete';
       this.session.completed.push(this.mission.id);
       this.events.emit('complete', { mission: this.mission.id });
@@ -635,6 +672,7 @@ export class MissionRunner {
     }
     this.hud.hideGo();
     this.hud.showBanner('MISSION COMPLETE!', { style: 'mission', ticks: TUNING.transition.victoryTicks });
+    this.stopLoops(40);
     this.playMusic('mission-complete');
     this.audio.voice(this.mission.clearLine ?? 'Objective secured!');
     this.session.completed.push(this.mission.id);
@@ -843,6 +881,28 @@ export class MissionRunner {
     if (o.from !== undefined) opts.from = o.from;
     if (o.restart) opts.restart = true;
     this.audio.music(id || null, opts);
+  }
+
+  /**
+   * The ambience loop (SectionDef.ambience) under the audio key 'ambience': the same id keeps
+   * playing, another replaces it, null fades it out over `fadeTicks`. No call without a change
+   * (missions without ambience never touch the key).
+   */
+  setAmbience(id: string | null, fadeTicks = 30): void {
+    if (id === this.ambience) return;
+    this.ambience = id;
+    if (id) this.audio.sfxLoop?.('ambience', id, { vol: 0.8 });
+    else this.audio.stopSfx?.('ambience', fadeTicks);
+  }
+
+  /**
+   * The mission ends (complete, quit, game over): fade out the ambience and tell the entities to
+   * stop their loops ('stopLoops'; the Swan's engine, a tour boat). Scenes that leave gameplay
+   * call it too; a section change does the entity part by itself.
+   */
+  stopLoops(fadeTicks = 30): void {
+    this.setAmbience(null, fadeTicks);
+    this.world?.events.emit('stopLoops', { fadeTicks });
   }
 
   /** The song the runner wants right now (stage, boss, clear …), or null. */

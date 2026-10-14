@@ -337,6 +337,9 @@ export class Swan extends Vehicle {
   /** The co-op PERCH on her tail: a moving one-way platform (feel §10). */
   readonly perch: SolidBox;
   private readonly offBoss: () => void;
+  private readonly offLoops: () => void;
+  /** Audio key of her engine loop while ridden (`swan-engine-<slot>`, so a carried Swan keeps it), or null. */
+  private engineKey: string | null = null;
   private readonly radioSpot = { x: 0, y: 0, hitbox: { y: 0 }, removed: false };
   private readonly loopKey: string;
   private readonly hurt3: Rect[] = [{ x: 0, y: 0, w: 0, h: 0 }, { x: 0, y: 0, w: 0, h: 0 }, { x: 0, y: 0, w: 0, h: 0 }];
@@ -387,6 +390,7 @@ export class Swan extends Vehicle {
     this.offBoss = world.events.on('bossDefeated', () => {
       if (this.driver) this.bossCheer = true;
     });
+    this.offLoops = world.events.on('stopLoops', (e) => this.engine(null, e.fadeTicks));
     this.show('empty', 0);
   }
 
@@ -519,7 +523,20 @@ export class Swan extends Vehicle {
     // No head room to stand (parked under a low roof): she starts crouched.
     if (!this.setLow(false)) this.crouching = true;
     if (!inWater && this.medium === 'ground' && !this.crouching) this.riseT = S.riseTicks;
+    this.engine(p.index);
     refreshSwanCamera(this.world);
+  }
+
+  /**
+   * Her engine loop (`swan/engine`) while ridden: started on a mount under the rider's slot key,
+   * stopped on an eject, her removal and 'stopLoops' (a section or the mission ends).
+   */
+  private engine(slot: number | null, fadeTicks = 8): void {
+    const key = slot === null ? null : `swan-engine-${slot}`;
+    if (key === this.engineKey) return;
+    if (this.engineKey) this.world.audio.stopSfx?.(this.engineKey, fadeTicks);
+    this.engineKey = key;
+    if (key) this.world.audio.sfxLoop?.(key, 'swan/engine', { vol: 0.7 });
   }
 
   override eject(mode: EjectMode = 'exit'): void {
@@ -527,6 +544,7 @@ export class Swan extends Vehicle {
     if (!p) return;
     const inWater = this.swimming;
     super.eject(mode);
+    this.engine(null);
     this.resetRide();
     if (mode === 'ram') {
       this.phase = 'hiss';
@@ -1444,7 +1462,7 @@ export class Swan extends Vehicle {
     const spot = this.radioSpot;
     spot.x = clamp(this.x, this.world.camera.left + 70, this.world.camera.right - 70);
     spot.y = this.y - 40;
-    hudOf(this.world).bubble(spot, "GRAMPS: SHE'LL BE BACK\nIN SPRING.", { kind: 'radio', ticks: 150 });
+    hudOf(this.world).bubble(spot, "GRAMPS: SHE'LL BE BACK\nIN SPRING.", { kind: 'radio', ticks: 150, speaker: 'gramps' });
     this.world.particles.emit(FEATHER_SLOW, this.x, this.y - 30, 0.2 * this.facing, -0.3);
     if (!soot) this.world.events.emit('vehicleDestroyed', { vehicle: this });
     refreshSwanCamera(this.world);
@@ -1530,7 +1548,7 @@ export class Swan extends Vehicle {
     const spot = this.radioSpot;
     spot.x = this.x;
     spot.y = this.y - 30;
-    hudOf(this.world).bubble(spot, "SHE DOES THAT WHEN\nSHE'S NERVOUS.", { kind: 'radio', ticks: 150 });
+    hudOf(this.world).bubble(spot, "SHE DOES THAT WHEN\nSHE'S NERVOUS.", { kind: 'radio', ticks: 150, speaker: 'gramps' });
   }
 
   // ------------------------------------------------------------------------------- co-op perch
@@ -1804,8 +1822,10 @@ export class Swan extends Vehicle {
     if (!this.anim.id) return;
     const flip = this.facing < 0;
     const tick = this.world.tick;
-    let ox = Math.round(this.x);
-    let oy = Math.round(this.y);
+    // Unrounded (sub-pixel at res > 1): body, scuffs, rider, overlay and neck all add whole-pixel
+    // points to this one origin, so they stay locked together.
+    let ox = this.x;
+    let oy = this.y;
     if (this.joltT > 0) ox -= this.facing;
     if (this.swimming && this.phase !== 'migrate') {
       oy += Math.round(Math.sin((tick / S.bobPeriod) * Math.PI * 2) * S.bobAmp);
@@ -1885,7 +1905,9 @@ export class Swan extends Vehicle {
   override onRemove(): void {
     super.onRemove();
     this.world.audio.stopSfx?.(this.loopKey);
+    this.engine(null);
     this.offBoss();
+    this.offLoops();
     this.catchPilot = null;
     this.radioSpot.removed = true;
     refreshSwanCamera(this.world);

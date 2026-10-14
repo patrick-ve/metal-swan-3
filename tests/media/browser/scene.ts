@@ -5,7 +5,7 @@
 import { PixelBuffer } from '../../../src/engine/pixel';
 import { INK, PAL } from '../../../src/engine/palette';
 import type { Renderer } from '../../../src/engine/render';
-import { defineSprite } from '../../../src/engine/sprites';
+import { defineHiSprite, defineSprite, withArtDensity } from '../../../src/engine/sprites';
 
 let registered = false;
 
@@ -32,6 +32,36 @@ export function registerSceneSprites(): void {
     },
     { anchor: 'center' },
   );
+  // 2× art: a 1× hero and a detailed 2× version (density 2) with single-pixel detail.
+  defineSprite('parity/hero2', () => new PixelBuffer(12, 16).roundRect(1, 1, 10, 14, 3, PAL.olive[2]).outline(INK), { pts: { muzzle: [5, -10] } });
+  defineHiSprite('parity/hero2', () => {
+    const b = new PixelBuffer(24, 32).roundRect(2, 2, 20, 28, 6, PAL.olive[2]).bevel(PAL.olive, { only: PAL.olive[2] });
+    for (let y = 4; y < 28; y += 3) for (let x = 4 + (y % 2); x < 20; x += 3) b.set(x, y, PAL.gold[3]);
+    b.set(5, 5, PAL.red[2]);
+    b.set(18, 7, PAL.sky[2]);
+    return b.outline(INK);
+  });
+}
+
+/** 2× art (density 2) next to its 1× frames: exact where 2 divides res, nearest ties elsewhere. */
+export function drawHiScene(r: Renderer): void {
+  registerSceneSprites();
+  r.begin(PAL.navy[0]);
+  r.setCamera(13.4, 2.6);
+  r.sprite('parity/hero2', 0, 40, 100);
+  withArtDensity(2, () => {
+    r.sprite('parity/hero2', 0, 70, 100);
+    r.sprite('parity/hero2', 0, 100.6, 100, { flipX: true });
+    r.sprite('parity/hero2', 0, 130, 100, { flipY: true, flash: true });
+    r.sprite('parity/hero2', 0, 160.5, 100.5, { tint: PAL.red[2], flipX: true, flipY: true });
+    r.sprite('parity/hero2', 0, 200, 60, { screen: true });
+    for (let row = 0; row < 16; row += 2) {
+      const shift = Math.round(Math.sin(row * 0.7) * 2);
+      r.sprite('parity/hero2', 0, 240 + shift, 100, { src: { x: 0, y: row, w: 12, h: 2 }, flipX: row % 4 === 0 });
+    }
+    r.sprite('parity/hero2', 0, 280, 100, { src: { x: 3, y: -2, w: 7, h: 30 }, flipY: true });
+  });
+  r.end();
 }
 
 function sky(): PixelBuffer {

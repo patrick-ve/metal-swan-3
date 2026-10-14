@@ -70,6 +70,8 @@ export class AmsPerson extends Entity {
   /** Ticks left in a timed mode (Infinity = until changed). */
   protected modeLeft = Infinity;
   protected after: PersonMode = 'idle';
+  /** Who speaks the bubbles (the voice sample's speaker; '' = no voice). */
+  speaker = '';
 
   constructor(world: World, x: number, y: number, p: SpawnParams, prefix: string) {
     super(world, x, y);
@@ -131,8 +133,13 @@ export class AmsPerson extends Entity {
     if (x !== this.x) this.facing = x > this.x ? 1 : -1;
   }
 
+  /**
+   * A speech bubble, voiced by its sample when one is loaded (the runner's `HudState.onBubble` →
+   * `AudioOut.say` with this person's `speaker`; a new line replaces the clip still playing, so a
+   * skipped briefing line stops at once).
+   */
   say(text: string, ticks = 150, kind: BubbleKind = 'gag'): Bubble {
-    return hudOf(this.world).bubble(this, text, { kind, ticks, dy: -2 });
+    return hudOf(this.world).bubble(this, text, { kind, ticks, dy: -2, speaker: this.speaker || undefined });
   }
 
   override update(): void {
@@ -149,8 +156,8 @@ export class AmsPerson extends Entity {
   }
 
   override draw(r: Renderer): void {
-    const x = Math.round(this.x);
-    const y = Math.round(this.y);
+    const x = this.x;
+    const y = this.y;
     drawOpts.flipX = this.facing < 0;
     drawOpts.flash = false;
     r.sprite(this.anim.id, this.anim.index, x, y, drawOpts);
@@ -170,6 +177,7 @@ export class AmsBaker extends AmsPerson {
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     super(world, x, y, p, 'npc/ams/ams-baker');
+    this.speaker = 'baker';
     this.tossSpec = p.toss ?? 'crate';
   }
 
@@ -227,6 +235,7 @@ export class AmsHotdogVendor extends AmsPerson {
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     super(world, x, y, p, 'npc/ams/ams-hotdog-vendor');
+    this.speaker = 'vendor';
     this.range = Math.max(8, paramNum(p, 'range', 40));
   }
 
@@ -248,7 +257,7 @@ export class AmsHotdogVendor extends AmsPerson {
       this.saluted |= bit;
       this.face(w.x);
       this.setMode('salute', 70);
-      this.say(w.swan ? 'NICE BIRD, SOLDIER!' : 'HOWDY, SOLDIER!', 100, 'gag');
+      this.say(w.swan ? 'HEB JIJ NOG NEPNAGELS\nVOOR MIJ?' : 'HALLO DAAR!', 100, 'gag');
     }
   }
 }
@@ -261,6 +270,7 @@ export class AmsStaff extends AmsPerson {
     const look = Math.max(0, Math.min(STAFF_LOOKS - 1, Math.round(paramNum(p, 'look', 0))));
     super(world, x, y, p, `npc/ams/ams-staff/${look}`);
     this.look = look;
+    this.speaker = `staff${look}`;
   }
 }
 

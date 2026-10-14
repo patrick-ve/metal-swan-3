@@ -1,7 +1,11 @@
 import type { AudioOut, MusicOpts, SfxOpts, VolumeKind } from './audio';
 import type { InstrumentDef, InstrumentEnv, ParsedSong, ScheduledNote } from './music';
 import { getSong, midiToFreq, orderTime, songError, songEvents, songLength } from './music';
-import { jitterPitch, renderSfx, SAMPLE_RATE, sfxJitter, sfxLimits } from './synth';
+import type { SampleBankDeps, SongTake } from './samples.browser';
+import { defaultDecoder, SampleBank } from './samples.browser';
+import type { SayOpts, SpeechItem, SpeechKind } from './samples';
+import { foldLoopPosition, songLoopEnd, SpeechLane, voiceKey } from './samples';
+import { getSfxRecipe, jitterPitch, renderSfx, SAMPLE_RATE, sfxJitter, sfxLimits } from './synth';
 import type { Announcer } from './voice.browser';
 import { createAnnouncer } from './voice.browser';
 
@@ -17,6 +21,12 @@ import { createAnnouncer } from './voice.browser';
  * - Music: a look-ahead scheduler (25 ms timer, ~120 ms horizon) turns the pure song events of
  *   music.ts into oscillator / buffer nodes at exact times, so loops are seamless. Songs fade
  *   in and out, can pause and resume.
+ * - Samples (samples.ts, docs/api/media.md §9.5): a loaded sample group skins existing ids. A
+ *   sound effect plays a random sampled take (same voice limits, gap, pitch, jitter, volume and
+ *   pan); a song plays its file (intro, then a seamless loop between its loop points); a voice
+ *   line plays its sample on the voice bus with the music ducked under it. Missing, loading or
+ *   failed samples fall back to the synth (sfx, music), the speech announcer (`voice`) or
+ *   silence (`say`).
  */
 
 let sharedCtx: AudioContext | null = null;
@@ -74,6 +84,8 @@ export interface WebAudioOpts {
   maxVoices?: number;
   /** Initial volumes 0..1. */
   volumes?: Partial<Record<VolumeKind, number>>;
+  /** Sample bank options (base URL, fetch, decoder; tests). */
+  samples?: SampleBankDeps;
 }
 
 interface ActiveSfx {
@@ -84,6 +96,13 @@ interface ActiveSfx {
 }
 
 const clamp01 = (v: number): number => (v <= 0 ? 0 : v >= 1 ? 1 : v);
+/** A manifest gain multiplier (level match), 0..4. */
+const gainOf = (v: number | undefined): number => (v === undefined || !Number.isFinite(v) ? 1 : Math.max(0, Math.min(4, v)));
+
+/** Music level while a voice sample speaks (dialogue ducking). */
+const DIALOGUE_DUCK = 0.4;
+/** A song whose sample finishes loading within this many seconds of its synth start swaps at the same position. */
+const HOT_SWAP_SAME_POS = 3;
 
 export class WebAudioOut implements AudioOut {
   private ctx: AudioContext | null = null;
@@ -94,11 +113,23 @@ export class WebAudioOut implements AudioOut {
   private readonly buffers = new Map<string, AudioBuffer | null>();
   private active: ActiveSfx[] = [];
   private readonly lastStart = new Map<string, number>();
-  private song: SongPlayer | null = null;
+  private song: MusicPlayer | null = null;
   private wanted: { id: string | null; opts?: MusicOpts } | null = null;
-  /** Looping sounds by key (sfxLoop / stopSfx). */
-  private readonly loops = new Map<string, { id: string; src: AudioBufferSourceNode; gain: GainNode }>();
+  /** Looping sounds by key (sfxLoop / stopSfx); `mul` is the sample's level match. */
+  private readonly loops = new Map<string, { id: string; src: AudioBufferSourceNode; gain: GainNode; mul: number }>();
   private duck = 1;
+  /** Decoded sample groups (samples.ts); empty until `loadSamples`. */
+  readonly samples: SampleBank;
+  /** Sound effect id → the sampled id that plays for it (itself, or the id it aliases), or null. */
+  private readonly sampleIds = new Map<string, string | null>();
+  /** Music ducking under voice samples: between the music bus and the master gain. */
+  private dialogueDuck: GainNode | null = null;
+  /** Every looping sound goes through this gain into the sfx bus (`pauseLoops` silences it). */
+  private loopBus: GainNode | null = null;
+  private loopsPaused = false;
+  /** The one speech channel of the voice samples and the line that sounds. */
+  private readonly lane = new SpeechLane();
+  private speech: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   private readonly announcer: Announcer;
   private readonly useSpeech: boolean;
   private readonly maxVoices: number;
@@ -108,6 +139,7 @@ export class WebAudioOut implements AudioOut {
     this.maxVoices = Math.max(1, opts.maxVoices ?? 24);
     this.useSpeech = opts.speech !== false;
     this.announcer = createAnnouncer();
+    this.samples = new SampleBank(defaultDecoder(() => this.ctx), opts.samples);
     for (const [k, v] of Object.entries(opts.volumes ?? {})) this.vols[k as VolumeKind] = clamp01(v);
     if (sharedCtx) this.attach(sharedCtx);
     else onContext.add(this.attach);
@@ -147,7 +179,16 @@ export class WebAudioOut implements AudioOut {
       g.connect(this.master as GainNode);
       return g;
     };
-    this.buses = { music: bus(), sfx: bus(), voice: bus() };
+    // Music → dialogue duck → master; the duck is separate from the pause duck (`duckMusic`), so
+    // the two multiply and never overwrite each other's automation.
+    this.dialogueDuck = ctx.createGain();
+    this.dialogueDuck.connect(this.master);
+    const music = ctx.createGain();
+    music.connect(this.dialogueDuck);
+    this.buses = { music, sfx: bus(), voice: bus() };
+    this.loopBus = ctx.createGain();
+    this.loopBus.gain.value = this.loopsPaused ? 0 : 1;
+    this.loopBus.connect(this.buses.sfx);
     this.applyVolumes(true);
     // A song requested while the context was missing or suspended starts once it runs.
     ctx.addEventListener('statechange', this.flushWanted);
@@ -177,12 +218,18 @@ export class WebAudioOut implements AudioOut {
 
   private play(id: string, bus: GainNode, o?: SfxOpts): void {
     const ctx = this.ctx as AudioContext;
-    const buf = this.buffer(id);
-    if (!buf) return;
+    // A sampled take when the id (or the id it aliases) has one, else the synth buffer.
+    const sid = this.sampleId(id);
+    const def = sid ? this.samples.sfxDef(sid) : null;
+    if (!def && !this.buffer(id)) return;
     const now = ctx.currentTime;
-    const lim = sfxLimits(id);
+    const synth = sfxLimits(id);
+    const lim = { voices: Math.max(1, def?.voices ?? synth.voices), gap: Math.max(0, def?.gap ?? synth.gap) };
     const last = this.lastStart.get(id);
     if (last !== undefined && now - last < lim.gap) return;
+    const take = sid ? this.samples.sfx(sid) : null;
+    const buf = take?.buffer ?? this.buffer(id);
+    if (!buf) return;
     this.prune(now);
     let count = 0;
     let oldest = -1;
@@ -200,7 +247,7 @@ export class WebAudioOut implements AudioOut {
     src.buffer = buf;
     src.playbackRate.value = pitch;
     const gain = ctx.createGain();
-    gain.gain.value = clamp01(o?.vol ?? 1);
+    gain.gain.value = clamp01(o?.vol ?? 1) * gainOf(take?.def.vol);
     src.connect(gain);
     const pan = o?.pan ?? 0;
     let panner: StereoPannerNode | null = null;
@@ -224,6 +271,23 @@ export class WebAudioOut implements AudioOut {
     this.lastStart.set(id, now);
   }
 
+  /**
+   * The sampled id that plays for a sound effect id: the id itself when its sample is ready, else
+   * an id with a ready sample and the same synth recipe (an alias such as 'boss/warning' →
+   * 'ui/warning'), else null. Cached; the cache resets when a group loads or is released.
+   */
+  private sampleId(id: string): string | null {
+    if (this.samples.state('sfx', id) === 'ready') return id;
+    let sid = this.sampleIds.get(id);
+    if (sid === undefined) {
+      const r = getSfxRecipe(id);
+      sid = (r && this.samples.ready('sfx').find((k) => getSfxRecipe(k) === r)) || null;
+      this.sampleIds.set(id, sid);
+    }
+    return sid;
+  }
+
+  /** The synth buffer of a sound effect id (rendered once, cached). */
   private buffer(id: string): AudioBuffer | null {
     const ctx = this.ctx;
     if (!ctx) return null;
@@ -275,6 +339,14 @@ export class WebAudioOut implements AudioOut {
       if (this.song.paused) this.song.resume();
       return;
     }
+    // A loaded sample plays first; `from` maps through its marks (else the top).
+    const take = this.samples.song(id);
+    if (take) {
+      this.song?.stop(fade);
+      this.song = new SamplePlayer(ctx, id, take, this.buses.music);
+      this.song.start(fade, o?.from ? (take.def.marks?.[o.from] ?? 0) : 0);
+      return;
+    }
     const parsed = getSong(id);
     if (!parsed) {
       // Fail soft: an unknown or broken song never silences the one that is playing.
@@ -294,6 +366,58 @@ export class WebAudioOut implements AudioOut {
     return this.song?.id ?? null;
   }
 
+  /** 'sample' or 'synth': what plays the current song (tests), or null. */
+  get songSource(): 'sample' | 'synth' | null {
+    return this.song ? (this.song instanceof SamplePlayer ? 'sample' : 'synth') : null;
+  }
+
+  // ------------------------------------------------------------------ samples
+
+  /**
+   * Fetch and decode a sample group (samples.ts). Never rejects; until a key is ready its synth
+   * version plays. When the song that plays gets its sample, it swaps over (see `swapToSample`).
+   */
+  loadSamples(group: string, onProgress?: (done: number, total: number) => void): Promise<void> {
+    return this.samples.load(group, onProgress).then(() => {
+      this.sampleIds.clear();
+      this.swapToSample();
+    });
+  }
+
+  /** Drop the decoded buffers of a group (memory; a song that plays keeps its buffer). */
+  releaseSamples(group: string): void {
+    this.samples.release(group);
+    this.sampleIds.clear();
+  }
+
+  /**
+   * The synth version of a song plays and its sample is now ready (the group loaded late, e.g. a
+   * skipped intro card): crossfade to the sample. Within the first seconds it continues at the
+   * same position (0.3 s); later the sample starts at its loop start (1.5 s), so the intro does
+   * not play twice. A one-shot that has played for a while keeps its synth version.
+   */
+  private swapToSample(): void {
+    const ctx = this.ctx;
+    const cur = this.song;
+    if (!ctx || !this.buses || ctx.state !== 'running' || !(cur instanceof SongPlayer) || cur.paused || cur.ended) return;
+    const take = this.samples.song(cur.id);
+    if (!take) return;
+    const pos = cur.position;
+    let at: number;
+    let fade: number;
+    if (pos < HOT_SWAP_SAME_POS) {
+      at = pos;
+      fade = 0.3;
+    } else if (take.def.loopStart !== null) {
+      at = take.def.loopStart;
+      fade = 1.5;
+    } else return;
+    cur.stop(fade);
+    const next = new SamplePlayer(ctx, cur.id, take, this.buses.music);
+    this.song = next;
+    next.start(fade, at);
+  }
+
   // ------------------------------------------------------------------ loops & ducking
 
   sfxLoop(key: string, id: string, o?: SfxOpts): void {
@@ -303,22 +427,54 @@ export class WebAudioOut implements AudioOut {
     const vol = clamp01(o?.vol ?? 1);
     const pitch = Math.max(0.1, Math.min(4, o?.pitch ?? 1));
     if (cur && cur.id === id) {
-      cur.gain.gain.setTargetAtTime(vol, ctx.currentTime, 0.02);
+      cur.gain.gain.setTargetAtTime(vol * cur.mul, ctx.currentTime, 0.02);
       cur.src.playbackRate.setTargetAtTime(pitch, ctx.currentTime, 0.02);
       return;
     }
     if (cur) this.stopSfx(key);
-    const buf = this.buffer(id);
+    // A sampled loop between its loop points (never the raw file ends: MP3 padding), else the synth loop.
+    const sid = this.sampleId(id);
+    const take = sid ? this.samples.sfx(sid) : null;
+    const buf = take?.buffer ?? this.buffer(id);
     if (!buf) return;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
+    if (take) {
+      const ls = Math.max(0, take.def.loopStart ?? 0);
+      const le = Math.min(buf.duration, take.def.loopEnd ?? buf.duration);
+      if (le > ls) {
+        src.loopStart = ls;
+        src.loopEnd = le;
+      }
+    }
     src.playbackRate.value = pitch;
+    const mul = gainOf(take?.def.vol);
     const gain = ctx.createGain();
-    gain.gain.value = vol;
-    src.connect(gain).connect(this.buses.sfx);
+    gain.gain.value = vol * mul;
+    src.connect(gain).connect(this.loopBus ?? this.buses.sfx);
     src.start();
-    this.loops.set(key, { id, src, gain });
+    this.loops.set(key, { id, src, gain, mul });
+  }
+
+  pauseLoops(): void {
+    this.loopsPaused = true;
+    this.setLoopBus(0, 0);
+  }
+
+  resumeLoops(): void {
+    this.loopsPaused = false;
+    // A short delay: loops stopped together with the resume (a scene that leaves gameplay) end
+    // before the bus comes back up.
+    this.setLoopBus(1, 0.05);
+  }
+
+  private setLoopBus(v: number, delay: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.loopBus) return;
+    const g = this.loopBus.gain;
+    g.cancelScheduledValues(ctx.currentTime);
+    g.setTargetAtTime(v, ctx.currentTime + delay, 0.03);
   }
 
   stopSfx(key: string, fadeTicks = 4): void {
@@ -351,10 +507,95 @@ export class WebAudioOut implements AudioOut {
   // ------------------------------------------------------------------ voice, volume, control
 
   voice(line: string): void {
+    // VOICE VOLUME 0 (or mute): nothing to hear, so no speech, no jingle and no music duck.
+    if (this.muted || this.vols.voice <= 0) return;
+    if (this.speak(voiceKey(line), 'announce')) return;
     this.announcer.volume = this.muted ? 0 : this.vols.master * this.vols.voice;
     if (this.useSpeech && !this.muted && this.announcer.say(line)) return;
     const ctx = this.ctx;
     if (ctx && this.buses && ctx.state === 'running') this.play('ui/announce', this.buses.voice);
+  }
+
+  /** A speech bubble line: its voice sample, else nothing (see `SpeechLane` for what it may cut off). */
+  say(text: string, speaker?: string, o?: SayOpts): void {
+    if (this.muted || this.vols.voice <= 0) return;
+    this.speak(voiceKey(text), 'bubble', { speaker, important: o?.important });
+  }
+
+  speaking(): boolean {
+    return this.speech !== null || this.lane.playing !== null || this.lane.queued !== null;
+  }
+
+  /**
+   * Route a voice sample through the speech lane (one line at a time; see `SpeechLane`). False
+   * when the audio is not running or the line has no ready sample (the caller falls back).
+   */
+  private speak(key: string, kind: SpeechKind, o?: { speaker?: string; important?: boolean }): boolean {
+    const ctx = this.ctx;
+    if (!ctx || !this.buses || ctx.state !== 'running' || !key || this.samples.state('voice', key) !== 'ready') return false;
+    const action = this.lane.offer(key, kind, ctx.currentTime, o);
+    if (action === 'replace') this.stopSpeech(0.04);
+    if (action === 'play' || action === 'replace') this.startSpeech(this.lane.playing as SpeechItem);
+    return true;
+  }
+
+  private startSpeech(item: SpeechItem): void {
+    const ctx = this.ctx;
+    const take = this.samples.voice(item.key);
+    if (!ctx || !this.buses || !take) {
+      const next = this.lane.done(ctx?.currentTime ?? 0);
+      if (next) this.startSpeech(next);
+      else this.releaseDuck();
+      return;
+    }
+    const now = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = take.buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = gainOf(take.def.vol);
+    src.connect(gain).connect(this.buses.voice);
+    const cur = { src, gain };
+    this.speech = cur;
+    src.onended = (): void => {
+      gain.disconnect();
+      // A replaced or stopped line does not advance the lane.
+      if (this.speech !== cur) return;
+      this.speech = null;
+      const next = this.lane.done(this.ctx?.currentTime ?? 0);
+      if (next) this.startSpeech(next);
+      else this.releaseDuck();
+    };
+    if (this.dialogueDuck) {
+      const g = this.dialogueDuck.gain;
+      g.cancelScheduledValues(now);
+      g.setTargetAtTime(DIALOGUE_DUCK, now, 0.03);
+    }
+    src.start(now);
+  }
+
+  /** Stop the voice sample that sounds (without advancing the lane). */
+  private stopSpeech(fade: number): void {
+    const cur = this.speech;
+    const ctx = this.ctx;
+    this.speech = null;
+    if (!cur || !ctx) return;
+    const now = ctx.currentTime;
+    cur.gain.gain.setTargetAtTime(0, now, Math.max(0.001, fade / 3));
+    try {
+      cur.src.stop(now + fade + 0.02);
+    } catch {
+      // already stopped
+    }
+  }
+
+  /** Bring the music back up after the last voice sample (150 ms hold). */
+  private releaseDuck(now = false): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.dialogueDuck) return;
+    const g = this.dialogueDuck.gain;
+    g.cancelScheduledValues(ctx.currentTime);
+    if (now) g.value = 1;
+    else g.setTargetAtTime(1, ctx.currentTime + 0.15, 0.15);
   }
 
   setVolume(kind: VolumeKind, v: number): void {
@@ -385,10 +626,15 @@ export class WebAudioOut implements AudioOut {
     const ctx = this.ctx;
     this.announcer.cancel();
     this.wanted = null;
+    this.lane.clear();
     if (!ctx) return;
+    this.stopSpeech(0.01);
+    this.releaseDuck(true);
     const now = ctx.currentTime;
     while (this.active.length > 0) this.kill(this.active.length - 1, now);
     for (const key of [...this.loops.keys()]) this.stopSfx(key, 0);
+    this.loopsPaused = false;
+    this.setLoopBus(1, 0.05);
     this.song?.stop(0);
     this.song = null;
   }
@@ -481,7 +727,18 @@ function scheduleEnv(p: AudioParam, t0: number, dur: number, e: InstrumentEnv, p
   return t0 + dur + r * 2;
 }
 
-class SongPlayer {
+/** What `WebAudioOut.music` drives: the synth SongPlayer or a SamplePlayer. */
+interface MusicPlayer {
+  readonly id: string;
+  readonly paused: boolean;
+  /** Start; `at` = seconds into the song. */
+  start(fade: number, at?: number): void;
+  pause(): void;
+  resume(): void;
+  stop(fade: number): void;
+}
+
+class SongPlayer implements MusicPlayer {
   readonly id: string;
   private readonly ctx: BaseAudioContext;
   private readonly song: ParsedSong;
@@ -731,6 +988,17 @@ class SongPlayer {
     return this.pausedAt !== null;
   }
 
+  /** Stopped (by `stop`, or a one-shot that played to its end). */
+  get ended(): boolean {
+    return this.stopped;
+  }
+
+  /** Seconds of song time played so far. */
+  get position(): number {
+    if (this.pausedAt !== null) return this.pausedAt;
+    return Math.max(0, this.ctx.currentTime - this.startAt);
+  }
+
   pause(): void {
     if (this.pausedAt !== null || this.stopped) return;
     const now = this.ctx.currentTime;
@@ -777,6 +1045,138 @@ class SongPlayer {
     if (this.timer !== null && this.pausedAt !== null) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+  }
+}
+
+// ==================================================================== sample player
+
+/**
+ * A sampled song (samples.ts `SampleSong`): one AudioBufferSourceNode plays the file; with a loop
+ * (`loopStart` not null) the node loops between `loopStart` (the end of the intro) and `loopEnd`,
+ * so the intro plays once and the loop is seamless. A one-shot (a jingle) ends by itself. Pause
+ * remembers the position folded into the loop; resume starts a new node there. Fades work like
+ * the SongPlayer's.
+ */
+class SamplePlayer implements MusicPlayer {
+  readonly id: string;
+  private readonly ctx: BaseAudioContext;
+  private readonly take: SongTake;
+  private readonly out: GainNode;
+  private readonly level: number;
+  private src: AudioBufferSourceNode | null = null;
+  /** Context time of song position 0 for the node that plays (positions past the loop fold). */
+  private t0 = 0;
+  private pausedAt: number | null = null;
+  private stopped = false;
+
+  constructor(ctx: BaseAudioContext, id: string, take: SongTake, bus: GainNode) {
+    this.ctx = ctx;
+    this.id = id;
+    this.take = take;
+    this.level = gainOf(take.def.vol);
+    this.out = ctx.createGain();
+    this.out.gain.value = 0;
+    this.out.connect(bus);
+  }
+
+  private get loopStart(): number | null {
+    const ls = this.take.def.loopStart;
+    return ls !== null && this.loopEnd > ls ? Math.max(0, ls) : null;
+  }
+
+  private get loopEnd(): number {
+    return Math.min(songLoopEnd(this.take.def), this.take.buffer.duration);
+  }
+
+  get paused(): boolean {
+    return this.pausedAt !== null;
+  }
+
+  /** File position in seconds (folded into the loop). */
+  get position(): number {
+    if (this.pausedAt !== null) return this.pausedAt;
+    return foldLoopPosition(this.ctx.currentTime - this.t0, this.loopStart, this.loopEnd, this.take.buffer.duration);
+  }
+
+  start(fade: number, at = 0): void {
+    const now = this.ctx.currentTime;
+    this.out.gain.setValueAtTime(fade > 0 ? 0 : this.level, now);
+    if (fade > 0) this.out.gain.linearRampToValueAtTime(this.level, now + fade);
+    this.play(at, now + 0.02);
+  }
+
+  private play(at: number, when: number): void {
+    const buf = this.take.buffer;
+    const ls = this.loopStart;
+    const offset = foldLoopPosition(at, ls, this.loopEnd, buf.duration);
+    if (ls === null && offset >= buf.duration) {
+      this.stopped = true;
+      return;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    if (ls !== null) {
+      src.loop = true;
+      src.loopStart = ls;
+      src.loopEnd = this.loopEnd;
+    }
+    src.connect(this.out);
+    src.onended = (): void => {
+      src.disconnect();
+      if (this.src !== src) return;
+      this.src = null;
+      // A one-shot played to its end.
+      if (this.pausedAt === null) this.stopped = true;
+    };
+    src.start(when, offset);
+    this.src = src;
+    this.t0 = when - offset;
+  }
+
+  pause(): void {
+    if (this.pausedAt !== null || this.stopped) return;
+    const now = this.ctx.currentTime;
+    this.pausedAt = this.position;
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setTargetAtTime(0, now, 0.01);
+    this.halt(now + 0.05);
+  }
+
+  resume(): void {
+    if (this.pausedAt === null || this.stopped) return;
+    const now = this.ctx.currentTime;
+    const at = this.pausedAt;
+    this.pausedAt = null;
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setValueAtTime(0, now);
+    this.out.gain.linearRampToValueAtTime(this.level, now + 0.08);
+    this.play(at, now + 0.02);
+  }
+
+  stop(fade: number): void {
+    if (this.stopped && !this.src) {
+      this.out.disconnect();
+      return;
+    }
+    this.stopped = true;
+    const now = this.ctx.currentTime;
+    const f = Math.max(0.02, fade);
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setValueAtTime(this.out.gain.value, now);
+    this.out.gain.linearRampToValueAtTime(0, now + f);
+    this.halt(now + f);
+    setTimeout(() => this.out.disconnect(), (f + 0.2) * 1000);
+  }
+
+  private halt(at: number): void {
+    const src = this.src;
+    this.src = null;
+    if (!src) return;
+    try {
+      src.stop(at);
+    } catch {
+      // already stopped
     }
   }
 }

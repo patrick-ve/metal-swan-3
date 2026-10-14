@@ -44,6 +44,9 @@ export interface DrawCall {
 export class RecordingRenderer implements Renderer {
   readonly w = 384;
   readonly h = 216;
+  readonly res = 1;
+  readonly mode = 'pixel';
+  readonly subpixel = 'off';
   camX = 0;
   camY = 0;
   readonly calls: DrawCall[] = [];
@@ -62,6 +65,8 @@ export class RecordingRenderer implements Renderer {
   end(): void {
     this.rec('end', []);
   }
+  setMode(): void {}
+  setSubpixel(): void {}
   setCamera(x: number, y: number): void {
     this.camX = Math.round(x);
     this.camY = Math.round(y);

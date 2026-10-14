@@ -5,6 +5,8 @@
  * The Web Audio implementation lives in audio.browser.ts.
  */
 
+import type { SayOpts } from './samples';
+
 export type VolumeKind = 'master' | 'music' | 'sfx' | 'voice';
 
 export interface SfxOpts {
@@ -31,7 +33,10 @@ export interface AudioOut {
   sfx(id: string, o?: SfxOpts): void;
   /** Start a song by id, or stop music with null. */
   music(id: string | null, o?: MusicOpts): void;
-  /** Announcer line (speech synthesis when available and enabled). */
+  /**
+   * Announcer line: its voice sample when one is loaded (`voiceKey(line)`, samples.ts), else
+   * speech synthesis when available and enabled, else a short jingle.
+   */
   voice(line: string): void;
   setVolume(kind: VolumeKind, v: number): void;
   stopAll(): void;
@@ -55,6 +60,27 @@ export interface AudioOut {
   /** Suspend / resume all audio output (hidden tab). */
   suspend?(): void;
   resume?(): void;
+  /**
+   * Fetch and decode a sample group ('boot', 'mission:ams'; samples.ts). Resolves when every
+   * file is decoded or has failed (it never rejects); until then the synth plays. Optional:
+   * headless outputs (NullAudio, the sim stats) have none.
+   */
+  loadSamples?(group: string, onProgress?: (done: number, total: number) => void): Promise<void>;
+  /**
+   * A speech bubble line, spoken by its voice sample (`voiceKey(text)`) when one is loaded,
+   * else nothing (no synth or speech fallback). `speaker` and `o.important` set what the line may
+   * cut off (see `SpeechLane`): the same speaker replaces their own line, an important line (a
+   * hint or radio bubble) cuts off a gag line, a gag line waits.
+   */
+  say?(text: string, speaker?: string, o?: SayOpts): void;
+  /** True while a voice sample speaks or waits to speak (a scene paces its next line by it). */
+  speaking?(): boolean;
+  /**
+   * Silence / restore every looping sound (`sfxLoop`) while a scene is on top of gameplay (the
+   * pause menu, the continue screen); the loops keep running underneath.
+   */
+  pauseLoops?(): void;
+  resumeLoops?(): void;
 }
 
 // Registries live next to their implementations; re-exported here for one-stop imports.
@@ -62,8 +88,14 @@ export { defineSfx, hasSfx, jitterPitch, listSfx, renderSfx, sfxJitter } from '.
 export type { SfxLayer, SfxRecipe } from './synth';
 export { defineSong, hasSong, listSongs, orderTime } from './music';
 export type { ChannelDef, InstrumentDef, InstrumentId, SongDef } from './music';
+export { defineSampleGroup, getSampleGroup, listSampleGroups, voiceKey } from './samples';
+export type { SampleGroup, SampleSfx, SampleSong, SampleVoice, SayOpts } from './samples';
 
-/** Silent implementation for headless runs. Keeps a short log so tests can assert on calls. */
+/**
+ * Silent implementation for headless runs. Keeps a short log so tests can assert on calls. It has
+ * no `loadSamples` / `say` on purpose: new optional members add no log entries (the log is a
+ * 256-entry ring that tests read).
+ */
 export class NullAudio implements AudioOut {
   readonly log: string[] = [];
   private readonly maxLog = 256;

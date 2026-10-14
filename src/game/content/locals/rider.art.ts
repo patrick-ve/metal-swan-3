@@ -14,15 +14,21 @@
  * kick (2), photo-pose (2), die / die-knife / die-blast / die-burn / die-crush (the rider alone,
  * the bike leaves as an fx), flee (4: runs off), bike (6: the riderless bike skids and fades),
  * cap (4: the flying cap), food-cube (4: the popped cube backpack).
+ *
+ * 2× art (mission ams): every strip is registered again at density 2 — the rider from the rig at
+ * 2×, the bikes (fat tyres with tread, mag rims, battery, phone mount, speaker; spoked city
+ * wheels), the cube backpack and the cap redrawn on the 2× grid (`…Hi` below).
  */
 import type { Color } from '../../../engine/color';
 import { INK, PAL } from '../../../engine/palette';
 import { PixelBuffer } from '../../../engine/pixel';
 import type { Frame } from '../../../engine/render';
-import { defineSprite } from '../../../engine/sprites';
+import { defineSprite, getFrames } from '../../../engine/sprites';
+import { HI, HiSketch, outlineHi, type HiPen } from '../../art/hi';
+import { crushStripHi } from '../../art/hi-strips';
 import { withPieces, type Piece } from '../../art/human-fx';
 import { blastFrames, burnFrames } from '../../art/human-sprites';
-import { renderHuman, type ArmPose, type HumanStyle, type LegPose, type Pose } from '../../art/humanoid';
+import { renderHuman, type ArmPose, type Density, type HumanStyle, type LegPose, type Pose } from '../../art/humanoid';
 import * as P from '../../art/poses';
 import { R } from '../../art/paint';
 import { CRUSH_TIMING, FLAT, Sketch, crushStrip } from '../creatures/draw';
@@ -235,6 +241,242 @@ function drawBike(s: Sketch, kind: BikeKind, o: BikeOpts): void {
   }
 }
 
+// ------------------------------------------------------------------------------------ the bike at 2×
+
+/** Pixels of a 2× wheel buffer by their distance from its centre (in 2× px) and direction. */
+function ringPaint(b: PixelBuffer, paint: (q: number, ux: number, uy: number, x: number, y: number) => void): void {
+  const c = b.w / 2;
+  for (let y = 0; y < b.h; y++) {
+    for (let x = 0; x < b.w; x++) {
+      if ((b.get(x, y) & 255) === 0) continue;
+      const dx = x + 0.5 - c;
+      const dy = y + 0.5 - c;
+      const q = Math.hypot(dx, dy);
+      paint(q, q > 0 ? dx / q : 0, q > 0 ? dy / q : 0, x, y);
+    }
+  }
+}
+
+/**
+ * The 2× fat tyre (the `fatWheel` disc doubled: 2·(2r + 1) px): thick rubber lit on the
+ * upper-left, a 1-px sidewall line, 16 tread notches turning with the phase, a small steel mag
+ * rim with three dark spokes, a hub and a bolt.
+ */
+function fatWheelHi(r: number, phase: number): PixelBuffer {
+  const t = R('black');
+  const rim = R('steel');
+  const D = (r * 2 + 1) * HI;
+  const R2 = D / 2;
+  const b = new PixelBuffer(D, D);
+  b.ellipse(0, 0, D, D, t[1]);
+  const rr = Math.max(1, r - 4);
+  const RR = (rr * 2 + 1) * HI / 2;
+  ringPaint(b, (q, ux, uy, x, y) => {
+    const lit = ux + uy < -0.6;
+    const dark = ux + uy > 0.9;
+    if (q > R2 - 2.2 && lit) b.set(x, y, q > R2 - 1.1 && ux + uy < -1.1 ? t[3] : t[2]);
+    else if (q > R2 - 1.6 && dark) b.set(x, y, t[0]);
+    // Sidewall: a line just outside the rim, lit on its upper-left arc (so it shows on the
+    // black rubber), dark on the lower-right.
+    else if (q > RR + 0.6 && q <= RR + 1.6) b.set(x, y, ux + uy < 0 ? t[2] : t[0]);
+  });
+  // Tread on the outer edge: 16 knobs, a broken 1-px ring one ramp step lighter than the rubber,
+  // turning with the phase (dark knobs on the dark tyre do not show at game scale).
+  for (let k = 0; k < 16; k++) {
+    const a = ((k + phase) / 16) * Math.PI * 2;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    const x = Math.floor(R2 + ca * (R2 - 1.5));
+    const y = Math.floor(R2 + sa * (R2 - 1.5));
+    if (b.get(x, y) === t[1] || b.get(x, y) === t[0]) b.set(x, y, t[2]);
+  }
+  // The rim: a steel disc, lit edge top-left, shadow edge bottom-right.
+  const r0 = Math.round(R2 - RR);
+  const rd = Math.round(RR * 2);
+  const rb = new PixelBuffer(D, D);
+  rb.ellipse(r0, r0, rd, rd, rim[2]);
+  ringPaint(rb, (q, ux, uy, x, y) => {
+    if (q > RR - 1.1 && ux + uy < -0.5) rb.set(x, y, rim[3]);
+    else if (q > RR - 1.1 && ux + uy > 0.5) rb.set(x, y, rim[1]);
+  });
+  // Three spokes of the mag wheel, turning with the phase.
+  for (let k = 0; k < 3; k++) {
+    const a = (phase / 4) * Math.PI * 0.5 + (k * Math.PI * 2) / 3;
+    rb.line(Math.floor(R2 + Math.cos(a) * 1.5), Math.floor(R2 + Math.sin(a) * 1.5), Math.floor(R2 + Math.cos(a) * (RR - 1.5)), Math.floor(R2 + Math.sin(a) * (RR - 1.5)), rim[0]);
+  }
+  rb.rect(R2 - 1, R2 - 1, 2, 2, rim[1]);
+  rb.set(R2 - 1, R2 - 1, rim[4]);
+  b.blit(rb, 0, 0);
+  return b;
+}
+
+/** The 2× city wheel: a 4-px tyre (lit top-left), a 2-tone silver rim, eight 1-px spokes. */
+function cityWheelHi(r: number, phase: number): PixelBuffer {
+  const t = R('black');
+  const rim = R('steel');
+  const D = (r * 2 + 1) * HI;
+  const R2 = D / 2;
+  const b = new PixelBuffer(D, D);
+  b.ellipse(0, 0, D, D, t[1]);
+  // Rim band (2 px) inside the tyre, then the open wheel.
+  const ri = R2 - 4;
+  b.ellipse(Math.round(R2 - ri), Math.round(R2 - ri), Math.round(ri * 2), Math.round(ri * 2), rim[3]);
+  const ro = R2 - 6;
+  b.ellipse(Math.round(R2 - ro), Math.round(R2 - ro), Math.round(ro * 2), Math.round(ro * 2), 0);
+  ringPaint(b, (q, ux, uy, x, y) => {
+    if (q > R2 - 4) {
+      if (ux + uy < -0.7 && q > R2 - 2.5) b.set(x, y, t[2]);
+      else if (ux + uy > 1) b.set(x, y, t[0]);
+    } else if (q <= ri - 1 && q > ro) b.set(x, y, rim[2]);
+    else if (ux + uy > 0.8) b.set(x, y, rim[2]);
+  });
+  for (let k = 0; k < 8; k++) {
+    const a = ((k + phase / 2) / 8) * Math.PI * 2;
+    b.line(Math.floor(R2 + Math.cos(a) * 1), Math.floor(R2 + Math.sin(a) * 1), Math.floor(R2 + Math.cos(a) * (ro + 0.5)), Math.floor(R2 + Math.sin(a) * (ro + 0.5)), rim[k & 1 ? 1 : 2]);
+  }
+  b.rect(R2 - 1, R2 - 1, 2, 2, rim[2]);
+  b.set(R2 - 1, R2 - 1, rim[4]);
+  return b;
+}
+
+/** 2× buffer column / row of the LEFT / TOP edge of the 1× pixel a body-space point lands on. */
+const gx = (p: HiPen, x: number): number => Math.round(p.ox + x) * HI;
+const gy = (p: HiPen, y: number): number => Math.round(p.oy + y) * HI;
+
+/**
+ * The 2× twin of a 1× `thickLine(X(a), Y(a), X(b), Y(b), w)` (or a 1-px `line` for w 1): the same
+ * pixels on the 1× grid, drawn as a `2w` capsule on the 2× grid.
+ */
+function tube(p: HiPen, a: Pt, b: Pt, w: number, c: Color): void {
+  const o = w % 2 === 0 ? 1 : 0;
+  p.b.thickLine(gx(p, a[0]) + o, gy(p, a[1]) + o, gx(p, b[0]) + o, gy(p, b[1]) + o, w * HI, c);
+}
+
+/** A 1-px (2×) line between the centres of the 1× pixels of two body-space points, offset by (dx, dy) 2× px. */
+function hair(p: HiPen, a: Pt, b: Pt, c: Color, dx = 0, dy = 0): void {
+  p.b.line(gx(p, a[0]) + dx, gy(p, a[1]) + dy, gx(p, b[0]) + dx, gy(p, b[1]) + dy, c);
+}
+
+/** The bike at 2× (`drawBike` on the 2× grid, the parts in the same 1× places). */
+function drawBikeHi(s: HiSketch, kind: BikeKind, o: BikeOpts): void {
+  const geo = BIKE[kind];
+  const T = rotor(geo, o.rot ?? 0);
+  const phase = o.phase ?? 0;
+  const frame = R(o.color);
+  const steel = R('steel');
+  const black = R('black');
+  const rear = T(geo.rear);
+  const front = T(geo.front);
+  const bb = T(geo.bb);
+  const fat = kind === 'fat';
+  const seat = T([geo.hip[0] - 1, geo.hip[1] + 2]);
+  const head = T(fat ? [8, -17] : [9, -19]);
+  const bar = T(fat ? [6, -25] : [5, -28]);
+  const wheelBuf = (fat ? fatWheelHi : cityWheelHi)(geo.r, phase);
+  const r = geo.r * HI;
+  s.detail((p) => {
+    p.b.blit(wheelBuf, gx(p, rear[0]) - r, gy(p, rear[1]) - r);
+    p.b.blit(wheelBuf, gx(p, front[0]) - r, gy(p, front[1]) - r);
+  });
+  // Chain stay (with the chain: a 1-px steel dash line along it), seat stay.
+  s.add(black, (p) => {
+    tube(p, rear, bb, 1, FLAT);
+    tube(p, rear, seat, 1, FLAT);
+  }, { ring: false, hi: 0.5, lo: 0.5 });
+  s.detail((p) => {
+    const ax = gx(p, rear[0]) + 1;
+    const ay = gy(p, rear[1]) + 1;
+    const bx = gx(p, bb[0]) + 1;
+    const by = gy(p, bb[1]) + 1;
+    const n = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay)));
+    for (let i = 2; i < n - 1; i += 2) p.b.set(Math.round(ax + ((bx - ax) * i) / n), Math.round(ay + ((by - ay) * i) / n) + 1, steel[2]);
+  });
+  // Main frame: seat tube, top tube, down tube, fork, lit along the top with 1-px bands.
+  s.add(frame, (p) => {
+    tube(p, bb, seat, 2, FLAT);
+    tube(p, seat, head, 2, FLAT);
+    tube(p, head, bb, fat ? 3 : 2, FLAT);
+    tube(p, head, front, 2, FLAT);
+  }, { hi: 0.5, lo: 0.5 });
+  // Weld seams and the head tube badge.
+  s.detail((p) => {
+    p.b.set(gx(p, head[0]) + 1, gy(p, head[1]) + 1, frame[Math.min(frame.length - 1, 3)]);
+    p.b.set(gx(p, head[0]) + 2, gy(p, head[1]) + 2, steel[3]);
+  });
+  if (fat) {
+    // The battery on the down tube: a black pack with a seam, a lock and three green charge LEDs.
+    const b0 = T([5, -14]);
+    const b1 = T([2, -11]);
+    s.add(black, (p) => tube(p, b0, b1, 3, FLAT), { hi: 0.5, lo: 0.5 });
+    s.detail((p) => {
+      hair(p, b0, b1, black[0], 1, 1);
+      const mx = (gx(p, b0[0]) + gx(p, b1[0])) / 2;
+      const my = (gy(p, b0[1]) + gy(p, b1[1])) / 2;
+      for (let k = 0; k < 3; k++) p.b.set(Math.round(mx) + k - 2, Math.round(my) - k, PAL.green[k < 2 ? 4 : 2]);
+      p.b.set(gx(p, b1[0]), gy(p, b1[1]) + 1, steel[3]);
+    });
+  }
+  // Stem, handlebar and its grips.
+  s.add(steel, (p) => {
+    tube(p, head, bar, 1, FLAT);
+    p.b.rect(gx(p, bar[0]) - 2, gy(p, bar[1]), 6, 2, FLAT);
+  }, { ring: false, hi: 0.5, lo: 0.5 });
+  s.detail((p) => {
+    p.b.rect(gx(p, bar[0]) + 2, gy(p, bar[1]), 2, 2, black[1]);
+    p.b.set(gx(p, bar[0]) + 2, gy(p, bar[1]), black[2]);
+  });
+  // Saddle: a padded black seat with a lit top seam and a steel post.
+  const sd = T([geo.hip[0], geo.hip[1] + 1]);
+  s.add(black, (p) => p.b.rect(gx(p, sd[0]) - 6, gy(p, sd[1]), 12, 4, FLAT), { hi: 0.5, lo: 0.5 });
+  s.detail((p) => {
+    p.b.hline(gx(p, sd[0]) - 4, gx(p, sd[0]) + 3, gy(p, sd[1]) + 1, black[3]);
+  });
+  // Rear rack: two rails and a strut down to the axle.
+  const rk0 = T([geo.hip[0] - 2, -16]);
+  const rk1 = T([rear[0] - 4, -16]);
+  s.add(steel, (p) => {
+    tube(p, rk0, rk1, 1, FLAT);
+    hair(p, rk1, rear, FLAT, 1, 1);
+  }, { ring: false, hi: 0.5, lo: 0.5 });
+  if (fat && !o.pair) {
+    // The speaker: a black box with a steel cone (rings), a bass port and a green power LED.
+    const sp = T([-16, -21]);
+    s.add(black, (p) => p.b.rect(gx(p, sp[0]), gy(p, sp[1]), 12, 10, FLAT), { hi: 0.5, lo: 0.5 });
+    s.detail((p) => {
+      const x = gx(p, sp[0]);
+      const y = gy(p, sp[1]);
+      p.b.ellipse(x + 3, y + 2, 7, 7, steel[1]);
+      p.b.ellipse(x + 4, y + 3, 5, 5, steel[2]);
+      p.b.set(x + 5, y + 4, steel[4]);
+      p.b.set(x + 6, y + 5, black[0]);
+      p.b.set(x + 2, y + 1, PAL.green[4]);
+      p.b.hline(x + 9, x + 10, y + 8, black[0]);
+    });
+  }
+  // Phone on a steel clamp above the bar: a black case, a lit screen with a map line.
+  const ph = T([bar[0] + 2, bar[1] - 3]);
+  s.detail((p) => {
+    const x = gx(p, ph[0]);
+    const y = gy(p, ph[1]);
+    p.b.rect(x, y, 4, 6, INK);
+    p.b.rect(x + 1, y + 1, 2, 4, PAL.sky[2]);
+    p.b.set(x + 1, y + 1, PAL.sky[3]);
+    p.b.set(x + 2, y + 3, PAL.gold[3]);
+    p.b.set(x + 1, y + 4, PAL.sky[3]);
+    p.b.vline(x + 1, y + 6, y + 6, steel[2]);
+  });
+  if (fat) {
+    // Mudguard over the front wheel: a 2-px arc in the frame colour with a lit top edge.
+    s.add(frame, (p) => {
+      for (let k = -6; k <= 6; k++) {
+        const a = -Math.PI / 2 + (k / 6) * 0.9;
+        const q = T([geo.front[0] + Math.cos(a) * (r / HI + 1), geo.front[1] + Math.sin(a) * (r / HI + 1)]);
+        p.b.rect(Math.round((p.ox + q[0]) * HI), Math.round((p.oy + q[1]) * HI), 2, 2, FLAT);
+      }
+    }, { ring: false, hi: 0.5, lo: 0, clean: false });
+  }
+}
+
 // ------------------------------------------------------------------------------------ the rider
 
 /** Legs whose feet sit on the pedals (crank angle `a` in turns; near pedal at a, far at a + ½). */
@@ -255,55 +497,126 @@ function pedalLegs(kind: BikeKind, a: number, hip: Pt): { legN: LegPose; legF: L
 
 const grip = (x: number, y: number): ArmPose => ({ to: [x, y], hand: 'grip' });
 
-/** A rider on the bike: the human placed with its hip on the saddle. */
-function rider(style: HumanStyle, pose: Pose, kind: BikeKind, rot: number, extra?: (f: Frame) => Frame): Piece {
-  let f = renderHuman(style, { weapon: 'none', grounded: false, ...pose, rot: (pose.rot ?? 0) + rot }, 'full');
+/** A rider on the bike: the human placed with its hip on the saddle (`d` 2: a 2× piece). */
+function rider(style: HumanStyle, pose: Pose, kind: BikeKind, rot: number, extra?: (f: Frame) => Frame, d: Density = 1): Piece {
+  let f = renderHuman(style, { weapon: 'none', grounded: false, ...pose, rot: (pose.rot ?? 0) + rot }, 'full', d);
   if (extra) f = extra(f) as typeof f;
   const geo = BIKE[kind];
   const hip = rotor(geo, rot)(geo.hip);
   const fh = f.pts?.hip ?? [0, -15];
-  return { buf: f.buf, x: Math.round(hip[0] - fh[0] - f.ox), y: Math.round(hip[1] - fh[1] - f.oy) };
+  const piece: Piece = { buf: f.buf, x: Math.round(hip[0] - fh[0] - f.ox), y: Math.round(hip[1] - fh[1] - f.oy) };
+  if (d !== 1) piece.density = d;
+  return piece;
 }
 
-/** The green cube backpack (with tiny EATS letters), a piece placed behind the torso. */
+/**
+ * The green cube backpack (a burger logo on a dark band), a piece placed behind the torso. The
+ * logo is symmetric on purpose: the rider is drawn flipped when he faces left, and letters would
+ * then read mirrored.
+ */
 export function cubePack(open = false): PixelBuffer {
   const s = new Sketch(16, 16, 0, 0);
   s.add(PAL.green, (b) => b.rect(1, open ? 4 : 2, 13, 12 - (open ? 2 : 0), FLAT));
   if (open) s.add(PAL.green, (b) => b.poly([1, 4, 14, 4, 11, 0, 3, 1], FLAT));
   s.detail((b) => {
-    // A dark band with four tiny letters (E A T S, 2×3 each).
+    // A dark band with a tiny burger (7×4, centred on x 7): bun, lettuce, patty, bun.
     const y = open ? 8 : 7;
     b.rect(2, y, 11, 4, PAL.black[1]);
-    const G = PAL.snow[3];
-    // E
-    b.vline(3, y, y + 2, G); b.set(4, y, G); b.set(4, y + 2, G);
-    // A
-    b.vline(6, y + 1, y + 2, G); b.set(7, y, G); b.vline(8, y + 1, y + 2, G);
-    // T
-    b.set(9, y, G); b.vline(10, y, y + 2, G);
-    // S
-    b.set(12, y, G); b.set(11, y + 1, G); b.set(12, y + 2, G);
+    b.hline(5, 9, y, PAL.gold[2]);
+    b.hline(4, 10, y + 1, PAL.green[4]);
+    b.hline(4, 10, y + 2, PAL.brown[2]);
+    b.hline(5, 9, y + 3, PAL.gold[1]);
     b.hline(2, 13, open ? 5 : 3, PAL.green[4]);
   });
   return s.frame().buf;
 }
 
+/**
+ * The 2× cube backpack (the 16 × 16 box of `cubePack` on the 2× grid): green thermal bag with a
+ * lit lid seam and stitched corners, a carry strap, and the burger logo in detail — sesame bun,
+ * lettuce frill, cheese, patty, bottom bun. Symmetric, like the 1× logo (the rider is mirrored).
+ */
+export function cubePackHi(open = false): PixelBuffer {
+  const s = new HiSketch(16, 16, 0, 0, 2);
+  s.add(PAL.green, (p) => p.rect(1, open ? 4 : 2, 13, 12 - (open ? 2 : 0), FLAT), { hi: 0.5, lo: 0.5 });
+  if (open) s.add(PAL.green, (p) => p.poly([1, 4, 14, 4, 11, 0, 3, 1], FLAT), { hi: 0.5, lo: 0.5 });
+  s.detail((p) => {
+    const b = p.b;
+    const G = PAL.green;
+    const y = (open ? 8 : 7) * HI;
+    const top = (open ? 5 : 3) * HI;
+    // Lid seam (lit) with a dark stitch line under it; stitched vertical edges.
+    b.hline(4, 27, top + 1, G[4]);
+    b.hline(4, 27, top + 2, G[1]);
+    for (let yy = top + 3; yy < 28; yy += 2) {
+      b.set(4, yy, G[3]);
+      b.set(27, yy, G[1]);
+    }
+    // The dark logo band (11 × 4 logical) with a lit top edge.
+    b.rect(4, y, 22, 8, PAL.black[1]);
+    b.hline(4, 25, y, PAL.black[2]);
+    // Burger, centred on the band (x 15 | 16 is the axis).
+    b.hline(11, 20, y + 1, PAL.gold[2]);
+    b.hline(10, 21, y + 2, PAL.gold[2]);
+    b.hline(12, 19, y + 1, PAL.gold[3]);
+    for (const x of [12, 15, 16, 19]) b.set(x, y + 2, PAL.snow[3]);
+    for (let x = 9; x <= 22; x++) b.set(x, y + 3, (x & 1) === 0 ? PAL.green[4] : PAL.green[3]);
+    b.hline(10, 21, y + 4, PAL.gold[3]);
+    b.set(10, y + 5, PAL.gold[3]);
+    b.set(21, y + 5, PAL.gold[3]);
+    b.hline(10, 21, y + 5, PAL.brown[1]);
+    b.hline(11, 20, y + 5, PAL.brown[2]);
+    b.hline(11, 20, y + 6, PAL.gold[1]);
+    // Carry strap on top (closed bag only).
+    if (!open) {
+      b.hline(12, 19, 5, PAL.black[2]);
+      b.set(12, 6, PAL.black[1]);
+      b.set(19, 6, PAL.black[1]);
+    }
+  });
+  // A 2-px outline with its corners cut (no square-corner pixels): the bag is often the frame's
+  // top-left extreme, and the 1× frame's box has no room for them.
+  return s.buf.outline(INK).outline(INK);
+}
+
 /** Add the cube backpack to a rider frame (behind the torso, over the lower back). */
 function withCube(f: Frame): Frame {
   const hip = f.pts?.hip ?? [0, -15];
+  if ((f.density ?? 1) !== 1) return withPieces(f, [{ buf: cubePackHi(), x: hip[0] - 15, y: hip[1] - 22, behind: true, density: HI }]);
   return withPieces(f, [{ buf: cubePack(), x: hip[0] - 15, y: hip[1] - 22, behind: true }]);
 }
 
-/** One frame: bike + rider (+ passenger). */
-function combo(kind: BikeKind, color: string, phase: number, rot: number, people: Array<{ style: HumanStyle; pose: Pose; at?: 'rack' }>, cube: boolean): Frame {
+/** 2× bikes by look (a set draws the same few bikes in every strip; read-only, `withPieces` copies). */
+const bikeHiCache = new Map<string, Frame>();
+
+/** The 2× bike frame for these options (cached). */
+function bikeHi(kind: BikeKind, o: BikeOpts): Frame {
+  const key = `${kind}|${o.color}|${o.rot ?? 0}|${o.phase ?? 0}|${o.pair === true}`;
+  let f = bikeHiCache.get(key);
+  if (!f) {
+    const s = new HiSketch(64, 56, 32, 50, 2);
+    drawBikeHi(s, kind, o);
+    f = s.frame();
+    bikeHiCache.set(key, f);
+  }
+  return f;
+}
+
+/** One frame: bike + rider (+ passenger); `d` 2 draws it all on the 2× grid. */
+function combo(kind: BikeKind, color: string, phase: number, rot: number, people: Array<{ style: HumanStyle; pose: Pose; at?: 'rack' }>, cube: boolean, d: Density = 1): Frame {
   const geo = BIKE[kind];
-  const s = new Sketch(64, 56, 32, 50);
-  drawBike(s, kind, { color, rot, phase, pair: people.length > 1 });
-  const bike = s.frame();
+  let bike: Frame;
+  if (d === 1) {
+    const s = new Sketch(64, 56, 32, 50);
+    drawBike(s, kind, { color, rot, phase, pair: people.length > 1 });
+    bike = s.frame();
+  } else {
+    bike = bikeHi(kind, { color, rot, phase, pair: people.length > 1 });
+  }
   const pieces: Piece[] = [];
   for (let i = people.length - 1; i >= 0; i--) {
     const p = people[i];
-    let piece = rider(p.style, p.pose, kind, rot, cube && i === 0 ? withCube : undefined);
+    let piece = rider(p.style, p.pose, kind, rot, cube && i === 0 ? withCube : undefined, d);
     if (p.at === 'rack') {
       // The passenger sits on the rack, 10 px behind the rider.
       const T = rotor(geo, rot);
@@ -346,9 +659,17 @@ export interface RiderSetOpts {
   tell: 'wheelie' | 'bell';
   /** Gag strip: 'bob' (head bob to the music) or 'phone'. */
   gag: 'bob' | 'phone';
+  /**
+   * A set with the same rider (style and cube): its rider-only strips (deaths, flee) are the same
+   * pictures, so the 2× art reuses them instead of drawing them again.
+   */
+  same?: string;
 }
 
-const def = (id: string, gen: () => Frame[], o: { ticksPerFrame?: number; durations?: readonly number[]; loop?: boolean } = {}): void => defineSprite(id, gen, { trim: true, ...o });
+type StripOpts = { ticksPerFrame?: number; durations?: readonly number[]; loop?: boolean };
+
+/** Register a trimmed strip at 1× and its 2× twin (the same recipe at density 2). */
+const def = (id: string, gen: (d: Density) => Frame[], o: StripOpts = {}): void => defineSprite(id, () => gen(1), { trim: true, ...o, hi: () => gen(2) });
 
 /** Register one rider set under `enemy/<set>/…`. */
 export function defineRiderSet(set: string, o: RiderSetOpts): void {
@@ -363,54 +684,67 @@ export function defineRiderSet(set: string, o: RiderSetOpts): void {
   };
   const lean = P.RIDE_LEAN;
   const sit = P.RIDE_SIT;
-  def(pre + 'ride', () => [0, 1, 2, 3].map((i) => combo(kind, color, i, 0, crew(lean[i % 2], i / 4), cube)), { ticksPerFrame: 5 });
-  def(pre + 'idle', () => [0, 1].map((i) => combo(kind, color, i * 2, 0, crew(sit[i], i / 2), cube)), { ticksPerFrame: 12 });
-  def(pre + 'alert', () => [combo(kind, color, 0, 0, crew({ ...P.RIDE_UP[0], expr: 'shout' }, 0), cube)], { ticksPerFrame: 30 });
+  def(pre + 'ride', (d) => [0, 1, 2, 3].map((i) => combo(kind, color, i, 0, crew(lean[i % 2], i / 4), cube, d)), { ticksPerFrame: 5 });
+  def(pre + 'idle', (d) => [0, 1].map((i) => combo(kind, color, i * 2, 0, crew(sit[i], i / 2), cube, d)), { ticksPerFrame: 12 });
+  def(pre + 'alert', (d) => [combo(kind, color, 0, 0, crew({ ...P.RIDE_UP[0], expr: 'shout' }, 0), cube, d)], { ticksPerFrame: 30 });
   if (o.gag === 'bob') {
-    def(pre + 'gag', () => [0, 1, 2, 3].map((i) => combo(kind, color, i, 0, crew({ ...sit[0], head: { dy: i % 2, tilt: i % 2 ? 8 : -4 }, expr: i % 2 ? 'blink' : 'happy' }, i / 4), cube)), { ticksPerFrame: 7 });
+    def(pre + 'gag', (d) => [0, 1, 2, 3].map((i) => combo(kind, color, i, 0, crew({ ...sit[0], head: { dy: i % 2, tilt: i % 2 ? 8 : -4 }, expr: i % 2 ? 'blink' : 'happy' }, i / 4), cube, d)), { ticksPerFrame: 7 });
   } else {
     // One hand off the bar, the phone up to his face.
     const phone = (k: number): Pose => ({ ...sit[0], armN: { to: [6, -5 - k], hand: 'fist' }, head: { tilt: 14 }, expr: k ? 'blink' : 'normal' });
-    def(pre + 'gag', () => [0, 1, 2, 3].map((i) => combo(kind, color, i, 0, crew(phone(i % 2), i / 4), cube)), { ticksPerFrame: 6 });
+    def(pre + 'gag', (d) => [0, 1, 2, 3].map((i) => combo(kind, color, i, 0, crew(phone(i % 2), i / 4), cube, d)), { ticksPerFrame: 6 });
   }
   if (o.tell === 'wheelie') {
-    def(pre + 'tell', () => [0, 1].map((i) => combo(kind, color, i * 2, -16 - i * 2, crew({ ...P.RIDE_UP[0], lean: -6, expr: 'shout' }, i / 2, { ...PASSENGER_SIT, lean: -10, expr: 'shout' }), cube)), { ticksPerFrame: 6 });
+    // At 2× the passenger keeps a closed mouth: his open red mouth just behind the rider's neck
+    // reads as a stray red mark.
+    def(pre + 'tell', (d) => [0, 1].map((i) => combo(kind, color, i * 2, -16 - i * 2, crew({ ...P.RIDE_UP[0], lean: -6, expr: 'shout' }, i / 2, { ...PASSENGER_SIT, lean: -10, expr: d === 1 ? 'shout' : 'normal' }), cube, d)), { ticksPerFrame: 6 });
   } else {
     // Ringing the bell: the near thumb flicks, he shouts.
-    def(pre + 'tell', () => [0, 1].map((i) => combo(kind, color, i * 2, 0, crew({ ...lean[0], armN: grip(9, 1 + i), expr: i ? 'shout' : 'normal' }, i / 2), cube)), { ticksPerFrame: 5 });
+    def(pre + 'tell', (d) => [0, 1].map((i) => combo(kind, color, i * 2, 0, crew({ ...lean[0], armN: grip(9, 1 + i), expr: i ? 'shout' : 'normal' }, i / 2), cube, d)), { ticksPerFrame: 5 });
   }
-  def(pre + 'kick', () => [0, 1].map((i) => combo(kind, color, i * 2, 0, pass ? crew(lean[0], i / 2, PASSENGER_KICK[i]) : crew(KICK_POSES[i], i / 2), cube)), { durations: [3, 30] , loop: false });
-  def(pre + 'photo-pose', () => [0, 1].map((i) => combo(kind, color, 0, 0, crew({ ...P.RIDE_CHEER[i], expr: 'happy' }, 0), cube)), { ticksPerFrame: 10 });
+  def(pre + 'kick', (d) => [0, 1].map((i) => combo(kind, color, i * 2, 0, pass ? crew(lean[0], i / 2, PASSENGER_KICK[i]) : crew(KICK_POSES[i], i / 2), cube, d)), { durations: [3, 30] , loop: false });
+  def(pre + 'photo-pose', (d) => [0, 1].map((i) => combo(kind, color, 0, 0, crew({ ...P.RIDE_CHEER[i], expr: 'happy' }, 0), cube, d)), { ticksPerFrame: 10 });
   // Deaths: the rider alone (the bike goes its own way as an fx).
   const bareStyle = style;
-  const people = (poses: readonly Pose[], hat: boolean) => (): Frame[] => poses.map((p) => {
-    let f: Frame = renderHuman(bareStyle, { weapon: 'none', ...p, hat }, 'full');
+  const rideOnly = (name: string, gen: (d: Density) => Frame[], so: StripOpts): void => {
+    const twin = o.same;
+    def(pre + name, (d) => (d !== 1 && twin ? [...getFrames(`enemy/${twin}/${name}`, d)] : gen(d)), so);
+  };
+  const people = (poses: readonly Pose[], hat: boolean) => (d: Density): Frame[] => poses.map((p) => {
+    let f: Frame = renderHuman(bareStyle, { weapon: 'none', ...p, hat }, 'full', d);
     if (cube) f = withCube(f);
     return f;
   });
-  def(pre + 'die', people(P.DIE, false), { durations: [5, 5, 6, 6, 8, 20], loop: false });
-  def(pre + 'die-knife', people(P.DIE_KNIFE, false), { durations: [8, 6, 6, 6, 20], loop: false });
-  def(pre + 'die-blast', () => blastFrames(bareStyle, { hat: false, weapon: 'none' }), { durations: [5, 5, 5, 5, 30], loop: false });
-  def(pre + 'die-burn', () => burnFrames(bareStyle, { weapon: 'none' }), { ticksPerFrame: 6, loop: false });
-  def(pre + 'die-crush', () => crushStrip(renderHuman(bareStyle, { weapon: 'none', ...P.STAND }, 'full')), { durations: CRUSH_TIMING, loop: false });
-  def(pre + 'flee', people(P.PANIC_FLAIL, false), { ticksPerFrame: 4 });
-  def(pre + 'bike', () => bikeWreck(kind, color, !!pass), { durations: [6, 6, 6, 8, 6, 6], loop: false });
+  rideOnly('die', people(P.DIE, false), { durations: [5, 5, 6, 6, 8, 20], loop: false });
+  rideOnly('die-knife', people(P.DIE_KNIFE, false), { durations: [8, 6, 6, 6, 20], loop: false });
+  rideOnly('die-blast', (d) => blastFrames(bareStyle, { hat: false, weapon: 'none' }, d), { durations: [5, 5, 5, 5, 30], loop: false });
+  rideOnly('die-burn', (d) => burnFrames(bareStyle, { weapon: 'none' }, 9, d), { ticksPerFrame: 6, loop: false });
+  const stand = (d: Density): Frame => renderHuman(bareStyle, { weapon: 'none', ...P.STAND }, 'full', d);
+  rideOnly('die-crush', (d) => (d === 1 ? crushStrip(stand(1)) : crushStripHi(stand(1), stand(2), getFrames(pre + 'die-crush', 1))), { durations: CRUSH_TIMING, loop: false });
+  rideOnly('flee', people(P.PANIC_FLAIL, false), { ticksPerFrame: 4 });
+  def(pre + 'bike', (d) => bikeWreck(kind, color, !!pass, d), { durations: [6, 6, 6, 8, 6, 6], loop: false });
   // The passenger jumps off and runs for it (an fx, see FatbikeYouth.deathEffects).
-  if (pass) def(pre + 'passenger-flee', () => P.PANIC_FLAIL.map((p) => renderHuman(pass, { weapon: 'none', ...p, hat: false }, 'full')), { ticksPerFrame: 4 });
+  if (pass) def(pre + 'passenger-flee', (d) => P.PANIC_FLAIL.map((p) => renderHuman(pass, { weapon: 'none', ...p, hat: false }, 'full', d)), { ticksPerFrame: 4 });
 }
 
-/** The riderless bike: on its side, skidding, then fading out (dithered away). */
-function bikeWreck(kind: BikeKind, color: string, pair: boolean): Frame[] {
+/** The riderless bike: on its side, skidding, then fading out (dithered away; at 2× in whole logical px). */
+function bikeWreck(kind: BikeKind, color: string, pair: boolean, d: Density = 1): Frame[] {
   const out: Frame[] = [];
   for (let i = 0; i < 6; i++) {
-    const s = new Sketch(64, 56, 32, 50);
-    drawBike(s, kind, { color, rot: i === 0 ? -10 : 0, phase: i % 4, pair });
-    const f = s.frame();
+    let f: Frame;
+    if (d === 1) {
+      const s = new Sketch(64, 56, 32, 50);
+      drawBike(s, kind, { color, rot: i === 0 ? -10 : 0, phase: i % 4, pair });
+      f = s.frame();
+    } else {
+      const g = bikeHi(kind, { color, rot: i === 0 ? -10 : 0, phase: i % 4, pair });
+      f = { ...g, buf: g.buf.clone() };
+    }
     // Lying down: squash vertically to a low skid (keep it readable), then dither away.
     const fade = i < 3 ? 0 : (i - 2) / 4;
     if (fade > 0) {
       const b = f.buf;
-      for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) if (((x * 7 + y * 13 + i * 5) % 8) / 8 < fade) b.set(x, y, 0);
+      for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) if ((((x / d) | 0) * 7 + ((y / d) | 0) * 13 + i * 5) % 8 / 8 < fade) b.set(x, y, 0);
     }
     out.push(f);
   }
@@ -433,6 +767,30 @@ function capFrames(color: Color, peak: Color): Frame[] {
   return out;
 }
 
+/** The 2× cap: crown panels with 1-px seams, a top button, a lit peak with a stitched edge. */
+function capFramesHi(color: Color, peak: Color): Frame[] {
+  const out: Frame[] = [];
+  const K = PAL.black;
+  for (let i = 0; i < 4; i++) {
+    const b = new PixelBuffer(20, 16);
+    b.ellipse(2, 2, 14, 10, color);
+    b.rect(2, 8, 14, 2, color);
+    // Lit crown, panel seams, the button on top.
+    b.ellipse(4, 3, 6, 4, K[2]);
+    b.line(9, 3, 7, 9, K[0]);
+    b.line(12, 4, 13, 9, K[0]);
+    b.rect(8, 2, 2, 1, PAL.snow[3]);
+    b.hline(2, 15, 9, K[0]);
+    const px = i % 2 === 0 ? 12 : 0;
+    b.rect(px, 8, 8, 4, peak);
+    b.hline(px, px + 7, 8, K[3]);
+    b.hline(px + 1, px + 6, 10, K[1]);
+    const r = i >= 2 ? b.flipped(false, true) : b;
+    out.push({ buf: outlineHi(r.padded(HI), 2), ox: 6, oy: 5, density: HI });
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------------------------ registration
 
 /** Youth set id for a look (0–3), a skin and pair mode. */
@@ -451,7 +809,7 @@ for (let look = 0; look < YOUTH_LOOKS.length; look++) {
     defineRiderSet(youthSet(look, skin, false), { kind: 'fat', style, color: YOUTH_FRAME[look], tell: 'wheelie', gag: 'bob' });
     const pk = (look + 2) % YOUTH_LOOKS.length;
     const ps: SkinKey = skin === 'a' ? 'c' : skin === 'b' ? 'a' : 'b';
-    defineRiderSet(youthSet(look, skin, true), { kind: 'fat', style, color: YOUTH_FRAME[look], passenger: youthStyle(pk, ps), tell: 'wheelie', gag: 'bob' });
+    defineRiderSet(youthSet(look, skin, true), { kind: 'fat', style, color: YOUTH_FRAME[look], passenger: youthStyle(pk, ps), tell: 'wheelie', gag: 'bob', same: youthSet(look, skin, false) });
   }
 }
 
@@ -459,13 +817,15 @@ for (const skin of Object.keys(SKINS) as SkinKey[]) {
   defineRiderSet(skin === 'b' ? 'delivery-rider' : `delivery-rider-${skin}`, { kind: 'city', style: { ...DELIVERY_STYLE, skin: SKINS[skin] }, color: 'stone', cube: true, tell: 'bell', gag: 'phone' });
 }
 
-defineSprite('enemy/fatbike-youth/cap', () => capFrames(PAL.black[1], PAL.black[2]), { ticksPerFrame: 4 });
-defineSprite('enemy/delivery-rider/food-cube', () => {
+defineSprite('enemy/fatbike-youth/cap', () => capFrames(PAL.black[1], PAL.black[2]), { ticksPerFrame: 4, hi: () => capFramesHi(PAL.black[1], PAL.black[2]) });
+/** The popped cube backpack tumbling (`d` 2: the 2× bag). */
+function foodCube(d: Density): Frame[] {
   const out: Frame[] = [];
   for (let i = 0; i < 4; i++) {
-    const b = cubePack(true);
+    const b = d === 1 ? cubePack(true) : cubePackHi(true);
     const r = i % 2 ? b.flipped(true, false) : b;
-    out.push({ buf: r, ox: 8, oy: 8 });
+    out.push(d === 1 ? { buf: r, ox: 8, oy: 8 } : { buf: r, ox: 8, oy: 8, density: HI });
   }
   return out;
-}, { ticksPerFrame: 5 });
+}
+defineSprite('enemy/delivery-rider/food-cube', () => foodCube(1), { ticksPerFrame: 5, hi: () => foodCube(2) });

@@ -162,6 +162,26 @@ export function bandIndex(u: number, n: number, z: number, px: number, py: numbe
 const framePlace: Placement = { x: 0, y: 0 };
 let spanScratch = new Int32Array(512);
 let polyScratch = new Float64Array(64);
+let scaledCols = new Int32Array(512);
+
+/**
+ * The plain unflipped 'over' blit of destination rows y0…y1 and columns x0…x1: source pixel
+ * `off + y · srcW + x`. A small function of its own, so the engine optimises this hot loop well
+ * (art generation blits many mostly transparent layers).
+ */
+function blitOverRect(sd: Uint32Array, dd: Uint32Array, off: number, srcW: number, dw: number, x0: number, y0: number, x1: number, y1: number): void {
+  for (let y = y0; y < y1; y++) {
+    const sr = off + y * srcW;
+    const dr = y * dw;
+    for (let x = x0; x < x1; x++) {
+      const s = sd[sr + x];
+      const a = s & 255;
+      if (a === 0) continue;
+      if (a === 255) dd[dr + x] = s;
+      else dd[dr + x] = blendOver(dd[dr + x], s);
+    }
+  }
+}
 
 function ensureSpans(rows: number): Int32Array {
   if (spanScratch.length < rows * 2) spanScratch = new Int32Array(rows * 2 + 64);
@@ -404,9 +424,12 @@ export class PixelBuffer {
    * enough for the result (same parity as the source, so centres stay aligned). 'smooth'
    * (default) samples a Scale2x×3 upscale (RotSprite-style) for clean pixel-art edges; 'fast'
    * is plain nearest-neighbour. Multiples of 90° are exact. Pre-render rotations at generation
-   * time (e.g. 16 directions for a rocket); the renderers never rotate.
+   * time (e.g. 16 directions for a rocket); the renderers never rotate. `align` (default 1): for
+   * a buffer of 2× art pass its density (2): each side then grows by a multiple of 2 · align, so
+   * the size stays a whole number of logical pixels and the centre stays on the same logical
+   * point (a plain rotation could shift a 2× frame by half a logical pixel).
    */
-  rotated(angle: number, o?: { quality?: 'smooth' | 'fast' }): PixelBuffer {
+  rotated(angle: number, o?: { quality?: 'smooth' | 'fast'; align?: number }): PixelBuffer {
     const { w, h } = this;
     const quarter = Math.round(angle / (Math.PI / 2));
     if (Math.abs(angle - (quarter * Math.PI) / 2) < 1e-9) return this.rotatedQuarter(((quarter % 4) + 4) % 4);
@@ -414,8 +437,9 @@ export class PixelBuffer {
     const sin = Math.sin(angle);
     let ow = Math.ceil(Math.abs(w * cos) + Math.abs(h * sin) - 1e-9);
     let oh = Math.ceil(Math.abs(w * sin) + Math.abs(h * cos) - 1e-9);
-    if ((ow - w) % 2 !== 0) ow++;
-    if ((oh - h) % 2 !== 0) oh++;
+    const step = 2 * Math.max(1, Math.floor(o?.align ?? 1));
+    while ((ow - w) % step !== 0) ow++;
+    while ((oh - h) % step !== 0) oh++;
     const out = new PixelBuffer(ow, oh);
     const smooth = o?.quality !== 'fast';
     const k = smooth ? 8 : 1;
@@ -897,6 +921,13 @@ export class PixelBuffer {
     const dd = this.data;
     const srcW = src.w;
     const fast = !map && solid === undefined && alpha === 1 && blend === 'over';
+    if (fast && !flipX && !flipY) {
+      // The common case (an unflipped plain 'over' blit, e.g. a mostly transparent layer): a
+      // tight loop with the same result as the general one below.
+      blitOverRect(sd, dd, sy * srcW + sx - dy * srcW - dx, srcW, this.w, x0, y0, x1, y1);
+      this.version++;
+      return this;
+    }
     for (let y = y0; y < y1; y++) {
       const ry = y - dy;
       const srow = (sy + (flipY ? sh - 1 - ry : ry)) * srcW + sx;
@@ -927,12 +958,137 @@ export class PixelBuffer {
   }
 
   /**
+   * Like `blit`, but the source rectangle is enlarged by num / den (nearest neighbour): it covers
+   * sw · num / den × sh · num / den destination pixels from (dx, dy). Destination pixel i of the
+   * part samples the source pixel under its centre, (2i + 1) · den / (2 · num); a centre exactly
+   * on a source pixel edge takes the pixel before it (Chromium mostly does the same; when num /
+   * den is not an integer a few of those tie columns / rows may differ from Canvas 2D). Flips
+   * mirror the source rectangle first, then it is enlarged — what Canvas 2D does when it draws a
+   * flipped image scaled. The source rectangle must lie inside `src`. Used by the software
+   * renderer for its high-resolution backbuffer.
+   */
+  blitScaled(src: PixelBuffer, dx: number, dy: number, num: number, den: number, o?: BlitOpts): this {
+    if (num === den) return this.blit(src, dx, dy, o);
+    dx = Math.round(dx);
+    dy = Math.round(dy);
+    const flipX = o?.flipX === true;
+    const flipY = o?.flipY === true;
+    const map = o?.map;
+    const solid = o?.solid;
+    const blend = o?.blend ?? 'over';
+    const alpha = o?.alpha === undefined ? 1 : Math.max(0, Math.min(1, o.alpha));
+    if (alpha <= 0 && blend !== 'copy') return this;
+    const sx = Math.max(0, Math.round(o?.sx ?? 0));
+    const sy = Math.max(0, Math.round(o?.sy ?? 0));
+    const sw = Math.min(src.w - sx, Math.round(o?.sw ?? src.w - sx));
+    const sh = Math.min(src.h - sy, Math.round(o?.sh ?? src.h - sy));
+    if (sw <= 0 || sh <= 0) return this;
+    const dw = Math.floor((sw * num) / den);
+    const dh = Math.floor((sh * num) / den);
+    const x0 = Math.max(0, dx);
+    const y0 = Math.max(0, dy);
+    const x1 = Math.min(this.w, dx + dw);
+    const y1 = Math.min(this.h, dy + dh);
+    if (x0 >= x1 || y0 >= y1) return this;
+    // Source column of every destination column (reused scratch array).
+    let cols = scaledCols;
+    if (cols.length < x1 - x0) {
+      cols = new Int32Array(Math.max(x1 - x0, cols.length * 2));
+      scaledCols = cols;
+    }
+    for (let x = x0; x < x1; x++) {
+      const t = Math.min(sw - 1, Math.ceil(((2 * (x - dx) + 1) * den) / (2 * num)) - 1);
+      cols[x - x0] = sx + (flipX ? sw - 1 - t : t);
+    }
+    const sd = src.data;
+    const dd = this.data;
+    const srcW = src.w;
+    const fast = !map && solid === undefined && alpha === 1 && blend === 'over';
+    for (let y = y0; y < y1; y++) {
+      const t = Math.min(sh - 1, Math.ceil(((2 * (y - dy) + 1) * den) / (2 * num)) - 1);
+      const srow = (sy + (flipY ? sh - 1 - t : t)) * srcW;
+      const drow = y * this.w;
+      for (let x = x0; x < x1; x++) {
+        let s = sd[srow + cols[x - x0]];
+        const di = drow + x;
+        if (fast) {
+          const a = s & 255;
+          if (a === 255) dd[di] = s;
+          else if (a !== 0) dd[di] = blendOver(dd[di], s);
+          continue;
+        }
+        if ((s & 255) === 0) {
+          if (blend === 'copy') dd[di] = 0;
+          continue;
+        }
+        if (map) s = mapColor(map, s);
+        if (solid !== undefined) s = ((solid & 0xffffff00) | (s & 255)) >>> 0;
+        if (blend === 'over') dd[di] = blendOver(dd[di], s, alpha);
+        else if (blend === 'add') dd[di] = blendAdd(dd[di], s, alpha);
+        else dd[di] = alpha === 1 ? s : ((s & 0xffffff00) | Math.round((s & 255) * alpha)) >>> 0;
+      }
+    }
+    this.version++;
+    return this;
+  }
+
+  /**
    * Draw a sprite Frame with its anchor at (x, y); flips mirror around the anchor pixel exactly
    * like the renderers do. Use it to compose sprites from parts (legs + torso, hull + turret).
+   *
+   * `density` is the density of THIS buffer (buffer px per logical px, default 1; 2 when
+   * composing 2× art): (x, y) are in this buffer's pixels and the anchor pixel covers
+   * density × density of them. A frame of the same density is copied exactly. Mixing densities
+   * is explicit and safe: a 1× part in a 2× buffer is enlarged by nearest neighbour (each pixel
+   * becomes a 2 × 2 block, so the part keeps its logical size), a 2× part in a 1× buffer is
+   * reduced like the renderers do at res 1 (`downsampled`: the top-left pixel of each block,
+   * flips mirror the reduced image). `o.sx`…`o.sh` are in the frame's buffer pixels.
    */
-  blitFrame(f: Frame, x: number, y: number, o?: BlitOpts): this {
-    const p = placeAnchored(framePlace, f.buf.w, f.buf.h, f.ox, f.oy, x, y, o?.flipX === true, o?.flipY === true, 0, 0);
-    return this.blit(f.buf, p.x, p.y, o);
+  blitFrame(f: Frame, x: number, y: number, o?: BlitOpts, density = 1): this {
+    const td = Math.max(1, Math.floor(density));
+    const fd = f.density ?? 1;
+    if (fd === 1 && td === 1) {
+      const p = placeAnchored(framePlace, f.buf.w, f.buf.h, f.ox, f.oy, x, y, o?.flipX === true, o?.flipY === true, 0, 0);
+      return this.blit(f.buf, p.x, p.y, o);
+    }
+    const lw = f.buf.w / fd;
+    const lh = f.buf.h / fd;
+    const left = Math.round(x) - (o?.flipX === true ? lw - 1 - f.ox : f.ox) * td;
+    const top = Math.round(y) - (o?.flipY === true ? lh - 1 - f.oy : f.oy) * td;
+    if (fd === td) return this.blit(f.buf, left, top, o);
+    if (fd > td && fd % td === 0) {
+      const r = fd / td;
+      const small = f.buf.downsampled(r);
+      if (o?.sx === undefined && o?.sy === undefined && o?.sw === undefined && o?.sh === undefined) return this.blit(small, left, top, o);
+      // The src rect is in the frame's buffer px: map it onto the reduced buffer (whole blocks).
+      const sx = Math.round(o.sx ?? 0);
+      const sy = Math.round(o.sy ?? 0);
+      const ex = sx + Math.round(o.sw ?? f.buf.w - sx);
+      const ey = sy + Math.round(o.sh ?? f.buf.h - sy);
+      const rx = Math.floor(sx / r);
+      const ry = Math.floor(sy / r);
+      return this.blit(small, left, top, { ...o, sx: rx, sy: ry, sw: Math.ceil(ex / r) - rx, sh: Math.ceil(ey / r) - ry });
+    }
+    return this.blitScaled(f.buf, left, top, td, fd, o);
+  }
+
+  /**
+   * Nearest-neighbour reduction by an integer factor n: pixel (x, y) of the result is pixel
+   * (x · n, y · n) of this buffer (the top-left pixel of each n × n block). The renderers draw a
+   * 2× frame this way on a res-1 backbuffer, so the image is deterministic (no averaging, no new
+   * colours) and a flipped frame is the exact mirror of the unflipped one.
+   */
+  downsampled(n: number): PixelBuffer {
+    const s = Math.max(1, Math.floor(n));
+    if (s === 1) return this.clone();
+    const out = new PixelBuffer(Math.floor(this.w / s), Math.floor(this.h / s));
+    const src = this.data;
+    const dst = out.data;
+    for (let y = 0; y < out.h; y++) {
+      const row = y * s * this.w;
+      for (let x = 0; x < out.w; x++) dst[y * out.w + x] = src[row + x * s];
+    }
+    return out;
   }
 
   /** Composite a colour over a rectangle ('over' or 'add'), e.g. translucent overlays. */
@@ -1029,29 +1185,33 @@ export class PixelBuffer {
     const { w, h, data } = this;
     const corners = o?.corners === true;
     const only = o?.only === undefined ? undefined : o.only >>> 0;
-    const mask = new Uint8Array(w * h);
-    for (let i = 0; i < mask.length; i++) {
-      mask[i] = only === undefined ? ((data[i] & 255) !== 0 ? 1 : 0) : data[i] === only ? 1 : 0;
+    // The shape mask with a 1-px empty border (no bounds checks in the loop below).
+    const mw = w + 2;
+    const mask = new Uint8Array(mw * (h + 2));
+    for (let y = 0; y < h; y++) {
+      const r = y * w;
+      const m = (y + 1) * mw + 1;
+      if (only === undefined) for (let x = 0; x < w; x++) mask[m + x] = (data[r + x] & 255) !== 0 ? 1 : 0;
+      else for (let x = 0; x < w; x++) mask[m + x] = data[r + x] === only ? 1 : 0;
     }
-    const inShape = (x: number, y: number): boolean =>
-      x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] === 1;
     const col = c >>> 0;
+    const inside = o?.inside === true;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
-        if (o?.inside) {
-          if (mask[i] !== 1) continue;
-          let edge = !inShape(x - 1, y) || !inShape(x + 1, y) || !inShape(x, y - 1) || !inShape(x, y + 1);
+        const m = (y + 1) * mw + x + 1;
+        if (inside) {
+          if (mask[m] !== 1) continue;
+          let edge = mask[m - 1] !== 1 || mask[m + 1] !== 1 || mask[m - mw] !== 1 || mask[m + mw] !== 1;
           if (!edge && corners) {
-            edge =
-              !inShape(x - 1, y - 1) || !inShape(x + 1, y - 1) || !inShape(x - 1, y + 1) || !inShape(x + 1, y + 1);
+            edge = mask[m - mw - 1] !== 1 || mask[m - mw + 1] !== 1 || mask[m + mw - 1] !== 1 || mask[m + mw + 1] !== 1;
           }
           if (edge) data[i] = col;
         } else {
-          if (mask[i] === 1 || (data[i] & 255) !== 0) continue;
-          let near = inShape(x - 1, y) || inShape(x + 1, y) || inShape(x, y - 1) || inShape(x, y + 1);
+          if (mask[m] === 1 || (data[i] & 255) !== 0) continue;
+          let near = mask[m - 1] === 1 || mask[m + 1] === 1 || mask[m - mw] === 1 || mask[m + mw] === 1;
           if (!near && corners) {
-            near = inShape(x - 1, y - 1) || inShape(x + 1, y - 1) || inShape(x - 1, y + 1) || inShape(x + 1, y + 1);
+            near = mask[m - mw - 1] === 1 || mask[m - mw + 1] === 1 || mask[m + mw - 1] === 1 || mask[m + mw + 1] === 1;
           }
           if (near) data[i] = col;
         }

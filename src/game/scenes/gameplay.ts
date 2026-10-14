@@ -12,6 +12,7 @@ import { NullAudio } from '../../engine/audio';
 import { ACTION_BUTTONS, type InputSource } from '../../engine/input';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
+import { HI_ART_FRAME_BUDGET_MS, preloadSprites, setDeferHiArt, withArtDensity } from '../../engine/sprites';
 import { blinkOn, centerText, newCampaign, UI_WHITE, type GameApp } from '../app';
 import { drawHud } from '../hud';
 import type { MissionDef } from '../mission/index';
@@ -34,6 +35,84 @@ export interface NewGameOpts {
   bossRush?: boolean;
   /** Characters per player (default: ?char= or 'recruit'). */
   characters?: readonly string[];
+}
+
+/** The background 2× preload, once started (sprites.ts caches what it generated). */
+let hiPreload: Promise<unknown> | null = null;
+
+/** Wait for the next browser frame (a 0 ms timeout where there is no requestAnimationFrame). */
+function nextFrame(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
+    else setTimeout(resolve, 0);
+  });
+}
+
+/**
+ * Time budget (ms) of the 2× preload per browser frame: about half a 60 fps frame. The same
+ * budget runs the queued 2× scenery jobs (background layers, terrain chunks; SectionView).
+ */
+export const MISSION_ART_BUDGET_MS = HI_ART_FRAME_BUDGET_MS;
+
+/**
+ * The order of a mission's 2× preload: the sprites of the joined players' characters first (the
+ * first thing drawn), then the mission's `preloadFirst` prefixes; its `preloadLast` prefixes last.
+ */
+export function missionArtOrder(
+  mission: Pick<MissionDef, 'preloadFirst' | 'preloadLast'> | undefined,
+  session: Pick<GameSession, 'slots'> | null | undefined,
+): { first: string[]; last: string[] } {
+  const chars = (session?.slots ?? []).filter((s) => s.joined).map((s) => `char/${s.character}/`);
+  return { first: [...new Set(chars), ...(mission?.preloadFirst ?? [])], last: [...(mission?.preloadLast ?? [])] };
+}
+
+/**
+ * Start generating the 2× sprites (docs/ARCHITECTURE.md §3) in the background when a mission
+ * draws 2× art (`density` 2, default the mission's `artDensity`): boot only makes the 1× frames,
+ * so without this the first seconds of the mission would generate 2× frames lazily while drawing.
+ * Each browser frame generates ids for MISSION_ART_BUDGET_MS, in `missionArtOrder` (the players'
+ * characters, then what the first section shows; the boss last). The mission intro card starts
+ * it; gameplay calls it again for a direct start (`?mission=`). Once is enough: later calls do
+ * nothing. Only the browser app asks for it (`app.preloadArt`): headless runs (sims, tests,
+ * shots) generate 2× frames lazily, if they draw at all.
+ * It also switches on `setDeferHiArt`: the 2× scenery (background layers, terrain chunks) of each
+ * section becomes art jobs that this preload runs first in its slices (and, once it is done, the
+ * section view within the same budget per frame), so a section start never stalls on 2× scenery.
+ * Returns true when the preload runs (started now or before).
+ */
+export function preloadMissionArt(
+  app: Pick<GameApp, 'preloadArt' | 'session'>,
+  mission: Pick<MissionDef, 'artDensity' | 'preloadFirst' | 'preloadLast'> | undefined,
+  density = mission?.artDensity ?? 1,
+  session: Pick<GameSession, 'slots'> | null = app.session,
+): boolean {
+  if (density < 2 || !app.preloadArt) return hiPreload !== null;
+  // The 2× scenery of the sections becomes art jobs in the same budget (never a stalled frame).
+  setDeferHiArt(true);
+  hiPreload ??= preloadSprites(undefined, undefined, {
+    density,
+    timeBudgetMs: MISSION_ART_BUDGET_MS,
+    ...missionArtOrder(mission, session),
+    yieldFn: nextFrame,
+  });
+  return true;
+}
+
+/**
+ * Start fetching and decoding a mission's sample group (`MissionDef.audioGroup`) in the
+ * background, fire-and-forget. Returns the group name, or null when there is nothing to load.
+ * Until it is ready the synth plays.
+ */
+export function preloadMissionAudio(app: Pick<GameApp, 'audio'>, mission: Pick<MissionDef, 'audioGroup'> | undefined): string | null {
+  const group = mission?.audioGroup;
+  if (!group || !app.audio.loadSamples) return null;
+  void app.audio.loadSamples(group);
+  return group;
+}
+
+/** Has the background 2× preload started (tests)? */
+export function missionArtPreloadStarted(): boolean {
+  return hiPreload !== null;
 }
 
 /** The mission a new game starts with: the Amsterdam prologue `ams`, else m1. */
@@ -120,6 +199,8 @@ export class GameplayScene implements Scene {
   private t = 0;
   private weaponCycle = 0;
   private demoEnded = false;
+  /** A scene on top silenced the loops (pause / resume). */
+  private loopsPaused = false;
   private removeBot: (() => void) | null = null;
 
   constructor(app: GameApp, opts: GameplayOpts) {
@@ -155,8 +236,15 @@ export class GameplayScene implements Scene {
       seed: app.params.seed ?? this.session.seed,
       bossRush: this.opts.bossRush,
       settings: app.settings,
+      // The attract demo keeps the 1× art: no 2× generation behind the title screen.
+      artDensity: demo ? 1 : undefined,
     });
     this.runner = runner;
+    if (!demo) {
+      preloadMissionArt(app, runner.mission, runner.artDensity, this.session);
+      // A direct start (?mission=, a continue, the next mission): the intro card did not run.
+      preloadMissionAudio(app, runner.mission);
+    }
     runner.events.on('complete', () => {
       if (this.demo) this.endDemo(false);
       else app.scenes.replace(new MissionCompleteScene(app, runner), { fade: 40 });
@@ -190,15 +278,28 @@ export class GameplayScene implements Scene {
     this.app.debug.on('weapons', () => {});
     this.removeBot?.();
     this.removeBot = null;
+    // Leaving gameplay (pause QUIT, game over, mission end): the ambience, the Swan's engine and
+    // the other loops stop (at once when they were paused under a menu), and the loop bus
+    // comes back up for the next screens.
+    if (this.runner) this.runner.stopLoops(this.loopsPaused ? 0 : 30);
+    if (this.loopsPaused) this.app.audio.resumeLoops?.();
+    this.loopsPaused = false;
   }
 
-  /** A scene opened on top (pause menu, continue screen): the music plays on at half level (GDD §13.8). */
+  /**
+   * A scene opened on top (pause menu, continue screen): the music plays on at half level
+   * (GDD §13.8) and the looping sounds (ambience, engines) fall silent until the game resumes.
+   */
   pause(): void {
     this.app.audio.duckMusic?.(0.5);
+    this.app.audio.pauseLoops?.();
+    this.loopsPaused = true;
   }
 
   resume(): void {
     this.app.audio.duckMusic?.(1);
+    this.app.audio.resumeLoops?.();
+    this.loopsPaused = false;
     // Only the action buttons: a direction held through the pause keeps moving the player.
     this.app.input.suppress(ACTION_BUTTONS);
   }
@@ -282,7 +383,10 @@ export class GameplayScene implements Scene {
     const runner = this.runner;
     r.begin(runner.sky);
     runner.draw(r);
-    drawHud(r, { session: this.session, hud: runner.hud, runner, inputPlayers: this.app.input.players, ticks: this.t, settings: this.app.settings });
+    // The HUD draws with the mission's art density too (2× icons where they exist).
+    withArtDensity(runner.artDensity, () =>
+      drawHud(r, { session: this.session, hud: runner.hud, runner, inputPlayers: this.app.input.players, ticks: this.t, settings: this.app.settings }),
+    );
     if (this.demo && blinkOn(this.t)) centerText(r, 'DEMO PLAY', 40, UI_WHITE, 'big');
     if (!this.demo) this.app.debug.draw(r, runner.world);
   }

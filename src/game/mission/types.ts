@@ -88,6 +88,12 @@ export interface SectionDef {
   timeLimit?: number;
   /** Song for this section (default: the mission's). */
   music?: string;
+  /**
+   * Ambience loop of this section (an sfx loop id, e.g. `env/ams-canal`), played by the runner
+   * under the audio key 'ambience': the same id keeps playing into the next section, another id
+   * replaces it, none fades it out. It stops when the mission ends (`MissionRunner.stopLoops`).
+   */
+  ambience?: string;
   script: SectionScript;
   exits?: ExitDef[];
   /** With ?boss=1 the players start here (and `ctx.bossRush` is true). */
@@ -144,6 +150,28 @@ export interface MissionDef {
    * §7.4, §14.4) compares a player's tally with the sum over the sections of the route taken.
    */
   hostages?: Readonly<Record<string, number>>;
+  /**
+   * Art density of this mission (docs/ARCHITECTURE.md §3): 2 draws the 2× versions of the
+   * sprites that have one (`defineHiSprite`), 1 (default) the classic 1× art. The runner sets it
+   * around its drawing only (`MissionRunner.draw`, the HUD), so game logic, other missions and
+   * every other scene see density 1; frame geometry is the same at either density.
+   */
+  artDensity?: number;
+  /** The players' footsteps are audible (`player/step` while running on foot; default off). */
+  footsteps?: boolean;
+  /**
+   * Order of the background 2× preload (`preloadMissionArt`, only with `artDensity` 2): sprite id
+   * prefixes to generate first, in this order, right after the players' characters (what the
+   * first seconds of play draw), and prefixes to generate last (e.g. the boss).
+   */
+  preloadFirst?: readonly string[];
+  preloadLast?: readonly string[];
+  /**
+   * Sample group of this mission (src/engine/samples.ts, e.g. 'mission:ams'): fetched and
+   * decoded on the intro card (`preloadMissionAudio`), or by the boot scene for a direct
+   * `?mission=` start. Without it the mission plays the synth only.
+   */
+  audioGroup?: string;
 }
 
 export interface SpawnGroupOpts {

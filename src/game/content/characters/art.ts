@@ -64,7 +64,7 @@ function defineHero(id: string, style: HumanStyle, art: PlayerArtOpts = {}): voi
   definePlayerSprites(id, style, { ...art, variants: HELIUM_VARIANTS });
   // A hero's own portrait replaces the rig's default one.
   const pc = PORTRAITS[id];
-  if (pc) defineSprite(`char/${id}/portrait`, () => heroPortrait(style, pc), { anchor: 'top-left' });
+  if (pc) defineSprite(`char/${id}/portrait`, () => heroPortrait(style, pc), { anchor: 'top-left', hi: () => heroPortrait(style, pc, 2) });
 }
 
 defineHero('recruit', RECRUIT_STYLE);

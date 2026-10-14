@@ -61,7 +61,7 @@ export class GameOverScene implements Scene {
       }
     }
     if (this.t < WORD.length * LETTER_GAP + FALL) return;
-    centerText(r, 'THE CRITICS WERE NOT KIND.', 120, UI_WHITE);
+    centerText(r, 'UITGEZWAAND!', 120, UI_WHITE);
     const slots = this.app.session?.slots.filter((s) => s.joined) ?? [];
     slots.forEach((s, i) => {
       const tag = slots.length > 1 ? `${s.index === 0 ? '1P' : '2P'} ` : '';

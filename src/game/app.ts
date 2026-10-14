@@ -4,7 +4,7 @@
  * main.ts builds the browser versions; headless tools and tests can build an app with
  * MemoryStore + NullAudio + ScriptedSource input.
  */
-import type { AudioOut, MusicOpts, SfxOpts, VolumeKind } from '../engine/audio';
+import type { AudioOut, MusicOpts, SayOpts, SfxOpts, VolumeKind } from '../engine/audio';
 import type { Color } from '../engine/color';
 import { Debug } from '../engine/debug';
 import { measure } from '../engine/font';
@@ -12,8 +12,9 @@ import type { Button, InputManager } from '../engine/input';
 import { INK, PAL } from '../engine/palette';
 import type { DrawOpts, Renderer, TextOpts } from '../engine/render';
 import { SceneManager } from '../engine/scene';
-import { getFrame, hasSprite } from '../engine/sprites';
+import { frameH, frameW, getFrame, hasSprite } from '../engine/sprites';
 import type { Store } from '../engine/storage';
+import type { UpscaleMode } from '../engine/upscale';
 import type { ContentReport } from './content/index';
 import { DEFAULT_PARAMS, type LaunchParams } from './params';
 import { HighScoreTable, type GameSession, type HighScoreEntry } from './session';
@@ -64,6 +65,21 @@ export interface GameApp {
   gesture: boolean;
   /** Which attract-mode tagline the title shows next (GDD §1.3). */
   attractStep: number;
+  /**
+   * GRAPHICS filter of this session from `?gfx=` (never saved): it wins over
+   * `settings.graphics` until the player changes the option (`graphicsMode`).
+   */
+  graphicsOverride: UpscaleMode | null;
+  /**
+   * Backbuffer resolution the browser draws at (set by main.ts every frame; 1 headless). The
+   * Options scene uses it to say when a filter needs a larger window.
+   */
+  displayRes: number;
+  /**
+   * Generate a 2× mission's sprites in the background at its start (preloadMissionArt). True
+   * only in the browser (main.ts); headless apps leave it off so sims and tests do no 2× work.
+   */
+  readonly preloadArt: boolean;
 }
 
 export interface AppOptions {
@@ -74,6 +90,8 @@ export interface AppOptions {
   debug?: Debug;
   /** False in the browser until the first click / key (default true: headless). */
   gesture?: boolean;
+  /** Background 2× preload at a 2× mission's start (default false: headless). */
+  preloadArt?: boolean;
 }
 
 /** The store key of the high score table (session.ts). */
@@ -126,22 +144,32 @@ export function createApp(o: AppOptions): GameApp {
     pointerPressed: false,
     gesture: o.gesture ?? true,
     attractStep: 0,
+    graphicsOverride: params.gfx,
+    displayRes: 1,
+    preloadArt: o.preloadArt ?? false,
   };
 }
 
+/** The GRAPHICS filter in effect: `?gfx=` until the option is changed, else the saved option. */
+export function graphicsMode(app: Pick<GameApp, 'graphicsOverride' | 'settings'>): UpscaleMode {
+  return app.graphicsOverride ?? app.settings.graphics;
+}
+
 /**
- * Music / sfx volume from the options (0..10). The defaults (7 / 8) keep the mixer's own levels
- * (music 0.6, sfx 0.8).
+ * Music / sfx / voice volume from the options (0..10). The defaults (7 / 8 / 10) keep the
+ * mixer's own levels (music 0.6, sfx 0.8, voice 1).
  */
 export function applyAudioSettings(audio: AudioOut, s: GameSettings): void {
   const d = DEFAULT_SETTINGS;
   audio.setVolume('music', Math.min(1, (0.6 * s.musicVolume) / d.musicVolume));
   audio.setVolume('sfx', Math.min(1, (0.8 * s.sfxVolume) / d.sfxVolume));
+  audio.setVolume('voice', Math.min(1, s.voiceVolume / d.voiceVolume));
 }
 
 /**
  * The app's audio: every call goes to the real output, except announcer lines while the
- * ANNOUNCER option is OFF. Optional members are forwarded when the output has them.
+ * ANNOUNCER option is OFF and speech bubble lines (`say`) while VOICE VOLUME is 0. Optional
+ * members are forwarded when the output has them.
  */
 export class GameAudio implements AudioOut {
   readonly inner: AudioOut;
@@ -206,6 +234,36 @@ export class GameAudio implements AudioOut {
 
   resume(): void {
     this.inner.resume?.();
+  }
+
+  /**
+   * Fetch and decode a sample group (samples.ts). Resolves at once when the output has no
+   * samples (NullAudio, tests, sims).
+   */
+  loadSamples(group: string, onProgress?: (done: number, total: number) => void): Promise<void> {
+    return this.inner.loadSamples?.(group, onProgress) ?? Promise.resolve();
+  }
+
+  /**
+   * A speech bubble line, voiced when its sample is loaded. The runner calls it only for bubbles
+   * that show (gag bubbles hide with SPEECH BUBBLES OFF); ANNOUNCER does not gate it (it is for
+   * the announcer); VOICE VOLUME 0 silences it.
+   */
+  say(text: string, speaker?: string, o?: SayOpts): void {
+    if (this.settings.voiceVolume > 0) this.inner.say?.(text, speaker, o);
+  }
+
+  /** True while a voice sample speaks or waits (false without samples). */
+  speaking(): boolean {
+    return this.inner.speaking?.() ?? false;
+  }
+
+  pauseLoops(): void {
+    this.inner.pauseLoops?.();
+  }
+
+  resumeLoops(): void {
+    this.inner.resumeLoops?.();
   }
 
   /** Pre-render sound effects (Web Audio only; the boot scene calls it when it exists). */
@@ -354,7 +412,7 @@ export function drawCursor(r: Renderer, x: number, y: number, t: number): void {
   const bob = blinkOn(t, 16) ? 0 : 1;
   if (hasSprite('ui/cursor-swan')) {
     const f = getFrame('ui/cursor-swan', 0);
-    r.sprite('ui/cursor-swan', 0, x - f.buf.w + f.ox + bob, y - (f.buf.h >> 1) + f.oy, cursorOpts);
+    r.sprite('ui/cursor-swan', 0, x - frameW(f) + f.ox + bob, y - (frameH(f) >> 1) + f.oy, cursorOpts);
   } else uiText(r, '>', x - 6 + bob, y - 3, UI_GOLD);
 }
 

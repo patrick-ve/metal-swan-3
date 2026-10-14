@@ -16,7 +16,7 @@ import type { Player } from '../../../player/player';
 import { isSwan } from '../../vehicles/swan/swan';
 import { HOUSE, houseRow, lawnSprite, poolSprite } from './art';
 import { AmsHotdogVendor } from './entities';
-import { at, crate, fromRight, hostage, normalUp, prewarm, twoPlayers } from './helpers';
+import { at, carillon, crate, fromRight, hostage, normalUp, prewarm, twoPlayers } from './helpers';
 import { B_HOTDOG_X, B_PASSAGE, B_W, G, terrainB } from './terrain';
 
 export const BG_NOON: BackgroundDef = {
@@ -119,9 +119,9 @@ function playerAtSwan(ctx: SectionContext): Player | null {
   return null;
 }
 
-/** Gramps on the radio: a navy bubble over a player. */
+/** Gramps on the radio: a navy bubble over a player, voiced by its sample when one is loaded. */
 function radio(ctx: SectionContext, p: Entity, text: string, ticks = 150): void {
-  hudOf(ctx.world).bubble(p, text, { kind: 'radio', ticks });
+  hudOf(ctx.world).bubble(p, text, { kind: 'radio', ticks, speaker: 'gramps' });
 }
 
 /** Gramps talks one thread at a time: the lesson waits while the greeting is on the radio. */
@@ -139,7 +139,7 @@ function* swanGreeting(ctx: SectionContext, vendor: Entity, radioState: RadioSta
   radioState.greeting = true;
   try {
     // The note on her (above the RIDE? bubble) is a sign, not a voice: it shows at once.
-    hudOf(ctx.world).bubble({ x: SWAN_X, y: G - 62 }, 'SWAN-3. SHORE LEAVE TOO.', { kind: 'hint', ticks: 110 });
+    hudOf(ctx.world).bubble({ x: SWAN_X, y: G - 62 }, 'SWAN-3. SHORE LEAVE TOO.', { kind: 'hint', ticks: 110, voice: false });
     // Let the vendor's salute finish first (he stands 90 px before her): one voice at a time.
     let wait = 0;
     yield () => ++wait > 90 || !(vendor instanceof AmsHotdogVendor) || vendor.mode !== 'salute';
@@ -189,6 +189,7 @@ const LAMP_TOP = G - 70;
 export function* script(ctx: SectionContext): ScriptGen {
   prewarm('npc/ams/', 'decor/ams/');
   const { vendor } = life(ctx);
+  carillon(ctx);
   ctx.spawn('ams-pigeons', 300, G, { count: 3 });
   ctx.spawn('ams-pigeons', 2900, G, { count: 4 });
 
@@ -300,6 +301,7 @@ export const sectionB: SectionDef = {
   checkpoints: [1200, 2300],
   timeLimit: 60,
   music: 'ams',
+  ambience: 'env/ams-street',
   exits: [{ id: 'end', rect: { x: 3000, y: 96, w: 24, h: 80 }, to: 'c', disabled: true }],
   script,
 };

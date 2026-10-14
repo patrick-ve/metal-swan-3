@@ -6,23 +6,28 @@
  *   animations and a menu portrait.
  * - `defineSoldierSprites(id, style, opts)` registers the `enemy/<id>/…` contract for a rifle
  *   soldier (full-body frames, `muzzle` on shoot frames, `hand` on throw frames).
+ * The player sets also register their 2× art (`defineSprite(id, gen, { hi })`, used only by a
+ * mission with `artDensity: 2`): every strip rendered again by the rig at density 2, with the
+ * same logical geometry (docs/ART_GUIDE.md "2x art (mission ams)").
  * A new character or enemy is one style object plus optional pose overrides (ART_GUIDE.md §5).
  */
+import type { Color } from '../../engine/color';
 import { PixelBuffer } from '../../engine/pixel';
 import { INK, PAL } from '../../engine/palette';
 import type { Frame } from '../../engine/render';
 import { defineSprite } from '../../engine/sprites';
 import type { SpriteOpts } from '../../engine/sprites';
+import { liftHi } from './hi';
 import { crumble, scorch, sootify, withFlames } from './human-fx';
 import { renderHuman } from './humanoid';
-import type { ArmPose, HumanStyle, Pose, RenderPart, WeaponPose } from './humanoid';
+import type { ArmPose, Density, HumanStyle, Pose, RenderPart, WeaponPose } from './humanoid';
 import * as P from './poses';
 
 export type FrameList = Frame[];
 
-/** Render a list of poses for one part. */
-export function poseFrames(style: HumanStyle, poses: readonly Pose[], part: 'full' | 'upper' | 'lower' = 'full'): FrameList {
-  return poses.map((p) => renderHuman(style, p, part));
+/** Render a list of poses for one part (`density` 2: the 2× frames). */
+export function poseFrames(style: HumanStyle, poses: readonly Pose[], part: 'full' | 'upper' | 'lower' = 'full', density: Density = 1): FrameList {
+  return poses.map((p) => renderHuman(style, p, part, density));
 }
 
 /** Arms swing against the legs (walk / run cycles without a weapon). */
@@ -36,26 +41,53 @@ export function withSwing(poses: readonly Pose[], k: number, elbow: number): Pos
   });
 }
 
-/** Burning death: two flaming frames, soot statue, two crumble frames, ash pile. */
-export function burnFrames(style: HumanStyle, base: Pose = {}, seed = 9): FrameList {
+/**
+ * Burning death: two flaming frames, soot statue, two crumble frames, ash pile. `density` 2: the
+ * figure at 2× under the same flames and crumbling (lifted from the 1× effect with `liftHi`).
+ */
+export function burnFrames(style: HumanStyle, base: Pose = {}, seed = 9, density: Density = 1): FrameList {
   const out: FrameList = [];
-  P.BURN.forEach((p, i) => out.push(withFlames(scorch(renderHuman(style, { ...base, ...p }, 'full'), 1), i * 2 + 1, seed)));
-  const statue = sootify(renderHuman(style, { ...base, ...P.STAND, armN: { sh: 30, el: 60, hand: 'open' }, armF: { sh: -20, el: 50, hand: 'open' }, expr: 'soot' }, 'full'), 1, true, seed);
-  out.push(withFlames(statue, 5, seed + 3, 3));
-  out.push(statue);
-  out.push(crumble(statue, 0.35, seed));
-  out.push(crumble(statue, 0.7, seed));
-  out.push(crumble(statue, 1, seed));
+  const statuePose: Pose = { ...base, ...P.STAND, armN: { sh: 30, el: 60, hand: 'open' }, armF: { sh: -20, el: 50, hand: 'open' }, expr: 'soot' };
+  if (density === 1) {
+    P.BURN.forEach((p, i) => out.push(withFlames(scorch(renderHuman(style, { ...base, ...p }, 'full'), 1), i * 2 + 1, seed)));
+    const statue = sootify(renderHuman(style, statuePose, 'full'), 1, true, seed);
+    out.push(withFlames(statue, 5, seed + 3, 3));
+    out.push(statue);
+    out.push(crumble(statue, 0.35, seed));
+    out.push(crumble(statue, 0.7, seed));
+    out.push(crumble(statue, 1, seed));
+    return out;
+  }
+  // withFlames pads the frame by 2 px on the left and height + 2 on top; crumble by 4 on the left.
+  const flames = (f1: Frame, f2: Frame, phase: number, s: number, height = 7): Frame =>
+    liftHi(withFlames(f1, phase, s, height), f1.buf, f2.buf, 2, height + 2);
+  P.BURN.forEach((p, i) => {
+    const pose = { ...base, ...p };
+    out.push(flames(scorch(renderHuman(style, pose, 'full'), 1), scorch(renderHuman(style, pose, 'full', 2), 1), i * 2 + 1, seed));
+  });
+  const s1 = sootify(renderHuman(style, statuePose, 'full'), 1, true, seed);
+  const s2 = sootify(renderHuman(style, statuePose, 'full', 2), 1, true, seed);
+  out.push(flames(s1, s2, 5, seed + 3, 3));
+  out.push(s2);
+  for (const t of [0.35, 0.7, 1]) out.push(liftHi(crumble(s1, t, seed), s1.buf, s2.buf, 4, 0));
   return out;
 }
 
 /** Explosion death: a scorched (two shades darker), tumbling launch (DIE_BLAST). */
-export function blastFrames(style: HumanStyle, base: Pose = {}): FrameList {
-  return P.DIE_BLAST.map((p) => scorch(renderHuman(style, { ...base, ...p }, 'full'), 2));
+export function blastFrames(style: HumanStyle, base: Pose = {}, density: Density = 1): FrameList {
+  return P.DIE_BLAST.map((p) => scorch(renderHuman(style, { ...base, ...p }, 'full', density), 2));
 }
 
 function def(id: string, gen: () => FrameList, opts: SpriteOpts): void {
   defineSprite(id, gen, opts);
+}
+
+/** A strip recipe at either density. */
+type DGen = (d: Density) => FrameList | Frame | PixelBuffer;
+
+/** Register a player strip with its 2× art: the same recipe at density 1 and 2. */
+function defHi(id: string, gen: DGen, opts: SpriteOpts): void {
+  defineSprite(id, () => gen(1), { ...opts, hi: () => gen(2) });
 }
 
 // ------------------------------------------------------------------------------------ player
@@ -109,11 +141,11 @@ export const BORED_STRETCH: readonly Pose[] = [
  */
 export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtOpts = {}): void {
   const pre = `char/${id}/`;
-  const lower = (poses: readonly Pose[]) => (): FrameList => poseFrames(style, poses, 'lower');
-  const full = (poses: readonly Pose[]) => (): FrameList => poseFrames(style, poses, 'full');
-  /** Render poses, then let the character add its props to that strip. */
-  const deco = (name: DecoratedAnim, poses: readonly Pose[], part: RenderPart) => (): FrameList => {
-    const frames = poseFrames(style, poses, part);
+  const lower = (poses: readonly Pose[]) => (d: Density): FrameList => poseFrames(style, poses, 'lower', d);
+  const full = (poses: readonly Pose[]) => (d: Density): FrameList => poseFrames(style, poses, 'full', d);
+  /** Render poses, then let the character add its props to that strip (2× frames: logical px). */
+  const deco = (name: DecoratedAnim, poses: readonly Pose[], part: RenderPart) => (d: Density): FrameList => {
+    const frames = poseFrames(style, poses, part, d);
     const add = o.decorate?.[name];
     return add ? add(frames, poses) : frames;
   };
@@ -124,50 +156,50 @@ export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtO
     return t;
   };
 
-  def(pre + 'legs-idle', lower([P.STAND]), { ticksPerFrame: 30 });
-  def(pre + 'legs-run', lower(o.run ?? P.RUN), { ticksPerFrame: 4 });
-  def(pre + 'legs-jump', lower(P.JUMP), { ticksPerFrame: 6, loop: false });
-  def(pre + 'legs-fall', lower([P.FALL]), { ticksPerFrame: 30 });
-  def(pre + 'legs-land', lower([P.LAND]), { ticksPerFrame: 6, loop: false });
-  def(pre + 'legs-crouch', lower([P.CROUCH]), { ticksPerFrame: 30 });
-  def(pre + 'legs-crouch-walk', lower(P.CROUCH_WALK), { ticksPerFrame: 6 });
+  defHi(pre + 'legs-idle', lower([P.STAND]), { ticksPerFrame: 30 });
+  defHi(pre + 'legs-run', lower(o.run ?? P.RUN), { ticksPerFrame: 4 });
+  defHi(pre + 'legs-jump', lower(P.JUMP), { ticksPerFrame: 6, loop: false });
+  defHi(pre + 'legs-fall', lower([P.FALL]), { ticksPerFrame: 30 });
+  defHi(pre + 'legs-land', lower([P.LAND]), { ticksPerFrame: 6, loop: false });
+  defHi(pre + 'legs-crouch', lower([P.CROUCH]), { ticksPerFrame: 30 });
+  defHi(pre + 'legs-crouch-walk', lower(P.CROUCH_WALK), { ticksPerFrame: 6 });
 
   // The torso set and the idle / victory strips, plain and for every status art variant.
   const sets: Array<[string, (p: Pose) => Pose]> = [['', (p) => p]];
   for (const [infix, fx] of Object.entries(o.variants ?? {})) sets.push([infix + '-', fx]);
   for (const [vx, fx] of sets) {
-    const upper = (poses: readonly Pose[]) => (): FrameList => poseFrames(style, poses.map(fx), 'upper');
+    const upper = (poses: readonly Pose[]) => (d: Density): FrameList => poseFrames(style, poses.map(fx), 'upper', d);
     for (const w of ['pistol', 'heavy'] as const satisfies readonly WeaponPose[]) {
       const t = `${pre}${vx}torso-${w}-`;
       const base: Pose = { ...o.torso, weapon: w };
       const kick = w === 'pistol' ? 2 : 1;
-      def(t + 'idle', upper(P.seq(base, o.idle ?? P.BREATH)), { ticksPerFrame: 20 });
-      def(t + 'shoot', upper(P.seq(base, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
-      def(t + 'up', upper([{ ...base, aim: 'up' }]), { ticksPerFrame: 30 });
-      def(t + 'shoot-up', upper(P.seq({ ...base, aim: 'up' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
-      def(t + 'down', upper([{ ...base, aim: 'down' }]), { ticksPerFrame: 30 });
-      def(t + 'shoot-down', upper(P.seq({ ...base, aim: 'down' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
+      defHi(t + 'idle', upper(P.seq(base, o.idle ?? P.BREATH)), { ticksPerFrame: 20 });
+      defHi(t + 'shoot', upper(P.seq(base, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
+      defHi(t + 'up', upper([{ ...base, aim: 'up' }]), { ticksPerFrame: 30 });
+      defHi(t + 'shoot-up', upper(P.seq({ ...base, aim: 'up' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
+      defHi(t + 'down', upper([{ ...base, aim: 'down' }]), { ticksPerFrame: 30 });
+      defHi(t + 'shoot-down', upper(P.seq({ ...base, aim: 'down' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
       // Diagonals (GDD §4.3): up + forward aims at 45° with every gun; the machine-gun sweep
       // also passes 45° down, so only the heavy pose has the down diagonal.
       for (const d of w === 'heavy' ? (['diag-up', 'diag-down'] as const) : (['diag-up'] as const)) {
-        def(t + d, upper([{ ...base, aim: d }]), { ticksPerFrame: 30 });
-        def(t + 'shoot-' + d, upper(P.seq({ ...base, aim: d }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
+        defHi(t + d, upper([{ ...base, aim: d }]), { ticksPerFrame: 30 });
+        defHi(t + 'shoot-' + d, upper(P.seq({ ...base, aim: d }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
       }
       const carry: Pose = { ...o.torso, weapon: w, gunHand: 'far' };
-      def(t + 'throw', upper(P.seq(carry, P.THROW)), { durations: [5, 4, 3, 5, 6], loop: false });
-      def(t + 'knife', deco('knife', P.seq(carry, o.knife ?? P.KNIFE).map(fx), 'upper'), timing('knife', { durations: [3, 3, 3, 4, 5] }, false));
+      defHi(t + 'throw', upper(P.seq(carry, P.THROW)), { durations: [5, 4, 3, 5, 6], loop: false });
+      defHi(t + 'knife', deco('knife', P.seq(carry, o.knife ?? P.KNIFE).map(fx), 'upper'), timing('knife', { durations: [3, 3, 3, 4, 5] }, false));
     }
-    def(pre + vx + 'victory', deco('victory', (o.victory ?? P.VICTORY).map(fx), 'full'), timing('victory', { ticksPerFrame: 8 }));
-    def(pre + vx + 'bored', deco('bored', (o.bored ?? BORED_STRETCH).map(fx), 'full'), timing('bored', { durations: [12, 10, 24, 10, 10, 10] }));
+    defHi(pre + vx + 'victory', deco('victory', (o.victory ?? P.VICTORY).map(fx), 'full'), timing('victory', { ticksPerFrame: 8 }));
+    defHi(pre + vx + 'bored', deco('bored', (o.bored ?? BORED_STRETCH).map(fx), 'full'), timing('bored', { durations: [12, 10, 24, 10, 10, 10] }));
   }
 
-  def(pre + 'die', deco('die', o.die ?? P.DIE, 'full'), timing('die', { durations: [6, 6, 6, 6, 8, 40] }, false));
-  def(pre + 'die-burn', () => burnFrames(style), { durations: [5, 5, 8, 12, 8, 8, 40], loop: false });
-  def(pre + 'die-blast', () => blastFrames(style), { durations: [5, 5, 5, 5, 30], loop: false });
-  def(pre + 'spawn', full(P.SPAWN), { durations: [4, 4, 6, 10], loop: false });
-  def(pre + 'mount', full(P.MOUNT), { ticksPerFrame: 6, loop: false });
-  def(pre + 'salute', deco('salute', o.salute ?? P.SALUTE, 'full'), timing('salute', { durations: [8, 60] }, false));
-  defineSprite(pre + 'portrait', () => portrait(style), { anchor: 'top-left' });
+  defHi(pre + 'die', deco('die', o.die ?? P.DIE, 'full'), timing('die', { durations: [6, 6, 6, 6, 8, 40] }, false));
+  defHi(pre + 'die-burn', (d) => burnFrames(style, {}, 9, d), { durations: [5, 5, 8, 12, 8, 8, 40], loop: false });
+  defHi(pre + 'die-blast', (d) => blastFrames(style, {}, d), { durations: [5, 5, 5, 5, 30], loop: false });
+  defHi(pre + 'spawn', full(P.SPAWN), { durations: [4, 4, 6, 10], loop: false });
+  defHi(pre + 'mount', full(P.MOUNT), { ticksPerFrame: 6, loop: false });
+  defHi(pre + 'salute', deco('salute', o.salute ?? P.SALUTE, 'full'), timing('salute', { durations: [8, 60] }, false));
+  defineSprite(pre + 'portrait', () => portrait(style), { anchor: 'top-left', hi: () => portrait(style, 2) });
   defineRiderSprites(id, style);
 }
 
@@ -180,7 +212,7 @@ export function defineRiderSprites(id: string, style: HumanStyle, base: Pose = {
   const pre = `char/${id}/`;
   for (const name of P.RIDE_POSES) {
     const r = P.RIDE[name];
-    def(pre + 'ride-' + name, () => poseFrames(style, P.seq({ ...base, weapon: 'none' }, r.frames), 'upper'), { ticksPerFrame: r.ticks });
+    defHi(pre + 'ride-' + name, (d) => poseFrames(style, P.seq({ ...base, weapon: 'none' }, r.frames), 'upper', d), { ticksPerFrame: r.ticks });
   }
 }
 
@@ -188,19 +220,30 @@ export function defineRiderSprites(id: string, style: HumanStyle, base: Pose = {
 
 /**
  * Menu portrait (32×32): the head and shoulders rendered by the rig, enlarged with Scale2x
- * (rounded edges, no new colours) on a framed dark panel.
+ * (rounded edges, no new colours) on a framed dark panel. `density` 2: the 64×64 2× twin (the 2×
+ * bust under the same crop; frame and panel at the 1× weight).
  */
-export function portrait(style: HumanStyle): PixelBuffer {
-  const bust = renderHuman(style, { armN: { sh: 4, el: 10 }, armF: { sh: -4, el: 10 }, expr: 'normal' }, 'upper');
+export function portrait(style: HumanStyle, density: Density = 1): PixelBuffer {
+  const bust = renderHuman(style, { armN: { sh: 4, el: 10 }, armF: { sh: -4, el: 10 }, expr: 'normal' }, 'upper', density);
   const head = bust.pts.head ?? [0, -14];
   // Region around the head: 16×15 source px → 32×30 after Scale2x.
   const sx = bust.ox + head[0] - 8;
   const sy = bust.oy + head[1] - 8;
-  const crop = bust.buf.crop(sx, sy, 16, 16).scale2x();
-  const out = new PixelBuffer(32, 32);
-  out.gradient(0, 0, 32, 32, [PAL.navy[0], PAL.navy[1], PAL.purple[0]], { dither: 0.5 });
-  out.blit(crop, 0, 1);
-  out.strokeRect(0, 0, 32, 32, INK);
+  return portraitPanel(bust.buf, sx, sy, [PAL.navy[0], PAL.navy[1], PAL.purple[0]], density);
+}
+
+/**
+ * The 32×32 portrait panel (64×64 at density 2): the 16×16 logical crop at (sx, sy) of `bust`
+ * (a buffer of that density) enlarged with Scale2x over a dithered gradient, framed in ink.
+ */
+export function portraitPanel(bust: PixelBuffer, sx: number, sy: number, bg: readonly Color[], density: Density = 1): PixelBuffer {
+  const d = density;
+  const crop = bust.crop(sx * d, sy * d, 16 * d, 16 * d).scale2x();
+  const out = new PixelBuffer(32 * d, 32 * d);
+  out.gradient(0, 0, 32 * d, 32 * d, bg, { dither: 0.5 });
+  out.blit(crop, 0, d);
+  out.strokeRect(0, 0, 32 * d, 32 * d, INK);
+  if (d === 2) out.strokeRect(1, 1, 62, 62, INK);
   return out;
 }
 

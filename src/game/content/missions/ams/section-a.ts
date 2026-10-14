@@ -17,7 +17,7 @@ import type { BackgroundDef, DecorDef, SectionContext, SectionDef } from '../../
 import type { Player } from '../../../player/player';
 import { eraseEnemyShots } from '../../../projectile';
 import { AmsBaker } from './entities';
-import { at, crate, fromLeft, fromRight, hardOnly, hostage, normalUp, prewarm } from './helpers';
+import { at, carillon, crate, fromLeft, fromRight, hardOnly, hostage, normalUp, prewarm } from './helpers';
 import { awningSprite, balustradeSprite, boatDecor, bridgeDecor, HOUSE, houseRow, rowWidth, waterDecor } from './art';
 import { A_ARENA, A_AWNINGS, A_BOATS, A_BRIDGES, A_CANAL, A_FABEL_X, A_LEDGES, A_W, DECK_Y, G, ROOF_Y, terrainA, WATER_Y } from './terrain';
 
@@ -119,12 +119,14 @@ export function life(ctx: SectionContext): { baker: Entity } {
 
 /** The briefing lines at FABEL FRIET (docs/design/amsterdam.md §7): hint bubbles, 2 lines each. */
 export const BRIEFING: readonly string[] = [
-  'HOI! WELCOME TO\nFABEL FRIET!',
-  'BAD NEWS, SOLDIER.\nWE MIGHT CLOSE FOR GOOD.',
-  'BURGEMEESTER HALSEMA\nWANTS TO SHUT US DOWN!',
-  'THE NEIGHBOURS SAY\nWE SMELL TOO GOOD.',
-  'SHE IS AT THE STOPERA.\nPLEASE, STOP HER!',
-  'HERE, FRIES FOR THE\nROAD! LEKKER!',
+  'HOI! WELKOM BIJ\nFABEL FRIET!',
+  'SLECHT NIEUWS, WIJ\nMOETEN MOGELIJK SLUITEN.',
+  'BURGEMEESTER HALSEMA\nWIL ONS VOOR ALTIJD...',
+  '...WEG HEBBEN!',
+  'MAAR DE BUREN ZIJN\nBLIJ MET ONS...',
+  'ZE IS BIJ DE STOPERA\nTE VINDEN.',
+  'ALSJEBLIEFT,\nSTOP HAAR!',
+  'HIER, NEEM EEN\nLEKKER FRIETJE.',
 ];
 /** Ticks a briefing line stays up (auto-advance). */
 export const LINE_TICKS = 150;
@@ -183,7 +185,7 @@ export class InputLock {
 }
 
 /**
- * THE BRIEFING (§7): the timer pauses, the input is locked, the baker talks (6 hint bubbles,
+ * THE BRIEFING (§7): the timer pauses, the input is locked, the baker talks (8 hint bubbles,
  * auto-advance, fire skips a line) and tosses the fries; then the pads and the timer come back.
  */
 export function* briefing(ctx: SectionContext, baker: Entity): ScriptGen {
@@ -227,7 +229,8 @@ export function* briefing(ctx: SectionContext, baker: Entity): ScriptGen {
     }
     for (let i = 0; i < BRIEFING.length; i++) {
       const text = BRIEFING[i];
-      const bubble = person ? person.say(text, LINE_TICKS, 'hint') : ctx.hud.bubble(baker, text, { kind: 'hint', ticks: LINE_TICKS });
+      // Voiced by the baker's samples: each line replaces the last one's clip (a skip cuts it short).
+      const bubble = person ? person.say(text, LINE_TICKS, 'hint') : ctx.hud.bubble(baker, text, { kind: 'hint', ticks: LINE_TICKS, speaker: 'baker' });
       person?.talk(LINE_TICKS - 10);
       let t = 0;
       yield () => {
@@ -280,6 +283,7 @@ const LAMP_TOP = G - 70;
 export function* script(ctx: SectionContext): ScriptGen {
   prewarm('npc/ams/', 'decor/ams/', 'enemy/fatbike-youth/', 'enemy/delivery-rider/', 'enemy/seagull/');
   const { baker } = life(ctx);
+  carillon(ctx);
   // More life on the quay and in the side canal.
   ctx.spawn('ams-boat-platform', 1090, 172, { range: 222, speed: 0.45, pause: 60 });
   ctx.spawn('ams-pigeons', 2940, G, { count: 4 });
@@ -419,6 +423,7 @@ export const sectionA: SectionDef = {
   checkpoints: [1300, 2500],
   timeLimit: 60,
   music: 'ams',
+  ambience: 'env/ams-canal',
   exits: [{ id: 'end', rect: { x: A_W - 24, y: 96, w: 24, h: 80 }, to: 'b', disabled: true }],
   script,
 };

@@ -307,12 +307,21 @@ export class Enemy extends Entity {
     return this.anim.id === this.spriteId(name);
   }
 
+  /**
+   * Draw at the unrounded position (the renderer snaps to 1/res with the default sub-pixel
+   * policy, docs/ARCHITECTURE.md §3). Off by default: subclasses that draw extra parts at
+   * Math.round positions after `super.draw` would drift against the body. Classes that draw only
+   * through `draw` / `drawTint` (the ams locals) turn it on.
+   */
+  protected fineDraw = false;
+
   override draw(r: Renderer): void {
     if (this.dead && this.deathAnimDone && this.deathTicks % 4 < 2 && this.corpseLeft < 20) return;
     if (!this.anim.id) return;
     drawOpts.flipX = this.facing < 0;
     drawOpts.flash = this.flashTicks > 0;
-    r.sprite(this.anim.id, this.anim.index, Math.round(this.x), Math.round(this.y), drawOpts);
+    const fine = this.fineDraw;
+    r.sprite(this.anim.id, this.anim.index, fine ? this.x : Math.round(this.x), fine ? this.y : Math.round(this.y), drawOpts);
   }
 
   /** Draw a coloured flash over the sprite (attack telegraphs); call after `super.draw(r)`. */
@@ -321,7 +330,8 @@ export class Enemy extends Entity {
     tintOpts.flipX = this.facing < 0;
     tintOpts.tint = color;
     tintOpts.alpha = alpha;
-    r.sprite(this.anim.id, this.anim.index, Math.round(this.x), Math.round(this.y), tintOpts);
+    const fine = this.fineDraw;
+    r.sprite(this.anim.id, this.anim.index, fine ? this.x : Math.round(this.x), fine ? this.y : Math.round(this.y), tintOpts);
   }
 
   // ------------------------------------------------------------------------------- awareness

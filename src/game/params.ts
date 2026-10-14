@@ -1,10 +1,14 @@
 /**
  * URL launch parameters (docs/ARCHITECTURE.md §5.13):
  * `?mission=m1&section=b&god=1&debug=1&seed=42&players=2&char=<id>&weapon=<id>&boss=1&mute=1`
- * plus `difficulty=easy|normal|hard`. Pure parsing (main.ts passes `location.search`).
+ * plus `difficulty=easy|normal|hard`, `gfx=pixel|smooth|xbr` (the GRAPHICS filter for this
+ * session; not saved; the older spelling `res=` is still read) and `kmax=1..12` (highest
+ * backbuffer resolution; a perf / debug knob). Pure parsing (main.ts passes `location.search`).
  * With `mission` set the game skips the title and starts that mission at once.
  */
+import type { UpscaleMode } from '../engine/upscale';
 import { isDifficulty, type Difficulty } from './session';
+import { isGraphicsMode } from './settings';
 
 export interface LaunchParams {
   mission: string | null;
@@ -18,6 +22,10 @@ export interface LaunchParams {
   boss: boolean;
   mute: boolean;
   difficulty: Difficulty | null;
+  /** GRAPHICS filter for this session (overrides the saved option until it is changed). */
+  gfx: UpscaleMode | null;
+  /** Highest backbuffer resolution (default KMAX in render-common.ts; 1 = the classic 384×216). */
+  kmax: number | null;
 }
 
 export const DEFAULT_PARAMS: Readonly<LaunchParams> = Object.freeze({
@@ -32,6 +40,8 @@ export const DEFAULT_PARAMS: Readonly<LaunchParams> = Object.freeze({
   boss: false,
   mute: false,
   difficulty: null,
+  gfx: null,
+  kmax: null,
 });
 
 /** Ids are short kebab-case words; anything else is ignored. */
@@ -48,6 +58,9 @@ export function parseLaunchParams(search: string): LaunchParams {
   const seedRaw = q.get('seed');
   const seed = seedRaw !== null && /^-?\d{1,10}$/.test(seedRaw) ? Number(seedRaw) >>> 0 : null;
   const diff = q.get('difficulty');
+  const gfx = (q.get('gfx') ?? q.get('res'))?.toLowerCase() ?? null;
+  const kmaxRaw = q.get('kmax');
+  const kmax = kmaxRaw !== null && /^\d{1,2}$/.test(kmaxRaw) && Number(kmaxRaw) >= 1 && Number(kmaxRaw) <= 12 ? Number(kmaxRaw) : null;
   return {
     mission: id(q.get('mission')),
     section: id(q.get('section')),
@@ -60,5 +73,7 @@ export function parseLaunchParams(search: string): LaunchParams {
     boss: flag(q.get('boss')),
     mute: flag(q.get('mute')),
     difficulty: isDifficulty(diff) ? diff : null,
+    gfx: isGraphicsMode(gfx) ? gfx : null,
+    kmax,
   };
 }

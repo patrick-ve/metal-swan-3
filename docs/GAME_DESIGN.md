@@ -582,7 +582,7 @@ One original temporary status. It changes the head and the jump, never the body.
 - Every life starts with the `pistol` (infinite ammo).
 - A `pickup-weapon` gives that weapon with its **first** ammo amount. **Double-pickup rule:**
   the **same** weapon again adds its **again** amount (cap 999) and the announcer says
-  `"MORE <NAME>!"` (e.g. `"MORE ROCKETS!"`). A **different** weapon replaces the current one and
+  `"MORE <NAME>!"` (e.g. `"MORE ROCKETS!"`; the weapon lines are the plain names, user decision 2026-10-14). A **different** weapon replaces the current one and
   its ammo.
 - Ammo 0 → back to the pistol: dry click (`weapon/empty`), a comic puff from the empty weapon,
   30-tick draw (4.3). Death → back to the pistol.
@@ -595,14 +595,14 @@ One original temporary status. It changes the head and the jump, never the body.
 | id | Name | Crate | Ammo first / again | Behaviour | Damage | Cooldown tap / hold (ticks) | Speed (px/tick) | Pierce / area | Pose | sfx id | Announcer |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `pistol` | Service Pistol | — | ∞ | One 8×2 px yellow bullet along the aim. Crouched taps: 6-tick cooldown. Max 16 on screen. | 10 | 8 / 10 | 8 | none | pistol | `weapon/pistol` | — |
-| `machine-gun` | Machine Gun | M | 200 / +150 | Tap = 4-round burst (one round per 4 ticks); hold = stream; ±1.5 px vertical jitter; aim sweep (4.3). Max 24. | 10 per round | 4 / 4 | 9 | none | heavy | `weapon/machine-gun` | `"MACHINE GUN! FROM THE TOP!"` |
-| `shotgun` | Shotgun | S | 30 / +10 | Instant cone: a damage area 72 px long, 16 px tall at the muzzle and 40 px at the tip, active 6 ticks; each target is hit once per blast. Cosmetic pellets fly 6 px/tick and fade. The player is kicked back 2 px. Max 1 blast. | 150 per target | 28 / 28 | instant | every target in the cone | heavy | `weapon/shotgun` | `"SHOTGUN! FRONT ROW SEATS!"` |
-| `rocket-launcher` | Rocket Launcher | R | 30 / +20 | Rocket starts at 2 and accelerates +0.3/tick to 7. It steers only vertically (≤ 1 px/tick) toward the nearest enemy ahead; it cannot turn around. Explodes on any hit or terrain. Smoke trail. Max 2. | 30 hit + 50 blast (r 16, the hit target takes both) | 20 / 20 | 2 → 7 | blast r 16 | heavy | `weapon/rocket` | `"ROCKET LAUNCHER! BIG FINISH!"` |
-| `flamethrower` | Flamethrower | F | 30 / +15 | A flame stream 96 px long (rises slightly, curls down at the tip), active 24 ticks per press. Fired down from the air within 32 px of the ground it runs 128 px along the floor. Max 1 stream. | 10 per 2 ticks per target, max 12 hits per target per press | 24 / 24 | instant (stream) | pierces all | heavy | `weapon/flame` | `"FLAMETHROWER! MIND THE EYEBROWS!"` |
-| `laser` | Laser | L | 200 / +150 | Hold: continuous beam to the first solid or 384 px, 1 ammo per 4 ticks, lingers 6 ticks after release. Tap: a 12-tick pulse (3 ammo). Aim sweep like the machine gun. | 8 per 2 ticks per target | — (continuous) | instant | pierces all | heavy | `weapon/laser` (loop) | `"LASER! PEW PEW. OFFICIALLY."` |
-| `homing` | Homing Missiles | H | 40 / +20 missiles | Each press launches 2 missiles (15° up and 15° down from the aim). Each locks the nearest enemy hurtbox within 220 px in front, turns 4°/tick, lives 120 ticks, flies straight without a target. Max 4. | 30 hit + 10 blast (r 8) | 20 / 20 | 4 | blast r 8 | heavy | `weapon/homing` | `"HOMING MISSILES! FIND YOUR SEATS!"` |
-| `tuba` | Tuba (captured Legion tech) | T | 25 / +15 | A sonic ring that grows from 12 to 40 px over 40 ticks and lives 70 ticks. It hits each enemy once, **erases** every enemy bullet, note, record, egg and grenade it touches, and pushes enemies with ≤ 40 HP back 8 px. Max 3. | 60 | 30 / 30 | 2.5 | pierces all; erases enemy projectiles | heavy | `weapon/tuba` | `"TUBA! OOM-PAH-PAH!"` |
-| `bounce-mine` | Bounce Mines | B | 30 / +10 | A disc mine thrown low (vx 3.0, vy −2.0, gravity 0.2) that bounces along the ground (vy × −0.6, vx kept), hops gaps up to 32 px and steps up to 12 px. Explodes on enemy contact, on the 4th landing or after 150 ticks. Aimed up: lobbed (vx 1.0, vy −4.0); aimed down in the air: dropped (vy +1). Max 3. | 30 hit + 40 blast (r 20) | 20 / 20 | 3 (start) | blast r 20 | heavy | `weapon/bounce-mine` | `"BOUNCE MINES! HOP TO IT!"` |
+| `machine-gun` | Machine Gun | M | 200 / +150 | Tap = 4-round burst (one round per 4 ticks); hold = stream; ±1.5 px vertical jitter; aim sweep (4.3). Max 24. | 10 per round | 4 / 4 | 9 | none | heavy | `weapon/machine-gun` | `"HEAVY MACHINE GUN!"` |
+| `shotgun` | Shotgun | S | 30 / +10 | Instant cone: a damage area 72 px long, 16 px tall at the muzzle and 40 px at the tip, active 6 ticks; each target is hit once per blast. Cosmetic pellets fly 6 px/tick and fade. The player is kicked back 2 px. Max 1 blast. | 150 per target | 28 / 28 | instant | every target in the cone | heavy | `weapon/shotgun` | `"SHOTGUN!"` |
+| `rocket-launcher` | Rocket Launcher | R | 30 / +20 | Rocket starts at 2 and accelerates +0.3/tick to 7. It steers only vertically (≤ 1 px/tick) toward the nearest enemy ahead; it cannot turn around. Explodes on any hit or terrain. Smoke trail. Max 2. | 30 hit + 50 blast (r 16, the hit target takes both) | 20 / 20 | 2 → 7 | blast r 16 | heavy | `weapon/rocket` | `"ROCKET LAUNCHER!"` |
+| `flamethrower` | Flamethrower | F | 30 / +15 | A flame stream 96 px long (rises slightly, curls down at the tip), active 24 ticks per press. Fired down from the air within 32 px of the ground it runs 128 px along the floor. Max 1 stream. | 10 per 2 ticks per target, max 12 hits per target per press | 24 / 24 | instant (stream) | pierces all | heavy | `weapon/flame` | `"FLAMETHROWER!"` |
+| `laser` | Laser | L | 200 / +150 | Hold: continuous beam to the first solid or 384 px, 1 ammo per 4 ticks, lingers 6 ticks after release. Tap: a 12-tick pulse (3 ammo). Aim sweep like the machine gun. | 8 per 2 ticks per target | — (continuous) | instant | pierces all | heavy | `weapon/laser` (loop) | `"LASER GUN!"` |
+| `homing` | Homing Missiles | H | 40 / +20 missiles | Each press launches 2 missiles (15° up and 15° down from the aim). Each locks the nearest enemy hurtbox within 220 px in front, turns 4°/tick, lives 120 ticks, flies straight without a target. Max 4. | 30 hit + 10 blast (r 8) | 20 / 20 | 4 | blast r 8 | heavy | `weapon/homing` | `"ENEMY CHASER!"` |
+| `tuba` | Tuba (captured Legion tech) | T | 25 / +15 | A sonic ring that grows from 12 to 40 px over 40 ticks and lives 70 ticks. It hits each enemy once, **erases** every enemy bullet, note, record, egg and grenade it touches, and pushes enemies with ≤ 40 HP back 8 px. Max 3. | 60 | 30 / 30 | 2.5 | pierces all; erases enemy projectiles | heavy | `weapon/tuba` | `"TUBA!"` |
+| `bounce-mine` | Bounce Mines | B | 30 / +10 | A disc mine thrown low (vx 3.0, vy −2.0, gravity 0.2) that bounces along the ground (vy × −0.6, vx kept), hops gaps up to 32 px and steps up to 12 px. Explodes on enemy contact, on the 4th landing or after 150 ticks. Aimed up: lobbed (vx 1.0, vy −4.0); aimed down in the air: dropped (vy +1). Max 3. | 30 hit + 40 blast (r 20) | 20 / 20 | 3 (start) | blast r 20 | heavy | `weapon/bounce-mine` | `"BOUNCE MINES!"` |
 
 **Design notes.** The tuba is the comedy weapon with a real job: low damage, but the only weapon
 that defends (best against the note-spray bosses of m4–m5). The shotgun is the crowd-clearer,
@@ -2655,7 +2655,7 @@ Instrument names are the engine presets (`pulse12`, `pulse25`, `pulse50`, `trian
 | Event | Line |
 |---|---|
 | Mission start | m1 `"MISSION ONE. LOOK SHARP, CYGNETS!"` · m2 `"MISSION TWO. STAY HYDRATED, CYGNETS!"` · m3 `"MISSION THREE. WRAP UP WARM, CYGNETS!"` · m4 `"MISSION FOUR. BREAK A LEG, CYGNETS!"` · m5 `"FINAL MISSION. FLY GRACEFULLY, CYGNETS!"` |
-| Weapons | the lines in section 5; same weapon again: `"MORE <NAME>!"` |
+| Weapons | the lines in section 5 (Dutch); same weapon again: `"MEER <NAME>!"` |
 | Bombs / shells / repair | `"EXTRA BOMBS!"` / `"RELOAD!"` / `"PATCHED UP!"` |
 | 1UP | `"ONE MORE TRY!"` |
 | Helium Head | `"HELIUM HEAD!"` |
@@ -2665,8 +2665,8 @@ Instrument names are the engine presets (`pulse12`, `pulse25`, `pulse50`, `trian
 | Mission complete | `"MISSION COMPLETE! BRAVO!"` |
 | All hostages | `"STANDING OVATION!"` |
 | Time up | `"TIME UP!"` |
-| Continue / game over | `"CONTINUE?"` / `"GAME OVER. THE CRITICS WERE NOT KIND."` |
-| New high score | `"NEW HIGH SCORE! ENCORE!"` |
+| Continue / game over | `"CONTINUE?"` / `"GAME OVER... UITGEZWAAND!"` |
+| New high score | `"NEW HIGH SCORE! YOU'RE GREAT!"` |
 
 ---
 
@@ -2802,7 +2802,7 @@ bubble); he leaves when the game resumes.
 
 ### 13.10 Game over
 
-`GAME OVER` (big, C, y 96; the letters drop in 4 ticks apart), `THE CRITICS WERE NOT KIND.`
+`GAME OVER` (big, C, y 96; the letters drop in 4 ticks apart), `UITGEZWAAND!`
 (small, C, y 120), the final score of each player (small, C, y 140), music `game-over`, announcer.
 After 240 ticks → name entry (if the score qualifies) → high scores → title.
 
@@ -2850,13 +2850,17 @@ The ending runs as in 2.6 (music `ending`). Credits scroll up at 0.5 px/tick ove
 
 ### 13.13 Options
 
-Header `OPTIONS` (big, C, y 16). Rows (small) from y 44, 14 px apart; labels left-aligned at
+Header `OPTIONS` (big, C, y 16). Rows (small) from y 40, 11 px apart; labels left-aligned at
 x 64, values right-aligned at x 320 between `<` and `>`; left/right change, fire confirms.
 
 `DIFFICULTY  EASY / NORMAL / HARD` · `CREDITS  FREE PLAY / 9 / 5 / 3` · `MUSIC VOLUME  0-10` (7) ·
-`SFX VOLUME  0-10` (8) · `ANNOUNCER  ON / OFF` · `SPEECH BUBBLES  ON / OFF` ·
+`SFX VOLUME  0-10` (8) · `VOICE VOLUME  0-10` (10; announcer and voiced bubbles, 2026-10-14) ·
+`ANNOUNCER  ON / OFF` · `SPEECH BUBBLES  ON / OFF` ·
 `BOSS BAR  ON / OFF` · `SCREEN SHAKE  FULL / LOW / OFF` · `REDUCE FLASHES  OFF / ON` (white flashes
-and lightning at 30 % alpha) · `CONTROLS` (rebind screen: `PRESS A KEY FOR FIRE`,
+and lightning at 30 % alpha) · `GRAPHICS  PIXEL / SMOOTH / XBR` (PIXEL; the sprite filter on a
+high-resolution display, applied at once; `?gfx=` sets it for one session and the row shows it;
+while the row is selected, `XBR NEEDS A LARGER WINDOW: SMOOTH` (or `… : PIXEL`) says when the
+window is too small for the filter; docs/ARCHITECTURE.md §3) · `CONTROLS` (rebind screen: `PRESS A KEY FOR FIRE`,
 `PRESS A KEY FOR JUMP`, `PRESS A KEY FOR BOMB`, `PRESS A KEY FOR START`; `ESC TO CANCEL`) ·
 `RESET HIGH SCORES` (asks `ARE YOU SURE?` → `YES` / `NO`) · `BACK`.
 
@@ -2872,7 +2876,7 @@ and lightning at 30 % alpha) · `CONTROLS` (rebind screen: `PRESS A KEY FOR FIRE
 - Name entry: `ENTER YOUR INITIALS` (big, C, y 40); three letter slots (big) at x 168, 184, 200,
   y 80; up/down cycles `A`–`Z`, `0`–`9`, `.`, `END`; fire confirms a slot; a 30-second timer
   (small, right-aligned at (380, 4)); music `high-score`; the announcer says
-  `"NEW HIGH SCORE! ENCORE!"` when the screen opens. Scores are saved per player (co-op: two
+  `"NEW HIGH SCORE! YOU'RE GREAT!"` when the screen opens. Scores are saved per player (co-op: two
   entries).
 
 ---
@@ -3133,6 +3137,17 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
 
 Mission `ams` (docs/design/amsterdam.md §4; `src/game/content/sfx/ams.ts`): `ams/bell`,
 `ams/bass-thump`, `ams/gull`, `ams/kick`, `ams/stamp`, `ams/chain`, `ams/ticket`.
+
+Added 2026-10-14 with the sampled audio of ams and the start screens (each id has a quiet synth
+recipe as the fallback of its ElevenLabs take): `player/step` (footsteps in missions with
+`footsteps`, every 16 ticks at a run), `player/splash` (wading into or dropping into water),
+`weapon/reload` (bombs picked up while riding), `swan/engine` (loop while she is ridden),
+`ui/title-sting` (the first title visit), `env/title-lake` (loop under the title), the section
+ambience loops `env/ams-canal` and `env/ams-street`, `env/ams-carillon` (now and then in sections
+a–c), `ams/rider-crash`, `ams/handhaver-down`, `ams/tour-boat` (loop while a tour boat is in
+view), `ams/duck`, `ams/pigeon`, `ams/mayor-intro` (ROBO-HALSEMA steps out) and `ams/mayor-babble` (loop: her
+wordless robot chatter while one of her bubbles is up; a placeholder, she has no voice). `ui/go` plays when
+the GO arrow comes up.
 
 ### 15.8 Music
 

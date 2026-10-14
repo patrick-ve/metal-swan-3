@@ -8,13 +8,26 @@ import { ascii } from '../../../engine/ascii';
 import type { Color } from '../../../engine/color';
 import { PixelBuffer } from '../../../engine/pixel';
 import { INK, PAL } from '../../../engine/palette';
-import type { Frame } from '../../../engine/render';
-import { withPieces, type Piece } from '../../art/human-fx';
+import { frameW, type Frame } from '../../../engine/render';
+import { setHiTwin, withPieces, type Piece } from '../../art/human-fx';
+import { outlineHi } from '../../art/hi';
 
 const cache = new Map<string, PixelBuffer>();
 
-/** Build (once) an outlined piece from ascii rows. */
-function piece(name: string, rows: readonly string[], key: Readonly<Record<string, Color>>, outline = true): PixelBuffer {
+/**
+ * Build (once) an outlined piece from ascii rows. `hiRows` (mission ams, docs/ART_GUIDE.md "2x
+ * art (mission ams)"): a hand-drawn 2× twin, exactly twice the 1× rows, with the same key plus
+ * any extra letters in `hiKey`; it gets the 2-px outline and is registered with `setHiTwin`, so
+ * `withPieces` draws it on 2× frames.
+ */
+function piece(
+  name: string,
+  rows: readonly string[],
+  key: Readonly<Record<string, Color>>,
+  outline = true,
+  hiRows?: readonly string[],
+  hiKey: Readonly<Record<string, Color>> = {},
+): PixelBuffer {
   let b = cache.get(name);
   if (!b) {
     const raw = ascii(rows as string[], key);
@@ -23,6 +36,16 @@ function piece(name: string, rows: readonly string[], key: Readonly<Record<strin
     b.blit(raw, 1, 1);
     if (outline) b.outline(INK);
     cache.set(name, b);
+    if (hiRows) {
+      if (hiRows.length !== raw.h * 2 || hiRows.some((r) => r.length !== raw.w * 2)) {
+        throw new Error(`2× piece ${name}: ${hiRows[0]?.length ?? 0}×${hiRows.length}, expected ${raw.w * 2}×${raw.h * 2}`);
+      }
+      const rawHi = ascii(hiRows as string[], { ...key, ...hiKey });
+      const hb = new PixelBuffer(b.w * 2, b.h * 2);
+      hb.blit(rawHi, 2, 2);
+      if (outline) outlineHi(hb, 2);
+      setHiTwin(b, hb);
+    }
   }
   return b;
 }
@@ -34,7 +57,17 @@ export function pocketWatch(): PixelBuffer {
 
 /** A ball of red yarn (Mittens). */
 export function yarnBall(): PixelBuffer {
-  return piece('yarn', ['.rR.', 'rRrR', 'rrRr', '.rr.'], { r: PAL.red[1], R: PAL.red[3] });
+  // 2×: wound strands (1-px dark lines) across a ball lit from the top-left.
+  return piece('yarn', ['.rR.', 'rRrR', 'rrRr', '.rr.'], { r: PAL.red[1], R: PAL.red[3] }, true, [
+    '..RRRr..',
+    '.RRrRRr.',
+    'RRrRRrrd',
+    'RrRRrrdr',
+    'rRRrrdrr',
+    'rrrrdrrd',
+    '.rrdrrd.',
+    '..rrdd..',
+  ], { d: PAL.red[0] });
 }
 
 /** A few rows of knitting hanging off the needles (cream with a red stripe). */
@@ -69,14 +102,51 @@ export function helmet(): PixelBuffer {
 /** Bubble-gum bubbles for Pip's fidget: size 0 (small) … 2 (big). */
 export function bubble(size: 0 | 1 | 2): PixelBuffer {
   const key = { p: PAL.pink[1], P: PAL.pink[2], w: PAL.snow[3] };
-  if (size === 0) return piece('bubble0', ['Pp', 'pp'], key);
-  if (size === 1) return piece('bubble1', ['.Pp.', 'Pwpp', 'pppp', '.pp.'], key);
-  return piece('bubble2', ['..PPp..', '.PwPppp.', 'PwPpppp', 'PPppppp', 'ppppppp', '.ppppp.', '..ppp..'], key);
+  // 2×: a round bubble with a 1-px glint at the top-left and a darker rim at the bottom-right.
+  const dk = { d: PAL.pink[0] };
+  if (size === 0) return piece('bubble0', ['Pp', 'pp'], key, true, ['.Pp.', 'PwPp', 'Pppp', '.pd.'], dk);
+  if (size === 1) {
+    return piece('bubble1', ['.Pp.', 'Pwpp', 'pppp', '.pp.'], key, true, [
+      '..PPpp..',
+      '.PwPPpp.',
+      'PwPPpppp',
+      'PPPppppp',
+      'Pppppppp',
+      'pppppppd',
+      '.ppppdd.',
+      '..pddd..',
+    ], dk);
+  }
+  return piece('bubble2', ['..PPp..', '.PwPppp.', 'PwPpppp', 'PPppppp', 'ppppppp', '.ppppp.', '..ppp..'], key, true, [
+    '....PPPpp.......',
+    '..PPPPPPpppp....',
+    '..PwwPPPppppp...',
+    '.PwPPPPpppppp...',
+    'PwPPPPppppppp...',
+    'PPPPPppppppppp..',
+    'PPPPpppppppppp..',
+    'PPPppppppppppp..',
+    'Ppppppppppppp...',
+    'pppppppppppppd..',
+    '.pppppppppppdd..',
+    '.ppppppppppdd...',
+    '...ppppppddd....',
+    '....pppddd......',
+  ], dk);
 }
 
 /** The popped bubble: pink gum splattered over a face (no outline: it sits on the face). */
 export function gumSplat(): PixelBuffer {
-  return piece('splat', ['.p.pp.', 'pPppPp', 'ppPppp', '.pp.p.'], { p: PAL.pink[1], P: PAL.pink[2] }, false);
+  return piece('splat', ['.p.pp.', 'pPppPp', 'ppPppp', '.pp.p.'], { p: PAL.pink[1], P: PAL.pink[2] }, false, [
+    '..p...pp....',
+    '.ppp.pPPp...',
+    '.pPpppPpppp.',
+    'ppPPppppPpp.',
+    'pppppPpppppp',
+    '.ppPpppppPp.',
+    '..pp..ppp...',
+    '...p...p....',
+  ]);
 }
 
 /** Gramps' screwdriver: steel shaft, red handle. */
@@ -92,7 +162,17 @@ export function dentures(open: boolean): PixelBuffer {
 
 /** The end of Grace's ivory scarf, bunched in a hand (boot polish). */
 export function scarfEnd(): PixelBuffer {
-  return piece('scarf-end', ['wW.', 'WwW', '.ww', '..w'], { w: PAL.snow[1], W: PAL.snow[3] });
+  // 2×: the bunched cloth with 1-px fold lines and a frayed end.
+  return piece('scarf-end', ['wW.', 'WwW', '.ww', '..w'], { w: PAL.snow[1], W: PAL.snow[3] }, true, [
+    'wWWW..',
+    'WWWw..',
+    'WWfWWW',
+    'WfWWww',
+    '..wwWw',
+    '..wfww',
+    '....fw',
+    '....w.',
+  ], { f: PAL.snow[0] });
 }
 
 /** A polishing rag (cloth). */
@@ -103,15 +183,47 @@ export function rag(): PixelBuffer {
 /** A sparkle star (no outline: it glows). */
 export function sparkle(big: boolean): PixelBuffer {
   const key = { w: PAL.snow[3], y: PAL.gold[3] };
-  return big ? piece('sparkle-big', ['..y..', '..w..', 'ywwwy', '..w..', '..y..'], key, false) : piece('sparkle', ['.y.', 'ywy', '.y.'], key, false);
+  // 2×: thin twinkle rays (1-px gold tips) round a white core.
+  return big
+    ? piece('sparkle-big', ['..y..', '..w..', 'ywwwy', '..w..', '..y..'], key, false, [
+        '....y.....',
+        '....w.....',
+        '....ww....',
+        '...wwww...',
+        'ywwwwwwww.',
+        '.wwwwwwwwy',
+        '...wwww...',
+        '....ww....',
+        '.....w....',
+        '.....y....',
+      ])
+    : piece('sparkle', ['.y.', 'ywy', '.y.'], key, false, ['...y..', '..ww..', '.wwwwy', 'ywwww.', '..ww..', '..y...']);
 }
 
 /** A dust puff (cartoon cloud) of size 0 (small) or 1 (big). */
 export function dustPuff(size: 0 | 1): PixelBuffer {
   const key = { s: PAL.stone[2], S: PAL.stone[3] };
+  // 2×: rounder puffs, lit on top, a 1-px shadow along the underside.
+  const dk = { d: PAL.stone[1] };
   return size === 0
-    ? piece('dust0', ['.SS.S.', 'SSsSSs', '.sssS.'], key)
-    : piece('dust1', ['..SS..SS..', '.SSSsSSSs.', 'SSsssSSssS', '.ssssssss.'], key);
+    ? piece('dust0', ['.SS.S.', 'SSsSSs', '.sssS.'], key, true, [
+        '..SSS...SS..',
+        '.SSSSS.SSSs.',
+        'SSSSsSSSSSss',
+        'SSsssSSSssss',
+        '.sssssssssd.',
+        '..ddsssddd..',
+      ], dk)
+    : piece('dust1', ['..SS..SS..', '.SSSsSSSs.', 'SSsssSSssS', '.ssssssss.'], key, true, [
+        '....SSS.....SSS.....',
+        '...SSSSS...SSSSSs...',
+        '..SSSSSSssSSSSSSss..',
+        '.SSSSsssssSSSSssss..',
+        'SSSsssssSSSssssssSSs',
+        'SSssssssSsssssssssss',
+        '.sssssssssssssssssd.',
+        '..dddsssssddsssddd..',
+      ], dk);
 }
 
 /** Pink puffs of helium (the head deflates). */
@@ -145,10 +257,14 @@ export function decorateFrames(frames: readonly Frame[], fn: (f: Frame, i: numbe
   });
 }
 
-/** Mirror a full-body frame about its anchor (a spin frame: the figure faces the other way). */
+/**
+ * Mirror a full-body frame about its anchor (a spin frame: the figure faces the other way).
+ * Works on 2× frames too: the anchor and pts are logical px, so the logical width is used.
+ */
 export function mirrored(f: Frame): Frame {
   const buf = f.buf.flipped(true, false);
   const pts: Record<string, readonly [number, number]> = {};
   for (const [k, p] of Object.entries(f.pts ?? {})) pts[k] = [-p[0], p[1]];
-  return { buf, ox: f.buf.w - 1 - f.ox, oy: f.oy, pts };
+  const out: Frame = { buf, ox: frameW(f) - 1 - f.ox, oy: f.oy, pts };
+  return f.density === undefined ? out : { ...out, density: f.density };
 }

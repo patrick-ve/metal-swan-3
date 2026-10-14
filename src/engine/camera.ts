@@ -9,7 +9,9 @@
  *   camera eases into the range and eases back out after `unlock()`.
  * - Vertical follow uses a dead zone so small jumps do not move the view.
  * - `shake(amount, ticks)` is a deterministic offset (seeded rng) applied only when rendering:
- *   `renderer.setCamera(camera.renderX, camera.renderY)`.
+ *   `renderer.setCamera(camera.viewX, camera.viewY)`. The renderer snaps that position to its own
+ *   grid: whole pixels at res 1, 1/res steps with a sub-pixel backbuffer (render-common.ts).
+ *   The camera itself (x, y, the follow logic) is the same at every resolution.
  * `x, y` is the top-left corner of the view in world pixels.
  */
 import { clamp, type Rect } from './math';
@@ -155,13 +157,25 @@ export class Camera {
     this.shakeTotal = this.shakeTicks;
   }
 
-  /** Camera x for the renderer (rounded, shake included). */
+  /** Camera x for drawing, rounded to whole pixels (shake included). */
   get renderX(): number {
     return Math.round(this.x + this.shakeX);
   }
 
   get renderY(): number {
     return Math.round(this.y + this.shakeY);
+  }
+
+  /**
+   * Camera x for `Renderer.setCamera`, not rounded (shake included, whole px): the renderer
+   * snaps it to its grid, so a high-resolution backbuffer scrolls in 1/res steps.
+   */
+  get viewX(): number {
+    return this.x + this.shakeX;
+  }
+
+  get viewY(): number {
+    return this.y + this.shakeY;
   }
 
   get left(): number {

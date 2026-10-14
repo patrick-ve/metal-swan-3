@@ -83,6 +83,9 @@ defineEntity(
       sprite: 'item/pickup-bombs',
       effect: (pl, item) => {
         add(pl, item);
+        // Riding: the shells go into the vehicle's gun, with a reload clack under the line. The
+        // RELOAD! on the Swan, EXTRA BOMBS! on foot.
+        if (pl.state === 'mounted') pl.world.audio.sfx('weapon/reload');
         pl.world.audio.voice(pl.state === 'mounted' ? 'RELOAD!' : 'EXTRA BOMBS!');
         return true;
       },

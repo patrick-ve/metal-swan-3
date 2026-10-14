@@ -142,14 +142,14 @@ describe('weapon definitions (GDD §5 table)', () => {
   });
 
   it('every pickup weapon announces its GDD line; again: MORE <NAME>!', () => {
-    expect(getWeapon('machine-gun').voice).toBe('MACHINE GUN! FROM THE TOP!');
-    expect(getWeapon('shotgun').voice).toBe('SHOTGUN! FRONT ROW SEATS!');
-    expect(getWeapon('rocket-launcher').voice).toBe('ROCKET LAUNCHER! BIG FINISH!');
-    expect(getWeapon('flamethrower').voice).toBe('FLAMETHROWER! MIND THE EYEBROWS!');
-    expect(getWeapon('laser').voice).toBe('LASER! PEW PEW. OFFICIALLY.');
-    expect(getWeapon('homing').voice).toBe('HOMING MISSILES! FIND YOUR SEATS!');
-    expect(getWeapon('tuba').voice).toBe('TUBA! OOM-PAH-PAH!');
-    expect(getWeapon('bounce-mine').voice).toBe('BOUNCE MINES! HOP TO IT!');
+    expect(getWeapon('machine-gun').voice).toBe('HEAVY MACHINE GUN!');
+    expect(getWeapon('shotgun').voice).toBe('SHOTGUN!');
+    expect(getWeapon('rocket-launcher').voice).toBe('ROCKET LAUNCHER!');
+    expect(getWeapon('flamethrower').voice).toBe('FLAMETHROWER!');
+    expect(getWeapon('laser').voice).toBe('LASER GUN!');
+    expect(getWeapon('homing').voice).toBe('ENEMY CHASER!');
+    expect(getWeapon('tuba').voice).toBe('TUBA!');
+    expect(getWeapon('bounce-mine').voice).toBe('BOUNCE MINES!');
     expect(getWeapon('rocket-launcher').voiceAgain).toBe('MORE ROCKETS!');
     for (const [id, [first, again]] of Object.entries(VOICE)) {
       expect(getWeapon(id).voice, id).toBe(first);
@@ -159,7 +159,7 @@ describe('weapon definitions (GDD §5 table)', () => {
     const audio = rig.world.audio as NullAudio;
     rig.p.giveWeapon('tuba');
     rig.p.giveWeapon('tuba');
-    expect(audio.log).toContain('voice:TUBA! OOM-PAH-PAH!');
+    expect(audio.log).toContain('voice:TUBA!');
     expect(audio.log).toContain('voice:MORE TUBA!');
     expect(rig.session.slots[0].ammo).toBe(TUBA.ammo + TUBA.ammoAgain);
   });

@@ -19,6 +19,7 @@ import { PixelBuffer } from '../../engine/pixel';
 import type { Ramp } from '../../engine/pixel';
 import { INK, PAL } from '../../engine/palette';
 import { at } from './paint';
+import { EXPR_HI, EXTRAS_HI, GEAR_HI, HAIR_HI, SKULL_HI, type HiTpl } from './humanoid-head-hi';
 
 export const HEAD_W = 18;
 export const HEAD_H = 19;
@@ -492,13 +493,9 @@ function put(
   }
 }
 
-/**
- * Render a head (HEAD_W × HEAD_H, facing right) for a style and expression. The result is
- * shaded; the rig outlines the whole figure afterwards.
- */
-export function renderHead(s: HeadStyle, expr: Expression): PixelBuffer {
-  const buf = new PixelBuffer(HEAD_W, HEAD_H);
-  const key = (ch: string): Color | null => {
+/** The palette for a style: template letter → colour (null = not a colour letter). */
+function paletteKey(s: HeadStyle): (ch: string) => Color | null {
+  return (ch: string): Color | null => {
     switch (ch) {
       case '0':
         return at(s.skin, 0);
@@ -529,6 +526,7 @@ export function renderHead(s: HeadStyle, expr: Expression): PixelBuffer {
       case 'e':
         return INK;
       case 'w':
+      case 'W': // the 2× eye highlight (see renderHeadHi `glint`)
         return PAL.snow[3];
       case 'm':
         return at(s.skin, 0);
@@ -548,6 +546,15 @@ export function renderHead(s: HeadStyle, expr: Expression): PixelBuffer {
         return null;
     }
   };
+}
+
+/**
+ * Render a head (HEAD_W × HEAD_H, facing right) for a style and expression. The result is
+ * shaded; the rig outlines the whole figure afterwards.
+ */
+export function renderHead(s: HeadStyle, expr: Expression): PixelBuffer {
+  const buf = new PixelBuffer(HEAD_W, HEAD_H);
+  const key = paletteKey(s);
   put(buf, { at: [0, 0], rows: SKULL }, key);
   const e = EXPR[expr];
   put(buf, { at: EYE_AT, rows: e.eye }, key);
@@ -568,6 +575,79 @@ export function renderHead(s: HeadStyle, expr: Expression): PixelBuffer {
   put(buf, { at: BROW_AT, rows: e.brow }, key);
   if (s.extras.includes('bushy-brows')) put(buf, EXTRAS['bushy-brows'], key);
   if (gear) put(buf, slip ? { ...gear, at: [gear.at[0], gear.at[1] + slip] } : gear, key);
+  return buf;
+}
+
+/** A 1× template on the 2× grid (each pixel a 2 × 2 block): parts without a hand-drawn 2× twin. */
+function doubled(t: Tpl): HiTpl {
+  const rows: string[] = [];
+  for (const r of t.rows) {
+    let d = '';
+    for (const ch of r) d += ch + ch;
+    rows.push(d, d);
+  }
+  return { at: [t.at[0] * 2, t.at[1] * 2], rows };
+}
+
+/** Draw 2× template rows; `filter` gets LOGICAL skull coordinates (as the 1× filters). */
+function putHi(
+  buf: PixelBuffer,
+  t: HiTpl,
+  key: (ch: string) => Color | null,
+  filter?: (sx: number, sy: number) => boolean,
+): void {
+  const ox = BASE_AT[0] * 2 + t.at[0];
+  const oy = BASE_AT[1] * 2 + t.at[1];
+  for (let y = 0; y < t.rows.length; y++) {
+    const row = t.rows[y];
+    for (let x = 0; x < row.length; x++) {
+      const ch = row[x];
+      if (ch === '.' || ch === ' ') continue;
+      if (filter && !filter(Math.floor((t.at[0] + x) / 2), Math.floor((t.at[1] + y) / 2))) continue;
+      if (ch === '-') {
+        buf.set(ox + x, oy + y, 0);
+        continue;
+      }
+      const c = key(ch);
+      if (c !== null) buf.set(ox + x, oy + y, c);
+    }
+  }
+}
+
+/**
+ * The 2× head (mission ams): HEAD_W·2 × HEAD_H·2, the same logical layout as `renderHead` (NECK
+ * and HEAD_CENTER are the 2 × 2 blocks at twice them), drawn from the hand-drawn 2× templates in
+ * humanoid-head-hi.ts, with the same layer order, hair cut-off and hat slip as at 1×. A part
+ * without a 2× template is its 1× template doubled. No outline (the rig adds it). The rig reads
+ * this through `headLayerHi` in humanoid.ts.
+ */
+export function renderHeadHi(s: HeadStyle, expr: Expression, opts: { glint?: boolean } = {}): PixelBuffer {
+  const buf = new PixelBuffer(HEAD_W * 2, HEAD_H * 2);
+  const base = paletteKey(s);
+  // glint: false (a tilted head) draws the eye highlight 'W' as pupil: a rotated 1-px highlight
+  // can land beside the pupil and read as a second eye.
+  const key = opts.glint === false ? (ch: string): Color | null => base(ch === 'W' ? 'e' : ch) : base;
+  putHi(buf, { at: [0, 0], rows: SKULL_HI }, key);
+  const e = EXPR_HI[expr];
+  putHi(buf, e.eye, key);
+  putHi(buf, e.mouth, key);
+  for (const x of s.extras) {
+    if (x === 'eyeshine' && !EYESHINE_EXPR.has(expr)) continue;
+    if (x !== 'bushy-brows') putHi(buf, EXTRAS_HI[x] ?? doubled(EXTRAS[x]), key);
+  }
+  const gear = s.headgear === 'none' || s.hat === false ? null : GEAR[s.headgear];
+  const slip = gear ? Math.max(0, Math.round(s.hatDy ?? 0)) : 0;
+  putHi(buf, HAIR_HI[s.hairStyle] ?? doubled(HAIR[s.hairStyle]), key, (sx, sy) => {
+    if (!gear) return true;
+    if (sy < gear.hairBelow + slip) return false;
+    return gear.hairRightOf === undefined || sx >= gear.hairRightOf;
+  });
+  putHi(buf, e.brow, key);
+  if (s.extras.includes('bushy-brows')) putHi(buf, EXTRAS_HI['bushy-brows'] ?? doubled(EXTRAS['bushy-brows']), key);
+  if (gear && s.headgear !== 'none') {
+    const g = GEAR_HI[s.headgear] ?? doubled(gear);
+    putHi(buf, slip ? { ...g, at: [g.at[0], g.at[1] + slip * 2] } : g, key);
+  }
   return buf;
 }
 

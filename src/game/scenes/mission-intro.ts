@@ -4,7 +4,8 @@
  * `FINAL MISSION`), the mission name (big, gold, C, y 40) and the place and time (small, C,
  * y 54). The radio box (x 16–368, y 120–200, `ui` ramp) shows Brigadier Gusto's portrait (32 × 32
  * at (24, 128)) and his 2 briefing lines typed at 2 characters per tick over `env/radio-static`,
- * word-wrapped to x 64–360 (max 4 lines). Music `briefing`. `PRESS START TO SKIP` (small, C,
+ * word-wrapped to x 64–360 (max 4 lines); each line is voiced by its sample (`say`) when its typing
+ * starts, the next one once he has finished the one before. Music `briefing`. `PRESS START TO SKIP` (small, C,
  * y 206). Then a fade to the mission, which opens with its `MISSION 1` / `START!` banner.
  */
 import type { Color } from '../../engine/color';
@@ -14,8 +15,9 @@ import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { getFrame, hasSprite } from '../../engine/sprites';
 import { blinkOn, centerText, drawPanel, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
-import { missionCard, type MissionCard } from './flow-data';
-import { GameplayScene } from './gameplay';
+import { BRIEFING_SPEAKER, missionCard, type MissionCard } from './flow-data';
+import { getMission } from '../registry';
+import { GameplayScene, preloadMissionArt, preloadMissionAudio } from './gameplay';
 
 /** GDD §13.6: the card lasts at most 360 ticks; start skips it after 60. */
 export const INTRO_TICKS = 360;
@@ -28,22 +30,46 @@ const TEXT_Y = 136;
 /** Typing starts after the radio crackles for a moment. */
 const TYPE_START = 24;
 
+/** The most lines the radio box shows. */
+const MAX_LINES = 4;
+
+/** Word-wrap one briefing line to a pixel width. */
+function wrap(para: string, width: number): string[] {
+  const out: string[] = [];
+  let line = '';
+  for (const word of para.split(' ')) {
+    const next = line ? `${line} ${word}` : word;
+    if (measure(next, 'small') <= width) line = next;
+    else {
+      if (line) out.push(line);
+      line = word;
+    }
+  }
+  if (line) out.push(line);
+  return out;
+}
+
 /** Word-wrap the briefing to the radio box (pixel width, max 4 lines). */
 export function briefingLines(card: MissionCard, width = TEXT_RIGHT - TEXT_X): string[] {
-  const out: string[] = [];
+  return card.briefing.flatMap((para) => wrap(para, width)).slice(0, MAX_LINES);
+}
+
+/**
+ * The typed-character count at which each briefing line starts (a line that the 4-line limit
+ * cuts off entirely is left out).
+ */
+export function briefingStarts(card: MissionCard, width = TEXT_RIGHT - TEXT_X): number[] {
+  const out: number[] = [];
+  let typed = 0;
+  let lines = 0;
   for (const para of card.briefing) {
-    let line = '';
-    for (const word of para.split(' ')) {
-      const next = line ? `${line} ${word}` : word;
-      if (measure(next, 'small') <= width) line = next;
-      else {
-        if (line) out.push(line);
-        line = word;
-      }
-    }
-    if (line) out.push(line);
+    if (lines >= MAX_LINES) break;
+    out.push(typed);
+    const shown = wrap(para, width).slice(0, MAX_LINES - lines);
+    lines += shown.length;
+    for (const l of shown) typed += l.length;
   }
-  return out.slice(0, 4);
+  return out;
 }
 
 const plain: DrawOpts = { screen: true };
@@ -55,6 +81,9 @@ export class MissionIntroScene implements Scene {
   readonly card: MissionCard;
   private readonly lines: string[];
   private readonly chars: number;
+  /** Where each briefing line starts (typed characters) and how many Gusto has said. */
+  private readonly starts: number[];
+  private spoken = 0;
   private t = 0;
   private leaving = false;
   /** The radio static loop is playing. */
@@ -66,6 +95,7 @@ export class MissionIntroScene implements Scene {
     this.card = missionCard(mission);
     this.lines = briefingLines(this.card);
     this.chars = this.lines.reduce((n, l) => n + l.length, 0);
+    this.starts = briefingStarts(this.card);
   }
 
   /** Characters typed so far. */
@@ -78,6 +108,10 @@ export class MissionIntroScene implements Scene {
     this.app.pointerPressed = false;
     this.app.audio.duckMusic?.(1);
     this.app.audio.music('briefing', { fadeTicks: 20 });
+    // A 2× mission (ams): generate its 2× sprites while the card is shown.
+    preloadMissionArt(this.app, getMission(this.mission));
+    // Its sampled music, sounds and dialogue load while the card is shown.
+    preloadMissionAudio(this.app, getMission(this.mission));
   }
 
   exit(): void {
@@ -95,6 +129,13 @@ export class MissionIntroScene implements Scene {
       this.radio = static_;
       if (static_) app.audio.sfxLoop?.('radio', 'env/radio-static', { vol: 0.5 });
       else app.audio.stopSfx?.('radio');
+    }
+    // Gusto voices each briefing line as its typing starts (when its sample is loaded); a later
+    // line waits until he has finished the one before, so he never cuts himself off.
+    const next = this.spoken;
+    if (next < this.starts.length && this.t > TYPE_START && this.typed >= this.starts[next] && !(next > 0 && app.audio.speaking?.())) {
+      this.spoken++;
+      app.audio.say?.(this.card.briefing[next], BRIEFING_SPEAKER, { important: true });
     }
     const pad = app.input.pad(0);
     const pad2 = app.input.pad(1);

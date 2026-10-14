@@ -7,6 +7,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { Entity } from '../../src/engine/entity';
+import { measure } from '../../src/engine/font';
+import { PAL } from '../../src/engine/palette';
+import { getFrames } from '../../src/engine/sprites';
 import { Terrain } from '../../src/engine/terrain';
 import { loadContent } from '../../src/game/content/index';
 import { AMS } from '../../src/game/content/missions/ams/index';
@@ -202,11 +205,11 @@ describe('ams-a: THE BRIEFING', () => {
     g.dispose();
   }, 60000);
 
-  it('every briefing line fits a hint bubble (≤ 24 characters, 2 lines)', () => {
-    expect(BRIEFING.length).toBe(6);
+  it('every briefing line fits a hint bubble (≤ 24 characters, ≤ 2 lines)', () => {
+    expect(BRIEFING.length).toBe(8);
     for (const l of BRIEFING) {
       const lines = l.split('\n');
-      expect(lines.length).toBe(2);
+      expect(lines.length).toBeLessThanOrEqual(2);
       for (const s of lines) expect(s.length).toBeLessThanOrEqual(24);
     }
   });
@@ -235,4 +238,15 @@ describe('ams-b: the hot-dog vendor and THE SWAN', () => {
     expect(g.runner!.records.get('ams/swan-met', false)).toBe(true);
     g.dispose();
   }, 60000);
+});
+
+describe('ams decor lettering', () => {
+  it('STADHUIS on the Stopera sits on a plain dark plaque (only letter white and plaque ink)', () => {
+    const f = getFrames('decor/ams/stopera')[0];
+    const w = measure('STADHUIS');
+    // Text box: centred on x 294, top 168 − 117 (art.ts stopera()), 7 px caps.
+    const colors = new Set<number>();
+    for (let y = 51; y < 58; y++) for (let x = 294 - (w >> 1); x < 294 - (w >> 1) + w; x++) colors.add(f.buf.get(x, y));
+    expect([...colors].sort()).toEqual([PAL.ink[1], PAL.snow[3]].sort());
+  });
 });

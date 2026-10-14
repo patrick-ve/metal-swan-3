@@ -86,6 +86,23 @@ export function* waitBoss(boss: Entity): ScriptGen {
   else yield 180;
 }
 
+/** The far church carillon of sections a–c: first after 15 s, then every 40 s (ticks, no rng). */
+export const CARILLON = { id: 'env/ams-carillon', first: 900, every: 2400, vol: 0.6 } as const;
+
+/** Start the carillon of this section (a background script; the section change cancels it). */
+export function carillon(ctx: SectionContext): void {
+  ctx.world.scripts.run(
+    function* amsCarillon(): ScriptGen {
+      yield CARILLON.first;
+      for (;;) {
+        ctx.world.audio.sfx(CARILLON.id, { vol: CARILLON.vol });
+        yield CARILLON.every;
+      }
+    },
+    { name: 'ams carillon' },
+  );
+}
+
 /** Is any wave member with this tag still alive? */
 export function anyAlive(ctx: SectionContext, tag: string): boolean {
   return ctx.world.countAlive(tag) > 0;

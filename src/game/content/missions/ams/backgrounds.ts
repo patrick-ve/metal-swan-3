@@ -66,12 +66,12 @@ function blitW(b: PixelBuffer, src: PixelBuffer, dx: number, dy: number): void {
   }
 }
 
-function lum(c: number): number {
+export function lum(c: number): number {
   return ((c >>> 24) * 3 + ((c >>> 16) & 255) * 6 + ((c >>> 8) & 255)) / 2550;
 }
 
 /** Map every opaque pixel by brightness onto `ramp` (aerial perspective, reflections). */
-function remap(b: PixelBuffer, ramp: readonly Color[], x0 = 0, y0 = 0, w = b.w, h = b.h): void {
+export function remap(b: PixelBuffer, ramp: readonly Color[], x0 = 0, y0 = 0, w = b.w, h = b.h): void {
   for (let y = y0; y < y0 + h; y++) {
     for (let x = x0; x < x0 + w; x++) {
       const i = y * b.w + x;
@@ -84,29 +84,29 @@ function remap(b: PixelBuffer, ramp: readonly Color[], x0 = 0, y0 = 0, w = b.w, 
 }
 
 /** Aerial haze ramps (dark → light) per light. */
-const HAZE: Readonly<Record<Light, readonly Color[]>> = {
+export const HAZE: Readonly<Record<Light, readonly Color[]>> = {
   morning: [PAL.steel[2], PAL.steel[3], PAL.sky[2], PAL.snow[1], PAL.snow[2]],
   noon: [PAL.steel[2], PAL.steel[3], PAL.sky[2], PAL.snow[1], PAL.snow[2]],
   golden: [PAL.stone[2], PAL.sand[2], PAL.sand[3], PAL.gold[3], PAL.skinA[3]],
   sunset: [PAL.purple[1], PAL.pink[1], PAL.purple[2], PAL.pink[2], PAL.skinA[2]],
 };
 /** The far skyline colours (fill, light edge, windows) per light. */
-const SKYLINE: Readonly<Record<Light, readonly [Color, Color, Color]>> = {
+export const SKYLINE: Readonly<Record<Light, readonly [Color, Color, Color]>> = {
   morning: [PAL.sky[2], PAL.sky[3], PAL.sky[1]],
   noon: [PAL.sky[2], PAL.sky[3], PAL.sky[1]],
   golden: [PAL.sand[3], PAL.skinA[3], PAL.sand[2]],
   sunset: [PAL.purple[2], PAL.pink[2], PAL.purple[1]],
 };
 /** Canal water (reflection ramp dark → light) per light. */
-const WATER: Readonly<Record<Light, readonly Color[]>> = {
+export const WATER: Readonly<Record<Light, readonly Color[]>> = {
   morning: [PAL.navy[0], PAL.teal[0], PAL.teal[1], PAL.sky[1], PAL.sky[2]],
   noon: [PAL.navy[0], PAL.teal[0], PAL.teal[1], PAL.sky[1], PAL.sky[2]],
   golden: [PAL.navy[0], PAL.teal[0], PAL.teal[1], PAL.sand[2], PAL.gold[3]],
   sunset: [PAL.navy[0], PAL.purple[0], PAL.purple[1], PAL.pink[1], PAL.orange[2]],
 };
 
-const GABLES: readonly Gable[] = ['step', 'neck', 'bell', 'spout', 'flat', 'neck', 'bell'];
-const WALLS_CYCLE: readonly Wall[] = ['brown', 'rust', 'darkred', 'ink', 'red', 'green', 'cream', 'brown', 'grey', 'rust'];
+export const GABLES: readonly Gable[] = ['step', 'neck', 'bell', 'spout', 'flat', 'neck', 'bell'];
+export const WALLS_CYCLE: readonly Wall[] = ['brown', 'rust', 'darkred', 'ink', 'red', 'green', 'cream', 'brown', 'grey', 'rust'];
 
 // ------------------------------------------------------------------------------------ ams-skyline
 

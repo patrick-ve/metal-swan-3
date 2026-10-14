@@ -104,7 +104,7 @@ describe('ams npcs: friendly', () => {
     tw.hold('right');
     tw.until(() => v.mode === 'salute', 200);
     expect(v.saluted).toBe(1);
-    expect(tw.hud.bubbles.some((b) => b.target === v && b.text === 'HOWDY, SOLDIER!')).toBe(true);
+    expect(tw.hud.bubbles.some((b) => b.target === v && b.text === 'HALLO DAAR!')).toBe(true);
     expect(v.facing).toBe(-1);
     tw.hold().run(90);
     expect(v.mode).toBe('idle');
@@ -121,7 +121,7 @@ describe('ams npcs: friendly', () => {
     expect(v.saluted).toBe(3);
   });
 
-  it('the vendor salutes a player riding the Swan (NICE BIRD)', () => {
+  it('the vendor salutes a player riding the Swan (NEPNAGELS)', () => {
     const tw = new TestWorld({ playerX: 100, god: true });
     const swan = tw.spawn('swan', 100) as Entity & { mount(p: unknown): void };
     swan.mount(tw.player!);
@@ -130,7 +130,7 @@ describe('ams npcs: friendly', () => {
     const v = tw.spawn('ams-hotdog-vendor', 300) as AmsHotdogVendor;
     tw.hold('right');
     tw.until(() => v.mode === 'salute', 300);
-    expect(tw.hud.bubbles.some((b) => b.target === v && b.text === 'NICE BIRD, SOLDIER!')).toBe(true);
+    expect(tw.hud.bubbles.some((b) => b.target === v && b.text === 'HEB JIJ NOG NEPNAGELS\nVOOR MIJ?')).toBe(true);
     expect(v.saluted).toBe(1);
   });
 

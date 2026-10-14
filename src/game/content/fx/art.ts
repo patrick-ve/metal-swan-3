@@ -11,6 +11,10 @@
  * stick-on-moustache, snow-puff, ice-cubes): gags.art.ts; fx/tin-feather is the Swan art's. Muzzle flashes
  * fx/muzzle-*: weapons/art.ts.
  *
+ * 2× art (mission ams, docs/ART_GUIDE.md "2x art (mission ams)"): the explosions in
+ * explosion.art.ts (`explosionFramesHi`), the other fx that ams shows in hi.art.ts; the muzzle
+ * flashes have theirs next to their 1× art (weapons/art.ts, weapons/shots.art.ts).
+ *
  * This module also loads the shared art rigs that register at import time: background
  * generators (bg.ts) and the terrain painter (terrain-art.ts). UI art has its own manifest
  * entry ('ui/art').
@@ -24,17 +28,24 @@ import { defineSprite } from '../../../engine/sprites';
 import '../../art/bg';
 import '../../art/terrain-art';
 import { bayer } from '../../art/paint';
-import { cloudFrames, explosionFrames } from './explosion.art';
+import { cloudFrames, explosionFrames, explosionFramesHi, type ExplosionSpec } from './explosion.art';
 import { defineGagSprites } from './gags.art';
+// 2× art of the fx that mission ams shows (registers at import).
+import './hi.art';
 
 const center = (buf: PixelBuffer): Frame => ({ buf, ox: buf.w >> 1, oy: buf.h >> 1 });
 
 // ------------------------------------------------------------------------------------ explosions
 
-defineSprite('fx/explosion-s', () => explosionFrames({ radius: 9, frames: 7, seed: 11, puffs: 5 }), { ticksPerFrame: 3, loop: false });
-defineSprite('fx/explosion-m', () => explosionFrames({ radius: 16, frames: 9, seed: 23, puffs: 7 }), { ticksPerFrame: 3, loop: false });
-defineSprite('fx/explosion-l', () => explosionFrames({ radius: 26, frames: 10, seed: 37, puffs: 8, chunky: true }), { ticksPerFrame: 4, loop: false });
-defineSprite('fx/explosion-xl', () => explosionFrames({ radius: 40, frames: 12, seed: 51, puffs: 10, chunky: true }), { ticksPerFrame: 4, loop: false });
+const EXPLOSIONS: ReadonlyArray<[string, ExplosionSpec, number]> = [
+  ['s', { radius: 9, frames: 7, seed: 11, puffs: 5 }, 3],
+  ['m', { radius: 16, frames: 9, seed: 23, puffs: 7 }, 3],
+  ['l', { radius: 26, frames: 10, seed: 37, puffs: 8, chunky: true }, 4],
+  ['xl', { radius: 40, frames: 12, seed: 51, puffs: 10, chunky: true }, 4],
+];
+for (const [size, spec, tpf] of EXPLOSIONS) {
+  defineSprite(`fx/explosion-${size}`, () => explosionFrames(spec), { ticksPerFrame: tpf, loop: false, hi: () => explosionFramesHi(spec) });
+}
 
 const smokePuff = (): Frame[] => cloudFrames(6, 6, [PAL.stone[0], PAL.stone[1], PAL.stone[2], PAL.stone[3]], PAL.ink[1], 5);
 const sootCloud = (): Frame[] => cloudFrames(8, 6, [PAL.ink[0], PAL.ink[1], PAL.steel[0], PAL.stone[0], PAL.stone[1]], INK, 9);

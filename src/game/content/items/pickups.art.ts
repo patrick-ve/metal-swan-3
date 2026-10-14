@@ -20,7 +20,8 @@ import { drawText } from '../../../engine/font';
 import { PixelBuffer } from '../../../engine/pixel';
 import { INK, PAL } from '../../../engine/palette';
 import type { Frame } from '../../../engine/render';
-import { defineSprite } from '../../../engine/sprites';
+import { defineHiSprite, defineSprite, getFrames } from '../../../engine/sprites';
+import { PICKUP_HI, weaponStripHi } from './pickups-hi.art';
 
 /** A small hand-drawn item: rows → buffer with a 1-px INK outline. */
 function pix(rows: readonly string[], key: AsciiKey): PixelBuffer {
@@ -109,7 +110,11 @@ export function defineWeaponPickup(weaponId: string, letter: string, accent: Col
     ids.add(`item/pickup-weapon/${a}`);
     ids.add(`item/pickup-${a}`);
   }
-  for (const id of ids) defineSprite(id, gen, opts);
+  for (const id of ids) {
+    defineSprite(id, gen, opts);
+    // 2× (mission ams only; pickups-hi.art.ts). m0–m5 keep the 1× art.
+    defineHiSprite(id, () => weaponStripHi(letter, accent, getFrames(id, 1)));
+  }
 }
 
 // ------------------------------------------------------------------------------------ bombs
@@ -552,4 +557,6 @@ export function defineItemSprites(): void {
   defineSprite('item/pickup-gem', gemFrames, { durations: [12, 6, 6, 6] });
   defineSprite('item/pickup-1up', cygnetFrames, { ticksPerFrame: 8 });
   defineSprite('item/pickup-repair', repairFrames, { durations: [30, 6] });
+  // 2× (mission ams only; pickups-hi.art.ts): bombs, food and treasure. m0–m5 keep the 1× art.
+  for (const [id, gen] of Object.entries(PICKUP_HI)) defineHiSprite(id, () => gen(getFrames(id, 1)));
 }

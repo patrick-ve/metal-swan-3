@@ -7,6 +7,20 @@
 import { BP, fmBell, honk, hits, hz, LP, note, noise, tone, type Recipes } from './kit';
 
 export const UI: Recipes = {
+  // The title logo lands (2026-10-14, the first title visit): a low boom under a bright D major
+  // stab with an FM bell ring, 1.2 s.
+  'ui/title-sting': {
+    vol: 0.55,
+    voices: 1,
+    gap: 1,
+    layers: [
+      tone('sine', 90, 40, 0.5, 0.9),
+      noise(0.12, 0.4, LP(1800, 300)),
+      ...[hz('D4'), hz('F#4'), hz('A4'), hz('D5')].map((f) => note('saw', f, 0.22, 0.14, 0.02, { filter: LP(2600, 900) })),
+      ...fmBell(hz('D6'), 0.9, 0.22, { ratio: 3.5, index: 3, delay: 0.02, octave: 0.2 }),
+      ...fmBell(hz('A5'), 0.7, 0.14, { ratio: 2, index: 2, delay: 0.14 }),
+    ],
+  },
   // Menu cursor tick.
   'ui/move': {
     vol: 0.5,

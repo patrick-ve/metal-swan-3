@@ -54,7 +54,7 @@ away from the player (`<set>/passenger-flee` fx, 110 ticks).
 
 ## 2. `delivery-rider` — HP 10, soft, 200
 
-Black jacket, black helmet, the green cube backpack (`EATS`), phone on the bar, a city bike.
+Black jacket, black helmet, the green cube backpack (a symmetric burger logo, so it never reads mirrored), phone on the bar, a city bike.
 
 | phase | what | numbers |
 |---|---|---|
@@ -127,7 +127,7 @@ yield () => boss instanceof Boss && boss.defeated;         // or the m1 waitBoss
 ```
 
 - **Intro** (200 ticks, invulnerable, `autoStart`): dim in the doorway, walks 40 px forward
-  (fights at x − 40), bubbles `THE NEIGHBOURS / COMPLAINED.` and `FABEL FRIET IS / GESLOTEN!`.
+  (fights at x − 40), bubbles `DE BUREN HEBBEN / GEKLAAGD.` and `FABEL FRIET IS VANAF / NU GESLOTEN!`.
   The mission plays the banner and the music.
 - **Parts** (required-parts model, HP × difficulty × co-op): `stamp-arm` 1,200, `chain` 1,050,
   `medallion` 1,350 (armoured until the arm and the chain are broken), all required; `head` 750
@@ -136,17 +136,17 @@ yield () => boss instanceof Boss && boss.defeated;         // or the m1 waitBoss
   Score 20,000 + 1,000 per part.
 - **Reach**: the stamp is hit by forward shots. The 45° diagonal (up + toward) hits the chain from
   84–132 px and the medallion (centre 76 px up) from 30–84 px in front of her anchor.
-- **Phase 1** (opens after 40 ticks, so the intro bubble has cleared): stamp slam (arm up + a
+- **Phase 1** (opens after 40 ticks, so the intro bubble has cleared; after the first slam the taunt `FABEL FRIET WILLEN / WE NIET!`): stamp slam (arm up + a
   red-rimmed floor shadow, T 30; slam 56×22 + a `stamp-wave` each way,
   jump; HARD two pairs) and letter rain (hatch, T 24; 4–6 `noise-letter`, 10 HP, shootable).
   Adds: `handhaver` from alternating view edges every 420 ticks, ≤ 3 alive (tag
   `ams-mayor-officer`; all adds carry `ams-mayor-add`).
-- **Phase 2** (arm or chain broken; 60-tick intermission, `RULES ARE RULES!`): chain whip high
+- **Phase 2** (arm or chain broken; 60-tick intermission, `REGELS ZIJN REGELS!`; after the first whip pair the taunt `IK WORD HELEMAAL GEK / VAN DIE HOTDOGKRAAM...` then `...OP MIJN / MUSEUMPLEIN!` (a cosmetic follow-up bubble, no script yield)): chain whip high
   (crouch) / low (jump) alternating, T 28 (the loop whirls high or low with a gold glow;
   `ams/chain` winds up at pitch 1.15 for high, 0.8 for low), a 124-px lash (contact box, lanes
   22–38 / 0–14 px over the floor; more than 124 px in front of her anchor is always safe), 44-tick
   recovery; letter rain. Adds: a gull flock of 3 every 600 ticks (none while gulls live).
-- **Phase 3** (both broken; `THIS WILL COST YOU / A BIG BOETE!`): shield fan (core glow, T 24;
+- **Phase 3** (both broken; `DIT KOST JE EEN / FLINKE BOETE!`): shield fan (core glow, T 24;
   5 `shield-shot`s at 6°, 12°, 30°, 54° and 72° below the horizon; HARD adds a 6th at 42°.
   Safe lanes in front of the muzzle: standing 149–189 px; crouching 69–80 or 149–236 px; HARD
   closes the near crouch lane) and stomp (landing shadow, T 24; a
@@ -154,7 +154,7 @@ yield () => boss instanceof Boss && boss.defeated;         // or the m1 waitBoss
   `delivery-rider` pass at a time, alternating `from: 'behind'` / right.
 - **Idle life**: while she stands in the fight, the upper body breathes 1 px every 32 ticks and
   the eyes blink (head frame 3) for 6 ticks every 150 ticks.
-- **Death** (230 ticks, `TOT ZIENS...`): blasts, the wig flies off, the head boings on a spring,
+- **Death** (230 ticks, `TOT ZIENS...`; broken parts: `MIJN STEMPEL!`, `MIJN HAAR, MIJN / PRACHTIGE HAAR!`): blasts, the wig flies off, the head boings on a spring,
   she sits and powers off, the xl blast, then `bossDefeated` and removal.
 - **Sandbox params**: `hpScale` (HP ×), `phase` (1–3: starts with the earlier parts broken):
   `npm run arena -- --spawn "ams-mayor@+260{phase:3}" --god --hold fire`.

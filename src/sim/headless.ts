@@ -7,7 +7,7 @@
  * const game = await createHeadlessGame({ missionId: 'm0', seed: 1, god: true, bot: { route: 'upper' } });
  * game.runUntil((g) => g.done, 72_000);
  * console.log(game.report());
- * const png = game.renderFrame();           // PixelBuffer of the current frame (384×216)
+ * const png = game.renderFrame();           // PixelBuffer of the current frame (384×216 × res)
  * game.dispose();
  * ```
  * Pure TypeScript (no DOM, no node APIs): timing uses an injected `clock`.
@@ -15,7 +15,9 @@
 import type { InputTimeline, ScriptedFn } from '../engine/input';
 import { InputManager, ScriptedSource } from '../engine/input';
 import type { PixelBuffer } from '../engine/pixel';
+import type { SubpixelMode } from '../engine/render-common';
 import { SoftRenderer } from '../engine/render-soft';
+import type { UpscaleMode } from '../engine/upscale';
 import type { Scene } from '../engine/scene';
 import { MemoryStore } from '../engine/storage';
 import type { World } from '../engine/world';
@@ -58,6 +60,12 @@ export interface HeadlessOptions {
   /** Collect console warnings / errors into the report (default true) and echo them (default false). */
   captureConsole?: boolean;
   echoConsole?: boolean;
+  /** Backbuffer resolution of `renderFrame` (default 1: the classic 384×216 image). */
+  res?: number;
+  /** Sprite filter at res > 1 (default 'pixel'). */
+  gfx?: UpscaleMode;
+  /** Sub-pixel policy at res > 1 (default DEFAULT_SUBPIXEL). */
+  subpixel?: SubpixelMode;
 }
 
 export interface HeadlessGame {
@@ -82,7 +90,7 @@ export interface HeadlessGame {
   step(n?: number): void;
   /** Step until `pred` is true (checked before every tick) or `maxTicks` ran. Returns pred's result. */
   runUntil(pred: (g: HeadlessGame) => boolean, maxTicks: number): boolean;
-  /** Draw the current frame with the software renderer. */
+  /** Draw the current frame with the software renderer ((384 · res) × (216 · res)). */
   renderFrame(): PixelBuffer;
   /** Move the players to world x (on the first floor from the top) and snap the camera there. */
   teleport(x: number): void;
@@ -96,7 +104,7 @@ class Headless implements HeadlessGame {
   readonly app: GameApp;
   readonly input: InputManager;
   readonly session: GameSession;
-  readonly renderer = new SoftRenderer();
+  readonly renderer: SoftRenderer;
   readonly audio = new SimAudio();
   readonly bots: Bot[] = [];
   readonly stats = new SimStats();
@@ -112,6 +120,7 @@ class Headless implements HeadlessGame {
 
   constructor(o: HeadlessOptions, capture: ConsoleCapture | null) {
     this.o = o;
+    this.renderer = new SoftRenderer(undefined, undefined, undefined, { res: o.res, mode: o.gfx, subpixel: o.subpixel });
     this.clock = o.clock ?? null;
     this.capture = capture;
     const players = o.players ?? 1;

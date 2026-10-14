@@ -106,6 +106,9 @@ const AMS_LABELS: readonly (readonly [string, number, number])[] = [
 // The cards
 // ---------------------------------------------------------------------------------------------
 
+/** The speaker of the briefing lines (defined next to the cards' type in scenes/flow-data.ts). */
+export { BRIEFING_SPEAKER } from '../../scenes/flow-data';
+
 export const MISSION_CARDS: readonly MissionCard[] = [
   {
     id: 'ams',
@@ -114,7 +117,7 @@ export const MISSION_CARDS: readonly MissionCard[] = [
     place: 'AMSTERDAM - 1100 HOURS',
     briefing: ['SHORE LEAVE IN AMSTERDAM. THE CYGNETS WANT FRIES.', 'THE BEST FRY SHOP IN TOWN NEEDS HELP. GO!'],
     headline: 'ROBO-MAYOR SCRAPPED! THE FRYER STAYS ON!',
-    announce: 'MISSION ONE. FRIES FIRST, CYGNETS!',
+    announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
     startSub: 'START!',
     map: { lines: AMS_LINES, dot: [AMS_CX - 30, 90], labels: AMS_LABELS },
   },

@@ -284,7 +284,7 @@ export class Pickup extends Entity {
     const hover = resting ? (this.spec.hover ?? 0) : 0;
     drawOpts.flipX = this.facing < 0;
     const id = this.anim.id || this.spec.sprite;
-    r.sprite(id, this.anim.index, Math.round(this.x), Math.round(this.y) + bob - hover, drawOpts);
+    r.sprite(id, this.anim.index, this.x, this.y + bob - hover, drawOpts);
   }
 }
 

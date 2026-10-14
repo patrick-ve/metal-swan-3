@@ -2,9 +2,30 @@
  * Player, item and hostage sounds (GDD §12.1 "Player, items, hostages").
  * The player plays its own sounds through `Player.sfx`, so Helium Head pitches them up (× 1.6).
  */
-import { BP, click, fmBell, HP, hz, LP, note, noise, seq, tone, type Recipes } from './kit';
+import { BP, clack, click, fmBell, HP, hz, LP, note, noise, seq, tone, type Recipes } from './kit';
 
 export const PLAYER: Recipes = {
+  // A footfall on cobbles (2026-10-14, missions with `footsteps`): a soft low-passed scuff and a
+  // tiny heel thump, 45 ms. Very quiet: it repeats every 14 ticks at a run.
+  'player/step': {
+    vol: 1.2,
+    voices: 2,
+    gap: 0.06,
+    jitter: 0.06,
+    layers: [noise(0.035, 0.6, LP(1500, 500)), tone('sine', 140, 80, 0.03, 0.5)],
+  },
+  // The player wades into (or drops into) canal water (2026-10-14): a slap, a wash and droplets, 0.32 s.
+  'player/splash': {
+    vol: 1.2,
+    voices: 2,
+    gap: 0.12,
+    layers: [
+      noise(0.08, 0.8, LP(1400, 400)),
+      { wave: 'noise', env: { a: 0.004, d: 0.2 }, vol: 0.4, filter: BP(800, 1700, 1.2) },
+      tone('sine', 140, 70, 0.06, 0.4),
+      ...[0.05, 0.09, 0.14, 0.2].map((d, i) => tone('sine', 900 + i * 260, (900 + i * 260) * 1.6, 0.03, 0.2, { delay: d })),
+    ],
+  },
   // Soft pulse 300 → 500 Hz, 60 ms.
   'player/jump': {
     vol: 0.674,
@@ -102,6 +123,19 @@ const CYGNET: readonly (readonly [number, number])[] = [
 ];
 
 export const ITEMS: Recipes = {
+  // Bombs picked up while riding (2026-10-14, the RELOAD! line): a magazine slides in and a
+  // breech clacks shut, 0.32 s.
+  'weapon/reload': {
+    vol: 0.78,
+    voices: 2,
+    gap: 0.1,
+    layers: [
+      ...clack(1700, 0.6, 0, 0.02),
+      { wave: 'noise', env: { a: 0.01, d: 0.1 }, vol: 0.35, delay: 0.03, filter: BP(1800, 3400, 2) },
+      ...clack(2300, 0.8, 0.2, 0.025),
+      tone('triangle', 260, 180, 0.05, 0.4, { delay: 0.2 }),
+    ],
+  },
   // Generic pickup: a bright two-note blip.
   'item/pickup': {
     vol: 0.647,

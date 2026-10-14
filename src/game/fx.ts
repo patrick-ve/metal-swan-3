@@ -180,7 +180,7 @@ export class FxEntity extends Entity {
       fxDraw.flipY = this.flipY;
       fxDraw.alpha = this.alpha;
       fxDraw.blend = this.blend;
-      r.sprite(this.anim.id, this.anim.index, Math.round(this.x), Math.round(this.y), fxDraw);
+      r.sprite(this.anim.id, this.anim.index, this.x, this.y, fxDraw);
     } else if (this.fallback) {
       this.fallback(r, this);
     }
@@ -889,7 +889,7 @@ export function drawShadow(r: Renderer, x: number, y: number, w: number, alpha =
   shadowOpts.alpha = alpha;
   if (n > 0) {
     const i = Math.max(0, Math.min(n - 1, Math.round((w - 8) / 4)));
-    r.sprite('fx/shadow', i, Math.round(x), Math.round(y), shadowOpts);
+    r.sprite('fx/shadow', i, x, y, shadowOpts);
     return;
   }
   const h = Math.max(2, Math.round(w / 4));

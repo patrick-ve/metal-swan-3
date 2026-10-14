@@ -25,7 +25,7 @@ import { INK, PAL } from '../../engine/palette';
 import { PixelBuffer } from '../../engine/pixel';
 import type { DrawOpts, Renderer, SrcRect } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { getFrame, hasSprite } from '../../engine/sprites';
+import { frameH, frameW, getFrame, hasSprite } from '../../engine/sprites';
 import { getBgGenerator, hasBgGenerator } from '../art/art-registry';
 import { centerText, PLAYER_COLORS, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { wrapText } from '../context';
@@ -442,13 +442,13 @@ export class EndingScene implements Scene {
     const top = y - f.oy;
     const visible = WATER_Y + 1 - top;
     if (visible <= 0) return;
-    if (visible >= f.buf.h) {
+    if (visible >= frameH(f)) {
       r.sprite(id, frame, x, y, flip ? flipped : plain);
       return;
     }
     src.x = 0;
     src.y = 0;
-    src.w = f.buf.w;
+    src.w = frameW(f);
     src.h = visible;
     clipped.src = src;
     clipped.flipX = flip;
@@ -482,7 +482,7 @@ export class EndingScene implements Scene {
       if (sink < f.oy) {
         src.x = 0;
         src.y = 0;
-        src.w = f.buf.w;
+        src.w = frameW(f);
         src.h = f.oy - sink + 1;
         clipped.src = src;
         r.sprite('ui/ending-mk1', 0, mk1X, WATER_Y + 3 + sink, clipped);

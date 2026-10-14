@@ -109,6 +109,52 @@ describe('sprite registry', () => {
     expect(progress).toEqual(['2/6', '4/6', '6/6']);
     expect(yields).toBe(2);
   });
+
+  it('with a time budget, generates ids until the budget is used, then yields', async () => {
+    let clock = 0;
+    const done: string[] = [];
+    const cost: Record<string, number> = { a: 3, b: 3, c: 9, d: 1, e: 1, f: 1 };
+    for (const k of Object.keys(cost)) {
+      defineSprite(`budget/${k}`, () => {
+        clock += cost[k];
+        done.push(k);
+        return strip(1);
+      });
+    }
+    const slices: string[][] = [];
+    let slice: string[] = [];
+    const progress: string[] = [];
+    const report = await preloadSprites('budget/', (d, t) => progress.push(`${d}/${t}`), {
+      timeBudgetMs: 5,
+      now: () => clock,
+      yieldFn: async () => {
+        slices.push(slice);
+        slice = [];
+      },
+      first: [],
+    });
+    expect(report.total).toBe(6);
+    expect(done).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+    // a+b (6 ms, over 5), c alone (9 ms: a slice is at least one id), then d+e+f to the end.
+    expect(progress).toEqual(['2/6', '3/6', '6/6']);
+    expect(slices.length).toBe(2);
+  });
+
+  it('orders the preload by first / last prefixes, the rest in id order between them', async () => {
+    const done: string[] = [];
+    for (const id of ['ord/boss/x', 'ord/char/b/run', 'ord/char/a/idle', 'ord/m/one', 'ord/m/two', 'ord/swan/a', 'ord/z']) {
+      defineSprite(id, () => {
+        done.push(id);
+        return strip(1);
+      });
+    }
+    await preloadSprites('ord/', undefined, {
+      first: ['ord/char/b/', 'ord/swan/'],
+      last: ['ord/boss/'],
+      yieldFn: async () => {},
+    });
+    expect(done).toEqual(['ord/char/b/run', 'ord/swan/a', 'ord/char/a/idle', 'ord/m/one', 'ord/m/two', 'ord/z', 'ord/boss/x']);
+  });
 });
 
 describe('Animator', () => {

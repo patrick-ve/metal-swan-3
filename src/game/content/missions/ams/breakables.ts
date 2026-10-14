@@ -94,7 +94,7 @@ export class AmsBreakable extends Entity {
     drawOpts.flipX = false;
     drawOpts.flash = !this.broken && this.flashTicks > 0;
     const dx = this.wobble > 0 ? ((this.wobble >> 1) & 1 ? 1 : -1) : 0;
-    r.sprite(this.sprite, this.broken ? 1 : 0, Math.round(this.x) + dx, Math.round(this.y), drawOpts);
+    r.sprite(this.sprite, this.broken ? 1 : 0, this.x + dx, this.y, drawOpts);
     drawOpts.flash = false;
   }
 }

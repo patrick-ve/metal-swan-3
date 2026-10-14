@@ -63,6 +63,10 @@ export interface BubbleOpts {
    * it). Without it the tail points at the top of the target's hitbox, `dy` px above it.
    */
   tip?: readonly [number, number];
+  /** false: never voiced (ROBO-HALSEMA speaks in text only). Default true (see `HudState.onBubble`). */
+  voice?: boolean;
+  /** Who speaks the line (e.g. 'baker', 'gramps'): passed on to `AudioOut.say` with the text. */
+  speaker?: string;
 }
 
 /** Something that talks: an entity (followed while it lives) or a fixed world point. */
@@ -257,11 +261,18 @@ export class HudState {
   }
 
   /**
+   * Called with the text of every new bubble (unless `voice: false`); the mission runner voices
+   * it (`AudioOut.say`, a voice sample when one is loaded). Audio only: no game state.
+   */
+  onBubble: ((text: string, kind: BubbleKind, speaker?: string) => void) | null = null;
+
+  /**
    * A speech bubble over a speaker (word-wrapped to 24 characters × 2 lines; '\n' breaks the
    * line). One bubble per speaker: a new one replaces the old one. Returns the bubble (its
    * `ticks` can be changed).
    */
   bubble(target: BubbleTarget, text: string, o: BubbleOpts = {}): Bubble {
+    if (o.voice !== false) this.onBubble?.(text, o.kind ?? 'gag', o.speaker);
     const ticks = Math.max(1, Math.floor(o.ticks ?? 120));
     const lines = text.length <= BUBBLE_LINE_CHARS && text.indexOf('\n') < 0 ? text : wrapText(text, BUBBLE_LINE_CHARS, 2).join('\n');
     const i = this.bubbles.findIndex((b) => b.target === target);
@@ -358,6 +369,8 @@ export interface GameContext {
   ice: readonly (readonly [number, number])[];
   /** Extra data a mission runner shares with entities (null outside a mission). */
   runner: unknown;
+  /** The players' footsteps are audible (`MissionDef.footsteps`; set by the mission runner). */
+  footsteps?: boolean;
 }
 
 const contexts = new WeakMap<World, GameContext>();

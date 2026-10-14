@@ -68,6 +68,9 @@ export class SeagullFlock {
 }
 
 export class Seagull extends Creature {
+  /** One sprite per draw: drawn at the sub-pixel position (Enemy.fineDraw). */
+  protected override fineDraw = true;
+
   readonly flock: SeagullFlock | null;
   readonly slot: number;
   private bx: number;

@@ -126,8 +126,8 @@ export class Crate extends Entity {
   }
 
   override draw(r: Renderer): void {
-    const x = Math.round(this.x);
-    const y = Math.round(this.y);
+    const x = this.x;
+    const y = this.y;
     if (this.chute && !this.broken) {
       chuteDraw.flipX = false;
       r.sprite('item/crate-chute', Math.floor(this.age / 10) % 2, x, y - 20, chuteDraw);

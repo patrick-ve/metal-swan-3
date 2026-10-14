@@ -48,7 +48,7 @@ class MayorShot extends Projectile {
     if (!this.sprite) return;
     drawOpts.flipX = this.vx > 0;
     drawOpts.blend = this.blend;
-    r.sprite(this.sprite, Math.floor(this.t / this.ticksPerFrame), Math.round(this.x), Math.round(this.y), drawOpts);
+    r.sprite(this.sprite, Math.floor(this.t / this.ticksPerFrame), this.x, this.y, drawOpts);
   }
 }
 
@@ -169,7 +169,7 @@ export class NoiseLetter extends MayorShot {
     drawOpts.blend = 'normal';
     // Flaps open while rising, tumbles while it flutters.
     const f = this.rising ? 0 : 1 + (Math.floor((this.t + this.phase) / 6) % 3);
-    r.sprite(this.sprite, f, Math.round(this.x), Math.round(this.y), drawOpts);
+    r.sprite(this.sprite, f, this.x, this.y, drawOpts);
   }
 }
 

@@ -291,8 +291,8 @@ export class HonkRing extends Entity {
     if (fade <= 0 || this.r < 2) return;
     ringOpts.alpha = fade;
     ringDim.alpha = fade * 0.5;
-    const cx = Math.round(this.x);
-    const cy = Math.round(this.y);
+    const cx = this.x;
+    const cy = this.y;
     // A bright front edge and a dimmer echo 6 px inside it.
     for (let i = 0; i < RING_N; i++) {
       const c = RING_COS[i];

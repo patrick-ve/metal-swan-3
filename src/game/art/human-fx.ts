@@ -2,11 +2,15 @@
  * Frame effects for figures: soot-black silhouettes, cartoon flames, crumbling into ash, and
  * a small helper to stack extra pieces (props, chairs, ropes) onto a Frame while keeping the
  * anchor and points correct. All effects are deterministic (hash noise, no Math.random).
+ *
+ * 2× frames (density 2): `withPieces`, `sootify`, `scorch` and `speckle` keep the density and work
+ * in logical px. `withFlames` and `crumble` are 1× recipes: make the 2× twin from the 1× result
+ * with `liftHi` (art/hi.ts), as `burnFrames` (human-sprites.ts) does.
  */
 import type { Color } from '../../engine/color';
 import { PixelBuffer } from '../../engine/pixel';
 import { INK, PAL, stepShade } from '../../engine/palette';
-import type { Frame } from '../../engine/render';
+import { frameH, frameW, type Frame } from '../../engine/render';
 import { hash2 } from './paint';
 
 type Pts = Record<string, readonly [number, number]>;
@@ -18,26 +22,59 @@ export interface Piece {
   y: number;
   /** Draw behind the frame instead of in front. */
   behind?: boolean;
+  /** Density of `buf` (2 = a 2× drawing; default 1). x, y and the size are logical px. */
+  density?: number;
 }
 
-/** Stack pieces onto a frame. The result grows to fit; anchor and points stay correct. */
+/** 2× drawings registered for 1× piece buffers (see `setHiTwin`). */
+const HI_TWINS = new WeakMap<PixelBuffer, PixelBuffer>();
+
+/**
+ * Register a hand-drawn 2× twin for a (cached) 1× piece buffer: exactly twice its size, the same
+ * logical layout. `withPieces` on a 2× frame then draws the twin instead of the doubled 1× piece,
+ * so recipes that pass 1× pieces get the 2× art without knowing the density.
+ */
+export function setHiTwin(lo: PixelBuffer, hi: PixelBuffer): void {
+  if (hi.w !== lo.w * 2 || hi.h !== lo.h * 2) throw new Error(`2× twin is ${hi.w}×${hi.h}, expected ${lo.w * 2}×${lo.h * 2}`);
+  HI_TWINS.set(lo, hi);
+}
+
+/**
+ * Stack pieces onto a frame. The result grows to fit; anchor and points stay correct. On a 2×
+ * frame (density 2) positions stay logical: a 1× piece is drawn doubled (or as its registered 2×
+ * twin, see `setHiTwin`), a 2× piece as it is.
+ */
 export function withPieces(f: Frame, pieces: readonly Piece[], extraPts?: Pts): Frame {
+  const d = f.density ?? 1;
+  const pw = (p: Piece): number => p.buf.w / (p.density ?? 1);
+  const ph = (p: Piece): number => p.buf.h / (p.density ?? 1);
   let left = -f.ox;
   let top = -f.oy;
-  let right = f.buf.w - f.ox;
-  let bottom = f.buf.h - f.oy;
+  let right = frameW(f) - f.ox;
+  let bottom = frameH(f) - f.oy;
   for (const p of pieces) {
     left = Math.min(left, p.x);
     top = Math.min(top, p.y);
-    right = Math.max(right, p.x + p.buf.w);
-    bottom = Math.max(bottom, p.y + p.buf.h);
+    right = Math.max(right, p.x + pw(p));
+    bottom = Math.max(bottom, p.y + ph(p));
   }
-  const out = new PixelBuffer(right - left, bottom - top);
-  for (const p of pieces) if (p.behind) out.blit(p.buf, p.x - left, p.y - top);
-  out.blit(f.buf, -f.ox - left, -f.oy - top);
-  for (const p of pieces) if (!p.behind) out.blit(p.buf, p.x - left, p.y - top);
+  const out = new PixelBuffer((right - left) * d, (bottom - top) * d);
+  const put = (p: Piece): void => {
+    const pd = p.density ?? 1;
+    const twin = pd === 1 && d === 2 ? HI_TWINS.get(p.buf) : undefined;
+    const b = twin ?? (pd === d ? p.buf : pd < d ? p.buf.scaled(d / pd) : p.buf.downsampled(pd / d));
+    out.blit(b, (p.x - left) * d, (p.y - top) * d);
+  };
+  for (const p of pieces) if (p.behind) put(p);
+  out.blit(f.buf, (-f.ox - left) * d, (-f.oy - top) * d);
+  for (const p of pieces) if (!p.behind) put(p);
   const pts: Pts = { ...(f.pts ?? {}), ...(extraPts ?? {}) };
-  return { buf: out, ox: -left, oy: -top, pts };
+  return withDensity({ buf: out, ox: -left, oy: -top, pts }, f);
+}
+
+/** `g` with the density of `f` (2× frames stay 2× through the effects). */
+function withDensity(g: Frame, f: Frame): Frame {
+  return f.density === undefined ? g : { ...g, density: f.density };
 }
 
 /** Soot ramp by brightness: the cartoon "burnt to a crisp" look. */
@@ -65,14 +102,21 @@ export function sootify(f: Frame, amount = 1, eyes = true, seed = 1): Frame {
     }
   }
   if (eyes && f.pts?.head) {
-    // Two wide white eyes near the face (the head point is the head centre, face to the right).
+    // Two wide white eyes near the face (the head point is the head centre, face to the right);
+    // on a 2× frame each eye is its logical pixel's 2 × 2 block.
+    const d = f.density ?? 1;
     const ex = f.ox + f.pts.head[0] + 2;
     const ey = f.oy + f.pts.head[1];
-    if ((b.get(ex, ey) & 255) !== 0) b.set(ex, ey, PAL.snow[3]);
-    if ((b.get(ex + 2, ey) & 255) !== 0) b.set(ex + 2, ey, PAL.snow[3]);
+    for (const x of [ex, ex + 2]) {
+      for (let k = 0; k < d * d; k++) {
+        const px = x * d + (k % d);
+        const py = ey * d + Math.floor(k / d);
+        if ((b.get(px, py) & 255) !== 0) b.set(px, py, PAL.snow[3]);
+      }
+    }
   }
   b.touch();
-  return { buf: b, ox: f.ox, oy: f.oy, pts: f.pts };
+  return withDensity({ buf: b, ox: f.ox, oy: f.oy, pts: f.pts }, f);
 }
 
 /**
@@ -189,7 +233,7 @@ export function scorch(f: Frame, steps = 2): Frame {
     d[i] = s >>> 0;
   }
   b.touch();
-  return { buf: b, ox: f.ox, oy: f.oy, pts: f.pts };
+  return withDensity({ buf: b, ox: f.ox, oy: f.oy, pts: f.pts }, f);
 }
 
 /** Tint every non-outline pixel toward a colour by replacing a fraction (smudges, frost). */
@@ -202,5 +246,5 @@ export function speckle(f: Frame, colors: readonly Color[], amount: number, seed
       if (hash2(x, y, seed) < amount) b.set(x, y, colors[Math.floor(hash2(y, x, seed + 1) * colors.length) % colors.length]);
     }
   }
-  return { buf: b, ox: f.ox, oy: f.oy, pts: f.pts };
+  return withDensity({ buf: b, ox: f.ox, oy: f.oy, pts: f.pts }, f);
 }

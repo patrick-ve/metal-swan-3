@@ -70,6 +70,7 @@ export class FatbikeYouth extends Rider {
     const skin: SkinKey = sk === 'a' || sk === 'b' || sk === 'c' ? sk : SKIN_KEYS[world.rng.int(0, 2)];
     super(world, x, y, p, { art: `enemy/${youthSet(look, skin, pair)}`, hp: pair ? FATBIKE.pairHp : FATBIKE.hp, score: pair ? FATBIKE.pairScore : FATBIKE.score });
     this.pair = pair;
+    this.speaker = 'youth';
     this.artSet = `enemy/${youthSet(look, skin, pair)}`;
     this.look = look;
     this.cx = x;
@@ -184,7 +185,7 @@ export class FatbikeYouth extends Rider {
       const t = this.target();
       const dir = t && t.x > this.x ? -1 : 1;
       tumble(this.world, `${this.artSet}/passenger-flee`, this.x - this.facing * 8, this.y, dir * FATBIKE.flee * 1.1, 0, { gravity: 0, life: 110, flipX: dir < 0 });
-      gagBubble(this.world, this, 'MAMA!', 40);
+      gagBubble(this.world, this, 'MAMA!', 40, this.speaker);
     }
   }
 
@@ -204,7 +205,7 @@ export class FatbikeYouth extends Rider {
       const t = this.target();
       this.facing = t && t.x > this.x ? -1 : 1;
       this.play('flee', { restart: true, loop: true });
-      gagBubble(this.world, this, 'MAMA!', 60);
+      gagBubble(this.world, this, 'MAMA!', 60, this.speaker);
     }
   }
 }

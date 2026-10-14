@@ -123,7 +123,7 @@ describe('registry', () => {
 
 describe('launch params', () => {
   it('parses the documented URL parameters', () => {
-    const p = parseLaunchParams('?mission=m1&section=b&god=1&debug=1&seed=42&players=2&char=recruit&weapon=machine-gun&boss=1&mute=1&difficulty=hard');
+    const p = parseLaunchParams('?mission=m1&section=b&god=1&debug=1&seed=42&players=2&char=recruit&weapon=machine-gun&boss=1&mute=1&difficulty=hard&gfx=xbr&kmax=4');
     expect(p).toEqual({
       mission: 'm1',
       section: 'b',
@@ -136,15 +136,23 @@ describe('launch params', () => {
       boss: true,
       mute: true,
       difficulty: 'hard',
+      gfx: 'xbr',
+      kmax: 4,
     });
+    expect(parseLaunchParams('?gfx=PIXEL').gfx).toBe('pixel');
+    // The older spelling `res=` is still read; `gfx=` wins.
+    expect(parseLaunchParams('?res=smooth').gfx).toBe('smooth');
+    expect(parseLaunchParams('?res=smooth&gfx=xbr').gfx).toBe('xbr');
   });
 
   it('ignores junk', () => {
-    const p = parseLaunchParams('mission=<script>&seed=abc&players=7&god=0&difficulty=insane');
+    const p = parseLaunchParams('mission=<script>&seed=abc&players=7&god=0&difficulty=insane&gfx=4k&kmax=40');
     expect(p.mission).toBe(null);
     expect(p.seed).toBe(null);
     expect(p.players).toBe(1);
     expect(p.god).toBe(false);
     expect(p.difficulty).toBe(null);
+    expect(p.gfx).toBe(null);
+    expect(p.kmax).toBe(null);
   });
 });

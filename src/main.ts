@@ -3,6 +3,11 @@
  * canvas renderer + display, keyboard / gamepad input, Web Audio, localStorage, the
  * requestAnimationFrame loop — to the pure game (scenes, mission runner, debug), plus URL
  * launch parameters and an on-screen overlay for uncaught errors.
+ *
+ * Resolution (docs/ARCHITECTURE.md §3): the renderer's sprite filter follows the GRAPHICS option,
+ * or `?gfx=` until the option is changed (`graphicsMode`); its backbuffer follows the display's
+ * resolution for that filter (`display.resFor`, re-checked every frame, so resizes and DPR
+ * changes apply at once).
  */
 import { WebAudioOut } from './engine/audio.browser';
 import { Debug } from './engine/debug';
@@ -11,16 +16,24 @@ import { InputManager, parseBindings } from './engine/input';
 import { GamepadSource, KeyboardSource, TouchSource } from './engine/input.browser';
 import { startBrowserLoop } from './engine/loop.browser';
 import { CanvasRenderer } from './engine/render-canvas.browser';
+import { upscaleFactor } from './engine/upscale';
 import { createBrowserStore } from './engine/storage.browser';
-import { createApp, type GameApp } from './game/app';
+import { createApp, graphicsMode, type GameApp } from './game/app';
 import { parseLaunchParams } from './game/params';
 import { BootScene } from './game/scenes/index';
 import { applyTuning } from './game/tuning';
 
+/** Render + present times of the last frames (ms), for the perf tool (tools/perf.ts). */
+export interface FrameTimes {
+  readonly ms: Float32Array;
+  /** Frames recorded so far (the ring holds the last ms.length). */
+  count: number;
+}
+
 declare global {
   interface Window {
-    /** Debug handle for the console and browser tests. */
-    __ms3?: { app: GameApp };
+    /** Debug handle for the console, the smoke / perf tools and browser tests. */
+    __ms3?: { app: GameApp; renderer: CanvasRenderer; frames: FrameTimes };
   }
 }
 
@@ -74,14 +87,15 @@ function main(): void {
 
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('missing <canvas id="game">');
-  const renderer = new CanvasRenderer();
-  const display = createDisplay(canvas);
+  const display = createDisplay(canvas, { kmax: params.kmax ?? undefined });
+  const renderer = new CanvasRenderer(undefined, undefined, undefined, { res: display.res });
+  const frames: FrameTimes = { ms: new Float32Array(1024), count: 0 };
 
   const debug = new Debug(params.debug);
   if (params.debug) debug.reserveKeys(input);
 
-  const app = createApp({ input, audio, store, params, debug, gesture: false });
-  window.__ms3 = { app };
+  const app = createApp({ input, audio, store, params, debug, gesture: false, preloadArt: true });
+  window.__ms3 = { app, renderer, frames };
   app.scenes.reset(new BootScene(app));
   // Losing focus (another window, a notification) pauses a game in progress.
   window.addEventListener('blur', () => {
@@ -99,11 +113,18 @@ function main(): void {
       app.scenes.update();
     },
     render: () => {
+      const t0 = performance.now();
       app.frame++;
+      const mode = graphicsMode(app);
+      if (renderer.mode !== mode) renderer.setMode(mode);
+      const res = display.resFor(upscaleFactor(mode));
+      if (renderer.res !== res) renderer.setRes(res);
+      app.displayRes = res;
       renderer.begin();
       app.scenes.draw(renderer);
       renderer.end();
       display.present(renderer.canvas);
+      frames.ms[frames.count++ % frames.ms.length] = performance.now() - t0;
     },
     onError: showError,
   });

@@ -59,7 +59,7 @@ const CRITIC: HostageKind = {
   },
   drawFront(h, r) {
     if (h.state !== 'gag' || h.stateT <= 20 || !h.pointOf('card', pt)) return;
-    drawStars(r, Math.round(pt.x), Math.round(pt.y), h.gagValue);
+    drawStars(r, pt.x, pt.y, h.gagValue);
   },
 };
 
@@ -111,7 +111,7 @@ const TOURIST: HostageKind = {
   id: 'tourist',
   gagTicks: 40,
   gag(h, t) {
-    if (t === 0) hudOf(h.world).bubble(h, 'SAY CHEESE!', { ticks: 36, kind: 'gag' });
+    if (t === 0) hudOf(h.world).bubble(h, 'SAY CHEESE!', { ticks: 36, kind: 'gag', speaker: 'tourist' });
     if (t === 24) sayCheese(h);
   },
   gagFrame(_h, t) {

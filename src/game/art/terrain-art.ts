@@ -16,13 +16,22 @@
  * - Amsterdam (mission `ams`): ground `klinker` (grey brick street pavement in perspective rows
  *   over a dark brick quay wall), edges `bikepath` (red bike path with a white kerb line) and
  *   `kerb` (grey granite kerb), platform `whitewood` (white painted drawbridge planks)
+ *
+ * 2× terrain (docs/ART_GUIDE.md "2x art (mission ams)"): `defineHiTerrainMaterial(kind, id, paint)`
+ * adds a 2× version of one material: `paint(p, sx, sy)` gives the colour of the hi-res sub-pixel
+ * (sx, sy) ∈ {0, 1}² of the logical pixel `p` (the same Px the 1× material gets). The 2× painter
+ * (`paintTerrainHi`, registered with setHiTerrainPainter) classifies every logical pixel exactly
+ * like the 1× painter — same cells, bands, cliff shading and outlines (2 hi-res px) — and only
+ * asks the 2× material for the four sub-pixels; materials without one are enlarged 2 × 2. So the
+ * geometry (and collision) never changes. A rect where no 2× material paints gives null (the view
+ * keeps its 1× chunk).
  */
 import type { Color } from '../../engine/color';
 import { PixelBuffer } from '../../engine/pixel';
 import type { Ramp } from '../../engine/pixel';
 import { INK, PAL, stepShade } from '../../engine/palette';
-import { setTerrainPainter } from './art-registry';
-import type { TerrainPainter, TerrainSampler, TerrainStyleDef } from './art-registry';
+import { setHiTerrainPainter, setTerrainPainter } from './art-registry';
+import type { HiTerrainPainter, TerrainPainter, TerrainSampler, TerrainStyleDef } from './art-registry';
 import { bayer, hash1, hash2, noise2 } from './paint';
 
 /** Margins sampled around the chunk; distances are clamped below them. */
@@ -34,7 +43,7 @@ const MAX_SIDE = 90;
 const MAX_DOWN = 6;
 
 /** Everything a material needs to know about one pixel. */
-interface Px {
+export interface Px {
   /** World position. */
   x: number;
   y: number;
@@ -158,7 +167,7 @@ const GROUND: Readonly<Record<string, Paint>> = {
 };
 
 /** Klinker pavement row boundaries (depth below the surface); the quay wall starts at the last. */
-const KLINKER_ROWS = [0, 3, 6, 9, 13, 17, 22, 28];
+export const KLINKER_ROWS: readonly number[] = [0, 3, 6, 9, 13, 17, 22, 28];
 
 // ------------------------------------------------------------------------------------ edges
 
@@ -380,7 +389,7 @@ const SOLID: Readonly<Record<string, Paint>> = {
   },
 };
 
-// ------------------------------------------------------------------------------------ painter
+// ------------------------------------------------------------------------------------ run lengths
 
 /** Run lengths of equal cells along one axis, clamped to `max`. */
 function runs(cells: Uint8Array, out: Uint8Array, start: number, count: number, stride: number, max: number): void {
@@ -395,16 +404,92 @@ function runs(cells: Uint8Array, out: Uint8Array, start: number, count: number, 
   }
 }
 
+// ------------------------------------------------------------------------------------ 2× materials
+
+/** A 2× material: the colour of hi-res sub-pixel (sx, sy) ∈ {0, 1}² of logical pixel `p`. */
+export type HiPaint = (p: Readonly<Px>, sx: number, sy: number) => Color;
+export type TerrainMaterialKind = 'ground' | 'edge' | 'platform' | 'solid';
+
+const HI: Readonly<Record<TerrainMaterialKind, Map<string, HiPaint>>> = {
+  ground: new Map(),
+  edge: new Map(),
+  platform: new Map(),
+  solid: new Map(),
+};
+
+/** Add (or replace) the 2× version of a material (see the module comment). */
+export function defineHiTerrainMaterial(kind: TerrainMaterialKind, id: string, paint: HiPaint): void {
+  HI[kind].set(id, paint);
+}
+
+/**
+ * A 2× hanger: the colour of sub-pixel (sx, sy) of the hanger pixel `k` rows (0-based) below a
+ * platform band at world column x, or 0. Only painted where the 1× `hang` paints (the same
+ * footprint), so geometry never changes.
+ */
+export type HiHang = (x: number, k: number, seed: number, sx: number, sy: number) => Color;
+
+const HI_HANG = new Map<string, HiHang>();
+
+/** Add (or replace) the 2× hangers under a platform material. */
+export function defineHiTerrainHang(platform: string, hang: HiHang): void {
+  HI_HANG.set(platform, hang);
+}
+
+export function hasHiTerrainMaterial(kind: TerrainMaterialKind, id: string): boolean {
+  return HI[kind].has(id);
+}
+
+/** Material ids a style resolves to (unknown ids fall back like the painter does). */
+function materialIds(style: TerrainStyleDef): Record<TerrainMaterialKind, string | undefined> {
+  return {
+    ground: GROUND[style.ground] ? style.ground : 'dirt',
+    edge: style.edge && EDGE[style.edge] ? style.edge : undefined,
+    platform: PLATFORM[style.platform ?? 'wood'] ? (style.platform ?? 'wood') : 'wood',
+    solid: SOLID[style.solid ?? 'metal'] ? (style.solid ?? 'metal') : 'metal',
+  };
+}
+
+/** Does any material of `style` have a 2× version? */
+export function styleHasHiTerrain(style: TerrainStyleDef): boolean {
+  const ids = materialIds(style);
+  return (Object.keys(HI) as TerrainMaterialKind[]).some((k) => ids[k] !== undefined && HI[k].has(ids[k] as string));
+}
+
+// ------------------------------------------------------------------------------------ painter
+
 /**
  * Paint terrain cells for the world rect (x0, y0, w, h). Colours depend only on world
  * coordinates, the sampled terrain and the style (seamless across chunks).
  */
-export const paintTerrain: TerrainPainter = (sample: TerrainSampler, style: TerrainStyleDef, x0, y0, w, h) => {
+export const paintTerrain: TerrainPainter = (sample: TerrainSampler, style: TerrainStyleDef, x0, y0, w, h) =>
+  paintRect(sample, style, x0, y0, w, h, false) as PixelBuffer;
+
+/**
+ * The 2× painter: a (2·w) × (2·h) buffer of the same rect with the 2× materials, or null when no
+ * 2× material paints a pixel of it.
+ */
+export const paintTerrainHi: HiTerrainPainter = (sample, style, x0, y0, w, h) => paintRect(sample, style, x0, y0, w, h, true);
+
+/**
+ * The painter. Every logical pixel gets a base colour from its material, then a cliff / underside
+ * pass (`post`: 1 = one step lighter, 2 = a fixed dark colour). With `hi` every logical pixel
+ * becomes 2 × 2 pixels: the 2× material's sub-pixels (if it has one) or the base colour, through
+ * the same pass.
+ */
+function paintRect(sample: TerrainSampler, style: TerrainStyleDef, x0: number, y0: number, w: number, h: number, hi: boolean): PixelBuffer | null {
   const ground = GROUND[style.ground] ?? GROUND.dirt;
   const edge = style.edge ? EDGE[style.edge] : undefined;
   const plat = PLATFORM[style.platform ?? 'wood'] ?? PLATFORM.wood;
   const solid = SOLID[style.solid ?? 'metal'] ?? SOLID.metal;
   const seed = style.seed ?? 1;
+  const ids = materialIds(style);
+  const hiGround = hi ? HI.ground.get(ids.ground as string) : undefined;
+  const hiEdge = hi && ids.edge ? HI.edge.get(ids.edge) : undefined;
+  const hiPlat = hi ? HI.platform.get(ids.platform as string) : undefined;
+  const hiSolid = hi ? HI.solid.get(ids.solid as string) : undefined;
+  const hiHang = hi ? HI_HANG.get(ids.platform as string) : undefined;
+  if (hi && !hiGround && !hiEdge && !hiPlat && !hiSolid) return null;
 
   // Sample the chunk plus margins.
   const GW = w + PAD_X * 2;
@@ -427,7 +512,11 @@ export const paintTerrain: TerrainPainter = (sample: TerrainSampler, style: Terr
     runs(cells, right, y * GW + GW - 1, GW, -1, MAX_SIDE);
   }
 
-  const out = new PixelBuffer(w, h);
+  const d = hi ? 2 : 1;
+  const out = new PixelBuffer(w * d, h * d);
+  const ow = out.w;
+  const data = out.data;
+  let usedHi = false;
   const p: Px = { x: 0, y: 0, up: 0, down: 0, left: 0, right: 0, seed };
   const cellAt = (gx: number, gy: number): number => (gx < 0 || gy < 0 || gx >= GW || gy >= GH ? 0 : cells[gy * GW + gx]);
   for (let y = 0; y < h; y++) {
@@ -443,30 +532,93 @@ export const paintTerrain: TerrainPainter = (sample: TerrainSampler, style: Terr
       p.left = left[k];
       p.right = right[k];
       let col: Color = 0;
+      let arg: Px = p;
+      let hp: HiPaint | undefined;
+      let post = 0;
+      let postCol: Color = 0;
       if (c === 1) {
         // up − 1 = depth below the surface (0 at the top pixel).
         const depth = p.up - 1;
         const band = edge ? edge.depth + Math.floor(hash1(p.x >> 1, seed + 17) * (edge.ragged + 1)) : 0;
         const q: Px = { ...p, up: depth };
-        if (edge && depth < band && cellAt(gx, gy - depth - 1) === 0) col = edge.paint(q, ground);
-        else col = ground(q);
+        arg = q;
+        if (edge && depth < band && cellAt(gx, gy - depth - 1) === 0) {
+          col = edge.paint(q, ground);
+          hp = hiEdge;
+        } else {
+          col = ground(q);
+          hp = hiGround;
+        }
         // Cliff walls (not slopes): lit left face, dark right face; dark underside.
         const inBand = edge !== undefined && depth < band;
-        if (!inBand && cellAt(gx - 1, gy) === 0 && cellAt(gx - 1, gy + 1) === 0) col = stepShade(col, 1);
-        if (!inBand && cellAt(gx + 1, gy) === 0 && cellAt(gx + 1, gy + 1) === 0) col = PAL.ink[1];
-        if (p.down === 1 && cellAt(gx, gy + 1) === 0) col = INK;
+        if (!inBand && cellAt(gx - 1, gy) === 0 && cellAt(gx - 1, gy + 1) === 0) post = 1;
+        if (!inBand && cellAt(gx + 1, gy) === 0 && cellAt(gx + 1, gy + 1) === 0) {
+          post = 2;
+          postCol = PAL.ink[1];
+        }
+        if (p.down === 1 && cellAt(gx, gy + 1) === 0) {
+          post = 2;
+          postCol = INK;
+        }
       } else if (c === 2) {
         col = plat.paint(p);
+        hp = hiPlat;
       } else if (c === 3) {
         col = solid(p);
+        hp = hiSolid;
       } else {
         col = decorate(cellAt, gx, gy, p, edge, plat, up, GW, seed);
+        if (hiHang && col !== 0) {
+          // A hanger under a platform band gets its 2× colours (tufts and lips stay 2 × 2).
+          const k = hangRow(cellAt, gx, gy);
+          if (k >= 0 && plat.hang(p.x, k, seed) === col) {
+            for (let sy = 0; sy < 2; sy++) {
+              for (let sx = 0; sx < 2; sx++) {
+                const sc = hiHang(p.x, k, seed, sx, sy) || col;
+                data[(y * 2 + sy) * ow + x * 2 + sx] = sc >>> 0;
+              }
+            }
+            usedHi = true;
+            continue;
+          }
+        }
       }
-      if (col !== 0) out.data[y * w + x] = col >>> 0;
+      if (!hi) {
+        if (post === 1) col = stepShade(col, 1);
+        else if (post === 2) col = postCol;
+        if (col !== 0) data[y * w + x] = col >>> 0;
+        continue;
+      }
+      if (post === 2) {
+        hp = undefined;
+        col = postCol;
+      }
+      for (let sy = 0; sy < 2; sy++) {
+        for (let sx = 0; sx < 2; sx++) {
+          let sc = col;
+          if (hp) {
+            sc = hp(arg, sx, sy);
+            usedHi = true;
+          }
+          if (post === 1) sc = stepShade(sc, 1);
+          if (sc !== 0) data[(y * 2 + sy) * ow + x * 2 + sx] = sc >>> 0;
+        }
+      }
     }
   }
+  if (hi && !usedHi) return null;
   return out.touch();
-};
+}
+
+/** Rows (0-based) from an empty cell up to the platform band right above it, or −1. */
+function hangRow(cellAt: (gx: number, gy: number) => number, gx: number, gy: number): number {
+  for (let k = 0; k < 6; k++) {
+    const c = cellAt(gx, gy - k - 1);
+    if (c === 2) return k;
+    if (c !== 0) return -1;
+  }
+  return -1;
+}
 
 /** Decorations in empty cells: tufts above surfaces, lips over cliff tops, hangers under platforms. */
 function decorate(
@@ -513,3 +665,4 @@ function decorate(
 }
 
 setTerrainPainter(paintTerrain);
+setHiTerrainPainter(paintTerrainHi, styleHasHiTerrain);

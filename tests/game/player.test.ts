@@ -214,8 +214,9 @@ describe('player movement', () => {
     p.drawRide(r, 50, 100, true, 'up');
     expect(calls.at(-1)).toEqual({ id: `${p.art}/ride-sit`, frame: 0, x: 50, y: 100 });
     defineSprite(`${p.art}/ride-up`, () => new PixelBuffer(4, 4));
+    // Unrounded: the renderer snaps to 1/res, so the rider stays locked to the Swan's sub-pixel position.
     p.drawRide(r, 50.4, 99.6, false, 'up', 0);
-    expect(calls.at(-1)).toEqual({ id: `${p.art}/ride-up`, frame: 0, x: 50, y: 100 });
+    expect(calls.at(-1)).toEqual({ id: `${p.art}/ride-up`, frame: 0, x: 50.4, y: 99.6 });
     // Invulnerable: hidden on the odd blink phases.
     p.invulnTicks = 100;
     let hidden = 0;

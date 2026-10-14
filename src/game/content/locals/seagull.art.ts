@@ -14,7 +14,9 @@
 import { INK, PAL } from '../../../engine/palette';
 import { PixelBuffer } from '../../../engine/pixel';
 import type { Frame } from '../../../engine/render';
-import { defineSprite } from '../../../engine/sprites';
+import { defineHiSprite, defineSprite, getFrames } from '../../../engine/sprites';
+import { HI, HiSketch, asHi, fitHi, liftHi, outlineHi, squashedHi, type HiPen } from '../../art/hi';
+import { crumble, scorch, sootify, withFlames } from '../../art/human-fx';
 import { BLAST_TIMING, BURN_TIMING, CRUSH_TIMING, FLAT, Sketch, blastStrip, burnStrip, crushStrip, reground, xEye } from '../creatures/draw';
 
 const W = 44;
@@ -185,6 +187,267 @@ function featherFrames(): Frame[] {
   });
 }
 
+// ---------------------------------------------------------------------------------------------
+// 2× art (mission ams only; docs/ART_GUIDE.md "2x art (mission ams)")
+// ---------------------------------------------------------------------------------------------
+
+/** A stroke `w` 2× px wide between logical positions (w = 2: one logical pixel). */
+function stroke(p: HiPen, x0: number, y0: number, x1: number, y1: number, w: number, c: number): void {
+  p.fine(x0, y0, x1, y1, c);
+  if (w > 1) p.fine(x0 + 0.5, y0, x1 + 0.5, y1, c);
+}
+
+/** The 2× wing: the 1× shape, plus a white trailing edge, primary seams and the mirror spot. */
+function wingPartsHi(s: HiSketch, sh: V, tip: V, far: boolean): void {
+  const lead: V = [sh[0] + 4, sh[1]];
+  const trail: V = [sh[0] - 9, sh[1] + 2];
+  const mid = lerp(lead, tip, 0.62);
+  const midT = lerp(trail, tip, 0.62);
+  s.add(GREY, (p) => p.poly([lead[0], lead[1], mid[0], mid[1], midT[0], midT[1], trail[0], trail[1]], FLAT), { base: far ? 2 : 3, shift: 0 });
+  s.add(TIP, (p) => p.poly([mid[0], mid[1], tip[0], tip[1], midT[0], midT[1]], FLAT), { base: 1 });
+  s.detail((p) => {
+    // Secondaries: a fine white trailing edge (lit wing only).
+    if (!far) p.fine(trail[0] + 0.5, trail[1] + 0.5, midT[0], midT[1], PAL.snow[3]);
+    // Covert line across the arm.
+    const a = lerp(lead, trail, 0.45);
+    const b = lerp(mid, midT, 0.45);
+    p.fine(a[0], a[1], b[0], b[1], GREY[far ? 1 : 2]);
+    // Primary seams in the black tip, and the white mirror spot near the end.
+    const m = lerp(mid, tip, 0.45);
+    p.fine(lerp(mid, midT, 0.5)[0], lerp(mid, midT, 0.5)[1], lerp(m, tip, 0.5)[0], lerp(m, tip, 0.5)[1], TIP[0]);
+    p.dot(m[0], m[1], PAL.snow[3]);
+    p.dot(m[0] + 0.5, m[1], PAL.snow[3]);
+    p.dot(m[0], m[1] + 0.5, PAL.snow[2]);
+  });
+}
+
+/**
+ * The 2× gull: the 1× pose (same shapes, same logical geometry) with finer details — a yellow eye
+ * with a red orbital ring under the frown, a hooked beak with the red gonys spot and a gape line,
+ * white tertial crescents on the grey mantle, a white trailing edge and mirror spots on the
+ * wings, shaded pink legs. `line`: outline and ring width in 2× px (2 = the 1× weight).
+ */
+export function gullHi(p: GullPose = {}, line: 1 | 2 = 2): Frame {
+  const perched = p.perched === true;
+  const oy = perched ? H - 2 : OY;
+  const s = new HiSketch(W, H, OX, oy, line);
+  const by = perched ? -11 : 0;
+  const wings = p.wings ?? (perched ? 'rest' : 'mid');
+  const tips: Record<GullWings, V> = {
+    up: [-8, -20],
+    mid: [-21, -5],
+    down: [-12, 13],
+    wide: [-3, -22],
+    folded: [-15, 0],
+    rest: [-13, 1],
+  };
+  const tip = tips[wings];
+  const sh: V = [1, by - 3];
+  if (wings === 'up' || wings === 'wide' || wings === 'mid') wingPartsHi(s, sh, [tip[0] + 5, tip[1] - 2], true);
+  if (perched) {
+    s.add(PAL.pink, (q) => {
+      q.vline(-2, -6, -1, FLAT);
+      q.vline(1, -6, -1, FLAT);
+      q.hline(-4, 0, -1, FLAT);
+      q.hline(-1, 3, -1, FLAT);
+    }, { hi: 0, lo: 0, base: 1 });
+    s.detail((q) => {
+      // Lit shin edge, a knee joint and the toe webs.
+      for (const x of [-2, 1]) {
+        q.fine(x, -6, x, -2, PAL.pink[2]);
+        q.dot(x + 0.5, -4, PAL.pink[0]);
+      }
+      q.fine(-4, -1, -3, -1, PAL.pink[2]);
+      q.fine(-1, -1, 0, -1, PAL.pink[2]);
+    });
+  }
+  s.add(WHITE, (q) => q.poly([-8, by - 2, -15, by - 1 + (perched ? 3 : 0), -14, by + 2 + (perched ? 3 : 0), -7, by + 3], FLAT), { base: 2 });
+  s.add(WHITE, (q) => q.ellipse(-9, by - 5, 18, 10, FLAT), { base: 3, glint: true });
+  s.add(GREY, (q) => q.ellipse(-8, by - 5, 13, 4, FLAT), { base: 3, lo: 0 });
+  // Tertial crescent: a fine white row along the mantle's lower edge, and soft belly shading.
+  s.detail((q) => {
+    q.fine(-6, by - 1.5, 2, by - 1.5, PAL.snow[3]);
+    q.fine(-6, by + 3.5, 0, by + 3.5, PAL.snow[1]);
+  });
+  const hx = p.tucked ? 2 : p.face === 'dive' ? 8 : 6;
+  const hy = by + (p.tucked ? -3 : p.face === 'dive' ? 1 : -6) + (p.peck ?? 0);
+  s.add(WHITE, (q) => {
+    q.circle(hx, hy, 4, FLAT);
+    if (!p.tucked) q.thick(3, by - 2, hx, hy, 4, FLAT);
+  }, { base: 3, glint: true });
+  const face = p.face ?? 'open';
+  if (!p.tucked) {
+    const down = face === 'dive' ? 2 : 0;
+    s.add(BEAK, (q) => {
+      if (face === 'kaw') {
+        q.poly([hx + 3, hy - 1, hx + 10, hy - 4, hx + 9, hy - 2, hx + 4, hy], FLAT);
+        q.poly([hx + 3, hy + 1, hx + 9, hy + 3, hx + 4, hy + 2], FLAT);
+      } else {
+        q.poly([hx + 3, hy - 1, hx + 10, hy + down, hx + 10, hy + 2 + down, hx + 3, hy + 2], FLAT);
+      }
+    }, { hi: 0, lo: 0, base: 2 });
+    s.detail((q) => {
+      if (face === 'kaw') {
+        // Open gape: a red throat and a pink tongue tip.
+        q.px(hx + 6, hy + 2, PAL.red[2]);
+        q.px(hx + 5, hy, PAL.red[0]);
+        q.dot(hx + 7, hy + 2.5, PAL.pink[2]);
+        q.fine(hx + 4, hy - 1, hx + 9, hy - 3.5, PAL.gold[3]);
+      } else {
+        // Gape line, lit ridge, the red gonys spot and the darker hook.
+        q.fine(hx + 3.5, hy + 1, hx + 8, hy + 1 + down * 0.5, BEAK[1]);
+        q.fine(hx + 4, hy - 0.5, hx + 8.5, hy + down * 0.5, PAL.gold[3]);
+        q.px(hx + 8, hy + 1.5 + down, PAL.red[2]);
+        q.dot(hx + 8, hy + 1.5 + down, PAL.red[3]);
+      }
+      // The darker hook (the open 'kaw' beak has no tip there).
+      if (face !== 'kaw') {
+        q.px(hx + 10, hy + 1 + down, BEAK[0]);
+        q.dot(hx + 10, hy + 1 + down, BEAK[1]);
+      }
+    });
+  }
+  s.detail((q) => {
+    if (p.tucked) {
+      q.fine(hx, hy, hx + 1.5, hy, INK);
+      if (line > 1) q.fine(hx, hy + 0.5, hx + 1.5, hy + 0.5, INK);
+      return;
+    }
+    if (face === 'x') {
+      stroke(q, hx, hy - 2, hx + 2, hy, line, INK);
+      stroke(q, hx, hy, hx + 2, hy - 2, line, INK);
+    } else if (face === 'shut') {
+      q.fine(hx, hy - 1, hx + 2.5, hy - 1, INK);
+      if (line > 1) q.fine(hx, hy - 0.5, hx + 2.5, hy - 0.5, INK);
+    } else if (face === 'happy') {
+      stroke(q, hx, hy - 1, hx + 1, hy - 2, line, INK);
+      stroke(q, hx + 1, hy - 2, hx + 2, hy - 1, line, INK);
+    } else {
+      // Pale yellow iris with a small black pupil, a red orbital ring at the front.
+      q.px(hx + 1, hy - 1, PAL.gold[3]);
+      q.dot(hx + 1, hy - 0.5, PAL.gold[2]);
+      q.dot(hx + 2, hy - 1, INK);
+      q.dot(hx + 2, hy - 0.5, INK);
+      q.dot(hx + 2.5, hy - 1, PAL.red[2]);
+      // The frown: a brow slanting down to the beak.
+      stroke(q, hx - 0.5, hy - 3, hx + 1.5, hy - 2.5, line, INK);
+      stroke(q, hx + 1.5, hy - 2.5, hx + 2.5, hy - 1.5, line, INK);
+    }
+  });
+  if (wings === 'rest' || wings === 'folded') {
+    s.add(GREY, (q) => q.poly([2, by - 4, -6, by - 5, tip[0], by + tip[1] - 1, -4, by + 1], FLAT), { base: 2 });
+    s.add(TIP, (q) => q.poly([-8, by - 3, tip[0] - 1, by + tip[1] - 1, -8, by], FLAT), { base: 1 });
+    s.detail((q) => {
+      // Folded wing: tertial crescent, a covert line and the mirror spot.
+      q.fine(-5, by - 4, 1, by - 3.5, PAL.snow[3]);
+      q.fine(-6, by - 1.5, 0, by - 1, GREY[1]);
+      q.px(-10, by - 1, PAL.snow[3]);
+      q.dot(-9.5, by - 0.5, PAL.snow[2]);
+      q.fine(-8.5, by - 2, tip[0], by + tip[1] - 1, TIP[0]);
+    });
+  } else wingPartsHi(s, [sh[0] - 1, sh[1] + 1], tip, false);
+  if (!perched) s.detail((q) => {
+    q.hline(-6, -4, 4, PAL.pink[1]);
+    q.fine(-6, 4, -4.5, 4, PAL.pink[2]);
+  });
+  if (p.fries) {
+    const fx = p.fries === 1 ? hx + 9 : 12;
+    const fy = p.fries === 1 ? hy + 3 : -1;
+    s.add(PAL.red, (q) => q.poly([fx - 3, fy - 6, fx + 3, fy - 6, fx, fy], FLAT), { base: 2 });
+    s.detail((q) => {
+      q.vline(fx - 1, fy - 6, fy - 3, PAL.snow[3]);
+      q.vline(fx + 1, fy - 6, fy - 3, PAL.snow[3]);
+      // Fries: thinner sticks at 2×, lit on the left.
+      for (let k = -2; k <= 2; k++) {
+        const top = fy - 9 + (k & 1);
+        q.fine(fx + k, top, fx + k, fy - 6.5, PAL.gold[3]);
+        q.fine(fx + k + 0.5, top + 0.5, fx + k + 0.5, fy - 6.5, PAL.gold[2]);
+      }
+      q.fine(fx - 3, fy - 6, fx + 3, fy - 6, PAL.red[3]);
+    });
+  }
+  return s.frame();
+}
+
+/** The 2× feather (18×18): a white vane on a grey shaft, grey outline `line` px wide. */
+function featherFramesHi(line: number): Frame[] {
+  return [0, 1, 2, 3].map((i) => {
+    const b = new PixelBuffer(9 * HI, 9 * HI);
+    const pts = [
+      [1, 4, 7, 4],
+      [2, 6, 6, 2],
+      [4, 1, 4, 7],
+      [2, 2, 6, 6],
+    ][i];
+    const q = (v: number): number => v * HI + 0.5;
+    b.thickLine(q(pts[0]), q(pts[1]), q(pts[2]), q(pts[3]), 2, PAL.snow[3]);
+    b.line(pts[0] * HI + 1, pts[1] * HI + 1, pts[2] * HI + 1, pts[3] * HI + 1, PAL.snow[2]);
+    b.rect(pts[2] * HI, pts[3] * HI, 2, 2, PAL.steel[3]);
+    outlineHi(b, line, PAL.steel[2]);
+    return { buf: b, ox: 4, oy: 4, density: HI };
+  });
+}
+
+type Pose = GullPose;
+/** The poses of each plain strip (the 1× generator above uses the same lists). */
+const POSES: Record<string, Pose[]> = {
+  walk: FLAP_POSES(),
+  idle: FLAP_POSES(),
+  perch: [{ perched: true }, { perched: true, peck: 1 }],
+  gag: [{ perched: true, tucked: true }, { perched: true, tucked: true, peck: 1 }],
+  'gag-fries': [{ perched: true, fries: 2 }, { perched: true, fries: 2, peck: 4 }, { perched: true, fries: 1 }, { perched: true, fries: 1, peck: 1 }],
+  alert: [{ perched: true, face: 'kaw' }, { perched: true, wings: 'up', face: 'open' }],
+  tell: [{ wings: 'wide', face: 'kaw' }, { wings: 'up', face: 'kaw' }],
+  attack: [{ wings: 'folded', face: 'dive' }, { wings: 'folded', face: 'dive', peck: 1 }],
+  die: [{ wings: 'up', face: 'x' }, { wings: 'down', face: 'x' }, { wings: 'rest', face: 'x' }],
+  'photo-pose': [{ wings: 'wide', face: 'happy' }],
+};
+
+function FLAP_POSES(): Pose[] {
+  return (['up', 'mid', 'down', 'mid'] as const).map((wings) => ({ wings }));
+}
+
+/**
+ * The 2× strip `name` (an enemy/seagull/… suffix) with outline width `line`, each frame matched
+ * to the 1× frame (`lo`) it doubles. Death strips repeat the 1× recipe on the 2× pose: colour
+ * maps and quarter turns stay at 2× detail, flames and ash are whole logical pixels (liftHi).
+ */
+export function gullStripHi(name: string, line: 1 | 2, lo: readonly Frame[]): Frame[] {
+  const poses = POSES[name];
+  if (poses) return poses.map((pose, i) => asHi(gullHi(pose, line).buf, lo[i]));
+  if (name === 'feather') return featherFramesHi(line);
+  if (name === 'die-blast') {
+    const f2 = gullHi({ wings: 'rest', face: 'x' }, line);
+    const s2 = sootify(f2, 1, false).buf;
+    return [asHi(scorch(f2, 2).buf, lo[0]), ...[1, 2, 3, 2].map((q, i) => asHi(s2.rotated((q * Math.PI) / 2), lo[i + 1]))];
+  }
+  if (name === 'die-burn') {
+    const f1 = grounded(gull({ wings: 'rest', face: 'shut' }));
+    const f2 = gullHi({ wings: 'rest', face: 'shut' }, line);
+    const sc1 = scorch(f1, 1);
+    const sc2 = scorch(f2, 1).buf;
+    const s1 = sootify(f1, 1, false);
+    const s2 = sootify(f2, 1, false).buf;
+    const flames = (src1: Frame, src2: PixelBuffer, phase: number, seed?: number, height?: number): Frame =>
+      liftHi(withFlames(src1, phase, seed, height), src1.buf, src2, 2, (height ?? 7) + 2);
+    const ash = (t: number): Frame => liftHi(crumble(s1, t), s1.buf, s2, 4, 0);
+    const out = [flames(sc1, sc2, 0), flames(sc1, sc2, 1), flames(s1, s2, 2, 9, 5), asHi(s2, lo[3]), asHi(s2, lo[4]), asHi(s2, lo[5]), ash(0.4), ash(0.75), ash(1), ash(1), ash(1), ash(1)];
+    return out.map((f, i) => asHi(f.buf, lo[i]));
+  }
+  if (name === 'die-crush') {
+    const f1 = grounded(gull({ wings: 'wide', face: 'x' }));
+    const f2 = gullHi({ wings: 'wide', face: 'x' }, line).buf;
+    const half = squashedHi(f1, f2, lo[0], line);
+    const flat = squashedHi(f1, f2, lo[1], line);
+    const peel = (angle: number, i: number): Frame => fitHi(flat.buf.rotated(angle, { align: HI }), lo[i]);
+    return [half, flat, asHi(flat.buf, lo[2]), peel(-0.35, 3), peel(0.3, 4), peel(-0.25, 5), peel(0.2, 6)];
+  }
+  throw new Error(`no 2× strip "${name}"`);
+}
+
+/** Every strip of the gull (the 2× generators cover them all). */
+export const GULL_STRIPS = [...Object.keys(POSES), 'feather', 'die-blast', 'die-burn', 'die-crush'];
+
 const A = 'enemy/seagull/';
 const FLAP: GullWings[] = ['up', 'mid', 'down', 'mid'];
 
@@ -202,3 +465,6 @@ defineSprite(A + 'die-burn', () => burnStrip(grounded(gull({ wings: 'rest', face
 defineSprite(A + 'die-crush', () => crushStrip(grounded(gull({ wings: 'wide', face: 'x' }))), { durations: [...CRUSH_TIMING], loop: false });
 defineSprite(A + 'photo-pose', () => gull({ wings: 'wide', face: 'happy' }));
 defineSprite(A + 'feather', featherFrames, { ticksPerFrame: 6 });
+
+// 2× (mission ams): the 2-px outline (the weight of the 1× art; the pilot settled it).
+for (const name of GULL_STRIPS) defineHiSprite(A + name, () => gullStripHi(name, 2, getFrames(A + name, 1)));

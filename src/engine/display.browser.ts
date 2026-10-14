@@ -1,11 +1,18 @@
 import { VIEW_H, VIEW_W } from './render';
+import { chooseRes, KMAX } from './render-common';
 
 /**
- * Presents the 384×216 backbuffer on the visible canvas (docs/ARCHITECTURE.md §3):
+ * Presents the backbuffer on the visible canvas (docs/ARCHITECTURE.md §3):
  * - The visible canvas fills the window; its backing store matches DEVICE pixels
  *   (devicePixelRatio, ResizeObserver device-pixel box when available), so pixels stay crisp.
- * - The game image uses the largest INTEGER scale that fits; if the window is smaller than
- *   1×, it falls back to the best nearest-neighbour fit. The rest is a black letterbox.
+ * - The game image uses the largest INTEGER scale s that fits (device px per logical px); if
+ *   the window is smaller than 1×, it falls back to the best nearest-neighbour fit. The rest is
+ *   a black letterbox.
+ * - `resFor(factor)` is the backbuffer resolution the renderer should use for that scale and the
+ *   sprite filter's upscale factor (`chooseRes`: s itself up to `kmax`, else the largest k ≤ kmax
+ *   that the factor divides), so filtered pixels land where a direct nearest-neighbour scale
+ *   would put them. The backbuffer may have any size: present() scales it (nearest neighbour,
+ *   any ratio).
  * - Optional scanline overlay (only at scale ≥ 2) and a fullscreen helper.
  */
 
@@ -17,14 +24,20 @@ export interface DisplayOpts {
   /** Logical size (default VIEW_W × VIEW_H). */
   width?: number;
   height?: number;
+  /** Highest backbuffer resolution (default KMAX). */
+  kmax?: number;
 }
 
 export interface Display {
   readonly canvas: HTMLCanvasElement;
   /** Current scale factor in device pixels per game pixel (integer unless the window is tiny). */
   readonly scale: number;
+  /** Backbuffer resolution for this scale without a sprite filter (`resFor(1)`). */
+  readonly res: number;
+  /** Backbuffer resolution for this scale when sprites are upscaled by `factor` (1…kmax). */
+  resFor(factor: number): number;
   readonly scanlines: boolean;
-  /** Draw the backbuffer (e.g. CanvasRenderer.canvas) scaled into the visible canvas. */
+  /** Draw the backbuffer (e.g. CanvasRenderer.canvas, any res) scaled into the visible canvas. */
   present(src: CanvasImageSource): void;
   /** Re-measure (also runs automatically on resize / DPR changes). */
   resize(): void;
@@ -40,6 +53,7 @@ export function createDisplay(canvas: HTMLCanvasElement, opts: DisplayOpts = {})
   const gw = opts.width ?? VIEW_W;
   const gh = opts.height ?? VIEW_H;
   const strength = opts.scanlineStrength ?? 0.22;
+  const kmax = opts.kmax ?? KMAX;
   const maybeCtx = canvas.getContext('2d', { alpha: false });
   if (!maybeCtx) throw new Error('Canvas 2D is not available');
   const ctx: CanvasRenderingContext2D = maybeCtx;
@@ -130,6 +144,12 @@ export function createDisplay(canvas: HTMLCanvasElement, opts: DisplayOpts = {})
     get scale() {
       return scale;
     },
+    get res() {
+      return chooseRes(scale, kmax);
+    },
+    resFor(factor: number): number {
+      return chooseRes(scale, kmax, factor);
+    },
     get scanlines() {
       return scan;
     },
@@ -145,7 +165,10 @@ export function createDisplay(canvas: HTMLCanvasElement, opts: DisplayOpts = {})
       } else {
         ctx.fillRect(ox, oy, dw, dh); // a translucent backbuffer must not show the old frame
       }
-      ctx.drawImage(src, 0, 0, gw, gh, ox, oy, dw, dh);
+      const sized = src as { width?: unknown; height?: unknown };
+      const sw = typeof sized.width === 'number' && sized.width > 0 ? sized.width : gw;
+      const sh = typeof sized.height === 'number' && sized.height > 0 ? sized.height : gh;
+      ctx.drawImage(src, 0, 0, sw, sh, ox, oy, dw, dh);
       if (scan) {
         const p = scanlineFill();
         if (p) {

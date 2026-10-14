@@ -3,7 +3,8 @@
  * (Grace on her back), a tiny Legion parade on the far bank, the logo (`ui/logo`, C, y 20–84),
  * the tagline (small, C, y 92; the alternates cycle every 300 ticks), `PRESS START` (big, C,
  * y 160, blinking), `HI 0500000` (small, C, y 4) and the footer (`(C) 2026 THE METAL SWAN 3 TEAM`
- * at C, y 206; `FREE PLAY` / `CREDITS 05` right-aligned at (380, 206)). Music `title`.
+ * at C, y 206; `FREE PLAY` / `CREDITS 05` right-aligned at (380, 206)). Music `title` over the
+ * lake loop `env/title-lake`; the first visit after the boot screen opens with `ui/title-sting`.
  *
  * After 600 idle ticks the attract loop runs: demo play (the bot on ams-a, 1200 ticks; m1-a
  * or m0-a when it is missing) → HOW TO PLAY (300 ticks) → high scores (300 ticks) → the title with the next
@@ -13,7 +14,7 @@ import { INK, PAL } from '../../engine/palette';
 import type { InputSource } from '../../engine/input';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { getFrame, hasSprite } from '../../engine/sprites';
+import { frameW, getFrame, hasSprite } from '../../engine/sprites';
 import { blinkOn, centerText, scoreText, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { getMission, hasCharacter, hasMission } from '../registry';
 import { GameSession } from '../session';
@@ -28,6 +29,10 @@ export const ATTRACT_IDLE_TICKS = 600;
 export const DEMO_TICKS = 1200;
 /** Each tagline shows for 300 ticks (GDD §1.3). */
 const TAGLINE_TICKS = 300;
+/** The lake's ambience loop under the title song (audio key and level). */
+const LAKE_LOOP = { key: 'title-lake', id: 'env/title-lake', vol: 0.5 } as const;
+/** The logo sting plays once per page load: on the first title visit after the boot screen. */
+let stingPlayed = false;
 
 /** The bot class, loaded lazily (src/sim is not needed until the first demo). */
 type BotModule = typeof import('../../sim/bot');
@@ -79,7 +84,16 @@ export class TitleScene implements Scene {
     app.pointerPressed = false;
     app.audio.duckMusic?.(1);
     app.audio.music('title', { fadeTicks: 30 });
+    if (!stingPlayed) {
+      stingPlayed = true;
+      app.audio.sfx('ui/title-sting');
+    }
+    app.audio.sfxLoop?.(LAKE_LOOP.key, LAKE_LOOP.id, { vol: LAKE_LOOP.vol });
     loadBot();
+  }
+
+  exit(): void {
+    this.app.audio.stopSfx?.(LAKE_LOOP.key, 20);
   }
 
   /** The tagline on screen now. */
@@ -166,7 +180,7 @@ export class TitleScene implements Scene {
     // Logo (C, y 20–84) or a text stand-in.
     if (hasSprite('ui/logo')) {
       const f = getFrame('ui/logo', 0);
-      r.sprite('ui/logo', 0, ((r.w - f.buf.w) >> 1) + f.ox, 18 + f.oy, plain);
+      r.sprite('ui/logo', 0, ((r.w - frameW(f)) >> 1) + f.ox, 18 + f.oy, plain);
     } else centerText(r, 'METAL SWAN 3', 44, UI_WHITE, 'big', 3);
     centerText(r, this.tagline, 92, PAL.snow[2]);
     if (blinkOn(t)) centerText(r, 'PRESS START', 160, UI_GOLD, 'big');

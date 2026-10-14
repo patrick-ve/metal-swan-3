@@ -4,10 +4,10 @@ import { InputManager, ScriptedSource, timeline, type Button, type InputTimeline
 import { SoftRenderer } from '../../src/engine/render-soft';
 import { MemoryStore } from '../../src/engine/storage';
 import { terrain } from '../../src/engine/terrain';
-import { createApp, GameAudio, loadHighScores, newCampaign, type GameApp } from '../../src/game/app';
+import { createApp, GameAudio, graphicsMode, loadHighScores, newCampaign, type GameApp } from '../../src/game/app';
 import type { MissionDef } from '../../src/game/mission/index';
 import { DEFAULT_PARAMS } from '../../src/game/params';
-import { defineMission } from '../../src/game/registry';
+import { defineMission, getMission } from '../../src/game/registry';
 import { BootScene, ContinueScene, GameplayScene, MissionCompleteScene, PauseScene, TitleScene, startNewGame } from '../../src/game/scenes/index';
 import { CharacterSelectScene } from '../../src/game/scenes/character-select';
 import { EndingScene, LAST_NOTE_TICKS } from '../../src/game/scenes/ending';
@@ -16,9 +16,11 @@ import { GameOverScene } from '../../src/game/scenes/game-over';
 import { HighScoresScene, missionColumn } from '../../src/game/scenes/high-scores';
 import { CAMPAIGN_MISSIONS, missionLabel } from '../../src/game/scenes/flow-data';
 import { MissionIntroScene, INTRO_TICKS } from '../../src/game/scenes/mission-intro';
+import { MISSION_ART_BUDGET_MS, missionArtOrder, missionArtPreloadStarted, newSession, preloadMissionArt } from '../../src/game/scenes/gameplay';
 import { ModeSelectScene } from '../../src/game/scenes/mode-select';
 import { NameEntryScene } from '../../src/game/scenes/name-entry';
-import { loadSettings } from '../../src/game/settings';
+import { graphicsHint, OPTION_ROWS, OPTION_STEP, OPTION_TOP, OptionsScene, optionValue, stepOption } from '../../src/game/scenes/options';
+import { DEFAULT_SETTINGS, loadSettings, saveSettings, SETTINGS_VERSION } from '../../src/game/settings';
 import { FLOOR } from './helpers';
 
 const t = terrain(1200, 216);
@@ -306,6 +308,104 @@ describe('scenes (headless)', () => {
     tap('right');
     expect(a.settings.difficulty).toBe('hard');
     expect(loadSettings(store).difficulty).toBe('hard');
+  });
+});
+
+describe('2× art preload (docs/ARCHITECTURE.md §3)', () => {
+  it('headless apps never start the background 2× preload; only the browser app asks for it', () => {
+    const { app: a } = app();
+    expect(a.preloadArt).toBe(false);
+    expect(preloadMissionArt(a, { artDensity: 2 })).toBe(false);
+    // A 1× mission has nothing to preload.
+    expect(preloadMissionArt({ preloadArt: true, session: null }, { artDensity: 1 })).toBe(false);
+    expect(preloadMissionArt({ preloadArt: true, session: null }, { artDensity: 2 }, 1)).toBe(false);
+    expect(missionArtPreloadStarted()).toBe(false);
+  });
+
+  it('preloads the joined players\' characters first, then the mission\'s first prefixes; the boss last', () => {
+    const session = newSession(app().app, ['pip', 'grace'], 'normal');
+    const ams = getMission('ams');
+    const order = missionArtOrder(ams, session);
+    expect(order.first.slice(0, 3)).toEqual(['char/pip/', 'char/grace/', 'vehicle/swan']);
+    expect(order.last[0]).toBe('boss/');
+    expect(missionArtOrder(undefined, newSession(app().app, ['recruit']))).toEqual({ first: ['char/recruit/'], last: [] });
+    expect(MISSION_ART_BUDGET_MS).toBeGreaterThan(0);
+    expect(MISSION_ART_BUDGET_MS).toBeLessThanOrEqual(8);
+  });
+});
+
+describe('GRAPHICS option (docs/ARCHITECTURE.md §3)', () => {
+  it('cycles PIXEL / SMOOTH / XBR, defaults to PIXEL, is saved and repaired', () => {
+    const s = { ...DEFAULT_SETTINGS };
+    expect(optionValue(s, 'graphics')).toBe('PIXEL');
+    expect(stepOption(s, 'graphics', 1)).toBe(true);
+    expect(optionValue(s, 'graphics')).toBe('SMOOTH');
+    stepOption(s, 'graphics', 1);
+    expect(s.graphics).toBe('xbr');
+    stepOption(s, 'graphics', 1);
+    expect(s.graphics).toBe('pixel');
+    stepOption(s, 'graphics', -1);
+    expect(s.graphics).toBe('xbr');
+    const store = new MemoryStore();
+    saveSettings(store, s);
+    expect(loadSettings(store).graphics).toBe('xbr');
+    store.set('settings', JSON.stringify({ ...s, graphics: 'hq4x' }));
+    expect(loadSettings(store).graphics).toBe('pixel');
+  });
+
+  it('an old save (no version, GRAPHICS saved as the old SMOOTH default) loads as PIXEL once', () => {
+    const store = new MemoryStore();
+    // What the group-1 build saved on leaving Options or changing the difficulty.
+    store.set('settings', JSON.stringify({ ...DEFAULT_SETTINGS, difficulty: 'hard', graphics: 'smooth' }));
+    const s = loadSettings(store);
+    expect(s.graphics).toBe('pixel');
+    expect(s.difficulty).toBe('hard'); // the other fields survive
+    expect('version' in s).toBe(false);
+    // A choice made after the migration sticks.
+    s.graphics = 'smooth';
+    saveSettings(store, s);
+    expect(JSON.parse(store.get('settings')!).version).toBe(SETTINGS_VERSION);
+    expect(loadSettings(store).graphics).toBe('smooth');
+  });
+
+  it('?gfx= shows on the GRAPHICS row and steps from there; changing it drops the URL value', () => {
+    const store = new MemoryStore();
+    const { app: a, step, tap } = app(timeline().idle(1), store);
+    a.graphicsOverride = 'xbr'; // as createApp does for ?gfx=xbr
+    expect(a.settings.graphics).toBe('pixel');
+    expect(graphicsMode(a)).toBe('xbr');
+    a.scenes.reset(new OptionsScene(a));
+    step(2);
+    const row = OPTION_ROWS.findIndex((r) => r.id === 'graphics');
+    for (let i = 0; i < row; i++) tap('down');
+    tap('right'); // XBR → PIXEL (not SMOOTH → XBR, which would change nothing on screen)
+    expect(a.graphicsOverride).toBe(null);
+    expect(a.settings.graphics).toBe('pixel');
+    expect(graphicsMode(a)).toBe('pixel');
+  });
+
+  it('says when the window is too small for the chosen filter', () => {
+    expect(graphicsHint('xbr', 3)).toBe('XBR NEEDS A LARGER WINDOW: SMOOTH');
+    expect(graphicsHint('smooth', 1)).toBe('SMOOTH NEEDS A LARGER WINDOW: PIXEL');
+    expect(graphicsHint('xbr', 4)).toBe('');
+    expect(graphicsHint('smooth', 5)).toBe('');
+    expect(graphicsHint('pixel', 1)).toBe('');
+    // It fits the panel (x 40..344) in the small font (6 px per character).
+    expect(graphicsHint('smooth', 1).length * 6).toBeLessThanOrEqual(296);
+  });
+
+  it('every option row fits the panel and the menu draws without errors', () => {
+    const last = OPTION_ROWS.length - 1;
+    expect(OPTION_ROWS.map((r) => r.id)).toContain('graphics');
+    // Rows from y 40, OPTION_STEP px apart: the last one ends above the bottom hint line (y 200).
+    expect(OPTION_TOP + last * OPTION_STEP + 8).toBeLessThanOrEqual(200);
+    const { app: a, step } = app(timeline().idle(1));
+    a.scenes.reset(new OptionsScene(a));
+    step(2);
+    const r = new SoftRenderer();
+    r.begin();
+    a.scenes.draw(r);
+    r.end();
   });
 });
 

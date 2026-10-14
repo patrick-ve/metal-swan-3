@@ -16,6 +16,7 @@ import '../../src/game/content/items/index';
 import '../../src/game/content/locals/index';
 import '../../src/game/content/locals/art';
 import { DeliveryRider, FatbikeYouth, Handhaver, Rider, Seagull } from '../../src/game/content/locals/index';
+import { cubePack } from '../../src/game/content/locals/rider.art';
 import { getEntityMeta } from '../../src/game/registry';
 import type { Difficulty } from '../../src/game/session';
 import { FLOOR, TestWorld, watchFairness, type FairnessOpts, type ModeEntity } from './helpers';
@@ -325,5 +326,17 @@ describe('locals: tickets and gulls', () => {
     tw.run(20);
     expect(fx[0].x).toBeGreaterThan(x0 + 20);
     expect(tw.world.errors).toEqual([]);
+  });
+});
+
+describe('delivery-rider backpack logo', () => {
+  it('is mirror-symmetric, so it never reads backwards when the rider faces left', () => {
+    for (const open of [false, true]) {
+      const b = cubePack(open);
+      const y = open ? 8 : 7;
+      for (let row = y; row < y + 4; row++) {
+        for (let x = 2; x <= 12; x++) expect(b.get(x, row), `open ${open} (${x}, ${row})`).toBe(b.get(14 - x, row));
+      }
+    }
   });
 });

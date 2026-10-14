@@ -33,7 +33,8 @@ function legionShako(): PixelBuffer {
 function fromPortrait(id: string): PixelBuffer | null {
   const portraitId = `${getCharacter(id).art}/portrait`;
   if (!hasSprite(portraitId)) return null;
-  const src = getFrame(portraitId, 0).buf;
+  // The 1× portrait (density 1 whatever the art density): its pixels are read one by one.
+  const src = getFrame(portraitId, 0, 1).buf;
   // Every second pixel of the inner area (inside the 1 px frame).
   const w = Math.floor((src.w - 2) / 2);
   const h = Math.floor((src.h - 2) / 2);

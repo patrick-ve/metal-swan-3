@@ -5,6 +5,7 @@
  *                  [--every N --count K] [--scale 2] [--cols 3] [--out file.png] [--hold right,fire]
  *                  [--press "30:jump;45:jump,fire"] [--trace id,player] [--trace-every 1]
  *                  [--players 1|2] [--god] [--bot] [--weapon id] [--difficulty normal] [--seed 1]
+ *                  [--res 1] [--gfx pixel|smooth|xbr]
  *
  * Entity sandbox (docs/api/slice.md §8, docs/ARCHITECTURE.md §9): a flat test section — floor at
  * y 170, no timer, empty script — with optional water, pits, platforms, solids, slopes and steps.
@@ -33,9 +34,12 @@ import type { BackgroundDef, DecorDef, MissionDef, SectionDef, TerrainStyleDef }
 import { Player, type Mountable } from '../src/game/player/player';
 import { defineMission, getMission, hasEntity, hasWeapon, listWeapons, type SpawnParams } from '../src/game/registry';
 import type { Difficulty } from '../src/game/session';
+import { isGraphicsMode } from '../src/game/settings';
+import type { UpscaleMode } from '../src/engine/upscale';
 import { applyTuning } from '../src/game/tuning';
 import { Vehicle } from '../src/game/vehicle';
 import { createHeadlessGame, type HeadlessGame, type SimError } from '../src/sim/index';
+import { resolveGfx } from './lib/gfx';
 import { savePNG, SHEET } from './lib/image';
 
 /** Feet y of anything standing on the flat arena floor. */
@@ -93,8 +97,12 @@ export interface ArenaArgs {
   ticks: number;
   every: number;
   count: number;
-  /** 0 = 2 for one frame, 1 for a contact sheet. */
+  /** 0 = 2 for one frame, 1 for a contact sheet (always 1 with res > 1). */
   scale: number;
+  /** Backbuffer resolution of the frames (docs/ARCHITECTURE.md §3; 1 = the classic image). */
+  res: number;
+  /** Sprite filter at res > 1 (null = smooth). */
+  gfx: UpscaleMode | null;
   cols: number;
   out?: string;
   trace: string[];
@@ -126,6 +134,8 @@ export function defaultArenaArgs(): ArenaArgs {
     every: 0,
     count: 1,
     scale: 0,
+    res: 1,
+    gfx: null,
     cols: 3,
     trace: [],
     traceEvery: 1,
@@ -266,6 +276,15 @@ export function parseArenaArgs(argv: readonly string[]): ArenaArgs {
       case '--scale':
         a.scale = int(1, 6);
         break;
+      case '--res':
+        a.res = int(1, 8);
+        break;
+      case '--gfx': {
+        const g = next().toLowerCase();
+        if (!isGraphicsMode(g)) throw new Error(`--gfx must be pixel, smooth or xbr, got "${g}"`);
+        a.gfx = g;
+        break;
+      }
       case '--cols':
         a.cols = int(1, 8);
         break;
@@ -832,6 +851,8 @@ export async function runArena(a: ArenaArgs, o: ArenaRunOpts = {}): Promise<Aren
   defineMission(mission);
   if (a.weapon && !hasWeapon(a.weapon)) warn(`unknown weapon "${a.weapon}" (the pistol is used); weapons: ${listWeapons().join(' ')}`);
 
+  const gfxWarning = resolveGfx(a.res, a.gfx).warning;
+  if (gfxWarning) warn(gfxWarning);
   const hold = buttonMask(...a.hold.filter((b) => b !== 'fire'));
   const tapFire = a.hold.includes('fire');
   const fire = buttonMask('fire');
@@ -844,6 +865,8 @@ export async function runArena(a: ArenaArgs, o: ArenaRunOpts = {}): Promise<Aren
     bot: a.bot,
     weapon: a.weapon,
     difficulty: a.difficulty,
+    res: a.res,
+    gfx: resolveGfx(a.res, a.gfx).mode,
     // The source's tick k is read while game tick k + 1 runs (ticks count from 1).
     input: scripted ? (k) => hold | (tapFire && k % 2 === 0 ? fire : 0) | pressMaskAt(a.presses, k + 1) : undefined,
   });
@@ -907,7 +930,7 @@ export async function runArena(a: ArenaArgs, o: ArenaRunOpts = {}): Promise<Aren
       if (a.trace.length && t % a.traceEvery === 0) for (const id of a.trace) io.out(traceLine(t, id, findTarget(game, id)));
       if (t >= a.ticks && (t - a.ticks) % every === 0 && shots.length < a.count) {
         const buf = game.renderFrame().clone();
-        shots.push({ buf, label: frameLabel(game, a, frameWidth - 2) });
+        shots.push({ buf, label: frameLabel(game, a, Math.floor(frameWidth / a.res) - 2) });
       }
     };
     // Mounted before tick 1, as the runner does for SectionDef.startVehicle (a player placed in
@@ -922,7 +945,7 @@ export async function runArena(a: ArenaArgs, o: ArenaRunOpts = {}): Promise<Aren
     if (shots.length && o.save !== false) {
       const sheet = shots.length > 1;
       file = a.out ?? join('tmp/arena', sheet ? 'arena-sheet.png' : `arena-t${a.ticks}.png`);
-      savePNG(composeSheet(shots, sheet ? a.cols : 1, sheetTitle(a, sheet ? every : 0)), file, a.scale || (sheet ? 1 : 2));
+      savePNG(composeSheet(shots, sheet ? a.cols : 1, sheetTitle(a, sheet ? every : 0), a.res), file, a.scale || (sheet || a.res > 1 ? 1 : 2));
       io.out(`${shots.length} frame(s) → ${file}`);
     }
   } finally {
@@ -1049,29 +1072,32 @@ function sheetTitle(a: ArenaArgs, every: number): string {
   if (a.bot) bits.push('bot');
   if (a.vehicle) bits.push(`vehicle ${a.vehicle.id}`);
   if (a.spawns.length) bits.push(`spawn ${a.spawns.map((s) => s.id).join(',')}`);
+  const note = resolveGfx(a.res, a.gfx).note.trim();
+  if (note) bits.push(note);
   return bits.join('  ');
 }
 
 const PAD = 4;
 const LINE_H = 10;
 
-/** Frames in a grid with label lines under each (like `npm run shot`). */
-function composeSheet(frames: readonly Shot[], cols: number, title: string): PixelBuffer {
+/** Frames in a grid with label lines under each (like `npm run shot`; `k`: text scale for --res). */
+function composeSheet(frames: readonly Shot[], cols: number, title: string, k = 1): PixelBuffer {
   const fw = frames[0].buf.w;
   const fh = frames[0].buf.h;
-  const labelH = Math.max(...frames.map((f) => f.label.length)) * LINE_H + 2;
+  const pad = PAD * k;
+  const labelH = (Math.max(...frames.map((f) => f.label.length)) * LINE_H + 2) * k;
   const c = Math.min(cols, frames.length);
   const rows = Math.ceil(frames.length / c);
-  const head = 14;
-  const out = new PixelBuffer(PAD + c * (fw + PAD), head + rows * (fh + labelH + PAD) + PAD).fill(SHEET.bg);
+  const head = 14 * k;
+  const out = new PixelBuffer(pad + c * (fw + pad), head + rows * (fh + labelH + pad) + pad).fill(SHEET.bg);
   let t = title;
-  while (t.length > 8 && measure(t) > out.w - PAD * 2) t = `${t.slice(0, -4)}...`;
-  drawText(out, t, PAD, 3, { color: SHEET.title });
+  while (t.length > 8 && measure(t, 'small', k) > out.w - pad * 2) t = `${t.slice(0, -4)}...`;
+  drawText(out, t, pad, 3 * k, { color: SHEET.title, scale: k });
   frames.forEach((f, i) => {
-    const x = PAD + (i % c) * (fw + PAD);
-    const y = head + Math.floor(i / c) * (fh + labelH + PAD);
+    const x = pad + (i % c) * (fw + pad);
+    const y = head + Math.floor(i / c) * (fh + labelH + pad);
     out.blit(f.buf, x, y);
-    f.label.forEach((line, k) => drawText(out, line, x + 1, y + fh + 2 + k * LINE_H, { color: SHEET.label }));
+    f.label.forEach((line, n) => drawText(out, line, x + k, y + fh + 2 * k + n * LINE_H * k, { color: SHEET.label, scale: k }));
   });
   return out;
 }
@@ -1116,6 +1142,8 @@ Output:
   --ticks 60                frame after this tick → tmp/arena/arena-t<tick>.png (scale 2)
   --every N --count K       K frames N ticks apart (the first after --ticks) → tmp/arena/arena-sheet.png (scale 1)
   --scale n  --cols 3  --out file.png     (several agents at once: give each run its own --out)
+  --res k  --gfx pixel|smooth|xbr          high-resolution frames as the browser draws them at display
+                            scale k (sprite filter, default pixel); PNG scale 1
   --trace id[,id…]          one line per tick for the first live entity of each id (player = P1, p2):
                             t x y vx vy gnd|air state anim:frame hp
   --trace-every N           trace every N ticks (default 1)

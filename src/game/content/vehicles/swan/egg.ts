@@ -51,6 +51,6 @@ export class SwanEgg extends Entity {
       f = i;
     }
     drawOpts.flipX = this.facing < 0;
-    r.sprite('vehicle/swan/egg', f, Math.round(this.x), Math.round(this.y), drawOpts);
+    r.sprite('vehicle/swan/egg', f, this.x, this.y, drawOpts);
   }
 }

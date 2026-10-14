@@ -27,7 +27,7 @@ import { Body, dropThrough, jump, moveBody, pushX, settle } from '../../engine/p
 import type { DrawOpts, Renderer } from '../../engine/render';
 import { Animator, frameCount, framePoint, getFrame, getFrames, hasSprite, spriteAnim, type PlayOpts } from '../../engine/sprites';
 import type { World } from '../../engine/world';
-import { difficultyOf, hudOf, iceAt, sessionOf } from '../context';
+import { difficultyOf, gameOf, hudOf, iceAt, sessionOf } from '../context';
 import { awardScore, type DeathCause } from '../events';
 import { dust, splash } from '../fx';
 import { eraseEnemyShots } from '../projectile';
@@ -226,6 +226,8 @@ export class Player extends Entity {
   private standingJump = false;
   private landLock = 0;
   private landTicks = 0;
+  /** Ticks to the next footstep sound (missions with `footsteps`; 0 = a step on the next run tick). */
+  private stepT = 0;
   private shootTicks = 0;
   private action: 'none' | 'throw' | 'knife' = 'none';
   private actionTicks = 0;
@@ -494,6 +496,7 @@ export class Player extends Entity {
     this.updateAim(up, down, ax);
     // The legs strip first: shots leave from the hip of THIS tick's pose (crouch + fire together).
     const legs = this.updateLegs(ax);
+    this.footsteps(legs);
     this.updateArms();
     if (this.state !== 'play') return;
     this.checkMount();
@@ -623,7 +626,10 @@ export class Player extends Entity {
           break;
       }
     }
-    if (wading && !this.wading) splash(this.world, this.x, this.y, 6);
+    if (wading && !this.wading) {
+      splash(this.world, this.x, this.y, 6);
+      this.sfx('player/splash');
+    }
     this.wading = wading;
     return false;
   }
@@ -909,10 +915,11 @@ export class Player extends Entity {
     let id = this.rideIds[pose] ?? this.rideIds.sit;
     if (!hasSprite(id)) id = this.rideIds.sit;
     if (hasSprite(id)) {
-      r.sprite(id, frame ?? stripFrame(id, this.world.tick), Math.round(x), Math.round(y), drawOpts);
+      // Unrounded: the Swan passes her own (sub-pixel) position plus the seat point.
+      r.sprite(id, frame ?? stripFrame(id, this.world.tick), x, y, drawOpts);
       return;
     }
-    r.sprite(this.fullIds.mount, 1, Math.round(x), Math.round(y) + MOUNT_HIP_DROP, drawOpts);
+    r.sprite(this.fullIds.mount, 1, x, y + MOUNT_HIP_DROP, drawOpts);
   }
 
   // ------------------------------------------------------------------------------- damage & death
@@ -950,7 +957,10 @@ export class Player extends Entity {
       this.vx = (d.dirX || -this.facing) * 1;
       jump(this, -2.2);
     } else this.vx = 0;
-    if (cause === 'drown') splash(this.world, this.x, this.y - 8, 12);
+    if (cause === 'drown') {
+      splash(this.world, this.x, this.y - 8, 12);
+      this.sfx('player/splash');
+    }
     this.full.play(this.deathAnim(cause), once(true));
     // The hostage tally drops by the difficulty rule (GDD §4.10: EASY keeps the checkpoint count).
     const keep = difficultyOf(this.world).hostageLoss === 'checkpoint' ? this.slot.checkpointRescued : 0;
@@ -1185,6 +1195,21 @@ export class Player extends Entity {
 
   // ------------------------------------------------------------------------------- animation & drawing
 
+  /**
+   * Footsteps (only in missions with `footsteps`, e.g. ams): one `player/step` every 16 ticks
+   * while running on dry ground (two per pass of the 8-frame run strip), the first 4 ticks after
+   * the run starts. Tick-based: no rng.
+   */
+  private footsteps(legs: LegsAnim): void {
+    if (legs !== 'run' || this.wading || !gameOf(this.world).footsteps) {
+      this.stepT = 4;
+      return;
+    }
+    if (--this.stepT > 0) return;
+    this.stepT = 16;
+    this.sfx('player/step');
+  }
+
   /** Pick the legs strip for this tick's movement (before shooting reads the hip point). */
   private updateLegs(ax: number): LegsAnim {
     const b = this.body;
@@ -1232,8 +1257,10 @@ export class Player extends Entity {
     if (s === 'dead' && (this.cause === 'pit' || this.cause === 'drown')) return;
     const blinking = this.invulnTicks > 0 && s !== 'victory' && s !== 'dead';
     if (blinking && Math.floor(this.world.tick / TUNING.life.respawnBlinkTicks) % 2 === 1) return;
-    const x = Math.round(this.x);
-    const y = Math.round(this.y);
+    // Unrounded: the renderer places the body at 1/res steps; legs, torso and tints share the
+    // same fractional part (whole-pixel offsets), so the parts never drift apart.
+    const x = this.x;
+    const y = this.y;
     drawOpts.flipX = this.facing < 0;
     drawOpts.flash = false;
     const fullBody = s === 'dead' || s === 'victory' || this.bored || (s === 'spawn' && this.full.id === this.alt(this.fullIds.spawn));

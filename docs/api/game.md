@@ -47,8 +47,12 @@ src/game/
 first gesture; `?mute=1`, key **M** toggles mute) → `CanvasRenderer` + `createDisplay(canvas)` → `Debug`
 (`?debug=1`: F-keys reserved, `debug.perf = loop.stats`) → `createApp(...)` → `scenes.reset(new BootScene(app))`
 → `startBrowserLoop`. Each tick: `input.update(); debug.handleInput(input); scenes.update()`. Each frame:
+the renderer follows the GRAPHICS filter (`graphicsMode(app)`: `app.graphicsOverride` from `?gfx=` until
+the option changes, else `settings.graphics`; docs/ARCHITECTURE.md §3) and `display.resFor(upscaleFactor(mode))`
+(backbuffer resolution, also stored in `app.displayRes` for the Options hint), then
 `r.begin(); scenes.draw(r); r.end(); display.present(r.canvas)`. Uncaught errors (window `error`,
-`unhandledrejection`, loop errors) show in a red overlay (click to hide). `window.__ms3.app` is a debug handle.
+`unhandledrejection`, loop errors) show in a red overlay (click to hide). `window.__ms3` is a debug handle:
+`app`, `renderer`, and `frames` (render + present times of the last 1024 frames, for `npm run perf`).
 
 Headless (tools, bot, tests): build the same app with `MemoryStore`, `NullAudio` and a `ScriptedSource`:
 ```ts
@@ -148,6 +152,7 @@ options apply everywhere:
 | `vehicleMounted` · `vehicleEjected` · `vehicleDestroyed` | `{ vehicle, player, slot }` · `{ …, mode: 'exit' \| 'ram' \| 'destroyed' \| 'forced' }` · `{ vehicle }` | Vehicle |
 | `explosion` | `{ x, y, r, team, owner, size }` | fx.explosion |
 | `checkpoint` · `timeOut` · `sectionExit` | `{ x, y }` · `{ section }` · `{ from, to }` | MissionRunner |
+| `stopLoops` | `{ fadeTicks }`: a section or the mission ends; entities stop their `sfxLoop` sounds | MissionRunner (`stopLoops()`) |
 | `extend` | `{ player, lives }` | PlayerSlot.addScore (score extend) |
 
 `DeathCause = DamageKind | 'pit' | 'drown' | 'timeout'`.
@@ -291,7 +296,7 @@ ahead, turns 4°/tick, 120 ticks, 30 hit + 10 in r 8, max 4), `tuba` (T, 25 / +1
 12 → 40 px over 40 ticks, lives 70, 60 once per enemy (`impact` + `sonic`), pushes ≤ 40 HP enemies 8 px, calls
 `eraseEnemyShots` on its circle, max 3), `bounce-mine` (B, 30 / +10, `MineDisc` (a `Grenade`): thrown 3 / −2,
 lobbed up 1 / −4, dropped +1, bounces vy × −0.6, hops 32 px gaps and 12 px steps, 30 hit + 40 in r 20 on contact,
-the 4th landing or 150 ticks, max 3). Announcer lines: `VOICE` in `stats.ts`; again: `MORE <NAME>!`.
+the 4th landing or 150 ticks, max 3). Announcer lines: `VOICE` in `stats.ts` (Dutch); again: `MEER <NAME>!`.
 Knife sound: `knifeSfx(shooter)` → the character's `knifeSfx` (characters/index.ts), else the GDD §15.7
 variant by character id, else `weapon/knife` (also when the variant has no recipe).
 Shot entity ids for scripts (`ctx.spawn(id, x, y, { facing, angle (deg, −90 = up), team, owner })`, out 16 px
@@ -476,14 +481,18 @@ Infinity), `waterRectAt(world, x, y, below = 0)` (the topmost 'water' rect holdi
 interface MissionDef { id, name, subtitle?, music, bossMusic?, start, sections: Record<string, SectionDef>, bossSection?, next?,
   bossSections?: string[] }   // BOSS SPEED BONUS over several fights (m5): their times add up, the walk between does not
 interface MissionDef { …, startBanner?: { text?, sub? }, announce?, clearLine? ('Objective secured!'),
-  hostages?: Record<sectionId, number> }   // hostages per section: STANDING OVATION in the tally
+  hostages?: Record<sectionId, number>,   // hostages per section: STANDING OVATION in the tally
+  artDensity?: 1 | 2,                      // 2: draw the 2× sprites (defineHiSprite) — ams only; ARCHITECTURE §3
+  footsteps?: boolean,                      // player/step every 16 ticks while running on foot (ams)
+  preloadFirst?: string[], preloadLast?: string[] }  // 2× preload order: id prefixes after the players' characters / at the end
 interface SectionDef { id, name?, width, height, scroll: 'right'|'up'|'down'|'free', background: BackgroundDef,
   terrain: TerrainDef, terrainStyle: TerrainStyleDef, decor?: DecorDef[], playerStart: {x, y}, checkpoints?: number[],
   timeLimit? (HUD counts; default 60; 0 = none), music?, script: (ctx: SectionContext) => ScriptGen, exits?: ExitDef[], bossStart?,
   respawn?: (p, ctx) => {x, y} | null | void,   // section respawn rule (asked first; nothing = the default rule)
   startVehicle?: string,                        // every player starts (and respawns) in this vehicle
   vehicles?: string[],                          // vehicle ids that may be carried INTO this section
-  iceRanges?: [x0, x1][] }                      // icy ground: players and vehicles slide (iceAt)
+  iceRanges?: [x0, x1][],                       // icy ground: players and vehicles slide (iceAt)
+  ambience?: string }                           // sfx loop under the audio key 'ambience' (runner.setAmbience; same id = keeps playing)
 interface DecorDef { sprite, x, y, frame?, animate? (true | ticks per frame), flipX?, front?, parallax? (1), alpha? }
 interface ExitDef { id?, rect, to (section id | 'complete'), transition?: 'fade'|'cut', entry?: {x, y}, disabled? }
 // terrain builders re-exported: terrain(w, h).ground().at(0, 170).flat(400).slope(200, -40)…, platformPath, Terrain

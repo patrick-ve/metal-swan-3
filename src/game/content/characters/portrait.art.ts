@@ -5,10 +5,11 @@
  * with a 1-px INK frame. The select screen greys out a taken hero itself.
  */
 import type { Color } from '../../../engine/color';
-import { PixelBuffer } from '../../../engine/pixel';
-import { INK, PAL } from '../../../engine/palette';
+import type { PixelBuffer } from '../../../engine/pixel';
+import { PAL } from '../../../engine/palette';
+import { portraitPanel } from '../../art/human-sprites';
 import { renderHuman } from '../../art/humanoid';
-import type { Expression, HumanStyle, Pose } from '../../art/humanoid';
+import type { Density, Expression, HumanStyle, Pose } from '../../art/humanoid';
 
 export interface PortraitCfg {
   /** Panel gradient, top → bottom (palette colours). */
@@ -29,19 +30,17 @@ export const PORTRAITS: Readonly<Record<string, PortraitCfg>> = {
   gramps: { bg: [PAL.green[3], PAL.green[2], PAL.green[1]], expr: 'normal' },
 };
 
-/** Render a hero's 32×32 portrait. */
-export function heroPortrait(style: HumanStyle, c: PortraitCfg): PixelBuffer {
-  const bust = renderHuman(style, { armN: { sh: 4, el: 10 }, armF: { sh: -4, el: 10 }, expr: c.expr, ...c.pose }, 'upper');
+/** Render a hero's 32×32 portrait (`density` 2: its 64×64 2× twin, the same crop). */
+export function heroPortrait(style: HumanStyle, c: PortraitCfg, density: Density = 1): PixelBuffer {
+  const pose: Pose = { armN: { sh: 4, el: 10 }, armF: { sh: -4, el: 10 }, expr: c.expr, ...c.pose };
+  const bust = renderHuman(style, pose, 'upper');
   const head = bust.pts.head ?? [0, -14];
   // 16×16 source px → 32×32 after Scale2x: centred on the head, the headgear top 1 px under the
   // crop's top edge (a bobble or a dome is never cut off).
   const top = bust.buf.trimBounds()?.y ?? bust.oy + head[1] - 8;
   const sx = bust.ox + head[0] - 8 + (c.dx ?? 0);
   const sy = top - 1 + (c.dy ?? 0);
-  const crop = bust.buf.crop(sx, sy, 16, 16).scale2x();
-  const out = new PixelBuffer(32, 32);
-  out.gradient(0, 0, 32, 32, c.bg, { dither: 0.5 });
-  out.blit(crop, 0, 1);
-  out.strokeRect(0, 0, 32, 32, INK);
-  return out;
+  // The 2× bust has the 1× frame's logical geometry, so the same crop (in logical px) fits it.
+  const src = density === 1 ? bust.buf : renderHuman(style, pose, 'upper', 2).buf;
+  return portraitPanel(src, sx, sy, c.bg, density);
 }

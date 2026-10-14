@@ -150,16 +150,19 @@ export const MINE = {
   maxOnScreen: 3,
 } as const;
 
-/** Announcer lines (GDD §5, §12.3). The same weapon again: `MORE <NAME>!`. */
+/**
+ * Announcer lines (GDD §5, §12.3): the plain weapon name (user decision 2026-10-14). The same
+ * weapon again: `MORE <NAME>!`.
+ */
 export const VOICE = {
-  'machine-gun': ['MACHINE GUN! FROM THE TOP!', 'MORE MACHINE GUN!'],
-  shotgun: ['SHOTGUN! FRONT ROW SEATS!', 'MORE SHOTGUN!'],
-  'rocket-launcher': ['ROCKET LAUNCHER! BIG FINISH!', 'MORE ROCKETS!'],
-  flamethrower: ['FLAMETHROWER! MIND THE EYEBROWS!', 'MORE FLAMETHROWER!'],
-  laser: ['LASER! PEW PEW. OFFICIALLY.', 'MORE LASER!'],
-  homing: ['HOMING MISSILES! FIND YOUR SEATS!', 'MORE HOMING MISSILES!'],
-  tuba: ['TUBA! OOM-PAH-PAH!', 'MORE TUBA!'],
-  'bounce-mine': ['BOUNCE MINES! HOP TO IT!', 'MORE BOUNCE MINES!'],
+  'machine-gun': ['HEAVY MACHINE GUN!', 'MORE HEAVY MACHINE GUN!'],
+  shotgun: ['SHOTGUN!', 'MORE SHOTGUN!'],
+  'rocket-launcher': ['ROCKET LAUNCHER!', 'MORE ROCKETS!'],
+  flamethrower: ['FLAMETHROWER!', 'MORE FLAMETHROWER!'],
+  laser: ['LASER GUN!', 'MORE LASER GUN!'],
+  homing: ['ENEMY CHASER!', 'MORE ENEMY CHASER!'],
+  tuba: ['TUBA!', 'MORE TUBA!'],
+  'bounce-mine': ['BOUNCE MINES!', 'MORE BOUNCE MINES!'],
 } as const satisfies Record<string, readonly [string, string]>;
 
 /** The knife's sound per character (GDD §6.2, §15.7); the characters module may override it. */

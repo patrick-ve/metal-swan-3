@@ -20,7 +20,7 @@ import type { Color } from '../../engine/color';
 import { INK, PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { getFrame, hasSprite } from '../../engine/sprites';
+import { frameW, getFrame, hasSprite } from '../../engine/sprites';
 import { blinkOn, uiText, type GameApp } from '../app';
 import { wrapText } from '../context';
 import type { MissionRunner } from '../mission/runner';
@@ -318,7 +318,7 @@ export class MissionCompleteScene implements Scene {
     for (let s = 0; s < n; s++) {
       if (hasSprite('ui/star')) {
         const f = getFrame('ui/star', 0);
-        r.sprite('ui/star', 0, sx + s * (f.buf.w + 1) + f.ox, sy + f.oy, plain);
+        r.sprite('ui/star', 0, sx + s * (frameW(f) + 1) + f.ox, sy + f.oy, plain);
       } else inkText(r, '*', sx + s * 8, sy, PAL.gold[1]);
     }
     if (starsT < 5 * STAR_TICKS) return;

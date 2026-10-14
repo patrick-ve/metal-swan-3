@@ -16,7 +16,7 @@ import { measure } from '../engine/font';
 import type { Rect } from '../engine/math';
 import { INK, PAL } from '../engine/palette';
 import type { DrawOpts, Renderer, TextOpts } from '../engine/render';
-import { getFrame, hasSprite } from '../engine/sprites';
+import { frameH, frameW, getFrame, hasSprite } from '../engine/sprites';
 import { Boss } from './boss';
 import type { Bubble, HudState, Pointer } from './context';
 import type { MissionRunner } from './mission/runner';
@@ -63,12 +63,12 @@ function icon(r: Renderer, id: string, x: number, y: number, i = 0): number {
   if (!hasSprite(id)) return 0;
   const f = getFrame(id, i);
   r.sprite(id, i, x + f.ox, y + f.oy, iconOpts);
-  return f.buf.w;
+  return frameW(f);
 }
 
 /** Width of an icon sprite (0 when missing). */
 function iconW(id: string): number {
-  return hasSprite(id) ? getFrame(id, 0).buf.w : 0;
+  return hasSprite(id) ? frameW(getFrame(id, 0)) : 0;
 }
 
 /** GDD §13: blink 30 ticks on / 30 off unless noted. */
@@ -149,7 +149,7 @@ function drawPanel(r: Renderer, h: HudInput, s: PlayerSlot): void {
   // GDD 13.7: grenades read 'x10'; in a vehicle the shell icon is followed by the bare count.
   const bombs = vehicle ? String(Math.max(0, vehicle.shells)) : `x${s.bombs}`;
   const bw = iconW(bombIcon);
-  const bh = bw ? getFrame(bombIcon, 0).buf.h : 0;
+  const bh = bw ? frameH(getFrame(bombIcon, 0)) : 0;
   const by = 15 - (bh >> 1);
   // 1 px after the icon; the bare shell count keeps a gap before the vehicle name at x 80.
   const gap = bw ? 1 : 0;
@@ -352,8 +352,8 @@ function drawOnward(r: Renderer, hud: HudState, ticks: number): void {
   const frame = d === 'right' ? 0 : d === 'left' ? 1 : d === 'up' ? 2 : 3;
   if (hasSprite('ui/onward')) {
     const f = getFrame('ui/onward', frame);
-    const cy = d === 'up' ? y - f.buf.h - 3 : y + 10;
-    r.sprite('ui/onward', frame, x - (f.buf.w >> 1) + f.ox, cy + f.oy, iconOpts);
+    const cy = d === 'up' ? y - frameH(f) - 3 : y + 10;
+    r.sprite('ui/onward', frame, x - (frameW(f) >> 1) + f.ox, cy + f.oy, iconOpts);
   } else {
     const ch = d === 'right' ? '>' : d === 'left' ? '<' : d === 'up' ? '↑' : '↓';
     txt(r, `${ch}${ch}${ch}`, x, d === 'up' ? y - 11 : y + 10, GOLD, 'center', 'big');
@@ -486,8 +486,8 @@ function drawPointer(r: Renderer, p: Pointer, ticks: number): void {
   let top = bottom;
   if (hasSprite('ui/onward')) {
     const f = getFrame('ui/onward', 3);
-    top = bottom - f.buf.h;
-    r.sprite('ui/onward', 3, x - (f.buf.w >> 1) + f.ox, top + bob + f.oy, worldOpts);
+    top = bottom - frameH(f);
+    r.sprite('ui/onward', 3, x - (frameW(f) >> 1) + f.ox, top + bob + f.oy, worldOpts);
   } else {
     top = bottom - 10;
     worldText.color = GOLD;

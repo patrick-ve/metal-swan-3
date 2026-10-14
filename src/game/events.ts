@@ -11,7 +11,7 @@
  * - bossPhase / bossDefeated                                 Boss
  * - vehicleMounted / vehicleEjected / vehicleDestroyed       Vehicle
  * - explosion        fx.explosion()
- * - checkpoint / timeOut / sectionExit                       MissionRunner
+ * - checkpoint / timeOut / sectionExit / stopLoops           MissionRunner
  */
 import type { Damage, DamageKind, Entity, Team } from '../engine/entity';
 import type { World } from '../engine/world';
@@ -57,6 +57,11 @@ declare module '../engine/world' {
     extend: { player: number; lives: number };
     timeOut: { section: string };
     sectionExit: { from: string; to: string };
+    /**
+     * The section or the mission ends: entities with a looping sound (`sfxLoop`) stop it now,
+     * fading over `fadeTicks` (a new section starts its own again).
+     */
+    stopLoops: { fadeTicks: number };
   }
 }
 

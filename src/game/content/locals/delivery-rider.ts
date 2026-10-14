@@ -53,6 +53,7 @@ export class DeliveryRider extends Rider {
       this.facing = 1;
     }
     if (!this.drop) this.drop = { id: 'pickup-food', params: { kind: 'cheese' } };
+    this.speaker = 'rider';
     this.alerted = true;
     const gag = gagParam(p, world, 0);
     if (gag !== null) this.startGag(gag === 'phone' ? '' : gag);
@@ -87,7 +88,7 @@ export class DeliveryRider extends Rider {
     const a = this.ahead();
     if (!this.chatted && Number.isFinite(a) && Math.abs(a) < DELIVERY.chat && this.onScreen(0)) {
       this.chatted = true;
-      gagBubble(this.world, this, 'SORRY, LATE ORDER!', 70);
+      gagBubble(this.world, this, 'SORRY, LATE ORDER!', 70, this.speaker);
     }
     if (playerNoiseNear(this, 48)) this.setMode('ride');
   }

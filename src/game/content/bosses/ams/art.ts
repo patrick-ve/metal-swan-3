@@ -26,42 +26,33 @@ import { INK, PAL, type Ramp } from '../../../../engine/palette';
 import type { Frame } from '../../../../engine/render';
 import { defineSprite } from '../../../../engine/sprites';
 import { hash2 } from '../../../art/paint';
-import { Canvas, scuff, shadeBox, sparkle } from '../m4/art-kit';
+import { scuff, sparkle } from '../m4/art-kit';
+import { DCanvas, type Pt } from './canvas';
+import * as hi from './art-hi';
 import { MAYOR } from './geometry';
+import { BLOUSE, BOOT, ENAMEL, FACE, HAIR, JACKET, JACKET_FAR, METAL, PANTS, PANTS_FAR, SILVER, WOOD } from './look';
 
 const ART = 'boss/ams-mayor';
-/** Dark navy trousers (the far leg one shade darker). */
-const PANTS: Ramp = [PAL.ink[1], PAL.navy[0], PAL.navy[1], PAL.steel[1]];
-const PANTS_FAR: Ramp = [PAL.ink[1], PAL.ink[1], PAL.navy[0], PAL.navy[1]];
-/** The cream-white boucle jacket (warm-grey shadows so it reads on a bright sky). */
-const JACKET: Ramp = PAL.cloth;
-const JACKET_FAR: Ramp = [PAL.stone[1], PAL.stone[2], PAL.stone[3], PAL.cloth[2]];
-/** The crimson blouse. */
-const BLOUSE: Ramp = PAL.red;
-/** Dark chocolate hair: near black in the shadows, warm chestnut on the crests. */
-const HAIR: Ramp = [PAL.ink[1], PAL.brown[0], PAL.brown[1], PAL.brown[2]];
-const METAL: Ramp = PAL.steel;
-const SILVER: Ramp = [PAL.steel[2], PAL.steel[3], PAL.snow[1], PAL.snow[2], PAL.snow[3]];
-const FACE: Ramp = PAL.skinA;
-const WOOD: Ramp = PAL.brown;
-const BOOT: Ramp = PAL.black;
-/** Enamel shields on the chain of office: red, blue, green, white. */
-const ENAMEL: readonly Color[] = [PAL.red[2], PAL.sky[1], PAL.green[2], PAL.snow[3]];
+type Canvas = DCanvas;
 
-function canvas(): Canvas {
+function canvas(d = 1): Canvas {
   const k = MAYOR.canvas;
-  return new Canvas(k.x0, k.y0, k.x1, k.y1);
+  return new DCanvas(k.x0, k.y0, k.x1, k.y1, d);
 }
 
-/** Draw a filled shape on a fresh layer with `draw`, shade it and put it on the canvas. */
+/**
+ * Draw a filled shape on a fresh layer with `draw`, shade it and put it on the canvas. The light
+ * box is the logical box moved by the canvas origin (−x0, −y0): the look the 1× art was tuned with.
+ */
 function shaded(c: Canvas, ramp: Ramp, box: readonly [number, number, number, number], draw: (L: PixelBuffer) => void, round = true): void {
   const L = c.layer();
   draw(L);
-  shadeBox(L, c.X(box[0]), c.Y(box[1]), box[2], box[3], ramp, round);
+  c.shade(L, box[0] - c.x0, box[1] - c.y0, box[2], box[3], ramp, round);
   c.put(L);
 }
 
 function rivet(c: Canvas, x: number, y: number, ramp: Ramp = METAL): void {
+  if (c.d === 2) return hi.rivet(c, x, y, ramp);
   c.set(x, y, ramp[ramp.length - 1]);
   c.set(x + 1, y + 1, ramp[0]);
 }
@@ -70,7 +61,7 @@ function rivet(c: Canvas, x: number, y: number, ramp: Ramp = METAL): void {
 function limb(c: Canvas, x0: number, y0: number, x1: number, y1: number, w: number, ramp: Ramp): void {
   const bx = Math.min(x0, x1) - w;
   const by = Math.min(y0, y1) - w;
-  shaded(c, ramp, [c.X(bx), c.Y(by), Math.abs(x1 - x0) + 2 * w, Math.abs(y1 - y0) + 2 * w], (L) => L.capsule(c.X(x0), c.Y(y0), c.X(x1), c.Y(y1), w, ramp[2]));
+  shaded(c, ramp, [bx, by, Math.abs(x1 - x0) + 2 * w, Math.abs(y1 - y0) + 2 * w], (L) => c.capsule(x0, y0, x1, y1, w, ramp[2], L));
   // Tube shading along the segment: a highlight on the top-left flank, a shade on the other.
   const len = Math.hypot(x1 - x0, y1 - y0) || 1;
   let nx = -(y1 - y0) / len;
@@ -92,8 +83,9 @@ function limb(c: Canvas, x0: number, y0: number, x1: number, y1: number, w: numb
 
 /** A steel ball joint. */
 function joint(c: Canvas, x: number, y: number, r: number): void {
-  shaded(c, METAL, [c.X(x - r), c.Y(y - r), 2 * r + 1, 2 * r + 1], (L) => L.circle(c.X(x), c.Y(y), r, METAL[2]));
-  c.set(x - 1, y - 1, METAL[4]);
+  shaded(c, METAL, [x - r, y - r, 2 * r + 1, 2 * r + 1], (L) => c.circle(x, y, r, METAL[2], L));
+  if (c.d === 2) hi.jointGlint(c, x, y, r);
+  else c.set(x - 1, y - 1, METAL[4]);
 }
 
 /**
@@ -102,7 +94,8 @@ function joint(c: Canvas, x: number, y: number, r: number): void {
  * nubs on the lit tone, on the darkest tone or next to the silhouette edge; on the shade tone the
  * nub is only its darker underside.
  */
-function boucle(c: Canvas, x0: number, y0: number, x1: number, y1: number, ramp: Ramp, seed: number): void {
+function boucle(c: Canvas, x0: number, y0: number, x1: number, y1: number, ramp: Ramp, seed: number, skip?: PixelBuffer): void {
+  if (c.d === 2) return hi.boucle(c, x0, y0, x1, y1, ramp, seed, skip);
   const top = ramp.length - 1;
   const idx = (x: number, y: number): number => ramp.indexOf(c.b.get(c.X(x), c.Y(y)));
   const inside = (x: number, y: number): boolean => {
@@ -124,8 +117,14 @@ function boucle(c: Canvas, x0: number, y0: number, x1: number, y1: number, ramp:
   }
 }
 
+/** Scuffs over a LOGICAL box (2×: the same marks, drawn finer). */
+function scuffs(c: Canvas, x: number, y: number, w: number, h: number, state: number, seed: number, light?: Color): void {
+  if (c.d === 2) hi.scuff(c, x, y, w, h, state, seed, light);
+  else scuff(c.b, c.X(x), c.Y(y), w, h, state, seed, light);
+}
+
 function finish(c: Canvas, state = 0, seed = 1, box?: readonly [number, number, number, number]): Frame {
-  if (state > 0 && box) scuff(c.b, box[0], box[1], box[2], box[3], state, seed);
+  if (state > 0 && box) scuffs(c, box[0], box[1], box[2], box[3], state, seed);
   return c.frame(true);
 }
 
@@ -140,16 +139,17 @@ function leg(c: Canvas, hip: readonly [number, number], knee: readonly [number, 
   limb(c, knee[0], knee[1], ankle[0], ankle[1], 9, ramp);
   joint(c, knee[0], knee[1], 4);
   // Shoe: a black court shoe, toe forward, a small heel at the back.
-  shaded(c, BOOT, [c.X(ankle[0] - 7), c.Y(ankle[1] - 3), 20, 9], (L) => {
-    L.roundRect(c.X(ankle[0] - 6), c.Y(ankle[1] - 2), 18, 6, 3, BOOT[2]);
-    L.rect(c.X(ankle[0] + 1), c.Y(ankle[1] + 4), 11, 2, BOOT[1]);
-    L.rect(c.X(ankle[0] - 6), c.Y(ankle[1] + 4), 4, 2, BOOT[1]);
+  shaded(c, BOOT, [ankle[0] - 7, ankle[1] - 3, 20, 9], (L) => {
+    c.roundRect(ankle[0] - 6, ankle[1] - 2, 18, 6, 3, BOOT[2], L);
+    c.rect(ankle[0] + 1, ankle[1] + 4, 11, 2, BOOT[1], L);
+    c.rect(ankle[0] - 6, ankle[1] + 4, 4, 2, BOOT[1], L);
   }, false);
+  if (c.d === 2) hi.shoe(c, ankle[0], ankle[1]);
   c.set(ankle[0] + 9, ankle[1] - 1, PAL.steel[2]);
 }
 
-function legsFrame(f: number): Frame {
-  const c = canvas();
+function legsFrame(f: number, d = 1): Frame {
+  const c = canvas(d);
   if (f === 4) {
     // Sitting on the floor: both legs stretched out in front.
     leg(c, [-6, -16], [14, -12], [34, -8], true);
@@ -168,40 +168,41 @@ function legsFrame(f: number): Frame {
 // Body: trousers, boucle jacket, blouse, steel neck
 // ---------------------------------------------------------------------------------------------
 
-function bodyFrame(state: number): Frame {
-  const c = canvas();
+function bodyFrame(state: number, d = 1): Frame {
+  const c = canvas(d);
   // Trousers at the hips (the jacket hem covers their top).
-  shaded(c, PANTS, [c.X(-24), c.Y(-56), 48, 20], (L) => L.poly([[c.X(-21), c.Y(-56)], [c.X(19), c.Y(-56)], [c.X(22), c.Y(-37)], [c.X(-23), c.Y(-37)]], PANTS[2]));
+  shaded(c, PANTS, [-24, -56, 48, 20], (L) => c.poly([[-21, -56], [19, -56], [22, -37], [-23, -37]], PANTS[2], L));
   c.line(-1, -48, -1, -38, PANTS[0]);
   // The jacket: sloped shoulders from the neck, a soft waist, a slightly flared hip-length hem.
-  shaded(c, JACKET, [c.X(-33), c.Y(-110), 64, 62], (L) => {
-    L.poly(
+  shaded(c, JACKET, [-33, -110, 64, 62], (L) => {
+    c.poly(
       [
-        [c.X(-11), c.Y(-108)],
-        [c.X(13), c.Y(-108)],
-        [c.X(28), c.Y(-99)],
-        [c.X(29), c.Y(-91)],
-        [c.X(25), c.Y(-74)],
-        [c.X(27), c.Y(-58)],
-        [c.X(28), c.Y(-51)],
-        [c.X(26), c.Y(-49)],
-        [c.X(3), c.Y(-48)],
-        [c.X(-27), c.Y(-49)],
-        [c.X(-29), c.Y(-51)],
-        [c.X(-29), c.Y(-58)],
-        [c.X(-26), c.Y(-74)],
-        [c.X(-30), c.Y(-91)],
-        [c.X(-29), c.Y(-99)],
+        [-11, -108],
+        [13, -108],
+        [28, -99],
+        [29, -91],
+        [25, -74],
+        [27, -58],
+        [28, -51],
+        [26, -49],
+        [3, -48],
+        [-27, -49],
+        [-29, -51],
+        [-29, -58],
+        [-26, -74],
+        [-30, -91],
+        [-29, -99],
       ],
       JACKET[2],
+      L,
     );
   });
   // Chest (3/4 view facing right).
-  shaded(c, JACKET, [c.X(4), c.Y(-100), 26, 34], (L) => L.ellipse(c.X(6), c.Y(-100), 22, 32, JACKET[2]));
+  shaded(c, JACKET, [4, -100, 26, 34], (L) => c.ellipse(6, -100, 22, 32, JACKET[2], L));
   // The far flank and the back edge one shade darker; a soft shade just above the hem.
   for (let y = -108; y <= -48; y++) {
     for (let x = -32; x <= 30; x++) {
-      const i = JACKET.indexOf(c.b.get(c.X(x), c.Y(y)));
+      const i = JACKET.indexOf(c.at(x, y));
       if (i <= 0) continue;
       const fold = y > -52 || x > 22 || (x < -25 && y > -92);
       if (fold) c.set(x, y, JACKET[Math.min(i, 2) - 1]);
@@ -216,11 +217,11 @@ function bodyFrame(state: number): Frame {
     c.line(xa + 1, ya + 3, xb + 1, yb, JACKET[1]);
   }
   // The shawl collar stands up behind the neck.
-  shaded(c, JACKET, [c.X(-10), c.Y(-111), 25, 8], (L) => L.ellipse(c.X(-10), c.Y(-111), 25, 8, JACKET[2]));
+  shaded(c, JACKET, [-10, -111, 25, 8], (L) => c.ellipse(-10, -111, 25, 8, JACKET[2], L));
   // The crimson blouse in the deep V (red on both sides of the neck), and down the open front.
-  shaded(c, [BLOUSE[0], BLOUSE[1], BLOUSE[1], BLOUSE[2]], [c.X(-9), c.Y(-106), 23, 58], (L) => {
-    L.poly([[c.X(-9), c.Y(-106)], [c.X(13), c.Y(-106)], [c.X(6), c.Y(-74)], [c.X(0), c.Y(-74)]], BLOUSE[1]);
-    L.rect(c.X(0), c.Y(-75), 6, 12, BLOUSE[1]);
+  shaded(c, [BLOUSE[0], BLOUSE[1], BLOUSE[1], BLOUSE[2]], [-9, -106, 23, 58], (L) => {
+    c.poly([[-9, -106], [13, -106], [6, -74], [0, -74]], BLOUSE[1], L);
+    c.rect(0, -75, 6, 12, BLOUSE[1], L);
   });
   // Steel neck with a ring (the blouse collar sits round its base).
   c.rect(-4, -118, 9, 15, METAL[2]);
@@ -234,14 +235,14 @@ function bodyFrame(state: number): Frame {
   c.rect(-5, -103, 11, 2, BLOUSE[2]);
   c.line(-5, -101, 5, -101, BLOUSE[1]);
   const v = c.layer();
-  v.poly([[c.X(-2), c.Y(-101)], [c.X(5), c.Y(-101)], [c.X(2), c.Y(-94)]], METAL[1]);
+  c.poly([[-2, -101], [5, -101], [2, -94]], METAL[1], v);
   c.put(v);
   c.line(2, -101, 2, -95, METAL[0]);
   // The pointed shirt collar: two light points with a dark underside edge.
   const collar = c.layer();
   // The open pointed shirt collar: long points that lie down and out on the lapels.
-  collar.poly([[c.X(-8), c.Y(-104)], [c.X(-1), c.Y(-101)], [c.X(-10), c.Y(-94)]], BLOUSE[2]);
-  collar.poly([[c.X(12), c.Y(-104)], [c.X(5), c.Y(-101)], [c.X(10), c.Y(-93)]], BLOUSE[2]);
+  c.poly([[-8, -104], [-1, -101], [-10, -94]], BLOUSE[2], collar);
+  c.poly([[12, -104], [5, -101], [10, -93]], BLOUSE[2], collar);
   c.put(collar);
   c.line(-7, -104, -2, -102, BLOUSE[3]);
   c.line(-1, -101, -9, -95, BLOUSE[0]);
@@ -282,14 +283,8 @@ function bodyFrame(state: number): Frame {
     [23, -99],
   ];
   const lap = c.layer();
-  lap.poly(
-    lapN.map(([x, y]) => [c.X(x), c.Y(y)] as [number, number]),
-    JACKET[3],
-  );
-  lap.poly(
-    lapF.map(([x, y]) => [c.X(x), c.Y(y)] as [number, number]),
-    JACKET[2],
-  );
+  c.poly(lapN, JACKET[3], lap);
+  c.poly(lapF, JACKET[2], lap);
   c.put(lap);
   // Roll shading: a 2-px shadow where each lapel rolls over onto the jacket, the edge against the
   // red one shade down; the far lapel gets an inner shade too.
@@ -359,21 +354,28 @@ function bodyFrame(state: number): Frame {
   // Below the pendant the jacket closes: one front edge down to the hem.
   c.rect(-1, -62, 8, 14, JACKET[2]);
   c.line(3, -62, 3, -49, JACKET[0]);
-  boucle(c, -33, -112, 30, -49, JACKET, 23);
-  return finish(c, state, 23, [c.X(-30), c.Y(-108), 60, 60]);
+  // 2×: the shawl collar stays smooth (plush, no nubs), so it reads as its own rolled form.
+  boucle(c, -33, -112, 30, -49, JACKET, 23, c.d === 2 ? lap : undefined);
+  if (c.d === 2) {
+    hi.shawl(c);
+    hi.bodyDetail(c);
+  }
+  return finish(c, state, 23, [-30, -108, 60, 60]);
 }
 
 /** The far arm: shoulder (−24, −97), a boucle sleeve and a steel mitten hand. */
-function armBackFrame(f: number): Frame {
-  const c = canvas();
+function armBackFrame(f: number, d = 1): Frame {
+  const c = canvas(d);
   const sh: [number, number] = [-24, -97];
   if (f === 0) {
     // At rest: the sleeve hangs clearly behind the back edge, the mitten below the hem.
     limb(c, sh[0], sh[1], -32, -77, 10, JACKET_FAR);
     limb(c, -32, -77, -30, -51, 8, JACKET_FAR);
     boucle(c, -38, -104, -22, -50, JACKET_FAR, 51);
+    if (c.d === 2) hi.sleeveFar(c);
     joint(c, -32, -77, 3);
-    shaded(c, METAL, [c.X(-35), c.Y(-52), 10, 10], (L) => L.circle(c.X(-30), c.Y(-47), 4, METAL[2]));
+    shaded(c, METAL, [-35, -52, 10, 10], (L) => c.circle(-30, -47, 4, METAL[2], L));
+    if (c.d === 2) hi.mitten(c, -30, -47, 4);
     return c.frame(true);
   }
   const high = f === 1;
@@ -396,7 +398,8 @@ function armBackFrame(f: number): Frame {
     chainShield(c, Math.round(lx + Math.cos(t) * rx), Math.round(ly + Math.sin(t) * ry), ENAMEL[k % 4]);
   }
   chainBand(c, curvePts((t) => [hand[0] + (lx - rx * 0.7 - hand[0]) * t, hand[1] + (ly + ry * 0.7 - hand[1]) * t], 40));
-  shaded(c, METAL, [c.X(hand[0] - 5), c.Y(hand[1] - 5), 11, 11], (L) => L.circle(c.X(hand[0]), c.Y(hand[1]), 4, METAL[2]));
+  shaded(c, METAL, [hand[0] - 5, hand[1] - 5, 11, 11], (L) => c.circle(hand[0], hand[1], 4, METAL[2], L));
+  if (c.d === 2) hi.mitten(c, hand[0], hand[1], 4);
   return c.frame(true);
 }
 
@@ -408,10 +411,10 @@ function armBackFrame(f: number): Frame {
 function stamp(c: Canvas, cx: number, bottom: number, state: number): void {
   const top = bottom - 24;
   // Stem and knob.
-  shaded(c, WOOD, [c.X(cx - 4), c.Y(top - 14), 9, 16], (L) => L.rect(c.X(cx - 3), c.Y(top - 12), 7, 13, WOOD[2]), false);
-  shaded(c, WOOD, [c.X(cx - 6), c.Y(top - 22), 13, 12], (L) => L.circle(c.X(cx), c.Y(top - 16), 5, WOOD[3]));
+  shaded(c, WOOD, [cx - 4, top - 14, 9, 16], (L) => c.rect(cx - 3, top - 12, 7, 13, WOOD[2], L), false);
+  shaded(c, WOOD, [cx - 6, top - 22, 13, 12], (L) => c.circle(cx, top - 16, 5, WOOD[3], L));
   // Block.
-  shaded(c, WOOD, [c.X(cx - 28), c.Y(top), 57, 22], (L) => L.roundRect(c.X(cx - 28), c.Y(top), 57, 21, 2, WOOD[2]), false);
+  shaded(c, WOOD, [cx - 28, top, 57, 22], (L) => c.roundRect(cx - 28, top, 57, 21, 2, WOOD[2], L), false);
   c.line(cx - 27, top + 1, cx + 27, top + 1, WOOD[3]);
   // Rubber pad.
   c.rect(cx - 27, bottom - 3, 55, 3, PAL.red[1]);
@@ -419,33 +422,45 @@ function stamp(c: Canvas, cx: number, bottom: number, state: number): void {
   // Label.
   c.rect(cx - 25, top + 5, 51, 11, PAL.cloth[2]);
   c.line(cx - 25, top + 15, cx + 25, top + 15, PAL.cloth[1]);
+  if (c.d === 2) {
+    hi.stampDetail(c, cx, top, bottom);
+    // 2×: keep the clean label face, so no scuff falls over the letters (restored in stampArmPose).
+    labelFace = c.b.clone();
+  }
   labels.push([cx, top + 7]);
-  if (state > 0) scuff(c.b, c.X(cx - 28), c.Y(top - 20), 57, 44, state, 7, WOOD[3]);
+  if (state > 0) scuffs(c, cx - 28, top - 20, 57, 44, state, 7, WOOD[3]);
 }
 
 /** Label text spots (local: the block centre x, the text top) of the stamp being drawn. */
 const labels: Array<[number, number]> = [];
+/** 2×: the canvas with the clean label face, before any scuffs. */
+let labelFace: PixelBuffer | null = null;
 
 /**
  * Stamp arm frames 0–2 face right; frames 3–5 are the same poses pre-mirrored for facing left
  * (drawn without flipX) so the GESLOTEN label always reads left to right.
  */
-function stampArmFrame(f: number, state: number, mirror = false): Frame {
+function stampArmFrame(f: number, state: number, mirror = false, d = 1): Frame {
   labels.length = 0;
-  const fr = stampArmPose(f, state);
+  const fr = stampArmPose(f, state, d);
   const tw = measure('GESLOTEN');
+  // The label at the art density (2×: the same letters, each pixel a 2 × 2 block).
+  const label = (buf: PixelBuffer, x: number, y: number): void => {
+    if (d === 1) drawText(buf, 'GESLOTEN', x, y, { color: PAL.red[2] });
+    else hi.label(buf, 'GESLOTEN', x, y, d, PAL.red[2]);
+  };
   if (!mirror) {
-    for (const [cx, ty] of labels) drawText(fr.buf, 'GESLOTEN', fr.ox + cx - (tw >> 1), fr.oy + ty, { color: PAL.red[2] });
+    for (const [cx, ty] of labels) label(fr.buf, fr.ox + cx - (tw >> 1), fr.oy + ty);
     return fr;
   }
   const buf = fr.buf.flipped(true);
-  const ox = fr.buf.w - 1 - fr.ox;
-  for (const [cx, ty] of labels) drawText(buf, 'GESLOTEN', ox - cx - (tw >> 1), fr.oy + ty, { color: PAL.red[2] });
-  return { buf, ox, oy: fr.oy };
+  const ox = fr.buf.w / d - 1 - fr.ox;
+  for (const [cx, ty] of labels) label(buf, ox - cx - (tw >> 1), fr.oy + ty);
+  return d === 1 ? { buf, ox, oy: fr.oy } : { buf, ox, oy: fr.oy, density: d };
 }
 
-function stampArmPose(f: number, state: number): Frame {
-  const c = canvas();
+function stampArmPose(f: number, state: number, d = 1): Frame {
+  const c = canvas(d);
   const sh: [number, number] = [24, -97];
   const elbow: [number, number] = f === 0 ? [32, -76] : f === 1 ? [40, -122] : [42, -72];
   const hand: [number, number] = f === 0 ? [55, -60] : f === 1 ? [46, -148] : [57, -40];
@@ -458,9 +473,10 @@ function stampArmPose(f: number, state: number): Frame {
   joint(c, elbow[0], elbow[1], 4);
   stamp(c, hand[0], bottom, state);
   // Steel mitten round the knob.
-  shaded(c, METAL, [c.X(hand[0] - 6), c.Y(hand[1] - 6), 13, 13], (L) => L.circle(c.X(hand[0]), c.Y(hand[1]), 5, METAL[2]));
+  shaded(c, METAL, [hand[0] - 6, hand[1] - 6, 13, 13], (L) => c.circle(hand[0], hand[1], 5, METAL[2], L));
+  if (c.d === 2) hi.mitten(c, hand[0], hand[1], 5);
   // The jacket shoulder cap (kept small and low: the neck and the chest stay clear) with two rivets.
-  shaded(c, JACKET, [c.X(sh[0] - 5), c.Y(sh[1] - 5), 16, 13], (L) => L.ellipse(c.X(sh[0] - 5), c.Y(sh[1] - 5), 16, 13, JACKET[2]));
+  shaded(c, JACKET, [sh[0] - 5, sh[1] - 5, 16, 13], (L) => c.ellipse(sh[0] - 5, sh[1] - 5, 16, 13, JACKET[2], L));
   boucle(c, sh[0] - 5, sh[1] - 5, sh[0] + 11, sh[1] + 8, JACKET, 43);
   rivet(c, sh[0] - 1, sh[1] - 2, METAL);
   rivet(c, sh[0] + 6, sh[1] - 2, METAL);
@@ -468,20 +484,28 @@ function stampArmPose(f: number, state: number): Frame {
     // Slam: ink splats round the pad.
     for (const dx of [-34, -31, 31, 34]) c.rect(hand[0] + dx, -2, 2, 2, PAL.red[1]);
   }
-  return finish(c, state, 41, [c.X(18), c.Y(-150), 70, 150]);
+  if (c.d === 2 && state > 0 && labelFace) {
+    scuffs(c, 18, -150, 70, 150, state, 41);
+    const face = labelFace;
+    for (const [cx, ty] of labels) c.each(cx - 25, ty - 2, cx + 25, ty + 8, (X, Y) => c.b.set(X, Y, face.get(X, Y)));
+    labelFace = null;
+    return c.frame(true);
+  }
+  return finish(c, state, 41, [18, -150, 70, 150]);
 }
 
-function stampStump(): Frame {
-  const c = canvas();
-  shaded(c, JACKET, [c.X(19), c.Y(-102), 16, 13], (L) => L.ellipse(c.X(19), c.Y(-102), 16, 13, JACKET[2]));
+function stampStump(d = 1): Frame {
+  const c = canvas(d);
+  shaded(c, JACKET, [19, -102, 16, 13], (L) => c.ellipse(19, -102, 16, 13, JACKET[2], L));
   boucle(c, 19, -102, 35, -89, JACKET, 45);
   // Torn cables and a stub.
   limb(c, 26, -95, 30, -88, 6, METAL);
   c.line(30, -88, 36, -82, PAL.red[2]);
   c.line(29, -86, 33, -78, PAL.gold[2]);
   c.line(31, -89, 38, -86, PAL.sky[2]);
-  c.b.outline(INK);
-  sparkle(c.b, c.X(37), c.Y(-82), PAL.gold[3]);
+  c.outline();
+  if (c.d === 2) hi.sparkle(c, 37, -82, PAL.gold[3]);
+  else sparkle(c.b, c.X(37), c.Y(-82), PAL.gold[3]);
   return c.frame(false);
 }
 
@@ -494,6 +518,7 @@ function stampStump(): Frame {
  * core, with a dark openwork hole every few steps. It reads as broad silver lace links.
  */
 function chainBand(c: Canvas, pts: ReadonlyArray<readonly [number, number]>, phase = 0): void {
+  if (c.d === 2) return hi.chainBand(c, pts, phase);
   for (const [x, y] of pts) c.rect(x - 2, y - 2, 5, 5, PAL.steel[1]);
   for (const [x, y] of pts) c.rect(x - 1, y - 1, 3, 3, SILVER[3]);
   const cyc = [SILVER[4], PAL.steel[0], SILVER[4], SILVER[3]];
@@ -502,6 +527,7 @@ function chainBand(c: Canvas, pts: ReadonlyArray<readonly [number, number]>, pha
 
 /** An enamel shield on the chain: a 5×5 silver rim round a 3×3 enamel core. */
 function chainShield(c: Canvas, x: number, y: number, col: Color): void {
+  if (c.d === 2) return hi.chainShield(c, x, y, col);
   c.rect(x - 2, y - 2, 5, 5, SILVER[2]);
   c.rect(x - 1, y - 1, 3, 3, col);
   c.set(x, y + 3, SILVER[2]);
@@ -530,8 +556,8 @@ const CHAIN_RUNS: ReadonlyArray<(t: number) => readonly [number, number]> = [
   (t) => [19 - 9 * t + 1.5 * Math.sin(Math.PI * t), -105 + 21 * t],
 ];
 
-function chainFrame(state: number, broken = false): Frame {
-  const c = canvas();
+function chainFrame(state: number, broken = false, d = 1): Frame {
+  const c = canvas(d);
   const gone = (t: number): boolean => broken && t > 0.3 && t < 0.68;
   CHAIN_RUNS.forEach((run, r) => {
     const pts = curvePts(run).filter((_, k, a) => !gone(k / (a.length - 1)));
@@ -563,34 +589,34 @@ function chainFrame(state: number, broken = false): Frame {
   const hair = lockMask(c, -110);
   for (let i = 0; i < hair.data.length; i++) if ((hair.data[i] & 255) !== 0) c.b.data[i] = 0;
   c.b.touch();
-  return finish(c, broken ? 0 : state, 13, [c.X(-20), c.Y(-110), 46, 26]);
+  return finish(c, broken ? 0 : state, 13, [-20, -110, 46, 26]);
 }
 
 /** Medallion frames: 0 closed (the city emblem: a red shield, a black pale, three white crosses), 1 open core, 2 firing glow. */
-function medallionFrame(f: number, state: number): Frame {
-  const c = canvas();
+function medallionFrame(f: number, state: number, d = 1): Frame {
+  const c = canvas(d);
   const [cx, cy] = MAYOR.medallionC;
   const r = 14;
-  shaded(c, SILVER, [c.X(cx - r), c.Y(cy - r), 2 * r + 1, 2 * r + 1], (L) => L.circle(c.X(cx), c.Y(cy), r, SILVER[2]));
+  shaded(c, SILVER, [cx - r, cy - r, 2 * r + 1, 2 * r + 1], (L) => c.circle(cx, cy, r, SILVER[2], L));
   // A 2-px rim, lit top-left and shaded bottom-right, with dark openwork dots like the chain.
-  for (let y = -r; y <= r; y++) {
-    for (let x = -r; x <= r; x++) {
-      const d = Math.hypot(x, y);
-      if (d > r + 0.35 || d < r - 2.2) continue;
-      c.set(cx + x, cy + y, x + y < 0 ? SILVER[3] : SILVER[1]);
-    }
-  }
+  c.each(cx - r, cy - r, cx + r, cy + r, (X, Y, lx, ly) => {
+    const x = lx - cx;
+    const y = ly - cy;
+    const dd = Math.hypot(x, y);
+    if (dd > r + 0.35 || dd < r - 2.2) return;
+    c.b.set(X, Y, x + y < 0 ? SILVER[3] : SILVER[1]);
+  });
   for (let k = 0; k < 10; k++) {
     const a = (k / 10) * Math.PI * 2;
     c.set(Math.round(cx + Math.cos(a) * (r - 1)), Math.round(cy + Math.sin(a) * (r - 1)), PAL.steel[0]);
   }
   if (f === 0) {
     // The city arms: a red shield, a black pale, three white saltires, a small gold crown.
-    c.b.circle(c.X(cx), c.Y(cy), r - 3, SILVER[0]);
+    c.circle(cx, cy, r - 3, SILVER[0]);
     const sh = c.layer();
-    sh.poly([[c.X(cx - 9), c.Y(cy - 9)], [c.X(cx + 9), c.Y(cy - 9)], [c.X(cx + 9), c.Y(cy + 4)], [c.X(cx), c.Y(cy + 12)], [c.X(cx - 9), c.Y(cy + 4)]], PAL.red[2]);
+    c.poly([[cx - 9, cy - 9], [cx + 9, cy - 9], [cx + 9, cy + 4], [cx, cy + 12], [cx - 9, cy + 4]], PAL.red[2], sh);
     // Keep the shield inside the rim.
-    for (let y = 0; y < sh.h; y++) for (let x = 0; x < sh.w; x++) if (Math.hypot(x - c.X(cx), y - c.Y(cy)) > r - 2.6) sh.set(x, y, 0);
+    for (let y = 0; y < sh.h; y++) for (let x = 0; x < sh.w; x++) if (Math.hypot(c.lx(x) - cx, c.ly(y) - cy) > r - 2.6) sh.set(x, y, 0);
     c.put(sh);
     c.line(cx + 8, cy - 8, cx + 8, cy + 4, PAL.red[1]);
     c.line(cx + 7, cy + 5, cx + 1, cy + 11, PAL.red[1]);
@@ -611,14 +637,16 @@ function medallionFrame(f: number, state: number): Frame {
     c.rect(cx - 4, cy - 12, 9, 2, PAL.gold[2]);
     for (const dx of [-4, 0, 4]) c.set(cx + dx, cy - 13, PAL.gold[3]);
     c.line(cx - 3, cy - 11, cx + 4, cy - 11, PAL.gold[1]);
+    if (c.d === 2) hi.arms(c, cx, cy);
   } else {
     // Open: a dark socket and a glowing core.
-    c.b.circle(c.X(cx), c.Y(cy), r - 3, SILVER[0]);
-    c.b.circle(c.X(cx), c.Y(cy), 9, INK);
+    c.circle(cx, cy, r - 3, SILVER[0]);
+    c.circle(cx, cy, 9, INK);
     const glow = f === 2;
-    c.b.circle(c.X(cx), c.Y(cy), 7, glow ? PAL.pink[2] : PAL.teal[2]);
-    c.b.circle(c.X(cx), c.Y(cy), 5, glow ? PAL.gold[3] : PAL.teal[3]);
-    c.b.circle(c.X(cx), c.Y(cy), 2, PAL.snow[3]);
+    c.circle(cx, cy, 7, glow ? PAL.pink[2] : PAL.teal[2]);
+    c.circle(cx, cy, 5, glow ? PAL.gold[3] : PAL.teal[3]);
+    c.circle(cx, cy, 2, PAL.snow[3]);
+    if (c.d === 2) hi.core(c, cx, cy, glow);
     if (glow) {
       for (let k = 0; k < 8; k++) {
         const a = (k / 8) * Math.PI * 2;
@@ -626,8 +654,9 @@ function medallionFrame(f: number, state: number): Frame {
       }
     }
   }
-  c.set(cx - 8, cy - 9, PAL.snow[3]);
-  return finish(c, state, 5, [c.X(cx - r), c.Y(cy - r), 2 * r, 2 * r]);
+  if (c.d === 2) hi.rimDetail(c, cx, cy, r);
+  else c.set(cx - 8, cy - 9, PAL.snow[3]);
+  return finish(c, state, 5, [cx - r, cy - r, 2 * r, 2 * r]);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -636,7 +665,7 @@ function medallionFrame(f: number, state: number): Frame {
 
 /** Pixels of a disc (helper for the hair locks and the curls). */
 function disc(L: PixelBuffer, c: Canvas, x: number, y: number, r: number, col: Color): void {
-  L.circle(c.X(x), c.Y(y), r, col);
+  c.circle(x, y, r, col, L);
 }
 
 /**
@@ -763,24 +792,37 @@ function strandPts(s: readonly [number, number, number, number, number, number, 
  * a dark rim at the bottom right and, high up, a thin lit crescent at the top left; chestnut
  * only on the crown crests. Wavy strands add chestnut crest lines and dark grooves.
  */
+/** hairBack's finished layer per canvas geometry, density and dy (it reads nothing but its own layer). */
+const hairBackCache = new Map<string, PixelBuffer>();
+
 function hairBack(c: Canvas, dy: number): void {
+  const key = `${c.x0},${c.y0},${c.b.w},${c.b.h},${c.d},${dy}`;
+  const done = hairBackCache.get(key);
+  if (done) {
+    c.put(done);
+    return;
+  }
   const L = c.layer();
+  hairBackCache.set(key, L);
   // The flare under the locks: dark at the nape, mid brown toward the outer edge.
   for (const poly of HAIR_FLARES) {
     const F = c.layer();
-    F.poly(
-      poly.map(([x, y]) => [c.X(x), c.Y(y + dy)] as [number, number]),
+    c.poly(
+      poly.map(([x, y]) => [x, y + dy] as const),
       HAIR[1],
+      F,
     );
-    shadeBox(F, c.X(-46), c.Y(-130 + dy), 90, 38, [HAIR[0], HAIR[1], HAIR[1], HAIR[2]]);
+    c.shade(F, -46, -130 + dy, 90, 38, [HAIR[0], HAIR[1], HAIR[1], HAIR[2]]);
     for (let i = 0; i < F.data.length; i++) if ((F.data[i] & 255) !== 0) L.data[i] = F.data[i];
   }
   for (const [x, y0, r] of HAIR_LOCKS) {
     const y = y0 + dy;
-    for (let py = -r; py <= r; py++) {
-      for (let px = -r; px <= r; px++) {
+    c.each(x - r, y - r, x + r, y + r, (X, Y, lx, ly) => {
+      {
+        const px = lx - x;
+        const py = ly - y;
         const d = Math.hypot(px, py);
-        if (d > r + 0.35) continue;
+        if (d > r + 0.35) return;
         const u = (px - py) / (r * 1.414);
         const v = (px + py) / (r * 1.414);
         let col = HAIR[1];
@@ -792,14 +834,15 @@ function hairBack(c: Canvas, dy: number): void {
         // Shadow: a crescent at the bottom right; the low locks shade their lower half (the nape).
         if (v > 0.5 && d > r - 1.4) col = HAIR[0];
         if (y0 > -115 && py > 0 && v > -0.2) col = HAIR[0];
-        L.set(c.X(x + px), c.Y(y + py), col);
+        L.set(X, Y, col);
       }
-    }
+    });
   }
   // Strands: dark ribbons with a chestnut crest on the lit (left) edge where the wave peaks, and
   // a dark groove on the shaded (right) edge in the troughs.
   const inHair = (X: number, Y: number): boolean => (L.get(X, Y) & 255) !== 0;
-  for (const s of STRANDS) {
+  if (c.d === 2) hi.strands(c, L, dy, STRANDS);
+  else for (const s of STRANDS) {
     const pts = strandPts([s[0], s[1] + dy, s[2], s[3] + dy, s[4], s[5], s[6]]);
     for (let i = 0; i < pts.length; i++) {
       const X = c.X(pts[i][0]);
@@ -814,12 +857,12 @@ function hairBack(c: Canvas, dy: number): void {
   // The wave tips: a lit pixel on the upper outer side, the underside dark.
   for (const [x, y, o] of TIPS) {
     const Y = y + dy;
-    L.set(c.X(x), c.Y(Y), HAIR[1]);
-    L.set(c.X(x - o), c.Y(Y - 1), HAIR[1]);
-    L.set(c.X(x), c.Y(Y - 2), HAIR[2]);
-    L.set(c.X(x + o), c.Y(Y - 3), HAIR[2]);
-    L.set(c.X(x - o), c.Y(Y - 2), HAIR[0]);
-    L.set(c.X(x - 2 * o), c.Y(Y - 2), HAIR[0]);
+    c.set(x, Y, HAIR[1], L);
+    c.set(x - o, Y - 1, HAIR[1], L);
+    c.set(x, Y - 2, HAIR[2], L);
+    c.set(x + o, Y - 3, HAIR[2], L);
+    c.set(x - o, Y - 2, HAIR[0], L);
+    c.set(x - 2 * o, Y - 2, HAIR[0], L);
   }
   c.put(L);
 }
@@ -831,42 +874,26 @@ function hairBack(c: Canvas, dy: number): void {
 function hairFront(c: Canvas, dy: number, hatch: 0 | 1): void {
   const L = c.layer();
   // The sweep: from the part (far side, high) across the forehead to the near temple.
-  L.poly(
-    [
-      [c.X(16), c.Y(-158 + dy)],
-      [c.X(21), c.Y(-152 + dy)],
-      [c.X(16), c.Y(-151 + dy)],
-      [c.X(9), c.Y(-150 + dy)],
-      [c.X(3), c.Y(-150 + dy)],
-      [c.X(-2), c.Y(-147 + dy)],
-      [c.X(-6), c.Y(-144 + dy)],
-      [c.X(-9), c.Y(-136 + dy)],
-      [c.X(-14), c.Y(-134 + dy)],
-      [c.X(-14), c.Y(-150 + dy)],
-      [c.X(-6), c.Y(-160 + dy)],
-      [c.X(6), c.Y(-162 + dy)],
-    ],
+  c.poly(
+    SWEEP.map(([x, y]) => [x, y + dy] as const),
     HAIR[1],
+    L,
   );
   // The far temple: a lock that falls past the far brow.
-  L.poly(
-    [
-      [c.X(20), c.Y(-154 + dy)],
-      [c.X(25), c.Y(-150 + dy)],
-      [c.X(25), c.Y(-138 + dy)],
-      [c.X(23), c.Y(-134 + dy)],
-      [c.X(22), c.Y(-145 + dy)],
-    ],
+  c.poly(
+    TEMPLE.map(([x, y]) => [x, y + dy] as const),
     HAIR[1],
+    L,
   );
-  shadeBox(L, c.X(-14), c.Y(-162 + dy), 40, 34, [HAIR[0], HAIR[1], HAIR[1], HAIR[2]]);
+  c.shade(L, -14, -162 + dy, 40, 34, [HAIR[0], HAIR[1], HAIR[1], HAIR[2]]);
   // No near-black visor along the forehead: the darkest tone only at the near temple tuck.
   for (let Y = 0; Y < L.h; Y++) for (let X = c.X(-7); X < L.w; X++) if (L.get(X, Y) === HAIR[0]) L.set(X, Y, HAIR[1]);
   c.put(L);
   // Sweep strands: long curves from the part down to the temple, one chestnut sheen on top.
   const sweep = (x0: number, y0: number, x1: number, y1: number, bend: number, col: Color): void => {
-    for (let i = 0; i <= 24; i++) {
-      const t = i / 24;
+    const n = 24 * c.d;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
       const x = x0 + (x1 - x0) * t;
       const y = y0 + (y1 - y0) * t - Math.sin(t * Math.PI) * bend;
       const X = c.X(x);
@@ -874,39 +901,43 @@ function hairFront(c: Canvas, dy: number, hatch: 0 | 1): void {
       if (HAIR_SET.has(c.b.get(X, Y))) c.b.set(X, Y, col);
     }
   };
-  // The lowest strand rolls up and back off the forehead (chestnut).
-  sweep(14, -157, -11, -139, 4, HAIR[2]);
-  sweep(10, -159, -12, -143, 4, HAIR[3]);
-  sweep(16, -155, -7, -141, 3, HAIR[1]);
-  sweep(4, -160, -13, -149, 2, HAIR[1]);
-  // The part line (a short dark groove on the far side of the crown).
-  c.line(15, -160 + dy, 19, -155 + dy, HAIR[0]);
+  if (c.d === 2) hi.sweepWaves(c, dy);
+  else {
+    // The lowest strand rolls up and back off the forehead (chestnut).
+    sweep(14, -157, -11, -139, 4, HAIR[2]);
+    sweep(10, -159, -12, -143, 4, HAIR[3]);
+    sweep(16, -155, -7, -141, 3, HAIR[1]);
+    sweep(4, -160, -13, -149, 2, HAIR[1]);
+    // The part line (a short dark groove on the far side of the crown).
+    c.line(15, -160 + dy, 19, -155 + dy, HAIR[0]);
+  }
   // The letter hatch: a hinged lid in the crown (a thin seam when shut).
   if (hatch === 0) {
     for (let x = -14; x <= 0; x++) {
       const y = -161 + Math.round(((x + 7) * (x + 7)) / 24) + dy;
-      if (HAIR_SET.has(c.b.get(c.X(x), c.Y(y)))) c.set(x, y, HAIR[0]);
+      if (HAIR_SET.has(c.at(x, y))) c.set(x, y, HAIR[0]);
     }
   } else {
     // The lid flips up and back on its hinge; letters peek out of the slot.
-    c.b.ellipse(c.X(-15), c.Y(-164 + dy), 17, 6, INK);
-    c.b.ellipse(c.X(-14), c.Y(-163 + dy), 15, 4, PAL.ink[1]);
+    c.ellipse(-15, -164 + dy, 17, 6, INK);
+    c.ellipse(-14, -163 + dy, 15, 4, PAL.ink[1]);
     const lid = c.layer();
-    lid.poly(
+    c.poly(
       [
-        [c.X(-16), c.Y(-161 + dy)],
-        [c.X(-23), c.Y(-163 + dy)],
-        [c.X(-29), c.Y(-169 + dy)],
-        [c.X(-28), c.Y(-175 + dy)],
-        [c.X(-21), c.Y(-174 + dy)],
-        [c.X(-14), c.Y(-168 + dy)],
-        [c.X(-11), c.Y(-163 + dy)],
+        [-16, -161 + dy],
+        [-23, -163 + dy],
+        [-29, -169 + dy],
+        [-28, -175 + dy],
+        [-21, -174 + dy],
+        [-14, -168 + dy],
+        [-11, -163 + dy],
       ],
       HAIR[2],
+      lid,
     );
-    shadeBox(lid, c.X(-29), c.Y(-175 + dy), 19, 15, HAIR);
+    c.shade(lid, -29, -175 + dy, 19, 15, HAIR);
     // The lid's steel underside.
-    lid.line(c.X(-15), c.Y(-162 + dy), c.X(-26), c.Y(-173 + dy), METAL[2]);
+    c.line(-15, -162 + dy, -26, -173 + dy, METAL[2], lid);
     c.put(lid);
     c.set(-16, -161 + dy, METAL[3]);
     c.set(-15, -160 + dy, METAL[1]);
@@ -916,8 +947,32 @@ function hairFront(c: Canvas, dy: number, hatch: 0 | 1): void {
     c.line(-5, -168 + dy, -8, -165 + dy, PAL.stone[2]);
     c.rect(-3, -170 + dy, 6, 6, PAL.cloth[2]);
     c.rect(-1, -168 + dy, 2, 2, PAL.red[2]);
+    if (c.d === 2) hi.letters(c, dy);
   }
 }
+
+/** The sweep over the forehead and the far temple lock (outlines for hairFront). */
+const SWEEP: ReadonlyArray<Pt> = [
+  [16, -158],
+  [21, -152],
+  [16, -151],
+  [9, -150],
+  [3, -150],
+  [-2, -147],
+  [-6, -144],
+  [-9, -136],
+  [-14, -134],
+  [-14, -150],
+  [-6, -160],
+  [6, -162],
+];
+const TEMPLE: ReadonlyArray<Pt> = [
+  [20, -154],
+  [25, -150],
+  [25, -138],
+  [23, -134],
+  [22, -145],
+];
 
 const HAIR_SET = new Set<number>([...HAIR, PAL.brown[3]]);
 
@@ -951,12 +1006,9 @@ const FACE_POLY: ReadonlyArray<readonly [number, number]> = [
 /** The face plate: skin-tone enamel, shaded by hand (light from the top-left). */
 function facePlate(c: Canvas): void {
   const L = c.layer();
-  L.poly(
-    FACE_POLY.map(([x, y]) => [c.X(x), c.Y(y)] as [number, number]),
-    FACE[2],
-  );
+  c.poly(FACE_POLY, FACE[2], L);
   c.put(L);
-  const on = (x: number, y: number): boolean => c.b.get(c.X(x), c.Y(y)) === FACE[2];
+  const on = (x: number, y: number): boolean => c.at(x, y) === FACE[2];
   const tone = (x: number, y: number, col: Color): void => {
     if (on(x, y)) c.set(x, y, col);
   };
@@ -990,8 +1042,12 @@ function facePlate(c: Canvas): void {
     tone(x, y, FACE[3]);
   // Near ear (hair tucked behind it): a clean C with a lit rim, the inner fold and the bowl.
   const E = c.layer();
-  E.ellipse(c.X(-13), c.Y(-133), 6, 11, FACE[2]);
+  c.ellipse(-13, -133, 6, 11, FACE[2], E);
   c.put(E);
+  if (c.d === 2) {
+    hi.faceForm(c);
+    return hi.faceDetail(c);
+  }
   c.set(-14, -135, FACE[3]);
   c.line(-12, -131, -11, -126, FACE[1]);
   c.rect(-11, -130, 2, 2, FACE[1]);
@@ -1024,6 +1080,7 @@ const BROW_FAR: ReadonlyArray<readonly [number, number, number]> = [
 
 /** Brows: strong, dark and arched. `lift` raises them, `drop` lowers the inner heads (stern). */
 function brows(c: Canvas, lift: number, drop: number): void {
+  if (c.d === 2) return hi.brows(c, lift, drop);
   const draw = (cols: ReadonlyArray<readonly [number, number, number]>, inner: (x: number) => number): void => {
     for (const [x, top, n] of cols) {
       const y0 = top - lift + inner(x);
@@ -1036,6 +1093,7 @@ function brows(c: Canvas, lift: number, drop: number): void {
 
 /** Almond eyes with heavy dark lashes and liner, a little hooded (two rows open). `look` −1 = up. */
 function eyesOpen(c: Canvas, look: number, narrow = false): void {
+  if (c.d === 2) return hi.eyesOpen(c, look, narrow);
   const up = look < 0;
   const n = narrow ? -135 : -136; // near lash line
   const f = n - 1; // far lash line (the far eye sits a little higher)
@@ -1087,6 +1145,7 @@ function eyesOpen(c: Canvas, look: number, narrow = false): void {
 }
 
 function eyesClosed(c: Canvas): void {
+  if (c.d === 2) return hi.eyesClosed(c);
   c.line(1, -136, 7, -136, FACE[1]);
   c.line(1, -134, 7, -134, INK);
   c.set(0, -135, INK);
@@ -1099,12 +1158,13 @@ function eyesClosed(c: Canvas): void {
 }
 
 function eyesDizzy(c: Canvas): void {
+  if (c.d === 2) return hi.eyesDizzy(c);
   // Small spirals (steel grey irises: she is dazed, not hurt).
   for (const [ex, ey] of [
     [4, -134],
     [17, -135],
   ] as const) {
-    c.b.circle(c.X(ex), c.Y(ey), 2, PAL.snow[2]);
+    c.circle(ex, ey, 2, PAL.snow[2]);
     c.set(ex, ey, INK);
     c.set(ex + 1, ey, INK);
     c.set(ex + 1, ey - 1, INK);
@@ -1119,6 +1179,7 @@ function eyesDizzy(c: Canvas): void {
 
 /** Nose: straight and long, from the brow heads to a rounded tip; shade on its far flank. */
 function nose(c: Canvas): void {
+  if (c.d === 2) return hi.nose(c);
   for (const [x, y] of [
     [13, -136],
     [13, -135],
@@ -1153,6 +1214,7 @@ function nose(c: Canvas): void {
 
 /** Mouth: deep red lips. kind 0 smile (closed, the far corner higher), 1 flat, 2 shout, 3 wobbly. */
 function mouth(c: Canvas, kind: number): void {
+  if (c.d === 2) return hi.mouth(c, kind);
   const LIP_D = PAL.red[1];
   const LIP = PAL.red[2];
   if (kind === 2) {
@@ -1204,11 +1266,12 @@ function mouth(c: Canvas, kind: number): void {
 
 /** The round gold disc earring with a centre hole, on a short gold bar. */
 function earring(c: Canvas): void {
+  if (c.d === 2) return hi.earring(c);
   c.line(-11, -122, -11, -118, PAL.gold[1]);
   c.line(-10, -122, -10, -118, PAL.gold[0]);
   c.set(-11, -122, PAL.gold[2]);
   const [x, y] = [-11, -114];
-  c.b.circle(c.X(x), c.Y(y), 3, PAL.gold[1]);
+  c.circle(x, y, 3, PAL.gold[1]);
   for (const [dx, dy] of [
     [-2, -2],
     [-1, -3],
@@ -1237,29 +1300,31 @@ function skull(c: Canvas, front: boolean): void {
   if (front) {
     // The cap over the forehead (the seam where the wig's hairline was), two rivets.
     const seam = (x: number): number => -150 - Math.round((x - 4) / 7);
-    L.ellipse(c.X(-16), c.Y(-164), 39, 34, METAL[2]);
-    for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) if (y > c.Y(seam(x + c.x0))) L.set(x, y, 0);
-    shadeBox(L, c.X(-16), c.Y(-164), 39, 20, METAL);
+    c.ellipse(-16, -164, 39, 34, METAL[2], L);
+    for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) if (Math.round(c.ly(y)) > seam(Math.round(c.lx(x)))) L.set(x, y, 0);
+    c.shade(L, -16, -164, 39, 20, METAL);
     c.put(L);
     for (let x = -12; x <= 20; x++) {
       const y = seam(x);
-      if (c.b.get(c.X(x), c.Y(y)) === METAL[2] || c.b.get(c.X(x), c.Y(y)) === METAL[1] || c.b.get(c.X(x), c.Y(y)) === METAL[3]) c.set(x, y, METAL[0]);
+      if (c.at(x, y) === METAL[2] || c.at(x, y) === METAL[1] || c.at(x, y) === METAL[3]) c.set(x, y, METAL[0]);
     }
     for (const x of [-8, 15]) rivet(c, x, seam(x) - 4, METAL);
     c.set(-6, -160, METAL[4]);
     c.set(-5, -160, METAL[4]);
+    if (c.d === 2) hi.skullFront(c, seam);
   } else {
     // The back of the skull, behind the face plate.
-    L.ellipse(c.X(-17), c.Y(-160), 30, 40, METAL[2]);
-    shadeBox(L, c.X(-17), c.Y(-160), 30, 40, METAL);
+    c.ellipse(-17, -160, 30, 40, METAL[2], L);
+    c.shade(L, -17, -160, 30, 40, METAL);
     c.put(L);
     c.line(-14, -136, -8, -136, METAL[0]);
+    if (c.d === 2) hi.skullBack(c);
   }
 }
 
 /** Head frames: 0 smile, 1 hatch open (looks up), 2 shout, 3 blink / powered off (eyes shut, smile kept), 4 bald + off, 5 bald + dizzy. */
-function headFrame(f: number, state: number): Frame {
-  const c = canvas();
+function headFrame(f: number, state: number, d = 1): Frame {
+  const c = canvas(d);
   const bald = f >= 4;
   if (bald) skull(c, false);
   else hairBack(c, 0);
@@ -1294,18 +1359,16 @@ function headFrame(f: number, state: number): Frame {
     // Scuffs on the wig and the skull only: the face plate keeps its features (a few clean
     // hairline panel seams instead), so the likeness stays dignified when she is hurt.
     const keep = c.b.clone();
-    scuff(c.b, c.X(-30), c.Y(-164), 58, 60, state, 31);
+    scuffs(c, -30, -164, 58, 60, state, 31);
     const face = c.layer();
-    face.poly(
-      FACE_POLY.map(([x, y]) => [c.X(x), c.Y(y)] as [number, number]),
-      FACE[2],
-    );
+    c.poly(FACE_POLY, FACE[2], face);
     for (let i = 0; i < face.data.length; i++) if ((face.data[i] & 255) !== 0) c.b.data[i] = keep.data[i];
     c.b.touch();
     const crack = (pts: ReadonlyArray<readonly [number, number]>): void => {
-      for (const [x, y] of pts) if (FACE.includes(c.b.get(c.X(x), c.Y(y)))) c.set(x, y, PAL.steel[1]);
+      if (c.d === 2) return hi.crack(c, pts);
+      for (const [x, y] of pts) if (FACE.includes(c.at(x, y))) c.set(x, y, PAL.steel[1]);
       const [lx, ly] = pts[0];
-      if (FACE.includes(c.b.get(c.X(lx - 1), c.Y(ly)))) c.set(lx - 1, ly, FACE[3]);
+      if (FACE.includes(c.at(lx - 1, ly))) c.set(lx - 1, ly, FACE[3]);
     };
     crack([
       [17, -149],
@@ -1330,24 +1393,27 @@ function headFrame(f: number, state: number): Frame {
 }
 
 /** The wig alone (death: it flies off). Anchor = local (−6, −128), where mayor.ts launches it. */
-function wigFrame(): Frame {
-  const c = canvas();
+function wigFrame(d = 1): Frame {
+  const c = canvas(d);
   hairBack(c, 0);
   // The inside of the wig where the face was.
   const L = c.layer();
-  L.poly(
-    FACE_POLY.map(([x, y]) => [c.X(x), c.Y(y)] as [number, number]),
-    PAL.ink[1],
-  );
+  c.poly(FACE_POLY, PAL.ink[1], L);
   for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) if ((L.get(x, y) & 255) !== 0 && (c.b.get(x, y) & 255) !== 0) c.b.set(x, y, hash2(x, y, 5) < 0.5 ? HAIR[0] : PAL.ink[1]);
   hairFront(c, 0, 0);
   const fr = c.frame(true);
-  return { buf: fr.buf, ox: c.X(-6), oy: c.Y(-128) };
+  const ox = -6 - c.x0;
+  const oy = -128 - c.y0;
+  return d === 1 ? { buf: fr.buf, ox, oy } : { buf: fr.buf, ox, oy, density: d };
 }
 
 /** A coil spring `h` px tall (bottom anchor). */
-function springFrame(h: number): Frame {
-  const c = canvas();
+function springFrame(h: number, d = 1): Frame {
+  const c = canvas(d);
+  if (c.d === 2) {
+    hi.spring(c, h);
+    return c.frame(true);
+  }
   for (let y = 0; y < h; y++) {
     const s = Math.sin((y / Math.max(4, h)) * Math.PI * 5);
     const x = Math.round(s * 5);
@@ -1360,51 +1426,49 @@ function springFrame(h: number): Frame {
 // Overlays
 // ---------------------------------------------------------------------------------------------
 
-defineSprite(`${ART}/legs`, () => [0, 1, 2, 3, 4].map(legsFrame), { trim: true });
+// Every strip has a 2× twin for mission ams (docs/ART_GUIDE.md "2x art (mission ams)"): the
+// same recipe on a density-2 canvas, with finer details drawn by art-hi.ts.
+defineSprite(`${ART}/legs`, () => [0, 1, 2, 3, 4].map((f) => legsFrame(f)), { trim: true, hi: () => [0, 1, 2, 3, 4].map((f) => legsFrame(f, 2)) });
 for (const s of [0, 1, 2] as const) {
-  defineSprite(`${ART}/body-${s}`, () => bodyFrame(s), { trim: true });
-  defineSprite(`${ART}/stamp-arm-${s}`, () => [0, 1, 2, 3, 4, 5].map((f) => stampArmFrame(f % 3, s, f >= 3)), { trim: true });
-  defineSprite(`${ART}/chain-${s}`, () => chainFrame(s), { trim: true });
-  defineSprite(`${ART}/medallion-${s}`, () => [0, 1, 2].map((f) => medallionFrame(f, s)), { trim: true });
-  defineSprite(`${ART}/head-${s}`, () => [0, 1, 2, 3, 4, 5].map((f) => headFrame(f, s)), { trim: true });
+  defineSprite(`${ART}/body-${s}`, () => bodyFrame(s), { trim: true, hi: () => [bodyFrame(s, 2)] });
+  const arm = (d: number): Frame[] => [0, 1, 2, 3, 4, 5].map((f) => stampArmFrame(f % 3, s, f >= 3, d));
+  defineSprite(`${ART}/stamp-arm-${s}`, () => arm(1), { trim: true, hi: () => arm(2) });
+  defineSprite(`${ART}/chain-${s}`, () => chainFrame(s), { trim: true, hi: () => [chainFrame(s, false, 2)] });
+  defineSprite(`${ART}/medallion-${s}`, () => [0, 1, 2].map((f) => medallionFrame(f, s)), { trim: true, hi: () => [0, 1, 2].map((f) => medallionFrame(f, s, 2)) });
+  defineSprite(`${ART}/head-${s}`, () => [0, 1, 2, 3, 4, 5].map((f) => headFrame(f, s)), { trim: true, hi: () => [0, 1, 2, 3, 4, 5].map((f) => headFrame(f, s, 2)) });
 }
-defineSprite(`${ART}/arm-back`, () => [0, 1, 2].map(armBackFrame), { trim: true });
-defineSprite(`${ART}/stamp-arm-gone`, () => stampStump(), { trim: true });
-defineSprite(`${ART}/chain-gone`, () => chainFrame(2, true), { trim: true });
-defineSprite(`${ART}/wig`, () => wigFrame(), { trim: true });
-defineSprite(`${ART}/spring`, () => [6, 14, 22, 30].map(springFrame), { trim: true });
+defineSprite(`${ART}/arm-back`, () => [0, 1, 2].map((f) => armBackFrame(f)), { trim: true, hi: () => [0, 1, 2].map((f) => armBackFrame(f, 2)) });
+defineSprite(`${ART}/stamp-arm-gone`, () => stampStump(), { trim: true, hi: () => [stampStump(2)] });
+defineSprite(`${ART}/chain-gone`, () => chainFrame(2, true), { trim: true, hi: () => [chainFrame(2, true, 2)] });
+defineSprite(`${ART}/wig`, () => wigFrame(), { trim: true, hi: () => [wigFrame(2)] });
+defineSprite(`${ART}/spring`, () => [6, 14, 22, 30].map((h) => springFrame(h)), { trim: true, hi: () => [6, 14, 22, 30].map((h) => springFrame(h, 2)) });
 
 /** A soft floor shadow (the stamp target and the stomp landing): 56 and 52 px wide. */
-defineSprite(
-  `${ART}/shadow`,
-  () =>
-    [56, 52].map((w) => {
-      const c = new Canvas(-w / 2, -4, w / 2, 4);
-      // A red warning rim round the dark core so the target reads on grass, brick and paving.
-      c.b.ellipse(0, 0, w, 9, PAL.red[2]);
-      c.b.ellipse(2, 1, w - 4, 7, PAL.ink[1]);
-      c.b.ellipse(4, 2, w - 8, 5, INK);
-      return { buf: c.b, ox: c.X(0), oy: c.Y(0) };
-    }),
-  {},
-);
+function shadowFrame(w: number, d: number): Frame {
+  const c = new DCanvas(-w / 2, -4, w / 2, 4, d);
+  // A red warning rim round the dark core so the target reads on grass, brick and paving.
+  c.b.ellipse(0, 0, w * d, 9 * d, PAL.red[2]);
+  c.b.ellipse(2 * d, 1 * d, (w - 4) * d, 7 * d, PAL.ink[1]);
+  c.b.ellipse(4 * d, 2 * d, (w - 8) * d, 5 * d, INK);
+  return d === 1 ? { buf: c.b, ox: c.X(0), oy: c.Y(0) } : { buf: c.b, ox: w / 2, oy: 4, density: d };
+}
+defineSprite(`${ART}/shadow`, () => [56, 52].map((w) => shadowFrame(w, 1)), { hi: () => [56, 52].map((w) => shadowFrame(w, 2)) });
 
 /** The lashing chain: 160 px of links with enamel shields, root at the anchor; 2 frames. */
-defineSprite(
-  `${ART}/lash`,
-  () =>
-    [0, 1].map((p) => {
-      const c = new Canvas(0, -5, 164, 5);
-      chainBand(c, curvePts((t) => [t * 158, Math.sin((t * 158 + p * 6) / 7) * 1.5], 320), p);
-      for (let x = 20; x < 150; x += 26) {
-        const k = (x / 26) | 0;
-        chainShield(c, x, Math.round(Math.sin((x + p * 6) / 7) * 1.5), ENAMEL[k % 4]);
-      }
-      // The tip: a big red shield.
-      c.rect(156, -4, 8, 8, SILVER[3]);
-      c.rect(157, -3, 6, 6, PAL.red[2]);
-      c.set(160, 0, PAL.snow[3]);
-      return { buf: c.b.outline(INK), ox: c.X(0), oy: c.Y(0) };
-    }),
-  { ticksPerFrame: 2 },
-);
+function lashFrame(p: number, d: number): Frame {
+  const c = new DCanvas(0, -5, 164, 5, d);
+  chainBand(c, curvePts((t) => [t * 158, Math.sin((t * 158 + p * 6) / 7) * 1.5], 320), p);
+  for (let x = 20; x < 150; x += 26) {
+    const k = (x / 26) | 0;
+    chainShield(c, x, Math.round(Math.sin((x + p * 6) / 7) * 1.5), ENAMEL[k % 4]);
+  }
+  // The tip: a big red shield.
+  if (d === 2) hi.lashTip(c);
+  else {
+    c.rect(156, -4, 8, 8, SILVER[3]);
+    c.rect(157, -3, 6, 6, PAL.red[2]);
+    c.set(160, 0, PAL.snow[3]);
+  }
+  return c.frame(true);
+}
+defineSprite(`${ART}/lash`, () => [0, 1].map((p) => lashFrame(p, 1)), { ticksPerFrame: 2, hi: () => [0, 1].map((p) => lashFrame(p, 2)) });

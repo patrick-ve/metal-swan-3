@@ -461,7 +461,7 @@ export class World implements PhysicsEnv, ScriptHost {
 
   /**
    * Draw entities sorted by z (ties: oldest first) with the particles in between (`particleZ`).
-   * Set the camera on the renderer first: `r.setCamera(world.camera.renderX, world.camera.renderY)`.
+   * Set the camera on the renderer first: `r.setCamera(world.camera.viewX, world.camera.viewY)`.
    */
   draw(r: Renderer): void {
     const dl = this.drawList;

@@ -136,7 +136,7 @@ describe('mission cards (GDD §2.4, §12.3, §13.6, §13.11)', () => {
       place: 'AMSTERDAM - 1100 HOURS',
       briefing: ['SHORE LEAVE IN AMSTERDAM. THE CYGNETS WANT FRIES.', 'THE BEST FRY SHOP IN TOWN NEEDS HELP. GO!'],
       headline: 'ROBO-MAYOR SCRAPPED! THE FRYER STAYS ON!',
-      announce: 'MISSION ONE. FRIES FIRST, CYGNETS!',
+      announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
     },
     m1: {
       label: 'MISSION 2',

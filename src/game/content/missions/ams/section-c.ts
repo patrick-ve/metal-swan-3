@@ -11,7 +11,7 @@
 import { PAL } from '../../../../engine/palette';
 import type { ScriptGen } from '../../../../engine/script';
 import type { BackgroundDef, DecorDef, SectionContext, SectionDef } from '../../../mission/index';
-import { at, crate, fromRight, hostage, normalUp, prewarm } from './helpers';
+import { at, carillon, crate, fromRight, hostage, normalUp, prewarm } from './helpers';
 import { boatDecor, bridgeFaceSprite, HOUSE, houseRow, waterDecor } from './art';
 import { C_AMSTEL, C_BLAUWBRUG, C_BOATS, C_BRIDGE_END, C_BRIDGE_Y, C_CANAL, C_W, DECK_Y, G, ROOF_Y, terrainC, WATER_Y } from './terrain';
 
@@ -95,6 +95,7 @@ const LAMP_TOP = G - 70;
 export function* script(ctx: SectionContext): ScriptGen {
   prewarm('npc/ams/', 'decor/ams/');
   life(ctx);
+  carillon(ctx);
   // Little open boats to hop on along the canal, more life on the quays.
   ctx.spawn('ams-boat-platform', 640, 172, { range: 300, speed: 0.5 });
   ctx.spawn('ams-boat-platform', 1080, 172, { range: 290, speed: 0.45, dir: -1 });
@@ -187,6 +188,7 @@ export const sectionC: SectionDef = {
   checkpoints: [1200, 2400, 3100],
   timeLimit: 60,
   music: 'ams',
+  ambience: 'env/ams-canal',
   vehicles: ['swan'],
   exits: [{ id: 'end', rect: { x: C_W - 28, y: 96, w: 24, h: 80 }, to: 'd', disabled: true }],
   script,

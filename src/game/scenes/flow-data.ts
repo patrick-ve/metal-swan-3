@@ -37,6 +37,13 @@ export interface MissionCard {
   };
 }
 
+/**
+ * The speaker of every card's `briefing` lines (Brigadier Gusto on the radio): the intro card
+ * voices each line with `AudioOut.say(line, BRIEFING_SPEAKER)` when its typing starts (the sample
+ * is keyed by the exact line text; no sample = the card stays silent apart from the static).
+ */
+export const BRIEFING_SPEAKER = 'gusto';
+
 const cards = new Map<string, MissionCard>();
 
 /** Register (or replace) the intro card and headline of a mission. */
@@ -243,8 +250,8 @@ export const VOICE = {
   missionComplete: 'MISSION COMPLETE! BRAVO!',
   ovation: 'STANDING OVATION!',
   continue: 'CONTINUE?',
-  gameOver: 'GAME OVER. THE CRITICS WERE NOT KIND.',
-  highScore: 'NEW HIGH SCORE! ENCORE!',
+  gameOver: 'GAME OVER... UITGEZWAAND!',
+  highScore: "NEW HIGH SCORE! YOU'RE GREAT!",
 } as const;
 
 /** The 7-digit high score rank labels. */

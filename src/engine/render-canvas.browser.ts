@@ -6,27 +6,89 @@ import type { PixelBuffer } from './pixel';
 import { traceLine } from './pixel';
 import type { DrawOpts, Frame, ParallaxOpts, Renderer, TextOpts } from './render';
 import { VIEW_H, VIEW_W } from './render';
-import type { LineEnds, Part, Placement } from './render-common';
-import { clipLine, firstTile, parallaxOrigin, placeAnchored, placePart, solidColor } from './render-common';
-import { getFrame } from './sprites';
+import type { LineEnds, Part, Placement, SubpixelMode } from './render-common';
+import {
+  anchorTopLeft,
+  cameraPx,
+  clipLine,
+  DEFAULT_SUBPIXEL,
+  firstTile,
+  layerCam,
+  lowRes,
+  parallaxOrigin,
+  placePart,
+  solidColor,
+  spriteFilter,
+  toPx,
+} from './render-common';
+import { getFrame, spriteIdOf } from './sprites';
+import { upscale, upscaleFactor, type UpscaleMode } from './upscale';
 
 /**
- * Canvas 2D renderer drawing into a VIEW_W × VIEW_H backbuffer canvas (present it with
- * display.browser.ts). Every PixelBuffer is uploaded once per variant — normal, flipped X/Y and
- * white "flash" silhouettes — and cached in a WeakMap keyed by the buffer. The variants are
- * computed in TypeScript, so pixels match the software renderer exactly; only alpha / additive
- * blends may differ by ±1 per channel. A buffer whose `version` changed is re-uploaded.
+ * Canvas 2D renderer drawing into a (VIEW_W · res) × (VIEW_H · res) backbuffer canvas (present it
+ * with display.browser.ts). Coordinates are logical; every draw is placed in whole backbuffer
+ * pixels by the rules of render-common.ts (the context transform stays the identity), so the
+ * image matches the software renderer exactly; only alpha / additive blends may differ by ±1 per
+ * channel.
+ *
+ * Textures: every PixelBuffer is uploaded once per variant — normal, flipped X/Y, tint / white
+ * "flash" silhouettes, and for registered sprites (sprites.ts) the same variants of the upscaled
+ * copy (upscale.ts) — and kept in one LRU cache with a pixel budget (`budgetPx`, counting canvases
+ * and upscaled buffers). Variants are computed in TypeScript; Canvas only enlarges them by
+ * nearest neighbour (imageSmoothingEnabled off). Upscaling is lazy and limited per frame
+ * (`scaleBudgetMs`): a sprite not upscaled yet is drawn from its 1× texture this frame and
+ * upscaled at the end of the frame or a later one. A buffer whose `version` changed is
+ * re-uploaded.
  */
 
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
 type AnyContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
+/** Default texture budget: canvases + upscaled buffers, in pixels (4 bytes each). */
+export const TEXTURE_BUDGET_PX = 48_000_000;
+/** Default time per frame spent upscaling sprites (ms). */
+export const SCALE_BUDGET_MS = 4;
+
+export interface CanvasRendererOpts {
+  /** Backbuffer pixels per logical pixel (integer ≥ 1, default 1). */
+  res?: number;
+  mode?: UpscaleMode;
+  subpixel?: SubpixelMode;
+  budgetPx?: number;
+  scaleBudgetMs?: number;
+}
+
+/** Variant index: flipX | flipY << 1 | upscaled << 2. */
+type Variants = (AnyCanvas | undefined)[];
+
 interface CacheEntry {
   version: number;
-  /** Untinted variants, index flipX | flipY << 1. */
-  plain: (AnyCanvas | undefined)[];
+  /** Untinted variants. */
+  plain: Variants;
   /** Silhouette variants per tint colour (white = hit flash). */
-  tinted: Map<number, (AnyCanvas | undefined)[]> | null;
+  tinted: Map<number, Variants> | null;
+  /** The upscaled copy (filter `upMode`, from `spriteFilter`), or null. */
+  up: PixelBuffer | null;
+  upMode: UpscaleMode | null;
+  /** Pixels held by this entry (canvases + `up`). */
+  px: number;
+  /** Frame number of the last use (entries used this frame are never evicted). */
+  used: number;
+}
+
+/** Texture numbers for the debug overlay and the perf tool. */
+export interface TextureStats {
+  entries: number;
+  /** Pixels held (canvases + upscaled buffers). */
+  px: number;
+  budgetPx: number;
+  /** Upscales done / sprites drawn from 1× because the budget ran out, in the last frame. */
+  scaled: number;
+  deferred: number;
+  /** Time spent upscaling in the last frame (ms). */
+  scaleMs: number;
+  /** Entries evicted so far. */
+  evicted: number;
 }
 
 function makeCanvas(w: number, h: number): AnyCanvas {
@@ -75,16 +137,40 @@ function upload(buf: PixelBuffer, flipX: boolean, flipY: boolean, tint: Color | 
   return c;
 }
 
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
 export class CanvasRenderer implements Renderer {
   readonly w: number;
   readonly h: number;
-  /** The backbuffer. */
+  /** The backbuffer, (w · res) × (h · res). */
   readonly canvas: AnyCanvas;
   readonly ctx: AnyContext;
   camX = 0;
   camY = 0;
+  mode: UpscaleMode;
+  subpixel: SubpixelMode;
+  budgetPx: number;
+  scaleBudgetMs: number;
 
-  private readonly cache = new WeakMap<PixelBuffer, CacheEntry>();
+  private k = 1;
+  /** Camera in backbuffer px. */
+  private cx = 0;
+  private cy = 0;
+  /** The unrounded camera passed to setCamera (for background layers with 'parallax' / 'all'). */
+  private exactX = 0;
+  private exactY = 0;
+  /** LRU order: oldest first (Map insertion order). */
+  private readonly cache = new Map<PixelBuffer, CacheEntry>();
+  private cachePx = 0;
+  private frameNo = 0;
+  private scaleMs = 0;
+  private scaledCount = 0;
+  private deferredCount = 0;
+  private evicted = 0;
+  private readonly pending: PixelBuffer[] = [];
+  /** Did the last variant() call return an upscaled texture? */
+  private variantUp = false;
+  private lastStats: TextureStats = { entries: 0, px: 0, budgetPx: 0, scaled: 0, deferred: 0, scaleMs: 0, evicted: 0 };
   private readonly atlases = new Map<string, Map<number, AnyCanvas>>();
   private readonly css = new Map<number, string>();
   private readonly place: Placement = { x: 0, y: 0 };
@@ -98,22 +184,28 @@ export class CanvasRenderer implements Renderer {
   private textScale = 1;
   private readonly drawGlyphAt = (g: Glyph, x: number, y: number): void => {
     const f = this.textFont;
-    const s = this.textScale;
-    if (this.textAtlas) this.ctx.drawImage(this.textAtlas, g.index * (f.maxW + 1), 0, g.w, f.height, x, y, g.w * s, f.height * s);
+    const s = this.textScale * this.k;
+    if (this.textAtlas) {
+      this.ctx.drawImage(this.textAtlas, g.index * (f.maxW + 1), 0, g.w, f.height, this.textX + x * this.k, this.textY + y * this.k, g.w * s, f.height * s);
+    }
   };
   private textAlign: 'left' | 'center' | 'right' = 'left';
+  /** Text origin in backbuffer px. */
   private textX = 0;
   private textY = 0;
   private textStr = '';
   private readonly textPass = (color: Color, dx: number, dy: number): void => {
     this.textAtlas = this.atlas(this.textFont, color);
-    layoutText(this.textStr, this.textX + dx, this.textY + dy, this.textFont, this.textAlign, this.drawGlyphAt, this.textScale);
+    layoutText(this.textStr, dx, dy, this.textFont, this.textAlign, this.drawGlyphAt, this.textScale);
   };
-  // Line pixels are merged into horizontal or vertical runs, one fillRect each.
+  // Line pixels (logical) are merged into horizontal or vertical runs, one fillRect each.
   private runX = 0;
   private runY = 0;
   private runW = 0;
   private runH = 0;
+  /** Backbuffer shift of the current line (the camera's part below one logical pixel). */
+  private lineFx = 0;
+  private lineFy = 0;
   private readonly plotLine = (x: number, y: number): void => {
     if (this.runW > 0) {
       if (this.runH === 1 && y === this.runY && x === this.runX + this.runW) {
@@ -124,7 +216,7 @@ export class CanvasRenderer implements Renderer {
         this.runH++;
         return;
       }
-      this.ctx.fillRect(this.runX, this.runY, this.runW, this.runH);
+      this.flushRun();
     }
     this.runX = x;
     this.runY = y;
@@ -132,37 +224,105 @@ export class CanvasRenderer implements Renderer {
     this.runH = 1;
   };
 
-  constructor(w = VIEW_W, h = VIEW_H, canvas?: AnyCanvas) {
+  constructor(w = VIEW_W, h = VIEW_H, canvas?: AnyCanvas, opts: CanvasRendererOpts = {}) {
     this.w = w;
     this.h = h;
-    this.canvas = canvas ?? makeCanvas(w, h);
-    this.canvas.width = w;
-    this.canvas.height = h;
+    this.k = Math.max(1, Math.floor(opts.res ?? 1));
+    this.mode = opts.mode ?? 'pixel';
+    this.subpixel = opts.subpixel ?? DEFAULT_SUBPIXEL;
+    this.budgetPx = opts.budgetPx ?? TEXTURE_BUDGET_PX;
+    this.scaleBudgetMs = opts.scaleBudgetMs ?? SCALE_BUDGET_MS;
+    this.canvas = canvas ?? makeCanvas(w * this.k, h * this.k);
+    this.canvas.width = w * this.k;
+    this.canvas.height = h * this.k;
     this.ctx = context(this.canvas);
+  }
+
+  get res(): number {
+    return this.k;
+  }
+
+  /** Change the backbuffer resolution (re-sizes the canvas; the next begin() redraws it all). */
+  setRes(k: number): void {
+    const n = Math.max(1, Math.floor(k));
+    if (n === this.k) return;
+    this.k = n;
+    this.canvas.width = this.w * n;
+    this.canvas.height = this.h * n;
+    // Resizing resets the context state.
+    this.ctx.imageSmoothingEnabled = false;
+    this.alpha = 1;
+    this.add = false;
+    this.ctx.globalAlpha = 1;
+    this.ctx.globalCompositeOperation = 'source-over';
+  }
+
+  setMode(mode: UpscaleMode): void {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    this.clearUpscaled();
+  }
+
+  setSubpixel(s: SubpixelMode): void {
+    this.subpixel = s;
+  }
+
+  /** Texture cache numbers (last finished frame). */
+  textureStats(): TextureStats {
+    return this.lastStats;
   }
 
   begin(clear: Color | null = BLACK): void {
     const ctx = this.ctx;
+    this.frameNo++;
+    this.scaleMs = 0;
+    this.scaledCount = 0;
+    this.deferredCount = 0;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
     this.setAlpha(1);
     this.setAdd(false);
     if (clear === null) return;
-    if ((clear & 255) !== 255) ctx.clearRect(0, 0, this.w, this.h);
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    if ((clear & 255) !== 255) ctx.clearRect(0, 0, W, H);
     if ((clear & 255) !== 0) {
       ctx.fillStyle = this.cssOf(clear);
-      ctx.fillRect(0, 0, this.w, this.h);
+      ctx.fillRect(0, 0, W, H);
     }
   }
 
   end(): void {
     this.setAlpha(1);
     this.setAdd(false);
+    // Spend what is left of the scaling budget on sprites that were drawn from 1×.
+    for (let i = 0; i < this.pending.length && this.scaleMs < this.scaleBudgetMs; i++) {
+      const buf = this.pending[i];
+      const e = this.cache.get(buf);
+      const m = spriteFilter(spriteIdOf(buf), this.mode, this.k);
+      if (e && m !== 'pixel' && !this.upToDate(e, m)) this.makeUp(buf, e, m);
+    }
+    this.pending.length = 0;
+    this.evict();
+    this.lastStats = {
+      entries: this.cache.size,
+      px: this.cachePx,
+      budgetPx: this.budgetPx,
+      scaled: this.scaledCount,
+      deferred: this.deferredCount,
+      scaleMs: this.scaleMs,
+      evicted: this.evicted,
+    };
   }
 
   setCamera(x: number, y: number): void {
-    this.camX = Math.round(x);
-    this.camY = Math.round(y);
+    const k = this.k;
+    this.exactX = x;
+    this.exactY = y;
+    this.cx = cameraPx(x, k, this.subpixel);
+    this.cy = cameraPx(y, k, this.subpixel);
+    this.camX = this.cx / k;
+    this.camY = this.cy / k;
   }
 
   sprite(id: string, frameIndex: number, x: number, y: number, o?: DrawOpts): void {
@@ -173,19 +333,39 @@ export class CanvasRenderer implements Renderer {
     const screen = o?.screen === true;
     const flipX = o?.flipX === true;
     const flipY = o?.flipY === true;
-    const p = placeAnchored(this.place, f.buf.w, f.buf.h, f.ox, f.oy, x, y, flipX, flipY, screen ? 0 : this.camX, screen ? 0 : this.camY);
-    this.blit(f.buf, p.x, p.y, flipX, flipY, o);
+    const k = this.k;
+    const fine = !screen && this.subpixel === 'all';
+    const d = f.density ?? 1;
+    const p = anchorTopLeft(
+      this.place,
+      f.buf.w / d,
+      f.buf.h / d,
+      f.ox,
+      f.oy,
+      toPx(x, k, fine) - (screen ? 0 : this.cx),
+      toPx(y, k, fine) - (screen ? 0 : this.cy),
+      flipX,
+      flipY,
+      k,
+    );
+    this.blit(f.buf, p.x, p.y, flipX, flipY, o, true, d);
   }
 
   image(buf: PixelBuffer, x: number, y: number, o?: DrawOpts): void {
     const screen = o?.screen === true;
-    this.blit(buf, Math.round(x) - (screen ? 0 : this.camX), Math.round(y) - (screen ? 0 : this.camY), o?.flipX === true, o?.flipY === true, o);
+    const k = this.k;
+    const fine = !screen && this.subpixel === 'all';
+    const left = toPx(x, k, fine) - (screen ? 0 : this.cx);
+    const top = toPx(y, k, fine) - (screen ? 0 : this.cy);
+    this.blit(buf, left, top, o?.flipX === true, o?.flipY === true, o, false);
   }
 
   rect(x: number, y: number, w: number, h: number, c: Color, o?: DrawOpts): void {
     const screen = o?.screen === true;
-    const left = Math.round(x) - (screen ? 0 : this.camX);
-    const top = Math.round(y) - (screen ? 0 : this.camY);
+    const k = this.k;
+    const fine = !screen && this.subpixel === 'all';
+    const left = toPx(x, k, fine) - (screen ? 0 : this.cx);
+    const top = toPx(y, k, fine) - (screen ? 0 : this.cy);
     const rw = Math.round(w);
     const rh = Math.round(h);
     if (rw <= 0 || rh <= 0 || (c & 255) === 0) return;
@@ -193,23 +373,27 @@ export class CanvasRenderer implements Renderer {
     this.setAdd(o?.blend === 'add');
     if (this.alpha <= 0) return;
     this.ctx.fillStyle = this.cssOf(solidColor(c, o));
-    this.ctx.fillRect(left, top, rw, rh);
+    this.ctx.fillRect(left, top, rw * k, rh * k);
   }
 
   line(x0: number, y0: number, x1: number, y1: number, c: Color, o?: DrawOpts): void {
     const screen = o?.screen === true;
-    const cx = screen ? 0 : this.camX;
-    const cy = screen ? 0 : this.camY;
+    const k = this.k;
     if ((c & 255) === 0) return;
     this.setAlpha(o?.alpha ?? 1);
     this.setAdd(o?.blend === 'add');
     if (this.alpha <= 0) return;
     this.ctx.fillStyle = this.cssOf(solidColor(c, o));
+    // Whole logical pixels relative to the camera's whole-pixel part; the rest shifts the blocks.
+    const ix = screen ? 0 : Math.floor(this.cx / k);
+    const iy = screen ? 0 : Math.floor(this.cy / k);
+    this.lineFx = screen ? 0 : this.cx - ix * k;
+    this.lineFy = screen ? 0 : this.cy - iy * k;
     const e = this.ends;
-    if (!clipLine(e, Math.round(x0) - cx, Math.round(y0) - cy, Math.round(x1) - cx, Math.round(y1) - cy, this.w, this.h)) return;
+    if (!clipLine(e, Math.round(x0) - ix, Math.round(y0) - iy, Math.round(x1) - ix, Math.round(y1) - iy, this.w, this.h)) return;
     this.runW = 0;
     traceLine(e.x0, e.y0, e.x1, e.y1, this.plotLine);
-    if (this.runW > 0) this.ctx.fillRect(this.runX, this.runY, this.runW, this.runH);
+    if (this.runW > 0) this.flushRun();
     this.runW = 0;
   }
 
@@ -218,11 +402,13 @@ export class CanvasRenderer implements Renderer {
     this.setAlpha(o?.alpha ?? 1);
     this.setAdd(false);
     if (this.alpha <= 0 || s.length === 0) return;
+    const k = this.k;
+    const fine = !screen && this.subpixel === 'all';
     this.textFont = getFont(o?.font);
     this.textScale = textScale(o);
     this.textAlign = o?.align ?? 'left';
-    this.textX = Math.round(x) - (screen ? 0 : this.camX);
-    this.textY = Math.round(y) - (screen ? 0 : this.camY);
+    this.textX = toPx(x, k, fine) - (screen ? 0 : this.cx);
+    this.textY = toPx(y, k, fine) - (screen ? 0 : this.cy);
     this.textStr = s;
     textPasses(o, this.textPass);
     this.textStr = '';
@@ -237,19 +423,32 @@ export class CanvasRenderer implements Renderer {
     o?: ParallaxOpts,
   ): void {
     if (buf.w === 0 || buf.h === 0) return;
-    const sx = parallaxOrigin(offsetX, this.camX, factorX);
-    const sy = parallaxOrigin(offsetY, this.camY, factorY);
+    const k = this.k;
+    const fine = this.subpixel !== 'off';
+    const sx = parallaxOrigin(offsetX, layerCam(this.camX, this.exactX, factorX, k, this.subpixel), factorX, k, fine);
+    const sy = parallaxOrigin(offsetY, layerCam(this.camY, this.exactY, factorY, k, this.subpixel), factorY, k, fine);
+    // A 2× layer tiles by its logical size; below res d it is drawn as its 1× reduction.
+    const d = Math.max(1, Math.floor(o?.density ?? 1));
+    const src = d > k ? lowRes(buf, d) : buf;
+    const f = d > k ? 1 : d;
+    const tw = (src.w / f) * k;
+    const th = (src.h / f) * k;
     const repeatX = o?.repeatX !== false;
     const repeatY = o?.repeatY === true;
-    const x0 = repeatX ? firstTile(sx, buf.w) : sx;
-    const y0 = repeatY ? firstTile(sy, buf.h) : sy;
+    const x0 = repeatX ? firstTile(sx, tw) : sx;
+    const y0 = repeatY ? firstTile(sy, th) : sy;
     this.setAlpha(o?.alpha ?? 1);
     this.setAdd(false);
     if (this.alpha <= 0) return;
-    const img = this.variant(buf, false, false, null);
-    for (let ty = y0; ty < this.h; ty += buf.h) {
-      for (let tx = x0; tx < this.w; tx += buf.w) {
-        if (tx + buf.w > 0 && ty + buf.h > 0) this.ctx.drawImage(img, tx, ty);
+    const img = this.variant(src, false, false, null, 'pixel');
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    for (let ty = y0; ty < H; ty += th) {
+      for (let tx = x0; tx < W; tx += tw) {
+        if (tx + tw > 0 && ty + th > 0) {
+          if (k === 1) this.ctx.drawImage(img, tx, ty);
+          else this.ctx.drawImage(img, tx, ty, tw, th);
+        }
         if (!repeatX) break;
       }
       if (!repeatY) break;
@@ -261,38 +460,138 @@ export class CanvasRenderer implements Renderer {
     this.setAlpha(alpha);
     this.setAdd(false);
     this.ctx.fillStyle = this.cssOf(c);
-    this.ctx.fillRect(0, 0, this.w, this.h);
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
   /** Drop the cached canvases of one buffer (they are rebuilt on next use). */
   forget(buf: PixelBuffer): void {
+    const e = this.cache.get(buf);
+    if (!e) return;
+    this.cachePx -= e.px;
     this.cache.delete(buf);
+  }
+
+  /** Drop every upscaled copy (a mode change); 1× textures stay. */
+  clearUpscaled(): void {
+    for (const e of this.cache.values()) this.dropUp(e);
   }
 
   // ------------------------------------------------------------------ internals
 
-  private blit(buf: PixelBuffer, left: number, top: number, flipX: boolean, flipY: boolean, o?: DrawOpts): void {
-    if (left >= this.w || top >= this.h || left + buf.w <= 0 || top + buf.h <= 0) return;
+  private flushRun(): void {
+    const k = this.k;
+    this.ctx.fillRect(this.runX * k - this.lineFx, this.runY * k - this.lineFy, this.runW * k, this.runH * k);
+  }
+
+  /**
+   * Draw a buffer (top-left at backbuffer px left/top) or its `src` part. `sprite`: a frame,
+   * which may go through the upscaler. `d`: the frame's density (buffer px per logical px; 2× art
+   * is never filtered, and drawn as `lowRes` below res d).
+   */
+  private blit(buf: PixelBuffer, left: number, top: number, flipX: boolean, flipY: boolean, o: DrawOpts | undefined, sprite: boolean, d = 1): void {
+    const k = this.k;
+    const lw = d === 1 ? buf.w : buf.w / d;
+    const lh = d === 1 ? buf.h : buf.h / d;
+    if (left >= this.canvas.width || top >= this.canvas.height || left + lw * k <= 0 || top + lh * k <= 0) return;
     this.setAlpha(o?.alpha ?? 1);
     this.setAdd(o?.blend === 'add');
     if (this.alpha <= 0) return;
     const tint = o?.tint ?? (o?.flash ? WHITE : null);
-    const img = this.variant(buf, flipX, flipY, tint);
+    // The texture source and its px per logical px: the buffer, or the 1× reduction of a 2×
+    // buffer below res d.
+    const src = d > k ? lowRes(buf, d) : buf;
+    const sd = d > k ? 1 : d;
+    const m: UpscaleMode = sprite && d === 1 && k > 1 && this.mode !== 'pixel' ? spriteFilter(spriteIdOf(buf), this.mode, k) : 'pixel';
+    let f = sd * upscaleFactor(m);
+    const img = this.variant(src, flipX, flipY, tint, m);
+    // The upscaled copy may not be ready (scaling budget): then this is the 1× texture.
+    if (!this.variantUp) f = sd;
     if (o?.src) {
       const p = this.part;
-      if (placePart(p, buf.w, buf.h, o.src, left, top, flipX, flipY)) {
-        this.ctx.drawImage(img, p.sx, p.sy, p.sw, p.sh, p.dx, p.dy, p.sw, p.sh);
+      if (placePart(p, lw, lh, o.src, left, top, flipX, flipY, k)) {
+        this.ctx.drawImage(img, p.sx * f, p.sy * f, p.sw * f, p.sh * f, p.dx, p.dy, p.sw * k, p.sh * k);
       }
       return;
     }
-    this.ctx.drawImage(img, left, top);
+    if (k === 1 && f === 1) this.ctx.drawImage(img, left, top);
+    else this.ctx.drawImage(img, left, top, lw * k, lh * k);
   }
 
-  private variant(buf: PixelBuffer, flipX: boolean, flipY: boolean, tint: Color | null): AnyCanvas {
+  /** Cache entry of a buffer, moved to the young end of the LRU once per frame. */
+  private entry(buf: PixelBuffer): CacheEntry {
     let e = this.cache.get(buf);
-    if (!e || e.version !== buf.version) {
-      e = { version: buf.version, plain: [], tinted: null };
+    if (!e) {
+      e = { version: buf.version, plain: [], tinted: null, up: null, upMode: null, px: 0, used: this.frameNo };
       this.cache.set(buf, e);
+      return e;
+    }
+    if (e.used !== this.frameNo) {
+      e.used = this.frameNo;
+      this.cache.delete(buf);
+      this.cache.set(buf, e);
+    }
+    if (e.version !== buf.version) {
+      this.cachePx -= e.px;
+      e.version = buf.version;
+      e.plain = [];
+      e.tinted = null;
+      e.up = null;
+      e.upMode = null;
+      e.px = 0;
+    }
+    return e;
+  }
+
+  private upToDate(e: CacheEntry, m: UpscaleMode): boolean {
+    return e.up !== null && e.upMode === m;
+  }
+
+  /** Upscale now with filter `m` (counts against the frame's scaling budget). */
+  private makeUp(buf: PixelBuffer, e: CacheEntry, m: UpscaleMode): void {
+    this.dropUp(e);
+    const t0 = now();
+    const up = upscale(buf, m);
+    this.scaleMs += now() - t0;
+    this.scaledCount++;
+    e.up = up;
+    e.upMode = m;
+    this.grow(e, up.w * up.h);
+  }
+
+  /** Forget the upscaled copy and its canvases. */
+  private dropUp(e: CacheEntry): void {
+    if (e.up) this.grow(e, -e.up.w * e.up.h);
+    e.up = null;
+    e.upMode = null;
+    for (let i = 4; i < 8; i++) this.dropCanvas(e, e.plain, i);
+    if (e.tinted) for (const list of e.tinted.values()) for (let i = 4; i < 8; i++) this.dropCanvas(e, list, i);
+  }
+
+  private dropCanvas(e: CacheEntry, list: Variants, i: number): void {
+    const c = list[i];
+    if (!c) return;
+    this.grow(e, -c.width * c.height);
+    list[i] = undefined;
+  }
+
+  private grow(e: CacheEntry, px: number): void {
+    e.px += px;
+    this.cachePx += px;
+  }
+
+  /** Texture of a buffer variant; `m` = the filter wanted ('pixel' = the 1× texture). */
+  private variant(buf: PixelBuffer, flipX: boolean, flipY: boolean, tint: Color | null, m: UpscaleMode): AnyCanvas {
+    const e = this.entry(buf);
+    let up = false;
+    if (m !== 'pixel') {
+      if (!this.upToDate(e, m)) {
+        if (this.scaleMs < this.scaleBudgetMs) this.makeUp(buf, e, m);
+        else {
+          this.deferredCount++;
+          this.pending.push(buf);
+        }
+      }
+      up = this.upToDate(e, m);
     }
     let list = e.plain;
     if (tint !== null) {
@@ -305,13 +604,27 @@ export class CanvasRenderer implements Renderer {
       }
       list = t;
     }
-    const k = (flipX ? 1 : 0) | (flipY ? 2 : 0);
-    let c = list[k];
+    this.variantUp = up;
+    const i = (flipX ? 1 : 0) | (flipY ? 2 : 0) | (up ? 4 : 0);
+    let c = list[i];
     if (!c) {
-      c = upload(buf, flipX, flipY, tint);
-      list[k] = c;
+      c = upload(up && e.up ? e.up : buf, flipX, flipY, tint);
+      list[i] = c;
+      this.grow(e, c.width * c.height);
     }
     return c;
+  }
+
+  /** Drop the least recently used entries until the cache fits its budget (never this frame's). */
+  private evict(): void {
+    if (this.cachePx <= this.budgetPx) return;
+    for (const [buf, e] of this.cache) {
+      if (this.cachePx <= this.budgetPx) break;
+      if (e.used === this.frameNo) break; // the rest is younger
+      this.cachePx -= e.px;
+      this.cache.delete(buf);
+      this.evicted++;
+    }
   }
 
   private atlas(font: BitmapFont, color: Color): AnyCanvas {

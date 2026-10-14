@@ -1,10 +1,11 @@
 /**
  * npm run smoke -- [--port 5180] [--url http://host:port/] [--query "mission=m0&god=1"] [--out tmp/smoke]
- *                  [--headed] [--timeout 90000]
+ *                  [--headed] [--timeout 90000] [--viewport 1152x648] [--dpr 1]
  *
  * Browser smoke test (docs/ARCHITECTURE.md §9): starts the Vite dev server on --port (strict:
- * the port must be free; or uses --url), opens headless Chromium (Playwright) with a fixed
- * 1152×648 viewport (3× the game), waits for the title, presses Enter twice (title → menu →
+ * the port must be free; or uses --url), opens headless Chromium (Playwright) with a 1152×648
+ * viewport (3× the game; --viewport and --dpr change it, e.g. 1920x1080 for the 5× backbuffer),
+ * waits for the title, presses Enter twice (title → menu →
  * 1 PLAYER), then plays a scripted sequence — run + shoot, jump, bomb, pause / resume, play on —
  * taking a screenshot of the canvas at each step into --out. Console errors / warnings, page
  * errors and failed requests are collected; a JSON summary is printed. Exit code 1 when the page
@@ -22,12 +23,16 @@ interface Args {
   out: string;
   headed: boolean;
   timeout: number;
+  viewport: { width: number; height: number };
+  dpr: number;
 }
 
-const USAGE = 'usage: npm run smoke -- [--port 5180] [--url http://127.0.0.1:5180/] [--query "mission=m0&god=1"] [--out tmp/smoke] [--headed] [--timeout 90000]';
+const USAGE =
+  'usage: npm run smoke -- [--port 5180] [--url http://127.0.0.1:5180/] [--query "mission=m0&god=1"] [--out tmp/smoke] [--headed] [--timeout 90000] ' +
+  '[--viewport 1152x648] [--dpr 1]';
 
 function parseArgs(argv: readonly string[]): Args {
-  const a: Args = { port: 5180, query: '', out: 'tmp/smoke', headed: false, timeout: 90000 };
+  const a: Args = { port: 5180, query: '', out: 'tmp/smoke', headed: false, timeout: 90000, viewport: { width: 1152, height: 648 }, dpr: 1 };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
     const next = (): string => {
@@ -54,6 +59,16 @@ function parseArgs(argv: readonly string[]): Args {
         break;
       case '--timeout':
         a.timeout = Math.max(5000, Number(next()) || a.timeout);
+        break;
+      case '--viewport': {
+        const m = /^(\d{2,5})x(\d{2,5})$/i.exec(next());
+        if (!m) throw new Error(`--viewport needs WxH, e.g. 1920x1080\n${USAGE}`);
+        a.viewport = { width: Number(m[1]), height: Number(m[2]) };
+        break;
+      }
+      case '--dpr':
+        a.dpr = Number(next());
+        if (!(a.dpr > 0 && a.dpr <= 4)) throw new Error(`bad --dpr\n${USAGE}`);
         break;
       case '--help':
       case '-h':
@@ -172,7 +187,7 @@ async function main(): Promise<void> {
 
     const { chromium } = await import('playwright');
     browser = await chromium.launch({ headless: !args.headed });
-    const page = await browser.newPage({ viewport: { width: 1152, height: 648 }, deviceScaleFactor: 1 });
+    const page = await browser.newPage({ viewport: args.viewport, deviceScaleFactor: args.dpr });
     page.setDefaultTimeout(args.timeout);
     const seen = new Set<string>();
     page.on('console', (m) => {

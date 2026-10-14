@@ -593,7 +593,7 @@ export class TubaRing extends Projectile {
     ringDraw.flipY = !this.horizontal && this.vy > 0;
     const left = this.life - this.t;
     ringDraw.alpha = left < 12 ? Math.max(0.2, left / 12) : 1;
-    r.sprite(id, frame, Math.round(this.x), Math.round(this.y), ringDraw);
+    r.sprite(id, frame, this.x, this.y, ringDraw);
   }
 }
 

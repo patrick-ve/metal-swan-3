@@ -137,6 +137,8 @@ describe('sfx ids', () => {
       'item/pickup', 'item/1up', 'hostage/free', 'hostage/give',
       'ui/move', 'ui/confirm', 'ui/cancel', 'ui/pause', 'ui/timer-warn', 'ui/tally-tick', 'ui/tally-end',
       'boss/warning', 'mission/checkpoint', 'mission/time-up',
+      // 2026-10-14: footsteps (missions with `footsteps`), canal splashes, the RELOAD! clack, the GO arrow.
+      'player/step', 'player/splash', 'weapon/reload', 'ui/go',
     ];
     expect(used.filter((id) => !hasSfx(id))).toEqual([]);
   });
@@ -302,7 +304,7 @@ describe('lengths follow the GDD numbers', () => {
 /** Sounds that repeat every few ticks: they sit low so the mix never fatigues. */
 const FREQUENT = [
   'weapon/pistol', 'weapon/machine-gun', 'weapon/vulcan', 'weapon/mine-bounce', 'weapon/grenade-bounce', 'weapon/knife',
-  'hit/enemy', 'hit/metal', 'hit/ground', 'player/jump', 'player/land', 'swan/step', 'swan/paddle', 'swan/fire',
+  'hit/enemy', 'hit/metal', 'hit/ground', 'player/jump', 'player/land', 'player/step', 'swan/step', 'swan/paddle', 'swan/fire',
   'swan/fold', 'enemy/rifle', 'enemy/aim', 'machine/metronome-tick', 'machine/metronome-tock', 'ui/move', 'ui/tally-tick',
   'ui/name-letter', 'ui/timer-warn',
 ];
@@ -357,11 +359,13 @@ describe('loudness plan (K-weighted momentary maximum, LUFS)', () => {
 // ------------------------------------------------------------------------------------------ loops
 
 describe('loops', () => {
-  it('are exactly the sounds the GDD wants looped (plus the ones the game loops: static, meltwater, wind, avalanche)', () => {
+  it('are exactly the sounds the GDD wants looped (plus the ones the game loops: static, meltwater, wind, avalanche, ambience)', () => {
     expect([...SFX_LOOPS].sort()).toEqual(
       [
         'boss/bagpipe-drone', 'creature/kazoo', 'env/avalanche', 'env/ice-melt', 'env/radio-static', 'env/wind', 'machine/copter',
         'machine/tank-move', 'swan/glide', 'weapon/laser',
+        // 2026-10-14 (ams and the start screens): ambience beds, the tour boat and the Swan's engine.
+        'env/ams-canal', 'env/ams-street', 'ams/tour-boat', 'swan/engine', 'env/title-lake', 'ams/mayor-babble',
       ].sort(),
     );
     for (const id of SFX_LOOPS) expect(sfxIsLoop(id), id).toBe(true);

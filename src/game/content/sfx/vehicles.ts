@@ -113,6 +113,14 @@ export const VEHICLES: Recipes = {
 const THIRD = 1.26;
 
 export const SWAN: Recipes = {
+  // Her servo heart while she is ridden (loop, 0.5 s; 2026-10-14): a low mechanical purr with a
+  // 12 Hz ripple and a faint gear whine. 50 / 110 / 640 Hz and the 12 Hz ripple make whole cycles.
+  'swan/engine': loopRecipe(0.5, 0.35, [
+    { wave: 'saw', freq: 50, vol: 0.5, filter: LP(240), tremolo: { rate: 12, depth: 0.35 } },
+    { wave: 'square', freq: 110, vol: 0.12, filter: LP(420) },
+    { wave: 'noise', vol: 0.18, filter: LP(700), tremolo: { rate: 12, depth: 0.7, shape: 'saw' } },
+    { wave: 'sine', freq: 640, vol: 0.03 },
+  ]),
   // A webbed-paddle slap with a light hydraulic tick: a short low noise burst + a saw 60 Hz blip,
   // 50 ms. Quiet (it repeats every 8–12 ticks); the waddle plays it at a lower `vol`.
   'swan/step': {

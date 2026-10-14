@@ -91,6 +91,9 @@ export function throwTicket(world: World, x: number, feetY: number, dir: number,
 const SKINS = ['a', 'b', 'c'] as const;
 
 export class Handhaver extends Creature {
+  /** One sprite per draw: drawn at the sub-pixel position (Enemy.fineDraw). */
+  protected override fineDraw = true;
+
   private readonly tickets: Array<BoeteTicket | null> = [null, null];
   private telegraph: number = HANDHAVER.tele;
   private cool: number;
@@ -175,7 +178,7 @@ export class Handhaver extends Creature {
       this.setMode('tell');
       this.play('tell', { restart: true });
       this.world.audio.sfx('ams/ticket', { vol: 0.5 });
-      hudOf(this.world).bubble(this, 'BOETE!', { ticks: this.telegraph + 8, kind: 'gag' });
+      hudOf(this.world).bubble(this, 'BOETE!', { ticks: this.telegraph + 8, kind: 'gag', speaker: 'handhaver' });
     } else this.cool = 10;
   }
 
@@ -201,6 +204,7 @@ export class Handhaver extends Creature {
   }
 
   protected override deathEffects(d: Damage): void {
+    this.world.audio.sfx('ams/handhaver-down');
     confetti(this.world, this.x, this.y - 22, 12, 2);
     for (let i = 0; i < 3; i++) {
       tumble(this.world, 'enemy/boete-ticket/fly', this.x, this.y - 24, (i - 1) * 0.9 + d.dirX * 0.4, -2 - i * 0.4, { gravity: 0.06, life: 60 });

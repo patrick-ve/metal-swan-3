@@ -44,7 +44,7 @@ export function drawRope(r: Renderer, x: number, y0: number, y1: number): void {
   fxOpts.flipX = false;
   for (let y = 0; y < len; y += 8) {
     const seg = Math.min(8, len - y);
-    r.sprite('item/bind/rope', seg - 1, Math.round(x), top + y, fxOpts);
+    r.sprite('item/bind/rope', seg - 1, x, top + y, fxOpts);
   }
 }
 
@@ -205,7 +205,7 @@ class SackBind implements HostageBind {
   blasted(h: Hostage): void {
     if (this.startle > 0) return;
     this.startle = 12;
-    hudOf(h.world).bubble(h, 'MMF?!', { ticks: 30, kind: 'gag' });
+    hudOf(h.world).bubble(h, 'MMF?!', { ticks: 30, kind: 'gag', speaker: h.kind?.id });
   }
 
   release(h: Hostage): void {
@@ -237,7 +237,7 @@ export class MastPole extends Entity {
   }
 
   override draw(r: Renderer): void {
-    r.sprite('item/bind/mast', 0, Math.round(this.x), Math.round(this.y), this.opts);
+    r.sprite('item/bind/mast', 0, this.x, this.y, this.opts);
   }
 
   override onHit(): boolean {
@@ -288,9 +288,9 @@ class FloatBind implements HostageBind {
   drawFront(h: Hostage, r: Renderer): void {
     if (h.state !== 'tied') return;
     fxOpts.flipX = h.facing < 0;
-    const x = Math.round(h.x);
-    if (!this.cutUpper) r.sprite('item/bind/rope-band', 0, x, Math.round(h.y) - 20, fxOpts);
-    if (!this.cutLower) r.sprite('item/bind/rope-band', 1, x, Math.round(h.y) - 8, fxOpts);
+    const x = h.x;
+    if (!this.cutUpper) r.sprite('item/bind/rope-band', 0, x, h.y - 20, fxOpts);
+    if (!this.cutLower) r.sprite('item/bind/rope-band', 1, x, h.y - 8, fxOpts);
   }
 
   detach(): void {
@@ -369,8 +369,8 @@ class BalloonBind implements HostageBind {
 
   drawBack(h: Hostage, r: Renderer): void {
     if (h.state !== 'tied') return;
-    const x = Math.round(h.x);
-    const hands = Math.round(h.y + h.offY) + DANGLE_HANDS;
+    const x = h.x;
+    const hands = h.y + h.offY + DANGLE_HANDS;
     drawRope(r, x, hands - BALLOON_ROPE, hands + 2);
     fxOpts.flipX = false;
     r.sprite('item/bind/balloon', Math.floor(h.stateT / 16) % 2, x, hands - BALLOON_ROPE, fxOpts);

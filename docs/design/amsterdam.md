@@ -55,8 +55,8 @@ Every id must spawn and run with `{}` params (tests/content/modules.test.ts).
 - Death: tumbles off, cap flies, runs off yelling `MAMA!`; the bike skids away and fades.
 
 ### `delivery-rider` — Food-delivery rider (HP 10, soft, score 200)
-- Look: black jacket with green trim, black helmet, big green cube backpack with small `EATS`
-  letters, phone on the handlebar, a city bike.
+- Look: black jacket with green trim, black helmet, big green cube backpack with a small burger
+  logo (symmetric, so it reads the same when the sprite is flipped), phone on the handlebar, a city bike.
 - Behaviour: fast pass at 2.2 px/tick, never stops; TELL 20 (`ams/bell`, bubble `TRING TRING!`)
   starts as soon as he is inside the view; ATTACK 6: a kick while passing; then rides off.
   Param `from: 'behind'` enters from the left edge (the tell still plays inside the view before
@@ -113,9 +113,11 @@ Every id must spawn and run with `{}` params (tests/content/modules.test.ts).
 - Phase 3 (`when` chain broken): the medallion opens and fires a 5-shot `shield-shot` fan
   (telegraph 24, glow); she stomps 48 px forward and back (screen shake, no damage except under
   her feet with a shadow tell). Adds: `delivery-rider` passes from both sides.
-- Bubbles via `say`: intro `THE NEIGHBOURS` / `COMPLAINED.` then `FABEL FRIET IS` /
-  `GESLOTEN!`; phase 2 `RULES ARE RULES!`; phase 3 `THIS WILL COST YOU` / `A BIG BOETE!`;
-  death `TOT ZIENS...`.
+- Bubbles via `say` (Dutch since 2026-10-14; text only, no voice): intro `DE BUREN HEBBEN` /
+  `GEKLAAGD.` then `FABEL FRIET IS VANAF` / `NU GESLOTEN!`; phase 1 `FABEL FRIET WILLEN` /
+  `WE NIET!`; phase 2 `REGELS ZIJN REGELS!` and `IK WORD HELEMAAL GEK` / `VAN DIE
+  HOTDOGKRAAM...` → `...OP MIJN` / `MUSEUMPLEIN!`; phase 3 `DIT KOST JE EEN` / `FLINKE BOETE!`;
+  broken parts `MIJN STEMPEL!`, `MIJN HAAR, MIJN` / `PRACHTIGE HAAR!`; death `TOT ZIENS...`.
 - Intro: she steps out of the Stopera doors (invulnerable entrance), bossIntro `ROBO-HALSEMA`,
   subtitle `THE IRON MAYOR`, music `ams-boss`.
 - Death: sparks and small blasts, the hair flies off like a wig (a bald steel skull shows), the
@@ -181,7 +183,7 @@ frame time low (static buffers for layers; few live entities).
   the Fabel Friet door behind a small counter drawn as front decor); `ams-hotdog-vendor` (big
   moustache, red-white-blue cap, white apron; in the hatch; salutes with `P.SALUTE` and a calm
   face when a player passes within ~40 px, on foot or on the Swan, once per player, bubble
-  `HOWDY, SOLDIER!` or on the Swan `NICE BIRD, SOLDIER!`); `ams-staff` (param `look` 0–2;
+  `HALLO DAAR!` or on the Swan `HEB JIJ NOG NEPNAGELS / VOOR MIJ?`); `ams-staff` (param `look` 0–2;
   Fabel Friet aprons; idle, `walk`, `clap`, `cheer` (VICTORY), `wave`).
 
 ## 6. Layout (scroll right, ground y 176, `G = 176`; x in world px)
@@ -232,21 +234,23 @@ After the boss: 3 `ams-staff` and the baker walk in from the left, clap and chee
 1. `waitClear` the last wave; erase enemy shots; `ctx.timer.pause()`.
 2. Input lock: save each player's real pad, give a `VirtualPad`, re-apply every tick (player 2
    may join), restore in `finally` and resume the timer. No `invulnTicks` (blinking).
-3. The baker steps to the counter; bubbles of kind `hint`, ≤ 24 chars per line, 2 lines, ~150
-   ticks each, auto-advance; fire on a real pad skips a line:
-   1. `HOI! WELCOME TO` / `FABEL FRIET!`
-   2. `BAD NEWS, SOLDIER.` / `WE MIGHT CLOSE FOR GOOD.`
-   3. `BURGEMEESTER HALSEMA` / `WANTS TO SHUT US DOWN!`
-   4. `THE NEIGHBOURS SAY` / `WE SMELL TOO GOOD.`
-   5. `SHE IS AT THE STOPERA.` / `PLEASE, STOP HER!`
-   6. `HERE, FRIES FOR THE` / `ROAD! LEKKER!` — he tosses a weapon crate (or `pickup-weapon`).
+3. The baker steps to the counter; bubbles of kind `hint`, ≤ 24 chars per line, ≤ 2 lines, ~150
+   ticks each, auto-advance; fire on a real pad skips a line. Dutch since 2026-10-14 (user):
+   1. `HOI! WELKOM BIJ` / `FABEL FRIET!`
+   2. `SLECHT NIEUWS, WIJ` / `MOETEN MOGELIJK SLUITEN.`
+   3. `BURGEMEESTER HALSEMA` / `WIL ONS VOOR ALTIJD...`
+   4. `...WEG HEBBEN!`
+   5. `MAAR DE BUREN ZIJN` / `BLIJ MET ONS...`
+   6. `ZE IS BIJ DE STOPERA` / `TE VINDEN.`
+   7. `ALSJEBLIEFT,` / `STOP HAAR!`
+   8. `HIER, NEEM EEN` / `LEKKER FRIETJE.` — he tosses a weapon crate (or `pickup-weapon`).
 4. `exitTo('b')`.
 
 ## 8. Mission def and card
 
 - `{ id:'ams', name:'THE FRYING DUTCHMAN', subtitle:'MISSION 1', music:'ams',
   bossMusic:'ams-boss', start:'a', bossSection:'d', next:'m1',
-  announce:'MISSION ONE. FRIES FIRST, CYGNETS!', hostages:{a:4,b:3,c:3} }`.
+  announce:'MISSION ONE. VLIEG OP, ZWAAN!', hostages:{a:4,b:3,c:3} }`.
 - Card: label `MISSION 1`, name `THE FRYING DUTCHMAN`, place `AMSTERDAM - 1100 HOURS`,
   briefing `SHORE LEAVE IN AMSTERDAM. THE CYGNETS WANT FRIES.` /
   `THE BEST FRY SHOP IN TOWN NEEDS HELP. GO!`, headline

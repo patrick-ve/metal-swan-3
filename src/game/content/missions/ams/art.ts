@@ -191,7 +191,7 @@ export interface HouseSpec {
   flowers?: boolean;
 }
 
-const WALLS: Readonly<Record<Wall, Ramp>> = {
+export const WALLS: Readonly<Record<Wall, Ramp>> = {
   brown: [PAL.brown[0], PAL.brown[1], PAL.brown[2], PAL.brown[3]],
   rust: [PAL.brown[0], PAL.rust[1], PAL.rust[2], PAL.rust[3]],
   red: [PAL.red[0], PAL.red[1], PAL.red[2], PAL.red[3]],
@@ -201,8 +201,8 @@ const WALLS: Readonly<Record<Wall, Ramp>> = {
   cream: [PAL.sand[1], PAL.sand[2], PAL.sand[3], PAL.snow[2]],
   grey: [PAL.stone[0], PAL.stone[1], PAL.stone[2], PAL.stone[3]],
 };
-const BRICK: ReadonlySet<Wall> = new Set<Wall>(['brown', 'rust', 'red', 'darkred']);
-const TULIPS: readonly Color[] = [PAL.red[2], PAL.pink[2], PAL.gold[2], PAL.red[3], PAL.orange[2], PAL.pink[1]];
+export const BRICK: ReadonlySet<Wall> = new Set<Wall>(['brown', 'rust', 'red', 'darkred']);
+export const TULIPS: readonly Color[] = [PAL.red[2], PAL.pink[2], PAL.gold[2], PAL.red[3], PAL.orange[2], PAL.pink[1]];
 
 /** A sash window: white frame, navy panes with a sky glint, the sash bar; far = simpler. */
 function sashWindow(b: PixelBuffer, x: number, y: number, w: number, h: number, near: boolean, lit: boolean): void {
@@ -502,7 +502,7 @@ for (const light of LIGHTS) {
 // =============================================================================================
 
 /** Our own pixel script for `Fabel` (7 rows; '#' = ink). */
-const FABEL_SCRIPT = [
+export const FABEL_SCRIPT = [
   '.####......#.........#...',
   '.#.........#.........#...',
   '.#.........#.........#...',
@@ -913,7 +913,7 @@ function bollard(): Frame {
   return feet(b.outline(INK));
 }
 
-const BIKE_COLOURS: readonly Color[] = [PAL.ink[1], PAL.red[1], PAL.sky[0], PAL.green[1], PAL.steel[2], PAL.ink[1], PAL.pink[1], PAL.gold[1]];
+export const BIKE_COLOURS: readonly Color[] = [PAL.ink[1], PAL.red[1], PAL.sky[0], PAL.green[1], PAL.steel[2], PAL.ink[1], PAL.pink[1], PAL.gold[1]];
 
 function bike(): Frame[] {
   return BIKE_COLOURS.map((c, i) => {
@@ -1041,7 +1041,7 @@ function flag(bands: readonly Color[], crosses: boolean): Frame[] {
 }
 
 /** Striped shop awning; top-left at the platform's left end and top. Frames: colour sets. */
-const AWNING_SETS: readonly (readonly [Color, Color])[] = [
+export const AWNING_SETS: readonly (readonly [Color, Color])[] = [
   [PAL.green[2], PAL.snow[3]],
   [PAL.red[2], PAL.snow[3]],
   [PAL.sky[0], PAL.snow[3]],
@@ -1315,7 +1315,7 @@ defineSprite(`${D}blauwbrug-lamp`, blauwbrugLamp);
 // Houseboats
 // =============================================================================================
 
-const BOAT_COLOURS: readonly Ramp[] = [
+export const BOAT_COLOURS: readonly Ramp[] = [
   [PAL.green[0], PAL.green[1], PAL.green[2], PAL.green[3]],
   [PAL.navy[0], PAL.navy[1], PAL.sky[0], PAL.sky[1]],
   [PAL.red[0], PAL.red[1], PAL.red[2], PAL.red[3]],
@@ -1639,7 +1639,11 @@ function stopera(): Frame {
   b.vline(dx, base - 98, base, PAL.steel[3]);
   b.set(dx - 3, base - 50, PAL.gold[3]);
   b.set(dx + 3, base - 50, PAL.gold[3]);
-  // Our own lettering over the doors.
+  // Our own lettering over the doors, on a plain dark plaque: white letters straddling the white
+  // band and the brick did not read.
+  const tw = measure('STADHUIS');
+  b.rect(dx - (tw >> 1) - 4, base - 120, tw + 8, 12, PAL.steel[1]);
+  b.rect(dx - (tw >> 1) - 3, base - 119, tw + 6, 10, PAL.ink[1]);
   drawText(b, 'STADHUIS', dx, base - 117, { font: 'small', color: PAL.snow[3], align: 'center' });
   // Steps.
   b.rect(dx - 52, base - 3, 104, 4, PAL.stone[3]);

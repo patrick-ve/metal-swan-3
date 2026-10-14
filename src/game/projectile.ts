@@ -270,7 +270,7 @@ export class Projectile extends Entity implements ShotLike, Tracked {
       frame = Math.floor(this.t / this.ticksPerFrame);
       drawOpts.flipX = this.vx < 0;
     }
-    r.sprite(this.sprite, frame, Math.round(this.x), Math.round(this.y), drawOpts);
+    r.sprite(this.sprite, frame, this.x, this.y, drawOpts);
   }
 
   override onRemove(): void {

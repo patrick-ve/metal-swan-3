@@ -2,6 +2,7 @@
  * npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6]
  *                 [--seed 1] [--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss]
  *                 [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal]
+ *                 [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2]
  *
  * Headless gameplay screenshots with the software renderer (docs/ARCHITECTURE.md §9):
  * - one frame after --ticks ticks → tmp/shots/<mission>-<section>-t<tick>.png (scale 2), or
@@ -10,14 +11,26 @@
  * Every frame is labelled with its tick, section, player x and (with --bot) the bot's goal.
  * --x teleports the players to that world x first. --hold keeps buttons held (fire is tapped).
  * --import loads extra modules first (test missions: `--import tests/sim/bot-missions.ts`).
+ * --res k renders the high-resolution backbuffer the browser uses at display scale k
+ * (docs/ARCHITECTURE.md §3), with the sprite filter --gfx (default pixel, as in the browser; a filter
+ * that needs a larger res steps down with a warning, tools/lib/gfx.ts); the PNG scale then
+ * defaults to 1 and the labels grow with k.
+ * A mission with `artDensity: 2` (ams) draws its 2× art (docs/ART_GUIDE.md "2x art (mission
+ * ams)") as in the browser: at --res 2 or more it shows the full 2× detail, at --res 1 its
+ * reduction. --art 1 draws the 1× art instead (to compare); the sheet title names the art.
  */
 import { pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
 import { buttonMask, type Button } from '../src/engine/input';
 import { drawText } from '../src/engine/font';
 import { PixelBuffer } from '../src/engine/pixel';
+import { setHiArt } from '../src/engine/sprites';
+import { getMission } from '../src/game/registry';
+import { isGraphicsMode } from '../src/game/settings';
+import type { UpscaleMode } from '../src/engine/upscale';
 import type { Difficulty } from '../src/game/session';
 import { createHeadlessGame, type BotRoute, type HeadlessGame } from '../src/sim/index';
+import { resolveGfx } from './lib/gfx';
 import { savePNG, SHEET } from './lib/image';
 
 interface Args {
@@ -41,11 +54,17 @@ interface Args {
   cols: number;
   weapon?: string;
   difficulty: Difficulty;
+  /** Backbuffer resolution (1 = the classic image). */
+  res: number;
+  /** Sprite filter at res > 1 (null = pixel). */
+  gfx: UpscaleMode | null;
+  /** 2 (default): a 2× mission draws its 2× art; 1: the 1× art everywhere. */
+  art: number;
 }
 
 const USAGE =
   'usage: npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6] [--seed 1] ' +
-  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts]';
+  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2]';
 
 const BUTTONS: readonly Button[] = ['left', 'right', 'up', 'down', 'fire', 'jump', 'bomb', 'start'];
 
@@ -66,6 +85,9 @@ function parseArgs(argv: readonly string[]): Args {
     scale: 0,
     cols: 3,
     difficulty: 'normal',
+    res: 1,
+    gfx: null,
+    art: 2,
   };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
@@ -146,6 +168,18 @@ function parseArgs(argv: readonly string[]): Args {
         a.difficulty = d;
         break;
       }
+      case '--res':
+        a.res = Math.max(1, Math.min(8, Math.round(num())));
+        break;
+      case '--gfx': {
+        const g = next().toLowerCase();
+        if (!isGraphicsMode(g)) throw new Error(`--gfx must be pixel, smooth or xbr\n${USAGE}`);
+        a.gfx = g;
+        break;
+      }
+      case '--art':
+        a.art = num() >= 2 ? 2 : 1;
+        break;
       case '--help':
       case '-h':
         console.log(USAGE);
@@ -173,27 +207,37 @@ function label(game: HeadlessGame): string {
 const LABEL_H = 12;
 const PAD = 4;
 
-/** Lay frames out in a grid with a label strip under each. */
-function sheet(frames: ReadonlyArray<{ buf: PixelBuffer; label: string }>, cols: number, title: string): PixelBuffer {
+/** Lay frames out in a grid with a label strip under each (`k`: text and margins scale, for --res). */
+function sheet(frames: ReadonlyArray<{ buf: PixelBuffer; label: string }>, cols: number, title: string, k = 1): PixelBuffer {
   const fw = frames[0].buf.w;
   const fh = frames[0].buf.h;
   const c = Math.min(cols, frames.length);
   const rows = Math.ceil(frames.length / c);
-  const head = 14;
-  const out = new PixelBuffer(PAD + c * (fw + PAD), head + rows * (fh + LABEL_H + PAD) + PAD).fill(SHEET.bg);
-  drawText(out, title, PAD, 3, { color: SHEET.title });
+  const pad = PAD * k;
+  const labelH = LABEL_H * k;
+  const head = 14 * k;
+  const out = new PixelBuffer(pad + c * (fw + pad), head + rows * (fh + labelH + pad) + pad).fill(SHEET.bg);
+  drawText(out, title, pad, 3 * k, { color: SHEET.title, scale: k });
   frames.forEach((f, i) => {
-    const x = PAD + (i % c) * (fw + PAD);
-    const y = head + Math.floor(i / c) * (fh + LABEL_H + PAD);
+    const x = pad + (i % c) * (fw + pad);
+    const y = head + Math.floor(i / c) * (fh + labelH + pad);
     out.blit(f.buf, x, y);
-    drawText(out, f.label, x + 1, y + fh + 2, { color: SHEET.label });
+    drawText(out, f.label, x + k, y + fh + 2 * k, { color: SHEET.label, scale: k });
   });
   return out;
 }
 
+function gfxNote(a: Args): string {
+  const hi = a.art >= 2 && (getMission(a.mission)?.artDensity ?? 1) >= 2;
+  return `${resolveGfx(a.res, a.gfx).note}${hi ? '  2x art' : ''}`;
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.art < 2) setHiArt(false);
   for (const m of args.imports) await import(pathToFileURL(resolve(m)).href);
+  const gfx = resolveGfx(args.res, args.gfx);
+  if (gfx.warning) console.warn(`[shot] ${gfx.warning}`);
   const holdMask = buttonMask(...args.hold.filter((b) => b !== 'fire'));
   const tapFire = args.hold.includes('fire');
   const game = await createHeadlessGame({
@@ -206,6 +250,8 @@ async function main(): Promise<void> {
     weapon: args.weapon,
     difficulty: args.difficulty,
     bossRush: args.boss,
+    res: args.res,
+    gfx: gfx.mode,
     input: args.hold.length ? (tick) => holdMask | (tapFire && tick % 2 === 0 ? buttonMask('fire') : 0) : undefined,
   });
   try {
@@ -223,12 +269,12 @@ async function main(): Promise<void> {
     let file: string;
     if (frames.length === 1) {
       file = args.out ?? join('tmp/shots', `${args.mission}-${sec}-t${game.ticks}.png`);
-      const one = sheet(frames, 1, `${args.mission.toUpperCase()}  seed ${args.seed}${args.bot ? `  bot ${args.route}` : ''}${args.god ? '  god' : ''}`);
-      savePNG(one, file, args.scale || 2);
+      const one = sheet(frames, 1, `${args.mission.toUpperCase()}  seed ${args.seed}${args.bot ? `  bot ${args.route}` : ''}${args.god ? '  god' : ''}${gfxNote(args)}`, args.res);
+      savePNG(one, file, args.scale || (args.res > 1 ? 1 : 2));
     } else {
       file = args.out ?? join('tmp/shots', `${args.mission}-sheet.png`);
-      const title = `${args.mission.toUpperCase()}  seed ${args.seed}  every ${args.every || 60} ticks${args.bot ? `  bot ${args.route}` : ''}${args.god ? '  god' : ''}`;
-      savePNG(sheet(frames, args.cols, title), file, args.scale || 1);
+      const title = `${args.mission.toUpperCase()}  seed ${args.seed}  every ${args.every || 60} ticks${args.bot ? `  bot ${args.route}` : ''}${args.god ? '  god' : ''}${gfxNote(args)}`;
+      savePNG(sheet(frames, args.cols, title, args.res), file, args.scale || 1);
     }
     const report = game.report();
     console.log(`${frames.length} frame(s) → ${file}`);

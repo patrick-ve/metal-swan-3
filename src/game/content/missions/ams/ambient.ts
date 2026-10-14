@@ -54,11 +54,19 @@ export function playerNear(world: World, x: number, y: number, dx: number, dy: n
 
 // ============================================================================== ambient
 
+/** The tour boat's diesel loop: plays while the boat is within this margin of the view. */
+export const TOUR_BOAT = { sfx: 'ams/tour-boat', margin: 48, vol: 0.6 } as const;
+
 export class AmsTourBoat extends Entity {
   readonly x0: number;
   readonly range: number;
   readonly speed: number;
   private t = 0;
+  /** Its engine loop is playing (key `tour-boat-<id>`). */
+  private looping = false;
+  /** The section or the mission ended ('stopLoops'): the loop stays off. */
+  private silenced = false;
+  private readonly loopKey: string;
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     super(world, x, y);
@@ -70,9 +78,27 @@ export class AmsTourBoat extends Entity {
     this.despawnMargin = Infinity;
     this.hitbox = { x: -58, y: -28, w: 116, h: 30 };
     this.addTag('npc', 'decor');
+    this.loopKey = `tour-boat-${this.id}`;
+    world.events.on('stopLoops', () => {
+      this.silenced = true;
+      this.engine(false);
+    });
+  }
+
+  /** Start / stop the diesel loop (only on a change: one audio call per transition). */
+  private engine(on: boolean): void {
+    if (on === this.looping) return;
+    this.looping = on;
+    if (on) this.world.audio.sfxLoop?.(this.loopKey, TOUR_BOAT.sfx, { vol: TOUR_BOAT.vol });
+    else this.world.audio.stopSfx?.(this.loopKey, 20);
+  }
+
+  override onRemove(): void {
+    this.engine(false);
   }
 
   override update(): void {
+    this.engine(!this.silenced && !farOff(this, TOUR_BOAT.margin));
     if (farOff(this, 320)) return;
     this.t++;
     this.x += this.facing * this.speed;
@@ -89,7 +115,7 @@ export class AmsTourBoat extends Entity {
     drawOpts.flipX = this.facing < 0;
     drawOpts.flash = false;
     const bob = Math.round(Math.sin((this.t / 90) * TAU));
-    r.sprite('npc/ams/ams-tour-boat', (this.t >> 4) & 1, Math.round(this.x), Math.round(this.y) + bob, drawOpts);
+    r.sprite('npc/ams/ams-tour-boat', (this.t >> 4) & 1, this.x, this.y + bob, drawOpts);
   }
 }
 
@@ -144,9 +170,9 @@ export class AmsCyclistBg extends Entity {
     drawOpts.flash = false;
     const f = Math.floor((this.t * this.speed) / 7) & 3;
     const id = `npc/ams/ams-cyclist-bg/${this.look}`;
-    const x = Math.round(this.x);
+    const x = this.x;
     // The far bike lane: drawn 12 px up the street from its spawn line, behind every actor (z 6).
-    const y = Math.round(this.y) - CYCLIST_LANE_LIFT;
+    const y = this.y - CYCLIST_LANE_LIFT;
     r.sprite(id, f, x, y, drawOpts);
     if (this.haze > 0) {
       // Depth cue: a light sky haze so the far-lane rider never reads as an enemy rider.
@@ -157,7 +183,7 @@ export class AmsCyclistBg extends Entity {
   }
 }
 
-export const PIGEONS = { max: 8, scare: 56, flap: 'swan/flap' } as const;
+export const PIGEONS = { max: 8, scare: 56, flap: 'swan/flap', takeOff: 'ams/pigeon' } as const;
 
 export class AmsPigeons extends Entity {
   readonly count: number;
@@ -209,6 +235,7 @@ export class AmsPigeons extends Entity {
       this.bvy[i] = -rng.range(1.4, 2.4);
     }
     sfxNear(this.world, this.x, this.y, PIGEONS.flap, 0.5, 1.8);
+    sfxNear(this.world, this.x, this.y, PIGEONS.takeOff, 0.8);
   }
 
   override update(): void {
@@ -251,13 +278,14 @@ export class AmsPigeons extends Entity {
       if (this.fled) f = ((this.t + i * 3) >> 2) & 1 ? 3 : 4;
       else f = this.act[i] === 1 ? ((this.t >> 3) & 1 ? 1 : 0) : this.act[i] === 2 ? ((this.t >> 3) & 1 ? 2 : 0) : 0;
       drawOpts.flipX = this.dir[i] < 0;
-      r.sprite('npc/ams/ams-pigeons', f, Math.round(this.px[i]), Math.round(this.py[i]), drawOpts);
+      r.sprite('npc/ams/ams-pigeons', f, this.px[i], this.py[i], drawOpts);
     }
     drawOpts.flipX = false;
   }
 }
 
-export const DUCKS = { max: 4, speed: 0.12, shy: 40 } as const;
+/** `quack`: ticks between two idle quacks while the ducks are in view (a startled one is extra). */
+export const DUCKS = { max: 4, speed: 0.12, shy: 40, quack: 420, sfx: 'ams/duck' } as const;
 
 /**
  * `ams-ducks`: 1–4 mallards paddling on the canal at the waterline (x, y = the water surface),
@@ -271,6 +299,8 @@ export class AmsDucks extends Entity {
   private readonly x0: number;
   private readonly x1: number;
   private t = 0;
+  /** A player was close last tick (the ducks quack when one comes near). */
+  private startled = false;
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     super(world, x, y);
@@ -295,6 +325,9 @@ export class AmsDucks extends Entity {
     this.t++;
     if (farOff(this, 200)) return;
     const w = playerNear(this.world, this.x, this.y, DUCKS.shy + this.hitbox.w / 2, 64);
+    // A quack when a player comes near, and now and then while they paddle in view (tick-based).
+    if ((w !== null && !this.startled) || this.t % DUCKS.quack === 0) sfxNear(this.world, this.x, this.y, DUCKS.sfx, 0.7, w ? 1.1 : 1);
+    this.startled = w !== null;
     for (let i = 0; i < this.count; i++) {
       if (w && Math.abs(w.x - this.px[i]) < DUCKS.shy) this.dir[i] = w.x < this.px[i] ? 1 : -1;
       this.px[i] += this.dir[i] * DUCKS.speed * (w ? 3 : 1);
@@ -308,7 +341,7 @@ export class AmsDucks extends Entity {
     for (let i = 0; i < this.count; i++) {
       const f = (i % 2 ? 2 : 0) + (((this.t >> 4) + i) & 1);
       drawOpts.flipX = this.dir[i] < 0;
-      r.sprite('npc/ams/ams-ducks', f, Math.round(this.px[i]), Math.round(this.y), drawOpts);
+      r.sprite('npc/ams/ams-ducks', f, this.px[i], this.y, drawOpts);
     }
     drawOpts.flipX = false;
   }
@@ -353,8 +386,8 @@ export class AmsWindowWaver extends Entity {
   override draw(r: Renderer): void {
     drawOpts.flipX = false;
     drawOpts.flash = false;
-    const x = Math.round(this.x);
-    const y = Math.round(this.y);
+    const x = this.x;
+    const y = this.y;
     if (this.cat) r.sprite('npc/ams/ams-window-waver/cat', (this.t >> 5) & 1, x, y, drawOpts);
     else r.sprite('npc/ams/ams-window-waver/person', this.frame(), x, y, drawOpts);
   }
@@ -429,7 +462,7 @@ export class AmsBoatPlatform extends Entity {
   override draw(r: Renderer): void {
     drawOpts.flipX = this.facing < 0;
     drawOpts.flash = false;
-    r.sprite('decor/ams/ams-boat-platform', (this.t >> 4) & 1, Math.round(this.x), Math.round(this.y), drawOpts);
+    r.sprite('decor/ams/ams-boat-platform', (this.t >> 4) & 1, this.x, this.y, drawOpts);
   }
 }
 

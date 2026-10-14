@@ -167,6 +167,7 @@ export const sectionD: SectionDef = {
   checkpoints: [D_ARENA[0]],
   timeLimit: 60,
   music: 'ams',
+  ambience: 'env/ams-street',
   vehicles: ['swan'],
   script,
 };

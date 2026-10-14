@@ -225,7 +225,19 @@ export function registerDemoSprites(define: Define, withBroken = false): void {
   });
   define('demo/font', () => [charset('small', 24), charset('big', 20), styledFrame()], { anchor: 'top-left' });
   const anim = animFrames();
-  define('demo/anim', () => anim.frames, { anchor: 'feet', pts: anim.pts, ticksPerFrame: 5 });
+  // A 2× version (density 2) for `npm run sprites -- demo --density 2`: the 1× frames doubled
+  // with a highlight on every second pixel of the top-left edges (detail only 2× can show).
+  const hi = (): PixelBuffer[] =>
+    anim.frames.map((f) => {
+      const b = f.scaled(2);
+      for (let y = 1; y < b.h; y += 2) {
+        for (let x = 1; x < b.w; x += 2) {
+          if ((b.get(x, y) & 255) !== 0 && (b.get(x - 1, y - 1) & 255) === 0) b.set(x, y, PAL.snow[3]);
+        }
+      }
+      return b;
+    });
+  define('demo/anim', () => anim.frames, { anchor: 'feet', pts: anim.pts, ticksPerFrame: 5, hi });
   if (withBroken) {
     define('demo/broken', () => {
       throw new Error('demo of a failing generator');

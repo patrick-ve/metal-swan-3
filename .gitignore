@@ -3,3 +3,7 @@ dist
 tmp
 .DS_Store
 .claude/snapshots
+
+# Local secrets (ElevenLabs API key)
+.env.local
+.env*.local

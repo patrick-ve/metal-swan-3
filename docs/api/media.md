@@ -68,7 +68,8 @@ Also: `SWATCHES` (`{name,color}[]`, 64 unique), `PALETTE` (flat), `RAMP_NAMES`, 
 | `sphere(cx,cy,r,ramp,{light,dither,ambient})` | shaded ball (bands + dithered borders) |
 | `poly(pts,c)`, `tri(...)` | even-odd scanline fill, concave OK; vertices are pixel centres; edges always drawn so slivers never break |
 | `blit(src,dx,dy,{flipX,flipY,map,alpha,blend:'over'\|'add'\|'copy',solid,sx,sy,sw,sh})` | `map`: `Map<Color,Color>` or fn; `solid`: silhouette colour |
-| `blitFrame(frame,x,y,blitOpts)` | place a sprite Frame by its anchor (flips mirror like the renderers) — compose parts: legs + torso, hull + turret |
+| `blitFrame(frame,x,y,blitOpts,density=1)` | place a sprite Frame by its anchor (flips mirror like the renderers) — compose parts: legs + torso, hull + turret. `density` = this buffer's density (2 when composing 2× art; x, y in its pixels): a frame of the same density is copied exactly, a 1× part into a 2× buffer is doubled, a 2× part into a 1× buffer is reduced like `downsampled` |
+| `downsampled(n)` | nearest reduction by an integer factor: pixel (x, y) = this (x·n, y·n), the top-left of each n × n block (what the renderers draw for a 2× frame at res 1) |
 | `blendRect(x,y,w,h,c,alpha,mode)`, `blendPixel(x,y,c,alpha,mode)` | translucent overlays |
 | `outline(c,{corners,inside,only})` | see margin rule below |
 | `bevel(ramp,{light='tl',depth=1,base,only})` | auto-shading: lit edge lighter, far edge darker |
@@ -77,7 +78,7 @@ Also: `SWATCHES` (`{name,color}[]`, 64 unique), `PALETTE` (flat), `RAMP_NAMES`, 
 | `noise(rand,{colors,density,x,y,w,h,only})` | `rand` = seeded `() => [0,1)` (`seededRand(seed)` or `rng.next.bind(rng)`) |
 | `replace(from,to)`, `recolor(map)`, `silhouette(c)`, `mirror('x'\|'y')` | palette swaps, symmetric art |
 | `trimBounds()`, `crop(x,y,w,h)`, `padded(n \| l,t,r,b)`, `clone()`, `scaled(n)`, `flipped(x,y)` | new buffers |
-| `rotated(rad, {quality:'smooth'\|'fast'})` | clockwise about the centre; smooth = RotSprite-style (Scale2x×3 then nearest), quarter turns exact; output keeps the source parity so centres align. Pre-render directions at generation time — renderers never rotate |
+| `rotated(rad, {quality:'smooth'\|'fast', align?})` | clockwise about the centre; smooth = RotSprite-style (Scale2x×3 then nearest), quarter turns exact; output keeps the source parity so centres align (`align: 2` for 2× art: each side grows by a multiple of 4, so the size stays whole logical px and the centre stays put). Pre-render directions at generation time — renderers never rotate |
 | `scale2x()`, `resized(w,h)` | EPX upscale (rounds stair-steps, no new colours); nearest-neighbour resize |
 | `countOpaque()`, `toRGBA()`, `PixelBuffer.from(...)`, `PixelBuffer.fromRGBA(...)`, `touch()` | |
 
@@ -125,11 +126,21 @@ const icon = ascii(`
 defineSprite(id, gen, opts?)  // gen: () => Frame | PixelBuffer | (Frame | PixelBuffer)[]
 // opts: { anchor?: 'feet' | 'center' | 'top-left' | [ox, oy],   (default 'feet')
 //         pts?: FramePoints | FramePoints[],                        (relative to the anchor)
-//         ticksPerFrame?: number, durations?: number[], loop?: boolean, trim?: boolean }
-getFrames(id) / getFrame(id, i) / frameCount(id) / hasSprite(id) / listSprites(prefix?)
+//         ticksPerFrame?: number, durations?: number[], loop?: boolean, trim?: boolean,
+//         hi?: gen2x }                                              (= defineHiSprite(id, gen2x))
+getFrames(id, density?) / getFrame(id, i, density?) / frameCount(id) / hasSprite(id) / listSprites(prefix?)
 spriteAnim(id) / spriteErrors() / clearSpriteCache(id?) / placeholderFrames()
-await preloadSprites(prefixes?, (done, total) => …, { batch?, yieldFn? })  // never rejects
+await preloadSprites(prefixes?, (done, total) => …, { batch?, timeBudgetMs?, now?, first?, last?, yieldFn?, density? })  // never rejects
+//   batch: ids per slice (default 24); timeBudgetMs: generate until this much time has passed,
+//   then yield (at least one id per slice); first / last: id prefixes generated first / last, in order
 framePoint(frame, name, flipX?, flipY?, out?)
+frameW(f) / frameH(f) / frameDensity(f)          // logical size and density (also in render.ts)
+defineHiSprite(id, gen2x) / hasHiSprite(id) / listHiSprites(prefix?)              // 2× art
+setArtDensity(d) → previous / artDensity() / withArtDensity(d, fn) / setHiArt(on) → previous / hiArtOn()
+// 2× art jobs (non-sprite 2× work such as 2× scenery, run in the same per-frame budget):
+setDeferHiArt(on) → previous / hiArtDeferred() / queueArtJob(key, run) / hasArtJob(key)
+cancelArtJobs(prefix) / pendingArtJobs() / runArtJobs(budgetMs, now?) → jobs run
+artPreloadActive() / HI_ART_FRAME_BUDGET_MS (8)
 ```
 - Generated lazily on first use, then cached. Unknown id or a throwing generator → magenta
   placeholder (12×12, feet anchor) and **one** `console.warn` per id.
@@ -140,7 +151,36 @@ framePoint(frame, name, flipX?, flipY?, out?)
 - **Points** (`hip`, `muzzle`, `hand`, `head`, `seat`, …) are relative to the anchor of the
   unflipped frame. Frames returned by the generator keep their own `pts`; otherwise `opts.pts`
   applies (one record for all frames, or an array cycled per frame).
-- `trim: true` crops transparent margins per frame and keeps anchors/points correct.
+- `trim: true` crops transparent margins per frame and keeps anchors/points correct (for a
+  frame of density d the box widens to whole logical pixels).
+- **2× art (frame density, `docs/ARCHITECTURE.md` §3; rules in `docs/ART_GUIDE.md` "2x art
+  (mission ams)").** `Frame.density` d (default 1) = buffer px per logical px. A 2× frame has a
+  (2w) × (2h) buffer for a logical w × h frame; `ox`, `oy`, `pts` stay logical. Outside art code
+  read sizes with `frameW(f)` / `frameH(f)`, never `buf.w` / `buf.h`. `defineHiSprite(id, gen2x)`
+  adds a 2× generator to an id: it returns as many frames as the 1× generator, each a
+  PixelBuffer of twice the size (anchored by the sprite's `anchor` on the logical size) or a
+  Frame with logical `ox` / `oy` (and `pts`, which must equal the 1× ones). The registry
+  re-frames each 2× frame to the 1× frame's rectangle (pixels outside are cut, with one warning),
+  copies the 1× points, and on a wrong count, an odd size, other points or an error falls back
+  to the 1× frames (`spriteErrors()` lists `id@2x`). `getFrames(id)` uses the art density
+  (`setArtDensity`, 1 unless a mission with `MissionDef.artDensity: 2` is drawing — the runner
+  wraps `draw` and the HUD in `withArtDensity`); `getFrames(id, 2)` asks for the 2× frames
+  explicitly (the 1× ones when the id has none). Generators always run at density 1: a 2×
+  generator that composes 2× parts asks for them with `getFrames(part, 2)` and places them with
+  `blitFrame(f, x, y, o, 2)`. `setHiArt(false)` turns 2× art off everywhere (tools, tests).
+  `preloadSprites(…, { density: 2 })` generates only the 2× frames of the ids that have them
+  (`preloadMissionArt` in scenes/gameplay.ts at a 2× mission's start: `MISSION_ART_BUDGET_MS`
+  (8 ms) of generation per browser frame, the joined players' characters first, then the
+  mission's `preloadFirst` prefixes, its `preloadLast` prefixes last (`missionArtOrder`);
+  browser app only via `GameApp.preloadArt`; boot stays 1×).
+- **Art jobs.** 2× work that is not a sprite id (the 2× background layers and terrain chunks
+  of the section on screen) goes through a small queue: `queueArtJob(key, run)` (a key already
+  queued keeps its first job), `runArtJobs(budgetMs)` runs the oldest jobs until the budget is
+  spent (at least one), `cancelArtJobs(prefix)` drops some. A budgeted 2× preload
+  (`preloadSprites` with `density: 2` and `timeBudgetMs`) runs queued jobs before its next id
+  in the same slice budget, and `artPreloadActive()` is true while it runs. `setDeferHiArt(true)`
+  (set by `preloadMissionArt`, browser only) tells the scenery to queue its 2× work instead of
+  doing it on the spot; off (default, headless tools and tests) it is built when first drawn.
 
 ```ts
 defineSprite('enemy/grunt/shoot', () => {
@@ -183,12 +223,33 @@ Internals shared by renderers: `getFont`, `layoutText`, `textPasses`, `drawGlyph
 `Renderer` (see `render.ts`): `begin(clear = black | null)`, `end()`, `setCamera(x,y)` (rounded),
 `sprite(id,i,x,y,o)`, `frame(f,x,y,o)`, `image(buf,x,y,o)` (top-left), `rect(x,y,w,h,c,o)`,
 `line(x0,y0,x1,y1,c,o)` (Bresenham), `text(s,x,y,o)` (screen space unless `screen:false`),
-`parallax(buf,fx,fy,offX,offY,{repeatX=true,repeatY,alpha})`, `fade(c,alpha)`. (Game background
+`parallax(buf,fx,fy,offX,offY,{repeatX=true,repeatY,alpha,density})`, `fade(c,alpha)`. (Game background
 layers — `BgLayerDef` with `alpha`, `repeatY`, `driftX/Y`, `front` — are drawn with `parallax`; sizing
-rules for tall sections: `docs/ART_GUIDE.md` §7.)
+rules for tall sections: `docs/ART_GUIDE.md` §7.) `ParallaxOpts.density` d (default 1): the
+buffer has d px per logical px; the layer covers and tiles by its logical size (buf.w / d), so
+offsets, factors and drift stay logical and sub-pixel scrolling is the same; with d > res the
+renderers draw `lowRes(buf, d)`. A 2× terrain chunk is drawn with `frame()` as a density-2 frame.
+
+2× scenery registry (`src/game/art/art-registry.ts`; rules: `docs/ART_GUIDE.md` "2x backgrounds
+and terrain (mission ams)", design: `docs/ARCHITECTURE.md` §3):
+```ts
+defineBgGenerator(id, gen, { hi?: gen2x }) / defineHiBgGenerator(id, gen2x)   // gen2x(w, h, params, seed) → (2w)×(2h)
+hasHiBgGenerator(id) / listHiBgGenerators()
+makeHiBgLayer(id, w, h, params, seed) → PixelBuffer | null          // null: no 2× generator, or it failed
+setHiTerrainPainter(paint, supports) / hasHiTerrain(style)
+makeHiTerrain(sample, style, x0, y0, w, h) → PixelBuffer | null     // (2w)×(2h), null: nothing finer here
+hiSceneryErrors() → [{ id: 'bg:<id>@2x' | 'terrain@2x', error }]
+// terrain-art.ts
+defineHiTerrainMaterial(kind: 'ground'|'edge'|'platform'|'solid', id, (p: Px, sx, sy) => Color)
+defineHiTerrainHang(platform, (x, k, seed, sx, sy) => Color)   // 2× hangers under a platform band
+hasHiTerrainMaterial(kind, id) / styleHasHiTerrain(style) / paintTerrainHi
+```
+`SectionView(section, terrain, seed, density = 1)` (game/mission/view.ts) draws them for a view
+of density 2 at res ≥ 2; `view.dispose()` drops its queued jobs.
 `DrawOpts`: `flipX`, `flipY`, `flash` (white silhouette), `tint` (silhouette in any colour;
 overrides `flash`), `alpha`, `screen`, `blend:'add'`, `src: {x,y,w,h}` (draw only that part of
-the unflipped image, exactly where it would land in the full drawing).
+the unflipped image, exactly where it would land in the full drawing; in LOGICAL px of the
+frame, which are its buffer px at density 1, so the same slice works for 1× and 2× art).
 `TextOpts`: `font`, `color`, `align`, `screen` (default true), `shadow`, `outline`, `alpha`,
 `scale` (integer; like drawing at 1× and enlarging). Constants `VIEW_W = 384`, `VIEW_H = 216`.
 
@@ -201,33 +262,88 @@ for (let row = 0; row < h; row += 2)                              // heat haze: 
 r.text('METAL SWAN', 192, 36, { font: 'big', scale: 2, align: 'center', outline: INK });
 ```
 
+- **Resolution** (`docs/ARCHITECTURE.md` §3). Every renderer has `res` (k: backbuffer px per
+  logical px, integer ≥ 1), `mode` (`UpscaleMode`: `'pixel' | 'smooth' | 'xbr'`, `setMode(m)`)
+  and `subpixel` (`SubpixelMode`: `'off' | 'parallax' | 'camera' | 'all'`, `setSubpixel(s)`,
+  default `DEFAULT_SUBPIXEL` = `'all'`: the camera and world draws in 1/k steps; pass world
+  positions unrounded so the parts of one entity share one fractional position). `w`, `h` (384 × 216), `camX`, `camY` and every draw
+  coordinate stay logical; the backbuffer is (w·k) × (h·k). Rects, lines, text and buffers
+  without a sprite id draw as crisp k × k blocks; registered sprites are filtered by
+  `upscale(buf, m)` with m = `spriteFilter(spriteIdOf(buf), mode, k)` (render-common.ts) and
+  cover exactly their logical footprint × k. Frames of density d > 1 are never filtered: exact
+  (k / d)-px blocks when d | k, nearest enlargement by k / d otherwise, and `lowRes(buf, d)`
+  (= `buf.downsampled(d)`, cached) at k < d. `spriteFilter` gives `'pixel'` for buffers that
+  `filtersId` rejects (`UNFILTERED_PREFIXES` `['ui/']` minus `FILTERED_UI_PREFIXES`, plus the
+  exact ids in `UNFILTERED_IDS`), `'smooth'` for `XBR_AS_SMOOTH_PREFIXES` (`['decor/']`) in
+  `'xbr'` mode, and else `modeAtRes(mode, k)` (a filter whose factor is above k steps down:
+  `'xbr'` → `'smooth'` → `'pixel'`). `spriteIdOf(buf)` (sprites.ts) tells which buffers are
+  sprite frames. Pass the camera unrounded: `r.setCamera(camera.viewX, camera.viewY)`.
 - Placement rules live in `render-common.ts` and are shared, so both renderers give the same
-  pixels: world → screen is `Math.round(x) − camX`; parallax origin is
-  `Math.round(offset − cam × factor)`, tiled from `firstTile(origin, size)`.
-- `new SoftRenderer(w?, h?)` → `.target` is a PixelBuffer (node tools, tests, screenshots).
-- `new CanvasRenderer(w?, h?, canvas?)` (browser) → `.canvas` backbuffer. Caches one canvas
-  per buffer variant (normal / flipped / flash / tint colour) in a WeakMap; a buffer whose `version` changed
-  is re-uploaded (call `buf.touch()` after writing `buf.data` directly), `forget(buf)` drops it.
-- `createDisplay(visibleCanvas, { scanlines })` (browser) → `present(renderer.canvas)` each
-  frame, `setScanlines(on)`, `toggleFullscreen()`, `toGame(clientX, clientY)`, `scale`.
-  Largest integer scale in device pixels, black letterbox, best-fit fallback when tiny.
+  pixels (in backbuffer px; logical px at k = 1): camera `cameraPx(x, k, subpixel)` (whole
+  logical px, or 1/k with `'camera'` / `'all'`); world → screen `toPx(x, k, fine) − camera`
+  (`Math.round(x) · k`, or `Math.round(x · k)` for world draws with `'all'`); anchored top-left
+  `anchorTopLeft(…)` = anchor − (flipX ? w − 1 − ox : ox) · k; parallax origin
+  `parallaxOrigin(offset, layerCam(…), factor, k, fine)` = `Math.round(offset − cam × factor)`
+  (in 1/k steps with a sub-pixel policy; `'parallax'` and `'all'` use the unrounded camera for
+  factors ≠ 1), tiled from `firstTile(origin, size · k)`; `src` slices stay in logical px of the
+  frame (`placePart(…, k)` with the logical size; × d addresses a 2× buffer). `chooseRes(scale, kmax = KMAX, factor = 1)` picks k for a display scale
+  and filter factor: the scale itself up to kmax, else the largest k ≤ kmax that the factor
+  divides (so filtered pixels land as a direct nearest-neighbour scale would put them).
+- `new SoftRenderer(w?, h?, target?, { res?, mode?, subpixel? })` → `.target` is a PixelBuffer
+  of (w·res) × (h·res) (node tools, tests, screenshots). Defaults: res 1, `'pixel'` — the
+  classic image. Upscaled sprites are cached in a WeakMap (no budget), so headless PNGs show
+  the browser look (exactly when k is a multiple of the filter factor; else up to 0.1 % of the
+  pixels differ on nearest-neighbour ties, `tests/media/browser.test.ts`). `PixelBuffer.blitScaled(src, dx, dy, num, den, opts)` is its
+  nearest-neighbour enlargement (pixel-centre sampling; at ratios that are not integers a few
+  tie columns may differ from Chromium).
+- `new CanvasRenderer(w?, h?, canvas?, { res?, mode?, subpixel?, budgetPx?, scaleBudgetMs? })`
+  (browser) → `.canvas` backbuffer; `setRes(k)` re-sizes it. Caches one canvas per buffer
+  variant (normal / flipped / flash / tint colour, and the same of the upscaled copy) in one LRU
+  cache with a pixel budget (`TEXTURE_BUDGET_PX` = 48 M px); upscaling is lazy, at most
+  `SCALE_BUDGET_MS` = 4 ms per frame (a sprite not scaled yet draws from 1× that frame). A buffer
+  whose `version` changed is re-uploaded (call `buf.touch()` after writing `buf.data` directly),
+  `forget(buf)` drops it, `clearUpscaled()` drops every upscaled copy (`setMode` does it),
+  `textureStats()` reports entries, pixels, scales / deferrals and time of the last frame.
+- `createDisplay(visibleCanvas, { scanlines, kmax })` (browser) → `present(renderer.canvas)`
+  each frame (any backbuffer size), `setScanlines(on)`, `toggleFullscreen()`,
+  `toGame(clientX, clientY)` (logical px), `scale` (device px per logical px), `resFor(factor)`
+  (the backbuffer resolution for that scale and the filter's `upscaleFactor`) and `res`
+  (= `resFor(1)`). Largest integer scale in device pixels, black letterbox, best-fit fallback
+  when tiny; the backbuffer is presented by nearest neighbour at any ratio.
 
 ```ts
 // main.ts (browser)
-const r = new CanvasRenderer();
 const display = createDisplay(document.getElementById('game') as HTMLCanvasElement);
-function draw() { r.begin(bg.sky); /* … */ r.end(); display.present(r.canvas); }
+const r = new CanvasRenderer(undefined, undefined, undefined, { res: display.resFor(2), mode: 'smooth' });
+function draw() {
+  const k = display.resFor(upscaleFactor(r.mode));
+  if (r.res !== k) r.setRes(k); // resize / DPR change
+  r.begin(bg.sky); /* … */ r.end(); display.present(r.canvas);
+}
 ```
+
+**Upscalers** — `upscale.ts`: `UpscaleMode`, `UPSCALE_MODES`, `upscaleFactor(mode)` (integer),
+`upscale(buf, mode)` (pure, deterministic, mirror-symmetric; `'pixel'` returns `buf`).
 
 ## 8. Tools
 
-`npm run sprites -- [prefix] [--marks] [--scale 3] [--palette] [--out dir]`: loads the art
+`npm run sprites -- [prefix] [--marks] [--scale 3] [--palette] [--density 2 [--all]] [--out dir]`: loads the art
 modules (`ART_MODULE_IDS`), generates every sprite (or those matching `prefix`), writes one
 contact sheet per top-level group to `tmp/sprites/<group>.png` (split into `-2`, `-3` … when
 tall). Frames of one sprite are aligned by anchor. `--marks`: anchors cyan, points magenta.
 Prints counts and generation errors (exit code 1 if any). Demo sprites: `demo/shapes`,
 `demo/font`, `demo/anim`, `demo/rotations`; `npm run sprites -- demo/broken` shows how a
-failing generator is reported.
+failing generator is reported. `--density 2` draws the 2× frames at 2 sheet px per logical px
+(only ids with 2× art, `--all` for every id with 1× ones doubled) to `<group>@2x.png` (default
+scale 2); marks cover the whole logical pixel where the game reads the point. `demo/anim` has a
+2× version. `npm run shot -- --mission ams …` draws ams with its 2× art like the browser;
+`--art 1` shows the 1× art for comparison.
+
+`npm run shot` / `npm run arena` take `--res k` (backbuffer resolution, default 1) and
+`--gfx pixel|smooth|xbr` (sprite filter at res > 1, default pixel as in the browser; `tools/lib/gfx.ts`: a filter
+that needs a larger res steps down as in the browser, with a warning on stderr and the filter
+drawn in the sheet title); the PNG scale then defaults to 1. `npm run smoke` takes `--viewport WxH` and `--dpr n`. `npm run perf` measures browser
+frame times of the production build per viewport and mode (`docs/ARCHITECTURE.md` §9).
 
 `tools/lib/png.ts`: `encodePNG(w, h, rgba)`, `crc32`. `tools/lib/image.ts`: `savePNG(buf, file, scale)`,
 `composeSheets(items, opts)`, `drawChecker(...)`.
@@ -246,8 +362,10 @@ Guide levels: sfx peaks 0.4–0.9, RMS −24…−12 dB; a full song mix peaks b
 `audio.ts` is the contract: `AudioOut { sfx(id, {vol, pitch, pan}), music(id | null, {fadeTicks,
 restart, from}), voice(line), setVolume('master'|'music'|'sfx'|'voice', v), stopAll(), update?(),
 pauseMusic?(), resumeMusic?(), sfxLoop?(key, id, {vol, pitch, pan}), stopSfx?(key, fadeTicks = 4),
-duckMusic?(factor), setMuted?(m), suspend?(), resume?() }` and `NullAudio` (headless, keeps a `log`
-such as `sfx:ui/move`, the last 256 entries). It also re-exports `defineSfx/hasSfx/listSfx/renderSfx`
+duckMusic?(factor), setMuted?(m), suspend?(), resume?(), loadSamples?(group, onProgress?),
+say?(text, speaker?, {important}), speaking?(), pauseLoops?(), resumeLoops?() }` and `NullAudio`
+(headless, keeps a `log` such as `sfx:ui/move`, the last 256 entries; it has no `loadSamples` /
+`say` / `speaking` / `pauseLoops`, so samples and these calls never change a log). It also re-exports `defineSfx/hasSfx/listSfx/renderSfx`
 and `defineSong/hasSong/listSongs` for one-stop imports. Unknown sfx/song ids play nothing and
 warn once; an unknown or broken song never silences the song that is playing (fail soft).
 
@@ -256,6 +374,11 @@ warn once; an unknown or broken song never silences the song that is playing (fa
   a new id replaces it. `stopSfx(key)` fades it out. Owners stop their loops when they die or leave
   (`onRemove`). Optional methods: call them as `audio.sfxLoop?.(…)`.
 - **Ducking**: `duckMusic(0.5)` lowers the music on top of its volume (the pause menu); `duckMusic(1)` restores.
+- **Loop pause**: `pauseLoops()` silences every `sfxLoop` (a gain between the loops and the sfx
+  bus; the loops keep running) and `resumeLoops()` brings them back. `GameplayScene` calls them
+  when a scene opens on top (pause menu, continue screen); leaving gameplay calls
+  `runner.stopLoops()` (the ambience and the 'stopLoops' event) and restores the loop bus.
+  `stopAll` restores it too.
 - `music(sameId)` keeps the song going and resumes it when it was paused (`restart: true` starts over).
 - **Start index**: `music(id, { from: n })` starts a new song at slot `n` of its order list (clamped;
   `orderTime(song, n)` = its start in seconds, from `ParsedSong.orderRows`); the song then loops as usual.
@@ -367,8 +490,8 @@ audio.preload(listSfx());                 // render buffers during the loading s
 ```
 - `unlock()` creates/resumes the shared AudioContext (call it in a gesture handler);
   `installUnlockHook(target?)` does it on the first pointer/key/touch; `getAudioContext()`.
-- Graph: sfx/music/voice buses → master → gentle compressor → output. Defaults: master 0.8,
-  music 0.6, sfx 0.8, voice 1.
+- Graph: sfx/voice buses → master, music bus → dialogue duck → master; master → gentle
+  compressor → output. Defaults: master 0.8, music 0.6, sfx 0.8, voice 1.
 - Sfx: cached AudioBuffers, per-id voice limit (recipe `voices`, default 4; the oldest instance
   is stopped with a 10 ms fade), global limit 24, min gap per id, pitch = playbackRate,
   StereoPanner.
@@ -377,7 +500,9 @@ audio.preload(listSfx());                 // render buffers during the loading s
   (`autoSuspend`). Very late notes after timer throttling are dropped, not bunched.
 - `renderSongOffline(id, seconds)` renders through the same instrument graph into an
   OfflineAudioContext (tests, previews, exports).
-- `sfxLoop` / `stopSfx` / `duckMusic` as in §9; `currentSong` = the loaded song id (or null).
+- `sfxLoop` / `stopSfx` / `duckMusic` as in §9; `currentSong` = the loaded song id (or null);
+  `songSource` = 'sample' or 'synth'.
+- Samples: §9.5 (`loadSamples`, `releaseSamples`, `say`, the `samples` bank).
 
 ### 9.4 Announcer — `voice.browser.ts`
 
@@ -385,7 +510,75 @@ audio.preload(listSfx());                 // render buffers during the loading s
 speechSynthesis with a punchy rate (1.15), low pitch (0.7), an English voice, at most one queued
 line (newer replaces it), a watchdog for engines that never fire `end`. `WebAudioOut.voice(line)`
 uses it and falls back to the `ui/announce` jingle when speech is unavailable or disabled
-(`new WebAudioOut({ speech: false })`). Write original announcer lines.
+(`new WebAudioOut({ speech: false })`). Write original announcer lines. A line with a loaded voice
+sample (§9.5) plays the sample instead.
+
+### 9.5 Samples — `samples.ts`, `samples.browser.ts` (start screens and mission `ams`)
+
+Exception of 2026-10-14 (docs/ARCHITECTURE.md rule 2, docs/ORIGINALITY.md): the start screens
+and mission `ams` ship ElevenLabs-generated MP3 files under `public/audio/`. A sample is an
+optional skin over an existing id; the ids, the game code and the headless outputs do not change.
+
+```ts
+// src/game/content/samples/manifest.ts (written by tools/audio/ship.ts)
+export const SAMPLE_MANIFEST: Readonly<Record<string, SampleGroup>> = {
+  boot: {
+    sfx: { 'ui/move': { files: ['boot/sfx/ui-move-1.mp3', 'boot/sfx/ui-move-2.mp3'] } },
+    music: { title: { file: 'boot/music/title-1.mp3', loopStart: 3.2, loopEnd: 64.8, duration: 66 } },
+    voice: { 'time-up': { files: ['boot/voice/time-up-1.mp3'], duration: 0.9 } },
+  },
+  'mission:ams': { /* … */ },
+};
+```
+
+- `samples.ts` (pure): types `SampleSfx { files, vol?, voices?, gap?, loopStart?, loopEnd? }`,
+  `SampleSong { file, vol?, loopStart (null = once), loopEnd?, duration, marks? }`,
+  `SampleVoice { files, vol?, duration }`, `SampleGroup { sfx?, music?, voice? }`;
+  `defineSampleGroup(name, g)`, `getSampleGroup`, `listSampleGroups`; `voiceKey(text)` (the key of
+  a spoken line: lower-case slug, '\n' → space, a leading `SPEAKER: ` dropped, punctuation and
+  accents dropped, ≤ 64 characters: `'HOI! WELKOM BIJ\nFABEL FRIET!'` → `'hoi-welkom-bij-fabel-friet'`);
+  pure helpers `pickTake`, `foldLoopPosition`, `songLoopEnd`, `SpeechLane` (unit-tested).
+- Groups: `'boot'` (title, select and briefing music, menu sounds, start-screen lines) is
+  awaited by the boot scene (progress 90–100 %, at most 20 s); `'mission:ams'`
+  (`MissionDef.audioGroup`) loads on the intro card (`preloadMissionAudio`), or in the boot scene
+  for a direct `?mission=ams` start, or when gameplay starts. The attract demo stays silent
+  (NullAudio).
+- `samples.browser.ts` `SampleBank`: fetches `audio/<file>` against `document.baseURI` (6 in
+  parallel), decodes with the live AudioContext or, before the first gesture, an
+  OfflineAudioContext; state per key 'loading' | 'ready' | 'failed' (a failed file warns once);
+  random take, never the same twice in a row (Math.random, browser only); `release(group)`.
+  Memory: decoded PCM is about 21 MB per minute of stereo audio; `WebAudioOut.releaseSamples(group)`
+  frees a group.
+- Fallback: a sound effect, song or line plays its sample only when it is ready; otherwise the
+  synth sound, the synth song, or the speech announcer / `ui/announce` jingle plays. `say(text)`
+  (speech bubbles) has no fallback: no sample, no sound.
+- Sound effects: same voice limits (manifest `voices` / `gap` override the recipe's), pitch,
+  jitter, volume (× manifest `vol`) and pan as the synth. An alias id (same recipe) uses the
+  sample of its target. `sfxLoop` loops between `loopStart` / `loopEnd` (never the raw MP3 ends).
+- Music: one buffer source plays the intro once and then loops between `loopStart` and `loopEnd`
+  seamlessly; one-shots (`loopStart: null`) end by themselves. Pause folds the position into the
+  loop; fades, crossfades (`fadeTicks`), the same-id rule and fail-soft stay as for the synth.
+  `from` uses `marks[from]` (else the top). When a group finishes loading while the synth version
+  of the same song plays, it crossfades to the sample (same position within the first 3 s,
+  else from the loop start).
+- Voice samples: one line at a time (`SpeechLane`): the same line again is ignored. A new bubble
+  line replaces a playing bubble line when the same speaker says it (like their bubble on screen),
+  or when it is important (`say(text, speaker, { important: true })`: hint and radio bubbles,
+  Gusto's briefing) and the playing line is a gag bark. A gag bark never cuts off another
+  speaker, and nothing cuts off an announcer line. Other lines wait in a queue of one (newest
+  wins; a bubble never pushes out a waiting announcer line, a gag line never pushes out a waiting
+  important line; a bubble waits at most 1.5 s, an announcer line 3 s). `speaking()` is true while
+  a line plays or waits. While a voice sample plays, the music ducks to 0.4 on its own gain node
+  (it multiplies with `duckMusic`), and comes back 150 ms after the last line. With the voice
+  volume at 0 (or muted) `voice` and `say` do nothing at all: no sample, no speech, no jingle, no
+  duck.
+- Speech bubbles: `HudState.onBubble` (set by the mission runner) calls `audio.say(text, speaker)`
+  for bubbles that show (gag bubbles stay silent with SPEECH BUBBLES OFF; hint and radio bubbles
+  pass `important`). `BubbleOpts.voice: false` never voices a line: ROBO-HALSEMA's lines stay
+  text-only. The mission intro card says each of Gusto's briefing lines (`BRIEFING_SPEAKER`)
+  when its typing starts, the next one only when `speaking()` is false. `GameAudio` gates
+  `voice` with ANNOUNCER and `say` with VOICE VOLUME > 0; VOICE VOLUME (0–10, default 10) sets
+  the voice bus.
 
 ## 10. Tests
 

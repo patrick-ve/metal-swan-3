@@ -1,22 +1,27 @@
 /**
- * Boot scene (GDD §13.2): loads the content manifest, generates every sprite and pre-renders the
- * sound effects (a row of swan heads fills in), waits for a click or key (the gesture unlocks
- * audio; one made while loading counts), then goes to the title — or straight into a mission
- * with `?mission=`.
+ * Boot scene (GDD §13.2): loads the content manifest, generates every sprite, pre-renders the
+ * sound effects and fetches and decodes the 'boot' sample group (the start screens; a direct
+ * `?mission=` start also loads that mission's group) while a row of swan heads fills in, waits
+ * for a click or key (the gesture unlocks audio; one made while loading counts), then goes to
+ * the title — or straight into a mission with `?mission=`.
  */
 import { listSfx } from '../../engine/audio';
 import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { getFrame, hasSprite, preloadSprites } from '../../engine/sprites';
+import { frameW, getFrame, hasSprite, preloadSprites } from '../../engine/sprites';
 import { blinkOn, centerText, type GameApp } from '../app';
 import { loadContent } from '../content/index';
+import { getMission } from '../registry';
 import { startNewGame } from './gameplay';
 import { TitleScene } from './title';
 
-type Phase = 'content' | 'sprites' | 'sounds' | 'done';
+type Phase = 'content' | 'sprites' | 'sounds' | 'samples' | 'done';
 
 const nextTick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** The boot never waits longer than this for the samples (a slow network): the synth fills in. */
+export const BOOT_SAMPLES_MAX_MS = 20000;
 
 export class BootScene implements Scene {
   private readonly app: GameApp;
@@ -55,6 +60,7 @@ export class BootScene implements Scene {
           await nextTick();
         }
       }
+      await this.loadSamples();
     } catch (err) {
       console.error('[boot] loading failed:', err);
     }
@@ -62,12 +68,44 @@ export class BootScene implements Scene {
     this.finished = true;
   }
 
+  /**
+   * The 'boot' sample group, plus the mission's group for a direct `?mission=` start. A file
+   * that fails or a slow network never blocks the boot: after BOOT_SAMPLES_MAX_MS it goes on
+   * and the rest keeps loading in the background.
+   */
+  private async loadSamples(): Promise<void> {
+    const audio = this.app.audio;
+    if (!audio.loadSamples) return;
+    const groups = ['boot'];
+    const direct = this.app.params.mission ? getMission(this.app.params.mission)?.audioGroup : undefined;
+    if (direct) groups.push(direct);
+    this.phase = 'samples';
+    this.done = 0;
+    this.total = 0;
+    const counts = groups.map(() => ({ done: 0, total: 0 }));
+    const all = Promise.all(
+      groups.map((g, i) =>
+        audio.loadSamples?.(g, (d, t) => {
+          counts[i] = { done: d, total: t };
+          this.done = counts.reduce((n, c) => n + c.done, 0);
+          this.total = counts.reduce((n, c) => n + c.total, 0);
+        }),
+      ),
+    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, BOOT_SAMPLES_MAX_MS);
+    });
+    await Promise.race([all, timeout]);
+    clearTimeout(timer);
+  }
+
   /** True once everything is loaded (it then waits for a gesture). */
   get ready(): boolean {
     return this.finished;
   }
 
-  /** Loading progress 0..1 over the three steps (content 10 %, sprites 70 %, sounds 20 %). */
+  /** Loading progress 0..1 over the steps (content 10 %, sprites 70 %, sounds 10 %, samples 10 %). */
   get progress(): number {
     const f = this.total > 0 ? Math.min(1, this.done / this.total) : 0;
     switch (this.phase) {
@@ -76,7 +114,9 @@ export class BootScene implements Scene {
       case 'sprites':
         return 0.1 + 0.7 * f;
       case 'sounds':
-        return 0.8 + 0.2 * f;
+        return 0.8 + 0.1 * f;
+      case 'samples':
+        return 0.9 + 0.1 * f;
       case 'done':
         return 1;
     }
@@ -106,7 +146,7 @@ export class BootScene implements Scene {
     const frac = this.progress;
     const n = 8;
     const icon = hasSprite('ui/icon-life');
-    const w = icon ? getFrame('ui/icon-life', 0).buf.w : 6;
+    const w = icon ? frameW(getFrame('ui/icon-life', 0)) : 6;
     const step = w + 3;
     const x0 = (r.w - (n * step - 3)) >> 1;
     for (let i = 0; i < n; i++) {

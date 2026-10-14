@@ -1,15 +1,21 @@
 /**
- * Options (GDD §13.13): `OPTIONS` (big, C, y 16); rows (small) from y 44, 14 px apart, labels
+ * Options (GDD §13.13): `OPTIONS` (big, C, y 16); rows (small) from y 40, 11 px apart, labels
  * left-aligned at x 64, values right-aligned at x 320 between `<` and `>`; left / right change,
- * fire confirms. DIFFICULTY · CREDITS · MUSIC VOLUME · SFX VOLUME · ANNOUNCER · SPEECH BUBBLES ·
- * BOSS BAR · SCREEN SHAKE · REDUCE FLASHES · CONTROLS (the rebind screen) · RESET HIGH SCORES
- * (`ARE YOU SURE?` → `YES` / `NO`) · BACK. Changes apply at once and are saved on the way out;
- * difficulty and credits apply to the next game.
+ * fire confirms. DIFFICULTY · CREDITS · MUSIC VOLUME · SFX VOLUME · VOICE VOLUME (announcer and
+ * voiced speech bubbles; added 2026-10-14) · ANNOUNCER · SPEECH BUBBLES ·
+ * BOSS BAR · SCREEN SHAKE · REDUCE FLASHES · GRAPHICS (PIXEL / SMOOTH / XBR: the sprite filter on
+ * a high-resolution display; main.ts applies it; the row shows the filter in effect, `?gfx=`
+ * included, and while it is selected a hint line says when the window is too small for it) ·
+ * CONTROLS (the rebind screen) · RESET HIGH
+ * SCORES (`ARE YOU SURE?` → `YES` / `NO`) · BACK. Changes apply at once and are saved on the way
+ * out; difficulty and credits apply to the next game.
  */
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { applyAudioSettings, blinkOn, centerText, defaultHighScores, drawCursor, drawPanel, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { applyAudioSettings, blinkOn, centerText, defaultHighScores, drawCursor, drawPanel, graphicsMode, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { modeAtRes } from '../../engine/render-common';
+import { UPSCALE_MODES, type UpscaleMode } from '../../engine/upscale';
 import { CREDIT_STEPS, saveSettings, type GameSettings, type ShakeLevel } from '../settings';
 import { ControlsScene } from './controls';
 import { DIFFICULTIES, DIFFICULTY_INFO } from './flow-data';
@@ -21,11 +27,13 @@ export type OptionId =
   | 'credits'
   | 'music'
   | 'sfx'
+  | 'voice'
   | 'announcer'
   | 'bubbles'
   | 'bossBar'
   | 'shake'
   | 'flashes'
+  | 'graphics'
   | 'controls'
   | 'reset'
   | 'back';
@@ -40,19 +48,24 @@ export const OPTION_ROWS: readonly Row[] = [
   { id: 'credits', label: 'CREDITS' },
   { id: 'music', label: 'MUSIC VOLUME' },
   { id: 'sfx', label: 'SFX VOLUME' },
+  { id: 'voice', label: 'VOICE VOLUME' },
   { id: 'announcer', label: 'ANNOUNCER' },
   { id: 'bubbles', label: 'SPEECH BUBBLES' },
   { id: 'bossBar', label: 'BOSS BAR' },
   { id: 'shake', label: 'SCREEN SHAKE' },
   { id: 'flashes', label: 'REDUCE FLASHES' },
+  { id: 'graphics', label: 'GRAPHICS' },
   { id: 'controls', label: 'CONTROLS' },
   { id: 'reset', label: 'RESET HIGH SCORES' },
   { id: 'back', label: 'BACK' },
 ];
 
 const SHAKES: readonly ShakeLevel[] = ['full', 'low', 'off'];
-const TOP = 44;
-const STEP = 14;
+/** First row y and row spacing (px); the last row ends above the hint line at y 200. */
+export const OPTION_TOP = 40;
+export const OPTION_STEP = 11;
+const TOP = OPTION_TOP;
+const STEP = OPTION_STEP;
 const LABEL_X = 64;
 const VALUE_X = 320;
 
@@ -67,6 +80,8 @@ export function optionValue(s: GameSettings, id: OptionId): string {
       return String(s.musicVolume);
     case 'sfx':
       return String(s.sfxVolume);
+    case 'voice':
+      return String(s.voiceVolume);
     case 'announcer':
       return s.announcer ? 'ON' : 'OFF';
     case 'bubbles':
@@ -77,9 +92,20 @@ export function optionValue(s: GameSettings, id: OptionId): string {
       return s.screenShake.toUpperCase();
     case 'flashes':
       return s.reduceFlashes ? 'ON' : 'OFF';
+    case 'graphics':
+      return s.graphics.toUpperCase();
     default:
       return '';
   }
+}
+
+/**
+ * Hint for the GRAPHICS row when the window is too small for the chosen filter at backbuffer
+ * resolution `res` ('' when the filter is drawn as chosen), e.g. `XBR NEEDS A LARGER WINDOW: SMOOTH`.
+ */
+export function graphicsHint(mode: UpscaleMode, res: number): string {
+  const used = modeAtRes(mode, res);
+  return used === mode ? '' : `${mode.toUpperCase()} NEEDS A LARGER WINDOW: ${used.toUpperCase()}`;
 }
 
 /** Change one setting by one step (`d` = −1 / +1). Returns true when something changed. */
@@ -93,8 +119,9 @@ export function stepOption(s: GameSettings, id: OptionId, d: number): boolean {
       s.credits = cycle(CREDIT_STEPS, s.credits);
       return true;
     case 'music':
-    case 'sfx': {
-      const key = id === 'music' ? 'musicVolume' : 'sfxVolume';
+    case 'sfx':
+    case 'voice': {
+      const key = id === 'music' ? 'musicVolume' : id === 'sfx' ? 'sfxVolume' : 'voiceVolume';
       const v = Math.max(0, Math.min(10, s[key] + d));
       if (v === s[key]) return false;
       s[key] = v;
@@ -114,6 +141,9 @@ export function stepOption(s: GameSettings, id: OptionId, d: number): boolean {
       return true;
     case 'flashes':
       s.reduceFlashes = !s.reduceFlashes;
+      return true;
+    case 'graphics':
+      s.graphics = cycle(UPSCALE_MODES, s.graphics);
       return true;
     default:
       return false;
@@ -208,8 +238,13 @@ export class OptionsScene implements Scene {
 
   private change(id: OptionId, d: number): void {
     const s = this.app.settings;
+    if (id === 'graphics') {
+      // Step from the filter on screen; from now on the option rules, not `?gfx=`.
+      s.graphics = graphicsMode(this.app);
+      this.app.graphicsOverride = null;
+    }
     if (!stepOption(s, id, d)) return;
-    if (id === 'music' || id === 'sfx') applyAudioSettings(this.app.audio, s);
+    if (id === 'music' || id === 'sfx' || id === 'voice') applyAudioSettings(this.app.audio, s);
     this.app.audio.sfx('ui/move');
     this.opts.onChange?.(s);
   }
@@ -237,7 +272,7 @@ export class OptionsScene implements Scene {
       const col = sel ? UI_GOLD : PAL.snow[1];
       uiText(r, row.label, LABEL_X, y, col);
       if (sel) drawCursor(r, LABEL_X - 4, y + 3, this.t);
-      const v = optionValue(s, row.id);
+      const v = row.id === 'graphics' ? graphicsMode(this.app).toUpperCase() : optionValue(s, row.id);
       if (v) {
         uiText(r, '>', VALUE_X, y, sel ? UI_GOLD : PAL.stone[2], 'right');
         uiText(r, v, VALUE_X - 9, y, sel ? UI_WHITE : PAL.snow[2], 'right');
@@ -246,6 +281,9 @@ export class OptionsScene implements Scene {
     }
     if (this.opts.inGame && (OPTION_ROWS[this.sel].id === 'difficulty' || OPTION_ROWS[this.sel].id === 'credits')) {
       centerText(r, 'APPLIES TO THE NEXT GAME', 212 - 12, PAL.stone[3]);
+    } else if (OPTION_ROWS[this.sel].id === 'graphics') {
+      const hint = graphicsHint(graphicsMode(this.app), this.app.displayRes);
+      if (hint) centerText(r, hint, 212 - 12, PAL.stone[3]);
     }
     if (this.confirm !== null) this.drawConfirm(r);
   }

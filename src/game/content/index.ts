@@ -15,6 +15,7 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   'music/missions': () => import('./music/missions'),
   'music/finale': () => import('./music/finale'),
   'music/ams': () => import('./music/ams'),
+  samples: () => import('./samples/index'),
   characters: () => import('./characters/index'),
   'characters/art': () => import('./characters/art'),
   weapons: () => import('./weapons/index'),

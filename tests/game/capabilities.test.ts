@@ -206,7 +206,7 @@ describe('status effects', () => {
     const rig = new Rig();
     let drawn = 0;
     rig.p.status.add({ id: 'cap-balloon', ticks: 100, onDraw: () => drawn++ });
-    rig.p.draw({ sprite() {}, frame() {}, image() {}, rect() {}, line() {}, text() {}, parallax() {}, fade() {}, begin() {}, end() {}, setCamera() {}, w: 384, h: 216, camX: 0, camY: 0 });
+    rig.p.draw({ sprite() {}, frame() {}, image() {}, rect() {}, line() {}, text() {}, parallax() {}, fade() {}, begin() {}, end() {}, setCamera() {}, setMode() {}, setSubpixel() {}, w: 384, h: 216, res: 1, mode: 'pixel', subpixel: 'off', camX: 0, camY: 0 });
     expect(drawn).toBe(1);
   });
 });
@@ -295,7 +295,7 @@ describe('players: legs before arms, ice, extends, difficulty', () => {
     rig.world.audio = audio;
     rig.p.giveWeapon('machine-gun');
     rig.p.giveWeapon('machine-gun');
-    expect(audio.log).toContain('voice:MORE MACHINE GUN!');
+    expect(audio.log).toContain('voice:MORE HEAVY MACHINE GUN!');
   });
 });
 

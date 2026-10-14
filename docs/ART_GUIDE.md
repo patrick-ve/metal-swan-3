@@ -26,6 +26,72 @@ stacks (`demo/bg`), every background generator (`demo/bg-layers`) and every terr
 | Bloodless | Deaths are cartoon: stagger and fall, scorch-black tumble, soot statue that crumbles to ash, dizzy stars. Never blood. |
 | Originality | Our own designs only (see `docs/ORIGINALITY.md` §Art). No look-alikes of any existing game's characters, vehicles, crates or HUD. |
 
+**High-resolution displays** (`docs/ARCHITECTURE.md` §3): art is authored at 1× — every
+size, anchor, point and rule here is in logical pixels — plus optional 2× versions for mission
+ams (next section). On a large display the browser draws a k-times backbuffer: sprites are
+filtered once by the GRAPHICS mode (`pixel`, the default: none; `smooth`: a palette-exact
+scaler that rounds stairs and diagonals; `xbr`: smoother curves with blended edge colours),
+everything else is enlarged as crisp blocks. Never filtered: backgrounds and
+terrain chunks, `image()` buffers, the font, sprite ids under `UNFILTERED_PREFIXES` in
+`render-common.ts` (`ui/`, except the character art in `FILTERED_UI_PREFIXES`) and the exact ids
+in `UNFILTERED_IDS` (the large explosions' dithered fire, the `Fabel` script sign). In `xbr`
+mode, `decor/` sprites use `smooth` (xBR rounds bricks and windows and seams tiled strips). A
+scaler adds no detail; it only reshapes edges, so 1-px details, dither and tiny text read best
+kept crisp — add an exact id (or a prefix) for art that suffers, or better, fix the art: 2 × 2
+checker crossings between a light stroke and a dark ground become small rings in `smooth`;
+letters on a plain band do not (so the STADHUIS lettering on `decor/ams/stopera` sits on a
+plain dark plaque). Check the
+look headless: `npm run shot -- … --res 5 --gfx smooth`.
+
+### 2x art (mission ams)
+
+Mission ams (`MissionDef.artDensity: 2`) can draw a 2× version of any sprite id, shared ones
+included (players, the Swan, fx, items …): register it with `defineHiSprite(id, gen2x)` (or
+`defineSprite(id, gen, { hi: gen2x })`). Only ams draws it; m0–m5, the title, the attract demo
+and all game logic keep the 1× frames. The engine contract is in `docs/ARCHITECTURE.md` §3 and
+`docs/api/media.md` §5. Rules:
+
+| Rule | Detail |
+|---|---|
+| Same logical geometry | The same number of frames as the 1× strip; each frame the same logical size, anchor and named points as its 1× frame. Points and anchors stay in LOGICAL px (the game reads them for muzzles, hands, seats, hitboxes). The registry enforces it: a 2× frame is re-framed to the 1× rectangle (pixels outside it are cut, with a warning); a wrong frame count, an odd buffer size or different points make the id fall back to its 1× frames (`npm run sprites` reports `id@2x`). |
+| Buffer = 2× | Each buffer is exactly twice the 1× buffer in both directions: one logical pixel = a 2 × 2 block. Draw on the 2× grid; a 1× part can be placed with `blitFrame(f, x, y, o, 2)` (doubled), a 2× part with `getFrames(part, 2)`. Rotations: `rotated(a, { align: 2 })`. |
+| Crisp | Hand-placed pixels at double density: no filter, no smoothing, no anti-aliasing or blended edge colours. The GRAPHICS filters never touch 2× frames. |
+| Palette only | Every pixel opaque and from `PAL` (as for 1× art); use the extra density for detail (rivets, seams, eyes, folds, highlights), not for new colours. |
+| Light top-left | The same light as the 1× art: highlights up-left, shadows down-right; the 2× frame must read as the 1× frame seen closer, never as a different design. |
+| Outline width | **DECIDED (user, 2026-10-13): 2 px at 2×** (= 1 logical px, the weight of the 1× art), for the silhouette and for the inner rings between parts, with the 2× grid used for the details inside (eyes, seams, grain, crescents) as 1-px lines. This is what the pilot (seagull, supply crate) registers. The pilot compared a 1-px outline (variant A, only a scratch render): it looked softer and weaker next to the 1× sprites and lost small gaps (the gull's legs merged). Compare `tmp/hires/g2-pilot/gull-poses-k5.png` and `crate-k5.png` (rows 1×, 2×-A, 2×-B). |
+| Helpers | `src/game/art/hi.ts`: `HiSketch` (the 2× `Sketch`: logical body space, `line` = outline width), `HiPen` (logical coordinates, half steps reach single 2× pixels: `dot`, `fine`), `asHi` / `fitHi` (match a 2× buffer to its 1× frame), `liftHi` (a 1× effect frame such as flames or crumbling, on 2× source art), `squashedHi`, `outlineHi`. Examples: `locals/seagull.art.ts` (`gullHi`, `gullStripHi`), `items/crate.art.ts` (`crateStripHi`). |
+| Human rig at 2× | `renderHuman(style, pose, part, 2)` draws the figure as 2× art: the joints are found on the 1× grid (so every part sits where the 1× frame has it), limbs, torso and gear are drawn on the 2× grid with the true shape at half-pixel steps, bands (`shadeLayer({ density: 2 })`), specks (`despeckle(l, keep, 2)`), rings and the outline (`new Composer(w, h, 2)`) at the 1× weight, and the result is the 1× frame's rectangle doubled (same logical size, anchor and points; 1× geometry is cached, so a 2× render of a figure already drawn at 1× draws only the 2× canvas). Gear has hand-drawn 2× twins (`gunArtHi`, `knifeArtHi`, `propArtHi`, `heldArtHi`, 2× hands in `drawHand(…, density)`). `poseFrames`, `burnFrames`, `blastFrames` and `portrait` take a density; `definePlayerSprites` registers 2× art for every `char/<id>/…` strip. Heads go through ONE hook, `headLayerHi(style, expr)` in `humanoid.ts`: it uses `renderHeadHi(s: HeadStyle, expr: Expression): PixelBuffer` from `humanoid-head.ts` (hand-drawn templates in `humanoid-head-hi.ts`; a 36 × 38 buffer, the 18 × 19 head on the 2× grid, NECK / HEAD_CENTER the same logical pixels; a tilted head is drawn with `{ glint: false }`, so the 1-px eye highlight `W` cannot drift off the pupil). Without that export the 1× head would be copied at 2×. The gun-grip fist (`'grip'`) is 1 logical px smaller at 2×, so the gun's grip shows round it. |
+| Amsterdam cast at 2× | Riders (`locals/rider.art.ts`: `drawBikeHi`, `fatWheelHi` / `cityWheelHi`, `cubePackHi`, `capFramesHi`; 2× bikes are cached per look, and a pair set reuses the 2× death strips of the solo set with the same rider via `RiderSetOpts.same`), the handhaver (`bookHi`, `ticketFramesHi`: no letters on the ticket or the vest, both are drawn mirrored when facing left), the tourist hostage's chair / sack flow (`items/hostage.art.ts` `HI_STRIPS` for `HI_KINDS`, `binds.art.ts` `chairPieceHi`, `sackPieceHi`, `ropeBitFramesHi`), the NPCs (`missions/ams/npc.art.ts`: aprons, scoop, salute forearm, counter, omafiets, window), the ambient life (`missions/ams/npc-hi.art.ts`: pigeons, ducks, the tour boat, the window cat). Crush strips at 2×: `art/hi-strips.ts` `crushStripHi` (with `fitBounds` for trimmed 1× frames). `tests/art/cast-hi.test.ts` lists the ids. |
+| Fx at 2× | `fx/explosion-*` (`explosionFramesHi`: the same puffs sampled on the 2× grid, dither and embers on whole geometry cells, `rimHi` keeps the 1× rim weight and pattern), `fx/impact`, `fx/hit`, `fx/dust`, `fx/splash`, `fx/debris-<dirt|metal|plant|wood>`, `fx/poof`, `fx/confetti(-bit)` and `fx/music-note` (`content/fx/hi.art.ts`). `tests/art/fx-hi.test.ts` lists the ids. |
+| Items at 2× | Weapon medallions (`weaponStripHi`, every alias id), bombs, food and treasure (`PICKUP_HI`) in `content/items/pickups-hi.art.ts`, registered from pickups.art.ts. `item/pickup-1up` and `item/pickup-repair` stay 1× (ams never drops them). `tests/art/items-hi.test.ts` lists the ids; `tests/art/hi-dither.test.ts` checks every 2× fx, weapon and pickup id for single-pixel checker dither. |
+| Density-blind helpers | Some shared 1× helpers mix buffer px and logical px and give wrong anchors on a 2× frame: the quarter turns in `weapons/shots.art.ts` (`ringStrip`, `turnFlash`) and `creatures/draw.ts` (`squashed`, `reground`). Use the `hi.ts` helpers (`squashedHi`, `turnFrame(f, q)` for exact quarter turns with the anchor in logical px, `turnHi(src2, angle, base1, { outline })` for any turn of a 2× source fitted to its turned 1× frame, `rotated(a, { align: 2 })` and `asHi` / `fitHi` for the anchor) on 2× frames; the weapons art (`weapons/art.ts`, `shots.art.ts`) uses them for every shot and flash, or compute anchors with `frameW` / `frameH`. `mirrored()` (characters/pieces.ts), `withPieces` / `decorateFrames` (pieces at logical offsets; a 1× piece is doubled unless a hand-drawn 2× twin is registered for it with `setHiTwin` (the characters/pieces.ts `piece(…, hiRows)` does this), a piece with `density: 2` is placed as it is), `sootify`, `scorch` and `speckle` handle 2× frames; `withFlames` and `crumble` are 1× recipes, lifted with `liftHi` (see `burnFrames`). The registry re-frames a misplaced result and only warns, so a mistake here shows as misplaced art, not as a logic change. |
+| Uneven pixels at odd k | A 2× pixel is k/2 screen px: exact at k = 2, 4, 6; at k = 3 and k = 5 (1080p) the columns alternate 2/1 and 3/2 px. The pattern is fixed to the sprite (no shimmer when it moves; a flip swaps which columns are wide). Do not rely on single 2× px lines having one even width. |
+| Res 1 | On a 1× backbuffer the game draws the 2× frame reduced to the top-left pixel of every 2 × 2 block; keep that reduction readable (or close to the 1× frame). |
+
+Check it: `npm run sprites -- <prefix> --density 2 --marks` (2× sheet, points where the game
+reads them), `npm run shot -- --mission ams --res 2` (or `--res 5`) for the game look, `--art 1`
+for the 1× look. `tests/engine/hires-density.test.ts` checks the geometry of every 2× sprite.
+
+### 2x backgrounds and terrain (mission ams)
+
+Parallax layers and terrain can have 2× art too; the rules of the table above apply (same
+design, crisp, palette only, light top-left, outlines 2 px at 2×). Only a section view of
+density 2 (ams) draws it, and only on a backbuffer of res ≥ 2 (at res 1 the 1× art is the exact
+image); layers and materials without 2× art stay 1× next to it.
+
+| Part | How |
+|---|---|
+| Background layer | `defineHiBgGenerator(id, gen2x)` (or `defineBgGenerator(id, gen, { hi: gen2x })`, `art-registry.ts`). `gen2x(w, h, params, seed)` gets the SAME logical arguments as the 1× generator and returns exactly (2·w) × (2·h): same shapes at the same logical places (use the same hashes and loops, in logical px, and draw each shape on the 2× grid), seamless at 2·w. Offsets, factors, drift and tiling stay logical. A wrong size or a throw falls back to the 1× layer (`hiSceneryErrors()` lists `bg:<id>@2x`). Every ams layer has one: `missions/ams/art-hi-bg.ts` (`ams-skyline`), `backgrounds-hi.ts` (`ams-canal-houses`, `ams-elms`, `ams-plein`) and `art-hi-sky.ts` (the shared `sky-gradient` and `clouds`; only density-2 views draw them, so other missions keep their 1× skies). Far rows keep the 1× haze remap; trees use staggered 3 × 3 leaf clumps; reflections keep the 1× wobble in whole logical px (finer steps shear them). |
+| Terrain material | `defineHiTerrainMaterial(kind, id, paint)` (`terrain-art.ts`; kind `ground`, `edge`, `platform` or `solid`). `paint(p, sx, sy)` gets the same `Px` as the 1× material and the sub-pixel (sx, sy) ∈ {0, 1}² of the logical pixel; hi-res coordinates are `2·p.x + sx` and `2·p.up + sy` (or `2·p.y + sy`). The painter classifies every pixel as at 1× (cells, bands, cliff shading, the INK underside), so geometry and collision cannot change; only the material's colours get finer. Materials without 2× art are enlarged 2 × 2. The hangers under a platform band get 2× colours with `defineHiTerrainHang(platform, (x, k, seed, sx, sy) => Color)`, painted only where the 1× `hang` paints (else enlarged 2 × 2). Example: `missions/ams/art-hi-terrain.ts` (every ams material: ground `klinker`, edges `bikepath` and `kerb`, platforms `wood` and `whitewood` with the `whitewood` cross-beam hangers, solid `brick`). |
+| Files | New generators go in new files (`missions/ams/art-hi-*.ts`) imported from the ams module. |
+| Cost | A 2× layer is 4× the pixels of its layer (ams-skyline 768 × 216: 2.5 MB, about 1.4 ms in node; the ams layers of one section together about 13 MB; the near `ams-canal-houses` row is the slowest at about 7–11 ms warm, up to about 17 ms on a cold first call). A 2× chunk of 256 × 256 logical px is 512 × 512 (1 MB, cropped to its opaque part, about 6 ms, at most 14 ms in node); section a keeps about 19 MB of 2× chunks next to 7 MB of 1× chunks. Keep each 2× layer or chunk well under 16 ms: the browser builds them as art jobs within the 8 ms per frame 2× budget (docs/ARCHITECTURE.md §3), drawing the 1× art until they are ready. |
+
+Check it: `npm run shot -- --mission ams --section a --god --bot --ticks 120 --res 5` (2×) and
+the same with `--art 1` (1×). `tests/art/ams-bg-hi.test.ts` checks every ams layer (2× version present, size, footprint, palette,
+determinism, seam, 2× detail). `tests/art/scenery-hi.test.ts` checks size, footprint, palette and
+the 1× geometry of the 2× terrain, lists the 2× layers, and keeps the 1× scenery of every mission
+byte-identical (fixtures/scenery-1x.json).
+
 ### Palette ramps per material
 
 | Material | Ramp (`PAL.*`) | Notes |
@@ -112,7 +178,7 @@ Each sprite registers its own defaults (`ticksPerFrame`, `durations`, `loop`), s
 
 ## 3. The humanoid rig
 
-A figure is **style + pose**. `renderHuman(style, pose, part)` solves a skeleton, draws each
+A figure is **style + pose**. `renderHuman(style, pose, part, density?)` solves a skeleton, draws each
 body part as a shaded layer (far arm, far leg, near leg, coat tails, torso, belt, accessories,
 head, gun, near arm, hand), stacks them with internal lines and outlines the silhouette.
 
@@ -352,6 +418,8 @@ be `216 + (sectionHeight − 216) × factorY` px tall, or the view runs off its 
 colour shows). Either size it so, or make it vertically seamless and set `repeatY: true`.
 Keep `factorY` small for far layers (0–0.2) like `factorX`.
 
+2× layers (mission ams): `defineHiBgGenerator`, see "2x backgrounds and terrain (mission ams)".
+
 ## 8. Terrain painter (`terrain-art.ts`)
 
 Registered with `setTerrainPainter`. A `TerrainStyleDef` picks materials:
@@ -374,6 +442,9 @@ Adding a material: add an entry to `GROUND`, `EDGE`, `PLATFORM` or `SOLID`. A ma
 function of `Px` (world x, y and the run lengths `up`, `down`, `left`, `right`). Use world
 coordinates for patterns (`hash2(p.x, p.y, seed)`, `noise2`), never chunk coordinates.
 
+Amsterdam materials: ground `klinker`, edges `bikepath` and `kerb`, platform `whitewood`. 2×
+materials (mission ams): `defineHiTerrainMaterial`, see "2x backgrounds and terrain (mission ams)".
+
 ---
 
 ## 9. Checklist for art agents
@@ -390,3 +461,6 @@ coordinates for patterns (`hash2(p.x, p.y, seed)`, `noise2`), never chunk coordi
    silhouette, readability against busy backgrounds, and motion between frames.
 9. Add tests in `tests/art/` (frame counts, points, palette, seams for tiling art).
 10. Keep generation fast (a whole character set builds in well under a second).
+11. 2× art (mission ams only): same frames, sizes, anchors and points as the 1× strip, buffer
+    twice the size, crisp, palette only, light top-left (section 1, "2x art (mission ams)");
+    check with `npm run sprites -- <prefix> --density 2 --marks`.
