@@ -20,6 +20,7 @@
     "audio:process": "tsx tools/audio/process.ts",
     "audio:review": "tsx tools/audio/review.ts",
     "audio:ship": "tsx tools/audio/ship.ts",
+    "audio:mayor-placeholders": "tsx tools/audio/mayor-placeholders.ts",
     "perf": "tsx tools/perf.ts"
   },
   "devDependencies": {

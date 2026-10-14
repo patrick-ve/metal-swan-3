@@ -63,7 +63,12 @@ a robot caricature of the city's mayor, Femke Halsema (ROBO-HALSEMA). Rules for 
   missiles), two generic weapon names that the reference series also uses (`MORE <NAME>!` for the
   same weapon again). Only these two short names are excepted; weapon designs, sounds, art and
   all other text stay our own.
-- The mayor speaks only in text bubbles: no recorded, cloned or imitated voice of the real person.
+- The mayor's voice (2026-10-14): her lines may be spoken by hand-placed clips in
+  public/audio/mayor/ (bosses/ams/voice.ts; one file per line, placeholders until the final
+  recordings exist).
+  Those recordings must be original or made with the speaker's consent: never a cloned,
+  sample-trained or imitated voice of the real person. The ElevenLabs tools generate nothing for
+  her.
 
 ## Exception: generated audio for the start screens and mission `ams`
 

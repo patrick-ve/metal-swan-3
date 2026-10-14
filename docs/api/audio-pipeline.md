@@ -6,8 +6,8 @@ Tests: `tests/tools/audio-pipeline.test.ts`. Runtime side: `src/engine/samples.t
 
 This is the dated exception of 2026-10-14 to the "no audio files" rule (docs/ARCHITECTURE.md,
 docs/ORIGINALITY.md): only the start screens and mission ams ship sampled audio. The code synth
-stays the fallback for every id. The mayor ROBO-HALSEMA never gets a voice: the tools refuse a
-VoiceSpec or LineSpec for her, and her lines stay text-only.
+stays the fallback for every id. The tools generate nothing for the mayor ROBO-HALSEMA: they
+refuse a VoiceSpec or LineSpec for her. Her clips are placed by hand (see "The mayor's clips").
 
 ## Flow
 
@@ -99,6 +99,39 @@ again only when its raw take is newer, or with `--force` (use it after a spec ch
   different loop points.
 - Warns about (and skips) picks that match no spec item, e.g. a line whose game text changed
   (its voice key changed with it): generate and pick the new line.
+
+## The mayor's clips (by hand, not by the tool)
+
+- `src/game/content/bosses/ams/voice.ts` lists her 10 bubble lines (`MAYOR_LINES`). Each line has
+  its own file, named after its bubble text: `public/audio/mayor/<voiceKey>.mp3`.
+
+  | Line | File |
+  |---|---|
+  | DE BUREN HEBBEN GEKLAAGD. | `mayor/de-buren-hebben-geklaagd.mp3` |
+  | FABEL FRIET IS VANAF NU GESLOTEN! | `mayor/fabel-friet-is-vanaf-nu-gesloten.mp3` |
+  | FABEL FRIET WILLEN WE NIET! | `mayor/fabel-friet-willen-we-niet.mp3` |
+  | REGELS ZIJN REGELS! | `mayor/regels-zijn-regels.mp3` |
+  | IK WORD HELEMAAL GEK VAN DIE HOTDOGKRAAM... | `mayor/ik-word-helemaal-gek-van-die-hotdogkraam.mp3` |
+  | ...OP MIJN MUSEUMPLEIN! | `mayor/op-mijn-museumplein.mp3` |
+  | DIT KOST JE EEN FLINKE BOETE! | `mayor/dit-kost-je-een-flinke-boete.mp3` |
+  | MIJN STEMPEL! | `mayor/mijn-stempel.mp3` |
+  | MIJN HAAR, MIJN PRACHTIGE HAAR! | `mayor/mijn-haar-mijn-prachtige-haar.mp3` |
+  | TOT ZIENS... | `mayor/tot-ziens.mp3` |
+
+- Until the final recordings exist, each file is a placeholder: a wordless robot warble about as
+  long as the line (tagged `comment=placeholder`). `npm run audio:mayor-placeholders` writes the
+  missing ones and never overwrites a file (`--force` rewrites only tagged placeholders).
+- To add a recording: replace the placeholder with the real MP3 under the same name. No code
+  change is needed; playback uses the decoded file's length. Then run
+  `npx vitest run tests/content/boss-ams-voice.test.ts` (every file exists, every line fits).
+- If a bubble text changes, its file name changes with it (`voiceKey`): rename the recording.
+- `content/samples/index.ts` adds these clips to the `'mission:ams'` group. `audio:ship` only
+  manages `public/audio/boot` and `public/audio/ams`, so it never removes them.
+- In the fight, `AmsMayor.playVoice` (`bosses/ams/mayor.ts`) speaks a line with `say(text,
+  'mayor', { important: true })` when `hasVoice(text)` is true; otherwise the robot chatter
+  `ams/mayor-babble` plays for as long as the line takes to read.
+- Recordings must be original or made with the speaker's consent; never a cloned or imitated
+  voice of the real person (docs/ORIGINALITY.md).
 
 ## A full round
 

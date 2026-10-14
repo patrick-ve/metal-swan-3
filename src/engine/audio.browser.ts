@@ -526,6 +526,18 @@ export class WebAudioOut implements AudioOut {
     return this.speech !== null || this.lane.playing !== null || this.lane.queued !== null;
   }
 
+  hasVoice(text: string): boolean {
+    const key = voiceKey(text);
+    return (
+      !this.muted &&
+      this.vols.voice > 0 &&
+      this.ctx !== null &&
+      this.ctx.state === 'running' &&
+      key !== '' &&
+      this.samples.state('voice', key) === 'ready'
+    );
+  }
+
   /**
    * Route a voice sample through the speech lane (one line at a time; see `SpeechLane`). False
    * when the audio is not running or the line has no ready sample (the caller falls back).

@@ -91,13 +91,17 @@ describe('ams audio: voiced speech bubbles', () => {
     expect(MISSION_CARDS.find((c) => c.id === 'ams')?.briefing.length).toBe(2);
   });
 
-  it('ROBO-HALSEMA is never voiced: her bubbles are voice: false and no mayor file calls say', () => {
+  it('ROBO-HALSEMA speaks only through playVoice (hand-placed clips); her bubbles are voice: false', () => {
     const dir = new URL('../../src/game/content/bosses/ams/', import.meta.url);
     for (const f of readdirSync(dir)) {
       const src = readFileSync(new URL(f, dir), 'utf8');
-      expect(src.includes('audio.say') || src.includes('speaker:'), f).toBe(false);
+      // One say call in the whole boss folder: playVoice in mayor.ts, as the speaker 'mayor'.
+      const calls = src.split('audio.say?.(').length - 1;
+      expect(calls, f).toBe(f === 'mayor.ts' ? 1 : 0);
     }
-    expect(readFileSync(new URL('mayor.ts', dir), 'utf8')).toContain('voice: false');
+    const mayor = readFileSync(new URL('mayor.ts', dir), 'utf8');
+    expect(mayor).toContain('voice: false');
+    expect(mayor).toContain('audio.say?.(text, MAYOR_SPEAKER, { important: true })');
     expect(readFileSync(new URL('../../src/game/boss.ts', import.meta.url), 'utf8').includes('audio.say')).toBe(false);
   });
 

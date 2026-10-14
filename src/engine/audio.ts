@@ -76,6 +76,11 @@ export interface AudioOut {
   /** True while a voice sample speaks or waits to speak (a scene paces its next line by it). */
   speaking?(): boolean;
   /**
+   * True when `say(text)` would play a voice sample now (loaded, audio running, voice not muted).
+   * Cosmetic only: a speaker may pick a stand-in sound when false; never use it for game logic.
+   */
+  hasVoice?(text: string): boolean;
+  /**
    * Silence / restore every looping sound (`sfxLoop`) while a scene is on top of gameplay (the
    * pause menu, the continue screen); the loops keep running underneath.
    */

@@ -258,6 +258,11 @@ export class GameAudio implements AudioOut {
     return this.inner.speaking?.() ?? false;
   }
 
+  /** True when a voice sample for `text` would play now (false at VOICE VOLUME 0 or headless). */
+  hasVoice(text: string): boolean {
+    return this.settings.voiceVolume > 0 && (this.inner.hasVoice?.(text) ?? false);
+  }
+
   pauseLoops(): void {
     this.inner.pauseLoops?.();
   }

@@ -37,6 +37,7 @@ import { debris, dust, explosion, hitSpark, smokeTrail } from '../../../fx';
 import { defineEntity, paramFacing, paramNum, type SpawnParams } from '../../../registry';
 import { ADD_TAG, MAYOR, MAYOR_NAME } from './geometry';
 import { floorAt, NoiseLetter, ShieldShot, StampWave } from './shots';
+import { MAYOR_LINES, type MayorLineId } from './voice';
 
 const ART = 'boss/ams-mayor';
 const OFFICER_TAG = 'ams-mayor-officer';
@@ -48,6 +49,8 @@ const DEG = Math.PI / 180;
 const STAMP_SFX_SLAM = 30;
 /** The `sfxLoop` key of her robot chatter (`ams/mayor-babble`). */
 const BABBLE_KEY = 'mayor-babble';
+/** The speaker name of her voice clips (`say`): her own lines replace each other. */
+const MAYOR_SPEAKER = 'mayor';
 
 type Lane = 'high' | 'low';
 
@@ -96,7 +99,7 @@ export class AmsMayor extends Boss {
   private addSide: 1 | -1 = -1;
   private lastPing = 0;
   /** A second bubble that follows a long taunt after `wait` ticks (cosmetic, no script yield). */
-  private followUp: { text: string; ticks: number; wait: number } | null = null;
+  private followUp: { id: MayorLineId; ticks: number; wait: number } | null = null;
   /** Ticks left of the robot chatter loop (`ams/mayor-babble`) under her current bubble. */
   private babbleT = 0;
   /** Check the phase conditions on the next fight tick (a sandbox start in a later phase). */
@@ -161,18 +164,38 @@ export class AmsMayor extends Boss {
     b.h = src.h;
   }
 
-  private say2(text: string, ticks = 110, pitch = 1): void {
-    // Text only: the mayor never gets a voice (docs/ORIGINALITY.md, mission ams). Wordless robot
-    // chatter plays for as long as the line takes to read (a placeholder, not speech).
+  /** Show one of her lines in a bubble and speak it (`playVoice`). */
+  private say2(id: MayorLineId, ticks = 110, pitch = 1): void {
+    const text = MAYOR_LINES[id].text;
+    // `voice: false`: the runner does not voice this bubble; playVoice speaks it instead.
     this.say(text, { at: MAYOR.sayAt, ticks, voice: false });
-    this.world.audio.sfxLoop?.(BABBLE_KEY, 'ams/mayor-babble', { pitch });
+    this.playVoice(id, ticks, pitch);
+  }
+
+  /**
+   * Play her voice clip for a line (bosses/ams/voice.ts: `MAYOR_LINES[id].file` under
+   * public/audio/, the placeholder `mayor/placeholder.mp3` until the final recordings exist).
+   * When no clip is loaded (headless, a failed fetch, VOICE VOLUME 0) the wordless robot chatter
+   * `ams/mayor-babble` stands in for as long as the line takes to read; `pitch` only shapes the
+   * chatter (TOT ZIENS... winds down). Cosmetic: nothing in the fight waits for the audio.
+   */
+  private playVoice(id: MayorLineId, ticks: number, pitch = 1): void {
+    const audio = this.world.audio;
+    const text = MAYOR_LINES[id].text;
+    if (audio.hasVoice?.(text)) {
+      if (this.babbleT > 0) audio.stopSfx?.(BABBLE_KEY);
+      this.babbleT = 0;
+      audio.say?.(text, MAYOR_SPEAKER, { important: true });
+      return;
+    }
+    audio.sfxLoop?.(BABBLE_KEY, 'ams/mayor-babble', { pitch });
     this.babbleT = Math.min(ticks, Math.max(24, text.length * 3));
   }
 
   /** A taunt in two bubbles: the second one follows the first without delaying the script. */
-  private sayTwo(first: string, second: string, ticks = 90): void {
+  private sayTwo(first: MayorLineId, second: MayorLineId, ticks = 90): void {
     this.say2(first, ticks);
-    this.followUp = { text: second, ticks, wait: ticks };
+    this.followUp = { id: second, ticks, wait: ticks };
   }
 
   // ------------------------------------------------------------------------------- intro
@@ -197,13 +220,13 @@ export class AmsMayor extends Boss {
       } else this.legsFrame = 0;
       if (t === I.dim + I.walk + 4) {
         this.headFrame = 2;
-        this.say2('DE BUREN HEBBEN\nGEKLAAGD.', 70);
+        this.say2('complained', 70);
       }
       if (t === I.dim + I.walk + 20) this.headFrame = 0;
       if (t === I.dim + I.walk + 76) {
         this.headFrame = 2;
         this.setArm(1);
-        this.say2('FABEL FRIET IS VANAF\nNU GESLOTEN!', 56);
+        this.say2('closed', 56);
       }
       if (t === I.total - 12) {
         this.headFrame = 0;
@@ -240,7 +263,7 @@ export class AmsMayor extends Boss {
       if (this.partAlive('stamp-arm')) yield* this.stampSlam();
       if (!taunted) {
         taunted = true;
-        this.say2('FABEL FRIET WILLEN\nWE NIET!', 90);
+        this.say2('noFries', 90);
       }
       yield 20;
       yield* this.letterRain();
@@ -325,7 +348,7 @@ export class AmsMayor extends Boss {
   *phaseTwo(): ScriptGen {
     this.headFrame = 2;
     // The bubble hangs where the chain loop whirls: it clears before the first whip tell.
-    this.say2('REGELS ZIJN REGELS!', 48);
+    this.say2('rules', 48);
     yield 52;
     this.headFrame = 0;
     let taunted = false;
@@ -339,7 +362,7 @@ export class AmsMayor extends Boss {
       } else if (this.partAlive('stamp-arm')) yield* this.stampSlam();
       if (!taunted) {
         taunted = true;
-        this.sayTwo('IK WORD HELEMAAL GEK\nVAN DIE HOTDOGKRAAM...', '...OP MIJN\nMUSEUMPLEIN!');
+        this.sayTwo('hotdog1', 'hotdog2');
       }
       yield 20;
       yield* this.letterRain();
@@ -391,7 +414,7 @@ export class AmsMayor extends Boss {
 
   *phaseThree(): ScriptGen {
     this.headFrame = 2;
-    this.say2('DIT KOST JE EEN\nFLINKE BOETE!', 110);
+    this.say2('fine', 110);
     yield 30;
     this.headFrame = 0;
     for (;;) {
@@ -489,7 +512,7 @@ export class AmsMayor extends Boss {
     if (this.followUp && --this.followUp.wait <= 0) {
       const f = this.followUp;
       this.followUp = null;
-      if (this.state === 'fight') this.say2(f.text, f.ticks);
+      if (this.state === 'fight') this.say2(f.id, f.ticks);
     }
     if (this.recheck && this.state === 'fight' && this.phase >= 0) {
       this.recheck = false;
@@ -622,7 +645,7 @@ export class AmsMayor extends Boss {
     if (p === this.armPart) {
       this.setArm(0);
       this.shadowT = 0;
-      this.say2('MIJN STEMPEL!', 70);
+      this.say2('stamp', 70);
     } else if (p === this.chainPart) {
       this.lashLen = 0;
       this.lashHot = false;
@@ -631,7 +654,7 @@ export class AmsMayor extends Boss {
       debris(this.world, this.wx(0), this.wy(-96), 'metal', 8);
     } else if (p === this.headPart) {
       this.headFrame = 0;
-      this.say2('MIJN HAAR, MIJN\nPRACHTIGE HAAR!', 90);
+      this.say2('hair', 90);
     }
     if (!this.partAlive('stamp-arm') && !this.partAlive('chain')) {
       this.medPart.armored = false;
@@ -665,7 +688,7 @@ export class AmsMayor extends Boss {
 
   *powerDown(): ScriptGen {
     const w = this.world;
-    this.say2('TOT ZIENS...', 120, 0.7);
+    this.say2('goodbye', 120, 0.7);
     for (let t = 0; t < MAYOR.death; t++) {
       // Sparks and small blasts.
       if (t < 120 && t % 9 === 0) {
