@@ -1,11 +1,12 @@
-# Audio pipeline — ElevenLabs samples for the start screens and mission ams
+# Audio pipeline — ElevenLabs samples for the start screens, mission ams and the fps mode
 
 Source files: `tools/elevenlabs.ts`, `tools/audio/{spec-types,spec,lib,client,gen,loudness,process,review,ship}.ts`.
-Tests: `tests/tools/audio-pipeline.test.ts`. Runtime side: `src/engine/samples.ts` and
+Tests: `tests/tools/audio-pipeline.test.ts`, `tests/content/samples.test.ts`. Runtime side: `src/engine/samples.ts` and
 `src/game/content/samples/` (see `docs/api/media.md`).
 
 This is the dated exception of 2026-10-14 to the "no audio files" rule (docs/ARCHITECTURE.md,
-docs/ORIGINALITY.md): only the start screens and mission ams ship sampled audio. The code synth
+docs/ORIGINALITY.md): only the start screens, mission ams and the first-person mode (group
+`'mode:fps'`, see below) ship sampled audio. The code synth
 stays the fallback for every id. The tools generate nothing for the mayor ROBO-HALSEMA: they
 refuse a VoiceSpec or LineSpec for her. Her clips are placed by hand (see "The mayor's clips").
 
@@ -16,7 +17,7 @@ tools/audio/spec.ts            what to generate (SFX, MUSIC, VOICES, LINES; type
   │ npm run audio:gen -- …     ElevenLabs API  → tmp/audio/raw/<kind>/<id>/take-<n>.mp3 (+ .json)
   │ npm run audio:process      ffmpeg + TS DSP → tmp/audio/cand/<kind>/<id>/take-<n>.mp3 (+ .json)
   │ npm run audio:review       listening page  → tmp/audio/picks.json, tmp/audio/review-notes.json
-  │ npm run audio:ship         copies picks    → public/audio/<boot|ams>/<sfx|music|voice>/<name>-<n>.mp3
+  │ npm run audio:ship         copies picks    → public/audio/<boot|ams|fps>/<sfx|music|voice>/<name>-<n>.mp3
   ▼                                            + src/game/content/samples/manifest.ts (AUTO-GENERATED)
 ```
 
@@ -90,11 +91,16 @@ again only when its raw take is newer, or with `--force` (use it after a spec ch
 
 ## Ship — `npm run audio:ship [-- --dry-run]`
 
-- Copies each picked candidate to `public/audio/<boot|ams>/<sfx|music|voice>/<name>-<n>.mp3`
+- Copies each picked candidate to `public/audio/<boot|ams|fps>/<sfx|music|voice>/<name>-<n>.mp3`
   (`n` = 1… in take order) and removes MP3s there that are no longer picked.
+- It removes only files it names itself (`<slug>-<n>.mp3`). Any other MP3 in those folders (a
+  file placed by hand, e.g. `public/audio/ams/voice/Tot ziens.mp3`) is kept, and the tool prints a
+  warning for it.
 - Rewrites `src/game/content/samples/manifest.ts` (sorted keys, no timestamps): sfx `files` (plus
   loop points for loops), music `file`, `loopStart` (null for a one-shot), `loopEnd`, `duration`,
-  voice `files` and `duration`, by group `'boot'` and `'mission:ams'`.
+  voice `files` and `duration`, by group `'boot'`, `'mission:ams'` and (when it has picks)
+  `'mode:fps'`. Every group in the manifest must be in `SAMPLE_GROUPS` (`src/engine/samples.ts`);
+  `tests/content/samples.test.ts` checks it.
 - Refuses to ship when picks exceed `keep`, a candidate is missing, or looped takes of one id have
   different loop points.
 - Warns about (and skips) picks that match no spec item, e.g. a line whose game text changed
@@ -192,6 +198,32 @@ wrote the spec entries and generated the takes; group audio-ship ships them.
   too long (`maxSeconds`), and takes with a clicking loop seam; prefer the take closest to the
   spec timing. Voice previews were picked by median pitch, pitch range, roughness and pace
   against the description (measured with ffmpeg + numpy).
+- **Shipped** (group audio-ship, 2026-10-16): `public/audio/fps/` holds 44 sfx (57 files, some
+  ids have 2–3 takes), the 4 songs and the 14 lines (8 shouts, taunts 1–6): 6.0 MB. The same
+  ship added the drill sergeant's name callouts (`VINCENT!` … `PATRICK!`, group `'boot'`,
+  `public/audio/boot/voice/`, 80 kB). The four user tracks (`HAND_MUSIC`) did not change.
+- **Loading:** `loadFpsContent` (`src/game/scenes/fps-intro.ts`, spec §1.5 step 5) calls
+  `app.audio.loadSamples?.('mode:fps')` with a 3 s cap, behind the bridge / fps intro progress
+  bar. The boot never loads the group: the title flow fetches no `audio/fps/` file, and on the
+  route `?mission=ams&boss=1&debug=1` the first `audio/fps/` request comes after F4, in
+  `GlitchBridgeScene` (checked in the browser on 2026-10-16, 75 files, all 200).
+- **Voices in the game:** the actors call `audio.say(text, speaker)` only when
+  `audio.hasVoice?.(text)` is true (else the shout stand-in `fps/shout-<type>` plays); the boss
+  taunts go through `FpsGame.speak` → `audio.say(text, speaker, { important: true })`. Both find
+  the clip by `voiceKey(text)`, so taunts 1–3 play the `mecha` (Dutch, robot-filtered) clips.
+  When a line's text in `content/fps/lines.ts` changes, its key changes too: generate, pick and
+  ship the new line, or the actors play the shout stand-in and the boss taunt is silent (its
+  subtitle still shows).
+- **Verified** (group audio-verify, 2026-10-16, built `dist` in Chromium): every lines.ts string
+  has `hasVoice` true; the real `boss.taunt` path plays the matching clip for taunts 1–6; the
+  `mode:fps` files arrive during the bridge freeze, so `fps-bridge`, `fps/glitch` and `fps-floor`
+  play as samples; boot-ready time is the same with and without the 5 drill clips. Levels
+  (ffmpeg EBU R128): songs −16.4 LUFS like the ams and boot songs; lines −18.1 LUFS median (ams
+  −17.8); no sample clips (peaks ≤ −0.9 dBFS); loop seams of `fps-floor`, `fps-boss`,
+  `fps-bridge` are smooth. Five takes end while still sounding (the raw ElevenLabs takes do too:
+  `ik-ben-mecha-hofmans`, `pyramus-…`, `alle-mann-auf-posten`, `das-steht-nicht-im-handbuch`,
+  `nicht-schon-wieder`); the last sound is complete in length and the 40 ms fade stops a click,
+  but a listen on the review page is worth it.
 
 ## A full round
 

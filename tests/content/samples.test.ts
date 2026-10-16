@@ -3,7 +3,9 @@
  * voice keys, the pure helpers of the Web Audio output (take picker, loop folding, speech lane),
  * the sample bank with a mocked fetch and decoder, and the bubble-voice hook of the runner.
  */
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { hasSfx, NullAudio, type AudioOut } from '../../src/engine/audio';
 import { VirtualPad } from '../../src/engine/input';
@@ -25,13 +27,18 @@ import {
 import { SampleBank } from '../../src/engine/samples.browser';
 import { GameAudio } from '../../src/game/app';
 import { loadContent } from '../../src/game/content/index';
+import { ALL_FPS_LINES, BOSS_TAUNTS } from '../../src/game/content/fps/lines';
+import { FPS_SFX } from '../../src/game/content/fps/sfx';
 import { HAND_MUSIC } from '../../src/game/content/samples/index';
 import { SAMPLE_MANIFEST } from '../../src/game/content/samples/manifest';
 import { MissionRunner } from '../../src/game/mission/runner';
 import { GameSession } from '../../src/game/session';
 import { DEFAULT_SETTINGS } from '../../src/game/settings';
+import { paths } from '../../tools/audio/lib';
+import { applyShip, type GroupData } from '../../tools/audio/ship';
 
-const report = await loadContent((id) => id === 'sfx' || id.startsWith('music') || id === 'samples');
+// 'fps/sound' registers the lazy synth fallbacks of the 'mode:fps' group (docs/design/fps.md §3.6).
+const report = await loadContent((id) => id === 'sfx' || id.startsWith('music') || id === 'samples' || id === 'fps/sound');
 const PUBLIC_AUDIO = new URL('../../public/audio/', import.meta.url);
 
 describe('voiceKey', () => {
@@ -185,7 +192,7 @@ function mayorLines(): string[] {
 }
 
 describe('sample manifest (src/game/content/samples)', () => {
-  it('registers the two groups through the content manifest', () => {
+  it('registers the sample groups through the content manifest', () => {
     expect(report.failed).toEqual([]);
     expect(Object.keys(SAMPLE_MANIFEST).sort()).toEqual([...SAMPLE_GROUPS].sort());
     for (const g of SAMPLE_GROUPS) expect(listSampleGroups()).toContain(g);
@@ -217,7 +224,7 @@ describe('sample manifest (src/game/content/samples)', () => {
 
   it('keys are registered sound effect ids and song ids; files exist; loop points are sane', () => {
     const fileOk = (f: string): void => {
-      expect(f, f).toMatch(/^(boot|ams)\/(sfx|music|voice)\/[a-z0-9._-]+\.mp3$/);
+      expect(f, f).toMatch(/^(boot|ams|fps)\/(sfx|music|voice)\/[a-z0-9._-]+\.mp3$/);
       const url = new URL(f, PUBLIC_AUDIO);
       expect(existsSync(url), `missing public/audio/${f}`).toBe(true);
       expect(statSync(url).size, f).toBeGreaterThan(0);
@@ -265,6 +272,140 @@ describe('sample manifest (src/game/content/samples)', () => {
     const known = new Set(spec.LINES.map((l) => voiceKey(l.text)));
     for (const k of keys) expect(known.has(k), `voice key ${k} is not a line of tools/audio/spec.ts`).toBe(true);
     expect(spec.LINES.filter((l) => /HALSEMA|MAYOR/i.test(l.speaker))).toEqual([]);
+  });
+});
+
+describe("the first-person mode's sample group 'mode:fps' (docs/design/fps.md §1.5, §9)", () => {
+  const fps = (): SampleGroup => getSampleGroup('mode:fps')!;
+
+  it('covers every fps/ sound effect, all four songs and every spoken line; each has its synth fallback', () => {
+    const g = fps();
+    expect(g).toBeDefined();
+    const sfxIds = Object.keys(FPS_SFX).sort();
+    expect(sfxIds.length).toBe(44);
+    expect(Object.keys(g.sfx ?? {}).sort()).toEqual(sfxIds);
+    for (const [id, s] of Object.entries(g.sfx ?? {})) {
+      expect(hasSfx(id), id).toBe(true);
+      for (const f of s.files) expect(f, id).toMatch(/^fps\/sfx\//);
+    }
+    expect(Object.keys(g.music ?? {}).sort()).toEqual(['fps-boss', 'fps-bridge', 'fps-floor', 'fps-tally']);
+    for (const [id, s] of Object.entries(g.music ?? {})) {
+      expect(hasSong(id), id).toBe(true);
+      expect(s.file, id).toMatch(/^fps\/music\//);
+    }
+    // The tally jingle plays once; the floor, boss and bridge songs loop (the bridge after its sting).
+    expect(g.music!['fps-tally']!.loopStart).toBe(null);
+    for (const id of ['fps-floor', 'fps-boss', 'fps-bridge']) expect(g.music![id]!.loopStart, id).not.toBe(null);
+    expect(g.music!['fps-bridge']!.loopStart!).toBeGreaterThan(2);
+    // Every German shout and every taunt is found by voiceKey(text) (spec §9.3), and nothing else is in the group.
+    const keys = ALL_FPS_LINES.map((l) => voiceKey(l.text)).sort();
+    expect(new Set(keys).size).toBe(14);
+    expect(Object.keys(g.voice ?? {}).sort()).toEqual(keys);
+    for (const v of Object.values(g.voice ?? {})) for (const f of v.files) expect(f).toMatch(/^fps\/voice\//);
+  });
+
+  it("the suit's Dutch taunts 1-3 (speaker mecha) and taunts 4-6 have their clips", () => {
+    expect(BOSS_TAUNTS.slice(0, 3).map((l) => l.speaker)).toEqual(['mecha', 'mecha', 'mecha']);
+    expect(BOSS_TAUNTS.slice(0, 3).map((l) => voiceKey(l.text))).toEqual([
+      'ik-ben-mecha-hofmans',
+      'het-musje-het-prachtige-musje-red-mij',
+      'pyramus-en-thisbe-let-op-de-accusativus',
+    ]);
+    for (const t of BOSS_TAUNTS) {
+      const v = fps().voice![voiceKey(t.text)];
+      expect(v, t.text).toBeDefined();
+      expect(v!.duration, t.text).toBeGreaterThan(0.5);
+      expect(v!.duration, t.text).toBeLessThan(6);
+    }
+  });
+
+  it("keeps the user's music and the other groups apart: no fps id outside 'mode:fps', no hand track in it", () => {
+    expect(HAND_MUSIC['mode:fps']).toBeUndefined();
+    expect(fps().music).toBe(SAMPLE_MANIFEST['mode:fps']!.music);
+    for (const name of ['boot', 'mission:ams']) {
+      const g = getSampleGroup(name)!;
+      for (const id of [...Object.keys(g.sfx ?? {}), ...Object.keys(g.music ?? {})]) expect(id.startsWith('fps'), `${name}: ${id}`).toBe(false);
+    }
+  });
+
+  it('loads only with the mode: FpsIntroScene loads it behind its bar, the boot never names it', () => {
+    const src = (f: string): string => readFileSync(new URL(`../../src/game/${f}`, import.meta.url), 'utf8');
+    expect(src('scenes/fps-intro.ts')).toMatch(/loadSamples\?\.\('mode:fps'/);
+    expect(src('scenes/boot.ts')).not.toMatch(/mode:fps|SAMPLE_GROUPS/);
+    // A direct ?mission= start loads the mission's group; no mission points at the fps group.
+    expect(src('scenes/boot.ts')).toMatch(/groups = \['boot'\]/);
+  });
+
+  it('a sample bank fetches only public/audio/fps/ files for the group, and the taunts become ready', async () => {
+    const urls: string[] = [];
+    const b = new SampleBank(() => Promise.reject(new Error('unused')), {
+      baseUrl: 'http://game.test/index.html',
+      fetch: (url: string) => {
+        urls.push(url);
+        return Promise.resolve({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+      },
+      decode: () => Promise.resolve({ duration: 1 } as unknown as AudioBuffer),
+      warn: () => {},
+    });
+    await b.load('mode:fps');
+    const g = SAMPLE_MANIFEST['mode:fps']!;
+    const files = [
+      ...Object.values(g.sfx ?? {}).flatMap((s) => s.files),
+      ...Object.values(g.music ?? {}).map((s) => s.file),
+      ...Object.values(g.voice ?? {}).flatMap((s) => s.files),
+    ];
+    expect(urls.length).toBe(files.length);
+    for (const u of urls) expect(u).toMatch(/^http:\/\/game\.test\/audio\/fps\/(sfx|music|voice)\//);
+    for (const t of BOSS_TAUNTS) expect(b.state('voice', voiceKey(t.text)), t.text).toBe('ready');
+    expect(b.state('sfx', 'fps/pistol')).toBe('ready');
+    expect(b.song('fps-boss')).not.toBe(null);
+  });
+});
+
+describe('the REPORT FOR DUTY drill callouts (docs/design/squad.md)', () => {
+  it("every squad hero's callout has its clip in the 'boot' group (loaded before the first click)", async () => {
+    const { PLAYABLE } = await import('../../src/game/content/characters/index');
+    const { getCharacter } = await import('../../src/game/registry');
+    const boot = getSampleGroup('boot')!;
+    expect(PLAYABLE.length).toBe(5);
+    for (const id of PLAYABLE) {
+      const def = getCharacter(id);
+      // The text CharacterSelectScene says on confirm (and EndingScene on the hero poses).
+      const text = def.voice && /!$/.test(def.voice) ? def.voice : `${def.name}!`;
+      const v = boot.voice?.[voiceKey(text)];
+      expect(v, `${id}: ${text}`).toBeDefined();
+      expect(v!.files, id).toEqual([`boot/voice/${voiceKey(text)}-1.mp3`]);
+      // A short barked name: it never holds up the select screen.
+      expect(v!.duration, id).toBeGreaterThan(0.3);
+      expect(v!.duration, id).toBeLessThan(1.5);
+      expect(getSampleGroup('mode:fps')!.voice?.[voiceKey(text)], id).toBeUndefined();
+    }
+  });
+});
+
+describe('audio:ship keeps the files it did not write', () => {
+  it("removes an unpicked '<slug>-<n>.mp3' but keeps a hand-placed file such as 'Tot ziens.mp3'", () => {
+    const root = mkdtempSync(join(tmpdir(), 'ms3-ship-'));
+    try {
+      const p = paths(root);
+      const put = (rel: string): string => {
+        const f = join(p.publicAudio, rel);
+        mkdirSync(dirname(f), { recursive: true });
+        writeFileSync(f, rel);
+        return f;
+      };
+      put('fps/sfx/fps-old-1.mp3');
+      const hand = put('ams/voice/Tot ziens.mp3');
+      const empty = (): GroupData => ({ sfx: {}, music: {}, voice: {} });
+      const r = applyShip({ groups: { boot: empty(), 'mission:ams': empty(), 'mode:fps': empty() }, copies: [], errors: [], warnings: [] }, p, true);
+      expect(r.removed).toEqual(['public/audio/fps/sfx/fps-old-1.mp3']);
+      expect(r.kept).toEqual(['public/audio/ams/voice/Tot ziens.mp3']);
+      expect(existsSync(hand)).toBe(true);
+      // An empty 'mode:fps' group stays out of the manifest.
+      expect(r.manifest).not.toContain('mode:fps');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

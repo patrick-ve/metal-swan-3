@@ -12,7 +12,10 @@
  * - `'boot'`: the start screens and the UI (title, select and briefing music, menu sounds,
  *   character-select lines), loaded by the boot scene before the first click;
  * - `'mission:ams'`: mission ams (its music, gameplay sounds and dialogue), loaded on the
- *   mission intro card (`MissionDef.audioGroup`).
+ *   mission intro card (`MissionDef.audioGroup`);
+ * - `'mode:fps'`: the first-person mode after the ams boss (its `fps/*` sounds, songs and voice
+ *   lines), loaded by `loadFpsContent` behind the FpsIntroScene / bridge progress bar, never at
+ *   boot (docs/design/fps.md §1.5, §9).
  *
  * File paths are relative to `public/audio/` (e.g. `'ams/sfx/ams-bell-1.mp3'`). The data is
  * written by the audio tool into `src/game/content/samples/manifest.ts`.
@@ -67,7 +70,7 @@ export interface SampleGroup {
 }
 
 /** The sample groups of the game. */
-export const SAMPLE_GROUPS = ['boot', 'mission:ams'] as const;
+export const SAMPLE_GROUPS = ['boot', 'mission:ams', 'mode:fps'] as const;
 
 const groups = new Map<string, SampleGroup>();
 

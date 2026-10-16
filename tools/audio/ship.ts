@@ -6,11 +6,13 @@
  *
  * Reads tmp/audio/picks.json ({ 'sfx:ui/confirm': [1, 3], ... }) and the candidate metas that
  * tools/audio/process.ts wrote (durations, loop points). MP3s under public/audio/boot,
- * public/audio/ams and public/audio/fps that are no longer picked are removed. The 'mode:fps'
- * group (the first-person mode) is written to the manifest only when it has picks.
+ * public/audio/ams and public/audio/fps that are no longer picked are removed, but only files the
+ * tool itself names (`<slug>-<n>.mp3`): a file someone placed there by hand (e.g. a recording
+ * named 'Tot ziens.mp3') is kept and reported. The 'mode:fps' group (the first-person mode) is
+ * written to the manifest only when it has picks.
  */
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CandMeta } from './process';
 import { candDir, groupDir, items, paths, pickKey, readJson, slug, type Item, type Paths, type Picks, type Spec } from './lib';
@@ -177,8 +179,13 @@ export interface ShipResult {
   copied: number;
   unchanged: number;
   removed: string[];
+  /** Unpicked MP3s that the tool did not name (placed by hand): kept, never removed. */
+  kept: string[];
   manifest: string;
 }
+
+/** The file names the ship step writes: `<slug>-<n>.mp3`. */
+const SHIPPED_NAME = /^[a-z0-9._-]+-\d+\.mp3$/;
 
 /** Applies a ship plan: copies, removes stale MP3s, writes the manifest. */
 export function applyShip(plan: ShipPlan, p: Paths, dryRun = false): ShipResult {
@@ -197,9 +204,14 @@ export function applyShip(plan: ShipPlan, p: Paths, dryRun = false): ShipResult 
     copyFileSync(src, dest);
   }
   const removed: string[] = [];
+  const kept: string[] = [];
   for (const g of ['boot', 'ams', 'fps']) {
     for (const f of mp3sUnder(join(p.publicAudio, g))) {
       if (keep.has(f)) continue;
+      if (!SHIPPED_NAME.test(basename(f))) {
+        kept.push(relative(p.root, f));
+        continue;
+      }
       removed.push(relative(p.root, f));
       if (!dryRun) rmSync(f);
     }
@@ -209,7 +221,7 @@ export function applyShip(plan: ShipPlan, p: Paths, dryRun = false): ShipResult 
     mkdirSync(dirname(p.manifest), { recursive: true });
     writeFileSync(p.manifest, manifest);
   }
-  return { copied, unchanged, removed, manifest };
+  return { copied, unchanged, removed, kept, manifest };
 }
 
 async function main(): Promise<void> {
@@ -221,6 +233,7 @@ async function main(): Promise<void> {
   for (const w of plan.warnings) console.warn(`  warning: ${w}`);
   const r = applyShip(plan, p, dryRun);
   for (const f of r.removed) console.log(`  remove ${f}`);
+  for (const f of r.kept) console.warn(`  warning: ${f} is not a shipped take (placed by hand?); kept`);
   const count = (k: keyof GroupData): number => Object.values(plan.groups).reduce((n, g) => n + Object.keys(g[k]).length, 0);
   console.log(`${dryRun ? 'dry run: ' : ''}${r.copied} copied, ${r.unchanged} unchanged, ${r.removed.length} removed; manifest: ${count('sfx')} sfx, ${count('music')} songs, ${count('voice')} lines → ${relative(p.root, p.manifest)}`);
 }

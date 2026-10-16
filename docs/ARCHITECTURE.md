@@ -42,9 +42,11 @@ multi-part bosses, and 2-player co-op.
    @types/node). No external asset files (no PNG/MP3/WAV/font files). Everything is code.
    Exception (user decision 2026-10-14): MP3 samples in `public/audio/` for the start screens
    and mission `ams` (sample groups `boot`, `mission:ams`) and the first-person mode (sample
-   group `mode:fps`, generated only after the user's OK on the credit estimate), listed in
-   `src/game/content/samples/manifest.ts` (written by `tools/audio/`). Every sampled id keeps
-   its synth version as the fallback, and headless runs never load them. Files kept by hand
+   group `mode:fps` under `public/audio/fps/`, generated after the user's OK on the credit
+   estimate and shipped 2026-10-16; loaded by `loadFpsContent` behind the bridge / fps intro
+   progress bar, never at boot), listed in `src/game/content/samples/manifest.ts` (written by
+   `tools/audio/`). Every sampled id keeps its synth version as the fallback, and headless runs
+   never load them. Files kept by hand
    (the tool never touches them) join the groups in `src/game/content/samples/index.ts`:
    ROBO-HALSEMA's clips (`public/audio/mayor/`) and the user's own music tracks
    (`public/audio/user/music/`, user decision 2026-10-16).
