@@ -161,15 +161,15 @@ TEST: AI wake by sight and noise (not through closed doors), tell >= 18 ticks be
 const ART = {
   key: 'art',
   port: 5512,
-  owns: 'src/game/art/figure3d.ts (new), src/game/art/wall-tex.ts (new), src/game/content/fps/{textures,billboards,props,pickups-art,hud-art,weapon-art}.ts (new; register them in content/fps/index.ts only by adding imports at the end), tests/art/fps-*.test.ts (new), docs/ART_GUIDE.md (raycaster art notes)',
-  task: `ROLE: ALL FPS ART, with exactly the ids in docs/design/fps.md section 8 - code-generated, palette-only, original. A 3D joint rig (figure3d.ts) that renders 64x64 billboards at 8 yaws (render 5, mirror 3) for guard, officer, SS (1940s German uniforms: field grey, caps/helmets, boots; officer and SS distinct), a dog, MechaHitler mech suit (larger) and MechaHitler on foot; animations stand, walk x4, tell, shoot, pain, die with red blood; corpses. Wall textures 64x64 (grey stone, stone + banner with the historical symbol (user decision), eagle relief of our own design, blue brick, wood panel, wood + portrait frame, red brick, steel, hangar plate, doors, door edge, elevator, locked doors) tiling without seams. Props, pickups (food, first aid, dog food, clip, MG, chaingun, 1UP, keys, original treasures, golden record), weapon view sprites (4 weapons x idle + fire frames), the HUD status bar pieces and the face frames (based on the chosen Metal Swan hero, 7 health bands x 3 glances + grin + ouch + dead). Do not trace or copy the reference game's sprites.
+  owns: 'src/game/art/figure3d.ts (new), src/game/art/wall-tex.ts (new), src/game/content/fps/{textures,billboards,props,pickups-art,hud-art,weapon-art}.ts (new; registered through content/fps/art.ts as spec sections 3.6 and 11 say), tests/art/fps-*.test.ts (new), docs/ART_GUIDE.md (raycaster art notes)',
+  task: `ROLE: ALL FPS ART, with exactly the ids in docs/design/fps.md section 8 - code-generated, palette-only, original. A 3D joint rig (figure3d.ts) that renders 64x64 billboards at 8 yaws (render 5, mirror 3) for guard, officer, SS (1940s German uniforms: field grey, caps/helmets, boots; officer and SS distinct), a dog, MechaHitler mech suit (larger) and MechaHitler on foot; animations stand, walk x4, tell, shoot, pain, die with red blood; corpses. Wall textures 64x64 exactly as the list in spec section 8.1 (it replaces any older list; banners/flags carry the historical symbol, nothing else does), tiling without seams. Props, pickups (food, first aid, dog food, clip, MG, chaingun, 1UP, keys, original treasures, golden record), weapon view sprites (4 weapons x idle + fire frames), the HUD status bar pieces and the face frames (based on the chosen Metal Swan hero, 7 health bands x 3 glances + grin + ouch + dead). Do not trace or copy the reference game's sprites.
 TEST: every id exists and has the spec'd size/frame count; palette-only. LOOK: npm run sprites -- fps/ contact sheets at 1x and zoomed; fix what reads badly. ${OWN_NOTE}`,
 }
 
 const SOUND = {
   key: 'fps-sound',
   port: 5513,
-  owns: 'src/game/content/fps/sfx.ts and music.ts (new; register via imports at the end of content/fps/index.ts), tests/content/fps-sound.test.ts (new), docs/api/sfx.md (fps section)',
+  owns: 'src/game/content/fps/{sound,sfx,music}.ts (new; content/fps/sound.ts registers them), tests/content/fps-sound.test.ts (new), tools/lib/audio-report.ts + audio-report.entry.ts (loadContent(() => true) only), docs/api/sfx.md (fps section)',
   task: `ROLE: SYNTH FALLBACKS for every fps sound id and the 4 songs in docs/design/fps.md section 9 (fps/* sfx; songs fps-floor, fps-boss, fps-tally, fps-bridge). Use the synth (defineSfx recipes via content/sfx/kit.ts helpers) and the tracker (defineSong, pattern of content/music/*.ts). Original melodies only (a brooding martial floor theme, a driving boss theme, a short tally jingle, a glitchy bridge sting). Wordless synth stand-ins for voice lines are fine. If tests/content/sfx.test.ts checks the id list against the GDD, add the ids where it expects them.
 TEST + LISTEN: npm run audio -- fps --wav (check loudness against the ams songs), loops clean. ${OWN_NOTE}`,
 }
@@ -196,8 +196,8 @@ TEST: the route in tests/game/fps/flow.test.ts (headless: ams complete -> bridge
 
 const AUDIO_SPEC = {
   key: 'audio-spec',
-  owns: 'tools/audio/** spec entries for the fps ids (the existing spec format), src/engine/samples.ts (add the sample group mode:fps to SAMPLE_GROUPS and its loading hook if the pipeline needs it), docs/api/audio-pipeline.md (fps section), tmp/audio/fps-estimate.md',
-  task: `ROLE: PREPARE (NOT RUN) THE ELEVENLABS GENERATION for the fps mode. NEVER call the ElevenLabs API and never run npm run audio:gen in this task - it spends the user's credits. Read docs/api/audio-pipeline.md and tools/elevenlabs.ts + tools/audio/*. Add spec entries for every fps sfx id, the 4 songs and every voice line from docs/design/fps.md section 9 (prompts never name games, songs or artists; German shouts are original lines; MechaHitler uses a DESIGNED voice - write the voice-design description, never a real person's voice or a cloned voice). Add the 'mode:fps' sample group wiring so shipped takes skin the synth ids and the fps scenes load it. Write tmp/audio/fps-estimate.md: the number of generations per kind, takes per item, and a credit estimate using the pipeline's own cost notes; the exact command the user runs to generate. Run the pipeline's dry-run/plan mode if it has one. Tests for the spec entries if the pipeline has spec tests. ${OWN_NOTE}`,
+  owns: 'tools/audio/** spec entries for the fps ids (the existing spec format) (NOT src/engine/samples.ts or tests/content/samples.test.ts: audio-ship adds 'mode:fps' together with the manifest), docs/api/audio-pipeline.md (fps section), tmp/audio/fps-estimate.md',
+  task: `ROLE: PREPARE (NOT RUN) THE ELEVENLABS GENERATION for the fps mode. NEVER call the ElevenLabs API and never run npm run audio:gen in this task - it spends the user's credits. Read docs/api/audio-pipeline.md and tools/elevenlabs.ts + tools/audio/*. Add spec entries for every fps sfx id, the 4 songs and every voice line from docs/design/fps.md section 9 (prompts never name games, songs or artists; German shouts are original lines; MechaHitler uses a DESIGNED voice - write the voice-design description, never a real person's voice or a cloned voice). Make tools/audio/{process,review}.ts load all content (loadContent(() => true)) so they see the fps ids. Write tmp/audio/fps-estimate.md: the number of generations per kind, takes per item, and a credit estimate using the pipeline's own cost notes; the exact command the user runs to generate. Run the pipeline's dry-run/plan mode if it has one. Tests for the spec entries if the pipeline has spec tests. ${OWN_NOTE}`,
 }
 
 function verifierPrompt(label, port, scope, owns, reports, extra) {
@@ -255,9 +255,13 @@ ${JSON.stringify(all, null, 1)}
 
 Fix every real finding, most severe first. Then re-read docs/design/fps.md end to end once: it must be complete enough that the engine group can start without questions. Gates for this docs-only group: npm run typecheck and npx vitest run --maxWorkers=3 must still pass (they should be untouched; some tests parse docs, e.g. GDD id lists). Put "n/a (docs only)" for build/sim/smoke. List in openQuestions only the questions that truly need the USER (e.g. the mode name, anything the plan left open) - max 5.`, { label: 'verify:spec', phase: 'Verify', schema: VERIFY_SCHEMA }).catch(() => null)
   result = { group: GROUP, build: r, findings: all, verify: v }
-} else if (GROUP === 'engine') {
+} else if (GROUP === 'engine-a') {
   phase('Build')
   const first = await parallel([RAY, MEDIA, INPUT].map((a) => () => agent(builderPrompt(a), { label: `build:${a.key}`, phase: 'Build' })))
+  result = { group: GROUP, ray: first[0], media: first[1], input: first[2] }
+} else if (GROUP === 'engine-b') {
+  const first = [args.reports && args.reports.ray, args.reports && args.reports.media, args.reports && args.reports.input]
+  phase('Build')
   const shell = await agent(builderPrompt({ ...SHELL, task: `${SHELL.task}\n\nREPORTS OF THE ENGINE BUILDERS (use their real APIs):\n${reportsOf([RAY, MEDIA, INPUT], first)}` }), { label: 'build:fps-shell', phase: 'Build' })
   phase('Verify')
   const areas = [RAY, MEDIA, INPUT, SHELL]
@@ -299,7 +303,7 @@ Fix every real finding, most severe first. Then re-read docs/design/fps.md end t
     'Fix the findings, most severe first. Then run all gates plus the fps sims (floors 1-2, --god --expect-complete, and normal seeds 1-3), npm run sim for ams/m0/m2 (--god), and smoke from mission=ams&boss=1&debug=1&god=1 through the bridge into floor 1. Update docs/api/fps.md with a final play-test record section.'), { label: 'polish:fix', phase: 'Verify', schema: VERIFY_SCHEMA }).catch(() => null)
   result = { group: GROUP, findings: all, verify: v }
 } else {
-  throw new Error(`unknown group '${GROUP}' (expected spec | engine | cast | floors | audio-spec | polish)`)
+  throw new Error(`unknown group '${GROUP}' (expected spec | engine-a | engine-b | cast | floors | audio-spec | polish)`)
 }
 
 return result
