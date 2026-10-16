@@ -132,7 +132,7 @@ describe('player sprite contract (char/recruit)', () => {
 });
 
 describe('Swan rider strips (char/<id>/ride-*, look.md §6.4)', () => {
-  const RIDERS = ['recruit', 'grace', 'mittens', 'pip', 'gramps'];
+  const RIDERS = ['recruit', 'vincent', 'thom', 'dirk', 'bob', 'patrick', 'grace', 'mittens', 'pip', 'gramps'];
   const STRIPS: ReadonlyArray<[string, number, number]> = [
     // name, frames, ticks per frame
     ['sit', 2, 20],
@@ -191,6 +191,8 @@ describe('Swan rider strips (char/<id>/ride-*, look.md §6.4)', () => {
     // [sit, hunch, duck] heights above the hip per hero. Mittens' bobble stands 2 px over the
     // measured 9 in the duck (the head tilts forward, the bobble stays on top): 9–11.
     const H: Record<string, [number, number, number]> = { gramps: [20, 11, 7], grace: [22, 13, 8], pip: [22, 13, 8], mittens: [24, 15, 9] };
+    // The squad (docs/design/squad.md §1) stays inside the same 20–24 band (Bob's quiff = Mittens' bobble).
+    Object.assign(H, { vincent: [21, 12, 7], thom: [22, 13, 8], dirk: [23, 15, 9], bob: [24, 15, 8], patrick: [22, 13, 8] });
     for (const [c, [sit, hunch, duck]] of Object.entries(H)) {
       expect(top(`char/${c}/ride-sit`), c).toBe(sit);
       expect(top(`char/${c}/ride-hunch`), c).toBe(hunch);

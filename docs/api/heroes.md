@@ -14,7 +14,8 @@ x forward when facing right; y down. The floor line in the examples is `G`.
 
 | id | what | size (w×h) | cells | where (GDD) | spawn params (default) |
 |---|---|---|---|---|---|
-| `grace` `mittens` `pip` `gramps` | playable heroes | body 14×30 (crouch 16×20) | — | select screen | — (session `characters`) |
+| `vincent` `thom` `dirk` `bob` `patrick` | playable heroes: the squad of friends (docs/design/squad.md §1) | body 14×30 (crouch 16×20) | — | select screen | — (session `characters`) |
+| `grace` `mittens` `pip` `gramps` | retired GDD heroes: registered, not playable (m1–m5, Gramps' radio role in ams) | same | — | not on select | — |
 | `recruit` | test hero (m0, `?char=recruit`) | same | — | not on select | — |
 | `swan` | SWAN-3, ridden robot swan | body 28×48 (crouched / parked 28×20); 77 px beak to tail | 3 | m1-c, m3-a, m3-c | `variant` ('ivory' \| 'mute'; first rider picks, P2 = mute), `socks` (false), `cells` (3), `shells` (10), `facing` (1 \| −1) |
 | `sundae-driver` | armed ice-cream van | 80×44 body, 80×68 with cone; hurtbox 76×36 | 3 | m2-a end → m2-d | `facing` (1; −1 or 'left'), `cells` (3), `shells` (10) |
@@ -30,10 +31,11 @@ Weapons (registered, used by the vehicles; never give them to a player on foot):
 
 ## 2. Characters
 
-- The session picks them: `new GameSession({ characters: ['grace', 'pip'] })`; URL `?char=<id>`.
-  Two players may not pick the same hero. All five have **identical stats** (GDD §3): pistol,
+- The session picks them: `new GameSession({ characters: ['vincent', 'thom'] })`; URL `?char=<id>`.
+  Two players may not pick the same hero. Every hero has **identical stats** (GDD §3): pistol,
   10 grenades (EASY 15), knife; only looks, idle fidget, knife look and sound, death flourish,
-  victory pose and texts differ. `PLAYABLE` (`characters/index.ts`) = select order.
+  victory pose and texts differ. `PLAYABLE` (`characters/index.ts`) = select order =
+  `vincent, thom, dirk, bob, patrick`; the GDD heroes are in `RETIRED` (still usable by id).
 - Texts for scenes and scripts: `getCharacter(id)` → `name`, `fullName`, `title`, `callsign`,
   `quote`, `quoteSub` (Mittens), `endingLine`, `voice`, `color`. Use the callsign in radio bubbles
   (`GRAMPS: …`).
@@ -55,6 +57,8 @@ Weapons (registered, used by the vehicles; never give them to a player on foot):
   it lasts: jump −4.5 (apex ≈ 78), slow fall with jump held (0.05 / max 1.0), speed × 0.9, **no
   crouch, no vehicle mount**, voice pitch 1.6, the first hit only pops the head. Do not require a
   mount or a crouch inside a helium area.
+- Rider heights (head top above the hip, `ride-sit`): 20–24 px for every hero (Bob's quiff 24,
+  as Mittens' bobble). The title and swan rider default is `vincent`.
 - Mounted heroes: `player.state === 'mounted'`, `player.vehicle`; the rider is drawn by the
   vehicle (`Player.drawRide`). `player.victory()` while mounted keeps him seated and raises
   `cheering` (`ride-cheer` on the Swan and Trumpeter).

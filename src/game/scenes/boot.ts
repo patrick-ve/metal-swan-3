@@ -1,7 +1,7 @@
 /**
  * Boot scene (GDD §13.2): loads the content manifest, generates every sprite, pre-renders the
  * sound effects and fetches and decodes the 'boot' sample group (the start screens; a direct
- * `?mission=` start also loads that mission's group) while a row of swan heads fills in, waits
+ * `?mission=` start also loads that mission's group) while an ammunition belt fills in, waits
  * for a click or key (the gesture unlocks audio; one made while loading counts), then goes to
  * the title — or straight into a mission with `?mission=`.
  */
@@ -9,7 +9,7 @@ import { listSfx } from '../../engine/audio';
 import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { frameW, getFrame, hasSprite, preloadSprites } from '../../engine/sprites';
+import { preloadSprites } from '../../engine/sprites';
 import { blinkOn, centerText, type GameApp } from '../app';
 import { loadContent } from '../content/index';
 import { getMission } from '../registry';
@@ -137,30 +137,60 @@ export class BootScene implements Scene {
   }
 
   /**
-   * GDD §13.2: a black screen; a row of 8 small swan icons (C, y 100) fills in as sprites and
-   * sounds pre-render; `TUNING INSTRUMENTS... 64%` (small, C, y 120); when ready `CLICK OR PRESS
-   * ANY KEY` (small, C, y 140, blinking).
+   * GDD §13.2 (military, docs/design/squad.md §3.1): a black screen; an ammunition belt of
+   * BELT_ROUNDS brass rounds (C, y 96–112) fills in as sprites and sounds pre-render; `LOADING
+   * AMMUNITION... 64%` (small, C, y 120); when ready `CLICK OR PRESS ANY KEY` (small, C, y 140,
+   * blinking). Drawn with rects only: the sprites do not exist yet while it loads.
    */
   draw(r: Renderer): void {
     r.begin(0x000000ff);
     const frac = this.progress;
-    const n = 8;
-    const icon = hasSprite('ui/icon-life');
-    const w = icon ? frameW(getFrame('ui/icon-life', 0)) : 6;
-    const step = w + 3;
-    const x0 = (r.w - (n * step - 3)) >> 1;
-    for (let i = 0; i < n; i++) {
-      const x = x0 + i * step;
-      const lit = frac * n >= i + 1;
-      if (icon) r.sprite('ui/icon-life', 0, x + getFrame('ui/icon-life', 0).ox, 100 + getFrame('ui/icon-life', 0).oy, lit ? plain : dark);
-      else r.rect(x, 101, 6, 6, lit ? PAL.snow[3] : PAL.ink[1], plain);
-    }
-    centerText(r, `TUNING INSTRUMENTS... ${Math.floor(frac * 100)}%`, 120, PAL.stone[3]);
+    drawBelt(r, frac, this.t);
+    centerText(r, `LOADING AMMUNITION... ${Math.floor(frac * 100)}%`, 120, PAL.stone[3]);
     if (this.finished && !this.app.gesture && blinkOn(this.t)) centerText(r, 'CLICK OR PRESS ANY KEY', 140, PAL.snow[3]);
     const failed = this.app.content?.failed.length ?? 0;
     if (failed > 0) centerText(r, `${failed} CONTENT MODULE(S) FAILED - SEE CONSOLE`, 160, PAL.red[3]);
   }
 }
 
+/** Rounds in the boot screen's ammunition belt. */
+export const BELT_ROUNDS = 16;
+const ROUND_STEP = 6;
+const BELT_Y = 96;
+
+/**
+ * The ammunition belt: an olive fabric band with steel links; a round stands in each loaded
+ * link (copper tip, brass case lit on the left, a dark rim); the next round to load glints.
+ */
+function drawBelt(r: Renderer, frac: number, t: number): void {
+  const w = BELT_ROUNDS * ROUND_STEP + 4;
+  const x0 = (r.w - w) >> 1;
+  const loaded = Math.floor(frac * BELT_ROUNDS + 1e-9);
+  // The band behind the rounds.
+  r.rect(x0 - 1, BELT_Y + 6, w + 2, 6, PAL.ink[1], plain);
+  r.rect(x0, BELT_Y + 7, w, 4, PAL.olive[1], plain);
+  r.rect(x0, BELT_Y + 7, w, 1, PAL.olive[3], plain);
+  r.rect(x0, BELT_Y + 10, w, 1, PAL.olive[0], plain);
+  for (let i = 0; i < BELT_ROUNDS; i++) {
+    const x = x0 + 3 + i * ROUND_STEP;
+    // The link: a steel clip round the band (the olive band shows between the links).
+    r.rect(x, BELT_Y + 7, 4, 4, PAL.steel[0], plain);
+    r.rect(x, BELT_Y + 7, 4, 1, PAL.steel[1], plain);
+    if (i < loaded) {
+      r.rect(x, BELT_Y, 4, 16, PAL.ink[0], plain);
+      r.rect(x + 1, BELT_Y, 2, 1, PAL.orange[0], plain);
+      r.rect(x, BELT_Y + 1, 4, 3, PAL.orange[0], plain);
+      r.rect(x, BELT_Y + 1, 1, 3, PAL.orange[1], plain);
+      r.rect(x, BELT_Y + 4, 4, 10, PAL.gold[1], plain);
+      r.rect(x, BELT_Y + 4, 1, 10, PAL.gold[3], plain);
+      r.rect(x + 3, BELT_Y + 4, 1, 10, PAL.gold[0], plain);
+      r.rect(x, BELT_Y + 14, 4, 2, PAL.gold[0], plain);
+      // The link holds the round at its waist.
+      r.rect(x - 1, BELT_Y + 8, 6, 2, PAL.steel[1], plain);
+      r.rect(x - 1, BELT_Y + 8, 6, 1, PAL.steel[3], plain);
+      r.rect(x + 4, BELT_Y + 8, 1, 2, PAL.steel[0], plain);
+    } else if (i === loaded && blinkOn(t, 8)) r.rect(x + 1, BELT_Y + 8, 2, 2, PAL.gold[2], plain);
+  }
+}
+
 const plain: DrawOpts = { screen: true };
-const dark: DrawOpts = { screen: true, tint: PAL.ink[1] };

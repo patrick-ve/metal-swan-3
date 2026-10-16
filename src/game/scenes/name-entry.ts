@@ -1,5 +1,6 @@
 /**
- * Name entry (GDD §13.14): `ENTER YOUR INITIALS` (big, C, y 40); three letter slots (big) at
+ * Name entry (GDD §13.14): the night base (base.ts) under a veil, `ENTER YOUR INITIALS` in
+ * stencil (C, y 34); three letter slots (big) at
  * x 168, 184, 200, y 80; up / down cycles A–Z, 0–9, `.` and `END`; fire (or jump / start)
  * confirms a slot, bomb steps back; a 30-second timer (small, right-aligned at (380, 4)); music
  * `high-score`; the announcer says "NEW HIGH SCORE! YOU'RE GREAT!" when the screen opens. Co-op: one
@@ -14,7 +15,8 @@ import type { PlayerSlot } from '../session';
 import { rankLabel, VOICE } from './flow-data';
 import { entryFor } from './flow';
 import { HighScoresScene } from './high-scores';
-import { drawLake, veil } from './lake';
+import { drawBase, drawStencilTitle } from './base';
+import { veil } from './lake';
 
 /** The characters a slot cycles through; 'END' finishes the entry early. */
 export const NAME_CHARS: readonly string[] = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.', 'END'];
@@ -126,10 +128,10 @@ export class NameEntryScene implements Scene {
   }
 
   draw(r: Renderer): void {
-    drawLake(r, this.t);
+    drawBase(r, this.t);
     veil(r, 0.72);
     const slot = this.slot;
-    centerText(r, 'ENTER YOUR INITIALS', 40, UI_GOLD, 'big');
+    drawStencilTitle(r, 'ENTER YOUR INITIALS', 34);
     uiText(r, String(Math.ceil(Math.max(0, this.left) / 60)).padStart(2, '0'), 380, 4, this.left < 600 ? PAL.red[3] : UI_WHITE, 'right');
     if (!slot) return;
     const col = PLAYER_COLORS[slot.index];

@@ -1,5 +1,6 @@
 /**
- * High scores (GDD §13.14): `TOP PERFORMERS` (big, C, y 16); ten rows from y 40, 14 px apart
+ * High scores (GDD §13.14): `HALL OF FAME` in stencil (C, y 12; docs/design/squad.md §3.5) over
+ * the night base (base.ts); ten rows from y 40, 14 px apart
  * (small): rank (`1ST` … `10TH`) at x 32, initials at x 80, the 7-digit score right-aligned at
  * x 220, the character's head at x 228, the mission reached (`M3` or `ALL`) at x 252, the
  * difficulty (E, N, H) at x 284 and the continues used (`C2`, blank if none) at x 304.
@@ -15,7 +16,8 @@ import type { HighScoreEntry } from '../session';
 import { missionNumber, rankLabel } from './flow-data';
 import { toTitle } from './flow';
 import { headIcon } from './heads';
-import { drawLake, veil } from './lake';
+import { drawBase, drawStencilTitle } from './base';
+import { veil } from './lake';
 
 export type HighScoresMode = 'attract' | 'after-game' | 'menu';
 
@@ -91,9 +93,9 @@ export class HighScoresScene implements Scene {
   }
 
   draw(r: Renderer): void {
-    drawLake(r, (this.opts.clock ?? 0) + this.t);
+    drawBase(r, (this.opts.clock ?? 0) + this.t);
     veil(r, 0.72);
-    centerText(r, 'TOP PERFORMERS', 16, UI_GOLD, 'big');
+    drawStencilTitle(r, 'HALL OF FAME', 12);
     const list = this.app.highScores.entries;
     const hl = this.opts.highlight ?? [];
     for (let i = 0; i < 10; i++) {

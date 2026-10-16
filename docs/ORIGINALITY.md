@@ -87,6 +87,33 @@ dialogue), shipped as MP3 files under `public/audio/`. Rules for this exception:
   `voice: false` for them).
 - Dialogue text is our own (the game's lines). The generation spec lives in `tools/audio/spec.ts`.
 
+## Exception: the squad of friends (2026-10-16)
+
+By the user's explicit decision (2026-10-16, `docs/design/squad.md`), the five playable heroes are
+five real friends of the user: VINCENT, THOM, DIRK, BOB and PATRICK. Rules for this exception:
+
+- Only their real first names are used (no surnames). Their bios on the select screen are the
+  user's own words, shown as the user wrote them; no insult goes beyond those bios.
+- Their faces are kind caricatures drawn by this project's code from shapes and the palette. They
+  are studied from the user's reference photos, but never traced, sampled or pixel-copied. The
+  photos never enter the repository.
+- No ethnic or religious stereotype appears in any art, text or sound.
+- The name callouts use a voice designed from a text description (a gruff drill sergeant). No
+  voice imitates the friends' real voices, unless a friend records it with consent.
+- A bio may mention a real public figure only as the user wrote it; the game never names or
+  draws that person.
+- The self-check question 2 below does not apply to these five first names.
+- The select screen REPORT FOR DUTY follows the genre convention of late-1990s arcade "soldier
+  select" screens (a riveted frame, a panel per soldier behind a shutter, grey portraits until
+  highlighted, a small sprite preview after the pick, hazard stripes, nameplates, P1 / P2 lamps,
+  a countdown). The structure is a convention; the art, the lettering, the squad emblem (a
+  stencilled swan head in a chevron with a small 3), the frame and every text are our own. Never
+  use the reference game's title text, logo, lettering, frame art, portraits or its wait / start
+  lines ("PLEASE WAIT", "SOLDIER SELECT", "MISSION START" and the like).
+- The military menu texts (taglines, `SELECT OPERATION`, `RECRUIT` / `VETERAN` / `COMMANDO`,
+  `HALL OF FAME`, `LOADING AMMUNITION`) are our own; `tests/game/character-select.test.ts` checks
+  them against the banned names above.
+
 ## Self-check before you finish
 
 1. Would a fan of the original series recognise a *specific* character, vehicle, boss, level,

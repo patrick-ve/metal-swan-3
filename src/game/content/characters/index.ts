@@ -3,9 +3,14 @@
  * Registers at import time. Art lives in characters/art.ts under `char/<id>/…`; the Helium Head
  * status (GDD §4.13) lives in characters/helium.ts, Gramps' squeaky boot in characters/squeak.ts.
  *
- * The four heroes share one set of stats (GDD §3: the same hitbox, speeds, jump, weapons and
- * knife). They differ in look, idle fidget, knife look (cosmetic), death flourish, victory pose
- * and lines. Bombs per life are left to the difficulty (10, EASY 15; GDD §6.1).
+ * The playable roster is the squad of five friends (docs/design/squad.md §1, user decision
+ * 2026-10-16): vincent, thom, dirk, bob, patrick. Their first names and bios are the user's own
+ * words. The four GDD heroes (grace, mittens, pip, gramps) stay registered but not playable, so
+ * the m1–m5 code, Gramps' radio role in ams and their tests keep working.
+ *
+ * Every hero shares one set of stats (GDD §3: the same hitbox, speeds, jump, weapons and knife).
+ * They differ in look, idle fidget, knife look (cosmetic), death flourish, victory pose and
+ * lines. Bombs per life are left to the difficulty (10, EASY 15; GDD §6.1).
  */
 import { PAL } from '../../../engine/palette';
 import { defineCharacter, type CharacterDef, type CharacterStats } from '../../registry';
@@ -13,7 +18,7 @@ import './helium';
 import { SQUEAK } from './squeak';
 
 /** The held prop of a hero's knife look (GDD §3, §6.2; drawn in `torso-<w>-knife`). */
-export type KnifeProp = 'knife' | 'umbrella' | 'needles' | 'pan' | 'wrench';
+export type KnifeProp = 'knife' | 'umbrella' | 'needles' | 'pan' | 'wrench' | 'plan' | 'pistol-butt' | 'plunger' | 'airliner' | 'frikandel';
 
 /**
  * A CharacterDef with the heroes' cosmetic extras. `defineCharacter` keeps the object as it is, so
@@ -30,12 +35,108 @@ export interface HeroDef extends CharacterDef {
 }
 
 /** Identical for every hero (GDD §3). No `bombs`: the difficulty gives 10 (EASY 15). */
-const HERO_STATS: CharacterStats = { speed: 1, jump: 1, weapon: 'pistol', bomb: 'grenade', melee: 'knife', ammo: 1 };
+export const HERO_STATS: CharacterStats = { speed: 1, jump: 1, weapon: 'pistol', bomb: 'grenade', melee: 'knife', ammo: 1 };
 
-/** Select-screen order (GDD §13.5: portraits at x 72, 152, 232, 312). `recruit` is not listed. */
-export const PLAYABLE: readonly string[] = ['grace', 'mittens', 'pip', 'gramps'];
+/**
+ * Select-screen order (docs/design/squad.md §1, §3.4: P1 starts on 0, P2 on 1). `recruit` and the
+ * retired heroes (RETIRED) are not listed.
+ */
+export const PLAYABLE: readonly string[] = ['vincent', 'thom', 'dirk', 'bob', 'patrick'];
 
-const HEROES: readonly HeroDef[] = [
+/** The GDD heroes: registered (m1–m5, Gramps' radio role, tests), not on the select screen. */
+export const RETIRED: readonly string[] = ['grace', 'mittens', 'pip', 'gramps'];
+
+/** The squad (docs/design/squad.md §1): first names only; the bios are the user's words. */
+const SQUAD: readonly HeroDef[] = [
+  {
+    id: 'vincent',
+    name: 'VINCENT',
+    fullName: 'VINCENT',
+    title: 'THE CONSULTANT',
+    role: 'THE CONSULTANT',
+    callsign: 'THE CONSULTANT',
+    art: 'char/vincent',
+    description: 'An overpriced consultant who looks like a famous British comedian. Always has a battle plan ready.',
+    quote: '"I HAVE A PLAN. IT\'S BILLABLE."',
+    endingLine: '"ALL AS PER MY BATTLE PLAN. MY INVOICE IS IN THE POST."',
+    voice: 'VINCENT!',
+    color: PAL.red[2],
+    stats: HERO_STATS,
+    knifeProp: 'plan',
+    knifeSfx: 'weapon/knife-umbrella',
+  },
+  {
+    id: 'thom',
+    name: 'THOM',
+    fullName: 'THOM',
+    title: 'LITTLE NAPOLEON',
+    role: 'LITTLE NAPOLEON',
+    callsign: 'LITTLE NAPOLEON',
+    art: 'char/thom',
+    description: 'Little Napoleon. 1900 headshots with his akimbo pistols.',
+    quote: '"TWO PISTOLS. TWICE THE HEADSHOTS."',
+    endingLine: '"1901 HEADSHOTS. I\'M STILL COUNTING."',
+    voice: 'THOM!',
+    color: PAL.sky[1],
+    stats: HERO_STATS,
+    knifeProp: 'pistol-butt',
+    knifeSfx: 'weapon/knife-wrench',
+  },
+  {
+    id: 'dirk',
+    name: 'DIRK',
+    fullName: 'DIRK',
+    title: 'THE PLUMBER',
+    role: 'THE PLUMBER',
+    callsign: 'THE PLUMBER',
+    art: 'char/dirk',
+    description: 'A plumber with a mustache, wielding exceptional combat abilities.',
+    quote: '"I FIX LEAKS. AND ENEMIES."',
+    endingLine: '"ALL CLEAR. THE PIPES ARE QUIET AGAIN."',
+    voice: 'DIRK!',
+    color: PAL.gold[2],
+    stats: HERO_STATS,
+    knifeProp: 'plunger',
+    knifeSfx: 'weapon/knife-pan',
+  },
+  {
+    id: 'bob',
+    name: 'BOB',
+    fullName: 'BOB',
+    title: 'CAPTAIN CLIMATE',
+    role: 'CAPTAIN CLIMATE',
+    callsign: 'CAPTAIN CLIMATE',
+    art: 'char/bob',
+    description: 'A Jewish superhero who tries to save the climate by flying to Istanbul every month.',
+    quote: '"SAVE THE PLANET! MY FLIGHT\'S AT SIX."',
+    endingLine: '"PLANET SAVED. NOW, IF YOU\'LL EXCUSE ME, I HAVE A FLIGHT."',
+    voice: 'BOB!',
+    color: PAL.green[3],
+    stats: HERO_STATS,
+    knifeProp: 'airliner',
+    knifeSfx: 'weapon/knife-needles',
+  },
+  {
+    id: 'patrick',
+    name: 'PATRICK',
+    fullName: 'PATRICK',
+    title: 'THE SUPERNERD',
+    role: 'THE SUPERNERD',
+    callsign: 'THE SUPERNERD',
+    art: 'char/patrick',
+    description: 'A supernerd with a keen appetite for AI and master of eating frikandellen.',
+    quote: '"ASK THE AI. THEN PASS THE FRIKANDEL."',
+    endingLine: '"FRIKANDELLEN FOR EVERYONE! THE AI ORDERED THEM."',
+    voice: 'PATRICK!',
+    color: PAL.teal[2],
+    stats: HERO_STATS,
+    knifeProp: 'frikandel',
+    knifeSfx: 'weapon/knife',
+  },
+];
+
+/** The retired GDD heroes (GDD §3.1–§3.4). */
+const GDD_HEROES: readonly HeroDef[] = [
   {
     id: 'grace',
     name: 'GRACE',
@@ -107,6 +208,8 @@ const HEROES: readonly HeroDef[] = [
     boredStatus: SQUEAK.id,
   },
 ];
+
+const HEROES: readonly HeroDef[] = [...SQUAD, ...GDD_HEROES];
 
 for (const h of HEROES) defineCharacter(h);
 

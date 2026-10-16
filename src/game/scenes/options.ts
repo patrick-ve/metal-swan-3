@@ -1,5 +1,5 @@
 /**
- * Options (GDD §13.13): `OPTIONS` (big, C, y 16); rows (small) from y 40, 11 px apart, labels
+ * Options (GDD §13.13): the night base (base.ts) under a veil, `OPTIONS` in stencil (C, y 12); rows (small) from y 40, 11 px apart, labels
  * left-aligned at x 64, values right-aligned at x 320 between `<` and `>`; left / right change,
  * fire confirms. DIFFICULTY · CREDITS · MUSIC VOLUME · SFX VOLUME · VOICE VOLUME (announcer and
  * voiced speech bubbles; added 2026-10-14) · ANNOUNCER · SPEECH BUBBLES ·
@@ -13,13 +13,14 @@
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { applyAudioSettings, blinkOn, centerText, defaultHighScores, drawCursor, drawPanel, graphicsMode, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { applyAudioSettings, blinkOn, centerText, defaultHighScores, drawCursor, graphicsMode, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { modeAtRes } from '../../engine/render-common';
 import { UPSCALE_MODES, type UpscaleMode } from '../../engine/upscale';
 import { CREDIT_STEPS, saveSettings, type GameSettings, type ShakeLevel } from '../settings';
 import { ControlsScene } from './controls';
 import { DIFFICULTIES, DIFFICULTY_INFO } from './flow-data';
-import { drawLake, veil } from './lake';
+import { drawBase, drawMilPanel, drawStencilTitle } from './base';
+import { veil } from './lake';
 import { titleClock } from './title';
 
 export type OptionId =
@@ -259,11 +260,11 @@ export class OptionsScene implements Scene {
   draw(r: Renderer): void {
     if (this.opts.inGame) r.fade(0x05060aff, 0.6);
     else {
-      drawLake(r, titleClock() + this.t);
+      drawBase(r, titleClock() + this.t);
       veil(r, 0.7);
     }
-    drawPanel(r, 40, 8, 304, 200, 0.9);
-    centerText(r, 'OPTIONS', 16, UI_GOLD, 'big');
+    drawMilPanel(r, 40, 8, 304, 200, 0.9);
+    drawStencilTitle(r, 'OPTIONS', 12);
     const s = this.app.settings;
     for (let i = 0; i < OPTION_ROWS.length; i++) {
       const row = OPTION_ROWS[i];
@@ -289,7 +290,7 @@ export class OptionsScene implements Scene {
   }
 
   private drawConfirm(r: Renderer): void {
-    drawPanel(r, 112, 84, 160, 48, 0.98);
+    drawMilPanel(r, 112, 84, 160, 48, 0.98);
     centerText(r, 'ARE YOU SURE?', 92, UI_WHITE);
     const yes = this.confirm === 0;
     uiText(r, 'YES', 168, 112, yes ? UI_GOLD : PAL.stone[2], 'center');

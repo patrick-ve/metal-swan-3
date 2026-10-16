@@ -92,9 +92,9 @@ export function hasSwanArt(): boolean {
 
 /**
  * The ridden, swimming SWAN-3 with her float line (feet) at (x, y), facing right; `t` animates
- * the paddling. The rider is `char` (default Grace) in `ride-sit`.
+ * the paddling. The rider is `char` (default Vincent, the squad's first) in `ride-sit`.
  */
-export function drawRiddenSwan(r: Renderer, x: number, y: number, t: number, char = 'grace'): void {
+export function drawRiddenSwan(r: Renderer, x: number, y: number, t: number, char = 'vincent'): void {
   if (hasSwanArt()) drawSwanRig(r, x, y, t, { anim: 'swim', neck: 'swim-neck-relax', char, pose: 'ride-sit', bodyTicks: 6 });
   else {
     // The stand-in: one body sprite with seat and neck points, the rider on top.

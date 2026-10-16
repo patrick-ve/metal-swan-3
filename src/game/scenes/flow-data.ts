@@ -98,12 +98,12 @@ export function missionCard(id: string): MissionCard {
 // Fixed texts (GDD §1.3, §13.3–§13.14, §2.6)
 // ---------------------------------------------------------------------------------------------
 
-/** Title tagline and the attract-mode alternates (300 ticks each, GDD §1.3). */
+/** Title tagline and the attract-mode alternates (300 ticks each; military, docs/design/squad.md §3.2). */
 export const TAGLINES: readonly string[] = [
-  'CALM ON TOP. FURIOUS UNDERNEATH.',
-  'NO SWANS WERE HARMED. SEVERAL TUBAS WERE.',
-  'NOW WITH 40% MORE HONK.',
-  'THE CRITICS SAY: "LOUD."',
+  'THE SWAN HAS LANDED. THE ENEMY HAS NOT.',
+  'ONE SWAN. FIVE IDIOTS. ZERO RETREAT.',
+  'LOCK. LOAD. HONK.',
+  'OPERATION FRIKANDEL IS A GO.',
 ];
 
 /** HOW TO PLAY card (GDD §13.3, §15.9 item 5): [keys, action]; an empty action = one line. */
@@ -120,11 +120,11 @@ export const HOW_TO_PLAY: readonly (readonly [string, string])[] = [
   ['FREE THE CRITICS. STOP THE ANTHEM.', ''],
 ];
 
-/** Mode select difficulty row (GDD §13.4): the gold subtitle and the hint. */
+/** Mode select difficulty row (GDD §13.4; military nicknames, docs/design/squad.md §3.3): the gold subtitle and the hint. */
 export const DIFFICULTY_INFO: Readonly<Record<Difficulty, { readonly name: string; readonly nick: string; readonly hint: string }>> = {
-  easy: { name: 'EASY', nick: '"REHEARSAL"', hint: 'MORE LIVES. SLOWER BULLETS.' },
-  normal: { name: 'NORMAL', nick: '"CONCERT"', hint: 'AS WRITTEN IN THE SCORE.' },
-  hard: { name: 'HARD', nick: '"ENCORE"', hint: 'FOR VETERANS. AND SHOW-OFFS.' },
+  easy: { name: 'EASY', nick: '"RECRUIT"', hint: 'MORE LIVES. SLOWER BULLETS.' },
+  normal: { name: 'NORMAL', nick: '"VETERAN"', hint: 'THE REAL WAR.' },
+  hard: { name: 'HARD', nick: '"COMMANDO"', hint: 'NO MERCY. NO MEDALS.' },
 };
 
 export const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
@@ -138,14 +138,52 @@ export const CRITIC_QUOTES: readonly string[] = [
   '"FIVE STARS. WE HAVE NOTHING BAD TO SAY, AND IT HURTS."',
 ];
 
-/** The playable roster in select-screen order (GDD §13.5; `recruit` is not shown). */
-export const ROSTER: readonly string[] = ['grace', 'mittens', 'pip', 'gramps'];
+/**
+ * The playable roster in select-screen order: the squad of friends (docs/design/squad.md §1).
+ * `recruit` and the retired GDD heroes (grace, mittens, pip, gramps) are not shown.
+ */
+export const ROSTER: readonly string[] = ['vincent', 'thom', 'dirk', 'bob', 'patrick'];
 
 /**
  * Select-screen texts per character (GDD §3, §13.5), used when the character module does not
  * give `fullName` / `role` / `quote` / `quoteSub` / `endingLine` itself.
  */
 export const CHARACTER_TEXTS: Readonly<Record<string, { fullName: string; role: string; quote: string; quoteSub?: string; endingLine: string; callsign: string }>> = {
+  vincent: {
+    fullName: 'VINCENT',
+    role: 'THE CONSULTANT',
+    quote: '"I HAVE A PLAN. IT\'S BILLABLE."',
+    endingLine: '"ALL AS PER MY BATTLE PLAN. MY INVOICE IS IN THE POST."',
+    callsign: 'THE CONSULTANT',
+  },
+  thom: {
+    fullName: 'THOM',
+    role: 'LITTLE NAPOLEON',
+    quote: '"TWO PISTOLS. TWICE THE HEADSHOTS."',
+    endingLine: '"1901 HEADSHOTS. I\'M STILL COUNTING."',
+    callsign: 'LITTLE NAPOLEON',
+  },
+  dirk: {
+    fullName: 'DIRK',
+    role: 'THE PLUMBER',
+    quote: '"I FIX LEAKS. AND ENEMIES."',
+    endingLine: '"ALL CLEAR. THE PIPES ARE QUIET AGAIN."',
+    callsign: 'THE PLUMBER',
+  },
+  bob: {
+    fullName: 'BOB',
+    role: 'CAPTAIN CLIMATE',
+    quote: '"SAVE THE PLANET! MY FLIGHT\'S AT SIX."',
+    endingLine: '"PLANET SAVED. NOW, IF YOU\'LL EXCUSE ME, I HAVE A FLIGHT."',
+    callsign: 'CAPTAIN CLIMATE',
+  },
+  patrick: {
+    fullName: 'PATRICK',
+    role: 'THE SUPERNERD',
+    quote: '"ASK THE AI. THEN PASS THE FRIKANDEL."',
+    endingLine: '"FRIKANDELLEN FOR EVERYONE! THE AI ORDERED THEM."',
+    callsign: 'THE SUPERNERD',
+  },
   grace: {
     fullName: 'CAPT. GRACE STILLMERE',
     role: 'SQUAD LEADER',
@@ -199,10 +237,11 @@ export const CREDITS: readonly CreditLine[] = [
   { text: 'MADE ENTIRELY OUT OF CODE', style: 'line' },
   { text: 'BY THE METAL SWAN 3 TEAM', style: 'line' },
   { text: 'STARRING', style: 'heading' },
-  { text: 'CAPT. GRACE STILLMERE', style: 'line' },
-  { text: 'SGT. TORVALD "MITTENS" MAGNUSSON', style: 'line' },
-  { text: 'PVT. PIP OKAFOR', style: 'line' },
-  { text: 'W.O. AMBROSE "GRAMPS" FENWICK', style: 'line' },
+  { text: 'VINCENT, THE CONSULTANT', style: 'line' },
+  { text: 'THOM, LITTLE NAPOLEON', style: 'line' },
+  { text: 'DIRK, THE PLUMBER', style: 'line' },
+  { text: 'BOB, CAPTAIN CLIMATE', style: 'line' },
+  { text: 'PATRICK, THE SUPERNERD', style: 'line' },
   { text: 'AND THE SWAN-3', style: 'line' },
   { text: 'WITH', style: 'heading' },
   { text: 'BRIGADIER LIONEL GUSTO', style: 'line' },

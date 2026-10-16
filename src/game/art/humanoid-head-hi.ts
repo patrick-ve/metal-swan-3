@@ -149,9 +149,131 @@ export const EXTRAS_HI: Readonly<Partial<Record<FaceExtra, HiTpl>>> = {
   },
   'bushy-brows': { at: [14, 6], rows: ['..hhhh..', '.hHLLHh.', 'hHLLHHhh', 'hhhhhh..'] },
   eyeshine: { at: [14, 10], rows: ['.w', 'ww', 'ww', '.w'] },
+  // A thick brush of a moustache, lit strands, a little past the face.
+  'thick-mustache': {
+    at: [14, 14],
+    rows: [
+      '..hhhhhhhh..',
+      '.hHHLLLHHHh.',
+      'hHHLLHHHHHHh',
+      'hhHHHhhHHHhh',
+      '.h........h.',
+    ],
+  },
+  // Dark stubble: an even fine stipple over the jaw and upper lip (drawn under the mouth).
+  'heavy-stubble': {
+    at: [10, 15],
+    rows: [
+      '.............x',
+      '.....x.x.x.x.x',
+      '....x.x.x.x.x.',
+      '...x.x.x.x.x..',
+      '..x.x.x.x.....',
+      '.x.x.x.x......',
+      'x.x...........',
+    ],
+  },
+  // A thin trimmed line under the nose.
+  'thin-mustache': { at: [17, 15], rows: ['.hHHh', 'h...h'] },
 };
 
 export const HAIR_HI: Readonly<Partial<Record<HairStyle, HiTpl>>> = {
+  // Short crop: a high front hairline, fine strands combed forward and down at the temple.
+  'short-crop': {
+    at: [0, -2],
+    rows: [
+      '.......hhhhhhhhhh.......',
+      '.....hhHHHHHHHHHHhh.....',
+      '...hhHHHHLLLHHHHHHHh....',
+      '..hHHHHLLHHHLLHHHHHhh...',
+      '.hHHHLLHHHHHHHLHHHhh....',
+      'hHHHLHHHHHHHHHHHhhh.....',
+      'hHHLHHLLHHHHhhh.........',
+      'hHHLHLHHHHHhh...........',
+      'hHHHHHHHHHhh............',
+      'hHHHHHHHHh..............',
+      'hHHHHHHhh...............',
+      'hHHHHhh.................',
+      'hHHHhh..................',
+      'hHHh....................',
+      '.hHHh...................',
+      '..hh....................',
+    ],
+  },
+  // Slick back: glossy comb lines running back over the crown, short tapered sides.
+  'slick-back': {
+    at: [0, -4],
+    rows: [
+      '.......hhhhhhhhhh.......',
+      '.....hhHHHHHHHHHHhh.....',
+      '...hhHHHHHHLLLLHHHHhh...',
+      '..hHHHHLLLLHHHHHHHHHhh..',
+      '.hHHHLLHHHHHHLLLLHHHHHh.',
+      'hHHLLHHHHLLLLHHHHHHHHHhh',
+      'hHHHHHLLLHHHHHHLLLLHHhhh',
+      'hHHHLLHHHHHHLLLHHHHhhhh.',
+      'hHHHHHHHHHHHHHHHhhh.....',
+      'hHHHHHHHHHHHHhhh........',
+      'hHHHHHHHhh..............',
+      'hHHHHHhh................',
+      'hHHHhh..................',
+      'hHHh....................',
+      '.hh.....................',
+      '.h......................',
+    ],
+  },
+  // Messy spikes with sharp tips, two loose strands over the forehead.
+  'spiky-messy': {
+    at: [-2, -6],
+    rows: [
+      '....h.....h......h...h....',
+      '....hh....hh....hh..hh....',
+      '....hHh...hHh..hhh..hh....',
+      '....hHhh..hHhh.hHhhhHh....',
+      '..hhHHhhhhHHhhhhHHHHhh..h.',
+      '..hHHHHhhHHHHhhHHHHHhh.hh.',
+      'hhhHHHHHLLHHHHLLHHHHHHhhhh',
+      'hhHHHHHLLHHHHLLHHHHHHHHhhh',
+      'hhHHHHLLHHHHHHHHHHHHHHHHhh',
+      'hHHHHLLHHHHHHHHHHHHHHHHHhh',
+      'hhHHHHHHHHHHHHHHHHHHHhhhhhhh',
+      'hHHHHHHHHHHHHHHHHHHhhhhhh.hh',
+      'hhHHHHHHHHhh..hh......hh..',
+      'hHHHHHHHHhh....h.......h..',
+      'hhHHHHHHhh................',
+      'hHHHHHHhh.................',
+      'hhHHHHhh..................',
+      'hHHHHh....................',
+      '..hhh.....................',
+      '..hh......................',
+    ],
+  },
+  // Swept up: a tall tousled quiff rising to the front, strands combed up from the brow.
+  'swept-up': {
+    at: [0, -8],
+    rows: [
+      '............hhhhh.......',
+      '...........hhHHLHh......',
+      '.........hhHHHLLHHh.....',
+      '........hHHHHLLHHHHh....',
+      '.......hHHHHLLHHHHHHhh..',
+      '......hHHHHLLHHHHHLHHh..',
+      '.....hHHHHLLHHHHHLLHHHhh',
+      '....hHHHHLLHHHHHLLHHHHhh',
+      '...hHHHHLLHHHHHLLHHHHhh.',
+      '..hHHHHLLHHHHHHHHHHHhh..',
+      '.hHHHHHHHHHHHHHhhhhh....',
+      'hHHHHHHHHHHHHhhhhh......',
+      'hHHHHHHHhh....hh........',
+      'hHHHHHHhh.....h.........',
+      'hHHHHHhh................',
+      'hHHHHh..................',
+      'hHHhh...................',
+      'hHHh....................',
+      '.hh.....................',
+      '..h.....................',
+    ],
+  },
   short: {
     at: [0, -2],
     rows: [
@@ -335,6 +457,23 @@ export const HAIR_HI: Readonly<Partial<Record<HairStyle, HiTpl>>> = {
 };
 
 export const GEAR_HI: Readonly<Partial<Record<Exclude<Headgear, 'none'>, HiTpl>>> = {
+  // Backwards cap: a six-panel crown, the peak out over the back of the head (a pale edge), the
+  // strap gap at the front with a little hair and the plastic strap.
+  'cap-back': {
+    at: [-6, -4],
+    rows: [
+      '.............jjjjjjjjjj.......',
+      '..........jjjgGGGGGGGgjjj.....',
+      '........jjgGGGGGGGGGgGGggjj...',
+      '.......jgGGGGGGGGGGGgGgggggj..',
+      '......jgGGGGGGGGGGGGgGggggggj.',
+      '......jgGGGGGGGGGGggjgggggggjj',
+      'jjjjjjjgGGGgggggggggjgggggggjj',
+      'jGGGGjjggggggggggggggggggggggj',
+      'jgggggjjjjjjjjjjjjjjjjhhGGjjjj',
+      '.jjjjjjjjjjjjjjjjjjjjjhhggjjj.',
+    ],
+  },
   // Six-panel cap: a seam down the crown, a lit front panel, the peak with a pale edge.
   cap: {
     at: [0, -4],
@@ -471,4 +610,29 @@ export const GEAR_HI: Readonly<Partial<Record<Exclude<Headgear, 'none'>, HiTpl>>
       '..jj............................',
     ],
   },
+};
+
+/**
+ * 2× twins of the face traits that replace an expression's eye, mouth or brow (FACE_TRAITS in
+ * humanoid-head.ts; offsets as EXPR_HI). A trait without one here is its 1× template doubled.
+ */
+export const TRAITS_HI: Readonly<Partial<Record<FaceExtra, HiTpl>>> = {
+  // A high arched brow with a fine crease above it.
+  'raised-brow': { at: [16, 3], rows: ['....1.', '..hhhh', '.hh..h', 'hh....', 'h.....'] },
+  // The back corner pulled up into the cheek, a dimple.
+  smirk: { at: [15, 13], rows: ['1.....', '.m....', '..m...', '..mmmmm', '...111.'] },
+  // A wide open grin: two rows of teeth, a lower lip.
+  grin: {
+    at: [14, 16],
+    rows: [
+      'm.mmmmmmmm',
+      'mmtttttttm',
+      '..mttttm..',
+      '...mmmm...',
+    ],
+  },
+  // Squinted happy eyes (an upturned arc).
+  beam: { at: [16, 10], rows: ['....', '.ee.', 'eeee', 'e..e'] },
+  // A blue iris round the pupil, the white glint.
+  'blue-eyes': { at: [16, 10], rows: ['Wl', 'le', 'le', 'll'] },
 };

@@ -331,16 +331,27 @@ describe('flow texts (GDD §13.3, §2.6, §13.12)', () => {
       'TASK FORCE CYGNET RETURNED TO THE NEST.',
       'THE END ... OF THE NOISE.',
     ]);
-    expect(CREDITS.length).toBe(23);
+    // STARRING lists the squad of five friends (docs/design/squad.md §3.6).
+    expect(CREDITS.length).toBe(24);
+    const star = CREDITS.findIndex((l) => l.text === 'STARRING');
+    expect(CREDITS.slice(star + 1, star + 6).map((l) => l.text)).toEqual([
+      'VINCENT, THE CONSULTANT',
+      'THOM, LITTLE NAPOLEON',
+      'DIRK, THE PLUMBER',
+      'BOB, CAPTAIN CLIMATE',
+      'PATRICK, THE SUPERNERD',
+    ]);
     expect(CREDITS[0].text).toBe('METAL SWAN 3');
     expect(CREDITS[CREDITS.length - 1].text).toBe('THE END ... OF THE NOISE.');
     const roll = creditsRoll();
     for (const l of roll.lines) expect(wrapPx(l.text, l.font, 360)).toEqual([l.text]);
     for (const c of ENDING_CAPTIONS) expect(wrapPx(c, 'big', 360).length).toBeLessThanOrEqual(2);
   });
-  it('a player who joins mid-game gets a free Cygnet, never the other player\'s', () => {
-    expect(joinCharacter('grace')).toBe('mittens');
-    expect(joinCharacter('mittens')).toBe('grace');
-    expect(joinCharacter('')).toBe('grace');
+  it('a player who joins mid-game gets a free squad member, never the other player\'s', () => {
+    expect(joinCharacter('vincent')).toBe('thom');
+    expect(joinCharacter('thom')).toBe('vincent');
+    expect(joinCharacter('')).toBe('vincent');
+    // A retired GDD hero (m1–m5 tests) is not on the roster: the joiner gets the first friend.
+    expect(joinCharacter('grace')).toBe('vincent');
   });
 });

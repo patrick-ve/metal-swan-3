@@ -41,10 +41,12 @@ describe('audio spec: sfx', () => {
     }
   });
 
-  it('ids are unique; 98 recipes plus the 16 gap and wiring ids and the mayor babble', () => {
+  it('ids are unique; 100 recipes (98 + the 2 REPORT FOR DUTY shutter sounds) plus the 16 gap and wiring ids and the mayor babble', () => {
     expect(new Set(SFX.map((s) => s.id)).size).toBe(SFX.length);
     expect(SFX.filter((s) => s.isNew).length).toBe(16);
-    expect(SFX.length).toBe(98 + 17);
+    expect(SFX.length).toBe(100 + 17);
+    expect(SFX.some((s) => s.id === 'ui/mil-shutter')).toBe(true);
+    expect(SFX.some((s) => s.id === 'ui/mil-clank')).toBe(true);
   });
 
   it('requests fit the API and the take rule', () => {
@@ -76,6 +78,18 @@ describe('audio spec: music', () => {
     expect(MUSIC.map((m) => m.id).sort()).toEqual(
       ['ams', 'ams-boss', 'briefing', 'continue', 'game-over', 'high-score', 'mission-complete', 'select', 'title'].sort(),
     );
+  });
+
+  it('the military title and select prompts are v2 takes (3-4); the v1 takes 1-2 keep their prompt on record', async () => {
+    const spec = await import('../../tools/audio/spec');
+    for (const id of ['title', 'select']) {
+      const m = MUSIC.find((x) => x.id === id);
+      expect(m?.takes, id).toBe(4);
+      expect(m?.prompt, id).toMatch(/snare/i);
+      expect(m?.prompt, id).toMatch(/brass|trumpet|horn/i);
+    }
+    expect(spec.TITLE_V1_PROMPT).toContain('112 BPM');
+    expect(spec.SELECT_V1_PROMPT).toContain('128 BPM');
   });
 
   it('a loop is long enough for its intro, one full loop and 2 s to cut', () => {
@@ -143,6 +157,20 @@ describe('audio spec: voices and lines', () => {
     }
     expect(voiceKey('HOI! WELKOM BIJ\nFABEL FRIET!')).toBe('hoi-welkom-bij-fabel-friet');
     expect(voiceKey('GRAMPS: I BROUGHT HER ALONG.')).toBe('i-brought-her-along');
+  });
+
+  it('the squad name callouts are voiced by the designed drill sergeant (never the friends\' own voices)', async () => {
+    const { getCharacter, hasCharacter } = await import('../../src/game/registry');
+    await import('../../src/game/content/characters/index');
+    const { ROSTER } = await import('../../src/game/scenes/flow-data');
+    for (const id of ROSTER) {
+      if (!hasCharacter(id)) continue;
+      const v = getCharacter(id).voice ?? '';
+      const l = LINES.find((x) => x.text === v);
+      expect(l, `${id}: ${v}`).toBeDefined();
+      if (['vincent', 'thom', 'dirk', 'bob', 'patrick'].includes(id)) expect(l?.speaker, id).toBe('drill');
+    }
+    expect(VOICES.find((v) => v.speaker === 'drill')?.description).toMatch(/drill sergeant/i);
   });
 
   it('the weapon pickup lines (name and MORE) are all voiced', async () => {

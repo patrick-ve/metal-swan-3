@@ -97,12 +97,16 @@ export interface AppOptions {
 /** The store key of the high score table (session.ts). */
 const HIGH_SCORE_KEY = 'highscores';
 
-/** GDD §13.14 default table (initials, score); the rest of each row is invented. */
+/**
+ * Default table: the squad of friends (docs/design/squad.md §3.5) above the Legion rows of GDD
+ * §13.14 (initials, score); the rest of each row is invented. The table keeps the top 10.
+ */
 export const DEFAULT_HIGH_SCORES: readonly Readonly<HighScoreEntry>[] = [
-  { name: 'GRC', score: 1000000, mission: 'all', character: 'grace', continues: 0, difficulty: 'normal' },
-  { name: 'MIT', score: 800000, mission: 'all', character: 'mittens', continues: 1, difficulty: 'normal' },
-  { name: 'PIP', score: 600000, mission: 'm5', character: 'pip', continues: 2, difficulty: 'normal' },
-  { name: 'GPS', score: 500000, mission: 'm5', character: 'gramps', continues: 0, difficulty: 'hard' },
+  { name: 'VIN', score: 1000000, mission: 'all', character: 'vincent', continues: 0, difficulty: 'normal' },
+  { name: 'THO', score: 900000, mission: 'all', character: 'thom', continues: 1, difficulty: 'hard' },
+  { name: 'DRK', score: 800000, mission: 'ams', character: 'dirk', continues: 0, difficulty: 'normal' },
+  { name: 'BOB', score: 700000, mission: 'ams', character: 'bob', continues: 2, difficulty: 'normal' },
+  { name: 'PAT', score: 600000, mission: 'ams', character: 'patrick', continues: 1, difficulty: 'normal' },
   { name: 'HIS', score: 400000, mission: 'm4', character: '', continues: 0, difficulty: 'normal' },
   { name: 'BLR', score: 300000, mission: 'm3', character: '', continues: 1, difficulty: 'normal' },
   { name: 'RIM', score: 200000, mission: 'm3', character: '', continues: 0, difficulty: 'easy' },

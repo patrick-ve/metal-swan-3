@@ -1,27 +1,30 @@
 /**
- * Title and attract (GDD §1.3, §13.3): the lake at dusk with the SWAN-3 gliding across it
- * (Grace on her back), a tiny Legion parade on the far bank, the logo (`ui/logo`, C, y 20–84),
- * the tagline (small, C, y 92; the alternates cycle every 300 ticks), `PRESS START` (big, C,
- * y 160, blinking), `HI 0500000` (small, C, y 4) and the footer (`(C) 2026 THE METAL SWAN 3 TEAM`
- * at C, y 206; `FREE PLAY` / `CREDITS 05` right-aligned at (380, 206)). Music `title` over the
- * lake loop `env/title-lake`; the first visit after the boot screen opens with `ui/title-sting`.
+ * Title and attract (GDD §1.3, §13.3; military look, docs/design/squad.md §3.2): the night base
+ * (base.ts) with searchlights sweeping behind the logo and the SWAN-3 patrolling behind the
+ * sandbag wall with `vincent` on her back (0.4 px/tick, turning at the ends), the logo (`ui/logo`,
+ * C, y 18–84), the tagline (small, C, y 92; the alternates cycle every 300 ticks), `PRESS START`
+ * in gold stencil (C, y 114, blinking), `HI 0500000` (small, C, y 4) and the footer (`(C) 2026
+ * THE METAL SWAN 3 TEAM` at C, y 206; `FREE PLAY` / `CREDITS 05` right-aligned at (380, 206)).
+ * Music `title` over the ambience loop `env/title-lake`; the first visit after the boot screen
+ * opens with `ui/title-sting`.
  *
  * After 600 idle ticks the attract loop runs: demo play (the bot on ams-a, 1200 ticks; m1-a
- * or m0-a when it is missing) → HOW TO PLAY (300 ticks) → high scores (300 ticks) → the title with the next
- * tagline. Start → the mode select.
+ * or m0-a when it is missing; the soldier cycles through the roster) → HOW TO PLAY (300 ticks) →
+ * high scores (300 ticks) → the title with the next tagline. Start → the mode select.
  */
 import { INK, PAL } from '../../engine/palette';
 import type { InputSource } from '../../engine/input';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { frameW, getFrame, hasSprite } from '../../engine/sprites';
-import { blinkOn, centerText, scoreText, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { blinkOn, centerText, scoreText, uiText, UI_WHITE, type GameApp } from '../app';
 import { getMission, hasCharacter, hasMission } from '../registry';
 import { GameSession } from '../session';
 import { ROSTER, TAGLINES } from './flow-data';
 import { GameplayScene } from './gameplay';
 import { HowToPlayScene } from './how-to-play';
-import { drawLake, drawParade, drawRiddenSwan, LAKE_SURFACE, SWAN_SPEED } from './lake';
+import { BASE_PATROL_Y, drawBase, drawBaseWall, drawStencilTitle, NO_WALL, patrolFlip, patrolX } from './base';
+import { drawSwanRig, SWAN_SPEED, type SwanRigOpts } from './lake';
 import { ModeSelectScene } from './mode-select';
 
 /** GDD §13.3: the attract loop starts after 600 idle ticks; the demo lasts 1200. */
@@ -65,8 +68,18 @@ export function swanX(clock: number, w = 384): number {
   return ((clock * SWAN_SPEED) % span) - 80;
 }
 
+/** The patrol's rig: walking, the relaxed neck, the rider sitting up (docs/design/squad.md §3.2). */
+const patrolOpts: SwanRigOpts = { anim: 'move', neck: 'neck-relax', char: 'vincent', pose: 'ride-sit', bodyTicks: 8 };
+
+/** The patrol's rider: `vincent`, else the first registered roster soldier. */
+export function patrolRider(): string {
+  if (hasCharacter('vincent')) return 'vincent';
+  return ROSTER.find((id) => hasCharacter(id)) ?? 'recruit';
+}
+
 export class TitleScene implements Scene {
   private readonly app: GameApp;
+  private readonly rider = patrolRider();
   private t = 0;
   private idle = 0;
   private leaving = false;
@@ -174,16 +187,19 @@ export class TitleScene implements Scene {
 
   draw(r: Renderer): void {
     const t = this.t;
-    drawLake(r, lakeClock);
-    drawParade(r, lakeClock);
-    drawRiddenSwan(r, Math.round(swanX(lakeClock, r.w)), LAKE_SURFACE + 16, lakeClock);
-    // Logo (C, y 20–84) or a text stand-in.
+    // The night base; the SWAN-3 patrols behind the sandbag wall with her rider.
+    drawBase(r, lakeClock, NO_WALL);
+    patrolOpts.char = this.rider;
+    patrolOpts.flipX = patrolFlip(lakeClock, r.w);
+    drawSwanRig(r, Math.round(patrolX(lakeClock, r.w)), BASE_PATROL_Y, lakeClock, patrolOpts);
+    drawBaseWall(r);
+    // Logo (C, y 18–84) or a text stand-in.
     if (hasSprite('ui/logo')) {
       const f = getFrame('ui/logo', 0);
       r.sprite('ui/logo', 0, ((r.w - frameW(f)) >> 1) + f.ox, 18 + f.oy, plain);
     } else centerText(r, 'METAL SWAN 3', 44, UI_WHITE, 'big', 3);
-    centerText(r, this.tagline, 92, PAL.snow[2]);
-    if (blinkOn(t)) centerText(r, 'PRESS START', 160, UI_GOLD, 'big');
+    centerText(r, this.tagline, 92, PAL.sand[3]);
+    if (blinkOn(t)) drawStencilTitle(r, 'PRESS START', 114);
     centerText(r, `HI ${scoreText(this.app.highScores.top)}`, 4, UI_WHITE);
     centerText(r, '(C) 2026 THE METAL SWAN 3 TEAM', 206, PAL.stone[3]);
     const c = this.app.settings.credits;

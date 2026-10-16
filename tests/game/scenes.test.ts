@@ -110,7 +110,7 @@ describe('scenes (headless)', () => {
     tap('right');
     tap('fire'); // the second roster character
     expect(until(MissionIntroScene, 100)).toBe(true);
-    expect(a.session?.slots[0].character).toBe('mittens');
+    expect(a.session?.slots[0].character).toBe('thom');
     expect(a.campaign).not.toBeNull();
     step(70);
     tap('start'); // start skips the card after 60 ticks

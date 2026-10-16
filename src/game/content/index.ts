@@ -18,6 +18,7 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   samples: () => import('./samples/index'),
   characters: () => import('./characters/index'),
   'characters/art': () => import('./characters/art'),
+  'characters/select': () => import('./characters/select.art'),
   weapons: () => import('./weapons/index'),
   'weapons/art': () => import('./weapons/art'),
   items: () => import('./items/index'),

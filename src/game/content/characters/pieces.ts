@@ -231,6 +231,46 @@ export function heliumPuff(): PixelBuffer {
   return piece('helium-puff', ['.pP.', 'pPPp', '.pp.'], { p: PAL.pink[1], P: PAL.pink[2] });
 }
 
+// ------------------------------------------------------------------------------------ the squad
+
+/** Vincent's battle plan, unrolled: cream paper, a blue route with arrows, red target crosses. */
+export function planSheet(): PixelBuffer {
+  return piece('plan-sheet', ['PPPPPPP', 'PbPPRPP', 'PPbPPPP', 'PPPbbbR', 'ppppppp'], { P: PAL.sand[3], p: PAL.sand[2], b: PAL.sky[1], R: PAL.red[2] }, true, [
+    'PPPPPPPPPPPPPP',
+    'PPPPPPPPPPPPPP',
+    'PPbPPPPPRPPRPP',
+    'PPbbPPPPPRRPPP',
+    'PPPbbPPPPRRPPP',
+    'PPPPbbPPRPPRPP',
+    'PPPPPbbPPPPPPP',
+    'PPPPPPbbbbbbRR',
+    'pppppppppppppp',
+    'pPpppppppppPpp',
+  ]);
+}
+
+/** Bob's boarding pass: a blue stub and a white ticket with a barcode. */
+export function boardingPass(): PixelBuffer {
+  return piece('boarding-pass', ['bbSSS', 'bbS1S', 'bbSSS'], { b: PAL.sky[1], S: PAL.snow[3], '1': PAL.steel[1] }, true, [
+    'bbbSSSSSSS',
+    'bBbSS1S1SS',
+    'bbbSSSSSSS',
+    'bBbS1S1S1S',
+    'bbbSSSSSSS',
+    'bbbSSSSSSS',
+  ], { B: PAL.sky[2] });
+}
+
+/** Patrick's pocket device: a small glowing screen (the outline is its bezel). */
+export function pocketDevice(): PixelBuffer {
+  return piece('pocket-device', ['cCc', 'ccc'], { c: PAL.teal[3], C: PAL.snow[3] }, true, ['ccCCcc', 'cCCccc', 'cccccc', 'ccctcc'], { t: PAL.teal[2] });
+}
+
+/** The device's glow on the face (no outline: light). */
+export function deviceGlow(): PixelBuffer {
+  return piece('device-glow', ['c.', '.c'], { c: PAL.teal[3] }, false, ['c...', '.c..', '..c.', '...c']);
+}
+
 // ------------------------------------------------------------------------------------ placing
 
 /** Point of a frame (relative to its anchor), or the fallback. */

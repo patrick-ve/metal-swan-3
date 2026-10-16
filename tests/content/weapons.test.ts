@@ -738,6 +738,12 @@ describe('knife sounds per character (GDD §6.2, §15.7)', () => {
     expect(knifeSfx(fake('mittens'))).toBe('weapon/knife-needles');
     expect(knifeSfx(fake('pip'))).toBe('weapon/knife-pan');
     expect(knifeSfx(fake('gramps'))).toBe('weapon/knife-wrench');
+    // The squad (docs/design/squad.md §1): battle plan, pistol-whip, plunger, airliner, frikandel.
+    expect(knifeSfx(fake('vincent'))).toBe('weapon/knife-umbrella');
+    expect(knifeSfx(fake('thom'))).toBe('weapon/knife-wrench');
+    expect(knifeSfx(fake('dirk'))).toBe('weapon/knife-pan');
+    expect(knifeSfx(fake('bob'))).toBe('weapon/knife-needles');
+    expect(knifeSfx(fake('patrick'))).toBe('weapon/knife');
     expect(knifeSfx(fake('recruit'))).toBe('weapon/knife');
     expect(knifeSfx(null)).toBe('weapon/knife');
     // A character def that names its own sound wins; an unknown sound falls back.

@@ -3,7 +3,7 @@
  * (`ride-<pose>` at the body frame's `seat` point), the `-front` overlay, then the neck at the
  * `neck` point — the layer order of look.md §7 (GDD §15.9 item 5).
  * ```ts
- * drawRiddenSwan(r, 192, 196, { rider: 'char/grace', anim: 'swim', neck: 'swim-neck-relax', screen: true });
+ * drawRiddenSwan(r, 192, 196, { rider: 'char/vincent', anim: 'swim', neck: 'swim-neck-relax', screen: true });
  * ```
  */
 import type { DrawOpts, Renderer } from '../../../../engine/render';
@@ -13,7 +13,7 @@ import { stripFrame } from '../../../player/player';
 import { HULL_DY, REST } from './constants';
 
 export interface RiddenSwanOpts {
-  /** Rider art prefix ('char/grace'); null = no rider. Default 'char/grace'. */
+  /** Rider art prefix ('char/vincent'); null = no rider. Default 'char/vincent'. */
   rider?: string | null;
   /** Body strip (default 'swim') and its frame (default: from `tick`). */
   anim?: string;
@@ -56,7 +56,7 @@ export function drawRiddenSwan(r: Renderer, x: number, y: number, o: RiddenSwanO
   opts.flipX = flip;
   opts.screen = o.screen ?? false;
   r.sprite(body, frame, bx, by, opts);
-  const rider = o.rider === undefined ? 'char/grace' : o.rider;
+  const rider = o.rider === undefined ? 'char/vincent' : o.rider;
   if (rider) {
     const s = point(body, anim, frame, 'seat', flip);
     let id = `${rider}/ride-${o.pose ?? 'sit'}`;

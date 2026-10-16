@@ -91,6 +91,12 @@ world.audio.stopSfx?.(this.loopKey, 30);                      // on death AND in
   `env/water-splash`, `explosion/s|m|l`.
 - `ctx.bossIntro()` plays `boss/warning` by default (`BossIntroOpts.sfx`).
 - A missing id is silent; the sim lists it under `missingSfx`.
+- **REPORT FOR DUTY (2026-10-16):** `ui/mil-shutter` (a corrugated steel shutter rattling up,
+  0.5 s; one per panel as the shutters rise) and `ui/mil-clank` (the shutter landing, 0.45 s;
+  when a confirmed soldier's shutter is down). Synth recipes in `content/sfx/ui.ts`; ElevenLabs
+  spec entries in `tools/audio/spec.ts` (not generated yet). The name callouts (`VINCENT!` …
+  `PATRICK!`, the heroes' `voice`) fall back to the `ui/announce` jingle until the drill-sergeant
+  lines are generated.
 
 ## 3. HUD (GDD §13.7) — what a script or an entity can show
 
@@ -131,6 +137,37 @@ hud.bubble({ x: 640, y: 120 }, 'THIS WAY!', { kind: 'hint' }); // a hint: always
   and the Swan marker (a ridden Swan above the view).
 - **Boss bar:** drawn for the first live `Boss` tagged `boss`: its `name` (small, y 198) over a
   192×4 bar at (96, 207), with a white flash when a part breaks. Do not draw an own bar.
+
+## 3b. Military menus (docs/design/squad.md §2.3, §3; 2026-10-16)
+
+The start screens have a military look. What changed for anyone who draws a menu:
+
+| Piece | Where | Use |
+|---|---|---|
+| `drawBase(r, t, o?)` | `scenes/base.ts` | the night base backdrop for every menu (title, mode select, options, controls, HOW TO PLAY, high scores, name entry); `veil()` from lake.ts still goes on top. `o.wall: false` skips the sandbag wall (draw it later with `drawBaseWall(r)`), `o.parked: false` empties the camo netting. Static parts are built once; per frame only rects. `drawLake` stays for the ending and the final tally. |
+| `drawStencilTitle(r, text, y)` | `scenes/base.ts` | a menu title as the stencil sprite `ui/mil/stencil-<slug>` (centred, top at y); falls back to big gold text. Only the texts in `STENCIL_TITLES` / `STENCIL_GOLD` (`content/ui/military.art.ts`) have sprites: `REPORT FOR DUTY`, `SELECT OPERATION`, `OPTIONS`, `HALL OF FAME`, `HOW TO PLAY`, `ENTER YOUR INITIALS`, and gold `PRESS START`. Add a text there to get a new one. |
+| `drawMilPanel(r, x, y, w, h, alpha?)` | `scenes/base.ts` | a gunmetal box in a rust-brown riveted rim (the options screen and its confirm box) |
+| `ui/mil/*` sprites | `content/ui/military.art.ts` | `frame` (384 × 216, five transparent 64 × 120 windows at x = 14 + i·74, y 46), `shutter` (8 frames, 68 × 128, 0 closed … 7 raised), `hazard` (64 × 6), `badge-off` / `badge-p1` / `badge-p2` (28 × 10 lamps), `plate` (64 × 14), `preview` (44 × 52 glass), `emblem` (the squad emblem, 40 × 36). All top-left anchored. |
+| `ui/logo` | `content/ui/logo.art.ts` | same id and size; riveted army-green plates with stencil gaps (`stencilMask` from military.art.ts) and the gold 3-swan |
+
+Screens and texts:
+
+- **Boot:** `LOADING AMMUNITION... nn%` over an ammunition belt of 16 rounds (rects only).
+- **Title:** the SWAN-3 patrols behind the sandbag wall with `vincent` (`patrolRider()`; the
+  first roster soldier when vincent is missing), taglines in `TAGLINES` (flow-data.ts),
+  `PRESS START` in gold stencil at y 114.
+- **Mode select:** header `SELECT OPERATION`; rows `1 SOLDIER`, `2 SOLDIERS`, `DIFFICULTY`,
+  `OPTIONS`, `HALL OF FAME`; nicknames `"RECRUIT"` / `"VETERAN"` / `"COMMANDO"` (`DIFFICULTY_INFO`;
+  the ids stay easy / normal / hard).
+- **REPORT FOR DUTY** (`CharacterSelectScene`, squad.md §3.4): shutters rise SHUTTER_DELAY (20)
+  ticks after the screen opens, SHUTTER_STAGGER (8) apart; the highlighted soldier shows
+  `char/<id>/select` in colour, the others `char/<id>/select-grey` (drawn at art density 2); P1
+  red / P2 blue lamps; nameplates; the callsign and the bio (`HeroDef.description`, wrapped by
+  `wrapSmall`, typed in, scrolled, then the box rests so the face shows); confirm → white flash →
+  the shutter drops → the preview window (legs-idle + torso-pistol-idle) over a hazard strip →
+  40 ticks later `startCampaign`. Test hooks: `shutterFrame(i)`, `highlighted(i)`,
+  `badgeLit(p, i)`, `previewShown(p)`, `cursorIndex(p)`, `secondsLeft`, `choices`.
+- **High scores:** `HALL OF FAME` (was `TOP PERFORMERS`).
 
 ## 4. Mission flow and the newspaper tally (GDD §13.6, §13.11, §14.4)
 

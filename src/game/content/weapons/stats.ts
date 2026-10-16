@@ -167,6 +167,14 @@ export const VOICE = {
 
 /** The knife's sound per character (GDD §6.2, §15.7); the characters module may override it. */
 export const KNIFE_SFX: Readonly<Record<string, string>> = {
+  // The squad (docs/design/squad.md §1): battle plan, pistol-whip, plunger, model airliner,
+  // frikandel.
+  vincent: 'weapon/knife-umbrella',
+  thom: 'weapon/knife-wrench',
+  dirk: 'weapon/knife-pan',
+  bob: 'weapon/knife-needles',
+  patrick: 'weapon/knife',
+  // The retired GDD heroes.
   grace: 'weapon/knife-umbrella',
   mittens: 'weapon/knife-needles',
   pip: 'weapon/knife-pan',

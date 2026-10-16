@@ -52,8 +52,10 @@ import type { Expression, FaceExtra, HairStyle, Headgear, HeadStyle } from './hu
 export type { Expression, FaceExtra, HairStyle, Headgear } from './humanoid-head';
 export type { HandShape, PropKind, WeaponPose } from './humanoid-gear';
 
-export type TopType = 'vest' | 'jacket' | 'tank' | 'coat' | 'tunic' | 'sweater' | 'shirt';
-export type Build = 'slim' | 'normal' | 'heavy';
+/** `tee` / `polo`: short sleeves over bare forearms (a polo adds a collar and a button placket). */
+export type TopType = 'vest' | 'jacket' | 'tank' | 'coat' | 'tunic' | 'sweater' | 'shirt' | 'tee' | 'polo';
+/** `stocky`: 2 px shorter legs, broad (short and sturdy); `lanky`: 1 px longer thighs, slim (tall). */
+export type Build = 'slim' | 'normal' | 'heavy' | 'stocky' | 'lanky';
 export type Accessory =
   | 'pouches'
   | 'armband'
@@ -70,7 +72,13 @@ export type Accessory =
   /** Leather tool pouches (belt colour) with a screwdriver poking out (instead of 'pouches'). */
   | 'toolbelt'
   /** Two knitting needles sticking out of the satchel. */
-  | 'needles';
+  | 'needles'
+  /** A thin tie (accent colour) down the shirt front from the collar. */
+  | 'tie'
+  /** A short cape (accent colour) from the shoulders, with a small light-green leaf emblem. */
+  | 'cape'
+  /** Tweed: a fine fleck of light and dark threads over the top. */
+  | 'tweed';
 
 /** What a person looks like. Ramps are palette ramps or ramp names ('olive', 'khaki' …). */
 export interface HumanStyle {
@@ -169,6 +177,11 @@ export interface Pose {
   hat?: boolean;
   /** The headgear slips down over the eyes by this many px. Default 0. */
   hatDy?: number;
+  /**
+   * A second gun in the far hand while the near hand aims a pistol (akimbo; drawing only: the
+   * muzzle point stays the near gun's). Ignored when the gun is carried low (`gunHand: 'far'`).
+   */
+  offhand?: 'pistol';
 }
 
 export type RenderPart = 'full' | 'upper' | 'lower';
@@ -219,6 +232,16 @@ const BUILDS: Readonly<Record<Build, Dims>> = {
   heavy: {
     thigh: 6, shin: 6, ankle: 3, thighW: [7, 6], shinW: [6, 5], torsoH: 9,
     waistB: 4, waistF: 5, chestB: 5, chestF: 5, upper: 6, fore: 6, armW: [5, 5], foreW: [5, 4],
+    shoulder: [-1, 2], farDx: 2,
+  },
+  stocky: {
+    thigh: 5, shin: 5, ankle: 3, thighW: [6, 6], shinW: [6, 5], torsoH: 9,
+    waistB: 4, waistF: 4, chestB: 5, chestF: 5, upper: 6, fore: 6, armW: [4, 4], foreW: [4, 4],
+    shoulder: [-1, 2], farDx: 2,
+  },
+  lanky: {
+    thigh: 7, shin: 6, ankle: 3, thighW: [5, 4], shinW: [4, 4], torsoH: 9,
+    waistB: 3, waistF: 2, chestB: 3, chestF: 3, upper: 6, fore: 6, armW: [3, 3], foreW: [3, 3],
     shoulder: [-1, 2], farDx: 2,
   },
 };
@@ -325,6 +348,8 @@ function resolve(s: HumanStyle): Resolved {
   if (s.topType === 'vest') {
     sleeveUpper = shirt;
     sleeveFore = skin;
+  } else if (s.topType === 'tee' || s.topType === 'polo') {
+    sleeveFore = skin;
   } else if (s.topType === 'tank') {
     sleeveUpper = skin;
     sleeveFore = skin;
@@ -373,6 +398,8 @@ interface Skeleton {
   handN: HandShape;
   handF: HandShape;
   gun: GunPlacement | null;
+  /** The far hand's second pistol (Pose.offhand). */
+  offGun: GunPlacement | null;
 }
 
 interface GunPlacement {
@@ -453,13 +480,16 @@ function solve(st: Resolved, pose: Pose): Skeleton {
     handN: 'fist',
     handF: 'fist',
     gun: null,
+    offGun: null,
   };
 
   // Weapon pose decides the hand targets unless the pose gives its own arms.
   const wr = weaponRig(pose, sk);
   sk.gun = wr.gun;
+  const off = offhandRig(pose, sk, wr.gun);
+  sk.offGun = off?.gun ?? null;
   const armN = pose.armN ?? wr.armN ?? DEFAULT_POSE.armN;
-  const armF = pose.armF ?? wr.armF ?? DEFAULT_POSE.armF;
+  const armF = pose.armF ?? off?.armF ?? wr.armF ?? DEFAULT_POSE.armF;
   const n = armChain(sk.shN, armN, d);
   const fa = armChain(sk.shF, armF, d);
   sk.elN = n.el;
@@ -471,7 +501,19 @@ function solve(st: Resolved, pose: Pose): Skeleton {
   // The gun follows its hand even when the IK could not quite reach the target.
   if (sk.gun && pose.gunHand === 'far' && !pose.armF) sk.gun.grip = [sk.wrF[0], sk.wrF[1]];
   else if (sk.gun && pose.gunHand !== 'far' && !pose.armN) sk.gun.grip = [sk.wrN[0], sk.wrN[1]];
+  if (sk.offGun && !pose.armF) sk.offGun.grip = [sk.wrF[0], sk.wrF[1]];
   return sk;
+}
+
+/** The far hand's second pistol (Pose.offhand): beside and a little under the aimed one. */
+function offhandRig(pose: Pose, sk: Skeleton, gun: GunPlacement | null): { gun: GunPlacement; armF: ArmPose } | null {
+  if (pose.offhand !== 'pistol' || !gun || gun.kind !== 'pistol' || pose.gunHand === 'far') return null;
+  const F = sk.shF;
+  const g = gun.grip;
+  const aim = pose.aim ?? 'fwd';
+  const at2: V = aim === 'up' ? [g[0] + 2, g[1] + 2] : aim === 'diag-up' ? [g[0] + 1, g[1] + 4] : aim === 'down' ? [g[0] + 5, g[1] - 2] : [g[0] - 2, g[1] + 4];
+  const off: GunPlacement = { kind: 'pistol', angle: gun.angle, grip: at2 };
+  return { gun: off, armF: { to: [at2[0] - F[0], at2[1] - F[1]], hand: 'grip' } };
 }
 
 function armChain(s: V, a: ArmPose, d: Dims): { el: V; wr: V } {
@@ -824,7 +866,7 @@ function drawTorso(c: Ctx): PixelBuffer {
   };
   /** 2× only: one fine pixel at torso point (a, b) (half steps reach single 2× pixels). */
   const fine = (a: number, b: number, col: Color): void => {
-    if (c.D === 1) return;
+    if (c.D === 1 || col === 0) return;
     const p = c.T(tp(sk, a, b));
     const x = Math.floor(p[0] * 2 + 1);
     const y = Math.floor(p[1] * 2 + 1);
@@ -899,11 +941,36 @@ function drawTorso(c: Ctx): PixelBuffer {
     shadeLayer(S2, st.skin, sh(c));
     for (let i = 0; i < S2.data.length; i++) if ((S2.data[i] & 255) !== 0 && (L.data[i] & 255) !== 0) L.data[i] = S2.data[i];
     L.touch();
+  } else if (type === 'tee') {
+    // A round crew neck: a dark rib under the throat.
+    for (let a = front - 4; a <= front - 1; a++) put(a, H, main[1]);
+    put(front - 3, H - 1, main[1]);
+    fine(front - 2.5, H - 0.5, main[0]);
+  } else if (type === 'polo') {
+    // A light collar, a short button placket.
+    for (let a = front - 4; a <= front - 1; a++) put(a, H, main[3]);
+    put(front - 4, H - 1, main[3]);
+    put(front - 1, H - 1, main[2]);
+    put(front - 2, H - 2, main[0]);
+    put(front - 2, H - 3, main[0]);
+    fine(front - 2, H - 2.5, at(main, 3));
+    fine(front - 2, H - 3.5, at(main, 3));
   } else if (type === 'coat') {
     fillTri([[front - 4, H], [front - 1, H], [front - 2, H - 2]], st.shirt[2]);
     for (let b = -1; b <= H - 3; b++) seam(d.waistF, b, main[1]);
     for (let b = 1; b <= H - 3; b += 3) put(d.waistF - 1, b, PAL.gold[2]);
     for (let b = 1; b <= H - 3; b += 3) fine(d.waistF - 1, b, PAL.gold[3]);
+  }
+  if (st.acc.has('tweed')) {
+    // A fixed fleck pattern: light and dark threads, denser on the 2× grid.
+    for (let b = 0; b <= H; b++) {
+      for (let a = -d.chestB - 1; a <= front + 1; a++) {
+        const k = (a * 5 + b * 3 + 64) % 7;
+        if (k === 0) put(a, b, main[1]);
+        else if (k === 3 && b % 2 === 0) put(a, b, at(main, 3));
+        fine(a + 0.5, b + 0.5, k === 5 ? main[1] : k === 1 ? at(main, 3) : 0);
+      }
+    }
   }
   if (st.acc.has('hivis')) {
     // Reflective bands: silver stripes round the waist and across the chest.
@@ -1355,6 +1422,96 @@ function drawBowtie(c: Ctx): PixelBuffer {
   return L;
 }
 
+/** A thin tie from the collar down the shirt front: knot in the light accent, blade in the dark. */
+function drawTie(c: Ctx): PixelBuffer {
+  const d = c.st.dims;
+  const sk = c.sk;
+  const H = d.torsoH - (c.pose.hunch ?? 0);
+  const L = layer(c);
+  const a = c.st.accent;
+  const top = cp(c, tp(sk, d.chestF - 2, H - 1));
+  const bot = cp(c, tp(sk, d.chestF - 2, 2));
+  line(c, L, top, bot, a[1]);
+  dot(c, L, top[0], top[1], at(a, 2));
+  if (c.D === 2) {
+    // The blade widens to a point; the knot gets a fold.
+    L.set(bot[0] * 2 - 1, bot[1] * 2, a[1]);
+    L.set(bot[0] * 2, bot[1] * 2 + 2, a[0]);
+    L.set(top[0] * 2 + 1, top[1] * 2 + 1, a[0]);
+    fineLine(c, L, [top[0], top[1] + 1], [bot[0], bot[1]], a[0]);
+    L.line(top[0] * 2 + 1, top[1] * 2 + 2, bot[0] * 2 + 1, bot[1] * 2, a[1]);
+  }
+  return L;
+}
+
+/** The leaf emblem colours (light green leaf, a dark vein). */
+const LEAF = [PAL.green[1], PAL.green[4]] as const;
+
+/** A short cape behind the back: hangs to the waist at rest, streams out and waves with `flutter`. */
+function drawCape(c: Ctx): { back: PixelBuffer; clasp: PixelBuffer } {
+  const sk = c.sk;
+  const d = c.st.dims;
+  const H = d.torsoH - (c.pose.hunch ?? 0);
+  const fl = c.pose.flutter;
+  const back = layer(c);
+  const B = -d.chestB;
+  let leaf: V;
+  let fold: [V, V];
+  if (fl === undefined) {
+    // At rest it hangs straight down the back to the belt, a notched hem.
+    poly(back, c, [tp(sk, 1, H + 1), tp(sk, B - 1, H), tp(sk, B - 2, 0), tp(sk, B - 1, -1), tp(sk, B, 1), tp(sk, B + 1, 0), tp(sk, B + 1, H - 3)]);
+    leaf = tp(sk, B - 1, H - 4);
+    fold = [tp(sk, B, H - 1), tp(sk, B - 1, 1)];
+  } else {
+    // Streaming back like a flag from the shoulders: a wedge with a notched, waving hem.
+    const wave = [0, 1, 0, -1][Math.round(fl) & 3];
+    poly(back, c, [
+      tp(sk, 1, H + 1),
+      tp(sk, B - 2, H + 1),
+      tp(sk, B - 9, H - 1 + wave),
+      tp(sk, B - 9, H - 3 + wave),
+      tp(sk, B - 6, H - 4),
+      tp(sk, B - 7, 1 - wave),
+      tp(sk, B - 3, 2),
+      tp(sk, B + 1, 2),
+      tp(sk, B + 1, H - 3),
+    ]);
+    leaf = tp(sk, B - 4, H - 2);
+    fold = [tp(sk, B - 1, H - 1), tp(sk, B - 6, 3)];
+  }
+  shadeLayer(back, c.st.accent, sh(c, { shift: -1 }));
+  // A fold down the cloth (only on cape pixels).
+  {
+    const F = layer(c);
+    if (c.D === 1) line(c, F, cp(c, fold[0]), cp(c, fold[1]), at(c.st.accent, 0));
+    else fineLine(c, F, cp(c, fold[0]), cp(c, fold[1]), at(c.st.accent, 0));
+    for (let i = 0; i < F.data.length; i++) if ((F.data[i] & 255) !== 0 && (back.data[i] & 255) !== 0) back.data[i] = F.data[i];
+    back.touch();
+  }
+  const p = cp(c, leaf);
+  const has = (x: number, y: number): boolean => c.D === 1 ? (back.get(x, y) & 255) !== 0 : (back.get(x * 2, y * 2) & 255) !== 0;
+  if (has(p[0], p[1]) && has(p[0] + 1, p[1] - 1)) {
+    dot(c, back, p[0], p[1], LEAF[1]);
+    dot(c, back, p[0] + 1, p[1] - 1, LEAF[1]);
+    if (c.D === 2) {
+      // A pointed leaf with a dark midrib.
+      back.set(p[0] * 2 + 1, p[1] * 2 + 1, LEAF[0]);
+      back.set(p[0] * 2 + 2, p[1] * 2, LEAF[0]);
+      back.set(p[0] * 2 - 1, p[1] * 2 + 1, LEAF[1]);
+      back.set(p[0] * 2 + 3, p[1] * 2 - 2, LEAF[1]);
+      back.touch();
+    }
+  }
+  // The cloth over the near shoulder and the clasp: a small gold stud at the collar.
+  const clasp = layer(c);
+  poly(clasp, c, [tp(sk, B, H + 1), tp(sk, 1, H + 1), tp(sk, 1, H), tp(sk, B + 1, H - 1)]);
+  shadeLayer(clasp, c.st.accent, sh(c));
+  const q = cp(c, tp(sk, 0, H));
+  dot(c, clasp, q[0], q[1], PAL.gold[2]);
+  if (c.D === 2) clasp.set(q[0] * 2, q[1] * 2, PAL.gold[3]);
+  return { back, clasp };
+}
+
 function drawEpaulette(c: Ctx, shoulder: V): PixelBuffer {
   const L = layer(c);
   const p = cp(c, shoulder);
@@ -1472,6 +1629,11 @@ function renderCanvas(style: HumanStyle, pose: Pose, part: RenderPart, D: Densit
   const pts: Record<string, [number, number]> = {};
 
   // Back to front.
+  let cape: { back: PixelBuffer; clasp: PixelBuffer } | null = null;
+  if (upper && acc.has('cape')) {
+    cape = drawCape(c);
+    comp.add(cape.back, { ramp: st.accent });
+  }
   if (upper && (acc.has('backpack') || acc.has('radio'))) comp.add(drawBackpack(c, acc.has('radio')), { ramp: st.gear });
   let scarf: { back: PixelBuffer; front: PixelBuffer } | null = null;
   if (upper && acc.has('scarf')) {
@@ -1479,6 +1641,7 @@ function renderCanvas(style: HumanStyle, pose: Pose, part: RenderPart, D: Densit
     comp.add(scarf.back, { ramp: st.accent });
   }
   if (upper) {
+    if (sk.offGun) comp.add(drawGun(c, sk.offGun).buf, { ramp: PAL.steel });
     comp.add(drawArm(c, sk.shF, sk.elF, sk.wrF, true), { ramp: st.sleeveUpper });
     comp.add(drawHandLayer(c, sk.elF, sk.wrF, sk.handF, true), { ramp: st.gloves });
   }
@@ -1502,6 +1665,7 @@ function renderCanvas(style: HumanStyle, pose: Pose, part: RenderPart, D: Densit
     }
     if (acc.has('ammo-belt')) comp.paint(drawBandolier(c, PAL.brown, true), PAL.brown[0]);
     if (acc.has('cross-belt')) comp.paint(drawBandolier(c, PAL.snow, false), PAL.snow[0]);
+    if (acc.has('tie')) comp.paint(drawTie(c), st.accent[0]);
     comp.add(drawBelt(c), { ramp: st.belt });
     if (acc.has('pouches')) comp.add(drawPouches(c), { ramp: st.gear });
     if (acc.has('toolbelt')) comp.add(drawToolbelt(c), { ramp: st.belt });
@@ -1530,6 +1694,7 @@ function renderCanvas(style: HumanStyle, pose: Pose, part: RenderPart, D: Densit
     const headAndNeck = (): void => {
       comp.add((head as { buf: PixelBuffer }).buf, { ramp: st.skin });
       if (scarf) comp.add(scarf.front, { ramp: st.accent });
+      if (cape) comp.add(cape.clasp, { ramp: st.accent });
       if (acc.has('bowtie')) comp.paint(drawBowtie(c), st.accent[0]);
       if (acc.has('epaulettes')) comp.paint(drawEpaulette(c, sk.shN), PAL.gold[0]);
     };

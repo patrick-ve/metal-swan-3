@@ -1,42 +1,60 @@
 /**
- * `ui/logo` (GDD §13.3): METAL / SWAN in chunky riveted ivory-and-steel letters and a large gold
- * 3 whose top curls into a swan's neck and head with an orange beak. Top-left anchored, about
- * 196 × 64 px (it sits at C, y 20–84 on the title).
+ * `ui/logo` (GDD §13.3, restyled 2026-10-16 by docs/design/squad.md §2.3): METAL / SWAN as
+ * riveted army-green plates with gunmetal rims, stencil gaps and scratches, and a large gold 3
+ * whose top curls into a swan's neck and head with an orange beak. Top-left anchored, about
+ * 196 × 64 px (it sits at C, y 18–84 on the title).
  */
 import type { Color } from '../../../engine/color';
-import { drawText, measureText } from '../../../engine/font';
 import { INK, PAL } from '../../../engine/palette';
 import { PixelBuffer } from '../../../engine/pixel';
 import type { Frame } from '../../../engine/render';
+import { Rng } from '../../../engine/rng';
 import { defineSprite } from '../../../engine/sprites';
+import { stencilMask } from './military.art';
 
 const MASK: Color = 0xff00ffff;
 
-/** Shade a mask of letters: ivory plates lit from the top left, a steel seam, steel rivets. */
+/**
+ * Riveted army plates (docs/design/squad.md §2.3): the big font at `scale` with stencil gaps
+ * (military.art.ts `stencilMask`), army-green paint lighter toward the top of each letter, a
+ * gunmetal rim (lit top-left, dark bottom-right), a gunmetal seam with a lit line under it, steel
+ * rivets above and below the seam, and scratches of bare metal.
+ */
 function plateLetters(text: string, scale: number): PixelBuffer {
-  const size = measureText(text, { font: 'big', scale });
-  const b = new PixelBuffer(size.w + 2, size.h + 2);
-  drawText(b, text, 1, 1, { font: 'big', scale, color: MASK });
-  const m = b.clone();
+  const m = stencilMask(text, scale, 1);
+  const b = new PixelBuffer(m.w, m.h);
   const on = (x: number, y: number): boolean => m.get(x, y) === MASK;
   const glyphH = 8 * scale;
   for (let y = 0; y < b.h; y++) {
     for (let x = 0; x < b.w; x++) {
       if (!on(x, y)) continue;
       const row = y - 1;
-      // Ivory body, lighter toward the top of each letter; edges bevelled.
-      let c: Color = row < glyphH * 0.4 ? PAL.snow[3] : row < glyphH * 0.75 ? PAL.snow[2] : PAL.snow[1];
-      if (!on(x - 1, y) || !on(x, y - 1)) c = PAL.snow[3];
-      if (!on(x + 1, y) || !on(x, y + 1)) c = PAL.steel[2];
-      else if (!on(x + 2, y) || !on(x, y + 2)) c = row < glyphH * 0.5 ? PAL.snow[1] : PAL.steel[3];
+      let c: Color = row < glyphH * 0.4 ? PAL.olive[3] : row < glyphH * 0.75 ? PAL.olive[2] : PAL.olive[1];
+      if (!on(x - 1, y) || !on(x, y - 1)) c = PAL.steel[3];
+      if (!on(x + 1, y) || !on(x, y + 1)) c = PAL.steel[0];
+      else if (!on(x + 2, y) || !on(x, y + 2)) c = PAL.olive[0];
       b.set(x, y, c);
     }
   }
-  // The steel seam across each letter at mid height, with a lit line under it.
+  // The gunmetal seam across each letter at mid height, with a lit line under it.
   const seam = 1 + Math.round(glyphH * 0.5);
   for (let x = 0; x < b.w; x++) {
     if (on(x, seam) && on(x - 1, seam) && on(x + 1, seam)) b.set(x, seam, PAL.steel[1]);
-    if (on(x, seam + 1) && on(x, seam) && on(x - 1, seam + 1) && on(x + 1, seam + 1)) b.set(x, seam + 1, PAL.snow[3]);
+    if (on(x, seam + 1) && on(x, seam) && on(x - 1, seam + 1) && on(x + 1, seam + 1)) b.set(x, seam + 1, PAL.olive[3]);
+  }
+  // Scratches: short diagonal strokes of bare steel with a dark lip, inside the paint only.
+  const rng = new Rng(`logo:${text}`);
+  const inside = (x: number, y: number): boolean => on(x, y) && on(x - 2, y) && on(x + 2, y) && on(x, y - 2) && on(x, y + 2);
+  for (let i = 0; i < Math.floor(b.w / 9); i++) {
+    const x0 = rng.int(3, b.w - 6);
+    const y0 = rng.int(3, b.h - 6);
+    for (let k = 0; k < 4; k++) {
+      const x = x0 + k;
+      const y = y0 + (k >> 1);
+      if (!inside(x, y) || y === seam || y === seam + 1) continue;
+      b.set(x, y, PAL.steel[2]);
+      if (inside(x, y + 1)) b.set(x, y + 1, PAL.olive[0]);
+    }
   }
   // Rivets: on solid stroke centres along two bands above and below the seam.
   const step = 2 * scale;

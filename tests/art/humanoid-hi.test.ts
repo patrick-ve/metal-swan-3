@@ -1,7 +1,7 @@
 /**
  * The humanoid rig at density 2 (2× art, mission ams; docs/ART_GUIDE.md "2x art (mission ams)"):
  * the 2× frame has exactly the 1× frame's logical geometry, its silhouette follows the 1× one,
- * the 1× output does not depend on 2× renders, and every `char/*` sprite of the five player
+ * the 1× output does not depend on 2× renders, and every `char/*` sprite of the ten player
  * characters has 2× art that the registry accepts (no fallback to 1×).
  */
 import { describe, expect, it } from 'vitest';
@@ -157,8 +157,9 @@ describe('player characters: 2× art for every char/* sprite', () => {
   it('every char/<hero>/* id has a 2× generator that the registry accepts (no fallback)', async () => {
     await loadContent();
     const ids = listSprites('char/');
-    expect(ids.length).toBeGreaterThanOrEqual(475);
-    for (const hero of ['recruit', 'grace', 'gramps', 'mittens', 'pip']) expect(ids.some((id) => id.startsWith(`char/${hero}/`)), hero).toBe(true);
+    // 95 ids per character: recruit, the squad of five and the four GDD heroes (+ select art).
+    expect(ids.length).toBeGreaterThanOrEqual(950);
+    for (const hero of ['recruit', 'vincent', 'thom', 'dirk', 'bob', 'patrick', 'grace', 'gramps', 'mittens', 'pip']) expect(ids.some((id) => id.startsWith(`char/${hero}/`)), hero).toBe(true);
     for (const id of ids) {
       expect(hasHiSprite(id), id).toBe(true);
       const lo = getFrames(id, 1);

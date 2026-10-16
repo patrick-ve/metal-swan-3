@@ -273,14 +273,14 @@ export class EndingScene implements Scene {
   private readonly pt = { x: 0, y: 0 };
   /** Caption lines per caption (wrapped once). */
   private readonly captions: string[][];
-  /** The four Cygnets, the first chosen hero first (they all ride home together). */
+  /** The squad (the roster), the first chosen hero first (they all ride home together). */
   private readonly crewIds: string[];
 
   constructor(app: GameApp) {
     this.app = app;
     const chosen = app.session?.slots.filter((s) => s.joined).map((s) => s.character) ?? [];
     this.heroes = chosen.filter((id) => hasCharacter(id));
-    if (this.heroes.length === 0) this.heroes.push(hasCharacter('grace') ? 'grace' : 'recruit');
+    if (this.heroes.length === 0) this.heroes.push(hasCharacter(ROSTER[0]) ? ROSTER[0] : 'recruit');
     // The roll ends when its last line reaches ROLL_STOP.
     const travel = ROLL_BOTTOM - ROLL_STOP + this.roll.height;
     this.paradeTicks = Math.max(PARADE_TICKS, Math.ceil(travel / CREDITS_SPEED) + 120);
@@ -612,9 +612,10 @@ export class EndingScene implements Scene {
     }
     // The SWAN-3 as the parade's float, the first hero on her back, cheering.
     drawSwanRig(r, 200, ROAD_Y + 2, t, { anim: 'move', neck: 'neck-relax', char: this.heroes[0], pose: 'ride-cheer', bodyTicks: 10, riderTicks: 8 });
-    // The other Cygnets march behind her.
+    // The rest of the squad marches behind her: 18 px apart from x 150, so four marchers end at
+    // x 96, clear of the band (first player at x 76).
     const crew = this.crewIds;
-    for (let i = 1; i < crew.length; i++) this.drawMarcher(r, crew[i], 148 - (i - 1) * 22, ROAD_Y + (i % 2), step + i);
+    for (let i = 1; i < crew.length; i++) this.drawMarcher(r, crew[i], 150 - (i - 1) * MARCH_GAP, ROAD_Y + (i % 2), step + i);
     // The band, and Fanfaroni at the very end with his triangle.
     const band = BAND;
     for (let i = 0; i < band.length; i++) if (hasSprite(band[i])) r.sprite(band[i], step + i, 76 - i * 22, ROAD_Y + (i % 2), plain);
@@ -717,6 +718,8 @@ const SPLASH_LAND = 150;
 /** The parade: the camera's speed, the road and pavement lines, Rimshot's punchline, the TING. */
 const PARADE_SPEED = 0.75;
 const ROAD_Y = 208;
+/** Spacing of the marching squad behind the Swan (docs/design/squad.md: five heroes). */
+const MARCH_GAP = 18;
 const PAVE_Y = STREET_Y + 6;
 const RIMSHOT_AT = 470;
 const TING_BEFORE = 140;

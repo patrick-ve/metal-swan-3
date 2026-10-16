@@ -5,6 +5,9 @@
  * - hud.art.ts      icons: `ui/icon-life`, `ui/swan-marker`, `ui/cursor-swan`, `ui/icon-cell`,
  *                   `ui/onward`, `ui/star`, `ui/icon-balloon`, `ui/ride`, `ui/bubble`
  * - logo.art.ts     `ui/logo`
+ * - military.art.ts the military menus (docs/design/squad.md §2.3): `ui/mil/frame`, `ui/mil/shutter`,
+ *                   `ui/mil/hazard`, `ui/mil/badge-<off|p1|p2>`, `ui/mil/plate`, `ui/mil/preview`,
+ *                   `ui/mil/emblem`, `ui/mil/stencil-<slug>`
  * - screens.art.ts  `ui/newspaper`, `ui/stamp`, `ui/portrait-gusto`, the title lake scene
  *                   (`ui/title-swan`, `ui/parade`), the pause and continue gags
  *                   (`ui/chair`, `ui/loudspeaker`, `ui/private`)
@@ -19,11 +22,13 @@
 import { defineEndingArt } from './ending.art';
 import { defineHudArt } from './hud.art';
 import { defineLogoArt } from './logo.art';
+import { defineMilitaryArt } from './military.art';
 import { defineScreenArt } from './screens.art';
 
 export function defineUiArt(): void {
   defineHudArt();
   defineLogoArt();
+  defineMilitaryArt();
   defineScreenArt();
   defineEndingArt();
 }

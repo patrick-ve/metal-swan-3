@@ -82,11 +82,11 @@ programme. (Mk1 sank. Mk2 flew south for the winter and never came back.)
 
 ### 1.3 Title-screen tagline
 
-**`CALM ON TOP. FURIOUS UNDERNEATH.`**
+**`THE SWAN HAS LANDED. THE ENEMY HAS NOT.`** (military, 2026-10-16, `docs/design/squad.md` §3.2;
+was `CALM ON TOP. FURIOUS UNDERNEATH.`)
 
 Attract-mode alternates (cycled under the logo, 300 ticks each):
-`NO SWANS WERE HARMED. SEVERAL TUBAS WERE.` · `NOW WITH 40% MORE HONK.` ·
-`THE CRITICS SAY: "LOUD."`
+`ONE SWAN. FIVE IDIOTS. ZERO RETREAT.` · `LOCK. LOAD. HONK.` · `OPERATION FRIKANDEL IS A GO.`
 
 ### 1.4 Target runtime and structure
 
@@ -238,6 +238,14 @@ the player, holds up a card with stars and hands over a gift (section 7).
 ---
 
 ## 3. Playable characters
+
+> **Superseded for the roster (2026-10-16):** the playable heroes are now the **squad of five
+> friends** — VINCENT (THE CONSULTANT), THOM (LITTLE NAPOLEON), DIRK (THE PLUMBER), BOB (CAPTAIN
+> CLIMATE), PATRICK (THE SUPERNERD) — in that select order, cosmetic only (the same stats as
+> below). Looks, bios, knife props and fidgets: `docs/design/squad.md` §1 (it wins over this
+> section). The four heroes below stay registered but not playable (m1–m5 code, Gramps' radio role
+> in ams). Code: `src/game/content/characters/{vincent,thom,dirk,bob,patrick}.art.ts`, API:
+> `docs/api/characters.md`.
 
 All four use the shared humanoid rig (`src/game/art/humanoid.ts`, `HumanStyle`) with the **same
 stats**: hitbox 14×30 standing / 16×20 crouching, the same speeds, jump, weapons and knife
@@ -2611,6 +2619,7 @@ reference series. The engine's default sounds (`ui/move`, `ui/confirm`, `ui/canc
 | `ui/tally-tick` / `ui/tally-end` | fast blips while the tally counts / total chord |
 | `ui/star` / `ui/stamp` | review-star "ding" / newspaper stamp thump |
 | `ui/select-confirm` | short drum roll + a honk |
+| `ui/mil-shutter` / `ui/mil-clank` | REPORT FOR DUTY: a steel shutter rattling up / a shutter landing (squad.md §4) |
 | `ui/name-letter` | letter change blip |
 | `mission/checkpoint` | short rising chime |
 | `mission/time-up` | a yawning buzzer |
@@ -2672,6 +2681,13 @@ Instrument names are the engine presets (`pulse12`, `pulse25`, `pulse50`, `trian
 
 ## 13. UI & flow
 
+> **2026-10-16: military menus.** `docs/design/squad.md` §2.3 and §3 win over this section for
+> the boot text, the title, the mode select, the character select (now **REPORT FOR DUTY**) and
+> the menu backdrop. Summary: every menu draws the night military base (`scenes/base.ts`
+> `drawBase`) instead of the lake (the ending keeps the lake); titles are stencil sprites
+> (`ui/mil/stencil-<slug>`); the logo is riveted army-green plates with stencil gaps and the gold
+> 3-swan. The texts below are updated; the old ones are in the git history.
+
 All text uses the project bitmap fonts: **big** (8 px) for titles and banners, **small** (5×7)
 for everything else; upper case only. Default text: `snow` with a 1 px `ink` outline. Centred
 text is centred on x = 192 ("C"). P1 colour `sky`, P2 colour `gold`; warnings `red`; scores
@@ -2688,7 +2704,8 @@ after m5: `Ending` → `Credits` → final tally → `NameEntry` (if the score q
 ### 13.2 Boot
 
 - Black screen; a row of 8 small swan icons (C, y 100) fills in as sprites and sounds pre-render.
-- Small, C, y 120: `TUNING INSTRUMENTS... 64%` (live percentage).
+- Small, C, y 120: `LOADING AMMUNITION... 64%` (live percentage). The row of swan icons is an
+  ammunition belt of 16 brass rounds that fills in (squad.md §3.1).
 - When ready: `CLICK OR PRESS ANY KEY` (small, C, y 140, blinking). This gesture unlocks audio.
 
 ### 13.3 Title and attract
@@ -2700,8 +2717,11 @@ after m5: `Ending` → `Credits` → final tally → `NameEntry` (if the score q
   parade marches past. Music `title`.
 - **Logo** (`ui/logo`, C, y 20–84): `METAL SWAN` in chunky riveted ivory-and-steel letters and a
   large gold `3` whose top curls like a swan's neck and head (orange beak).
-- **Tagline** (small, C, y 92): `CALM ON TOP. FURIOUS UNDERNEATH.`
-- **Prompt** (big, C, y 160, blinking): `PRESS START`
+- **Military title (2026-10-16, squad.md §3.2):** the night base with sweeping searchlights; the
+  SWAN-3 with `vincent` patrols behind the sandbag wall (0.4 px/tick, turning at the ends).
+- **Tagline** (small, C, y 92): `THE SWAN HAS LANDED. THE ENEMY HAS NOT.`; alternates `ONE SWAN.
+  FIVE IDIOTS. ZERO RETREAT.` · `LOCK. LOAD. HONK.` · `OPERATION FRIKANDEL IS A GO.`
+- **Prompt** (gold stencil `ui/mil/stencil-press-start`, C, y 114, blinking): `PRESS START`
 - **Top** (small, C, y 4): `HI 0500000` (best score).
 - **Footer** (small): `(C) 2026 THE METAL SWAN 3 TEAM` at C, y 206; right-aligned at (380, 206):
   `FREE PLAY` or `CREDITS 05`.
@@ -2716,14 +2736,21 @@ after m5: `Ending` → `Credits` → final tally → `NameEntry` (if the score q
 
 ### 13.4 Mode select
 
-Music `select` (it keeps playing on the character select). Vertical menu, big, C, from y 80,
-16 px apart: `1 PLAYER` · `2 PLAYERS` ·
-`DIFFICULTY  < NORMAL >` (a gold small subtitle under it: `"REHEARSAL"`, `"CONCERT"` or
-`"ENCORE"`; and a hint at C, y 170: EASY `MORE LIVES. SLOWER BULLETS.` · NORMAL
-`AS WRITTEN IN THE SCORE.` · HARD `FOR VETERANS. AND SHOW-OFFS.`) · `OPTIONS` ·
-`HIGH SCORES`.
+Music `select` (it keeps playing on the character select). Stencil header `SELECT OPERATION`
+(C, y 36). Vertical menu, big, C, from y 80, 16 px apart: `1 SOLDIER` · `2 SOLDIERS` ·
+`DIFFICULTY  < NORMAL >` (a gold small subtitle under it: `"RECRUIT"`, `"VETERAN"` or
+`"COMMANDO"`; and a hint at C, y 170: EASY `MORE LIVES. SLOWER BULLETS.` · NORMAL
+`THE REAL WAR.` · HARD `NO MERCY. NO MEDALS.`) · `OPTIONS` · `HALL OF FAME`. The difficulty ids
+stay `easy` / `normal` / `hard`.
 
 ### 13.5 Character select
+
+> **Superseded (2026-10-16):** the character select is now **REPORT FOR DUTY**, specified in
+> `docs/design/squad.md` §3.4 and built in `scenes/character-select.ts`: a riveted rust-brown
+> steel frame, five panels with shutters, grey portraits that turn to colour when highlighted, P1
+> (red) / P2 (blue) lamps, nameplates, the callsign and bio in the highlighted panel, a sprite
+> preview window on the dropped shutter, `STAND BY` / `READY!` and a 20-second countdown. The
+> text below is the original design, kept for reference.
 
 - Title (big, C, y 12): `CHOOSE YOUR CYGNET`. Timer (big, right-aligned at (376, 12)): `20`
   counting down once per 60 ticks; at 0 the highlighted character is chosen.
@@ -2866,14 +2893,14 @@ window is too small for the filter; docs/ARCHITECTURE.md §3) · `CONTROLS` (reb
 
 ### 13.14 High scores and name entry
 
-- Title (big, C, y 16): `TOP PERFORMERS`. Ten rows from y 40, 14 px apart (small): rank (`1ST` …
+- Title (stencil, C, y 12): `HALL OF FAME` (was `TOP PERFORMERS`, squad.md §3.5). Ten rows from y 40, 14 px apart (small): rank (`1ST` …
   `10TH`) at x 32, initials at x 80, 7-digit score right-aligned at x 220, character head icon at
   x 228, mission reached (`M3` or `ALL`; numbered by campaign place, `ams` = `M1`, `m1` = `M2`;
   saved rows keep their mission id, so a pre-Amsterdam `m1` row now reads `M2`) at x 252, difficulty (`E`, `N`, `H`) at x 284, continues
   used (`C2`, blank if none) at x 304.
 - Default table: `GRC 1000000`, `MIT 0800000`, `PIP 0600000`, `GPS 0500000`, `HIS 0400000`,
   `BLR 0300000`, `RIM 0200000`, `PUF 0150000`, `PIZ 0100000`, `DOL 0050000`.
-- Name entry: `ENTER YOUR INITIALS` (big, C, y 40); three letter slots (big) at x 168, 184, 200,
+- Name entry: `ENTER YOUR INITIALS` (stencil, C, y 34); three letter slots (big) at x 168, 184, 200,
   y 80; up/down cycles `A`–`Z`, `0`–`9`, `.`, `END`; fire confirms a slot; a 30-second timer
   (small, right-aligned at (380, 4)); music `high-score`; the announcer says
   `"NEW HIGH SCORE! YOU'RE GREAT!"` when the screen opens. Scores are saved per player (co-op: two
@@ -3131,7 +3158,7 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
 `env/radio-static`, `env/avalanche`, `env/timber`, `env/ice-melt`, `env/train-bell`,
 `env/train-pass`, `env/anthem-sting`, `ui/move`, `ui/confirm`, `ui/cancel`, `ui/pause`,
 `ui/announce`, `ui/coin`, `ui/countdown`, `ui/timer-warn`, `ui/tally-tick`, `ui/tally-end`,
-`ui/star`, `ui/stamp`, `ui/select-confirm`, `ui/name-letter`, `mission/checkpoint`,
+`ui/star`, `ui/stamp`, `ui/select-confirm`, `ui/mil-shutter`, `ui/mil-clank`, `ui/name-letter`, `mission/checkpoint`,
 `mission/time-up`; engine drum hits `drum/kick`, `drum/snare`, `drum/hat`, `drum/ohat`,
 `drum/crash`, `drum/tom`, `drum/clap`, `drum/rim`.
 

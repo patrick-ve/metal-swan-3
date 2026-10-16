@@ -1,8 +1,10 @@
 /**
- * Mode select (GDD §13.4): music `select` (it keeps playing on the character select). A
- * vertical menu, big, C, from y 80, 16 px apart: `1 PLAYER` · `2 PLAYERS` ·
- * `DIFFICULTY  < NORMAL >` (with a gold small subtitle under it — "REHEARSAL", "CONCERT" or
- * "ENCORE" — and a hint at C, y 170) · `OPTIONS` · `HIGH SCORES`. Back returns to the title.
+ * Mode select (GDD §13.4; military, docs/design/squad.md §3.3): the night base under a veil and
+ * the stencil header `SELECT OPERATION` (C, y 36); music `select` (it keeps playing on REPORT
+ * FOR DUTY). A vertical menu, big, C, from y 80, 16 px apart: `1 SOLDIER` · `2 SOLDIERS` ·
+ * `DIFFICULTY  < NORMAL >` (with a gold small nickname under it — "RECRUIT", "VETERAN" or
+ * "COMMANDO" — and a hint at C, y 170) · `OPTIONS` · `HALL OF FAME`. Back returns to the title.
+ * The difficulty ids stay easy / normal / hard.
  */
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
@@ -13,7 +15,8 @@ import { CharacterSelectScene } from './character-select';
 import { DIFFICULTIES, DIFFICULTY_INFO } from './flow-data';
 import { toTitle } from './flow';
 import { HighScoresScene } from './high-scores';
-import { drawLake, drawParade, veil } from './lake';
+import { drawBase, drawStencilTitle } from './base';
+import { veil } from './lake';
 import { OptionsScene } from './options';
 import { titleClock } from './title';
 
@@ -51,9 +54,11 @@ export class ModeSelectScene implements Scene {
   label(item: Item): string {
     switch (item) {
       case '1P':
-        return '1 PLAYER';
+        return '1 SOLDIER';
       case '2P':
-        return '2 PLAYERS';
+        return '2 SOLDIERS';
+      case 'HIGH SCORES':
+        return 'HALL OF FAME';
       case 'DIFFICULTY':
         return `DIFFICULTY  < ${DIFFICULTY_INFO[this.app.settings.difficulty].name} >`;
       default:
@@ -113,11 +118,10 @@ export class ModeSelectScene implements Scene {
 
   draw(r: Renderer): void {
     const clock = titleClock() + this.t;
-    drawLake(r, clock);
-    drawParade(r, clock);
+    drawBase(r, clock);
     veil(r, 0.6);
     centerText(r, `HI ${scoreText(this.app.highScores.top)}`, 4, UI_WHITE);
-    centerText(r, 'METAL SWAN 3', 40, PAL.snow[2], 'big', 2);
+    drawStencilTitle(r, 'SELECT OPERATION', 36);
     for (let i = 0; i < ITEMS.length; i++) {
       const sel = i === this.sel;
       // The rows under DIFFICULTY move down to make room for its subtitle.

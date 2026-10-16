@@ -6,11 +6,12 @@
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { centerText, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { HOW_TO_PLAY } from './flow-data';
 import { toTitle } from './flow';
 import { HighScoresScene } from './high-scores';
-import { drawLake, veil } from './lake';
+import { drawBase, drawStencilTitle } from './base';
+import { veil } from './lake';
 
 /** GDD §13.3: the card shows for 300 ticks. */
 export const HOW_TO_PLAY_TICKS = 300;
@@ -50,9 +51,9 @@ export class HowToPlayScene implements Scene {
   }
 
   draw(r: Renderer): void {
-    drawLake(r, this.clock + this.t);
+    drawBase(r, this.clock + this.t);
     veil(r, 0.7);
-    centerText(r, 'HOW TO PLAY', 16, UI_GOLD, 'big');
+    drawStencilTitle(r, 'HOW TO PLAY', 12);
     for (let i = 0; i < HOW_TO_PLAY.length; i++) {
       const [keys, action] = HOW_TO_PLAY[i];
       const y = 40 + i * 12;

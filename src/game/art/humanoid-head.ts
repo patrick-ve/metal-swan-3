@@ -11,7 +11,7 @@
  *   skin   0 1 2 3 (dark → light)       hair   h H L (dark, mid, light)
  *   gear   j g G   (dark, mid, light)   accent a A   (mid, light: plumes, bands, badges)
  *   k ink, e eye (ink), w white, m mouth (skin 0), r mouth inside (red 1), t teeth (white)
- *   l lens (sky 2), s lens glint (white), b brass (gold 2), B brass light (gold 3)
+ *   l lens (sky 2), s lens glint (white), b brass (gold 2), B brass light (gold 3), x stubble (sand 1)
  *   '-' ERASES (transparent), '.' leaves the pixel unchanged.
  */
 import type { Color } from '../../engine/color';
@@ -19,7 +19,7 @@ import { PixelBuffer } from '../../engine/pixel';
 import type { Ramp } from '../../engine/pixel';
 import { INK, PAL } from '../../engine/palette';
 import { at } from './paint';
-import { EXPR_HI, EXTRAS_HI, GEAR_HI, HAIR_HI, SKULL_HI, type HiTpl } from './humanoid-head-hi';
+import { EXPR_HI, EXTRAS_HI, GEAR_HI, HAIR_HI, SKULL_HI, TRAITS_HI, type HiTpl } from './humanoid-head-hi';
 
 export const HEAD_W = 18;
 export const HEAD_H = 19;
@@ -43,7 +43,15 @@ export type HairStyle =
   | 'curly'
   | 'puffs'
   /** Bald dome with white side tufts round the ear and the back of the head. */
-  | 'tufts';
+  | 'tufts'
+  /** A short crop with a high front hairline: a bare forehead over the brows (Vincent). */
+  | 'short-crop'
+  /** Sleek top combed straight back, short sides, a high front hairline (Patrick). */
+  | 'slick-back'
+  /** Messy spikes in every direction, a few strands over the forehead (Dirk). */
+  | 'spiky-messy'
+  /** Tousled hair swept up and back from the forehead into a tall quiff (Bob). */
+  | 'swept-up';
 
 export type Headgear =
   | 'none'
@@ -59,7 +67,9 @@ export type Headgear =
   | 'bobble'
   | 'rainhat'
   | 'headset'
-  | 'fur-hat';
+  | 'fur-hat'
+  /** A baseball cap worn backwards: the peak sticks out over the back of the head (Thom). */
+  | 'cap-back';
 
 export type Expression =
   | 'normal'
@@ -86,7 +96,23 @@ export type FaceExtra =
   /** Bushy brows (hair colour) over the normal brow line. */
   | 'bushy-brows'
   /** A white eye highlight behind the pupil on open-eyed expressions (reads on deep skin). */
-  | 'eyeshine';
+  | 'eyeshine'
+  /** One eyebrow raised high (a gap over the eye) on calm expressions (Vincent). */
+  | 'raised-brow'
+  /** A lopsided smirk: the back corner of the mouth pulled up, on calm expressions (Vincent). */
+  | 'smirk'
+  /** A huge toothy grin on calm expressions (Thom). */
+  | 'grin'
+  /** Squinting happy eyes on the calm open-eyed expressions (Thom). */
+  | 'beam'
+  /** A thick moustache over the mouth, one px past the face (hair colour; Dirk). */
+  | 'thick-mustache'
+  /** Heavy dark stubble along the jaw, drawn under the mouth (hair colour; Vincent). */
+  | 'heavy-stubble'
+  /** A thin trimmed moustache line over the mouth (hair colour; Patrick). */
+  | 'thin-mustache'
+  /** Blue eyes: the iris in sky blue on open-eyed expressions (Bob). */
+  | 'blue-eyes';
 
 interface Tpl {
   /** Offset relative to the skull template's top-left. */
@@ -234,6 +260,62 @@ const HAIR: Readonly<Record<HairStyle, Tpl>> = {
       'hHHHh...',
       '.hHh....',
       '..h.....',
+    ],
+  },
+  'short-crop': {
+    at: [0, -1],
+    rows: [
+      '...hhhhhh...',
+      '.hhHHHHHHh..',
+      'hHHLLLHHh...',
+      'hHLHHHh.....',
+      'hHHHHh......',
+      'hHHh........',
+      'hHh.........',
+      '.hh.........',
+    ],
+  },
+  'slick-back': {
+    at: [0, -2],
+    rows: [
+      '...hhhhhh...',
+      '.hhHHHHHHhh.',
+      'hHHLLLLLHHHh',
+      'hHHHHHHLLHhh',
+      'hHHHHHHHhh..',
+      'hHHHh.......',
+      'hHh.........',
+      '.h..........',
+    ],
+  },
+  'spiky-messy': {
+    at: [-1, -3],
+    rows: [
+      '..h..h..h.h..',
+      '..hh.hh.hhh..',
+      '.hHhhHhhHHh.h',
+      'hhHHLHHLHHHhh',
+      'hHHLHHHHHHHHh',
+      'hHHHHHHHHHhhhh',
+      'hHHHHh.h...h.',
+      'hHHHh........',
+      'hHHh.........',
+      '.hh..........',
+    ],
+  },
+  'swept-up': {
+    at: [0, -4],
+    rows: [
+      '......hhh...',
+      '....hhHLHh..',
+      '...hHHLHHHh.',
+      '..hHHLHHHHHh',
+      '.hHHLHHHHHh.',
+      'hHHHHHHhhh..',
+      'hHHHh..h....',
+      'hHHh........',
+      'hHh.........',
+      '.h..........',
     ],
   },
   puffs: {
@@ -397,6 +479,19 @@ const GEAR: Readonly<Record<Exclude<Headgear, 'none'>, GearTpl>> = {
     hairBelow: 0,
     rows: ['...jjjj...', '..j....j..', '.j........', '.j........', '.j........', '.j........', 'jgj.......', 'jGj.......', 'jgjjj.....'],
   },
+  // Backwards: the crown over the head, the peak out over the back, the strap gap at the front
+  // showing a little hair.
+  'cap-back': {
+    at: [-3, -2],
+    hairBelow: 3,
+    rows: [
+      '......jjjjjj...',
+      '....jjgGGGGgjj.',
+      '...jgGGGGGGGggj',
+      'jjjjgGGgggggggj',
+      'jgggjjjjjjjhGjj',
+    ],
+  },
   'fur-hat': {
     at: [-1, -3],
     hairBelow: 3,
@@ -449,7 +544,50 @@ const EXTRAS: Readonly<Record<FaceExtra, Tpl>> = {
   'bushy-brows': { at: [7, 3], rows: ['.hHh', 'hHh.'] },
   // Drawn only on open-eyed expressions (see EYESHINE_EXPR).
   eyeshine: { at: [7, 5], rows: ['w', 'w'] },
+  // The overrides (FACE_TRAITS) draw nothing here.
+  'raised-brow': { at: [0, 0], rows: [] },
+  smirk: { at: [0, 0], rows: [] },
+  grin: { at: [0, 0], rows: [] },
+  beam: { at: [0, 0], rows: [] },
+  'blue-eyes': { at: [0, 0], rows: [] },
+  'thick-mustache': { at: [7, 7], rows: ['.hhHh', 'hHHHHh'] },
+  'heavy-stubble': { at: [5, 8], rows: ['..x.x.x', '.x.x.x.', 'x.x....'] },
+  'thin-mustache': { at: [9, 7], rows: ['HH'] },
 };
+
+/** Extras drawn under the eye and mouth (shading on the skin). */
+const UNDER_EXTRAS: ReadonlySet<FaceExtra> = new Set<FaceExtra>(['heavy-stubble']);
+
+/**
+ * Face traits that replace one part of an expression (a character's signature look) on the
+ * expressions listed; any other expression keeps its own part (a shout still opens the mouth).
+ */
+interface FaceTrait {
+  part: 'eye' | 'mouth' | 'brow';
+  on: ReadonlySet<Expression>;
+  tpl: Tpl;
+}
+
+const CALM: ReadonlySet<Expression> = new Set<Expression>(['normal', 'blink', 'happy', 'chew']);
+const OPEN: ReadonlySet<Expression> = new Set<Expression>(['normal', 'shout']);
+
+const FACE_TRAITS: Readonly<Partial<Record<FaceExtra, FaceTrait>>> = {
+  'raised-brow': { part: 'brow', on: new Set<Expression>(['normal', 'blink', 'happy', 'chew', 'shout']), tpl: { at: [8, 2], rows: ['.hh', 'h..'] } },
+  smirk: { part: 'mouth', on: new Set<Expression>(['normal', 'blink']), tpl: { at: [8, 7], rows: ['m..', '.mm'] } },
+  grin: { part: 'mouth', on: CALM, tpl: { at: [7, 8], rows: ['mtttt', '.mmm'] } },
+  beam: { part: 'eye', on: OPEN, tpl: { at: [8, 5], rows: ['.e', 'e.'] } },
+  'blue-eyes': { part: 'eye', on: OPEN, tpl: { at: [8, 5], rows: ['l', 'e'] } },
+};
+
+/** The eye, mouth and brow of an expression with the style's face traits applied. */
+function facePart(extras: readonly FaceExtra[], expr: Expression, part: FaceTrait['part'], fallback: Tpl): Tpl {
+  let t = fallback;
+  for (const x of extras) {
+    const tr = FACE_TRAITS[x];
+    if (tr && tr.part === part && tr.on.has(expr)) t = tr.tpl;
+  }
+  return t;
+}
 
 /** Expressions whose eye is a plain open pupil: the ones `eyeshine` brightens. */
 const EYESHINE_EXPR: ReadonlySet<Expression> = new Set<Expression>(['normal', 'shout']);
@@ -538,6 +676,8 @@ function paletteKey(s: HeadStyle): (ch: string) => Color | null {
         return PAL.sky[2];
       case 's':
         return PAL.snow[3];
+      case 'x': // stubble shadow
+        return PAL.sand[1];
       case 'b':
         return PAL.gold[2];
       case 'B':
@@ -557,11 +697,12 @@ export function renderHead(s: HeadStyle, expr: Expression): PixelBuffer {
   const key = paletteKey(s);
   put(buf, { at: [0, 0], rows: SKULL }, key);
   const e = EXPR[expr];
-  put(buf, { at: EYE_AT, rows: e.eye }, key);
-  put(buf, { at: MOUTH_AT, rows: e.mouth }, key);
+  for (const x of s.extras) if (UNDER_EXTRAS.has(x)) put(buf, EXTRAS[x], key);
+  put(buf, facePart(s.extras, expr, 'eye', { at: EYE_AT, rows: e.eye }), key);
+  put(buf, facePart(s.extras, expr, 'mouth', { at: MOUTH_AT, rows: e.mouth }), key);
   for (const x of s.extras) {
     if (x === 'eyeshine' && !EYESHINE_EXPR.has(expr)) continue;
-    if (x !== 'bushy-brows') put(buf, EXTRAS[x], key);
+    if (x !== 'bushy-brows' && !UNDER_EXTRAS.has(x)) put(buf, EXTRAS[x], key);
   }
   const gear = s.headgear === 'none' || s.hat === false ? null : GEAR[s.headgear];
   const slip = gear ? Math.max(0, Math.round(s.hatDy ?? 0)) : 0;
@@ -572,7 +713,7 @@ export function renderHead(s: HeadStyle, expr: Expression): PixelBuffer {
   });
   // Brows sit on top of the fringe so expressions stay readable under any hair; gear may
   // still cover them.
-  put(buf, { at: BROW_AT, rows: e.brow }, key);
+  put(buf, facePart(s.extras, expr, 'brow', { at: BROW_AT, rows: e.brow }), key);
   if (s.extras.includes('bushy-brows')) put(buf, EXTRAS['bushy-brows'], key);
   if (gear) put(buf, slip ? { ...gear, at: [gear.at[0], gear.at[1] + slip] } : gear, key);
   return buf;
@@ -614,6 +755,16 @@ function putHi(
   }
 }
 
+/** facePart on the 2× grid: a trait's 2× twin (TRAITS_HI), else its 1× template doubled. */
+function facePartHi(extras: readonly FaceExtra[], expr: Expression, part: FaceTrait['part'], fallback: HiTpl): HiTpl {
+  let t = fallback;
+  for (const x of extras) {
+    const tr = FACE_TRAITS[x];
+    if (tr && tr.part === part && tr.on.has(expr)) t = TRAITS_HI[x] ?? doubled(tr.tpl);
+  }
+  return t;
+}
+
 /**
  * The 2× head (mission ams): HEAD_W·2 × HEAD_H·2, the same logical layout as `renderHead` (NECK
  * and HEAD_CENTER are the 2 × 2 blocks at twice them), drawn from the hand-drawn 2× templates in
@@ -629,11 +780,12 @@ export function renderHeadHi(s: HeadStyle, expr: Expression, opts: { glint?: boo
   const key = opts.glint === false ? (ch: string): Color | null => base(ch === 'W' ? 'e' : ch) : base;
   putHi(buf, { at: [0, 0], rows: SKULL_HI }, key);
   const e = EXPR_HI[expr];
-  putHi(buf, e.eye, key);
-  putHi(buf, e.mouth, key);
+  for (const x of s.extras) if (UNDER_EXTRAS.has(x)) putHi(buf, EXTRAS_HI[x] ?? doubled(EXTRAS[x]), key);
+  putHi(buf, facePartHi(s.extras, expr, 'eye', e.eye), key);
+  putHi(buf, facePartHi(s.extras, expr, 'mouth', e.mouth), key);
   for (const x of s.extras) {
     if (x === 'eyeshine' && !EYESHINE_EXPR.has(expr)) continue;
-    if (x !== 'bushy-brows') putHi(buf, EXTRAS_HI[x] ?? doubled(EXTRAS[x]), key);
+    if (x !== 'bushy-brows' && !UNDER_EXTRAS.has(x)) putHi(buf, EXTRAS_HI[x] ?? doubled(EXTRAS[x]), key);
   }
   const gear = s.headgear === 'none' || s.hat === false ? null : GEAR[s.headgear];
   const slip = gear ? Math.max(0, Math.round(s.hatDy ?? 0)) : 0;
@@ -642,7 +794,7 @@ export function renderHeadHi(s: HeadStyle, expr: Expression, opts: { glint?: boo
     if (sy < gear.hairBelow + slip) return false;
     return gear.hairRightOf === undefined || sx >= gear.hairRightOf;
   });
-  putHi(buf, e.brow, key);
+  putHi(buf, facePartHi(s.extras, expr, 'brow', e.brow), key);
   if (s.extras.includes('bushy-brows')) putHi(buf, EXTRAS_HI['bushy-brows'] ?? doubled(EXTRAS['bushy-brows']), key);
   if (gear && s.headgear !== 'none') {
     const g = GEAR_HI[s.headgear] ?? doubled(gear);

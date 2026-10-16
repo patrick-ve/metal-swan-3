@@ -360,7 +360,10 @@ export function snackArt(): PixelBuffer {
  * it), `tip` = the business end (the frame's `hand` point). Shaded, no outline (the figure's
  * outline wraps them).
  */
-export type PropKind = 'umbrella' | 'needles' | 'pan' | 'wrench';
+export type PropKind = 'umbrella' | 'needles' | 'pan' | 'wrench' | 'plan' | 'pistol-butt' | 'plunger' | 'airliner' | 'frikandel';
+
+/** The pistol turned round: held by the barrel, the butt forward (a pistol-whip). */
+const mirrorRows = (rows: readonly string[]): string[] => rows.map((r) => [...r].reverse().join(''));
 
 export interface PropArt {
   buf: PixelBuffer;
@@ -383,9 +386,54 @@ const PROP_KEY: Readonly<Record<string, Color>> = {
   t: PAL.brown[3],
   r: PAL.red[1],
   R: PAL.red[3],
+  '0': PAL.steel[0],
+  k: INK,
+  p: PAL.sand[2],
+  P: PAL.sand[3],
+  b: PAL.sky[1],
+  s: PAL.snow[1],
+  S: PAL.snow[2],
+  f: PAL.brown[1],
+  F: PAL.brown[2],
+  G: PAL.brown[3],
 };
 
 const PROPS: Readonly<Record<PropKind, { rows: string[]; grip: readonly [number, number]; tip: readonly [number, number]; ramp: Ramp }>> = {
+  // A rolled-up battle plan: cream paper, a blue line spiralling round it, the end-on roll.
+  plan: {
+    rows: ['.PPPPPPPP.', 'pPPbPPPPPS', '.pppbpppp.'],
+    grip: [2, 1],
+    tip: [9, 1],
+    ramp: PAL.sand,
+  },
+  // The pistol held by its barrel, the butt swinging forward.
+  'pistol-butt': {
+    rows: mirrorRows(PISTOL),
+    grip: [1, 1],
+    tip: [6, 4],
+    ramp: PAL.steel,
+  },
+  // A plunger: a wooden stick and a dark rubber cup, its mouth to the front.
+  plunger: {
+    rows: ['.........aa', '........aAa', 'wwWWWWWWAAa', '........aAa', '.........aa'],
+    grip: [1, 2],
+    tip: [10, 2],
+    ramp: PAL.black,
+  },
+  // A tiny model airliner held under the belly: blue tail fin, a row of windows, the nose ahead.
+  airliner: {
+    rows: ['b.........', 'bbSSSSSSS.', 'sSbSbSbSSS', '.ssss11ss.'],
+    grip: [3, 3],
+    tip: [9, 2],
+    ramp: PAL.snow,
+  },
+  // A frikandel with mayonnaise and curry stripes along the top.
+  frikandel: {
+    rows: ['..SRSRSRS.', '.FFFFFFFFf', '..fffffff.'],
+    grip: [1, 1],
+    tip: [9, 1],
+    ramp: PAL.brown,
+  },
   // Furled black umbrella: a wooden crook behind the fist, a long black spindle, a steel tip.
   umbrella: {
     rows: [
@@ -439,6 +487,49 @@ const PROPS: Readonly<Record<PropKind, { rows: string[]; grip: readonly [number,
 
 /** 2× props (twice the 1× drawing; grip and tip at twice the 1× pixels). */
 const PROPS_HI: Readonly<Record<PropKind, readonly string[]>> = {
+  // The roll's spiral end, the blue line wrapping round.
+  plan: [
+    '..PPPPPPPPPPPPPPPP..',
+    '.PPPPPPPPPPPPPPPPPS.',
+    'pPPPPPbbPPPPPPPPPSsS',
+    'pPpppppbbppppppppSsS',
+    '.pppppppbbppppppppS.',
+    '..pppppppbbpppppp...',
+  ],
+  'pistol-butt': mirrorRows(PISTOL_HI),
+  // A rounded rubber dome on a wooden stick with a lit edge.
+  plunger: [
+    '..................aaaa',
+    '.................aAAaa',
+    '................aAAAaa',
+    '...............aAAAAaa',
+    'wwwwWWWWWWWWWWWaAAAAAa',
+    'wwwwwwwwwwwwwwwaAAAAaa',
+    '...............aAAAAaa',
+    '................aAAAaa',
+    '.................aAAaa',
+    '..................aaaa',
+  ],
+  // Fin, a window row, a darker wing root under the fuselage.
+  airliner: [
+    'bb..................',
+    'bbb.................',
+    'bbbbSSSSSSSSSSSSSS..',
+    'bbSSSSSSSSSSSSSSSSS.',
+    'sSSSbSSbSSbSSbSSSSSS',
+    'sssSSSSSSSSSSSSSSSsS',
+    '..sssssss1111ssssss.',
+    '...ssssss11sssssss..',
+  ],
+  // A glossy sausage, the sauce in zigzag stripes.
+  frikandel: [
+    '....SSRRSSRRSSRRSS..',
+    '...SRRSSRRSSRRSSRRS.',
+    '..FGGGGGGGGGGGGGGFFf',
+    '.FFFFFFFFFFFFFFFFFff',
+    '..ffffffffffffffffff',
+    '....ffffffffffffff..',
+  ],
   // Folds in the furled canopy, a strap button, a curved crook.
   umbrella: [
     '................................',
@@ -522,7 +613,7 @@ export function propArt(kind: PropKind): PropArt {
 
 /** Is a held item one of the knife-look props? */
 export function isProp(item: string): item is PropKind {
-  return item === 'umbrella' || item === 'needles' || item === 'pan' || item === 'wrench';
+  return Object.prototype.hasOwnProperty.call(PROPS, item);
 }
 
 /** Small wrapped gift box (6×6) that hostages pull out before the real item pops. */

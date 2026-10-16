@@ -4,7 +4,7 @@
  * fallback); `ui/announce` stays the engine's voice-fallback jingle. `boss/warning` and
  * `ui/tally-tick` are aliases (index.ts).
  */
-import { BP, fmBell, honk, hits, hz, LP, note, noise, tone, type Recipes } from './kit';
+import { BP, clack, fmBell, honk, hits, hz, LP, note, noise, tone, type Recipes } from './kit';
 
 export const UI: Recipes = {
   // The title logo lands (2026-10-14, the first title visit): a low boom under a bright D major
@@ -146,6 +146,32 @@ export const UI: Recipes = {
     voices: 2,
     gap: 0.03,
     layers: [note('pulse', hz('C6'), 0.02, 0.5, 0, { duty: 0.125 })],
+  },
+  // REPORT FOR DUTY (docs/design/squad.md §4): a corrugated steel shutter rolling up, a fast
+  // rattle of slat clacks that slows as it rises, over a low rumble, 0.5 s.
+  'ui/mil-shutter': {
+    vol: 0.62,
+    voices: 2,
+    gap: 0.06,
+    layers: [
+      noise(0.45, 0.35, LP(700, 300), { env: { a: 0.02, s: 0.6, hold: 0.25, r: 0.18, d: 0.01 } }),
+      ...hits(10, 0, 0.032, 0.93).flatMap((delay, i) => clack(900 + (i % 3) * 140, 0.42 - i * 0.02, delay, 0.022)),
+      tone('triangle', 70, 55, 0.3, 0.3),
+    ],
+    drive: 0.3,
+  },
+  // The shutter lands: a heavy steel clank with a short inharmonic ring, 0.45 s.
+  'ui/mil-clank': {
+    vol: 0.7,
+    voices: 2,
+    gap: 0.08,
+    layers: [
+      tone('sine', 130, 55, 0.18, 0.7),
+      noise(0.07, 0.6, BP(1800, 900, 1.2)),
+      ...clack(420, 0.6, 0, 0.03),
+      ...fmBell(hz('A3') * 1.07, 0.42, 0.18, { ratio: 2.41, index: 4 }),
+    ],
+    drive: 0.35,
   },
   // A short rising chime.
   'mission/checkpoint': {

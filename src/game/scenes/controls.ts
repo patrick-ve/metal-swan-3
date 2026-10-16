@@ -10,7 +10,8 @@ import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { blinkOn, centerText, drawCursor, drawPanel, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
-import { drawLake, veil } from './lake';
+import { drawBase } from './base';
+import { veil } from './lake';
 import { titleClock } from './title';
 
 /** The buttons the screen rebinds, in the order it asks for them. */
@@ -246,7 +247,7 @@ export class ControlsScene implements Scene {
   }
 
   draw(r: Renderer): void {
-    drawLake(r, titleClock() + this.t);
+    drawBase(r, titleClock() + this.t);
     veil(r, 0.7);
     drawPanel(r, 40, 8, 304, 200, 0.9);
     centerText(r, 'CONTROLS', 16, UI_GOLD, 'big');

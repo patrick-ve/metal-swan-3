@@ -7,6 +7,28 @@ Design: GDD §3, §4.13, §6.2, §13.5; ARCHITECTURE §6.1; `docs/design/swan-mo
 
 ## 1. Character ids and defs (`characters/index.ts`)
 
+**The playable roster is the squad of five friends** (docs/design/squad.md §1, 2026-10-16). First
+names only (`fullName` = `name`); `title` = `role` = `callsign`; `description` = the user's bio,
+word for word; `voice` = `'<NAME>!'`; one distinct `color` each; `stats` = `HERO_STATS`.
+
+| id | name | role (= title = callsign) | look (bold = the trait that reads at 1×) | knife look → sfx | bored |
+|---|---|---|---|---|---|
+| `vincent` | `VINCENT` | `THE CONSULTANT` | `short-crop` dark-brown hair, **`raised-brow` + `smirk`**, `heavy-stubble`, slim, brown `tweed` jacket + dark-red `tie` | `plan` (rolled battle plan) → `weapon/knife-umbrella` | unrolls the plan (`planSheet` piece), nods |
+| `thom` | `THOM` | `LITTLE NAPOLEON` | **`cap-back` (navy) + `grin` + `beam`**, light-blond `buzz`, `stocky` (2 px shorter legs), olive `tee`, **a second pistol** (`torso: { offhand: 'pistol' }`) | `pistol-butt` (pistol-whip) → `weapon/knife-wrench` | hand-in-jacket Napoleon pose |
+| `dirk` | `DIRK` | `THE PLUMBER` | **`spiky-messy` hair + `thick-mustache`**, `stubble`, `blush`, **hi-vis gold vest and sleeves** (`hivis`), dark olive fatigues; no cap, no overalls, no letter | `plunger` → `weapon/knife-pan` | wipes the mustache, checks a wrench |
+| `bob` | `BOB` | `CAPTAIN CLIMATE` | **`swept-up` quiff + `blue-eyes` + green `cape` with a leaf emblem**, `stubble`, `lanky` (1 px longer thighs), navy `tee` | `airliner` (tiny model airliner) → `weapon/knife-needles` | reads his boarding pass (`boardingPass`), the cape flutters |
+| `patrick` | `PATRICK` | `THE SUPERNERD` | **`slick-back` glossy black hair + `thin-mustache`**, tan skin, black `polo` | `frikandel` → `weapon/knife` | eats a frikandel, checks a glowing device (`pocketDevice`, `deviceGlow`) |
+
+Victories: Vincent taps the plan and gives a thumbs-up; Thom raises both pistols; Dirk the
+plunger; Bob a fist forward-up (flying pose); Patrick the frikandel. Deaths: the rig default.
+Portraits: `char/<id>/portrait` is registered by `definePlayerSprites` (rig default) and replaced
+by `PORTRAITS[id]` in `portrait.art.ts`; the select art `char/<id>/select`, `select-grey` lives in
+`select.art.ts` (docs/design/squad.md §2.2).
+
+**Retired GDD heroes** (`RETIRED` in `characters/index.ts`): registered with all their art and
+texts, **not** in `PLAYABLE` / `ROSTER`. m1–m5 code (`hasGramps` …), Gramps' radio role in ams
+and their tests use them by id.
+
 | id | name | fullName | role (= title) | knife look → sfx |
 |---|---|---|---|---|
 | `grace` | `GRACE` | `CAPT. GRACE STILLMERE` | `SQUAD LEADER` | umbrella → `weapon/knife-umbrella` |
@@ -20,16 +42,19 @@ Design: GDD §3, §4.13, §6.2, §13.5; ARCHITECTURE §6.1; `docs/design/swan-mo
   exactly as GDD §3 / §13.5 / §12.3.
 - Stats: identical for the four heroes (GDD §3): `{ speed: 1, jump: 1, weapon: 'pistol', bomb:
   'grenade', melee: 'knife', ammo: 1 }`; no `bombs` field, so the difficulty gives 10 (EASY 15).
-- `PLAYABLE` = `['grace', 'mittens', 'pip', 'gramps']` (select order, GDD §13.5).
+- `PLAYABLE` = `['vincent', 'thom', 'dirk', 'bob', 'patrick']` (select order; `ROSTER` in
+  `scenes/flow-data.ts` is the same list); `RETIRED` = `['grace', 'mittens', 'pip', 'gramps']`;
+  `HERO_STATS` is exported.
 - Extra fields (`HeroDef extends CharacterDef`): `knifeProp` (`'umbrella' | 'needles' | 'pan' |
-  'wrench' | 'knife'`) and `knifeSfx`. `getCharacter(id)` returns them; read with a structural
+  'wrench' | 'plan' | 'pistol-butt' | 'plunger' | 'airliner' | 'frikandel' | 'knife'`) and
+  `knifeSfx`. `getCharacter(id)` returns them; read with a structural
   cast: `(player.character as { knifeSfx?: string }).knifeSfx ?? 'weapon/knife'`. Also exported:
   `KNIFE_SFX` (id → sfx) and `knifeSfxFor(id)`. The weapons module already reads
   `character.knifeSfx` (`content/weapons/index.ts` `knifeSfx()`).
 - `boredStatus` (Gramps only: `squeaky-boot`, §4): a status the player logic applies when the
   `bored` fidget ends.
 
-## 2. Sprites (`characters/art.ts`), `char/<id>/…` for all five characters
+## 2. Sprites (`characters/art.ts`), `char/<id>/…` for all ten characters
 
 - The ARCHITECTURE §6.1 contract: `legs-*` (point `hip`), `torso-{pistol,heavy}-*` (aim / shoot:
   `muzzle`; throw / knife: `hand`; diag-up strips for pistol and heavy; diag-down for heavy only), `die` (6–7 f), `die-burn`,
@@ -90,6 +115,21 @@ if (st) player.status.add(st);
   props to a strip), `variants` (status art infixes → pose transforms).
 - `defineRiderSprites(id, style, base?)` registers the nine rider strips for a custom rider;
   `RIDE`, `RIDE_POSES`, `RIDE_GRIPS` and the `RIDE_*` tables live in `poses.ts`.
+- Squad additions (2026-10-16, docs/design/squad.md §2.1; all with hand-drawn 2× twins, old
+  styles render pixel-identically):
+  - `HairStyle`: `short-crop` (high front hairline), `slick-back`, `spiky-messy`, `swept-up`.
+  - `Headgear`: `cap-back` (a baseball cap worn backwards: the peak over the back of the head).
+  - `FaceExtra` overlays: `thick-mustache`, `thin-mustache`, `heavy-stubble` (drawn under the
+    mouth). **Face traits** (`FACE_TRAITS` in `humanoid-head.ts`; 2× twins in `TRAITS_HI`) replace
+    one part of an expression on the calm expressions only (a shout still opens the mouth):
+    `raised-brow` (brow), `smirk`, `grin` (mouth), `beam` (squinted happy eyes), `blue-eyes` (eye).
+  - `TopType`: `tee`, `polo` (short sleeves over bare forearms). `Build`: `stocky` (legs 2 px
+    shorter, broad), `lanky` (thighs 1 px longer, slim). `Accessory`: `tie`, `tweed`, `cape`
+    (accent colour, a leaf emblem and a gold clasp; streams back with `flutter`).
+  - `Pose.offhand: 'pistol'`: a second pistol in the far hand while the near hand aims a pistol
+    (drawing only; `muzzle` stays the aimed gun's; ignored for the heavy gun and a low carry).
+  - Props (`PropKind`, `humanoid-gear.ts`): `plan`, `pistol-butt`, `plunger`, `airliner`,
+    `frikandel`. Pieces (`pieces.ts`): `planSheet`, `boardingPass`, `pocketDevice`, `deviceGlow`.
 - Small prop pieces for strips (`characters/pieces.ts`): pocket watch, yarn ball, knitting, knitted
   swan, bobble hat, helmet, gum bubbles, screwdriver, dentures, rag, sparkle, dust puff, helium
   puff; placing helpers `at`, `onGround`, `decorateFrames`, `mirrored`.

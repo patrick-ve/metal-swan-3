@@ -1,6 +1,7 @@
 /**
- * Characters (GDD §3, §4.13, §13.5, §15.1, §15.6): the four heroes and `recruit` register with
- * the GDD stats and texts; every `char/<id>/…` strip of the sprite contract exists with the right
+ * Characters (GDD §3, §4.13, §13.5, §15.1, §15.6; docs/design/squad.md §1, §6): the squad of five
+ * friends is the playable roster; the four GDD heroes stay registered (not playable) with their
+ * texts; all of them and `recruit` share the stats; every `char/<id>/…` strip of the sprite contract exists with the right
  * frame counts and points (ARCHITECTURE §6.1, look.md §6.4); the knife looks and their sounds;
  * the Helium Head status (jump, float, no crouch, no mount, the one-hit shield, the wobble and the
  * deflate spin).
@@ -12,18 +13,26 @@ import { inPalette, PAL } from '../../src/engine/palette';
 import type { Frame } from '../../src/engine/render';
 import { frameCount, getFrames, hasSprite, listSprites, spriteAnim, spriteErrors } from '../../src/engine/sprites';
 import type { World } from '../../src/engine/world';
-import { stackFrames } from '../../src/game/art/humanoid';
+import { renderHuman, stackFrames } from '../../src/game/art/humanoid';
+import { THOM_STYLE, VINCENT_STYLE } from '../../src/game/content/characters/art';
 import { HELIUM, HELIUM_DEFLATE_ID } from '../../src/game/content/characters/helium';
 import { SQUEAK } from '../../src/game/content/characters/squeak';
-import { KNIFE_SFX, knifeSfxFor, PLAYABLE, type HeroDef } from '../../src/game/content/characters/index';
+import { HERO_STATS, KNIFE_SFX, knifeSfxFor, PLAYABLE, RETIRED, type HeroDef } from '../../src/game/content/characters/index';
+import { CHARACTER_TEXTS, ROSTER } from '../../src/game/scenes/flow-data';
 import { getCharacter, getStatus, hasCharacter, defineEntity, type SpawnParams } from '../../src/game/registry';
 import { TUNING } from '../../src/game/tuning';
 import { Player } from '../../src/game/player/player';
 import { Vehicle } from '../../src/game/vehicle';
 import { FLOOR, Rig } from '../game/helpers';
 
-const HEROES = ['grace', 'mittens', 'pip', 'gramps'] as const;
+/** The playable squad (docs/design/squad.md §1), in roster order. */
+const SQUAD = ['vincent', 'thom', 'dirk', 'bob', 'patrick'] as const;
+/** The GDD heroes: registered, not playable (m1–m5 code, Gramps' radio role in ams). */
+const OLD = ['grace', 'mittens', 'pip', 'gramps'] as const;
+const HEROES = [...SQUAD, ...OLD] as const;
 const ALL = ['recruit', ...HEROES] as const;
+/** The select-screen portraits (another agent's select.art.ts) are not part of the 95-id rig set. */
+const SELECT_ART = /\/select(-grey)?$/;
 
 beforeAll(async () => {
   await import('../../src/game/content/characters/art');
@@ -78,6 +87,56 @@ const HEAVY_DIAG: ReadonlyArray<[string, number]> = [
 
 describe('character definitions (GDD §3, §13.5, §12.3)', () => {
   const TEXTS: Record<string, Partial<HeroDef>> = {
+    vincent: {
+      name: 'VINCENT',
+      fullName: 'VINCENT',
+      role: 'THE CONSULTANT',
+      callsign: 'THE CONSULTANT',
+      description: 'An overpriced consultant who looks like a famous British comedian. Always has a battle plan ready.',
+      voice: 'VINCENT!',
+      knifeSfx: 'weapon/knife-umbrella',
+      knifeProp: 'plan',
+    },
+    thom: {
+      name: 'THOM',
+      fullName: 'THOM',
+      role: 'LITTLE NAPOLEON',
+      callsign: 'LITTLE NAPOLEON',
+      description: 'Little Napoleon. 1900 headshots with his akimbo pistols.',
+      voice: 'THOM!',
+      knifeSfx: 'weapon/knife-wrench',
+      knifeProp: 'pistol-butt',
+    },
+    dirk: {
+      name: 'DIRK',
+      fullName: 'DIRK',
+      role: 'THE PLUMBER',
+      callsign: 'THE PLUMBER',
+      description: 'A plumber with a mustache, wielding exceptional combat abilities.',
+      voice: 'DIRK!',
+      knifeSfx: 'weapon/knife-pan',
+      knifeProp: 'plunger',
+    },
+    bob: {
+      name: 'BOB',
+      fullName: 'BOB',
+      role: 'CAPTAIN CLIMATE',
+      callsign: 'CAPTAIN CLIMATE',
+      description: 'A Jewish superhero who tries to save the climate by flying to Istanbul every month.',
+      voice: 'BOB!',
+      knifeSfx: 'weapon/knife-needles',
+      knifeProp: 'airliner',
+    },
+    patrick: {
+      name: 'PATRICK',
+      fullName: 'PATRICK',
+      role: 'THE SUPERNERD',
+      callsign: 'THE SUPERNERD',
+      description: 'A supernerd with a keen appetite for AI and master of eating frikandellen.',
+      voice: 'PATRICK!',
+      knifeSfx: 'weapon/knife',
+      knifeProp: 'frikandel',
+    },
     grace: {
       name: 'GRACE',
       fullName: 'CAPT. GRACE STILLMERE',
@@ -125,10 +184,33 @@ describe('character definitions (GDD §3, §13.5, §12.3)', () => {
     },
   };
 
-  it('registers the four heroes (select order) and recruit (not on the select screen)', () => {
+  it('the squad is the playable roster (select order); the GDD heroes and recruit stay registered, not playable', () => {
     for (const id of ALL) expect(hasCharacter(id), id).toBe(true);
-    expect(PLAYABLE).toEqual(['grace', 'mittens', 'pip', 'gramps']);
-    expect(PLAYABLE).not.toContain('recruit');
+    expect(PLAYABLE).toEqual(['vincent', 'thom', 'dirk', 'bob', 'patrick']);
+    expect(ROSTER).toEqual(PLAYABLE);
+    expect(RETIRED).toEqual(['grace', 'mittens', 'pip', 'gramps']);
+    for (const id of [...RETIRED, 'recruit']) expect(PLAYABLE, id).not.toContain(id);
+  });
+
+  it('squad texts (docs/design/squad.md §1): first names, callsigns, the bios, short quotes, flow-data in sync', () => {
+    for (const id of SQUAD) {
+      const c = getCharacter(id) as HeroDef;
+      // No surnames: the full name is the first name.
+      expect(c.fullName).toBe(c.name);
+      expect(c.name).toBe(id.toUpperCase());
+      expect(c.voice).toBe(`${c.name}!`);
+      expect(c.quote?.length ?? 0, `${id} quote`).toBeGreaterThan(4);
+      expect(c.quote?.length ?? 99, `${id} quote ≤ 38`).toBeLessThanOrEqual(38);
+      expect(c.endingLine?.length ?? 0, `${id} ending line`).toBeGreaterThan(10);
+      const t = CHARACTER_TEXTS[id];
+      expect(t, id).toBeDefined();
+      expect([t.fullName, t.role, t.callsign, t.quote, t.endingLine]).toEqual([c.fullName, c.role, c.callsign, c.quote, c.endingLine]);
+      // Kind caricature (docs/ORIGINALITY.md): never name the comedian, his character or a gun brand.
+      const all = [c.name, c.fullName, c.title, c.role, c.callsign, c.description, c.quote, c.endingLine].join(' ').toUpperCase();
+      for (const banned of ['ATKINSON', 'BEAN', 'BLACKADDER', 'DESERT EAGLE', 'GLOCK', 'BERETTA', 'MARIO', 'LUIGI', 'NINTENDO', 'METAL SLUG', 'MARCO', 'TARMA']) {
+        expect(all.includes(banned), `${id}: ${banned}`).toBe(false);
+      }
+    }
   });
 
   it('every text of GDD §3 / §13.5 / §12.3, exactly', () => {
@@ -143,21 +225,28 @@ describe('character definitions (GDD §3, §13.5, §12.3)', () => {
       expect(inPalette(c.color ?? 0)).toBe(true);
     }
     // Only Mittens has a stage direction under his quote.
-    for (const id of ['grace', 'pip', 'gramps']) expect((getCharacter(id) as HeroDef).quoteSub).toBeUndefined();
-    // Distinct accent colours.
-    expect(new Set(HEROES.map((id) => getCharacter(id).color)).size).toBe(4);
+    for (const id of ['grace', 'pip', 'gramps', ...SQUAD]) expect((getCharacter(id) as HeroDef).quoteSub).toBeUndefined();
+    // Distinct accent colours: the squad's five, the GDD heroes' four.
+    expect(new Set(SQUAD.map((id) => getCharacter(id).color)).size).toBe(5);
+    expect(new Set(OLD.map((id) => getCharacter(id).color)).size).toBe(4);
   });
 
   it('the same stats for every hero (GDD §3); bombs per life follow the difficulty', () => {
     for (const id of HEROES) {
       const s = getCharacter(id).stats ?? {};
       expect(s, id).toEqual({ speed: 1, jump: 1, weapon: 'pistol', bomb: 'grenade', melee: 'knife', ammo: 1 });
+      expect(s, `${id}: cosmetic only, the shared stats`).toEqual(HERO_STATS);
       expect(s.bombs, `${id}: no fixed bombs (10, EASY 15)`).toBeUndefined();
     }
   });
 
   it('knife sounds per character (GDD §6.2) as data: a field on the def and a map', () => {
     expect(KNIFE_SFX).toEqual({
+      vincent: 'weapon/knife-umbrella',
+      thom: 'weapon/knife-wrench',
+      dirk: 'weapon/knife-pan',
+      bob: 'weapon/knife-needles',
+      patrick: 'weapon/knife',
       grace: 'weapon/knife-umbrella',
       mittens: 'weapon/knife-needles',
       pip: 'weapon/knife-pan',
@@ -322,12 +411,49 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
       const cr = stackFrames(getFrames(`char/${c}/legs-crouch`)[0], getFrames(`char/${c}/torso-pistol-idle`)[0]);
       expect(-bounds(cr).top, `${c} crouched`).toBeLessThanOrEqual(31);
     }
-    // Mittens (bobble hat) is the tallest hero, Gramps (bald) the shortest (look.md §3.3).
+    // The GDD heroes: Mittens (bobble hat) is the tallest, Gramps (bald) the shortest (look.md §3.3).
     expect(h.mittens).toBeGreaterThan(h.grace);
     expect(h.gramps).toBeLessThan(h.grace);
-    // Heavy build: Mittens is the widest.
+    // Heavy build: Mittens is the widest of them.
     const w = (c: string): number => getFrames(`char/${c}/legs-idle`)[0].buf.countOpaque() + getFrames(`char/${c}/torso-pistol-idle`)[0].buf.countOpaque();
     for (const c of ['grace', 'pip', 'gramps']) expect(w('mittens')).toBeGreaterThan(w(c));
+    // The squad (docs/design/squad.md §1): Thom is short and sturdy (the shortest, on shorter
+    // legs), Bob tall and slim (the tallest, on longer legs).
+    for (const c of SQUAD.filter((x) => x !== 'thom')) expect(h.thom, c).toBeLessThan(h[c]);
+    for (const c of SQUAD.filter((x) => x !== 'bob')) expect(h.bob, c).toBeGreaterThan(h[c]);
+    const hip = (c: string): number => getFrames(`char/${c}/legs-idle`)[0].pts!.hip[1];
+    expect(hip('thom')).toBeGreaterThan(hip('vincent'));
+    expect(hip('bob')).toBeLessThan(hip('vincent'));
+  });
+
+  it("Thom's second pistol: drawn in the off hand on every pistol torso strip, never on the heavy gun; the muzzle stays the aimed gun's", () => {
+    const steel = (f: Frame): number => {
+      let n = 0;
+      for (const px of f.buf.data) if (PAL.steel.includes(px as never)) n++;
+      return n;
+    };
+    const plain = renderHuman(THOM_STYLE, { weapon: 'pistol' }, 'upper');
+    const akimbo = renderHuman(THOM_STYLE, { weapon: 'pistol', offhand: 'pistol' }, 'upper');
+    expect(steel(akimbo)).toBeGreaterThan(steel(plain) + 5);
+    expect(akimbo.pts.muzzle).toEqual(plain.pts.muzzle);
+    for (const a of ['idle', 'shoot', 'up', 'down', 'diag-up']) {
+      expect(steel(getFrames(`char/thom/torso-pistol-${a}`)[0]), a).toBeGreaterThan(steel(getFrames(`char/vincent/torso-pistol-${a}`)[0]) + 4);
+    }
+    // The heavy gun and a gun carried low (throw, knife) get no second pistol.
+    const heavy = renderHuman(THOM_STYLE, { weapon: 'heavy', offhand: 'pistol' }, 'upper');
+    expect(Array.from(heavy.buf.data)).toEqual(Array.from(renderHuman(THOM_STYLE, { weapon: 'heavy' }, 'upper').buf.data));
+    const low = renderHuman(THOM_STYLE, { weapon: 'pistol', gunHand: 'far', offhand: 'pistol' }, 'upper');
+    expect(Array.from(low.buf.data)).toEqual(Array.from(renderHuman(THOM_STYLE, { weapon: 'pistol', gunHand: 'far' }, 'upper').buf.data));
+  });
+
+  it("face traits replace the calm face only: Vincent's raised brow and smirk, a shout still opens the mouth", () => {
+    const head = (expr: 'normal' | 'shout' | 'hurt', face = VINCENT_STYLE.face): number[] =>
+      Array.from(renderHuman({ ...VINCENT_STYLE, face }, { expr }, 'upper').buf.data);
+    expect(head('normal')).not.toEqual(head('normal', ['heavy-stubble']));
+    // A hurt face has no trait: the smirk and the raised brow are gone.
+    expect(head('hurt')).toEqual(head('hurt', ['heavy-stubble']));
+    // A shout keeps its open mouth (red inside) with the traits on.
+    expect(head('shout').includes(PAL.red[1])).toBe(true);
   });
 
   it('heroes look different: distinct colours in their standing frames and portraits', () => {
@@ -337,10 +463,12 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
       // The 5 most used colours, as a signature.
       return [...seen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map((e) => e[0]).join(',');
     };
-    const torsos = new Set(HEROES.map((c) => sig(`char/${c}/torso-pistol-idle`)));
-    expect(torsos.size).toBe(4);
-    const portraits = HEROES.map((c) => Array.from(getFrames(`char/${c}/portrait`)[0].buf.data).join(','));
-    expect(new Set(portraits).size).toBe(4);
+    for (const group of [SQUAD, OLD]) {
+      const torsos = new Set(group.map((c) => sig(`char/${c}/torso-pistol-idle`)));
+      expect(torsos.size).toBe(group.length);
+      const portraits = group.map((c) => Array.from(getFrames(`char/${c}/portrait`)[0].buf.data).join(','));
+      expect(new Set(portraits).size).toBe(group.length);
+    }
   });
 
   it('knife looks: each hero holds its prop (the hand point reaches past a plain knife)', () => {
@@ -355,7 +483,7 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     // Per character: legs 7, torsos 22 (pistol 10 with the up diagonal, heavy 12 with both;
     // + 22 helium, + 22 helium-wob), bored and victory (× 3), die, die-burn, die-blast, spawn,
     // mount, salute, portrait and the 9 rider strips.
-    for (const c of ALL) expect(listSprites(`char/${c}/`).length, c).toBe(7 + 66 + 6 + 7 + 9);
+    for (const c of ALL) expect(listSprites(`char/${c}/`).filter((id) => !SELECT_ART.test(id)).length, c).toBe(7 + 66 + 6 + 7 + 9);
     expect(ids.length).toBeGreaterThanOrEqual(ALL.length * 95);
     for (const id of ids) {
       for (const f of getFrames(id)) {

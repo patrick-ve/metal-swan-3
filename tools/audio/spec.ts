@@ -78,6 +78,9 @@ export const SFX: SfxSpec[] = [
   one('ui/timer-warn', BOOT, 1, 0.11, `Sharp urgent clock tick with a high click, countdown warning, close and dry, ${ONE}`),
   one('mission/time-up', BOOT, 1, 0.65, `Deflating comic buzzer: a low sour two-note horn that sags down in pitch, arcade time-up, close, dry, ${ONE}`),
   one('ui/warning', BOOT, 1, 1.42, `Two-tone boss alarm klaxon, a loud brassy siren alternating high and low for three cycles, cartoon arcade danger warning, slight room, ${ONE}`, { timing: 'three high-low cycles in about 1.4 s, then a clean stop' }),
+  // REPORT FOR DUTY (docs/design/squad.md §4, 2026-10-16): the select-screen shutters. Synth fallbacks exist.
+  one('ui/mil-shutter', BOOT, 1, 0.5, `Corrugated steel roller shutter rolled up fast by hand: a quick rattle of metal slats that slows as it rises, a low rumble under it, close, dry, ${ONE}`, { timing: 'the rattle starts at once and is done by 0.5 s' }),
+  one('ui/mil-clank', BOOT, 1, 0.45, `A heavy steel shutter slams down onto a concrete floor: one hard metal clank with a short ringing tail, close, dry, ${ONE}`, { timing: 'the clank at 0.0 s, the ring gone by 0.45 s' }),
   one('ui/stamp', BOOT, 1, 0.12, `Rubber stamp thumped onto a newspaper on a wooden desk, one dry thud with a paper crinkle, very close, ${ONE}`),
   one('ui/tally', BOOT, 2, 0.1, `Fast score-counter blip, a tiny bright square-wave tick for rapid repeats, close and dry, ${ONE}`),
   one('ui/tally-end', BOOT, 1, 0.66, `Bright major-chord hit for a final score, short brass-and-bell stab, cheerful arcade, ${STING}`),
@@ -233,6 +236,10 @@ const MUSIC_STYLE = 'Instrumental only, no vocals, original composition. Bright 
 /** A looping track: no ending, plus extra length so the tool can cut the loop on the bar grid. */
 const LOOP_TAIL = 'Steady tempo throughout, no fade-out, no ending: the last bar leads straight back into the first bar of the loop, and the first bar of the loop plays once more at the very end so the loop can be cut.';
 
+/** The v1 prompts (takes 1-2 of `title` and `select`, shipped 2026-10-14), kept as a record. */
+export const TITLE_V1_PROMPT = `${MUSIC_STYLE} Heroic-comic title theme, 112 BPM, D major, 4/4. Bars 1-8: a gentle intro of bell arpeggios over a warm pad. Then a 32-bar loop: a calm, graceful legato lead (soft square-wave synth doubled by flute) that leaps up a sixth and walks down in a dotted rhythm, over a frantic running 16th-note filtered-saw bass like legs paddling under water; full drums with kick, snare and hats; a light counter-melody in the middle 8 bars. Dignified on top, furious underneath, a little funny. ${LOOP_TAIL}`;
+export const SELECT_V1_PROMPT = `${MUSIC_STYLE} Bouncy, eager menu music, 128 BPM, A major, 4/4, one 16-bar loop with no intro. A staccato 8th-note synth lead hopping up, a walking bass with chromatic steps, off-beat pulse chords, hi-hats only (no kick). In bars 9-12 a graceful 4-bar hook while the bass breaks into fast 16ths. Excited rookie energy. ${LOOP_TAIL}`;
+
 export const MUSIC: MusicSpec[] = [
   {
     id: 'title',
@@ -243,8 +250,10 @@ export const MUSIC: MusicSpec[] = [
     beatsPerBar: 4,
     introBars: 8,
     loop: true,
-    takes: 2,
-    prompt: `${MUSIC_STYLE} Heroic-comic title theme, 112 BPM, D major, 4/4. Bars 1-8: a gentle intro of bell arpeggios over a warm pad. Then a 32-bar loop: a calm, graceful legato lead (soft square-wave synth doubled by flute) that leaps up a sixth and walks down in a dotted rhythm, over a frantic running 16th-note filtered-saw bass like legs paddling under water; full drums with kick, snare and hats; a light counter-melody in the middle 8 bars. Dignified on top, furious underneath, a little funny. ${LOOP_TAIL}`,
+    // v2 (2026-10-16, docs/design/squad.md §4): the military title. Takes 1-2 were made from the v1
+    // prompt (TITLE_V1_PROMPT) and keep working; the v2 prompt makes takes 3-4.
+    takes: 4,
+    prompt: `${MUSIC_STYLE} Military march title theme, 112 BPM, D minor turning to D major, 4/4. Bars 1-8: a lone field snare plays a crisp marching cadence with rim clicks, distant low brass holds a pedal note. Then a 32-bar loop: a bold, heroic brass melody (trumpets and horns in unison, then in harmony) over a tight marching snare with rolls, a booming bass drum on every beat and a driving low-brass ostinato; in the middle 8 bars a cheeky piccolo answer over the snare; a big brass swell into the repeat. Proud, gritty, a little comic, never solemn. ${LOOP_TAIL}`,
   },
   {
     id: 'select',
@@ -254,8 +263,9 @@ export const MUSIC: MusicSpec[] = [
     bpm: 128,
     beatsPerBar: 4,
     loop: true,
-    takes: 2,
-    prompt: `${MUSIC_STYLE} Bouncy, eager menu music, 128 BPM, A major, 4/4, one 16-bar loop with no intro. A staccato 8th-note synth lead hopping up, a walking bass with chromatic steps, off-beat pulse chords, hi-hats only (no kick). In bars 9-12 a graceful 4-bar hook while the bass breaks into fast 16ths. Excited rookie energy. ${LOOP_TAIL}`,
+    // v2 (2026-10-16): the REPORT FOR DUTY screen. Takes 1-2: the v1 prompt (SELECT_V1_PROMPT); v2 makes takes 3-4.
+    takes: 4,
+    prompt: `${MUSIC_STYLE} Tense military briefing-room march for a soldier select screen, 128 BPM, A minor, 4/4, one 16-bar loop with no intro. A tight marching snare pattern with rolls on every fourth bar, a low brass ostinato in eighths, short stabbed horn chords on the off-beats, a ticking hi-hat like a countdown clock. In bars 9-12 a short heroic trumpet call answered by low trombones while the snare doubles up. Urgent, proud, ready to deploy. ${LOOP_TAIL}`,
   },
   {
     id: 'briefing',
@@ -351,6 +361,16 @@ export const VOICES: VoiceSpec[] = [
       'Adult male arcade-game announcer with a deep, booming, theatrical voice, part circus ringmaster and part arena MC. Punchy, clipped, shouted delivery with a warm grin and dry wit. Clear neutral English accent. Studio quality, close microphone, no reverb.',
     previewText:
       'Ladies and gentlemen, cygnets and crocodiles! Mission one is about to begin. Grab your umbrellas, mind the canals, and give me a big round of applause. Bravo! Encore! Game over? Never!',
+  },
+  {
+    // The REPORT FOR DUTY name callouts (docs/design/squad.md §4, 2026-10-16): a designed voice only,
+    // never an imitation of the five friends or of any real announcer.
+    speaker: 'drill',
+    name: 'MS3 Drill Sergeant',
+    description:
+      'Gruff, gravelly male drill sergeant in his fifties, used as an arcade-game announcer: loud, barked, clipped one- and two-word calls with a rough edge and a hint of a grin. Neutral English accent. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Listen up, recruits! Fall in, chin up, eyes front! You there, name and number! Move, move, move! Nobody sleeps until the swan is fueled and the frikandellen are hot. Report for duty! Dismissed!',
   },
   {
     speaker: 'gusto',
@@ -463,6 +483,12 @@ export const LINES: LineSpec[] = [
   line(A, 'MITTENS!', '[proud, booming] Mittens!', 'en', BOOT, 1.0),
   line(A, 'PIP!', '[proud, booming] Pip!', 'en', BOOT, 1.0),
   line(A, 'GRAMPS!', '[proud, booming] Gramps!', 'en', BOOT, 1.0),
+  // The squad's name callouts on REPORT FOR DUTY (the drill sergeant; the HeroDef `voice` texts).
+  line('drill', 'VINCENT!', '[barked, gruff] Vincent!', 'en', BOOT, 1.0),
+  line('drill', 'THOM!', '[barked, gruff] Thom!', 'en', BOOT, 1.0),
+  line('drill', 'DIRK!', '[barked, gruff] Dirk!', 'en', BOOT, 1.0),
+  line('drill', 'BOB!', '[barked, gruff] Bob!', 'en', BOOT, 1.0),
+  line('drill', 'PATRICK!', '[barked, gruff] Patrick!', 'en', BOOT, 1.0),
   line(A, 'MISSION COMPLETE! BRAVO!', '[triumphant] Mission complete! [shouts] Bravo!', 'en', BOOT, 2.5),
   line(A, 'STANDING OVATION!', '[delighted, theatrical] Standing ovation!', 'en', BOOT, 1.8),
   line(A, 'ONE MORE TRY!', '[excited] One more try!', 'en', BOOT, 1.5),
