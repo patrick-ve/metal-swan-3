@@ -121,7 +121,9 @@ async function renderSongs(args: Args): Promise<void> {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const report = await loadContent();
+  // Every module, the lazy first-person content too (docs/design/fps.md §3.6): else the fps sounds
+  // are silently skipped.
+  const report = await loadContent(() => true);
   for (const f of report.failed) console.error(`module ${f.id} failed to load:\n${f.error}`);
 
   const sfx = listSfx(args.prefix);

@@ -497,3 +497,44 @@ the mode. Everything in section 1 still applies, except where this section says 
 | Originality | No traced or recreated sprite, texture, HUD layout, face portrait or treasure of the reference game. The setting is industrial (depot, rail yard, hangar), the treasures are our own (pocket watch, tuning fork, gold bars, music box, golden record), the 1UP is a tin toy swan. |
 | Look | `npm run sprites -- fps/` (screen sprites) and `npm run sprites -- fps/ --ray` (textures and billboards, all yaws); `npm run shot -- --fps 1 --pose x,y,deg` for the game view. Look at 1× too: the view is 384 × 176. |
 
+
+### Raycaster details (group art, 2026-10-16)
+
+Where the art lives:
+
+| File | What |
+|---|---|
+| `src/game/art/wall-tex.ts` | the §8.1 painters (`WALL_PAINTERS`, `paintWall`), wrap-x helpers (`wset`, `wrect`, `noiseFill`, `band`), `banner` and `hookedCross` (the symbol; used only by the two banner walls and the `banner-pole` prop) |
+| `src/game/art/figure3d.ts` | the 3D joint rig: `Figure` (`cap` tapered capsule, `ball`, `ell` ellipsoid, `box`, `cyl` flat-capped cylinder, `dot`, `overlay`), `renderFigure` (orthographic, 8 yaws, depth buffer, top-left key light, banded shading, part seams, INK outline), `ik` (two-bone elbows / knees), rotations |
+| `src/game/content/fps/textures.ts` | registers every §8.1 texture |
+| `src/game/content/fps/billboards.ts` | soldiers (one builder, `SoldierKind` guard / officer / ss / boss on foot), dog, the mech suit, the wreck, blood fx |
+| `src/game/content/fps/props.ts`, `pickups-art.ts` | §5.1 props and §4.5 items (the rig seen a little from above, `pose: rotX(tilt)`) |
+| `src/game/content/fps/weapon-art.ts` | the four weapon views (the rig from behind, `yaw: 4`, the barrel tipped up the screen) |
+| `src/game/content/fps/hud-art.ts`, `faces.ts` | the status bar pieces and the 24-frame faces |
+| `tools/art/import-face.ts` → `src/game/content/fps/art/mecha-face.gen.ts` | the user-art import (§8.7) |
+
+Rules learned while building it:
+
+- **No pure white in textures.** The engine darkens the y-side faces with `stepShade(c, −1)` along
+  the colour's HOME ramp; white's home ramp is `fire`, so white turns yellow on the dark side. Use
+  `PAL.snow[2]` as the brightest texture colour (lamps and glints may stay white).
+- **Flat bands, narrow dither.** Wide Bayer fields turn into a dotted checkerboard when a wall
+  fills the view. `band(v, x, y)` (and the rig's shading) dithers only the middle 20–24 % between
+  two ramp steps.
+- **Everything wraps on x.** Draw texture features with `wset` / `wrect` so a banner or a crate
+  that crosses the right edge continues on the left (the seam test compares column 63 with 0).
+  Door slabs are framed on purpose (one per cell) and are not seam-tested.
+- **Rig scale.** People: `scale 1.1` (about 56 of 64 rows), dogs `1.3`, the mech `1` in a 96
+  canvas. The death fall lies the body on its side and turns it 0.75 rad away from the viewer so
+  the corpse fits the 64 columns.
+- **The mech face** is blitted after rendering, on the front yaw (`face34`) and the front
+  diagonal (`face27`, shifted 3 px); the side and back yaws draw the head in 3D in the face's grey
+  hair and skin colours. Effects on the imported pixels only: eye flare (tell), white flash
+  (pain), cracks (break 1–4), dark eyes (break 4 and the wreck). Never paint over the face by
+  hand; re-run `npm run art:import-face` after changing the PNG (a test fails when the module is
+  stale).
+- **HUD faces** reduce each friend's own select portrait (`selectPortrait(id, 2)`, box filter →
+  `nearest`) around the eye line; the per-friend eye / mouth table `GEO` in `faces.ts` places the
+  damage marks. The recruit uses the 2× head rig (`renderHeadHi`).
+- **Look:** `npm run sprites -- fps/ --ray` writes `ray-tex-*` (each texture twice side by side
+  plus its dark side) and `ray-bb-*` (one row per yaw; one-frame items and props share rows).

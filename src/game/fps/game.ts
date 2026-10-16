@@ -2,8 +2,8 @@
  * One floor of the first-person mode (docs/design/fps.md §3.7, §4): the parsed map, doors, push
  * walls, the player and the floor's state machine (unfold → play → elevator / dying). Pure and
  * deterministic: `step(input)` once per tick, `stateHash()` for replays and tests, `render(view)`
- * draws the RayView. Actors, combat and pickups (group actors) plug in here; the shell takes the
- * keys only, so locked doors work. No allocations per tick (events reuse their payloads).
+ * draws the RayView. Actors (actors.ts / ai.ts), weapons, hitscan, pickups, positional sound and
+ * the HUD state (group actors) plug in here. No allocations per tick (events reuse their payloads).
  */
 import type { AudioOut } from '../../engine/audio';
 import { EventBus } from '../../engine/events';
@@ -25,12 +25,20 @@ import {
   type RayView,
 } from '../../engine/ray';
 import { Rng } from '../../engine/rng';
+import type { FpsLine } from '../content/fps/lines';
 import type { Difficulty, PlayerSlot } from '../session';
+import { ActorPool, billboardOf, MAX_ACTORS, ST_DIE, type Actor, type ActorFrame } from './actors';
+import { damageActor, makeNoise, stepActors } from './ai';
+import { FpsSound } from './audio';
 import { DoorSystem, DOOR_CLOSED, KEY_GOLD, KEY_SILVER } from './doors';
-import { parseFloor, type ParsedFloor } from './map';
+import { bandDist, findTarget, playerDamage } from './hitscan';
+import { GRIN_TICKS, HudState, PICKUP_FLASH_TICKS, type BossBarState, type SubtitleState } from './hud';
+import { cardinalAngle, parseFloor, type ParsedFloor } from './map';
+import { applyPickup, ItemList, type PickupHost } from './pickups';
 import { FpsPlayer } from './player';
 import { PushSystem } from './pushwall';
 import type { FloorResult, FpsCarry, FpsEvents, FpsFloorDef, FpsInput, FpsRun } from './types';
+import { WeaponSystem, WEAPONS } from './weapons';
 
 export interface FpsGameOpts {
   floor: FpsFloorDef;
@@ -62,7 +70,10 @@ const DYING_TURN = 32;
 export const MESSAGE_TICKS = 90;
 export const MAX_SPRITES = 256;
 
-const TREASURE_IDS: ReadonlySet<string> = new Set(['pocket-watch', 'tuning-fork', 'gold-bars', 'music-box', 'golden-record']);
+/** Room for drops: one per actor (the pool size). */
+const MAX_DROPS = MAX_ACTORS;
+/** Cardinal index (map.ts DIR order) of a `Cardinal`. */
+const CARD_INDEX: Readonly<Record<string, number>> = { E: 0, S: 1, W: 2, N: 3 };
 
 // Scratch for hashing float64 bits.
 const F64 = new Float64Array(1);
@@ -75,7 +86,7 @@ interface Placed {
   bb: RayBillboard | null;
 }
 
-export class FpsGame {
+export class FpsGame implements PickupHost {
   readonly events = new EventBus<FpsEvents>();
   readonly def: FpsFloorDef;
   readonly difficulty: Difficulty;
@@ -103,16 +114,34 @@ export class FpsGame {
   stateTimer = 0;
   /** Ticks of the floor clock (stops at the elevator; spec §4.12). */
   clock = 0;
-  /** Per item (map.items): 1 = taken. */
+  /** Per placed item (map.items): 1 = taken (a view of `items.taken`). */
   taken: Uint8Array = new Uint8Array(0);
+  /** Every item of the floor: the placed ones, then the drops. */
+  items!: ItemList;
+  /** The enemies (pool of 128). */
+  readonly actors = new ActorPool();
+  readonly weaponSys = new WeaponSystem();
+  readonly sound: FpsSound;
+  /** The face, flashes and edge markers (cosmetic). */
+  readonly hud = new HudState();
+  /** How far the player moved this tick (tiles; the run rule of the enemy hit chance). */
+  playerMove = 0;
+  /** Distance the player walked (tiles; the weapon bob). */
+  walked = 0;
+  /** Tick of the last alert shout (one per 30 ticks, §4.4). */
+  lastShout = -1000;
+  /** The boss bar (§7.5; group floors fills it). */
+  readonly bossBar: BossBarState = { visible: false, name: 'MECHAHITLER', frac: 1, phase: 1 };
+  /** The taunt subtitle (§7.4). */
+  readonly subtitle: SubtitleState = { text: '', ticks: 0 };
   /** Recent messages, newest last (at most 2; spec §8.6), with the tick they appeared. */
   readonly messages: Array<{ text: string; tick: number }> = [];
   /** Angle toward the killer while dying. */
   private killerAngle = 0;
   private readonly sprites: RaySprite[] = [];
   private spriteCount = 0;
-  private items: Placed[] = [];
   private props: Placed[] = [];
+  private readonly af: ActorFrame = { bb: null, frame: 0, yaw: 0 };
   private readonly scene: RayScene;
   // Reused event payloads.
   private readonly msgEv = { text: '' };
@@ -132,6 +161,7 @@ export class FpsGame {
   };
   private readonly doorBlocked = (i: number): boolean => this.cellOccupied(this.doors.doors.x[i], this.doors.doors.y[i]);
   private readonly cellFree = (x: number, y: number): boolean => this.isCellFree(x, y);
+  private readonly doorAreaOf = (x: number, y: number): number => this.doorArea(x, y);
 
   constructor(o: FpsGameOpts) {
     this.def = o.floor;
@@ -143,6 +173,8 @@ export class FpsGame {
     this.run = o.run ?? null;
     this.rng = new Rng(this.seed);
     this.fxRng = new Rng(this.seed ^ 0x5eed);
+    this.sound = new FpsSound(o.audio);
+    this.weaponSys.sfx = (id) => this.sound.play(id);
     this.scene = { grid: null as unknown as RayGrid, doors: null as unknown as RayScene['doors'], push: null, ceil: o.floor.ceil, floor: o.floor.floor, sprites: this.sprites, spriteCount: 0 };
     this.load(o.carry);
   }
@@ -154,11 +186,21 @@ export class FpsGame {
     this.grid = map.grid;
     this.areas = new AreaMap(map.grid, map.doors);
     this.doors = new DoorSystem(map.doors, map.doorLock, this.areas);
-    this.doors.sfx = (id) => this.audio.sfx(id);
+    this.doors.sfx = (id, i) => this.sound.at(id, map.doors.x[i] + 0.5, map.doors.y[i] + 0.5);
     this.pushes = new PushSystem(map.grid);
     this.player.reset(map.start.x, map.start.y, map.start.angle, carry);
-    this.taken = new Uint8Array(map.items.length);
-    this.items = map.items.map((it) => ({ x: it.x + 0.5, y: it.y + 0.5, bb: billboard(`fps/item/${it.id}`) }));
+    this.items = new ItemList(map.items, MAX_DROPS);
+    this.taken = this.items.taken.subarray(0, this.items.placed);
+    this.actors.reset(map.w, map.h);
+    for (const t of map.turns) this.actors.setTurn(t.x, t.y, CARD_INDEX[t.dir]);
+    this.actors.spawnParsed(map.actors, this.difficulty, cardinalAngle);
+    this.weaponSys.reset();
+    this.hud.reset();
+    this.playerMove = 0;
+    this.walked = 0;
+    this.lastShout = -1000;
+    this.bossBar.visible = false;
+    this.subtitle.ticks = 0;
     this.props = map.props.map((p) => ({ x: p.x + 0.5, y: p.y + 0.5, bb: billboard(`fps/prop/${p.id}`) }));
     this.scene.grid = map.grid;
     this.scene.doors = map.doors;
@@ -208,6 +250,8 @@ export class FpsGame {
     this.tick++;
     this.doors.step(this.doorBlocked);
     if (this.pushes.step(this.cellFree)) this.rebuildAreas();
+    // The sound map follows the player (and gives the noise reach of this tick).
+    this.sound.setListener(this.player, this.grid, this.areas, this.doorAreaOf);
     switch (this.state) {
       case 'play':
         this.clock++;
@@ -222,15 +266,40 @@ export class FpsGame {
       default:
         break;
     }
+    if (this.state === 'play' || this.state === 'dying' || this.state === 'elevator') {
+      if (this.tick > UNFOLD_TICKS) stepActors(this);
+    }
+    if (this.subtitle.ticks > 0) this.subtitle.ticks--;
+    this.hud.step(this.fxRng);
     this.pruneMessages();
     this.syncCamera();
   }
 
   private playTick(i: FpsInput): void {
     const p = this.player;
-    p.move(i, this.grid, this.map.doors, this.pushes.push);
+    const x0 = p.x;
+    const y0 = p.y;
+    p.move(i, this.grid, this.map.doors, this.pushes.push, this.actors.buildBlockers());
+    this.playerMove = Math.hypot(p.x - x0, p.y - y0);
+    this.walked += this.playerMove;
     if ((i.pressed & ACTION_BIT.use) !== 0) this.use();
+    if (this.weaponSys.step(p, i)) this.playerShot();
     this.collect();
+  }
+
+  /** The player's weapon fired this tick (§4.2): the hit, the knife sound, the noise. */
+  private playerShot(): void {
+    const p = this.player;
+    const w = p.weapon;
+    const a = findTarget(this.actors, this.grid, this.map.doors, this.pushes.push, p.x, p.y, p.angle);
+    if (a) {
+      const dmg = playerDamage(this.rng, w, bandDist(a.x - p.x, a.y - p.y));
+      if (dmg > 0) {
+        damageActor(this, a, dmg);
+        if (w === 0) this.sound.play('fps/knife-hit');
+      }
+    }
+    if (WEAPONS[w].noise) makeNoise(this);
   }
 
   /** "Use" on the cell in front (spec §4.1): a door, a push wall or the elevator switch. */
@@ -251,11 +320,11 @@ export class FpsGame {
     if (this.pushes.isPushCell(fx, fy)) {
       const r = this.pushes.use(fx, fy, p.facing, this.cellFree);
       if (r === 'moved') {
-        this.audio.sfx('fps/pushwall');
+        this.sound.at('fps/pushwall', fx + 0.5, fy + 0.5);
         this.secretEv.x = fx;
         this.secretEv.y = fy;
         this.events.emit('secret', this.secretEv);
-      } else if (r === 'blocked') this.audio.sfx('fps/use-wall');
+      } else if (r === 'blocked') this.sound.play('fps/use-wall');
       return;
     }
     for (const s of this.map.switches) {
@@ -271,7 +340,7 @@ export class FpsGame {
     if (this.state !== 'play') return;
     const g = this.grid;
     for (const s of this.map.switches) g.wall[g.idx(s.x, s.y)] = this.map.switchOnTex + 1;
-    this.audio.sfx('fps/elevator');
+    this.sound.play('fps/elevator');
     this.state = 'elevator';
     this.stateTimer = ELEVATOR_TICKS;
   }
@@ -281,56 +350,94 @@ export class FpsGame {
     const r = this.result;
     r.floor = this.def.number;
     r.ticks = this.clock;
-    r.kills = 0;
-    r.killsTotal = this.map.actors.length;
+    r.kills = this.actors.kills;
+    r.killsTotal = this.actors.placedTotal;
     r.secrets = this.pushes.found;
     r.secretsTotal = this.map.pushes.length;
-    let t = 0;
-    let tt = 0;
-    let record = false;
-    this.map.items.forEach((it, k) => {
-      if (!TREASURE_IDS.has(it.id)) return;
-      tt++;
-      if (this.taken[k]) {
-        t++;
-        if (it.id === 'golden-record') record = true;
-      }
-    });
-    r.treasure = t;
-    r.treasureTotal = tt;
-    r.goldenRecord = record;
+    const t = this.items.treasure();
+    r.treasure = t.taken;
+    r.treasureTotal = t.total;
+    r.goldenRecord = t.record;
     this.events.emit('floorComplete', { result: { ...r } });
   }
 
-  /** Pickups under the player (the shell takes keys; group actors adds the rest). */
+  /** Pickups under the player's centre (§4.5): the effect, or refused (the item stays). */
   private collect(): void {
     const p = this.player;
     const cx = Math.floor(p.x);
     const cy = Math.floor(p.y);
-    const items = this.map.items;
-    for (let k = 0; k < items.length; k++) {
-      const it = items[k];
-      if (this.taken[k] || it.x !== cx || it.y !== cy) continue;
-      if (it.id === 'key-gold' || it.id === 'key-silver') {
-        this.taken[k] = 1;
-        p.keys |= it.id === 'key-gold' ? KEY_GOLD : KEY_SILVER;
-        this.audio.sfx('fps/pickup-key');
-        this.message(it.id === 'key-gold' ? 'GOLD KEY' : 'SILVER KEY');
-      }
+    const it = this.items;
+    for (let k = 0; k < it.count; k++) {
+      if (it.taken[k] || it.x[k] !== cx || it.y[k] !== cy) continue;
+      if (applyPickup(this, it.id[k])) it.taken[k] = 1;
     }
   }
 
-  /** Damage to the player (`fromX/fromY`: the attacker, for the death turn). */
+  // --- PickupHost ---------------------------------------------------------------------------
+  /** Add a life (false when the lives are full). */
+  addLife(): boolean {
+    return this.slot.addLife(1) > 0;
+  }
+  sfx(id: string): void {
+    this.sound.play(id);
+  }
+  grin(): void {
+    this.hud.grin = GRIN_TICKS;
+  }
+  flash(): void {
+    this.hud.pickupFlash = PICKUP_FLASH_TICKS;
+  }
+  raise(w: number): void {
+    this.weaponSys.request(this.player, w);
+  }
+
+  /** A drop of a killed enemy on cell (x, y). */
+  dropItem(id: string, x: number, y: number): void {
+    this.items.add(id, x, y);
+  }
+
+  /** Hooks for boss.ts / tools: an actor woke up / died (no-ops by default). */
+  actorWoke(_a: Actor): void {}
+  actorKilled(_a: Actor): void {}
+
+  /** The patrol turn marker on cell (x, y): cardinal index 0 E, 1 S, 2 W, 3 N, or -1. */
+  turnAt(x: number, y: number): number {
+    const pool = this.actors;
+    return pool.inside(x, y) ? pool.turns[y * pool.w + x] : -1;
+  }
+
+  /** The area id of a door cell's west / north side (sound in a doorway), 0 = none. */
+  private doorArea(x: number, y: number): number {
+    const g = this.grid;
+    if (!g.inside(x, y)) return 0;
+    const c = g.idx(x, y);
+    if ((g.flags[c] & CELL_DOOR) === 0) return 0;
+    const d = g.door[c];
+    return this.areas.doorArea(d, 0) || this.areas.doorArea(d, 1);
+  }
+
+  /** A spoken line with its subtitle (the boss taunts, §7.4): 150 ticks or the clip + 30. */
+  speak(line: FpsLine, subtitle: string = line.meaning, ticks = 150): void {
+    this.audio.say?.(line.text, line.speaker, { important: true });
+    this.subtitle.text = subtitle;
+    this.subtitle.ticks = ticks;
+  }
+
+  /** Damage to the player (`fromX/fromY`: the attacker, for the death turn and the edge marker). */
   hurt(amount: number, fromX = this.player.x, fromY = this.player.y): void {
     if (this.state !== 'play' || this.god || amount <= 0) return;
     const p = this.player;
-    p.hp = Math.max(0, p.hp - Math.round(amount));
-    this.audio.sfx('fps/player-hurt');
+    const dmg = Math.round(amount);
+    p.hp = Math.max(0, p.hp - dmg);
+    const dx = fromX - p.x;
+    const dy = fromY - p.y;
+    this.hud.hurt(dmg, dx === 0 && dy === 0 ? Number.NaN : angDelta(p.angle, angleTo(dx, dy)));
+    this.sound.play('fps/player-hurt');
     if (p.hp > 0) return;
     this.state = 'dying';
     this.stateTimer = 0;
     this.killerAngle = angleTo(fromX - p.x, fromY - p.y);
-    this.audio.sfx('fps/player-die');
+    this.sound.play('fps/player-die');
   }
 
   private dyingTick(): void {
@@ -349,6 +456,7 @@ export class FpsGame {
   addScore(points: number): void {
     const extra = this.slot.addScore(points);
     if (extra > 0) {
+      this.sound.play('item/1up');
       this.extendEv.lives = this.slot.lives;
       this.events.emit('extend', this.extendEv);
       this.message('ONE MORE TRY!');
@@ -376,20 +484,24 @@ export class FpsGame {
     p.weapon = 3;
   }
 
-  /** The cell holds the player (box overlap). Group actors adds living actors. */
+  /** The cell holds the player (box overlap) or a living actor (standing on or entering it). */
   cellOccupied(x: number, y: number): boolean {
+    if (this.actors.cellTaken(x, y)) return true;
     const b = this.player.box;
     return b.x + b.r > x && b.x - b.r < x + 1 && b.y + b.r > y && b.y - b.r < y + 1;
   }
 
-  /** A push wall may move into the cell: floor with no wall, door, prop, item or player. */
+  /** A push wall may move into the cell: floor with no wall, door, prop, item, actor (or corpse) or player. */
   isCellFree(x: number, y: number): boolean {
     const g = this.grid;
     if (!g.inside(x, y) || g.flags[g.idx(x, y)] !== 0) return false;
-    const items = this.map.items;
-    for (let k = 0; k < items.length; k++) if (!this.taken[k] && items[k].x === x && items[k].y === y) return false;
+    if (this.items.at(x, y)) return false;
     for (const pr of this.map.props) if (pr.x === x && pr.y === y) return false;
-    for (const a of this.map.actors) if (a.x === x && a.y === y) return false;
+    const pool = this.actors;
+    for (let i = 0; i < pool.count; i++) {
+      const a = pool.actors[i];
+      if (a.used && Math.floor(a.x) === x && Math.floor(a.y) === y) return false;
+    }
     return !this.cellOccupied(x, y);
   }
 
@@ -411,27 +523,47 @@ export class FpsGame {
     c.eyeZ = this.state === 'dying' || this.state === 'dead' ? 0.5 - 0.3 * Math.min(1, this.stateTimer / 30) : 0.5;
   }
 
-  /** Draw the view (walls, items, props) into `view.buf`. */
+  /** Draw the view (walls, blood pools, items, props, actors, hit spurts) into `view.buf`. */
   render(view: RayView): void {
     this.spriteCount = 0;
-    for (let k = 0; k < this.items.length; k++) if (!this.taken[k]) this.addSprite(this.items[k]);
-    for (const pr of this.props) this.addSprite(pr);
+    const pool = this.actors;
+    // Blood pools first: at the same depth as a corpse they draw under it.
+    const poolBb = billboardOf('fps/fx/blood-pool');
+    if (poolBb) {
+      for (let i = 0; i < pool.count; i++) {
+        const a = pool.actors[i];
+        if (a.used && a.pool > 0 && !a.alive) this.addSprite(a.x, a.y, poolBb, Math.min(a.pool, a.state === ST_DIE ? a.timer >> 4 : 2), 0);
+      }
+    }
+    const it = this.items;
+    for (let k = 0; k < it.count; k++) if (!it.taken[k]) this.addSprite(it.x[k] + 0.5, it.y[k] + 0.5, it.bb[k], 0, 0);
+    for (const pr of this.props) this.addSprite(pr.x, pr.y, pr.bb, 0, 0);
+    const cam = this.camera;
+    const af = this.af;
+    const spurtBb = billboardOf('fps/fx/spurt');
+    for (let i = 0; i < pool.count; i++) {
+      const a = pool.actors[i];
+      if (!a.used) continue;
+      pool.frameOf(a, cam.x, cam.y, af);
+      this.addSprite(a.x, a.y, af.bb, af.frame, af.yaw);
+      if (spurtBb && a.spurt > 0) this.addSprite(a.x, a.y, spurtBb, Math.min(2, 2 - Math.floor((a.spurt - 1) / 3)), 0);
+    }
     this.scene.spriteCount = this.spriteCount;
     renderView(view, this.scene, this.camera);
   }
 
-  private addSprite(pl: Placed): void {
-    if (!pl.bb || this.spriteCount >= MAX_SPRITES) return;
+  private addSprite(x: number, y: number, bb: RayBillboard | null, frame: number, yaw: number): void {
+    if (!bb || this.spriteCount >= MAX_SPRITES) return;
     let s = this.sprites[this.spriteCount];
     if (!s) {
-      s = { x: 0, y: 0, bb: pl.bb, frame: 0, yaw: 0 };
+      s = { x: 0, y: 0, bb, frame: 0, yaw: 0 };
       this.sprites.push(s);
     }
-    s.x = pl.x;
-    s.y = pl.y;
-    s.bb = pl.bb;
-    s.frame = 0;
-    s.yaw = 0;
+    s.x = x;
+    s.y = y;
+    s.bb = bb;
+    s.frame = frame;
+    s.yaw = yaw;
     this.spriteCount++;
   }
 
@@ -475,7 +607,29 @@ export class FpsGame {
     mix(pw.ticks);
     mix(pw.tiles);
     mix(pw.found);
-    for (let k = 0; k < this.taken.length; k++) mix(this.taken[k]);
+    const it = this.items;
+    mix(it.count);
+    for (let k = 0; k < it.count; k++) mix(it.taken[k]);
+    const pool = this.actors;
+    mix(pool.count);
+    mix(pool.kills);
+    mix(pool.tokensUsed);
+    for (let i = 0; i < pool.count; i++) {
+      const a = pool.actors[i];
+      mixF(a.x);
+      mixF(a.y);
+      mix(a.hp);
+      mix(a.state);
+      mix(a.timer);
+      mix(a.react);
+      mix(a.dir);
+      mix(a.angle);
+    }
+    const ws = this.weaponSys;
+    mix(ws.phase);
+    mix(ws.timer);
+    mix(ws.want);
+    mix(ws.queued ? 1 : 0);
     // Rng's state words are private in TypeScript only; read them to hash the exact stream position.
     const r = this.rng as unknown as { a: number; b: number; c: number; d: number };
     mix(r.a);

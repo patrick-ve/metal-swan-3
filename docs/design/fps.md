@@ -705,7 +705,7 @@ Enemy HP is the same on every difficulty (G); the counts change (§6). Speeds in
 | `guard` | 25 | 0.009 | 0.027 | 1–55 ticks | 24 | 1 shot | 18 | 10 | 100 | clip (+4) |
 | `officer` | 50 | 0.009 | 0.046 | 2 ticks | 18 | 1 shot | 12 | 8 | 400 | clip (+4) |
 | `ss` | 100 | 0.009 | 0.036 | 1–37 ticks | 20 | burst of 3, 6 ticks apart | 24 | 10 | 500 | MG if the player has none, else clip |
-| `dog` | 1 | 0.027 | 0.053 | 1–27 ticks | 18 | 1 bite (d ≤ 1.0) | 20 | — | 200 | — |
+| `dog` | 1 | 0.027 | 0.053 | 1–27 ticks | 18 | 1 bite (d ≤ 1.5: a dog stops on a cell centre, so a player on a cell corner is 1.5 away) | 20 | — | 200 | — |
 
 Marks: HP, scores and drops G; speeds and reactions G (converted from the genre's 70 Hz tics to
 60 Hz ticks: × 60/70); tells, recovers and pains I (chosen for the ≥ 18-tick fairness rule).

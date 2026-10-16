@@ -15,7 +15,7 @@ function toBase64(f: Float32Array): string {
 
 const api = {
   async load(): Promise<string[]> {
-    await loadContent();
+    await loadContent(() => true); // the lazy fps content too (docs/design/fps.md §3.6)
     return listSongs();
   },
   async render(id: string, seconds: number): Promise<{ rate: number; channels: string[] } | null> {

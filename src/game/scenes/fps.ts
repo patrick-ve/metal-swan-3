@@ -1,8 +1,8 @@
 /**
  * FpsScene (docs/design/fps.md §1.6): one floor of the first-person mode. Owns one FpsGame and
  * one RayView; turns the fps input on (`input.fpsMode`, `app.pointerLockWanted`) while it plays
- * and off under a menu; presents the view as a streamed buffer; draws a basic status bar, the
- * messages and the debug map.
+ * and off under a menu; presents the view as a streamed buffer; draws the weapon view, the
+ * damage feedback, the boss band, the status bar and the messages (fps/hud.ts) and the debug map.
  *
  * Wiring by group flow (spec §1.10) is still open: the pause menu gets a small adapter (PauseScene
  * still takes a GameplayScene), and the last life goes to the GAME OVER screen instead of the
@@ -14,9 +14,11 @@ import { PAL } from '../../engine/palette';
 import { RayView, CELL_DOOR, CELL_OPAQUE, CELL_PROP, type RayGrid } from '../../engine/ray';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { blinkOn, centerText, PLAYER_COLORS, scoreText, uiText, type GameApp } from '../app';
-import { DOOR_CLOSED, KEY_GOLD, KEY_SILVER } from '../fps/doors';
+import { blinkOn, centerText, type GameApp } from '../app';
+import { ST_ATTACK, ST_TELL } from '../fps/actors';
+import { DOOR_CLOSED } from '../fps/doors';
 import { DYING_TICKS, FpsGame } from '../fps/game';
+import { drawBossBand, drawFeedback, drawMessages, drawStatusBar, drawWeaponView, type HudInfo } from '../fps/hud';
 import { LOCK_GOLD, LOCK_SILVER } from '../fps/map';
 import { fpsFloorByNumber } from '../fps/registry';
 import { emptyFpsInput } from '../fps/run';
@@ -57,6 +59,7 @@ export class FpsScene implements Scene {
   /** Ticks left on the restart card. */
   private restartCard = 0;
   private finished = false;
+  private readonly info: HudInfo = { floor: 0, score: 0, lives: 0, slot: 0, character: 'recruit', reduceFlashes: false, bossBarOn: true };
 
   constructor(app: GameApp, run: FpsRun) {
     this.app = app;
@@ -171,9 +174,13 @@ export class FpsScene implements Scene {
     const g = this.game;
     g.render(this.view);
     r.image(this.view.buf, 0, 0, view);
+    const app0 = this.app;
+    drawWeaponView(r, g);
+    drawFeedback(r, g, app0.settings.reduceFlashes);
     this.drawDeath(r);
-    this.drawBar(r);
-    this.drawMessages(r);
+    drawBossBand(r, g, app0.settings.bossBar);
+    drawStatusBar(r, g, this.hudInfo());
+    drawMessages(r, g);
     const app = this.app;
     if (app.settings.mouseLook && !app.pointerLocked && this.t < LOOK_HINT_TICKS && blinkOn(this.t)) {
       centerText(r, 'CLICK TO LOOK WITH THE MOUSE', 34, PAL.snow[3]);
@@ -191,34 +198,15 @@ export class FpsScene implements Scene {
     if (t >= 60) r.rect(0, 0, r.w, BAR_Y, 0x000000ff, { screen: true, alpha: Math.min(1, (t - 60) / 29) });
   }
 
-  /** A basic status bar (spec §8.6 layout; group actors replaces it with hud.ts). */
-  private drawBar(r: Renderer): void {
-    const p = this.game.player;
-    r.rect(0, BAR_Y, r.w, 40, PAL.navy[1], plain);
-    r.rect(0, BAR_Y, r.w, 1, PAL.steel[2], plain);
-    r.rect(6, BAR_Y + 3, 40, 34, PAL.navy[0], plain); // porthole (the face goes here)
-    r.rect(118, BAR_Y + 3, 120, 34, PAL.navy[0], plain);
-    r.rect(254, BAR_Y + 3, 128, 34, PAL.navy[0], plain);
-    uiText(r, 'HEALTH', 52, 181, PAL.stone[3]);
-    uiText(r, `${p.hp}`, 110, 192, PAL.snow[3], 'right', 'big');
-    const hpC = p.hp > 50 ? PAL.green[2] : p.hp > 25 ? PAL.gold[2] : PAL.red[2];
-    r.rect(52, 210, 56, 3, PAL.navy[0], plain);
-    r.rect(52, 210, Math.round((56 * p.hp) / 100), 3, hpC, plain);
-    uiText(r, 'SCORE', 122, 181, PAL.stone[3]);
-    uiText(r, scoreText(this.slot.score), 234, 181, PAL.snow[3], 'right');
-    uiText(r, `LIVES X${this.slot.lives}`, 122, 194, PAL.snow[2]);
-    uiText(r, `FLOOR ${this.def.number}`, 122, 205, PAL.stone[3]);
-    uiText(r, `${this.run.slot + 1}P`, 234, 205, PLAYER_COLORS[this.run.slot], 'right');
-    if (p.keys & KEY_GOLD) r.rect(244, 182, 8, 14, PAL.gold[2], plain);
-    if (p.keys & KEY_SILVER) r.rect(244, 199, 8, 14, PAL.snow[2], plain);
-    uiText(r, WEAPON_NAMES[p.weapon] ?? '?', 258, 194, PAL.snow[2]);
-    uiText(r, 'AMMO', 314, 181, PAL.stone[3]);
-    uiText(r, `${p.ammo}`, 378, 192, PAL.snow[3], 'right', 'big');
-  }
-
-  private drawMessages(r: Renderer): void {
-    const m = this.game.messages;
-    for (let k = 0; k < m.length; k++) uiText(r, m[k].text, 4, m.length === 1 ? 164 : 154 + k * 10, PAL.snow[2]);
+  /** The session side of the status bar (spec §8.6). */
+  private hudInfo(): HudInfo {
+    const info = this.info;
+    info.floor = this.def.number;
+    info.score = this.slot.score;
+    info.lives = this.slot.lives;
+    info.slot = this.run.slot;
+    info.character = this.slot.character;
+    return info;
   }
 
   /** Debug map (spec §1.11): top-right, 2 px per tile. */
@@ -249,7 +237,13 @@ export class FpsScene implements Scene {
     g.map.items.forEach((it, k) => {
       if (!g.taken[k]) r.rect(x0 + it.x * s, y0 + it.y * s, 1, 1, PAL.gold[3], plain);
     });
-    for (const a of g.map.actors) r.rect(x0 + a.x * s, y0 + a.y * s, s, s, PAL.red[2], plain);
+    const pool = g.actors;
+    for (let i = 0; i < pool.count; i++) {
+      const a = pool.actors[i];
+      if (!a.used) continue;
+      const c = !a.alive ? PAL.stone[1] : a.state >= ST_TELL && a.state <= ST_ATTACK ? PAL.gold[3] : a.aware ? PAL.red[3] : PAL.red[1];
+      r.rect(x0 + Math.floor(a.x * s) - 1, y0 + Math.floor(a.y * s) - 1, s, s, c, plain);
+    }
     const p = g.player;
     const px = x0 + Math.floor(p.x * s);
     const py = y0 + Math.floor(p.y * s);
@@ -260,4 +254,3 @@ export class FpsScene implements Scene {
   }
 }
 
-const WEAPON_NAMES: readonly string[] = ['KNIFE', 'PISTOL', 'MG', 'CHAINGUN'];

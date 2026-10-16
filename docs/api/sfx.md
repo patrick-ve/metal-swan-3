@@ -110,3 +110,42 @@ Recipes live per family: `weapons.ts`, `player.ts` (player, items, hostages), `v
 
 Check a change with `npm run audio -- <prefix> --wav --out tmp/<label>` (flags SILENT, HOT, LONG,
 DC; WAVs for a human) and `npx vitest run tests/content/sfx.test.ts`.
+
+## 7. First-person mode (`src/game/content/fps/`, lazy entry `fps/sound`)
+
+Owner: group fps-sound. The synth fallbacks of every docs/design/fps.md §9.1 sound and §9.2 song.
+They live outside this folder's `SFX` table: `content/fps/sfx.ts` (`FPS_SFX`, `FPS_TELLS`),
+`content/fps/music.ts` (`FPS_SONGS`, `FPS_SONG_BAR`, `registerFpsSongs`) and
+`content/fps/sound.ts` (registers both; noise seeds pinned to the id). The entry is lazy
+(docs/design/fps.md §3.6): only `loadContent(isLazyContent)` (the FpsIntroScene) or
+`loadContent(() => true)` (the audio report and the audio tools) registers it. The ElevenLabs
+takes of the sample group `'mode:fps'` replace them by id when loaded.
+
+- **Ids**: exactly the `fps/*` ids of §9.1 (`tests/content/fps-sound.test.ts` reads them from the
+  spec). The mode reuses `item/1up`, `ui/tally-tick` and `ui/tally-end` from the main set.
+- **Tells** (`FPS_TELLS`, start them on the first tell tick): `fps/enemy/aim` (a bolt click-clack
+  at 0 and 0.16 s, the ring holds to about 0.5 s; guard tell 24), `fps/dog/growl` (the growl
+  rises into a snap at 0.34 s; tell 18), `fps/boss/spin-up` (rises for exactly 0.5 s and stops at
+  its peak; tell 30, phase 2 cuts it at 24).
+- **Fast repeats**: `fps/mg` (every 10 ticks), `fps/chaingun` (5), `fps/boss/chaingun` (4),
+  `fps/enemy/mg` (bursts 6 ticks apart) and `fps/type` (4) have gaps under their repeat and
+  6 voices (type 3); the guns carry a ±4–5 % `jitter`.
+- **Timed sounds**: `fps/door-open` (latch at once, the slide stops at about 0.85 s),
+  `fps/door-close` (the clang at 0.85 s), `fps/pushwall` (1.8 s of grinding, one tile),
+  `fps/boss/break` (about 2 s, ends on the clunk at 1.85 s), `fps/player-die` (the groan, the thud
+  at 0.92 s).
+- **Shout stand-ins** (`fps/shout-guard|officer|ss`, `fps/boss/horn`) are wordless formant
+  voices; play them when `audio.hasVoice?.(text)` is false (§9.3).
+- **Levels**: the same plan as §4 (−27 … −10 LUFS momentary maximum, peaks ≤ 0.9). The guns sit
+  at −24 … −21 LUFS like `weapon/*`; boss cues at −16 … −14.
+- **Songs** (tempo, key and form match the take specs in `tools/audio/spec.ts`):
+
+  | Id | Form | Mix |
+  |---|---|---|
+  | `fps-floor` | C minor, 100 bpm, A B C D × 8 bars = one 76.8 s loop, no intro (C: the muted trumpet) | ≈ −18 LUFS integrated, like `ams` |
+  | `fps-boss` | D minor, 140 bpm, a 2-bar timpani roll, then A 8 + B 8 + C 4 × 4 (`C`, `C+2`, `C+3`, `C+5`) = a 54.9 s loop | ≈ −18 LUFS, like `ams-boss` |
+  | `fps-tally` | C major, 120 bpm, 4 bars (8 s), `loop: null` | ≈ −16 LUFS, like `mission-complete` |
+  | `fps-bridge` | 60 bpm, 8 rows per beat: a 4-s sting (the ams organ figure stutters and slides down), then a 16-s drone loop (a C fifth, a metallic hum, a heartbeat, `fps/glitch` crackle as a drum) | ≈ −20 LUFS |
+
+Check a change with `npm run audio -- fps --songs --wav --seconds 80 --out tmp/<label>` and
+`npx vitest run tests/content/fps-sound.test.ts`.

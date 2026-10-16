@@ -272,7 +272,9 @@ blood size, face glance) use `game.fxRng`. No allocations per tick.
   (diagonal → major → minor → any → reverse; people with sight dodge half of the time),
   `choosePatrol` (facing, turn markers, reverse when blocked). People open unlocked doors and wait;
   dogs need an open door. Attack: in `chase` with sight and a free token (3 / 4 / 6), each tick
-  `rng(0..255) < floor(19 / max(1, floor(d)))`, always at `d < 1`; dogs at `d ≤ 1`. Every attack
+  `rng(0..255) < floor(19 / max(1, floor(d)))`, always at `d < 1`; dogs at `d ≤ BITE_REACH` (1.5: the spec's 1.0 plus the player's offset from
+  a cell centre, else a player on a cell corner is never bitten). A hit on an unaware actor wakes it
+  (shout, `actorWoke`), then `pain`. Every attack
   = tell (≥ 18 ticks, `fps/enemy/aim` / `fps/dog/growl`) → shots (`ShotEvent {actor, damage,
   tell, tick}`) → recover → chase. One alert shout per 30 ticks per floor (`audio.say` when
   `hasVoice`, else `fps/shout-<type>`; dogs bark). `MIN_TELL = 18`.

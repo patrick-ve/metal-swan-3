@@ -4,7 +4,10 @@
  * key (plain door), room C the silver key (plain door from B, gold-door shortcut from A), the
  * east room is behind the silver door, the elevator behind the lift door (switch `X` at (19, 2)).
  * The push wall at (3, 9) slides west into a closet with the golden record (`secrets: 1`).
- * Group actors adds one of every enemy type and pickup (hand-over, spec §11).
+ * Group actors added one of every enemy type and pickup (spec §6.0): a patrolling guard and a dog
+ * in room B, an officer and the chaingun in room C, an ambush SS in the east room, the other
+ * pickups and the four treasures along the south of room A (none in sight of the start: §5.3
+ * rule 9).
  */
 import { PAL } from '../../../engine/palette';
 import { defineFpsFloor } from '../../fps/registry';
@@ -21,15 +24,20 @@ export const FLOOR_0 = defineFpsFloor({
   rows: [
     'ABDEFGIJAAAAAAAAAAAA',
     'K.......C.k...H....Y',
-    'L.......C.....H....X',
+    'L.......C...g.H....X',
     'M..Q....|.....H....Y',
     'N.......C..+..H....Y',
-    'O>......C.....HY_YYA',
+    'O>......C....dHY_YYA',
     'P.......CCC-CCH....A',
     'A.......C..l..H..w.A',
     'AAAA....!.....H....A',
-    'A..*....C.....:....A',
-    'A.9A..c.C.....H.n..A',
+    'A..*5678C...o.:..s.A',
+    'A.9Arbc1C....yH.n..A',
     'AAAAAAAAAAAAAAAAAAAA',
+  ],
+  things: [
+    // The guard patrols room B east–west; the SS waits in ambush in the east room.
+    { at: [12, 2], facing: 'W', patrol: true },
+    { at: [17, 9], ambush: true },
   ],
 });
