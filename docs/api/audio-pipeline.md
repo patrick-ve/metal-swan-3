@@ -115,6 +115,8 @@ again only when its raw take is newer, or with `--force` (use it after a spec ch
   −16 LUFS integrated (true peak ≤ −1 dBTP, linear); stereo MP3 160 kbps, 44.1 kHz.
 - Each track loops as a whole (`loopStart` 0, `loopEnd` = duration − 0.05 s): it plays to its own
   fade-out and starts again.
+- `ams` and `ams-boss` play with `vol: 2` (+6 dB) because they were too soft under the gunfire
+  (user feedback 2026-10-16); `title` and `select` play at 1.
 - Registered as `HAND_MUSIC` in `src/game/content/samples/index.ts`, merged over the manifest's
   music. The `title` / `select` spec entries in `tools/audio/spec.ts` stay for reference; do not
   ship new takes of these four ids unless the user asks.

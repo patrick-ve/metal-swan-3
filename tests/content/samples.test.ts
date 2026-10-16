@@ -210,6 +210,9 @@ describe('sample manifest (src/game/content/samples)', () => {
         expect(hasSong(id), id).toBe(true);
       }
     }
+    // The mission and boss tracks play louder than the menus (user feedback 2026-10-16).
+    expect(getSampleGroup('mission:ams')!.music!['ams']!.vol).toBe(2);
+    expect(getSampleGroup('mission:ams')!.music!['ams-boss']!.vol).toBe(2);
   });
 
   it('keys are registered sound effect ids and song ids; files exist; loop points are sane', () => {

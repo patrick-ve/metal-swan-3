@@ -23,10 +23,12 @@ const HAND_VOICES: Readonly<Record<string, NonNullable<SampleGroup['voice']>>> =
  * menu theme (title screen and mode select), the REPORT FOR DUTY theme, mission ams (sections
  * a–d) and the ROBO-HALSEMA fight. Trimmed and set to −16 LUFS integrated with ffmpeg; each track
  * plays to its own fade-out and starts again (loop = the whole track, ending just before the
- * MP3 padding).
+ * MP3 padding). The mission and boss tracks play 2× (+6 dB): at −16 LUFS they drowned under the
+ * gunfire (user feedback 2026-10-16); the master compressor keeps the sum from clipping.
  */
-function userTrack(name: string, duration: number): NonNullable<SampleGroup['music']>[string] {
-  return { file: `user/music/${name}.mp3`, loopStart: 0, loopEnd: Math.round((duration - 0.05) * 1000) / 1000, duration };
+function userTrack(name: string, duration: number, vol?: number): NonNullable<SampleGroup['music']>[string] {
+  const song = { file: `user/music/${name}.mp3`, loopStart: 0, loopEnd: Math.round((duration - 0.05) * 1000) / 1000, duration };
+  return vol === undefined ? song : { ...song, vol };
 }
 
 export const HAND_MUSIC: Readonly<Record<string, NonNullable<SampleGroup['music']>>> = {
@@ -35,8 +37,8 @@ export const HAND_MUSIC: Readonly<Record<string, NonNullable<SampleGroup['music'
     'select': userTrack('select', 38.451),
   },
   'mission:ams': {
-    'ams': userTrack('ams', 235.202),
-    'ams-boss': userTrack('ams-boss', 141.324),
+    'ams': userTrack('ams', 235.202, 2),
+    'ams-boss': userTrack('ams-boss', 141.324, 2),
   },
 };
 
