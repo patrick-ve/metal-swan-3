@@ -13,6 +13,8 @@ import type { Browser, Page } from 'playwright';
 import { chromium } from 'playwright';
 import { build } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { PixelBuffer } from '../../src/engine/pixel';
+import type { Renderer } from '../../src/engine/render';
 import { SoftRenderer } from '../../src/engine/render-soft';
 import { getFrame } from '../../src/engine/sprites';
 import type { SubpixelMode } from '../../src/engine/render-common';
@@ -68,6 +70,102 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
 });
+
+// ---------------------------------------------------------------- stream scene (DrawOpts.stream)
+// The same JS source runs in the page (bundled with the real CanvasRenderer) and in Node (on the
+// SoftRenderer), so both sides draw exactly the same calls. Opaque and fully transparent pixels
+// only: the comparison is exact.
+const STREAM_W = 120;
+const STREAM_H = 80;
+const STREAM_SCENE = `
+  const d = buf.data;
+  const w = buf.w;
+  const h = buf.h;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const hole = (x + 2 * y + step * 5) % 13 === 0;
+      const rr = (x * 7 + y * 13 + step * 29) & 255;
+      const gg = (x * 3 + step * 50) & 255;
+      const bb = (y * 5 + step * 17) & 255;
+      d[y * w + x] = hole ? 0 : ((rr << 24) | (gg << 16) | (bb << 8) | 255) >>> 0;
+    }
+  }
+  buf.touch();
+  r.begin(0x203040ff);
+  r.setCamera(13.4, 7.7);
+  r.rect(10, 10, 100, 50, 0xc04020ff, { screen: true });
+  r.image(buf, 0, 0, { screen: true, stream: true });
+  r.image(buf, 230, 120, { stream: true });
+  r.frame({ buf, ox: 60, oy: 40 }, 300, 60, { screen: true, stream: true });
+  r.end();
+`;
+const streamScene = new Function('r', 'buf', 'step', STREAM_SCENE) as (r: Renderer, buf: PixelBuffer, step: number) => void;
+
+let streamCode: string | null = null;
+
+/** IIFE bundle exposing window.StreamTest.run(k) (CanvasRenderer + the stream scene). */
+async function streamBundle(): Promise<string> {
+  if (streamCode !== null) return streamCode;
+  const src = (p: string): string => JSON.stringify(fileURLToPath(new URL(p, import.meta.url)));
+  const VIRTUAL = 'virtual:stream-test';
+  const entry = `
+    import { CanvasRenderer } from ${src('../../src/engine/render-canvas.browser.ts')};
+    import { PixelBuffer } from ${src('../../src/engine/pixel.ts')};
+    function scene(r, buf, step) {${STREAM_SCENE}}
+    function base64(bytes) {
+      let s = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(s);
+    }
+    function pick(t) {
+      return { streams: t.streams, streamUploads: t.streamUploads };
+    }
+    window.StreamTest = {
+      run(k) {
+        const r = new CanvasRenderer(undefined, undefined, undefined, { res: k, mode: 'pixel' });
+        const buf = new PixelBuffer(${STREAM_W}, ${STREAM_H});
+        const frames = [];
+        const stats = [];
+        for (let step = 0; step < 3; step++) {
+          scene(r, buf, step);
+          frames.push(base64(r.ctx.getImageData(0, 0, r.canvas.width, r.canvas.height).data));
+          stats.push({ ...pick(r.textureStats()), entries: r.textureStats().entries });
+        }
+        r.begin();
+        r.image(buf, 0, 0, { screen: true, stream: true });
+        r.end();
+        const idle = pick(r.textureStats());
+        for (let i = 0; i < 121; i++) { r.begin(); r.end(); }
+        const evicted = pick(r.textureStats());
+        return { w: r.canvas.width, h: r.canvas.height, frames, stats, idle, evicted };
+      },
+    };
+  `;
+  const out = await build({
+    configFile: false,
+    logLevel: 'silent',
+    plugins: [
+      {
+        name: 'stream-test-entry',
+        resolveId: (id) => (id === VIRTUAL ? '\0' + VIRTUAL : null),
+        load: (id) => (id === '\0' + VIRTUAL ? entry : null),
+      },
+    ],
+    build: {
+      write: false,
+      minify: false,
+      rollupOptions: { input: VIRTUAL, output: { format: 'iife', name: 'StreamTestBundle' } },
+    },
+  });
+  const outputs = Array.isArray(out) ? out : [out];
+  for (const o of outputs) {
+    if ('output' in o) {
+      const chunk = o.output.find((c) => c.type === 'chunk');
+      if (chunk && chunk.type === 'chunk') return (streamCode = chunk.code);
+    }
+  }
+  throw new Error('vite produced no stream chunk');
+}
 
 type Diff = { exact: number; small: number; big: number; worst: number; firstBig: string };
 
@@ -177,6 +275,41 @@ describe('browser media', () => {
       const d = compare(soft.target.toRGBA(), Buffer.from(c.rgba, 'base64'), c.w);
       if (k % 2 === 0 || k === 1) expect(d.exact, `res ${k}: ${d.firstBig}`).toBe(c.w * c.h);
       else expect(d.big, `res ${k}`).toBeLessThanOrEqual(Math.ceil(c.w * c.h * 0.001));
+    });
+  }
+
+  // DrawOpts.stream: one slot per buffer, refilled in place on a version change; the pixels
+  // must equal the software renderer (which ignores the flag) after every change.
+  for (const k of [1, 3]) {
+    it(`streamed buffer changed 3 times at res ${k}: canvas = software, one stream slot`, async (ctx) => {
+      if (!browser) return ctx.skip();
+      const p = await browser.newPage();
+      try {
+        await p.setContent('<!doctype html><html><body></body></html>');
+        await p.addScriptTag({ content: await streamBundle() });
+        type R = { w: number; h: number; frames: string[]; stats: Array<{ streams: number; streamUploads: number; entries: number }>; idle: { streams: number; streamUploads: number }; evicted: { streams: number } };
+        const r = await p.evaluate(
+          (k) => (window as unknown as { StreamTest: { run(k: number): R } }).StreamTest.run(k),
+          k,
+        );
+        const soft = new SoftRenderer(384, 216, undefined, { res: k, mode: 'pixel' });
+        const buf = new PixelBuffer(STREAM_W, STREAM_H);
+        for (let step = 0; step < 3; step++) {
+          streamScene(soft, buf, step);
+          expect([r.w, r.h]).toEqual([soft.target.w, soft.target.h]);
+          const d = compare(soft.target.toRGBA(), Buffer.from(r.frames[step], 'base64'), r.w);
+          expect(d.firstBig, `res ${k} step ${step}`).toBe('');
+          expect(d.exact, `res ${k} step ${step}`).toBe(r.w * r.h);
+          // One slot, reused; one upload per change; the stream never enters the texture cache.
+          expect(r.stats[step]).toEqual({ streams: 1, streamUploads: step + 1, entries: 0 });
+        }
+        // A frame without a change uploads nothing; 120+ unused frames drop the slot.
+        expect(r.idle).toEqual({ streams: 1, streamUploads: 3 });
+        expect(r.evicted.streams).toBe(0);
+        expect(pageErrors).toEqual([]);
+      } finally {
+        await p.close();
+      }
     });
   }
 

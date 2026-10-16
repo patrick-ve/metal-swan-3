@@ -1,7 +1,7 @@
 /**
  * Player options that content and the HUD read (GDD §13.13): difficulty, credits, volumes, the
- * announcer, speech bubbles, the boss bar, screen shake, reduced flashes and the graphics filter
- * (read by main.ts). Saved through the engine `Store`.
+ * announcer, speech bubbles, the boss bar, screen shake, reduced flashes, the graphics filter
+ * (read by main.ts) and the first-person mouse look and sensitivity (main.ts, the fps scene). Saved through the engine `Store`.
  *
  * Content reaches them with `settingsOf(world)` (context.ts); the Options scene edits
  * `app.settings` and calls `saveSettings`. Pure data, no DOM.
@@ -39,6 +39,10 @@ export interface GameSettings {
   credits: CreditSetting;
   /** GRAPHICS: sprite filter on a high-resolution display (PIXEL / SMOOTH / XBR). */
   graphics: UpscaleMode;
+  /** MOUSE LOOK: the first-person mode turns with the pointer-lock mouse (docs/design/fps.md §2.3). */
+  mouseLook: boolean;
+  /** SENSITIVITY 1..10 of the mouse look (0.6 × s angle units per pixel). */
+  mouseSensitivity: number;
 }
 
 export const DEFAULT_SETTINGS: Readonly<GameSettings> = Object.freeze({
@@ -53,6 +57,8 @@ export const DEFAULT_SETTINGS: Readonly<GameSettings> = Object.freeze({
   difficulty: 'normal',
   credits: 'free',
   graphics: 'pixel',
+  mouseLook: true,
+  mouseSensitivity: 5,
 });
 
 /** Is `v` a GRAPHICS value ('pixel' | 'smooth' | 'xbr')? */
@@ -106,6 +112,9 @@ function clean(v: unknown): GameSettings {
     difficulty: isDifficulty(o.difficulty) ? o.difficulty : d.difficulty,
     credits: 'credits' in o ? cleanCredits(o.credits) : d.credits,
     graphics: isGraphicsMode(o.graphics) && Number(o.version) >= SETTINGS_VERSION ? o.graphics : d.graphics,
+    // Added 2026-10-16 (first-person mode): older saves have none and get the defaults.
+    mouseLook: bool('mouseLook', d.mouseLook),
+    mouseSensitivity: Math.max(1, vol('mouseSensitivity', d.mouseSensitivity)),
   };
 }
 

@@ -249,7 +249,8 @@ of density 2 at res ≥ 2; `view.dispose()` drops its queued jobs.
 `DrawOpts`: `flipX`, `flipY`, `flash` (white silhouette), `tint` (silhouette in any colour;
 overrides `flash`), `alpha`, `screen`, `blend:'add'`, `src: {x,y,w,h}` (draw only that part of
 the unflipped image, exactly where it would land in the full drawing; in LOGICAL px of the
-frame, which are its buffer px at density 1, so the same slice works for 1× and 2× art).
+frame, which are its buffer px at density 1, so the same slice works for 1× and 2× art),
+`stream: true` (contents change most frames; never cached as a texture, see **Streamed buffers**).
 `TextOpts`: `font`, `color`, `align`, `screen` (default true), `shadow`, `outline`, `alpha`,
 `scale` (integer; like drawing at 1× and enlarging). Constants `VIEW_W = 384`, `VIEW_H = 216`.
 
@@ -303,7 +304,20 @@ r.text('METAL SWAN', 192, 36, { font: 'big', scale: 2, align: 'center', outline:
   `SCALE_BUDGET_MS` = 4 ms per frame (a sprite not scaled yet draws from 1× that frame). A buffer
   whose `version` changed is re-uploaded (call `buf.touch()` after writing `buf.data` directly),
   `forget(buf)` drops it, `clearUpscaled()` drops every upscaled copy (`setMode` does it),
-  `textureStats()` reports entries, pixels, scales / deferrals and time of the last frame.
+  `textureStats()` reports entries, pixels, scales / deferrals and time of the last frame,
+  plus `streams` (live stream slots) and `streamUploads` (stream uploads so far).
+- **Streamed buffers** (`DrawOpts.stream`). Use it for a buffer that changes most frames (the
+  first-person view: `r.image(view.buf, 0, 0, { screen: true, stream: true })`). The canvas
+  renderer then skips the texture cache: it keeps one slot per buffer (one canvas, one
+  `ImageData` and a `Uint32Array` view of its bytes). On a `version` change it converts
+  `0xRRGGBBAA` to canvas byte order (checks little-endian once; transparent pixels become 0) and
+  calls `putImageData`; an unchanged buffer is drawn without an upload. Placement and scaling
+  are the same as a normal draw, so `alpha` and `blend` still apply. Slots are outside the pixel
+  budget and are dropped after `STREAM_IDLE_FRAMES` = 120 frames without a draw (or by
+  `forget(buf)`). The flag applies only to plain draws: with `tint`, `flash`, `flipX`, `flipY`,
+  `src`, a sprite filter or density > res the draw uses the texture cache as before. The stream
+  path allocates nothing per frame. `SoftRenderer` ignores the flag: the pixels are identical
+  (`tests/media/browser.test.ts`, res 1 and 3). Call `buf.touch()` after writing `buf.data`.
 - `createDisplay(visibleCanvas, { scanlines, kmax })` (browser) → `present(renderer.canvas)`
   each frame (any backbuffer size), `setScanlines(on)`, `toggleFullscreen()`,
   `toGame(clientX, clientY)` (logical px), `scale` (device px per logical px), `resFor(factor)`

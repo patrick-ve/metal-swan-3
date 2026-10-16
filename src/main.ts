@@ -8,6 +8,10 @@
  * or `?gfx=` until the option is changed (`graphicsMode`); its backbuffer follows the display's
  * resolution for that filter (`display.resFor`, re-checked every frame, so resizes and DPR
  * changes apply at once).
+ *
+ * Pointer lock (docs/design/fps.md §2.3): a click on the canvas takes the lock when
+ * `app.pointerLockWanted` and the MOUSE LOOK setting are on; the lock is given back when either
+ * turns off; losing it while it is wanted (Esc, alt-tab) sets `app.focusLost` (the scene pauses).
  */
 import { WebAudioOut } from './engine/audio.browser';
 import { Debug } from './engine/debug';
@@ -15,6 +19,7 @@ import { createDisplay } from './engine/display.browser';
 import { InputManager, parseBindings } from './engine/input';
 import { GamepadSource, KeyboardSource, TouchSource } from './engine/input.browser';
 import { startBrowserLoop } from './engine/loop.browser';
+import { PointerLockSource } from './engine/pointer.browser';
 import { CanvasRenderer } from './engine/render-canvas.browser';
 import { upscaleFactor } from './engine/upscale';
 import { createBrowserStore } from './engine/storage.browser';
@@ -91,6 +96,10 @@ function main(): void {
   const renderer = new CanvasRenderer(undefined, undefined, undefined, { res: display.res });
   const frames: FrameTimes = { ms: new Float32Array(1024), count: 0 };
 
+  // The pointer-lock mouse of the first-person mode (reports nothing without the lock).
+  const pointer = new PointerLockSource(canvas);
+  input.addSource(pointer);
+
   const debug = new Debug(params.debug);
   if (params.debug) debug.reserveKeys(input);
 
@@ -101,9 +110,22 @@ function main(): void {
   window.addEventListener('blur', () => {
     app.focusLost = true;
   });
+  const lockWanted = (): boolean => app.pointerLockWanted && app.settings.mouseLook;
+  /** We gave the lock back ourselves: that loss is no reason to pause. */
+  let releasing = false;
+  pointer.onLockChange = (locked) => {
+    app.pointerLocked = locked;
+    if (!locked && !releasing && lockWanted()) app.focusLost = true;
+    if (!locked) releasing = false;
+  };
+  canvas.addEventListener('click', () => {
+    if (lockWanted() && !pointer.locked) pointer.request();
+  });
 
   const loop = startBrowserLoop({
     tick: () => {
+      pointer.enabled = app.settings.mouseLook;
+      pointer.sensitivity = app.settings.mouseSensitivity;
       input.update();
       debug.handleInput(input);
       if (input.keyPressed('KeyM')) {
@@ -111,6 +133,10 @@ function main(): void {
         audio.setMuted(muted);
       }
       app.scenes.update();
+      if (pointer.locked && !lockWanted()) {
+        releasing = true;
+        pointer.exit();
+      }
     },
     render: () => {
       const t0 = performance.now();

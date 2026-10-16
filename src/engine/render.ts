@@ -83,6 +83,16 @@ export interface DrawOpts {
    * are the same thing at density 1, so older callers stay correct.
    */
   src?: SrcRect;
+  /**
+   * Contents change most frames (the first-person view, a full-screen effect buffer): never
+   * cached as a texture. The canvas renderer keeps one streaming slot per buffer (one canvas and
+   * one ImageData, refilled in place when the buffer's `version` changes), outside the texture
+   * budget, dropped after 120 frames without use. It applies to plain `image()` / `frame()` draws
+   * (no `tint`, `flash`, `flipX`, `flipY` or `src`, no sprite filter, density ≤ res); any other
+   * draw ignores the flag and uses the texture cache. Pixels are identical either way; the
+   * software renderer ignores the flag.
+   */
+  stream?: boolean;
 }
 
 export type FontId = 'small' | 'big';

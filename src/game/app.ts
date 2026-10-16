@@ -59,6 +59,15 @@ export interface GameApp {
   /** A click or tap on the game (set by main.ts, cleared by the scene that reads it). */
   pointerPressed: boolean;
   /**
+   * The running scene wants the pointer-lock mouse (the first-person mode sets it while it
+   * plays and clears it under a menu). main.ts then takes the lock on a click on the canvas when
+   * the MOUSE LOOK setting is on, gives it back when this turns false, and sets `focusLost` when
+   * the lock is lost while it is wanted (Esc, alt-tab). Headless runs never lock.
+   */
+  pointerLockWanted: boolean;
+  /** The canvas holds the pointer lock (set by main.ts; always false headless). */
+  pointerLocked: boolean;
+  /**
    * A user gesture (click, tap, key) has happened, so the browser lets audio play. The boot
    * scene waits for one (GDD §13.2); headless apps start with it set.
    */
@@ -146,6 +155,8 @@ export function createApp(o: AppOptions): GameApp {
     frame: 0,
     focusLost: false,
     pointerPressed: false,
+    pointerLockWanted: false,
+    pointerLocked: false,
     gesture: o.gesture ?? true,
     attractStep: 0,
     graphicsOverride: params.gfx,

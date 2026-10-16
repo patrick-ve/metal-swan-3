@@ -8,7 +8,22 @@
  * input.addSource(new GamepadSource());
  * // every tick: input.update(); then read input.pad(0).pressed('jump') …
  * ```
+ *
+ * First-person mode (`input.fpsMode`, docs/design/fps.md §2): the keyboard also reports actions
+ * through the fixed `FpsKeyMap`, and every gamepad feeds slot 0's actions and analog (left stick
+ * move / strafe, right stick X turn). The pointer-lock mouse lives in pointer.browser.ts.
  */
+import {
+  actionsFromKeys,
+  actionsFromPadButtons,
+  type AnalogState,
+  defaultFpsKeyMap,
+  defaultFpsPadMap,
+  FPS_KEY_CODES,
+  type FpsKeyMap,
+  stickMove as stickMoveInto,
+  stickTurn,
+} from './input-actions';
 import {
   BUTTON_BIT,
   type InputContext,
@@ -28,6 +43,8 @@ export interface KeyboardOptions {
 /**
  * Keyboard via KeyboardEvent.code (layout independent). Short taps that start and end between
  * two ticks still count as held for one tick. All keys are released on blur / tab hide.
+ * In `fpsMode` it also reports first-person actions (`fpsKeys`, all slot 0) and prevents the
+ * browser default of every first-person key (Space would scroll the page).
  */
 export class KeyboardSource implements InputSource {
   private readonly held = new Set<string>();
@@ -36,13 +53,21 @@ export class KeyboardSource implements InputSource {
   private readonly queue: string[] = [];
   private readonly target: EventTarget;
   private readonly isBound: (code: string) => boolean;
+  /** The first-person key map (fixed in this wave). */
+  readonly fpsKeys: FpsKeyMap = defaultFpsKeyMap();
+  /** `ctx.fpsMode` of the last update (the key handlers run between ticks). */
+  private fpsMode = false;
   private readonly isDown = (code: string): boolean => this.held.has(code) || this.latched.has(code);
+
+  private shouldPrevent(code: string): boolean {
+    return this.isBound(code) || (this.fpsMode && FPS_KEY_CODES.has(code));
+  }
 
   private readonly onDown = (ev: Event): void => {
     const e = ev as KeyboardEvent;
     const code = e.code;
     if (!code) return;
-    if (this.isBound(code) && !e.ctrlKey && !e.metaKey && !e.altKey) e.preventDefault();
+    if (this.shouldPrevent(code) && !e.ctrlKey && !e.metaKey && !e.altKey) e.preventDefault();
     if (e.repeat || this.held.has(code)) return;
     this.held.add(code);
     this.latched.add(code);
@@ -53,7 +78,7 @@ export class KeyboardSource implements InputSource {
     const e = ev as KeyboardEvent;
     if (!e.code) return;
     this.held.delete(e.code);
-    if (this.isBound(e.code)) e.preventDefault();
+    if (this.shouldPrevent(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) e.preventDefault();
   };
 
   private readonly onBlur = (): void => this.releaseAll();
@@ -71,9 +96,18 @@ export class KeyboardSource implements InputSource {
     document.addEventListener('visibilitychange', this.onVisibility);
   }
 
+  update(ctx: InputContext): void {
+    this.fpsMode = ctx.fpsMode === true;
+  }
+
   read(slot: PlayerSlot, ctx: InputContext): number {
     const set = keySetFor(slot, ctx.players);
     return set ? maskFromKeys(ctx.bindings[set], this.isDown) : 0;
+  }
+
+  /** First-person actions: the whole keyboard drives slot 0 (spec §1.10). */
+  readActions(slot: PlayerSlot): number {
+    return slot === 0 ? actionsFromKeys(this.fpsKeys, this.isDown) : 0;
   }
 
   drainPressed(out: string[]): void {
@@ -108,10 +142,20 @@ const SECTOR = 0.3827;
  * 1-player mode: every pad drives player 1. 2-player mode: the first connected pad drives
  * player 1, the second player 2. D-pad buttons and the left stick (with a radial dead zone)
  * both move. Hot-plug works because pads are polled every tick.
+ *
+ * In `fpsMode` every connected pad also feeds slot 0's first-person channel: buttons through the
+ * fixed `FpsPadMap` (OR-ed over the pads), the left stick → `moveX` / `moveY` and the right stick
+ * X → `turn` (0.2 dead zone, integers). Per stick axis the pad with the largest value wins.
  */
 export class GamepadSource implements InputSource {
   /** Radial dead zone of the left stick (0..1). */
   deadZone = 0.3;
+  /** Dead zone of both sticks in the first-person mode (spec §2.2). */
+  fpsDeadZone = 0.2;
+  private readonly fpsPad = defaultFpsPadMap();
+  private fpsActions = 0;
+  private readonly fpsAnalog: AnalogState = { turn: 0, moveX: 0, moveY: 0 };
+  private readonly stick: AnalogState = { turn: 0, moveX: 0, moveY: 0 };
   private readonly masks = [0, 0];
   private readonly prevRaw = new Map<number, number>();
   private readonly queue: string[] = [];
@@ -138,6 +182,10 @@ export class GamepadSource implements InputSource {
   update(ctx: InputContext): void {
     this.masks[0] = 0;
     this.masks[1] = 0;
+    const fps = ctx.fpsMode === true;
+    const fa = this.fpsAnalog;
+    this.fpsActions = 0;
+    fa.turn = fa.moveX = fa.moveY = 0;
     let pads: readonly (Gamepad | null)[] = [];
     try {
       pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -163,6 +211,7 @@ export class GamepadSource implements InputSource {
         if (ny > SECTOR) m |= BUTTON_BIT.down;
       }
       if (slot >= 0) this.masks[slot] |= m;
+      if (fps) this.readFps(gp);
       // Raw button presses (menus, rebinding, pause).
       let now = 0;
       const nb = Math.min(gp.buttons.length, 31);
@@ -174,8 +223,31 @@ export class GamepadSource implements InputSource {
     this.cur = null;
   }
 
+  /** One pad's first-person buttons and sticks, merged into the slot-0 channel. */
+  private readFps(gp: Gamepad): void {
+    this.fpsActions |= actionsFromPadButtons(this.fpsPad, this.isPadDown);
+    const st = this.stick;
+    stickMoveInto(gp.axes[0] ?? 0, gp.axes[1] ?? 0, st, this.fpsDeadZone);
+    const turn = stickTurn(gp.axes[2] ?? 0, this.fpsDeadZone);
+    const fa = this.fpsAnalog;
+    if (Math.abs(st.moveX) > Math.abs(fa.moveX)) fa.moveX = st.moveX;
+    if (Math.abs(st.moveY) > Math.abs(fa.moveY)) fa.moveY = st.moveY;
+    if (Math.abs(turn) > Math.abs(fa.turn)) fa.turn = turn;
+  }
+
   read(slot: PlayerSlot): number {
     return this.masks[slot];
+  }
+
+  readActions(slot: PlayerSlot): number {
+    return slot === 0 ? this.fpsActions : 0;
+  }
+
+  readAnalog(slot: PlayerSlot, out: AnalogState): void {
+    if (slot !== 0) return;
+    out.turn += this.fpsAnalog.turn;
+    out.moveX += this.fpsAnalog.moveX;
+    out.moveY += this.fpsAnalog.moveY;
   }
 
   drainPressed(out: string[]): void {

@@ -5,7 +5,18 @@
  * held for each player slot (a bitmask), ORs them, and feeds the result to that slot's
  * `VirtualPad`, which does the edge detection (pressed / released / heldTicks).
  * Sources only ever report a raw "held" mask.
+ *
+ * First-person mode (docs/design/fps.md §2): while `fpsMode` is on, slot 0 also gets a 16-bit
+ * action pad (`actions`) and an analog channel (`analog`), see input-actions.ts.
  */
+import {
+  ActionPad,
+  actionsFromPad,
+  type AnalogState,
+  clampAnalog,
+  clearAnalog,
+  newAnalog,
+} from './input-actions';
 
 export type Button = 'left' | 'right' | 'up' | 'down' | 'fire' | 'jump' | 'bomb' | 'start';
 
@@ -339,6 +350,8 @@ export function padButtonCode(index: number): string {
 export interface InputContext {
   readonly players: 1 | 2;
   readonly bindings: Bindings;
+  /** First-person mode is on (sources then also report actions and analog for slot 0). */
+  readonly fpsMode?: boolean;
 }
 
 export interface InputSource {
@@ -350,6 +363,21 @@ export interface InputSource {
   drainPressed?(out: string[]): void;
   /** Called once per tick after all reads (clear short-tap latches here). */
   endTick?(): void;
+  /**
+   * First-person action mask (input-actions.ts) for a slot; only asked for slot 0 while
+   * `fpsMode` is on. A source without it is mapped through `actionsFromPad(read(slot))`.
+   */
+  readActions?(slot: PlayerSlot, ctx: InputContext): number;
+  /** Add this tick's analog input for a slot to `out` (slot 0, `fpsMode` only). */
+  readAnalog?(slot: PlayerSlot, out: AnalogState, ctx: InputContext): void;
+}
+
+/** Optional first-person channel of a `ScriptedSource` (functions of the source's tick). */
+export interface ScriptedActions {
+  /** Held action mask (input-actions.ts `ACTION_BIT`) at a tick. */
+  actions?: (tick: number) => number;
+  /** Write the analog input of a tick into `out` (starts cleared each tick). */
+  analog?: (tick: number, out: AnalogState) => void;
 }
 
 export type ScriptedFn = (tick: number) => HeldSpec;
@@ -364,14 +392,36 @@ export class ScriptedSource implements InputSource {
   readonly slot: PlayerSlot;
   private readonly fn: ScriptedFn;
   private mask = 0;
+  private actMask = 0;
+  private readonly fps: ScriptedActions | null;
+  private readonly scratch: AnalogState = newAnalog();
+  /** Present only when the script gives `actions` (else the 8-button fallback applies). */
+  readonly readActions?: (slot: PlayerSlot) => number;
+  /** Present only when the script gives `analog`. */
+  readonly readAnalog?: (slot: PlayerSlot, out: AnalogState) => void;
 
-  constructor(fn: ScriptedFn | InputTimeline, slot: PlayerSlot = 0) {
+  constructor(fn: ScriptedFn | InputTimeline, slot: PlayerSlot = 0, fps?: ScriptedActions) {
     this.fn = fn instanceof InputTimeline ? fn.fn() : fn;
     this.slot = slot;
+    this.fps = fps ?? null;
+    if (fps?.actions) this.readActions = (s) => (s === this.slot ? this.actMask : 0);
+    if (fps?.analog) {
+      this.readAnalog = (s, out) => {
+        if (s !== this.slot) return;
+        const a = this.scratch;
+        clearAnalog(a);
+        this.fps!.analog!(this.tick, a);
+        out.turn += a.turn;
+        out.moveX += a.moveX;
+        out.moveY += a.moveY;
+      };
+    }
   }
 
   update(): void {
     this.mask = toMask(this.fn(this.tick));
+    const act = this.fps?.actions;
+    if (act) this.actMask = act(this.tick) & 0xffff;
   }
 
   read(slot: PlayerSlot): number {
@@ -467,6 +517,12 @@ export function timeline(): InputTimeline {
 /** Maps sources to the two player pads; call `update()` once per simulation tick. */
 export class InputManager implements InputContext {
   readonly pads: readonly [VirtualPad, VirtualPad] = [new VirtualPad(), new VirtualPad()];
+  /** First-person actions of slot 0 (all up while `fpsMode` is off). */
+  readonly actions = new ActionPad();
+  /** First-person analog input of slot 0 this tick (cleared every tick; zero while `fpsMode` is off). */
+  readonly analog: AnalogState = newAnalog();
+  /** First-person mode: poll `actions` and `analog` for slot 0 (the fps scene turns it on). */
+  fpsMode = false;
   /** 1 = solo key set drives pad 0 (and every gamepad); 2 = per-player key sets and gamepads. */
   players: 1 | 2 = 1;
   bindings: Bindings;
@@ -501,10 +557,27 @@ export class InputManager implements InputContext {
       for (let i = 0; i < srcs.length; i++) m |= srcs[i].read(slot, this);
       this.pads[slot].update(m);
     }
+    this.updateActions();
     this.raw.length = 0;
     for (let i = 0; i < srcs.length; i++) srcs[i].drainPressed?.(this.raw);
     for (let i = 0; i < srcs.length; i++) srcs[i].endTick?.();
     this.pauseEdge = this.computePause();
+  }
+
+  private updateActions(): void {
+    const a = this.analog;
+    clearAnalog(a);
+    let m = 0;
+    if (this.fpsMode) {
+      const srcs = this.sources;
+      for (let i = 0; i < srcs.length; i++) {
+        const src = srcs[i];
+        m |= src.readActions ? src.readActions(0, this) : actionsFromPad(src.read(0, this));
+        src.readAnalog?.(0, a, this);
+      }
+      clampAnalog(a);
+    }
+    this.actions.update(m);
   }
 
   private computePause(): boolean {
@@ -568,12 +641,15 @@ export class InputManager implements InputContext {
   suppress(mask = 0xff): void {
     this.pads[0].suppress(mask);
     this.pads[1].suppress(mask);
+    this.actions.suppress(); // every scene change and resume hides the action that confirmed it
   }
 
   /** Reset both pads (all up). */
   reset(): void {
     this.pads[0].reset();
     this.pads[1].reset();
+    this.actions.reset();
+    clearAnalog(this.analog);
     this.raw.length = 0;
     this.pauseEdge = false;
   }

@@ -1,12 +1,13 @@
 /**
- * Options (GDD §13.13): the night base (base.ts) under a veil, `OPTIONS` in stencil (C, y 12); rows (small) from y 40, 11 px apart, labels
+ * Options (GDD §13.13): the night base (base.ts) under a veil, `OPTIONS` in stencil (C, y 12); rows (small) from y 40, 10 px apart, labels
  * left-aligned at x 64, values right-aligned at x 320 between `<` and `>`; left / right change,
  * fire confirms. DIFFICULTY · CREDITS · MUSIC VOLUME · SFX VOLUME · VOICE VOLUME (announcer and
  * voiced speech bubbles; added 2026-10-14) · ANNOUNCER · SPEECH BUBBLES ·
  * BOSS BAR · SCREEN SHAKE · REDUCE FLASHES · GRAPHICS (PIXEL / SMOOTH / XBR: the sprite filter on
  * a high-resolution display; main.ts applies it; the row shows the filter in effect, `?gfx=`
  * included, and while it is selected a hint line says when the window is too small for it) ·
- * CONTROLS (the rebind screen) · RESET HIGH
+ * MOUSE LOOK (ON / OFF) · SENSITIVITY (1–10) (the first-person mode's pointer-lock mouse,
+ * docs/design/fps.md §2.3; added 2026-10-16) · CONTROLS (the rebind screen) · RESET HIGH
  * SCORES (`ARE YOU SURE?` → `YES` / `NO`) · BACK. Changes apply at once and are saved on the way
  * out; difficulty and credits apply to the next game.
  */
@@ -35,6 +36,8 @@ export type OptionId =
   | 'shake'
   | 'flashes'
   | 'graphics'
+  | 'mouseLook'
+  | 'sensitivity'
   | 'controls'
   | 'reset'
   | 'back';
@@ -56,6 +59,8 @@ export const OPTION_ROWS: readonly Row[] = [
   { id: 'shake', label: 'SCREEN SHAKE' },
   { id: 'flashes', label: 'REDUCE FLASHES' },
   { id: 'graphics', label: 'GRAPHICS' },
+  { id: 'mouseLook', label: 'MOUSE LOOK' },
+  { id: 'sensitivity', label: 'SENSITIVITY' },
   { id: 'controls', label: 'CONTROLS' },
   { id: 'reset', label: 'RESET HIGH SCORES' },
   { id: 'back', label: 'BACK' },
@@ -64,7 +69,7 @@ export const OPTION_ROWS: readonly Row[] = [
 const SHAKES: readonly ShakeLevel[] = ['full', 'low', 'off'];
 /** First row y and row spacing (px); the last row ends above the hint line at y 200. */
 export const OPTION_TOP = 40;
-export const OPTION_STEP = 11;
+export const OPTION_STEP = 10;
 const TOP = OPTION_TOP;
 const STEP = OPTION_STEP;
 const LABEL_X = 64;
@@ -95,6 +100,10 @@ export function optionValue(s: GameSettings, id: OptionId): string {
       return s.reduceFlashes ? 'ON' : 'OFF';
     case 'graphics':
       return s.graphics.toUpperCase();
+    case 'mouseLook':
+      return s.mouseLook ? 'ON' : 'OFF';
+    case 'sensitivity':
+      return String(s.mouseSensitivity);
     default:
       return '';
   }
@@ -146,6 +155,15 @@ export function stepOption(s: GameSettings, id: OptionId, d: number): boolean {
     case 'graphics':
       s.graphics = cycle(UPSCALE_MODES, s.graphics);
       return true;
+    case 'mouseLook':
+      s.mouseLook = !s.mouseLook;
+      return true;
+    case 'sensitivity': {
+      const v = Math.max(1, Math.min(10, s.mouseSensitivity + d));
+      if (v === s.mouseSensitivity) return false;
+      s.mouseSensitivity = v;
+      return true;
+    }
     default:
       return false;
   }

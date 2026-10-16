@@ -17,28 +17,153 @@ final signatures, file names and examples. Keep it short: what a caller needs, n
 
 ## 1. Ray engine (`src/engine/ray/`)
 
-Pure, deterministic, no game ids, no per-tick allocations. Units: tile = 1.0; angles are integers
-0..4095 (0 east, 1024 south). The contract sketch is spec §3.2.
+Pure, deterministic, no game ids, no per-tick allocations. Units: tile = 1.0 (float64 positions;
+cell `(x, y)` covers `[x, x+1) × [y, y+1)`, y grows south); angles are integers 0..4095 (0 east,
+1024 south, turning right adds). The contract is spec §3.2; `src/engine/ray/index.ts` re-exports
+every module.
 
-- `fixed.ts` — `SIN`, `COS`, `angNorm`, `angDelta`, `angleTo`, `degToAng`. TODO (group engine / ray)
-- `grid.ts` — `RayGrid`, `DoorTable`, `PushWall`, `CELL_*` flags. TODO (group engine / ray)
-- `cast.ts` — `castRay(…, out: RayHit)`, `lineOfSight`. TODO (group engine / ray)
-- `textures.ts` — `defineRayTexture`, `defineRayBillboard`, `getRayBillboard`,
-  `rayTextureIndex`, `prepareRayAssets`, `billboardYaw`, list functions. TODO (group engine / ray)
-- `view.ts` — `RayView`, `RayCamera`, `RaySprite`, `RayScene`, `renderView`. TODO (group engine / ray)
-- `move.ts` — `tryMove`. TODO (group engine / ray)
-- `areas.ts` — `AreaMap`. TODO (group engine / ray)
-- Recipe: render one frame headless. TODO (group engine / ray)
-- Measured cost per frame. TODO (group engine / ray)
+- `fixed.ts` — `ANG_FULL/ANG_MASK/ANG_90/ANG_180/ANG_270`, `SIN`, `COS` (`Float64Array(4096)`,
+  rounded to 1/65536, exact at the cardinals: `SIN[1024] = 1`, `COS[1024] = 0`). `angNorm(a)`
+  (any int → 0..4095), `angDelta(from, to)` (−2047..2048), `angleTo(dx, dy)` (binary search over
+  the tables, no `atan2`: `angleTo(COS[a], SIN[a]) === a` for every `a`; `(0, 0)` → 0),
+  `degToAng(deg)` (0 east, 90 south).
+- `grid.ts` — `RayGrid(w, h)`: SoA `wall` (texture index + 1), `flags` (`CELL_SOLID` blocks
+  movement, `CELL_OPAQUE` stops rays, `CELL_DOOR`, `CELL_PUSH` (a secret; a normal wall for the
+  engine until it is the active `PushWall`), `CELL_PROP` (blocks movement, not rays)), `area`,
+  `door` (−1 = none). Outside the grid = solid and opaque. Helpers: `setWall(x, y, tex)`,
+  `clearCell(x, y)`. `DoorTable(max = 64)`: `add(x, y, vertical, tex)` → index (−1 + warning when
+  full); `place(grid, x, y, vertical, tex)` also marks the cell (flags = `CELL_DOOR` only);
+  `open[i]` 0..1 is written by the game; **`edgeTex`** (default −1 = off) = the jamb texture drawn
+  on the walls seen from inside a door cell, parallel to the passage. `PushWall` `{active, x, y,
+  dx, dy, offset, tex}`: while `active` the block is a unit box at `(x + dx·offset, y + dy·offset)`;
+  the grid's own walls in cells `(x, y)` and `(x+dx, y+dy)` are ignored for rays, and both cells
+  block movement. The game steps `x, y` cell by cell and writes the wall back when it stops.
+- `cast.ts` — `castRay(g, d, push, px, py, dirX, dirY, out, maxDist = 64)` → `boolean`; fills a
+  reused `RayHit` (`newRayHit()`): `dist` = the ray parameter t (Euclidean for a unit dir;
+  perpendicular for `camDir + plane·k`), `cellX/Y`, `side` (0 = x-side / vertical door, 1 =
+  y-side / horizontal door), `u` 0..1 (walls: flipped per face so textures never read mirrored;
+  doors: world coordinate along the plane − `open`), `tex` (0 = fallback; outside the grid hits
+  with tex 0), `door` (index or −1). Doors: the plane at the cell centre; `u < open` passes. A wall
+  in the start cell is ignored. `lineOfSight(g, d, push, x0, y0, x1, y1)` = no wall, closed door
+  part or push wall on the segment (a door gap lets sight through).
+- `textures.ts` — `defineRayTexture(id, gen)` (64 × 64 `PixelBuffer`; a wrong size is resized,
+  transparent texels become ink, both with one warning); `rayTextureIndex(id)` = stable index in
+  definition order from 1 (redefining keeps it), unknown → 0 = magenta / ink checker + one warning;
+  `hasRayTexture`, `rayTextureId(i)`, `rayTextureCount()`, `listRayTextures()` (sorted).
+  `rayTextureColumns(index, dark?)` → column-major `Uint32Array` (`[u·64 + v]`), dark = y-side
+  variant (`stepShade(c, −1)`); built on first use. `defineRayBillboard(id, {size?: 64|96|128,
+  yaws: 1|8, frames, worldW?, worldH?, gen(frame, yaw)})` (world size defaults to size / 64 tiles;
+  with 8 yaws `gen` is called for yaws 0..4 only, 5/6/7 = mirrors of 3/2/1); `getRayBillboard(id)`
+  (unknown → a 64 × 64 1-yaw checker + one warning); `hasRayBillboard`, `listRayBillboards()`.
+  `billboardColumns(bb, frame, yaw)` / `billboardSpans(bb, frame, yaw)` (`first << 8 | last` opaque
+  row per column, `0xFFFF` = empty; frames wrap, yaw is masked). `billboardYaw(actorAngle, ax, ay,
+  camX, camY)` → 0..7: 0 = faces the viewer, 2 = faces the viewer's left (screen left), 4 = its
+  back, 6 = screen right. `prepareRayAssets(prefixes?, onProgress?, {timeBudgetMs = 8, yieldFn,
+  now})` → `{failed}`: textures then billboards, id order, slices of the budget, never rejects.
+- `view.ts` — `RayView(w = 384, h = 176, density = 1)`: `buf` (w·density × h·density), `zbuf`
+  (perpendicular wall distance per buffer column, `Infinity` = none), `focal` (296 × bufW / 384 —
+  the same 66° field at any size), `colK` (per-column plane factor). `renderView(view, scene,
+  cam)`: flat `ceil` / `floor` fill, one `castRay` per column, wall height `focal / dist`, the
+  horizon at h/2; `cam.eyeZ` (0.5) is the eye height (lower = the walls rise, the death fall);
+  `cam.squash` 0..1 scales everything vertically around the horizon and leaves the rows outside
+  `TRANSPARENT` (0 = a 1-px line, the unfold). Sprites (`scene.sprites[0 .. spriteCount)`, each
+  `{x, y, bb, frame, yaw}`) stand on the floor, centred, `focal·worldW / d` wide; drawn far → near
+  (ties by index), per column only where `zbuf > d` and only inside the column span; texels with
+  alpha 0 are skipped (no blending). Ends with `buf.touch()`. Present it with
+  `r.image(view.buf, 0, 0, { screen: true, stream: true })`.
+- `move.ts` — `tryMove(g, d, push, box, dx, dy, blockers?, self?)` → bit 1 moved on x, bit 2 on
+  y. Axis-separated (x then y) square box (`r` = half-size); a blocked axis stops at the contact
+  point (`MOVE_SKIN` = 1e-4 gap), so the box slides along walls. Blocks: outside, `CELL_SOLID` /
+  `CELL_PROP`, a door with `open < 1`, both cells of the active push wall, and `Blockers` boxes
+  (`newBlockers(max)`; `self` = the mover's own index). Obstacles the box already overlaps never
+  block (it can walk out). `cellBlocks(g, d, push, x, y)` is the cell test.
+- `areas.ts` — `new AreaMap(g, d)` floods `g.area` (1..255 over cells that are neither opaque nor
+  doors; props belong to their room) and links each door's two sides (west/north = side 0).
+  `setDoorOpen(door, open)` (the game decides when a door counts as open; the constructor takes
+  `open > 0`), `computeReach(fromArea)` (BFS over open doors), `reached(area)`, `doorArea(door,
+  side)`, `count`. A push wall that opens a new path needs a new `AreaMap`.
+- **Recipe: render one frame headless.**
+
+  ```ts
+  import { DoorTable, RayGrid, RayView, defineRayTexture, rayTextureIndex, renderView, degToAng } from '../src/engine/ray';
+  import { PAL } from '../src/engine/palette';
+  defineRayTexture('fps/wall/x', () => myPainter());          // content does this once
+  const g = new RayGrid(16, 16); const d = new DoorTable();
+  g.setWall(0, 0, rayTextureIndex('fps/wall/x'));              // … fill the grid
+  const view = new RayView();
+  renderView(view, { grid: g, doors: d, push: null, ceil: PAL.stone[0], floor: PAL.stone[2], sprites: [], spriteCount: 0 },
+    { x: 2.5, y: 2.5, angle: degToAng(0), eyeZ: 0.5 });
+  savePNG(view.buf, 'tmp/x.png', 2);                           // tools/lib/image.ts
+  ```
+
+  A runnable example: `npx tsx tmp/fps-ray/look.ts` (the test level in
+  `tests/engine/ray/fixture.ts`).
+- **Measured cost:** 0.33 ms per 384 × 176 frame in Node (M-series Mac, a 48 × 48 hall with 36
+  pillars and 40 sprites, 300 frames; `tests/engine/ray/view.test.ts` prints it). Budget: 2.0 ms.
 
 ## 2. Input actions
 
-- `FpsAction` bits, `FPS_ACTIONS`, `FpsKeyMap` defaults, `actionsFromPad`. TODO (group engine / input)
-- `ActionPad` (held / pressed / released / `heldTicks`), `AnalogState`. TODO (group engine / input)
-- `InputManager.actions`, `.analog`, `.fpsMode`; `InputSource.readActions?` / `readAnalog?`. TODO (group engine / input)
-- `ScriptedSource` actions and analog for tests. TODO (group engine / input)
-- `PointerLockSource` (`pointer.browser.ts`), `app.pointerLockWanted`, the lost-lock pause. TODO (group engine / input)
-- Settings `mouseLook`, `mouseSensitivity`. TODO (group engine / input)
+Spec: `docs/design/fps.md` §2. The 8-bit `Button` pad is unchanged; the first-person mode reads a
+second channel that `InputManager` fills **for slot 0 only, only while `input.fpsMode` is on**.
+
+**`src/engine/input-actions.ts`** (pure)
+
+- `FpsAction` = `forward back turnLeft turnRight strafeLeft strafeRight strafe run fire use
+  weapon1..weapon4 weaponNext weaponPrev` (bits 0..15, `FPS_ACTIONS` in bit order).
+  `ACTION_BIT.fire === 1 << 8`, `ACTION_INDEX`, `ALL_ACTIONS = 0xffff`, `actionMask('forward', 'fire')`.
+- `ActionPad`: `held(a)`, `pressed(a)`, `released(a)`, `heldTicks(a)` (a = name or bit index),
+  `mask`, `pressedMask`, `releasedMask`, `anyPressed()`, `suppress(mask = 0xffff)` (held actions
+  stay hidden until released; works even when the pad was not polled before), `reset()`.
+- `AnalogState { turn, moveX, moveY }`: integers, cleared every tick. `turn` ±512 (+ = right,
+  the angle grows), `moveX` ±127 (+ = right), `moveY` ±127 (+ = forward).
+- `defaultFpsKeyMap()` / `FPS_KEY_CODES`, `defaultFpsPadMap()` (fixed in this wave),
+  `actionsFromKeys`, `actionsFromPadButtons`, `actionsFromPad(mask)` (the 8-button fallback:
+  up → forward, down → back, left/right → turnLeft/turnRight, fire → fire, jump → use,
+  bomb → weaponNext, start → nothing).
+- Sticks: `stickMove(ax, ay, out)` (0.2 radial dead zone, rescaled, × 127),
+  `stickTurn(x)` (`round(48 × s²) × sign`), `stickScale(moveX, moveY)` (m),
+  `stickSpeed(moveX, moveY, runHeld, walk, run)` (walk × m, or run × m when run is held or m > 0.9).
+- Mouse: `turnPerPixel(s) = 0.6 × s`; `TurnAccumulator` (`add(px)`, `take()` → whole units, the
+  rest carries; `sensitivity` 1..10).
+
+**`InputManager`** (input.ts, additive): `actions: ActionPad`, `analog: AnalogState`,
+`fpsMode: boolean`. Per tick, in fpsMode, every source gives `readActions(0)` or, without it,
+`actionsFromPad(read(0))`; analog is the sum of every `readAnalog(0, out)`, then clamped. With
+fpsMode off the actions are all up and analog is zero. `suppress()` also calls
+`actions.suppress()` (all actions); `reset()` resets both. `InputContext.fpsMode` tells sources.
+`InputSource` gains `readActions?(slot, ctx)` and `readAnalog?(slot, out, ctx)` (add into `out`).
+
+**Browser sources**: `KeyboardSource` reports actions through `fpsKeys` (the whole keyboard → slot
+0) and, in fpsMode, prevents the default of every `FPS_KEY_CODES` key (never with Ctrl/Meta/Alt).
+`GamepadSource` in fpsMode merges every pad into slot 0: buttons via the pad map (OR), left stick →
+`moveX`/`moveY`, right stick X → `turn` (per axis the largest pad wins). The sticks only feed the
+analog channel (no action bits, so they never count twice). `PointerLockSource`
+(`src/engine/pointer.browser.ts`): only while the canvas holds the lock and `enabled`:
+movementX → `turn` (carried rest), left button → `fire`, right → `use`, wheel down/up →
+`weaponNext`/`weaponPrev` (one step per ~100 px of wheel). It never reports 8-button masks.
+
+**Tests and bots**: `new ScriptedSource(fn, slot, { actions?: (tick) => mask, analog?: (tick, out) => void })`.
+Without `actions` the 8-button fallback applies, so old timelines and the 2D bot still move.
+
+```ts
+input.addSource(new ScriptedSource(() => 0, 0, {
+  actions: (t) => (t < 60 ? ACTION_BIT.forward : ACTION_BIT.fire),
+  analog: (t, out) => { out.turn = t < 30 ? 8 : 0; },
+}));
+input.fpsMode = true;
+input.update(); // input.actions.held('forward'), input.analog.turn === 8
+```
+
+**Pointer lock and settings** (`src/main.ts`, `src/game/app.ts`): the fps scene sets
+`app.pointerLockWanted` while it plays and clears it under menus. A click on the canvas takes the
+lock when `pointerLockWanted && settings.mouseLook`; the click that takes it does not fire. The
+lock is given back when either turns false (no pause for that). Losing it while wanted (Esc,
+alt-tab) sets `app.focusLost = true` → the scene pauses. `app.pointerLocked` mirrors the lock (for
+the `CLICK TO LOOK WITH THE MOUSE` hint; always false headless). main.ts copies
+`settings.mouseLook` / `settings.mouseSensitivity` into the source every tick, so a change in
+OPTIONS (also from the pause menu) applies at once. Settings: `mouseLook` (default true),
+`mouseSensitivity` 1..10 (default 5), saved with the others; OPTIONS rows `MOUSE LOOK` (ON / OFF)
+and `SENSITIVITY` (1–10) after GRAPHICS (rows now 10 px apart).
 
 ## 3. Fps game shell
 

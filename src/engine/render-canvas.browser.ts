@@ -39,6 +39,11 @@ import { upscale, upscaleFactor, type UpscaleMode } from './upscale';
  * (`scaleBudgetMs`): a sprite not upscaled yet is drawn from its 1× texture this frame and
  * upscaled at the end of the frame or a later one. A buffer whose `version` changed is
  * re-uploaded.
+ *
+ * Streams: a plain draw with `DrawOpts.stream` (render.ts) skips that cache. Each such buffer gets
+ * one slot (canvas + ImageData + a Uint32 view of its bytes), refilled in place with putImageData
+ * when the buffer's `version` changed, outside the pixel budget, dropped after
+ * `STREAM_IDLE_FRAMES` frames without use. The stream path allocates nothing per frame.
  */
 
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
@@ -76,6 +81,26 @@ interface CacheEntry {
   used: number;
 }
 
+/** A stream slot is dropped after this many frames without a draw. */
+export const STREAM_IDLE_FRAMES = 120;
+
+/** One streamed buffer: its canvas and the ImageData refilled when the buffer changes. */
+interface StreamSlot {
+  buf: PixelBuffer;
+  canvas: AnyCanvas;
+  ctx: AnyContext;
+  img: ImageData;
+  /** The bytes of `img`, viewed as 32-bit words in canvas byte order. */
+  words: Uint32Array;
+  /** Buffer version last uploaded (-1: never). */
+  version: number;
+  /** Frame number of the last draw. */
+  used: number;
+}
+
+/** Is this platform little-endian (ImageData words read as 0xAABBGGRR)? */
+const LITTLE_ENDIAN = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+
 /** Texture numbers for the debug overlay and the perf tool. */
 export interface TextureStats {
   entries: number;
@@ -89,6 +114,10 @@ export interface TextureStats {
   scaleMs: number;
   /** Entries evicted so far. */
   evicted: number;
+  /** Live stream slots (`DrawOpts.stream`; not counted in `entries` / `px`). */
+  streams: number;
+  /** Stream uploads (putImageData after a version change) so far. */
+  streamUploads: number;
 }
 
 function makeCanvas(w: number, h: number): AnyCanvas {
@@ -170,7 +199,11 @@ export class CanvasRenderer implements Renderer {
   private readonly pending: PixelBuffer[] = [];
   /** Did the last variant() call return an upscaled texture? */
   private variantUp = false;
-  private lastStats: TextureStats = { entries: 0, px: 0, budgetPx: 0, scaled: 0, deferred: 0, scaleMs: 0, evicted: 0 };
+  private lastStats: TextureStats = { entries: 0, px: 0, budgetPx: 0, scaled: 0, deferred: 0, scaleMs: 0, evicted: 0, streams: 0, streamUploads: 0 };
+  /** Stream slots: lookup by buffer, plus a list for the idle sweep (no iterator allocations). */
+  private readonly streamMap = new Map<PixelBuffer, StreamSlot>();
+  private readonly streamList: StreamSlot[] = [];
+  private streamUploads = 0;
   private readonly atlases = new Map<string, Map<number, AnyCanvas>>();
   private readonly css = new Map<number, string>();
   private readonly place: Placement = { x: 0, y: 0 };
@@ -304,6 +337,7 @@ export class CanvasRenderer implements Renderer {
     }
     this.pending.length = 0;
     this.evict();
+    this.sweepStreams();
     this.lastStats = {
       entries: this.cache.size,
       px: this.cachePx,
@@ -312,6 +346,8 @@ export class CanvasRenderer implements Renderer {
       deferred: this.deferredCount,
       scaleMs: this.scaleMs,
       evicted: this.evicted,
+      streams: this.streamList.length,
+      streamUploads: this.streamUploads,
     };
   }
 
@@ -463,8 +499,10 @@ export class CanvasRenderer implements Renderer {
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  /** Drop the cached canvases of one buffer (they are rebuilt on next use). */
+  /** Drop the cached canvases and the stream slot of one buffer (they are rebuilt on next use). */
   forget(buf: PixelBuffer): void {
+    const s = this.streamMap.get(buf);
+    if (s) this.dropStream(this.streamList.indexOf(s));
     const e = this.cache.get(buf);
     if (!e) return;
     this.cachePx -= e.px;
@@ -497,11 +535,18 @@ export class CanvasRenderer implements Renderer {
     this.setAdd(o?.blend === 'add');
     if (this.alpha <= 0) return;
     const tint = o?.tint ?? (o?.flash ? WHITE : null);
+    const m: UpscaleMode = sprite && d === 1 && k > 1 && this.mode !== 'pixel' ? spriteFilter(spriteIdOf(buf), this.mode, k) : 'pixel';
+    // Streamed buffer (plain draw only): its slot, refilled in place, never the texture cache.
+    if (o?.stream === true && tint === null && !flipX && !flipY && !o.src && m === 'pixel' && d <= k) {
+      const c = this.streamCanvas(buf);
+      if (k === 1 && d === 1) this.ctx.drawImage(c, left, top);
+      else this.ctx.drawImage(c, left, top, lw * k, lh * k);
+      return;
+    }
     // The texture source and its px per logical px: the buffer, or the 1× reduction of a 2×
     // buffer below res d.
     const src = d > k ? lowRes(buf, d) : buf;
     const sd = d > k ? 1 : d;
-    const m: UpscaleMode = sprite && d === 1 && k > 1 && this.mode !== 'pixel' ? spriteFilter(spriteIdOf(buf), this.mode, k) : 'pixel';
     let f = sd * upscaleFactor(m);
     const img = this.variant(src, flipX, flipY, tint, m);
     // The upscaled copy may not be ready (scaling budget): then this is the 1× texture.
@@ -613,6 +658,61 @@ export class CanvasRenderer implements Renderer {
       this.grow(e, c.width * c.height);
     }
     return c;
+  }
+
+  /** The stream slot canvas of a buffer, refilled if the buffer changed since the last upload. */
+  private streamCanvas(buf: PixelBuffer): AnyCanvas {
+    let s = this.streamMap.get(buf);
+    if (!s) {
+      const canvas = makeCanvas(buf.w, buf.h);
+      const ctx = context(canvas);
+      const img = ctx.createImageData(buf.w, buf.h);
+      const words = new Uint32Array(img.data.buffer, img.data.byteOffset, buf.w * buf.h);
+      s = { buf, canvas, ctx, img, words, version: -1, used: this.frameNo };
+      this.streamMap.set(buf, s);
+      this.streamList.push(s);
+    }
+    s.used = this.frameNo;
+    if (s.version !== buf.version) {
+      s.version = buf.version;
+      const src = buf.data;
+      const out = s.words;
+      const n = out.length;
+      if (LITTLE_ENDIAN) {
+        // 0xRRGGBBAA → bytes R, G, B, A = the word 0xAABBGGRR. Transparent pixels become 0, as
+        // in upload().
+        for (let i = 0; i < n; i++) {
+          const p = src[i];
+          out[i] = (p & 255) === 0 ? 0 : (p >>> 24) | ((p >>> 8) & 0xff00) | ((p & 0xff00) << 8) | (p << 24);
+        }
+      } else {
+        for (let i = 0; i < n; i++) {
+          const p = src[i];
+          out[i] = (p & 255) === 0 ? 0 : p;
+        }
+      }
+      s.ctx.putImageData(s.img, 0, 0);
+      this.streamUploads++;
+    }
+    return s.canvas;
+  }
+
+  /** Drop the stream slots not drawn for STREAM_IDLE_FRAMES frames. */
+  private sweepStreams(): void {
+    const list = this.streamList;
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (this.frameNo - list[i].used > STREAM_IDLE_FRAMES) this.dropStream(i);
+    }
+  }
+
+  /** Remove stream slot `i` (swap with the last one). */
+  private dropStream(i: number): void {
+    const list = this.streamList;
+    if (i < 0 || i >= list.length) return;
+    const s = list[i];
+    this.streamMap.delete(s.buf);
+    list[i] = list[list.length - 1];
+    list.pop();
   }
 
   /** Drop the least recently used entries until the cache fits its budget (never this frame's). */
