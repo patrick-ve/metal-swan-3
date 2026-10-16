@@ -196,7 +196,7 @@ TEST: the route in tests/game/fps/flow.test.ts (headless: ams complete -> bridge
 
 const AUDIO_SPEC = {
   key: 'audio-spec',
-  owns: 'tools/audio/** spec entries for the fps ids (the existing spec format) (NOT src/engine/samples.ts or tests/content/samples.test.ts: audio-ship adds 'mode:fps' together with the manifest), docs/api/audio-pipeline.md (fps section), tmp/audio/fps-estimate.md',
+  owns: 'tools/audio/** spec entries for the fps ids (the existing spec format) (NOT src/engine/samples.ts or tests/content/samples.test.ts: audio-ship adds the mode:fps group together with the manifest), docs/api/audio-pipeline.md (fps section), tmp/audio/fps-estimate.md',
   task: `ROLE: PREPARE (NOT RUN) THE ELEVENLABS GENERATION for the fps mode. NEVER call the ElevenLabs API and never run npm run audio:gen in this task - it spends the user's credits. Read docs/api/audio-pipeline.md and tools/elevenlabs.ts + tools/audio/*. Add spec entries for every fps sfx id, the 4 songs and every voice line from docs/design/fps.md section 9 (prompts never name games, songs or artists; German shouts are original lines; MechaHitler uses a DESIGNED voice - write the voice-design description, never a real person's voice or a cloned voice). Make tools/audio/{process,review}.ts load all content (loadContent(() => true)) so they see the fps ids. Write tmp/audio/fps-estimate.md: the number of generations per kind, takes per item, and a credit estimate using the pipeline's own cost notes; the exact command the user runs to generate. Run the pipeline's dry-run/plan mode if it has one. Tests for the spec entries if the pipeline has spec tests. ${OWN_NOTE}`,
 }
 
