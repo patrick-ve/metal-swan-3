@@ -36,7 +36,7 @@ Spec decisions taken here (2026-10-16; the user may overrule them at the spec ga
 - **The ams tally is paid silently at the bridge** and shown on the floor-1 tally as the info line
   `MISSION 1 BONUS` (not counted again). See §1.2.
 - **Action bit 15 is `weaponPrev`**, not `map`. The debug map overlay uses F1 (§2.1).
-- **Attack tokens** (GDD §4.11.4) also apply here: at most 3 / 4 / 6 enemies (EASY / NORMAL / HARD)
+- **Attack tokens** (GDD §4.11.4) also apply here: at most 3 / 4 / 6 enemies (EASY / NORMAL / HARD = RECRUIT / VETERAN / COMMANDO in the menus)
   in a tell or an attack at the same time. The boss does not use tokens.
 - **No stone-eagle wall.** The setting is industrial (depot, hangar). The historical symbol appears
   on banners and flags only (§8.1, §8.2 `banner-pole`), the scope the user approved. Uniforms carry
@@ -178,8 +178,8 @@ export const FPS_ENDING_CAPTIONS: readonly string[] = [
 ];
 ```
 
-`{CALLSIGN}` = `getCharacter(slot.character).name` of the fps slot (`GRACE`, `MITTENS`, `PIP`,
-`GRAMPS`, `RECRUIT`). `story.ts` and `names.ts` hold only constants (no `define*` calls), so eager
+`{CALLSIGN}` = `getCharacter(slot.character).name` of the fps slot (`VINCENT`, `THOM`, `DIRK`,
+`BOB`, `PATRICK`, `RECRUIT`; roster in `docs/design/squad.md`). `story.ts` and `names.ts` hold only constants (no `define*` calls), so eager
 scenes may import them statically. Every other `content/fps/*` file loads lazily.
 
 ### 1.5 `FpsIntroScene` (group `fps-shell`, `src/game/scenes/fps-intro.ts`)
@@ -1185,7 +1185,7 @@ bottom-centre, drawn at (192, 176 + bob) with bob ±2 px while moving. 4 frames:
 
 ### 8.4 Face
 
-`fps/face/<character>` for `grace`, `mittens`, `pip`, `gramps`, `recruit`: 32 × 32, 24 frames:
+`fps/face/<character>` for `vincent`, `thom`, `dirk`, `bob`, `patrick`, `recruit` (the five friends of `docs/design/squad.md`; base each face on the friend's in-game head and select portrait, `src/game/art/portrait-kit.ts`): 32 × 32, 24 frames:
 `band × 3 + glance` (0–20; glance 0 left, 1 centre, 2 right), 21 grin, 22 ouch, 23 dead. Built
 from the project's head rig in the character's own style (beret, bobble hat, helmet, goggles).
 Damage: soot, scratches, plasters, a black eye; bands 5–6 a small red cut (this mode only). The
