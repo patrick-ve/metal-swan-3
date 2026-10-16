@@ -15,6 +15,7 @@ import type { LineSpec, MusicSpec, SfxSpec, VoiceSpec } from './spec-types';
 type Group = SfxSpec['group'];
 const BOOT: Group = 'boot';
 const AMS: Group = 'mission:ams';
+const FPS: Group = 'mode:fps';
 
 // ---------------------------------------------------------------------------------------------
 // SFX
@@ -454,6 +455,17 @@ export const VOICES: VoiceSpec[] = [
     previewText:
       'Oh, how beautiful! The canals, the little bridges, the bicycles everywhere! Everybody, come closer, closer, a little more. Say cheese! One more, one more, I closed my eyes!',
   },
+  {
+    // Phase 1 of the first-person boss (docs/design/fps.md §7, user lines 2026-10-16): the mech suit
+    // with the user's face art speaks Dutch. A designed voice only; the robot filter is added later.
+    speaker: 'mecha',
+    name: 'MS3 Mecha Suit',
+    description:
+      'Stern Dutch man in his fifties, a strict old-school teacher type, deep commanding baritone with a booming, theatrical delivery that turns furious. Native Dutch speaker from the Netherlands with a neutral accent. Slow, heavy, clipped syllables, like a giant machine speaking. Studio quality, close microphone, no reverb; a robot filter is added later.',
+    previewText:
+      'Stilte! Iedereen gaat zitten en pakt het boek erbij. Wij beginnen bij hoofdstuk drie, en ik wil geen enkel woord meer horen. Wie zijn huiswerk niet heeft gemaakt, blijft vanmiddag na. Is dat duidelijk?',
+    robot: true,
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -567,4 +579,9 @@ export const LINES: LineSpec[] = [
   // plays these takes too: 4 takes, budget of the shorter bubble (30 ticks).
   { ...bark('tourist', 'MMF!', '[muffled through a gag, alarmed] Mmf!', 'en', AMS, 0.5), takes: 4 },
   bark('tourist', 'SAY CHEESE!', '[bubbly, excited] Say cheese!', 'en', AMS, 0.6),
+
+  // --- First-person boss, phase 1: the mech suit (docs/design/fps.md §7.4, the user's lines).
+  { ...line('mecha', 'IK BEN MECHA HOFMANS!', '[angry, booming] Ik ben... MECHA HOFMANS!', 'nl', FPS, 3), takes: 3 },
+  { ...line('mecha', 'HET MUSJE, HET PRACHTIGE MUSJE...\nRED MIJ!', '[angry, anguished] Het musje... het prachtige musje... [shouting] RED MIJ!', 'nl', FPS, 4.5), takes: 3 },
+  { ...line('mecha', 'PYRAMUS EN THISBE...\nLET OP DE ACCUSATIVUS!', '[angry, stern] Pyramus en Thisbe... [shouting] let op de ACCUSATIVUS!', 'nl', FPS, 4.5), takes: 3 },
 ];

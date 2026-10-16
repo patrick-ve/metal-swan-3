@@ -153,6 +153,14 @@ the code, ids, comments, commit messages, prompts or other docs (in-game the mod
   of the real person, never an imitation of real recordings or speeches. His lines are our own
   comic lines, never quotes of the real person.
 - No Holocaust imagery, no camps, no ovens, no real victims, no real quotes or slogans.
+- **The suit's face and Dutch lines (user decision 2026-10-16, spec §0 item 10, §7.1, §8.7).**
+  The phase-1 suit wears pixel art the user supplied ("Mecha Hofmans"), imported once from
+  `art-src/user/` and mapped to the palette by `tools/art/import-face.ts`. This is the only raster
+  art in the game; the user is responsible for the rights and for the consent of anyone the art
+  shows. The suit's three Dutch lines are the user's own text, spoken by a **designed** voice
+  (`MS3 Mecha Suit`: a description of a stern Dutch teacher-type baritone, then a robot filter),
+  never a clone or an imitation of a real person's voice. The name `MECHAHITLER` and phase 2 stay
+  unchanged.
 
 Still banned — do not copy, trace or closely paraphrase anything from Wolfenstein 3D, its
 episodes and sequels:

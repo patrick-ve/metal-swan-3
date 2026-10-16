@@ -28,6 +28,11 @@ User decisions (2026-10-14, final; do not re-litigate):
 8. **Controls:** keyboard + optional pointer-lock mouse look + gamepad.
 9. **Final boss:** "MechaHitler" — phase 1 in a mech suit, phase 2 on foot. A caricature with an
    original design and a designed voice that never imitates the real person.
+10. **Mech face (user decision 2026-10-16, "face only"):** the phase-1 suit wears the user's own
+   pixel-art face ("Mecha Hofmans": grey swept-back hair, glowing red eyes, a smug smile) and
+   speaks three Dutch lines the user wrote (§7.4) in a designed Dutch robot voice. The name
+   `MECHAHITLER`, the phases and phase 2 stay as they are. Source art: `art-src/user/` (§8.7).
+   ElevenLabs generation is approved by the user (2026-10-16): no separate credit gate any more.
 
 Spec decisions taken here (2026-10-16; the user may overrule them at the spec gate):
 
@@ -1051,15 +1056,24 @@ from floor 1. The fight itself is checked by §5.3 rule 11 (it passes on every d
 
 ### 7.1 Look (original design)
 
-- **Phase 1 — the suit "the walking podium":** a riveted gunmetal walker (`steel` ramp) built
-  around a speaker's rostrum. Two thick hydraulic legs with three-toed feet. The torso is the
-  rostrum: a front plate with a large round brass loudspeaker grille (no symbol: the historical
-  symbol stays on banners and flags, §0) and brass trim. On top, his head and shoulders under a
-  glass dome (the caricature: side-parted black hair, small black moustache, wide angry eyes,
-  cartoon proportions). Two shoulder pods, each with a **pair of brass loudspeaker horns**; a
-  rotary barrel sits inside each horn (4 chainguns). A row of brass medals bolted to the left pod.
-  Exhaust stacks on the back puff smoke. Billboard 96 × 96 texels, world 1.5 × 1.5, collision
-  radius 0.6.
+- **Phase 1 — the suit "Mecha Hofmans" (user art, §0 item 10):** a hulking dark walker in the
+  style of `art-src/user/mecha-hofmans-full.png`: charcoal and gunmetal armour plates (`ink` /
+  `steel` ramps) with **glowing orange-red seams and vents**, a **round red reactor core** in the
+  chest (white-hot centre, red rings; no symbol: the historical symbol stays on banners and flags,
+  §0), and tall spiked back fins with red-lit edges. Two thick hydraulic legs with three-toed feet.
+  On top sits **the face from `art-src/user/mecha-hofmans-head.png`**: big, about 34 × 42 texels of
+  the 96 × 96 billboard, so it reads from across the arena — grey swept-back hair, lined face,
+  smug smile, **glowing red eyes**. Two shoulder pods with a pair of brass loudspeaker horns each;
+  a rotary barrel sits inside each horn (4 chainguns). Exhaust stacks on the back puff smoke.
+  Billboard 96 × 96 texels, world 1.5 × 1.5, collision radius 0.6.
+  - **Yaws:** the 3 front yaws (front, front-left, front-right) show the face (the diagonals squeeze
+    it to ~80 % width and shift it a little); the side yaws show the head in profile drawn in the
+    same grey hair and skin colours; the back yaws show the back of the grey hair. Code-drawn parts
+    never trace the face; only the imported face pixels show it.
+  - **Act frames:** the face is on every front frame. Tell: the eyes flare (a 3 × 3 white-red glow,
+    brighter on tell 2) and the reactor core pulses; pain: the face flashes white for 1 frame;
+    break 1–4: sparks, the face cracks (dark lines over it), the eyes flicker out on break 4.
+  - **The wreck** keeps the dead face (eyes dark) on the opened suit.
 - **Phase 2 — on foot:** he climbs out of the burning wreck: field-grey greatcoat with a scorched
   hem, the broken glass-dome collar still around his neck, one boot missing, soot on the face, a
   chaingun in each hand on a leather harness. Billboard 64 × 64, world 1 × 1, radius 0.34.
@@ -1108,16 +1122,23 @@ Then 60 ticks hold, a 30-tick fade, `floorComplete`. Input is off during the dea
 
 ### 7.4 Taunts (original lines; voice §9.3; subtitle small, C, y 18, 150 ticks)
 
-| # | When | German (spoken) | English subtitle |
-|---|---|---|---|
-| 1 | wakes | `IHR KOMMT ZU SPÄT. MEINE REDE BEGINNT!` | YOU ARE TOO LATE. MY SPEECH BEGINS! |
-| 2 | suit 75 % | `LAUTER! ICH WILL ES LAUTER!` | LOUDER! I WANT IT LOUDER! |
-| 3 | suit 50 % | `WER HAT DEN SCHWAN HEREINGELASSEN?` | WHO LET THE SWAN IN? |
-| 4 | suit breaks | `MEIN SCHÖNER ANZUG! DAS ZAHLT IHR MIR!` | MY BEAUTIFUL SUIT! YOU WILL PAY FOR THIS! |
-| 5 | on foot 50 % | `DAS IST NICHT FAIR! ICH HATTE VORTRITT!` | THIS IS NOT FAIR! I HAD RIGHT OF WAY! |
-| 6 | dies | `DAS... STAND NICHT... IM PLAN...` | THAT... WAS NOT... IN THE PLAN... |
+Taunts 1–3 are the suit's (speaker `mecha`, the user's Dutch lines, user decision 2026-10-16).
+They are spoken in Dutch, and the subtitle is the Dutch text itself (the exact strings below, with
+the `\n`; `src/game/content/fps/lines.ts` must hold them verbatim — `tests/tools/audio-spec.test.ts`
+checks this, and the shipped clips are found by `voiceKey`). Taunts 4–6 stay MechaHitler's.
 
-None of these is a line of the reference game or a quote of the real person.
+| # | When | Spoken | Subtitle |
+|---|---|---|---|
+| 1 | wakes | Dutch: `IK BEN MECHA HOFMANS!` | `IK BEN MECHA HOFMANS!` |
+| 2 | suit 75 % | Dutch: `HET MUSJE, HET PRACHTIGE MUSJE...\nRED MIJ!` | the same text |
+| 3 | suit 50 % | Dutch: `PYRAMUS EN THISBE...\nLET OP DE ACCUSATIVUS!` | the same text |
+| 4 | suit breaks | German: `MEIN SCHÖNER ANZUG! DAS ZAHLT IHR MIR!` | MY BEAUTIFUL SUIT! YOU WILL PAY FOR THIS! |
+| 5 | on foot 50 % | German: `DAS IST NICHT FAIR! ICH HATTE VORTRITT!` | THIS IS NOT FAIR! I HAD RIGHT OF WAY! |
+| 6 | dies | German: `DAS... STAND NICHT... IM PLAN...` | THAT... WAS NOT... IN THE PLAN... |
+
+None of these is a line of the reference game or a quote of the real person. A two-line
+subtitle uses rows 18–35 (the `\n` splits it); the subtitle stays 150 ticks or the clip length +
+30 ticks, whichever is longer.
 
 ### 7.5 Boss bar
 
@@ -1222,6 +1243,33 @@ sits at the left edge, not in the middle.
 | Messages | small text, `PAL.snow[2]`, 90 ticks, 2 lines max, newest at the bottom; every message is at most 128 px wide in the small font (a hud test checks the message list) | bottom-left of the view: (4, 154), (4, 164) — clear of the boss band at the top and of the weapon view (x 136–248) |
 | Boss bar, subtitles | §7.4, §7.5 | top centre |
 
+### 8.7 User art import (the mech face; group `art`)
+
+The one raster exception in this mode (user decision 2026-10-16; docs/ORIGINALITY.md). The user
+supplied the art; the repo keeps only the two downscaled sources:
+
+- `art-src/user/mecha-hofmans-head.png` (100 × 125): the face crop. **This is the face.**
+- `art-src/user/mecha-hofmans-full.png` (172 × 305): a style reference for the suit body only
+  (colours, glow seams, reactor core, fins). It is never imported as pixels.
+
+Pipeline (the palette rule still holds at runtime):
+
+1. `tools/art/import-face.ts` (`npm run art:import-face`): reads the head PNG (PNG decode in the
+   tool only; never in `src/`), cuts out the background (the blue sky and the dark body below the
+   chin become transparent; keep the hair, face, ears and neck), scales it with a box filter to the
+   sizes below, and maps every pixel to the nearest `PAL` colour (`src/engine/palette.ts`, CIE-ish
+   weighted RGB distance; no dithering). The red eye glow maps to the `red` ramp and the eye
+   centre to the brightest red/white so it can flare.
+2. It writes `src/game/content/fps/art/mecha-face.gen.ts`: a generated, committed, pure-data
+   module (`// generated by tools/art/import-face.ts — do not edit`) with one entry per size:
+   `{ w, h, rows: string[] }`, one char per pixel from a small key → `PAL` entry table (`.` =
+   transparent), plus the eye-centre coordinates for the tell flare.
+   Sizes: `face34` (34 × 42, the suit billboard), `face27` (27 × 42, the front diagonals),
+   `face16` (16 × 20, the `fps/boss/mech` HUD/boss-bar icon, optional).
+3. The suit painters blit these rows into the billboard canvases; everything else stays
+   code-drawn. A test checks that the generated module is up to date with the PNG (re-running
+   the import gives the same text) and that every colour is a `PAL` colour.
+
 ## 9. Audio list
 
 Every id gets a synth fallback first (group `fps-sound`, `content/fps/sfx.ts`, `music.ts`). Group
@@ -1269,14 +1317,18 @@ attack from outside the view is always heard (§4.3).
 | `officer` | death | `MEIN SCHÖNER HUT...!` (my lovely hat!) |
 | `ss` | alert | `FEUER FREI!` (open fire!) |
 | `ss` | death | `DAS STEHT NICHT IM HANDBUCH...!` (that is not in the manual!) |
-| `mechahitler` | §7.4 | the six taunts |
+| `mecha` | §7.4 | taunts 1–3 (Dutch, the suit) |
+| `mechahitler` | §7.4 | taunts 4–6 |
 
 All spoken strings live in `src/game/content/fps/lines.ts` (pure data, group `actors`). The lines
 avoid every signature shout and death line of the reference game. `voiceKey` folds the umlauts.
 
 **Voice design (designed voices only — never a clone, never a real person, prompts never name a
 person, a game or a film):** `guard` — a young, nervous, slightly hoarse German-speaking soldier;
-`officer` — an older, pompous, nasal voice; `ss` — a flat, clipped, cold voice; `mechahitler` — a
+`officer` — an older, pompous, nasal voice; `ss` — a flat, clipped, cold voice; `mecha` — a stern
+Dutch man in his fifties, a deep strict-teacher baritone, then the robot filter (`robot: true` in
+`tools/audio/spec.ts`; already designed and generated on 2026-10-16, voice `MS3 Mecha Suit`);
+`mechahitler` — a
 whiny, sulky, theatrical cartoon tyrant, a tenor that cracks into falsetto when upset, comic
 rather than menacing; processed afterwards through a tinny horn filter (phase 1). The design must
 not copy the cadence or sound of any real recording.

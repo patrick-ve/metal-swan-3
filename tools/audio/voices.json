@@ -34,6 +34,13 @@
     "preview": 1,
     "savedAt": "2026-10-14T10:39:05.159Z"
   },
+  "mecha": {
+    "voice_id": "qltvKiNyct5F0CAfTzLN",
+    "name": "MS3 Mecha Suit",
+    "generated_voice_id": "qltvKiNyct5F0CAfTzLN",
+    "preview": 5,
+    "savedAt": "2026-10-16T13:09:57.154Z"
+  },
   "rider": {
     "voice_id": "rrroHixH4RZbRXFjpcrE",
     "name": "MS3 Delivery Rider",

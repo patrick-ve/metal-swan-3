@@ -124,7 +124,7 @@ export function parseEnv(text: string): Record<string, string> {
 
 // ------------------------------------------------------------------------------------------ validation
 
-const GROUPS: readonly string[] = ['boot', 'mission:ams'];
+const GROUPS: readonly string[] = ['boot', 'mission:ams', 'mode:fps'];
 
 /** Every problem in the spec, as readable strings (empty when the spec is sound). */
 export function validateSpec(spec: Spec): string[] {

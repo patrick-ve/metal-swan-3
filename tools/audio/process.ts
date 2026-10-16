@@ -38,6 +38,10 @@ export const TARGETS = {
 } as const;
 const PEAK_CEILING = { sfx: 0.9, line: 0.9, music: 0.95 } as const;
 const RADIO_FILTER = 'highpass=f=320,lowpass=f=3200,acompressor=threshold=-20dB:ratio=3:attack=5:release=80';
+/** Robot voice: a phase-zeroed (monotone) copy over the dry voice, then a short metal comb. */
+export const ROBOT_FILTER =
+  "asplit=2[a][b];[a]afftfilt=real='hypot(re,im)':imag='0':win_size=1024:overlap=0.75,volume=0.9[r];[b]volume=0.55[d];" +
+  '[r][d]amix=inputs=2:normalize=0,aecho=0.8:0.6:6|11:0.3|0.2,highpass=f=90,acompressor=threshold=-18dB:ratio=3:attack=5:release=80';
 
 // ------------------------------------------------------------------------------------------ ffmpeg I/O
 
@@ -165,6 +169,8 @@ export interface TakeOptions {
   target?: number;
   /** Radio band-pass for lines of a radio speaker. */
   radio?: boolean;
+  /** Robot filter for lines of a robot speaker. */
+  robot?: boolean;
 }
 
 const round = (v: number, d = 3): number => Math.round(v * 10 ** d) / 10 ** d;
@@ -219,7 +225,7 @@ export function processTake(kind: Exclude<Kind, 'voice'>, id: string, spec: SfxS
     target = opts.target ?? (s.loop ? TARGETS.sfxLoop : TARGETS.sfx);
   } else {
     const l = spec as LineSpec;
-    ch = decode(rawFile, 1, opts.radio ? RADIO_FILTER : undefined);
+    ch = decode(rawFile, 1, opts.robot ? ROBOT_FILTER : opts.radio ? RADIO_FILTER : undefined);
     rawDuration = (ch[0]?.length ?? 0) / FS;
     const [a, b] = soundRange(ch, FS, -40, 20, 60);
     ch = slice(ch, a, b);
@@ -305,6 +311,7 @@ export interface ProcessOptions {
 export function processItems(list: readonly Item[], spec: Spec, p: Paths, opts: ProcessOptions = {}): { done: number; skipped: number; failed: number } {
   const log = opts.log ?? ((s: string) => console.log(s));
   const radio = new Set(spec.VOICES.filter((v: VoiceSpec) => v.radio).map((v) => v.speaker));
+  const robot = new Set(spec.VOICES.filter((v: VoiceSpec) => v.robot).map((v) => v.speaker));
   let done = 0;
   let skipped = 0;
   let failed = 0;
@@ -323,7 +330,8 @@ export function processItems(list: readonly Item[], spec: Spec, p: Paths, opts: 
         const synth = it.kind === 'sfx' ? opts.levels?.[it.id] : undefined;
         const target = synth !== undefined && Number.isFinite(synth) ? Math.max(-30, Math.min(-9, synth)) : undefined;
         const radioLine = it.kind === 'line' && radio.has((it.spec as LineSpec).speaker);
-        const m = processTake(it.kind, it.id, it.spec as SfxSpec | MusicSpec | LineSpec, n, raw, out, { target, radio: radioLine });
+        const robotLine = it.kind === 'line' && robot.has((it.spec as LineSpec).speaker);
+        const m = processTake(it.kind, it.id, it.spec as SfxSpec | MusicSpec | LineSpec, n, raw, out, { target, radio: radioLine, robot: robotLine });
         done++;
         const loop = m.loopEnd !== null ? `  loop ${m.loopStart}–${m.loopEnd}` : '';
         log(`  ${it.kind.padEnd(5)} ${it.id.slice(0, 40).padEnd(40)} take ${n}  ${m.duration.toFixed(2)} s  ${m.lufs} LUFS (target ${m.target})${loop}${m.warnings.length ? `  ! ${m.warnings.join('; ')}` : ''}`);

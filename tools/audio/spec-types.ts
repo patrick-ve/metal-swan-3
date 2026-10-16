@@ -1,12 +1,12 @@
 // Generation spec types for the ElevenLabs audio pipeline (tools only, never
 // imported by src/). The spec itself lives in tools/audio/spec.ts.
 
-export type SampleGroupName = 'boot' | 'mission:ams';
+export type SampleGroupName = 'boot' | 'mission:ams' | 'mode:fps';
 
 /** One sound effect recipe (POST /v1/sound-generation). */
 export interface SfxSpec {
   id: string;
-  group: 'boot' | 'mission:ams';
+  group: SampleGroupName;
   prompt: string;
   /** Requested length in seconds, 0.5..30. */
   seconds: number;
@@ -24,7 +24,7 @@ export interface SfxSpec {
 /** One music cue (POST /v1/music). */
 export interface MusicSpec {
   id: string;
-  group: 'boot' | 'mission:ams';
+  group: SampleGroupName;
   prompt: string;
   seconds: number;
   bpm: number;
@@ -42,6 +42,8 @@ export interface VoiceSpec {
   description: string;
   previewText: string;
   radio?: boolean;
+  /** Robot voice filter (monotone vocoder + metal comb) for lines of a robot speaker. */
+  robot?: boolean;
 }
 
 /** One spoken line (POST /v1/text-to-speech/{voice_id}). */
@@ -52,7 +54,7 @@ export interface LineSpec {
   /** TTS input; may use audio tags like [excited]. */
   say: string;
   lang: 'en' | 'nl';
-  group: 'boot' | 'mission:ams';
+  group: SampleGroupName;
   maxSeconds?: number;
   takes: number;
 }
