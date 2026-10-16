@@ -45,8 +45,15 @@ export function placeholderSeconds(text: string): number {
   return Math.round(Math.min(2.8, Math.max(0.7, 0.3 + chars * 0.07)) * 10) / 10;
 }
 
+/**
+ * Gain of her clips (2.5× ≈ +8 dB). The clips are −15 LUFS like every voice line, but her robot
+ * timbre drowned under the mission music (itself boosted 2×) and the gunfire (user feedback
+ * 2026-10-16); the master compressor keeps the sum from clipping.
+ */
+export const MAYOR_VOICE_VOL = 2.5;
+
 function line(this: any, text: string): MayorLine {
-  return { text, file: mayorClipFile(text), duration: placeholderSeconds(text) };
+  return { text, file: mayorClipFile(text), duration: placeholderSeconds(text), vol: MAYOR_VOICE_VOL };
 }
 
 /** Every bubble of hers, by moment (GDD §10, docs/api/locals.md). */

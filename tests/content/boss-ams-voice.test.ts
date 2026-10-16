@@ -10,7 +10,7 @@ import { getSampleGroup, voiceKey, type SayOpts } from '../../src/engine/samples
 import '../../src/game/content/locals/index';
 import '../../src/game/content/samples/index';
 import { AmsMayor, MAYOR } from '../../src/game/content/bosses/ams/index';
-import { MAYOR_LINES, mayorClipFile, mayorVoiceSamples, placeholderSeconds, type MayorLine } from '../../src/game/content/bosses/ams/voice';
+import { MAYOR_LINES, MAYOR_VOICE_VOL, mayorClipFile, mayorVoiceSamples, placeholderSeconds, type MayorLine } from '../../src/game/content/bosses/ams/voice';
 import { FLOOR, TestWorld } from './helpers';
 
 const PUBLIC_AUDIO = new URL('../../public/audio/', import.meta.url);
@@ -64,6 +64,11 @@ describe('ROBO-HALSEMA voice clips', () => {
     expect(MAYOR_LINES.hotdog2.file).toBe('mayor/op-mijn-museumplein.mp3');
     for (const l of LINES) expect(l.file, l.text).toBe(mayorClipFile(l.text));
     expect(new Set(LINES.map((l) => l.file)).size).toBe(LINES.length);
+  });
+
+  it('her clips play louder than the other voices (user feedback 2026-10-16)', () => {
+    expect(MAYOR_VOICE_VOL).toBeGreaterThan(1);
+    for (const v of Object.values(mayorVoiceSamples())) expect(v.vol).toBe(MAYOR_VOICE_VOL);
   });
 
   it('placeholder lengths follow the line length (0.7–2.8 s)', () => {

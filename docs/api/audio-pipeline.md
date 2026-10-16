@@ -125,6 +125,9 @@ again only when its raw take is newer, or with `--force` (use it after a spec ch
 
 ## The mayor's clips (by hand, not by the tool)
 
+- Her clips are −15 LUFS momentary max (normalised 2026-10-16) and play with `vol` 2.5
+  (`MAYOR_VOICE_VOL` in `bosses/ams/voice.ts`, +8 dB): she was too soft under the mission music.
+
 - `src/game/content/bosses/ams/voice.ts` lists her 10 bubble lines (`MAYOR_LINES`). Each line has
   its own file, named after its bubble text: `public/audio/mayor/<voiceKey>.mp3`.
 
