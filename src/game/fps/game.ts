@@ -14,6 +14,7 @@ import {
   angleTo,
   angNorm,
   CELL_DOOR,
+  CELL_PROP,
   getRayBillboard,
   hasRayBillboard,
   renderView,
@@ -29,6 +30,7 @@ import type { FpsLine } from '../content/fps/lines';
 import type { Difficulty, PlayerSlot } from '../session';
 import { ActorPool, billboardOf, MAX_ACTORS, ST_DIE, type Actor, type ActorFrame } from './actors';
 import { damageActor, makeNoise, stepActors } from './ai';
+import { DEATHCAM_FADE, DEATHCAM_HOLD, DEATHCAM_SLOW, DEATHCAM_STEP, installBoss, type FpsBoss } from './boss';
 import { FpsSound } from './audio';
 import { DoorSystem, DOOR_CLOSED, KEY_GOLD, KEY_SILVER } from './doors';
 import { bandDist, findTarget, playerDamage } from './hitscan';
@@ -55,8 +57,11 @@ export interface FpsGameOpts {
   run?: FpsRun;
 }
 
-/** 'play' → 'elevator' (switch used, input frozen) → 'done'; 'play' → 'dying' → 'dead'. */
-export type FpsState = 'play' | 'elevator' | 'dying' | 'dead' | 'done';
+/**
+ * 'play' → 'elevator' (switch used, input frozen) → 'done'; 'play' → 'dying' → 'dead';
+ * 'play' → 'deathcam' (the boss died, §7.3: slow motion, hold, fade) → 'done'.
+ */
+export type FpsState = 'play' | 'elevator' | 'dying' | 'dead' | 'done' | 'deathcam';
 
 /** The view unfolds from a 1-px line over these ticks; input is ignored meanwhile (spec §1.6). */
 export const UNFOLD_TICKS = 30;
@@ -132,6 +137,13 @@ export class FpsGame implements PickupHost {
   lastShout = -1000;
   /** The boss bar (§7.5; group floors fills it). */
   readonly bossBar: BossBarState = { visible: false, name: 'MECHAHITLER', frac: 1, phase: 1 };
+  /** MechaHitler of a boss floor (boss.ts), else null. */
+  boss: FpsBoss | null = null;
+  /** The view's fade to black 0..1 (the end of the death-cam; render() dithers it in). */
+  fade = 0;
+  /** The death-cam: the camera's start angle and the boss it turns to. */
+  private camFrom = 0;
+  private camBoss: Actor | null = null;
   /** The taunt subtitle (§7.4). */
   readonly subtitle: SubtitleState = { text: '', ticks: 0 };
   /** Recent messages, newest last (at most 2; spec §8.6), with the tick they appeared. */
@@ -194,6 +206,9 @@ export class FpsGame implements PickupHost {
     this.actors.reset(map.w, map.h);
     for (const t of map.turns) this.actors.setTurn(t.x, t.y, CARD_INDEX[t.dir]);
     this.actors.spawnParsed(map.actors, this.difficulty, cardinalAngle);
+    this.boss = installBoss(this);
+    this.fade = 0;
+    this.camBoss = null;
     this.weaponSys.reset();
     this.hud.reset();
     this.playerMove = 0;
@@ -220,6 +235,8 @@ export class FpsGame implements PickupHost {
     this.fxRng = new Rng((this.seed + this.attempt) ^ 0x5eed);
     this.load(null);
     if (this.run) this.slot.score = this.run.floorStartScore;
+    // A boss floor: the boss sleeps again, so its song ends (spec §6.2).
+    if (this.boss) this.audio.music(this.def.music, { fadeTicks: 30 });
   }
 
   /** Skip the unfold (tools and tests that pose the camera). */
@@ -248,6 +265,14 @@ export class FpsGame implements PickupHost {
   /** One tick. */
   step(i: FpsInput): void {
     this.tick++;
+    if (this.state === 'deathcam') {
+      this.deathCamTick();
+      if (this.subtitle.ticks > 0) this.subtitle.ticks--;
+      this.hud.step(this.fxRng);
+      this.pruneMessages();
+      this.syncCamera();
+      return;
+    }
     this.doors.step(this.doorBlocked);
     if (this.pushes.step(this.cellFree)) this.rebuildAreas();
     // The sound map follows the player (and gives the noise reach of this tick).
@@ -335,6 +360,13 @@ export class FpsGame implements PickupHost {
     }
   }
 
+  /** Debug F4 (spec §1.11): floors 0/1 as the elevator; the boss floor: the suit breaks, then he dies. */
+  debugSkip(): void {
+    if (this.state !== 'play') return;
+    if (this.boss) this.boss.debugSkip();
+    else this.useElevator();
+  }
+
   /** The elevator switch (or F4 on floors 0/1): the lamp turns on, input freezes, 60 ticks later the floor ends. */
   useElevator(): void {
     if (this.state !== 'play') return;
@@ -394,6 +426,45 @@ export class FpsGame implements PickupHost {
   /** A drop of a killed enemy on cell (x, y). */
   dropItem(id: string, x: number, y: number): void {
     this.items.add(id, x, y);
+  }
+
+  /** A prop placed during play (the boss's wreck): drawn with billboard `bbId`; solid blocks the cell. */
+  addProp(bbId: string, x: number, y: number, solid: boolean): void {
+    this.props.push({ x: x + 0.5, y: y + 0.5, bb: billboard(bbId) });
+    this.map.props.push({ id: bbId, x, y, solid });
+    if (solid) this.grid.flags[this.grid.idx(x, y)] |= CELL_PROP;
+  }
+
+  /**
+   * The boss died (§7.3): input off, the other actors freeze, the floor clock stops; 150 ticks of
+   * slow motion (one world step per 3 ticks) while the camera turns to him over 30 ticks, then
+   * 60 ticks hold and a 30-tick fade, then `floorComplete`.
+   */
+  startDeathCam(a: Actor): void {
+    if (this.state !== 'play') return;
+    this.state = 'deathcam';
+    this.stateTimer = 0;
+    this.camFrom = this.player.angle;
+    this.camBoss = a;
+    this.fade = 0;
+  }
+
+  private deathCamTick(): void {
+    const t = ++this.stateTimer;
+    if (t <= DEATHCAM_SLOW && t % DEATHCAM_STEP === 0) {
+      this.doors.step(this.doorBlocked);
+      if (this.pushes.step(this.cellFree)) this.rebuildAreas();
+      this.boss?.slowStep();
+    }
+    const b = this.camBoss;
+    if (b) {
+      const p = this.player;
+      const k = Math.min(1, t / 30);
+      p.angle = angNorm(Math.round(this.camFrom + angDelta(this.camFrom, angleTo(b.x - p.x, b.y - p.y)) * k));
+    }
+    const fadeFrom = DEATHCAM_SLOW + DEATHCAM_HOLD;
+    this.fade = t <= fadeFrom ? 0 : Math.min(1, (t - fadeFrom) / DEATHCAM_FADE);
+    if (t >= fadeFrom + DEATHCAM_FADE) this.complete();
   }
 
   /** Hooks for boss.ts / tools: an actor woke up / died (no-ops by default). */
@@ -537,7 +608,9 @@ export class FpsGame implements PickupHost {
     }
     const it = this.items;
     for (let k = 0; k < it.count; k++) if (!it.taken[k]) this.addSprite(it.x[k] + 0.5, it.y[k] + 0.5, it.bb[k], 0, 0);
-    for (const pr of this.props) this.addSprite(pr.x, pr.y, pr.bb, 0, 0);
+    // The death-cam shows his fall: a prop (the wreck) between the camera and him is not drawn.
+    const cb = this.state === 'deathcam' ? this.camBoss : null;
+    for (const pr of this.props) if (!cb || !this.hidesBoss(pr.x, pr.y, cb)) this.addSprite(pr.x, pr.y, pr.bb, 0, 0);
     const cam = this.camera;
     const af = this.af;
     const spurtBb = billboardOf('fps/fx/spurt');
@@ -550,6 +623,21 @@ export class FpsGame implements PickupHost {
     }
     this.scene.spriteCount = this.spriteCount;
     renderView(view, this.scene, this.camera);
+    if (this.fade > 0) ditherFade(view, this.fade);
+  }
+
+  /** A prop at (x, y) stands on the line from the player to the boss (within DEATHCAM_CLEAR tiles). */
+  private hidesBoss(x: number, y: number, b: Actor): boolean {
+    const p = this.player;
+    const bx = b.x - p.x;
+    const by = b.y - p.y;
+    const len = Math.hypot(bx, by);
+    if (len < 1e-6) return false;
+    const dx = x - p.x;
+    const dy = y - p.y;
+    const along = (dx * bx + dy * by) / len;
+    if (along <= 0 || along >= len) return false;
+    return Math.abs(dx * by - dy * bx) / len < DEATHCAM_CLEAR;
   }
 
   private addSprite(x: number, y: number, bb: RayBillboard | null, frame: number, yaw: number): void {
@@ -625,6 +713,13 @@ export class FpsGame implements PickupHost {
       mix(a.dir);
       mix(a.angle);
     }
+    const boss = this.boss;
+    if (boss) {
+      mix(boss.phase);
+      mix(boss.breakT);
+      mix(boss.taunts);
+      mix(boss.awake ? 1 : 0);
+    }
     const ws = this.weaponSys;
     mix(ws.phase);
     mix(ws.timer);
@@ -640,7 +735,26 @@ export class FpsGame implements PickupHost {
   }
 }
 
-const STATE_CODE: Readonly<Record<FpsState, number>> = { play: 0, elevator: 1, dying: 2, dead: 3, done: 4 };
+/** The death-cam hides a prop this close (tiles) to the line from the camera to the boss. */
+const DEATHCAM_CLEAR = 0.9;
+
+const STATE_CODE: Readonly<Record<FpsState, number>> = { play: 0, elevator: 1, dying: 2, dead: 3, done: 4, deathcam: 5 };
+
+/** 4 × 4 ordered-dither thresholds (0..15). */
+const BAYER4: readonly number[] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
+/** Fade the view to black by `k` 0..1 with an ordered dither (palette-safe: only black is added). */
+function ditherFade(view: RayView, k: number): void {
+  const buf = view.buf;
+  const d = buf.data;
+  const level = Math.round(k * 16);
+  for (let y = 0; y < buf.h; y++) {
+    const row = y * buf.w;
+    const b = (y & 3) << 2;
+    for (let x = 0; x < buf.w; x++) if (BAYER4[b + (x & 3)] < level) d[row + x] = 0x000000ff;
+  }
+  buf.touch();
+}
 
 /** The billboard of an id, or null when it is not registered (drawn as nothing, not magenta). */
 function billboard(id: string): RayBillboard | null {

@@ -14,9 +14,18 @@ import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { getFrame, hasSprite } from '../../engine/sprites';
 import { blinkOn, centerText, drawMenu, drawPanel, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import type { GameSettings } from '../settings';
 import { toTitle } from './flow';
-import type { GameplayScene } from './gameplay';
 import { OptionsScene } from './options';
+
+/**
+ * The scene under the pause menu (docs/design/fps.md §1.10): GameplayScene (camera shake) or
+ * FpsScene (mouse look, sensitivity).
+ */
+export interface PauseHost {
+  /** OPTIONS changed a setting while paused. */
+  applySettings?(s: GameSettings): void;
+}
 
 export const PAUSE_ITEMS = ['RESUME', 'OPTIONS', 'QUIT TO TITLE'] as const;
 /** The box (GDD §13.8): 160 × 80, centred. */
@@ -33,7 +42,7 @@ const plain: DrawOpts = { screen: true };
 export class PauseScene implements Scene {
   readonly transparent = true;
   private readonly app: GameApp;
-  private readonly game: GameplayScene;
+  private readonly host: PauseHost;
   private sel = 0;
   private t = 0;
   /** Paused ticks (the gag clock; it stops while OPTIONS is open on top). */
@@ -42,9 +51,9 @@ export class PauseScene implements Scene {
   private confirm: number | null = null;
   private leaving = false;
 
-  constructor(app: GameApp, game: GameplayScene) {
+  constructor(app: GameApp, host: PauseHost) {
     this.app = app;
-    this.game = game;
+    this.host = host;
   }
 
   /** The highlighted menu item. */
@@ -100,10 +109,7 @@ export class PauseScene implements Scene {
         app.scenes.push(
           new OptionsScene(app, {
             inGame: true,
-            onChange: (s) => {
-              const cam = this.game.runner.world.camera;
-              cam.shakeScale = s.screenShake === 'off' ? 0 : s.screenShake === 'low' ? 0.5 : 1;
-            },
+            onChange: (s) => this.host.applySettings?.(s),
           }),
           { fade: 12 },
         );

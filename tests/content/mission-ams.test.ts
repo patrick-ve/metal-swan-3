@@ -36,6 +36,8 @@ describe('mission ams', () => {
     expect(AMS.start).toBe('a');
     expect(AMS.bossSection).toBe('d');
     expect(AMS.next).toBe('m1');
+    // After the boss: the glitch bridge into the first-person mode (docs/design/fps.md §1.1).
+    expect(AMS.after).toBe('fps');
     expect(AMS.music).toBe('ams');
     expect(AMS.bossMusic).toBe('ams-boss');
     expect(AMS.hostages).toEqual({ a: 4, b: 3, c: 3 });

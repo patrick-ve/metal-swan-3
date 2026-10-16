@@ -19,12 +19,13 @@ import type { MissionDef } from '../mission/index';
 import { MissionRunner } from '../mission/runner';
 import { getMission, getWeapon, hasCharacter, hasMission, listMissions, listWeapons } from '../registry';
 import { GameSession, type Difficulty, type SlotIndex } from '../session';
-import { creditsOf } from '../settings';
+import { creditsOf, type GameSettings } from '../settings';
 import { TUNING } from '../tuning';
-import { ContinueScene } from './continue';
+import { ContinueScene, type Continuable } from './continue';
 import { hasMissionCard, missionCard, ROSTER, VOICE } from './flow-data';
+import { GlitchBridgeScene } from './glitch-bridge';
 import { MissionCompleteScene } from './mission-complete';
-import { PauseScene } from './pause';
+import { PauseScene, type PauseHost } from './pause';
 
 export interface NewGameOpts {
   players?: 1 | 2;
@@ -192,7 +193,19 @@ function withCard(id: string): MissionDef | string {
   };
 }
 
-export class GameplayScene implements Scene {
+/** The continue screen's view of a MissionRunner (docs/design/fps.md §1.10). */
+function continuableRunner(runner: MissionRunner): Continuable {
+  return {
+    continuePlayer: (slot) => runner.continuePlayer(slot),
+    resumeMusic: () => runner.resumeMusic(),
+    clearOverlays: () => {
+      runner.hud.clearBanner();
+      runner.hud.hideGo();
+    },
+  };
+}
+
+export class GameplayScene implements Scene, PauseHost {
   readonly app: GameApp;
   readonly opts: GameplayOpts;
   runner!: MissionRunner;
@@ -247,11 +260,13 @@ export class GameplayScene implements Scene {
     }
     runner.events.on('complete', () => {
       if (this.demo) this.endDemo(false);
+      // ams → the glitch bridge into the first-person mode (docs/design/fps.md §1.1): no tally page.
+      else if (runner.mission.after === 'fps') app.scenes.replace(new GlitchBridgeScene(app, { from: this, runner }), { fade: 0 });
       else app.scenes.replace(new MissionCompleteScene(app, runner), { fade: 40 });
     });
     runner.events.on('gameOver', () => {
       if (this.demo) this.endDemo(false);
-      else app.scenes.push(new ContinueScene(app, runner));
+      else app.scenes.push(new ContinueScene(app, continuableRunner(runner)));
     });
     // TIME UP! is an announcer line too (GDD §12.3).
     runner.events.on('sectionLoaded', () => {
@@ -302,6 +317,12 @@ export class GameplayScene implements Scene {
     this.loopsPaused = false;
     // Only the action buttons: a direction held through the pause keeps moving the player.
     this.app.input.suppress(ACTION_BUTTONS);
+  }
+
+  /** OPTIONS changed a setting while paused (PauseHost): the camera shake. */
+  applySettings(s: GameSettings): void {
+    const cam = this.runner.world.camera;
+    cam.shakeScale = s.screenShake === 'off' ? 0 : s.screenShake === 'low' ? 0.5 : 1;
   }
 
   update(): void {

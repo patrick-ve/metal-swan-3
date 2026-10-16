@@ -4,11 +4,11 @@
  * and off under a menu; presents the view as a streamed buffer; draws the weapon view, the
  * damage feedback, the boss band, the status bar and the messages (fps/hud.ts) and the debug map.
  *
- * Wiring by group flow (spec §1.10) is still open: the pause menu gets a small adapter (PauseScene
- * still takes a GameplayScene), and the last life goes to the GAME OVER screen instead of the
- * ContinueScene (which still takes a MissionRunner).
+ * Wiring by group flow (spec §1.10): the scene is the PauseScene's host (`applySettings`) and the
+ * ContinueScene's (`continuePlayer`, `resumeMusic`, `startPressed`): the last life pushes the
+ * continue screen, which uses the shared `session.credits`.
  */
-import { padButtonCode } from '../../engine/input';
+import { padButtonCode, type InputManager } from '../../engine/input';
 import { ACTION_BIT } from '../../engine/input-actions';
 import { PAL } from '../../engine/palette';
 import { RayView, CELL_DOOR, CELL_OPAQUE, CELL_PROP, type RayGrid } from '../../engine/ray';
@@ -23,11 +23,10 @@ import { LOCK_GOLD, LOCK_SILVER } from '../fps/map';
 import { fpsFloorByNumber } from '../fps/registry';
 import { emptyFpsInput } from '../fps/run';
 import type { FloorResult, FpsFloorDef, FpsInput, FpsRun } from '../fps/types';
-import type { PlayerSlot } from '../session';
+import type { PlayerSlot, SlotIndex } from '../session';
+import { ContinueScene, type Continuable } from './continue';
 import { fpsFloorDone } from './fps-route';
-import type { GameplayScene } from './gameplay';
-import { GameOverScene } from './game-over';
-import { PauseScene } from './pause';
+import { PauseScene, type PauseHost } from './pause';
 
 /** The black card between a death and the restart (spec §1.6). */
 export const RESTART_CARD_TICKS = 60;
@@ -40,14 +39,7 @@ const plain: DrawOpts = { screen: true };
 const half: DrawOpts = { screen: true, alpha: 0.5 };
 const view: DrawOpts = { screen: true, stream: true };
 
-/**
- * PauseScene still types its host as a GameplayScene and only touches `runner.world.camera`
- * (the OPTIONS screen-shake hook). This stand-in keeps that hook harmless until group flow
- * swaps in the `PauseHost` interface (spec §1.10).
- */
-const PAUSE_HOST = { runner: { world: { camera: { shakeScale: 1 } } } } as unknown as GameplayScene;
-
-export class FpsScene implements Scene {
+export class FpsScene implements Scene, PauseHost, Continuable {
   readonly app: GameApp;
   readonly run: FpsRun;
   readonly def: FpsFloorDef;
@@ -93,7 +85,7 @@ export class FpsScene implements Scene {
     this.inputOn(true);
     this.app.input.suppress();
     this.app.audio.music(this.def.music, { fadeTicks: 20 });
-    this.app.debug.on('skip', () => this.game.useElevator());
+    this.app.debug.on('skip', () => this.game.debugSkip());
     this.app.debug.on('weapons', () => this.game.giveAll());
   }
 
@@ -130,7 +122,7 @@ export class FpsScene implements Scene {
     }
     if (input.pausePressed || app.focusLost || input.keyPressed(padButtonCode(9))) {
       app.focusLost = false;
-      app.scenes.push(new PauseScene(app, PAUSE_HOST));
+      app.scenes.push(new PauseScene(app, this));
       return;
     }
     const i = this.input;
@@ -161,7 +153,38 @@ export class FpsScene implements Scene {
     this.slot.gameOver = true;
     this.finished = true;
     this.inputOn(false);
-    this.app.scenes.push(new GameOverScene(this.app));
+    this.app.scenes.push(new ContinueScene(this.app, this));
+  }
+
+  /**
+   * Continuable (spec §1.10): only the fps slot, only when it is out. The continue costs a shared
+   * credit and adds its point (the last score digit counts continues); the floor restarts from
+   * that score, so the point is kept.
+   */
+  continuePlayer(i: SlotIndex): boolean {
+    const session = this.app.session;
+    if (!session || i !== this.run.slot || !this.slot.gameOver) return false;
+    const before = this.slot.score;
+    if (!session.continueSlot(i)) return false;
+    this.run.floorStartScore += this.slot.score - before;
+    this.game.restart();
+    this.finished = false;
+    this.restartCard = RESTART_CARD_TICKS;
+    return true;
+  }
+
+  /** No chair gag on the continue screen: its stage would stand on the status bar. */
+  readonly continueGag = false;
+
+  /** Back to the floor's song after the continue screen. */
+  resumeMusic(): void {
+    this.app.audio.music(this.def.music, { fadeTicks: 20 });
+  }
+
+  /** The fps slot's player may use any start key or pad Start; the waiting slot cannot continue here. */
+  startPressed(i: SlotIndex, input: InputManager): boolean {
+    if (i !== this.run.slot) return false;
+    return input.pad(0).pressed('start') || input.pad(1).pressed('start');
   }
 
   draw(r: Renderer): void {

@@ -28,7 +28,7 @@ import { getCharacter } from '../registry';
 import type { GameSession, PlayerSlot } from '../session';
 import { TUNING } from '../tuning';
 import { CALLOUTS, CRITIC_QUOTES, missionCard, VOICE } from './flow-data';
-import { missionDone } from './flow';
+import { missionDone, recordMissionClear } from './flow';
 
 /** One tally line: points, or null for a missed bonus (`---`); `note` replaces the points (HATS). */
 export interface TallyLine {
@@ -185,17 +185,9 @@ export class MissionCompleteScene implements Scene {
         const quote = wrapText(CRITIC_QUOTES[tally.stars - 1], QUOTE_CHARS, 3);
         return { slot, tally, rows, total, paid: 0, quote };
       });
-    this.recordCampaign();
+    // The campaign remembers finished missions and golden records (final tally, GDD §14.6).
+    recordMissionClear(this.app, this.runner);
     if (this.cols.some((c) => c.tally.lines[1].points !== null)) app.audio.voice(VOICE.ovation);
-  }
-
-  /** The campaign remembers finished missions and golden records (final tally, GDD §14.6). */
-  private recordCampaign(): void {
-    const camp = this.app.campaign;
-    if (!camp) return;
-    const id = this.runner.mission.id;
-    if (!camp.missions.includes(id)) camp.missions.push(id);
-    for (const c of this.cols) if (c.slot.mission.goldenRecord) camp.goldenRecords[c.slot.index].add(id);
   }
 
   update(): void {

@@ -1,7 +1,8 @@
 /**
  * Final tally after the ending and the credits (GDD §14.6), per player: LIVES LEFT (lives in
  * reserve × 50,000), ALL GOLDEN RECORDS (100,000 for the golden record of all 6 campaign
- * missions, Amsterdam included),
+ * missions, Amsterdam included; on the first-person route ams + fps-1 + fps-2, flow-data.ts
+ * `goldenRecordRoute`),
  * ONE-TAKE WONDER (500,000 with no continue used) and CONTINUES USED (shown, no points), then the
  * total, which counts into the score, and the final score. The GDD gives no layout; this screen
  * follows the newspaper tally (§13.11): `FINAL TALLY` (big, gold, C, y 16), a column per player
@@ -17,7 +18,7 @@ import type { Scene } from '../../engine/scene';
 import { blinkOn, centerText, drawPanel, PLAYER_COLORS, scoreText, uiText, UI_GOLD, UI_WHITE, type CampaignRecord, type GameApp } from '../app';
 import { getCharacter } from '../registry';
 import type { PlayerSlot } from '../session';
-import { CALLOUTS, CAMPAIGN_MISSIONS } from './flow-data';
+import { CALLOUTS, CAMPAIGN_MISSIONS, goldenRecordRoute } from './flow-data';
 import { finishGame } from './flow';
 import { drawLake, veil } from './lake';
 
@@ -42,7 +43,7 @@ export interface FinalLine {
 export function finalTallyLines(slot: PlayerSlot, campaign: CampaignRecord | null): { lines: FinalLine[]; total: number } {
   const reserve = Math.max(0, slot.lives - 1);
   const records = campaign?.goldenRecords[slot.index];
-  const allRecords = records !== undefined && CAMPAIGN_MISSIONS.every((id) => records.has(id));
+  const allRecords = records !== undefined && goldenRecordRoute(campaign).every((id) => records.has(id));
   const lines: FinalLine[] = [
     { label: `LIVES LEFT ${reserve} X ${FINAL_TALLY.perLife}`, points: reserve * FINAL_TALLY.perLife },
     { label: 'ALL GOLDEN RECORDS', points: allRecords ? FINAL_TALLY.allGoldenRecords : null },

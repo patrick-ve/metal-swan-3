@@ -9,17 +9,41 @@
  * `game-over` jingle plays and the character salutes against their will (then GAME OVER).
  * Continued in time: the ropes snap, the character punches the speaker over and drops back in.
  */
+import type { InputManager } from '../../engine/input';
 import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { getFrame, hasSprite } from '../../engine/sprites';
 import { blinkOn, centerText, PLAYER_COLORS, scoreText, UI_GOLD, UI_RED, UI_WHITE, type GameApp } from '../app';
-import type { MissionRunner } from '../mission/runner';
 import { getCharacter } from '../registry';
 import type { SlotIndex } from '../session';
 import { TUNING } from '../tuning';
 import { VOICE } from './flow-data';
 import { GameOverScene } from './game-over';
+
+/**
+ * The scene under the continue overlay (docs/design/fps.md §1.10): GameplayScene passes an
+ * adapter over its MissionRunner; FpsScene implements it itself.
+ */
+export interface Continuable {
+  /** Use a continue for a slot. False when it is not possible (not out, no credits, not in this mode). */
+  continuePlayer(slot: SlotIndex): boolean;
+  /** Back to the scene's own music after a continue. */
+  resumeMusic(): void;
+  /** Hide stale banners and prompts under the overlay (optional). */
+  clearOverlays?(): void;
+  /**
+   * Did this slot's player press start this tick? (optional; default
+   * `input.pad(slot).pressed('start')`). The fps mode overrides it: its one player may use any
+   * device.
+   */
+  startPressed?(slot: SlotIndex, input: InputManager): boolean;
+  /**
+   * The 1-player chair-and-loudspeaker gag (default true). The fps mode turns it off: its stage
+   * would stand on the first-person status bar.
+   */
+  readonly continueGag?: boolean;
+}
 
 /** Ticks the switched-on speaker plays before GAME OVER; ticks of the escape when continued. */
 const SALUTE_TICKS = 100;
@@ -39,7 +63,7 @@ const dim: DrawOpts = { screen: true, alpha: 0.35 };
 export class ContinueScene implements Scene {
   readonly transparent = true;
   private readonly app: GameApp;
-  private readonly runner: MissionRunner;
+  private readonly host: Continuable;
   private ticks: number;
   private phase: Phase = 'count';
   private phaseT = 0;
@@ -48,9 +72,9 @@ export class ContinueScene implements Scene {
   private shown = 9;
   private speakerX = SPEAKER_X0;
 
-  constructor(app: GameApp, runner: MissionRunner) {
+  constructor(app: GameApp, host: Continuable) {
     this.app = app;
-    this.runner = runner;
+    this.host = host;
     this.ticks = TUNING.continues.seconds * TUNING.continues.ticksPerCount;
   }
 
@@ -69,8 +93,7 @@ export class ContinueScene implements Scene {
     this.app.audio.music('continue', { fadeTicks: 20 });
     this.app.audio.voice(VOICE.continue);
     // The world is frozen under this overlay: no stale banner or prompt behind the text.
-    this.runner.hud.clearBanner();
-    this.runner.hud.hideGo();
+    this.host.clearOverlays?.();
     this.shown = this.number;
   }
 
@@ -91,10 +114,11 @@ export class ContinueScene implements Scene {
       const slot = this.app.session?.slots[i];
       if (!slot?.joined) continue;
       const pad = input.pad(i as 0 | 1);
-      if (pad.pressed('start') && credits > 0 && this.runner.continuePlayer(i as SlotIndex)) {
+      const start = this.host.startPressed?.(i as SlotIndex, input) ?? pad.pressed('start');
+      if (start && credits > 0 && this.host.continuePlayer(i as SlotIndex)) {
         this.app.audio.sfx('ui/confirm');
-        // Back to whatever the runner plays now (the boss song in a boss fight).
-        this.runner.resumeMusic();
+        // Back to whatever the host plays now (the boss song in a boss fight).
+        this.host.resumeMusic();
         this.phase = 'escape';
         this.phaseT = 0;
         if (!this.solo) this.app.scenes.pop();
@@ -130,7 +154,7 @@ export class ContinueScene implements Scene {
     r.fade(0x05060aff, 0.5);
     const session = this.app.session;
     const slots = session?.slots.filter((s) => s.joined) ?? [];
-    if (this.solo) this.drawGag(r);
+    if (this.solo && this.host.continueGag !== false) this.drawGag(r);
     if (this.phase === 'escape' && this.solo) return;
     centerText(r, 'CONTINUE?', 60, UI_GOLD, 'big');
     const n = this.number;

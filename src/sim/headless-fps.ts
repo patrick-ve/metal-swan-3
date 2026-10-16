@@ -28,6 +28,7 @@ import { FpsScene } from '../game/scenes/fps';
 import { loadFpsContent } from '../game/scenes/fps-intro';
 import { GameSession, type Difficulty } from '../game/session';
 import { applyTuning } from '../game/tuning';
+import { FpsBot } from './bot-fps';
 import { captureConsole, releaseConsole, SimAudio, SimStats, type ConsoleCapture, type SimError } from './stats';
 
 /** Scripted first-person input: held action masks and analog values per tick. */
@@ -44,6 +45,8 @@ export interface HeadlessFpsOptions {
   god?: boolean;
   players?: 1 | 2;
   input?: FpsScript;
+  /** Drive the player with the fps bot (bot-fps.ts; `input` is ignored). */
+  bot?: boolean;
   /** Start pose (tiles, degrees: 0 east, 90 south). Also skips the unfold. */
   pose?: { x: number; y: number; deg: number };
   /** Play the 30-tick unfold (default false: the view is open at tick 0). */
@@ -62,8 +65,22 @@ export interface FpsReport {
   complete: boolean;
   deaths: number;
   kills: number;
+  /** Placed enemies of the floor (kill % total; the boss counts as one). */
+  killsTotal: number;
   secrets: number;
+  secretsTotal: number;
   treasure: number;
+  treasureTotal: number;
+  goldenRecord: boolean;
+  /** The fps slot's score. */
+  score: number;
+  /** Floor clock ticks (stops at the elevator / the boss's 0 HP). */
+  clock: number;
+  /** Boss floors: the boss phase reached (0 = no boss) and whether he died. */
+  bossPhase: number;
+  bossDead: boolean;
+  hp: number;
+  ammo: number;
   stateHash: number;
   errors: SimError[];
   warnings: string[];
@@ -83,6 +100,8 @@ export interface HeadlessFps {
   readonly ticks: number;
   /** The floor ended (elevator / F4). */
   readonly complete: boolean;
+  /** The bot (with `bot: true`), else null. */
+  readonly bot: FpsBot | null;
   step(n?: number): void;
   runUntil(pred: (h: HeadlessFps) => boolean, maxTicks: number): boolean;
   /** Put the player at (x, y) tiles facing `deg` degrees. */
@@ -101,6 +120,7 @@ class HeadlessFpsImpl implements HeadlessFps {
   readonly run: FpsRun;
   readonly stats = new SimStats();
   scene: FpsScene | null = null;
+  bot: FpsBot | null = null;
   ticks = 0;
   complete = false;
   deaths = 0;
@@ -114,7 +134,11 @@ class HeadlessFpsImpl implements HeadlessFps {
     const seed = (o.seed ?? 1) >>> 0;
     const players = o.players ?? 1;
     this.input.players = players;
-    if (o.input) this.input.addSource(new ScriptedSource(() => 0, 0, { actions: o.input.actions, analog: o.input.analog }));
+    if (o.bot) {
+      const bot = new FpsBot(() => this.game, seed);
+      this.bot = bot;
+      this.input.addSource(new ScriptedSource(() => 0, 0, { actions: (t) => bot.actions(t), analog: (t, out) => bot.analog(t, out) }));
+    } else if (o.input) this.input.addSource(new ScriptedSource(() => 0, 0, { actions: o.input.actions, analog: o.input.analog }));
     const params = { ...DEFAULT_PARAMS, god: o.god ?? false, seed, players, difficulty: o.difficulty ?? null, mode: 'fps' as const, floor };
     this.app = createApp({ input: this.input, audio: this.audio, store: new MemoryStore(), params });
     this.app.debug.god = o.god ?? false;
@@ -190,17 +214,27 @@ class HeadlessFpsImpl implements HeadlessFps {
   report(): FpsReport {
     const g = this.game;
     const lines = this.capture ? [...this.capture.lines.entries()].slice(0, 60).map(([l, n]) => (n > 1 ? `${l} (×${n})` : l)) : [];
-    let treasure = 0;
-    if (g) g.taken.forEach((t, k) => (treasure += t && /^(pocket-watch|tuning-fork|gold-bars|music-box|golden-record)$/.test(g.map.items[k].id) ? 1 : 0));
+    const t = g ? g.items.treasure() : { taken: 0, total: 0, record: false };
+    const boss = g?.boss ?? null;
     return {
       floor: this.run.floor,
       seed: (this.o.seed ?? 1) >>> 0,
       ticks: this.ticks,
       complete: this.complete,
       deaths: this.deaths,
-      kills: 0,
+      kills: g?.actors.kills ?? 0,
+      killsTotal: g?.actors.placedTotal ?? 0,
       secrets: g?.pushes.found ?? 0,
-      treasure,
+      secretsTotal: g?.map.pushes.length ?? 0,
+      treasure: t.taken,
+      treasureTotal: t.total,
+      goldenRecord: t.record,
+      score: this.session.slots[this.run.slot].score,
+      clock: g?.clock ?? 0,
+      bossPhase: boss ? boss.phase : 0,
+      bossDead: boss ? !boss.actor.alive && boss.phase === 2 : false,
+      hp: g?.player.hp ?? 0,
+      ammo: g?.player.ammo ?? 0,
       stateHash: g?.stateHash() ?? 0,
       errors: this.stats.errorList(),
       warnings: lines,

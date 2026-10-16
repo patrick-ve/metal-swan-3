@@ -10,6 +10,14 @@
  * taking a screenshot of the canvas at each step into --out. Console errors / warnings, page
  * errors and failed requests are collected; a JSON summary is printed. Exit code 1 when the page
  * threw (page errors) or the game never reached gameplay. The server is always shut down.
+ *
+ * The first-person mode (docs/design/fps.md §10): `--query "mode=fps&floor=0"` skips the title
+ * like `mission=` and expects FpsScene (then walks, turns, fires, opens, pauses and resumes);
+ * `--query "mode=bridge"` expects GlitchBridgeScene, skips the story card and goes on into
+ * FpsScene. `--route` (on by default for `mission=ams` with `boss=1&debug=1`) plays the normal
+ * script, then presses F4 (the boss dies), expects the bridge and follows it into FpsScene, then
+ * plays the rest of the route with F4: floor-1 tally → floor 2 → the suit breaks → the boss dies →
+ * floor-2 tally → the fps ending → the final tally → the name entry.
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,14 +33,16 @@ interface Args {
   timeout: number;
   viewport: { width: number; height: number };
   dpr: number;
+  /** After the side-scrolling script: F4, then the bridge into the first-person mode. */
+  route: boolean;
 }
 
 const USAGE =
   'usage: npm run smoke -- [--port 5180] [--url http://127.0.0.1:5180/] [--query "mission=m0&god=1"] [--out tmp/smoke] [--headed] [--timeout 90000] ' +
-  '[--viewport 1152x648] [--dpr 1]';
+  '[--viewport 1152x648] [--dpr 1] [--route]';
 
 function parseArgs(argv: readonly string[]): Args {
-  const a: Args = { port: 5180, query: '', out: 'tmp/smoke', headed: false, timeout: 90000, viewport: { width: 1152, height: 648 }, dpr: 1 };
+  const a: Args = { port: 5180, query: '', out: 'tmp/smoke', headed: false, timeout: 90000, viewport: { width: 1152, height: 648 }, dpr: 1, route: false };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
     const next = (): string => {
@@ -70,6 +80,9 @@ function parseArgs(argv: readonly string[]): Args {
         a.dpr = Number(next());
         if (!(a.dpr > 0 && a.dpr <= 4)) throw new Error(`bad --dpr\n${USAGE}`);
         break;
+      case '--route':
+        a.route = true;
+        break;
       case '--help':
       case '-h':
         console.log(USAGE);
@@ -79,6 +92,8 @@ function parseArgs(argv: readonly string[]): Args {
         throw new Error(`unknown option ${s}\n${USAGE}`);
     }
   }
+  const q = new URLSearchParams(a.query);
+  if (q.get('mission') === 'ams' && q.get('boss') === '1' && q.get('debug') === '1') a.route = true;
   return a;
 }
 
@@ -99,6 +114,9 @@ interface Summary {
   url: string;
   durationMs: number;
   reachedGameplay: boolean;
+  /** Set for the first-person queries and --route. */
+  reachedBridge?: boolean;
+  reachedFps?: boolean;
   screenshots: string[];
   states: Record<string, GameState>;
   pageErrors: string[];
@@ -222,61 +240,174 @@ async function main(): Promise<void> {
       for (const k of keys) await page.keyboard.up(k);
     };
 
+    /** The first-person script: walk, turn, fire, open, pause and resume. */
+    const playFps = async (): Promise<void> => {
+      summary.reachedFps = await waitForScene(page, ['FpsScene'], args.timeout);
+      if (!summary.reachedFps) throw new Error('the first-person mode never started');
+      summary.reachedGameplay = true;
+      await wait(1200);
+      await shot('fps-start');
+      await holdAndTap(['KeyW'], 900, 'Space', 200);
+      await shot('fps-walk-fire');
+      await holdAndTap(['ArrowLeft'], 700);
+      await page.keyboard.press('KeyE', { delay: 40 });
+      await wait(500);
+      await shot('fps-turn-use');
+      await page.keyboard.press('Escape', { delay: 40 });
+      await wait(400);
+      await shot('fps-pause');
+      if (!(await waitForScene(page, ['PauseScene'], 2000))) throw new Error('Esc did not pause the first-person mode');
+      await page.keyboard.press('Escape', { delay: 40 });
+      await wait(400);
+      if (!(await waitForScene(page, ['FpsScene'], 2000))) throw new Error('Esc did not resume the first-person mode');
+      await holdAndTap(['KeyW', 'ArrowRight'], 900, 'Space', 200);
+      await shot('fps-play');
+    };
+    /** The glitch bridge: shots of its phases, Enter through the story card, then the fps mode. */
+    const followBridge = async (): Promise<void> => {
+      summary.reachedBridge = await waitForScene(page, ['GlitchBridgeScene'], args.timeout);
+      if (!summary.reachedBridge) throw new Error('the glitch bridge never appeared');
+      await wait(300);
+      await shot('bridge-freeze');
+      await wait(1200);
+      await shot('bridge-glitch');
+      await wait(2600);
+      await shot('bridge-card');
+      // The first press finishes the typing, the second folds the card.
+      await page.keyboard.press('Enter', { delay: 40 });
+      await wait(300);
+      await shot('bridge-card-full');
+      await page.keyboard.press('Enter', { delay: 40 });
+      if (!(await waitForScene(page, ['FpsIntroScene', 'FpsScene'], args.timeout))) throw new Error('the bridge never reached the fps intro');
+      await wait(1500);
+      await shot('fps-intro');
+    };
+
+    /** The title flow (unless `mission=`), then the side-scrolling script; with --route on into the fps mode. */
+    const playSideScroller = async (): Promise<void> => {
+      const direct = /(^|&)mission=/.test(args.query);
+      if (!direct) {
+        if (!(await waitForScene(page, ['TitleScene'], args.timeout))) throw new Error('the title screen never appeared');
+        await wait(600);
+        await shot('title');
+        await page.keyboard.press('Enter', { delay: 40 });
+        await wait(400);
+        await shot('menu');
+        await page.keyboard.press('Enter', { delay: 40 });
+        // Mode select → character select → mission intro card (GDD §13.1); confirm and skip each.
+        if (await waitForScene(page, ['CharacterSelectScene', 'GameplayScene'], 10000)) {
+          await wait(1000);
+          await page.keyboard.press('Enter', { delay: 40 });
+        }
+        if (await waitForScene(page, ['MissionIntroScene', 'GameplayScene'], 10000)) {
+          await wait(1500);
+          await page.keyboard.press('Enter', { delay: 40 });
+        }
+      }
+      summary.reachedGameplay = await waitForScene(page, ['GameplayScene'], args.timeout);
+      if (!summary.reachedGameplay) throw new Error('gameplay never started');
+      await wait(1200);
+      await shot('mission-start');
+      // Run and shoot.
+      await holdAndTap(['ArrowRight'], 1600, 'KeyZ');
+      await shot('run-shoot');
+      // Jump while running.
+      await page.keyboard.down('ArrowRight');
+      await page.keyboard.press('KeyX', { delay: 40 });
+      await wait(260);
+      await shot('jump');
+      await page.keyboard.up('ArrowRight');
+      await wait(700);
+      // A bomb.
+      await page.keyboard.press('KeyC', { delay: 40 });
+      await wait(350);
+      await shot('bomb');
+      await wait(800);
+      await shot('explosion');
+      // Pause and resume.
+      await page.keyboard.press('Escape', { delay: 40 });
+      await wait(400);
+      await shot('pause');
+      await page.keyboard.press('Escape', { delay: 40 });
+      await wait(400);
+      await shot('resume');
+      // Play on for a while: run, shoot, jump now and then.
+      for (let i = 0; i < 4; i++) {
+        await holdAndTap(['ArrowRight'], 900, 'KeyZ');
+        await page.keyboard.press('KeyX', { delay: 40 });
+      }
+      await holdAndTap(['ArrowRight'], 900, 'KeyZ');
+      await shot('play');
+      if (args.route) {
+        // F4 (debug skip) kills the boss; the victory poses play, then the game breaks.
+        await page.keyboard.press('F4', { delay: 40 });
+        await wait(500);
+        await shot('boss-skip');
+        await followBridge();
+        await playFps();
+        await finishRoute();
+      }
+    };
+    /** Press Enter until one of `names` is on top (or the time runs out). */
+    const pressUntil = async (names: readonly string[], ms: number, every = 600): Promise<boolean> => {
+      const end = performance.now() + ms;
+      while (performance.now() < end) {
+        if (await waitForScene(page, names, every)) return true;
+        await page.keyboard.press('Enter', { delay: 40 });
+      }
+      return waitForScene(page, names, 100);
+    };
+    /**
+     * --route after floor 1 (debug=1): F4 ends floor 1 (the elevator) → its tally → floor 2 →
+     * F4 breaks the suit → F4 kills him on foot (the death-cam) → the tally → the fps ending →
+     * the final tally → the name entry (or the high scores).
+     */
+    const finishRoute = async (): Promise<void> => {
+      await page.keyboard.press('F4', { delay: 40 });
+      if (!(await waitForScene(page, ['FpsTallyScene'], 8000))) throw new Error('F4 on floor 1 did not reach the floor tally');
+      await wait(1500);
+      await shot('tally-1');
+      await page.keyboard.press('Enter', { delay: 40 }); // the first press shows the whole page
+      await wait(500);
+      await shot('tally-1-full');
+      if (!(await pressUntil(['FpsIntroScene'], 15000))) throw new Error('the floor-1 tally did not move on to floor 2');
+      await wait(800);
+      await shot('intro-2');
+      if (!(await pressUntil(['FpsScene'], 10000))) throw new Error('floor 2 never started');
+      await wait(1500);
+      await shot('floor-2');
+      await page.keyboard.press('F4', { delay: 40 });
+      await wait(700);
+      await shot('boss-break');
+      await wait(2200);
+      await shot('boss-phase-2');
+      await page.keyboard.press('F4', { delay: 40 });
+      await wait(1200);
+      await shot('boss-deathcam');
+      if (!(await waitForScene(page, ['FpsTallyScene'], 10000))) throw new Error('the boss death did not reach the floor tally');
+      await wait(1500);
+      await shot('tally-2');
+      await page.keyboard.press('Enter', { delay: 40 }); // the first press shows the whole page
+      await wait(500);
+      await shot('tally-2-full');
+      if (!(await pressUntil(['EndingScene'], 15000))) throw new Error('the floor-2 tally did not move on to the ending');
+      await wait(1500);
+      await shot('ending');
+      if (!(await pressUntil(['FinalTallyScene'], 60000, 1500))) throw new Error('the ending never reached the final tally');
+      await wait(2500);
+      await shot('final-tally');
+      if (!(await pressUntil(['NameEntryScene', 'HighScoresScene'], 30000, 1500))) throw new Error('the final tally never reached the name entry');
+      await wait(800);
+      await shot('name-entry');
+    };
+
     await page.goto(url, { waitUntil: 'load' });
     await page.locator('#game').click();
-    const direct = /(^|&)mission=/.test(args.query);
-    if (!direct) {
-      if (!(await waitForScene(page, ['TitleScene'], args.timeout))) throw new Error('the title screen never appeared');
-      await wait(600);
-      await shot('title');
-      await page.keyboard.press('Enter', { delay: 40 });
-      await wait(400);
-      await shot('menu');
-      await page.keyboard.press('Enter', { delay: 40 });
-      // Mode select → character select → mission intro card (GDD §13.1); confirm and skip each.
-      if (await waitForScene(page, ['CharacterSelectScene', 'GameplayScene'], 10000)) {
-        await wait(1000);
-        await page.keyboard.press('Enter', { delay: 40 });
-      }
-      if (await waitForScene(page, ['MissionIntroScene', 'GameplayScene'], 10000)) {
-        await wait(1500);
-        await page.keyboard.press('Enter', { delay: 40 });
-      }
-    }
-    summary.reachedGameplay = await waitForScene(page, ['GameplayScene'], args.timeout);
-    if (!summary.reachedGameplay) throw new Error('gameplay never started');
-    await wait(1200);
-    await shot('mission-start');
-    // Run and shoot.
-    await holdAndTap(['ArrowRight'], 1600, 'KeyZ');
-    await shot('run-shoot');
-    // Jump while running.
-    await page.keyboard.down('ArrowRight');
-    await page.keyboard.press('KeyX', { delay: 40 });
-    await wait(260);
-    await shot('jump');
-    await page.keyboard.up('ArrowRight');
-    await wait(700);
-    // A bomb.
-    await page.keyboard.press('KeyC', { delay: 40 });
-    await wait(350);
-    await shot('bomb');
-    await wait(800);
-    await shot('explosion');
-    // Pause and resume.
-    await page.keyboard.press('Escape', { delay: 40 });
-    await wait(400);
-    await shot('pause');
-    await page.keyboard.press('Escape', { delay: 40 });
-    await wait(400);
-    await shot('resume');
-    // Play on for a while: run, shoot, jump now and then.
-    for (let i = 0; i < 4; i++) {
-      await holdAndTap(['ArrowRight'], 900, 'KeyZ');
-      await page.keyboard.press('KeyX', { delay: 40 });
-    }
-    await holdAndTap(['ArrowRight'], 900, 'KeyZ');
-    await shot('play');
+    const mode = new URLSearchParams(args.query).get('mode');
+    if (mode === 'fps' || mode === 'bridge') {
+      if (mode === 'bridge') await followBridge();
+      await playFps();
+    } else await playSideScroller();
   } catch (err) {
     summary.failure = err instanceof Error ? err.message : String(err);
   } finally {

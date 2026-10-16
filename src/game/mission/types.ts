@@ -140,6 +140,11 @@ export interface MissionDef {
   bossSections?: readonly string[];
   /** Next mission id after the tally (default: the next registered id, e.g. m1 → m2). */
   next?: string;
+  /**
+   * What follows the mission's 'complete' event instead of the tally (docs/design/fps.md §1.1):
+   * 'fps' = the glitch bridge into the first-person mode (the tally is paid silently there).
+   */
+  after?: 'fps';
   /** Start banner (default: `name` with `subtitle` under it) and announcer line at the start. */
   startBanner?: { text?: string; sub?: string };
   announce?: string;

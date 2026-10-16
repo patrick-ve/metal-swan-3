@@ -40,6 +40,8 @@ export interface ActFrames {
   die: number;
   dieCount: number;
   dead: number;
+  /** The tell has two frames (tell, tell + 1; the mech's eyes flare brighter in the second half). */
+  tell2?: boolean;
 }
 
 export interface ActorTypeDef {
@@ -87,7 +89,10 @@ export interface ActorTypeDef {
 
 const PEOPLE_FRAMES: ActFrames = { tell: 0, shoot: 1, pain: 2, die: 3, dieCount: 4, dead: 7 };
 const DOG_FRAMES: ActFrames = { tell: 0, shoot: 1, pain: -1, die: 2, dieCount: 3, dead: 5 };
-const MECH_FRAMES: ActFrames = { tell: 0, shoot: 2, pain: 4, die: 5, dieCount: 4, dead: 8 };
+/** The suit (spec §8.2): tell 0–1, fire 2–3, pain 4, break 5–8 (the "die" frames play the break). */
+const MECH_FRAMES: ActFrames = { tell: 0, shoot: 2, pain: 4, die: 5, dieCount: 4, dead: 8, tell2: true };
+/** MechaHitler on foot (spec §8.2): tell 0, fire 1–2, pain 3, die 4–9, dead 10. */
+const FOOT_FRAMES: ActFrames = { tell: 0, shoot: 1, pain: 3, die: 4, dieCount: 6, dead: 10 };
 
 /** Spec §4.3 (speeds in tiles/tick, times in ticks at 60 Hz). */
 export const ACTOR_TYPES: Readonly<Record<ActorType, ActorTypeDef>> = {
@@ -115,14 +120,22 @@ export const ACTOR_TYPES: Readonly<Record<ActorType, ActorTypeDef>> = {
     moveSheet: 'fps/dog/move', actSheet: 'fps/dog/act', frames: DOG_FRAMES, dieTicks: 8,
     shotSfx: 'fps/dog/bite', tellSfx: 'fps/dog/growl', speaker: '', hitBase: 256, hitBaseRun: 160,
   },
-  // A stand-in for MechaHitler's suit (spec §7.2) until boss.ts (group floors) takes over through
-  // `ActorPool.bossThink`: phase-1 numbers, no tokens, no pain.
+  // MechaHitler's suit (spec §7.2, phase 1). boss.ts drives it through `ActorPool.bossThink` /
+  // `bossDamage`; these numbers are its phase-1 values (no tokens, no pain).
   boss: {
     type: 'boss', hp: [900, 1100, 1300], patrol: 0.02, chase: 0.02, reactMin: 1, reactMax: 1, tell: 30, burst: 8, burstGap: 4,
     recover: 45, pain: 0, score: 25000, drop: 'none', radius: 0.6, bite: false, opensDoors: false, tokens: false, dodges: false,
     moveSheet: 'fps/boss/mech/move', actSheet: 'fps/boss/mech/act', frames: MECH_FRAMES, dieTicks: 10,
     shotSfx: 'fps/boss/chaingun', tellSfx: 'fps/boss/spin-up', speaker: '', hitBase: 208, hitBaseRun: 112,
   },
+};
+
+/** MechaHitler on foot (spec §7.2, phase 2): boss.ts swaps `actor.def` to this when the suit breaks. */
+export const BOSS_FOOT: ActorTypeDef = {
+  type: 'boss', hp: [500, 700, 900], patrol: 0.04, chase: 0.04, reactMin: 1, reactMax: 1, tell: 24, burst: 6, burstGap: 4,
+  recover: 40, pain: 6, score: 50000, drop: 'none', radius: 0.34, bite: false, opensDoors: false, tokens: false, dodges: false,
+  moveSheet: 'fps/boss/foot/move', actSheet: 'fps/boss/foot/act', frames: FOOT_FRAMES, dieTicks: 8,
+  shotSfx: 'fps/boss/chaingun', tellSfx: 'fps/boss/spin-up', speaker: '', hitBase: 208, hitBaseRun: 112,
 };
 
 export const DIFF_INDEX: Readonly<Record<Difficulty, number>> = { easy: 0, normal: 1, hard: 2 };
@@ -182,6 +195,8 @@ export class Actor {
   chaseSight = 0;
   /** Free slot for boss.ts (phase etc.). */
   phase = 0;
+  /** boss.ts: show this frame of the act sheet instead of the state's frame (-1 = off). */
+  forceFrame = -1;
 
   constructor(index: number) {
     this.index = index;
@@ -280,6 +295,7 @@ export class ActorPool {
     a.spurt = 0;
     a.chaseSight = 0;
     a.phase = 0;
+    a.forceFrame = -1;
     if (placed) this.placedTotal++;
     this.claim(a, x, y);
     return a;
@@ -354,6 +370,12 @@ export class ActorPool {
     let sheet = def.moveSheet;
     let frame = 0;
     let yaw = billboardYaw(a.angle, a.x, a.y, camX, camY);
+    if (a.forceFrame >= 0) {
+      out.bb = billboardOf(def.actSheet);
+      out.frame = a.forceFrame;
+      out.yaw = 0;
+      return out;
+    }
     switch (a.state) {
       case ST_STAND:
         frame = 0;
@@ -364,7 +386,7 @@ export class ActorPool {
         break;
       case ST_TELL:
         sheet = def.actSheet;
-        frame = f.tell + (def.type === 'boss' && a.timer >= def.tell >> 1 ? 1 : 0);
+        frame = f.tell + (f.tell2 && a.timer >= def.tell >> 1 ? 1 : 0);
         yaw = 0;
         break;
       case ST_ATTACK:

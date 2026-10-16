@@ -4,7 +4,8 @@
  * `?mission=` start also loads that mission's group) while an ammunition belt fills in, waits
  * for a click or key (the gesture unlocks audio; one made while loading counts), then goes to
  * the title — or straight into a mission with `?mission=`, or into the first-person mode with
- * `?mode=fps&floor=n` (docs/design/fps.md §1.11; its lazy content loads in FpsIntroScene).
+ * `?mode=fps&floor=n` (docs/design/fps.md §1.11; its lazy content loads in FpsIntroScene), or
+ * into the glitch bridge with `?mode=bridge`.
  */
 import { listSfx } from '../../engine/audio';
 import { PAL } from '../../engine/palette';
@@ -16,6 +17,7 @@ import { isLazyContent, loadContent } from '../content/index';
 import { getMission } from '../registry';
 import { newSession, startNewGame } from './gameplay';
 import { startFpsRun } from './fps-route';
+import { GlitchBridgeScene } from './glitch-bridge';
 import { TitleScene } from './title';
 
 type Phase = 'content' | 'sprites' | 'sounds' | 'samples' | 'done';
@@ -135,12 +137,14 @@ export class BootScene implements Scene {
     if (!app.gesture) return;
     this.leaving = true;
     const p = app.params;
-    if (p.mode === 'fps') {
+    if (p.mode === 'fps' || p.mode === 'bridge') {
       const char = p.char ?? 'recruit';
       app.input.players = p.players;
       app.session = newSession(app, p.players === 2 ? [char, char] : [char]);
       app.campaign = newCampaign();
-      startFpsRun(app, { floor: p.floor ?? 1 });
+      // ?mode=bridge: the glitch bridge with its placeholder snapshot and no runner (fps.md §1.11).
+      if (p.mode === 'bridge') app.scenes.replace(new GlitchBridgeScene(app), { fade: 0 });
+      else startFpsRun(app, { floor: p.floor ?? 1 });
     } else if (p.mission) startNewGame(app, { mission: p.mission, section: p.section ?? undefined, players: p.players, bossRush: p.boss });
     else app.scenes.replace(new TitleScene(app), { fade: 30 });
   }

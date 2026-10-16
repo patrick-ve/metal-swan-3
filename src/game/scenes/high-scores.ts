@@ -35,10 +35,14 @@ const AFTER_GAME_TICKS = 600;
 
 /**
  * The mission column: 'ALL' for a finished game, else the mission number by its place in the
- * campaign ('ams' → 'M1', 'm1' → 'M2' … 'm5' → 'M6'); other `mN` ids → 'MN'.
+ * campaign ('ams' → 'M1', 'm1' → 'M2' … 'm5' → 'M6'); the fps floors 'fps-N' → 'FN'; other `mN`
+ * ids → 'MN'.
  */
 export function missionColumn(e: HighScoreEntry): string {
   if (e.mission === 'all') return 'ALL';
+  // The first-person floors (docs/design/fps.md §1.9): fps-1 → F1, fps-2 → F2.
+  const f = /^fps-(\d+)$/.exec(e.mission);
+  if (f) return `F${f[1]}`;
   const n = missionNumber(e.mission);
   if (n > 0) return `M${n}`;
   const m = /^m(\d+)$/.exec(e.mission);

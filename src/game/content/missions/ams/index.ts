@@ -42,6 +42,8 @@ export const AMS: MissionDef = {
   start: 'a',
   bossSection: 'd',
   next: 'm1',
+  // After the boss: the glitch bridge into the first-person mode (docs/design/fps.md §1.1).
+  after: 'fps',
   announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
   sections: { a: sectionA, b: sectionB, c: sectionC, d: sectionD },
   hostages: { a: 4, b: 3, c: 3 },

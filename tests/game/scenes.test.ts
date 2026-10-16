@@ -159,6 +159,17 @@ describe('scenes (headless)', () => {
     expect(a.scenes.top).toBeInstanceOf(GameplayScene);
   });
 
+  it('the pause menu host (PauseHost): OPTIONS changes reach the gameplay camera shake', () => {
+    const { app: a, until } = app(timeline().idle(1));
+    startNewGame(a, { mission: 'm1' });
+    expect(until(GameplayScene, 60)).toBe(true);
+    const game = a.scenes.top as GameplayScene;
+    game.applySettings({ ...a.settings, screenShake: 'off' });
+    expect(game.runner.world.camera.shakeScale).toBe(0);
+    game.applySettings({ ...a.settings, screenShake: 'low' });
+    expect(game.runner.world.camera.shakeScale).toBe(0.5);
+  });
+
   it('pause → QUIT TO TITLE asks first (default NO); YES stops the music and returns to the title', () => {
     const { app: a, step, tap, until, log } = app(timeline().idle(40).tap('start'));
     startNewGame(a, { mission: 'm1' });
@@ -415,5 +426,7 @@ describe('campaign numbering (docs/design/amsterdam.md §8)', () => {
     expect(['ams', 'm1', 'm2', 'm3', 'm4', 'm5', 'm0'].map(missionLabel)).toEqual(['MISSION 1', 'MISSION 2', 'MISSION 3', 'MISSION 4', 'MISSION 5', 'FINAL MISSION', 'MISSION 0']);
     const col = (mission: string): string => missionColumn({ name: 'AAA', score: 0, mission, character: '', continues: 0, difficulty: 'normal' });
     expect(['ams', 'm1', 'm4', 'm5', 'all'].map(col)).toEqual(['M1', 'M2', 'M5', 'M6', 'ALL']);
+    // The first-person floors (docs/design/fps.md §1.9).
+    expect(['fps-1', 'fps-2'].map(col)).toEqual(['F1', 'F2']);
   });
 });

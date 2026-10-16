@@ -7,6 +7,7 @@
  * a mission module may register its own with `defineMissionCard`. A mission without a card gets
  * one built from its MissionDef (`missionCard`).
  */
+import type { CampaignRecord } from '../app';
 import type { Difficulty } from '../session';
 import { getMission } from '../registry';
 
@@ -61,6 +62,17 @@ export function hasMissionCard(id: string): boolean {
  * the cards, labels and the high-score column come from the place in this list.
  */
 export const CAMPAIGN_MISSIONS: readonly string[] = ['ams', 'm1', 'm2', 'm3', 'm4', 'm5'];
+
+/**
+ * The first-person route (docs/design/fps.md §1.9): ams, then the two fps floors. ALL GOLDEN
+ * RECORDS on this route needs the record of each of them.
+ */
+export const FPS_ROUTE: readonly string[] = ['ams', 'fps-1', 'fps-2'];
+
+/** The missions ALL GOLDEN RECORDS needs: FPS_ROUTE once the campaign played `fps-1`, else CAMPAIGN_MISSIONS. */
+export function goldenRecordRoute(c: CampaignRecord | null): readonly string[] {
+  return c?.missions.includes('fps-1') ? FPS_ROUTE : CAMPAIGN_MISSIONS;
+}
 
 /** The number of a campaign mission (1-based place in CAMPAIGN_MISSIONS), 0 when it is not one. */
 export function missionNumber(id: string): number {

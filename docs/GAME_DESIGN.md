@@ -2709,6 +2709,10 @@ story card) → `FpsIntro` → `Fps` floor 1 (⇄ `Pause`, `Continue`) → `FpsT
 `Fps` floor 2 (boss) → `FpsTally` → `Ending` (fps captions) → `Credits` → final tally →
 `NameEntry` → `HighScores` → `Title`. m1–m5 are unreachable in a normal run (they stay playable
 with `?mission=`).
+The bridge records the ams clear and pays the ams tally silently (shown as `MISSION 1 BONUS` on
+the floor-1 tally). The fps ending plays captions → credits → poses. Pause and continue work in the
+fps floors (shared credits); the last life there goes to `Continue` → `GameOver` as in a mission.
+Debug: `?mode=bridge` starts at the bridge, `?mode=fps&floor=0|1|2` at a floor.
 
 ### 13.2 Boot
 

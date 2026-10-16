@@ -331,12 +331,139 @@ blood size, face glance) use `game.fxRng`. No allocations per tick.
 
 ## 5. Floors, boss, tally, bot
 
-- Floor 1 and floor 2 (`content/fps/floor-1.ts`, `floor-2.ts`), the episode. TODO (group floors)
-- `validate.ts` — the rules of spec §5.3. TODO (group floors)
-- MechaHitler (`boss.ts`): phases, events, reinforcements, death-cam. TODO (group floors)
-- `FpsTallyScene`. TODO (group floors)
-- `bot-fps.ts` and `npm run sim -- --mode fps`. TODO (group floors)
-- Play-test notes (seeds, difficulties, results). TODO (group floors)
+### 5.1 Floors and the episode (`content/fps/{floor-1,floor-2,episode,floors}.ts`)
+
+- The lazy manifest entry `fps/floors` imports `floor-1.ts`, `floor-2.ts` and `episode.ts`.
+- `FLOOR_1` — `fps-1` "SUPPLY DEPOT", 48 × 48, par 210 s, `secrets: 5`, music `fps-floor`.
+  The forced key loop of spec §6.1 (freight car → yard → barracks → mess hall → fuel store →
+  motor pool, gold key (27, 15) → warehouse, silver key (2, 27) → officers' wing → silver door →
+  corridor → elevator, switch `X` (45, 6)). Enemies E / N / H 22 / 34 / 46; 12 treasures
+  (20,300 points); the golden record in S4 (28, 11). `things[]`: the yard dog patrols y 36
+  (turn markers (3, 36) E, (15, 36) W), two barracks guards sleep (`ambush`), a warehouse guard
+  patrols y 20 (turn markers (2, 20) E, (19, 20) W).
+- `FLOOR_2` — `fps-2` "HANGAR", 32 × 32, par 150 s, `secrets: 2`, `boss: true`, ceiling
+  `PAL.navy[0]`, floor `PAL.steel[1]`, music `fps-floor` (boss.ts switches to `fps-boss` when he
+  wakes; a restart switches back). MechaHitler `@` (15, 4) facing S; spawn points (4, 10) and
+  (27, 10) all, (4, 9) NORMAL+, (27, 11) HARD; one extra clip (5, 27) on HARD only (rule 8).
+- `FPS_EPISODE` (`id: 'ostia'`): `['fps-1', 'fps-2']`. Par times and songs live on the floor defs.
+- Map edits: draw with the §5.1 legend, then run `tests/game/fps/validate.test.ts`.
+
+### 5.2 Validators (`src/game/fps/validate.ts`)
+
+```ts
+validateFloor(def: FpsFloorDef): { errors: string[]; warnings: string[]; budget: { easy?, normal?, hard?: AmmoBudget } }
+```
+
+Parses the floor on every difficulty and checks spec §5.3 rules 1–11 (size, closed border, one
+start, doors with walls and floor, things not on walls/doors, keys reachable before their doors
+with secrets solid, every push wall pushable from a reached cell into a free cell (pushes are
+simulated, 2 tiles, stopping early), every item reachable after the pushes, the push-wall count,
+one golden record inside a secret, the ammo budget (error on NORMAL, warning on EASY / HARD), the
+fair start (no line of sight to the start with the doors closed), the reinforcement spawns behind
+doors (2 / 3 / 4) and the boss-fight ammo). `budget` gives the numbers (floor 1 NORMAL: 34
+enemies, 1206 HP, 150 rounds; floor 2 NORMAL: 175 arena rounds ≥ 144). Load the fps content
+first (textures). `room(cells, x, y)` floods a room without doors.
+
+### 5.3 MechaHitler (`src/game/fps/boss.ts`)
+
+- `installBoss(g)` runs in `FpsGame.load` (every attempt): it finds the `'boss'` actor and sets
+  `ActorPool.bossThink` / `bossDamage`; `g.boss` is the `FpsBoss` (null on floors without one).
+- `FpsBoss`: `phase` 1 | 2, `awake`, `breakT` (−1 or the break ticks), `taunts` (bit n = taunt
+  n + 1 given), `reinforced`, `wreckX/Y`, `leash` (his room without one-cell pockets: no alcoves,
+  no corners), `think()`, `damage(dmg)`, `wake()`, `taunt(n)`, `reinforce()`, `slowStep()`,
+  `debugSkip()` (debug F4 via `FpsGame.debugSkip()`: phase 1 → a fatal suit hit, so the 50 %
+  events and the break; phase 2 → he dies; nothing during the break or the die frames).
+- Numbers (spec §7.2) are constants: `BOSS_HP`, `BOSS_TELL_1` 30 / `BOSS_TELL_1_LOW` 24 (below
+  25 %) / `BOSS_TELL_2` 24, `BOSS_SHOT_GAP` 4 (bursts of 8 / 6), recover 45 / 40,
+  `BOSS_MIN_CHASE_1/2` 45 / 30, `BOSS_ATTACK_ROLL` 24, `BOSS_ATTACK_CAP` 120, `BOSS_LOST_TICKS`
+  180, `BREAK_TICKS` 120, `DEATHCAM_SLOW/HOLD/FADE` 150 / 60 / 30. Phase 2 is the
+  `BOSS_FOOT` def in actors.ts (`actor.def` is swapped; radius 0.34, pain 6).
+- Behaviour: stands until he sees the player or is hit → horn, taunt 1, music `fps-boss`, the
+  bar. Chase toward the player (stops at 2 tiles; leash BFS path, tile centre to tile centre);
+  without sight he holds, after 180 ticks he walks to the last seen cell. The attack starts in
+  chase with sight after the minimum chase ticks with chance 24/256 per tick, always at 120; the
+  counter pauses without sight and resets at the tell. Suit hits only spark (no pain). Events:
+  75 % taunt 2; 50 % taunt 3 + `reinforce()` (bay doors within 3 cells of a spawn open; SS with
+  `placed = false`, chasing at once; a spawn point within `SPAWN_CLEAR` = 3 tiles of the player
+  stays empty, so nothing spawns at the back of a player who waits in a bay); 0 → the break (invulnerable, `forceFrame` act 5–8, 25,000,
+  `fps/boss/break`), then the wreck (`g.addProp('fps/boss/wreck', …, solid)`; an item under it
+  moves aside), he jumps out on the free cell next to it nearest to the player, taunt 4, two
+  `clip` items spill onto the free cells next to it farthest from him. On foot: pain 6 ticks only
+  out of chase; 50 % taunt 5; 0 → 50,000, a kill (`placed`), taunt 6, `g.startDeathCam(actor)`.
+- Taunts use `g.speak(line, line.meaning, subtitleTicks(text))` (≥ 150 ticks, ~5 ticks per
+  letter + 30).
+- Hooks added to `actors.ts`: `Actor.forceFrame` (an act-sheet frame instead of the state's,
+  −1 = off), `ActFrames.tell2` (the suit's two-frame tell), `BOSS_FOOT`. The act frame order is
+  the art group's (mech: tell 0–1, fire 2–3, pain 4, break 5–8; foot: tell 0, fire 1–2, pain 3,
+  die 4–9, dead 10).
+- Hooks added to `game.ts`: `boss`, `fade` (0..1; `render()` dithers the view to black with a
+  4 × 4 ordered pattern, palette-safe), `addProp(bbId, x, y, solid)`, `startDeathCam(actor)`, the
+  state `'deathcam'`: input off, the others frozen, doors / push wall / the boss step once per 3
+  ticks for 150 ticks, the camera turns to him over 30 ticks (`render()` skips a prop within
+  0.9 tiles of the line from the camera to him, so the wreck never hides his fall), `fps/boss/fall` at the last die
+  frame, 60 ticks hold, 30 ticks fade, then `floorComplete`. The floor clock only runs in
+  `'play'`, so it stops at his 0 HP (and at the elevator). `restart()` on a boss floor plays the
+  floor's song again.
+
+### 5.4 `FpsTallyScene` (`src/game/scenes/fps-tally.ts`)
+
+- `new FpsTallyScene(app, run, result)`; `fpsFloorDone` (flow) shows it, `next` →
+  `fpsTallyDone(app, run)`.
+- Pure maths: `fpsTally(result, { par, mul, slot, amsBonus?, otherJoined? }) → { lines, raw,
+  total, killPct, treasurePct, seconds }`, `ratioPct` (rounded down, ≤ 100, 0 / 0 = 100),
+  `tallySeconds` (rounded up), `clockText` (m:ss). Lines: KILLS, SECRETS, TREASURE (10,000 each
+  at 100 % / all), TIME `m:ss  PAR m:ss` ((par − s) × 500 under par), on floor 1 the info lines
+  `MISSION 1 BONUS` (+ `<tag> MISSION 1 BONUS` for the joined waiting slot) read from
+  `session.records.get('fps/ams-bonus')` (`AMS_BONUS_RECORD`, written by flow), DIFFICULTY, TOTAL
+  (= round(raw × `session.mods.tallyScore`)).
+- Page: `drawPanel` 304 × 188, `<NAME> CLEARED` big gold y 16, `FLOOR n` y 30, the slot tag top
+  right, a line every 30 ticks from tick 40 (`ui/tally-tick`, TOTAL `ui/tally-end`,
+  `fps/tally-100` on a 100 % line), TOTAL counts into the score (`slot.addScore`, extends with
+  `item/1up`), PRESS START when done; the first press shows all and pays out; auto at 600
+  ticks. `enter`: music `fps-tally`, records `fps-N` in `campaign.missions`,
+  `campaign.goldenRecords[slot]` (with the record) and `session.completed`. `next` also sets
+  `run.floorStartScore` to the score after the tally.
+
+### 5.5 Bot and sim (`src/sim/bot-fps.ts`, `tools/sim.ts`)
+
+- `new FpsBot(() => game, seed)` with `actions(tick)` / `analog(tick, out)` for a
+  `ScriptedSource`; `createHeadlessFps({ bot: true })` wires it (`h.bot`). Per tick: fight the
+  nearest living enemy in line of sight (turn up to 96 units, fire when the aim line is on it;
+  the pistol taps, the knife walks in); else BFS (walls, solid props, push walls and locked doors
+  without the key block) to: health when HP < 40, ammo when < 20 or on the knife, an unowned gun,
+  the gold key, the silver key, ammo before the boss wakes, the boss, the elevator switch (face
+  it and use). Closed doors on the path: face and use. No progress for 90 ticks → back off and
+  strafe 20 ticks. `goal`, `goalX/Y` for traces.
+- **The boss tactic** (floors-verify, 2026-10-16): with a gun up the bot keeps MechaHitler at a
+  band distance of 2.6–5 tiles (the 1..42 band; from across the arena most bullets miss and a
+  bullet did 4–8 damage), runs sideways through his tell and burst (running lowers his hit
+  chance; it flips side when blocked) and holds fire while the suit breaks. A bullet now does
+  14–18 damage on average over the fight (rule 11 assumes 19); `tests/sim/fps-bot.test.ts`
+  checks ≥ 12.
+- `FpsReport` (headless-fps.ts) now has `kills` / `killsTotal` (from `actors`), `secrets` /
+  `secretsTotal`, `treasure` / `treasureTotal` / `goldenRecord` (from `items.treasure()`),
+  `score`, `clock`, `bossPhase`, `bossDead`, `hp`, `ammo`.
+- `npm run sim -- --mode fps --floor 1|2 [--god] [--seed n] [--difficulty easy|normal|hard]
+  [--max-ticks 36000] [--expect-complete] [--out file] [--trace N] [--quiet]`. Exit code 1 on
+  errors or (with `--expect-complete`) when the floor did not end.
+
+### 5.6 Play-test notes (2026-10-16, the bot; re-run by floors-verify)
+
+| Run (seeds 1 / 2 / 3) | Result |
+|---|---|
+| floor 1, god, NORMAL | complete in 3951 / 4494 / 3974 ticks (66–75 s, par 210), kills 33/34, 0 deaths |
+| floor 2, god, NORMAL | complete, boss dead, 0 deaths (seed 1: 2558 ticks) |
+| floor 1, no god, EASY | complete in 3130 / 3268 / 3458 ticks, kills 22/22, 0 deaths |
+| floor 1, no god, NORMAL | complete in 3951 / 4494 / 3974 ticks, kills 33/34, 0 deaths |
+| floor 1, no god, HARD | complete in 14130 / 9636 / 6181 ticks, kills 45/46, 2 / 1 / 0 deaths |
+| floor 2, no god, EASY | complete in 1847 / 1543 / 1715 ticks, 0 deaths |
+| floor 2, no god, NORMAL | seed 1: 3 deaths (two in phase 2 out of ammo at 450–550 HP, one in phase 1); seeds 2 / 3: complete in 1906 / 2445 ticks, 0 deaths, ending with 0 ammo and 61 / 15 HP |
+| floor 2, no god, HARD | 3 deaths on every seed: after a death the fresh loadout (pistol, 8 rounds) meets 3 guards + 2 SS at the lift door; in the arena the bot runs dry in phase 1 or 2 |
+
+Every floor-2 run starts with the fresh loadout (no floor-1 carry), the hardest case. The
+survivor on floor 1 is the officer in the office at (7, 4): the bot skips the office (it does not
+collect treasure). The bot never opens secrets and has perfect aim; a human check of the boss
+fight on NORMAL / HARD is still open.
 
 ## 6. Content registration and tools
 

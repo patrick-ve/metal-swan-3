@@ -18,6 +18,10 @@
  *
  * Start skips to the next part (after 60 ticks of it). Everything is drawn from the cast in
  * content/ui/ending.art.ts plus the characters, hostages and the Swan; missing art is skipped.
+ *
+ * The variant 'fps' (docs/design/fps.md §1.9) ends the first-person route: CAPTIONS (with
+ * FPS_ENDING_CAPTIONS) → the credits roll alone over a night backdrop with drifting embers (the
+ * route never met the parade's cast) → the poses. It skips THE LAST NOTE and SPLASHDOWN.
  */
 import type { Color } from '../../engine/color';
 import { measure } from '../../engine/font';
@@ -30,11 +34,19 @@ import { getBgGenerator, hasBgGenerator } from '../art/art-registry';
 import { centerText, PLAYER_COLORS, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { wrapText } from '../context';
 import { getCharacter, hasCharacter } from '../registry';
+import { FPS_ENDING_CAPTIONS } from '../content/fps/story';
 import { CHARACTER_TEXTS, CREDITS, ENDING_CAPTIONS, ROSTER } from './flow-data';
 import { FinalTallyScene } from './final-tally';
 import { drawLake, drawRiddenSwan, drawSwanRig, LAKE_SURFACE, veil } from './lake';
 
 export type EndingPhase = 'last-note' | 'splashdown' | 'parade' | 'captions' | 'poses';
+
+/** 'campaign' = after m5 (the default); 'fps' = after the first-person mode's last floor. */
+export type EndingVariant = 'campaign' | 'fps';
+
+export interface EndingOpts {
+  variant?: EndingVariant;
+}
 
 /** Phase lengths (GDD §2.6). The parade lasts at least 900 ticks and until the credits are done. */
 export const LAST_NOTE_TICKS = 600;
@@ -276,22 +288,27 @@ export class EndingScene implements Scene {
   /** The squad (the roster), the first chosen hero first (they all ride home together). */
   private readonly crewIds: string[];
 
-  constructor(app: GameApp) {
+  readonly variant: EndingVariant;
+  private readonly phases: readonly EndingPhase[];
+
+  constructor(app: GameApp, o: EndingOpts = {}) {
     this.app = app;
+    this.variant = o.variant ?? 'campaign';
+    this.phases = this.variant === 'fps' ? FPS_PHASES : PHASES;
     const chosen = app.session?.slots.filter((s) => s.joined).map((s) => s.character) ?? [];
     this.heroes = chosen.filter((id) => hasCharacter(id));
     if (this.heroes.length === 0) this.heroes.push(hasCharacter(ROSTER[0]) ? ROSTER[0] : 'recruit');
     // The roll ends when its last line reaches ROLL_STOP.
     const travel = ROLL_BOTTOM - ROLL_STOP + this.roll.height;
     this.paradeTicks = Math.max(PARADE_TICKS, Math.ceil(travel / CREDITS_SPEED) + 120);
-    this.captions = ENDING_CAPTIONS.map((c) => wrapPx(c, 'big', 360));
+    this.captions = (this.variant === 'fps' ? FPS_ENDING_CAPTIONS : ENDING_CAPTIONS).map((c) => wrapPx(c, 'big', 360));
     this.crewIds = [this.heroes[0]];
     for (const id of ROSTER) if (hasCharacter(id) && !this.crewIds.includes(id)) this.crewIds.push(id);
   }
 
   /** The part playing now. */
   get phase(): EndingPhase {
-    return PHASES[Math.min(this.phaseIndex, PHASES.length - 1)];
+    return this.phases[Math.min(this.phaseIndex, this.phases.length - 1)];
   }
 
   /** Length of the current part. */
@@ -331,7 +348,7 @@ export class EndingScene implements Scene {
   private nextPhase(): void {
     this.phaseIndex++;
     this.t = 0;
-    if (this.phaseIndex >= PHASES.length) {
+    if (this.phaseIndex >= this.phases.length) {
       this.done = true;
       this.app.scenes.replace(new FinalTallyScene(this.app), { fade: 40 });
       return;
@@ -354,6 +371,7 @@ export class EndingScene implements Scene {
         if (t === SPLASH_LAND) a.sfx('env/water-splash');
         break;
       case 'parade':
+        if (this.variant === 'fps') break;
         if (t === RIMSHOT_AT) a.sfx('env/rimshot');
         if (t === this.paradeTicks - TING_BEFORE) a.sfx('enemy/triangle', { pitch: 1.06 });
         if (t === this.paradeTicks - TING_BEFORE + 20) a.sfx('env/applause');
@@ -547,6 +565,10 @@ export class EndingScene implements Scene {
 
   private drawParade(r: Renderer): void {
     const t = this.t;
+    if (this.variant === 'fps') {
+      this.drawCreditsNight(r, t);
+      return;
+    }
     if (!streetFront) buildStreet();
     r.begin(PAL.sky[2]);
     if (streetSky) r.image(streetSky, 0, 0, plain);
@@ -639,15 +661,29 @@ export class EndingScene implements Scene {
     r.sprite(torso, 0, x + hip[0], y + hip[1], plain);
   }
 
-  /** The credits roll over the parade (0.5 px/tick), clipped to the sky. */
-  private drawRoll(r: Renderer, t: number): void {
+  /** The credits roll over the parade (0.5 px/tick), clipped to the sky; `dy` moves the window. */
+  private drawRoll(r: Renderer, t: number, dy = 0): void {
     const travel = Math.min(t * CREDITS_SPEED, ROLL_BOTTOM - ROLL_STOP + this.roll.height);
     const y0 = ROLL_BOTTOM - Math.round(travel);
     for (const line of this.roll.lines) {
       const y = y0 + line.y;
       if (y < ROLL_TOP || y > ROLL_BOTTOM) continue;
-      centerText(r, line.text, y, line.color, line.font);
+      centerText(r, line.text, y + dy, line.color, line.font);
     }
+  }
+
+  /** The fps variant's parade: the same credits roll (same timing), alone over a night sky with embers. */
+  private drawCreditsNight(r: Renderer, t: number): void {
+    r.begin(PAL.navy[0]);
+    // Slow embers drifting up (cosmetic, from the tick).
+    for (let i = 0; i < EMBERS; i++) {
+      const speed = 0.12 + (i % 4) * 0.05;
+      const x = (i * 53 + Math.round(Math.sin((t + i * 37) / 40) * 8) + W) % W;
+      const y = H - (((t * speed + i * 41) % (H + 8)) | 0);
+      r.rect(x, y, 1, 1, EMBER_COLS[i % EMBER_COLS.length], (i & 3) === 0 ? plain : EMBER_DIM);
+    }
+    // The roll's window, centred on the screen instead of the parade's sky.
+    this.drawRoll(r, t, NIGHT_ROLL_DY);
   }
 
   /** Confetti raining down after the TING (cosmetic, from the tick). */
@@ -712,6 +748,13 @@ export class EndingScene implements Scene {
 }
 
 const PHASES: readonly EndingPhase[] = ['last-note', 'splashdown', 'parade', 'captions', 'poses'];
+/** The fps variant (docs/design/fps.md §1.9): captions → the credits roll → poses. */
+const FPS_PHASES: readonly EndingPhase[] = ['captions', 'parade', 'poses'];
+/** The fps credits night: embers, their colours, the roll window's move down (centred). */
+const EMBERS = 36;
+const EMBER_COLS: readonly Color[] = [PAL.red[2], PAL.gold[2], PAL.gold[3], PAL.red[3]];
+const EMBER_DIM: DrawOpts = { screen: true, alpha: 0.6 };
+const NIGHT_ROLL_DY = 56;
 
 /** Splashdown: the tick Fanfaroni lands on Mk1's head. */
 const SPLASH_LAND = 150;

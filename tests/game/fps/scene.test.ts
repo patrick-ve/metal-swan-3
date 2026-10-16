@@ -8,7 +8,7 @@ import { MODE_TITLE } from '../../../src/game/content/fps/names';
 import { DYING_TICKS, ELEVATOR_TICKS } from '../../../src/game/fps/game';
 import { FpsScene, RESTART_CARD_TICKS } from '../../../src/game/scenes/fps';
 import { CARD_AUTO, FpsIntroScene, fpsLoadState, loadFpsContent } from '../../../src/game/scenes/fps-intro';
-import { GameOverScene } from '../../../src/game/scenes/game-over';
+import { ContinueScene } from '../../../src/game/scenes/continue';
 import { PauseScene } from '../../../src/game/scenes/pause';
 import { TitleScene } from '../../../src/game/scenes/title';
 import { GameSession } from '../../../src/game/session';
@@ -78,19 +78,19 @@ describe('FpsScene (headless)', () => {
     h.dispose();
   });
 
-  it('the last life goes to the game-over screen', async () => {
+  it('the last life goes to the continue screen (group flow, spec §1.10)', async () => {
     const h = await createHeadlessFps({ floor: 0 });
     const slot = h.session.slots[0];
     slot.lives = 1;
     h.game!.hurt(500);
     h.step(DYING_TICKS);
     expect(slot.gameOver).toBe(true);
-    expect(h.app.scenes.top).toBeInstanceOf(GameOverScene);
+    expect(h.app.scenes.top).toBeInstanceOf(ContinueScene);
     expect(h.app.input.fpsMode).toBe(false);
     h.dispose();
   });
 
-  it('the elevator ends the floor; floor 0 then goes back to the title', async () => {
+  it('the elevator ends the floor; floor 0 then goes back to the title after its tally', async () => {
     const h = await createHeadlessFps({ floor: 0 });
     h.game!.useElevator();
     h.step(ELEVATOR_TICKS + 1);
@@ -99,8 +99,8 @@ describe('FpsScene (headless)', () => {
     // Floor 0 holds the four treasures and the golden record (group actors, spec §6.0).
     expect(h.run.results[0]).toMatchObject({ floor: 0, secretsTotal: 1, treasureTotal: 5, goldenRecord: false });
     expect(h.run.carry).toMatchObject({ hp: 100, ammo: 8 });
-    h.step(40);
-    expect(h.app.scenes.top).toBeInstanceOf(TitleScene);
+    // The floor tally moves on by itself (spec §1.8: 600 ticks), then floor 0 goes to the title.
+    expect(h.runUntil((x) => x.app.scenes.top instanceof TitleScene, 1200)).toBe(true);
     h.dispose();
   });
 });

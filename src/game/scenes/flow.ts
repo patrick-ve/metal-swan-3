@@ -16,6 +16,7 @@ import type { Difficulty, HighScoreEntry, PlayerSlot } from '../session';
 import { EndingScene } from './ending';
 import { firstMission, newSession } from './gameplay';
 import { HighScoresScene } from './high-scores';
+import { tallyLines } from './mission-complete';
 import { MissionIntroScene } from './mission-intro';
 import { NameEntryScene } from './name-entry';
 import { TitleScene } from './title';
@@ -42,6 +43,40 @@ export function missionDone(app: GameApp, runner: MissionRunner): void {
   const next = runner.nextMission();
   if (next && hasMission(next)) app.scenes.replace(new MissionIntroScene(app, next), { fade: 40 });
   else app.scenes.reset(new EndingScene(app), { fade: 60 });
+}
+
+/**
+ * Campaign record of a finished mission (finished missions, golden records; final tally, GDD
+ * §14.6). Both routes call it: the newspaper tally (MissionCompleteScene) and the glitch bridge
+ * (docs/design/fps.md §1.2). Idempotent for the mission list; `session.completed` is the runner's.
+ */
+export function recordMissionClear(app: GameApp, runner: MissionRunner): void {
+  const camp = app.campaign;
+  if (!camp) return;
+  const id = runner.mission.id;
+  if (!camp.missions.includes(id)) camp.missions.push(id);
+  for (const slot of runner.session.slots) if (slot.joined && slot.mission.goldenRecord) camp.goldenRecords[slot.index].add(id);
+}
+
+/**
+ * The mission tally without its page (docs/design/fps.md §1.2): computes each joined slot's TOTAL
+ * (tallyLines × tallyScore), pays it with slot.addScore (extends apply, no sound), zeroes
+ * slot.rescued and returns the totals [p1, p2] (0 for a slot that is not joined).
+ */
+export function silentTally(_app: GameApp, runner: MissionRunner): [number, number] {
+  const session = runner.session;
+  const mul = session.mods.tallyScore;
+  const totals: [number, number] = [0, 0];
+  for (const slot of session.slots) {
+    if (!slot.joined) continue;
+    totals[slot.index] = Math.round(tallyLines(runner, session, slot).raw * mul);
+  }
+  for (const slot of session.slots) {
+    if (!slot.joined) continue;
+    slot.addScore(totals[slot.index]);
+    slot.rescued = 0;
+  }
+  return totals;
 }
 
 /** The high-score row a slot would get. `finished` = the whole campaign was played through. */
