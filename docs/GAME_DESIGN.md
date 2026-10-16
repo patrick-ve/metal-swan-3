@@ -66,8 +66,10 @@ programme. (Mk1 sank. Mk2 flew south for the winter and never came back.)
 
 ### 1.2 Tone
 
-- **Saturday-morning cartoon war.** Nobody bleeds. Defeated soldiers swoon like opera singers,
-  turn black with soot, lose their tall hats, flatten like pancakes and flutter away.
+- **Saturday-morning cartoon war.** Nobody bleeds (one dated exception: the first-person mode
+  after `ams`, §17 and `docs/ART_GUIDE.md` §10, user decision 2026-10-14). Defeated soldiers
+  swoon like opera singers, turn black with soot, lose their tall hats, flatten like pancakes and
+  flutter away.
 - **The enemy is a band, and the band is the joke.** Every enemy type is built around one
   instrument and one personality trait. Its attacks are music and its telegraphs are sounds you
   learn to hear (an inhale before the tuba, a shimmer before the cymbals, three dings before the
@@ -2701,6 +2703,13 @@ text is centred on x = 192 ("C"). P1 colour `sky`, P2 colour `gold`; warnings `r
 after m5: `Ending` → `Credits` → final tally → `NameEntry` (if the score qualifies) → `HighScores`
 → `Title`. All players out of continues: `GameOver` → `NameEntry` → `HighScores` → `Title`.
 
+**Since 2026-10-14 (user decision; §17, `docs/design/fps.md` §1):** after the `ams` boss the game
+does not show the `ams` tally or `MissionIntro` m1. `Gameplay` (ams) → `GlitchBridge` (glitch +
+story card) → `FpsIntro` → `Fps` floor 1 (⇄ `Pause`, `Continue`) → `FpsTally` → `FpsIntro` →
+`Fps` floor 2 (boss) → `FpsTally` → `Ending` (fps captions) → `Credits` → final tally →
+`NameEntry` → `HighScores` → `Title`. m1–m5 are unreachable in a normal run (they stay playable
+with `?mission=`).
+
 ### 13.2 Boot
 
 - Black screen; a row of 8 small swan icons (C, y 100) fills in as sprites and sounds pre-render.
@@ -2977,10 +2986,14 @@ player. In-game scores are the same on every difficulty; only the mission tally 
 
 ### 14.6 Final tally (after the credits)
 
+The first-person mode (§17) has its own kill, treasure and floor-tally scores: `docs/design/fps.md`
+§4 (they go through the same score, extends and lives). The `ams` tally is paid silently at the
+bridge and shown as `MISSION 1 BONUS` on the floor-1 tally.
+
 | Line | Points |
 |---|---|
 | `LIVES LEFT` | lives in reserve × 50,000 |
-| `ALL GOLDEN RECORDS` | 100,000 if the player picked up the golden record of all 6 missions (ams included) |
+| `ALL GOLDEN RECORDS` | 100,000 if the player picked up the golden record of every mission of the route played: the 6 missions, or (the first-person route, §17) `ams` + floor 1 + floor 2 |
 | `ONE-TAKE WONDER` | 500,000 if the player used no continue |
 | `CONTINUES USED` | shown, no points |
 
@@ -3429,3 +3442,20 @@ ENCORE pontoon (10.1); `m1-c` (the tank leash, the placed rowboat, the footer) a
 boulder, goats 45 ticks apart, a baton-copter, the red K-line at x 2540, the cliff wall after the
 UNLOCK); the SHE TOOK THE LIFT record (11.3); the Swan marker (13.7); `die-crush` for creatures
 (15.6); 15.9 (rewritten item 7, tuning floor, new item 11).
+
+---
+
+## 17. First-person mode (after `ams`) — see `docs/design/fps.md`
+
+By the user's decision (2026-10-14), the game changes style, direction and gameplay after the
+`ams` boss ROBO-HALSEMA: a glitch and a story card lead into a first-person raycaster shooter
+with the classic mechanics of the genre (doors, keys, push-wall secrets, treasure, health, ammo,
+lives) against Nazi soldiers, one floor ("SUPPLY DEPOT") and a boss floor ("HANGAR") with the
+final boss MechaHitler (a mech suit, then on foot), then the ending. Only one player plays it
+(P1, or P2 when P1 is already out at the ams boss kill); the other slot waits. The in-game name of the mode is `MODE_TITLE` until the user names it.
+
+**`docs/design/fps.md` is the spec of this mode and wins over this document for it** (flow,
+controls, numbers, maps, boss, art, audio, tests). Its originality rules and dated exceptions
+(historical symbols, red blood in this mode only, a designed voice) are in `docs/ORIGINALITY.md`
+and `docs/ART_GUIDE.md` §10.
+

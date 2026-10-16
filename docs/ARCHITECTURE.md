@@ -10,6 +10,7 @@
 > | [`docs/api/game.md`](api/game.md) | game layer: registries, session, player, weapons, enemies + reactions, bosses, vehicles, items, hostages, missions, HUD, scenes, settings |
 > | [`docs/api/slice.md`](api/slice.md) | the content slice: fx, sfx, music, items, infantry (rifleman), m0, the headless harness, the bot, tools |
 > | [`docs/ART_GUIDE.md`](ART_GUIDE.md) | art direction and the rigs: humanoid, poses, machines, backgrounds, terrain painter |
+> | [`docs/api/fps.md`](api/fps.md) | the first-person mode: ray engine, input actions, fps game, its content and tools (spec: [`docs/design/fps.md`](design/fps.md)) |
 >
 > Content agents: read this file, `docs/ORIGINALITY.md`, then the api docs of the systems you
 > use. If code and docs disagree, fix one of them in the same change — never leave them out of
@@ -37,11 +38,13 @@ multi-part bosses, and 2-player co-op.
 2. **No runtime dependencies.** Dev dependencies only (vite, vitest, tsx, playwright, typescript,
    @types/node). No external asset files (no PNG/MP3/WAV/font files). Everything is code.
    Exception (user decision 2026-10-14): MP3 samples in `public/audio/` for the start screens
-   and mission `ams` only, listed in `src/game/content/samples/manifest.ts` (written by
-   `tools/audio/`). Every sampled id keeps its synth version as the fallback, and headless runs
-   never load them. Files kept by hand (the tool never touches them) join the groups in
-   `src/game/content/samples/index.ts`: ROBO-HALSEMA's clips (`public/audio/mayor/`) and the
-   user's own music tracks (`public/audio/user/music/`, user decision 2026-10-16).
+   and mission `ams` (sample groups `boot`, `mission:ams`) and the first-person mode (sample
+   group `mode:fps`, generated only after the user's OK on the credit estimate), listed in
+   `src/game/content/samples/manifest.ts` (written by `tools/audio/`). Every sampled id keeps
+   its synth version as the fallback, and headless runs never load them. Files kept by hand
+   (the tool never touches them) join the groups in `src/game/content/samples/index.ts`:
+   ROBO-HALSEMA's clips (`public/audio/mayor/`) and the user's own music tracks
+   (`public/audio/user/music/`, user decision 2026-10-16).
 3. **Deterministic, headless-safe simulation.** Code in `src/engine/` and `src/game/` must not
    touch `window`, `document`, `navigator`, `localStorage`, `performance`, `AudioContext`,
    `requestAnimationFrame`, `Math.random`, `Date`, or `import.meta.env` — **except** in files
@@ -182,8 +185,13 @@ index.html
 src/
   main.ts                    browser entry; wires engine + game (only importer of *.browser.ts)
   engine/                    genre-agnostic engine, no game content
+  engine/ray/                raycaster for the first-person mode: fixed angles, grid, DDA cast,
+                             textures + billboards, view renderer, movement, areas (pure, no ids)
   game/                      game rules, shared gameplay systems, scenes, HUD, art rigs
-  game/art/                  shared procedural art rigs (humanoid, machines, backgrounds, terrain)
+  game/art/                  shared procedural art rigs (humanoid, machines, backgrounds, terrain,
+                             figure3d + wall-tex for the first-person mode)
+  game/fps/                  first-person mode rules: map parsing, FpsGame, player, doors, push
+                             walls, actors + AI, hitscan, weapons, pickups, HUD, boss, validators
   game/content/              all content, loaded through the content manifest (section 7)
   sim/                       headless harness + bot autopilot (used by tools and tests)
 tools/                       node CLIs: sprites, shot, sim, smoke (+ tools/lib helpers)
@@ -258,7 +266,9 @@ same image for the same calls. Key members (see the file for the full interface)
 `begin(clear)`, `end()`, `setCamera(x,y)`, `sprite(id, frameIndex, x, y, opts)`,
 `frame(f, x, y, opts)`, `image(buf, x, y, opts)`, `rect(x,y,w,h,color,opts)`,
 `text(str, x, y, opts)`, `parallax(buf, factorX, factorY, offsetY, opts)`, `fade(color, alpha)`.
-`DrawOpts`: `flipX`, `flash` (white silhouette), `alpha`, `screen` (ignore camera), `blend:'add'`.
+`DrawOpts`: `flipX`, `flash` (white silhouette), `alpha`, `screen` (ignore camera), `blend:'add'`,
+`stream` (the buffer changes most frames, e.g. the first-person view: the canvas renderer keeps
+one streaming slot per buffer outside the texture cache instead of caching it; `docs/api/media.md`).
 Screen shake is a camera offset, not a renderer feature. Every renderer also has `res` (backbuffer
 px per logical px, §3), `mode` / `setMode()` (sprite filter) and `subpixel` / `setSubpixel()`;
 `w`, `h`, `camX`, `camY` and all draw coordinates stay logical.
@@ -543,9 +553,22 @@ entries, so one broken sub-area never takes its siblings down; the category's to
 | `missions/m0` … `missions/m5`, `missions/ams` | mission data (m0 = test range; ams = Amsterdam, played first) |
 | `locals`, `locals/art`, `bosses/ams`, `music/ams` | the Amsterdam cast, boss and songs (docs/design/amsterdam.md) |
 | `bosses/m1` … `bosses/m5` | one boss per mission |
+| `fps/` (lazy) | the first-person mode: floors, textures, billboards, HUD art, sfx, songs, lines (`docs/design/fps.md`) |
 
 Modules register content at import time with the `define*` functions. Order between modules
 must not matter (everything is looked up by ID at use time).
+
+**Lazy content (the first-person mode, `docs/design/fps.md` §3.6).** Manifest ids for which
+`isLazyContent(id)` is true (`fps`, `fps/…`) are skipped by the default `loadContent()` filter,
+so the boot, the sims, the tools and the 2D tests never import or generate them. The
+`FpsIntroScene` (and fps tests and tools) loads them on demand with `loadContent(isLazyContent)`,
+then generates their sprites (`preloadSprites('fps/')`) and ray textures (`prepareRayAssets`)
+behind a progress bar, time-budgeted like the boot. The lazy entries are `fps` (game data, floor
+0), `fps/art`, `fps/sound` and `fps/floors`, one file each so the art, sound and floor builders
+never share a file. Pure-data modules without `define*` calls (`content/fps/names.ts`,
+`content/fps/story.ts`) may be imported statically by scenes. A tool or test that must see every
+id (the audio report, the audio pipeline's loudness match and review page, the sample-manifest
+test) passes its own filter: `loadContent(() => true)` or an explicit `fps/…` id.
 
 ID conventions: kebab-case. Entities `rifleman`, `crate`, `hostage`; sprites
 `<category>/<entity>/<anim>`; sfx `weapon/pistol`, `explosion/m`, `ui/confirm`; songs `title`,
@@ -623,6 +646,10 @@ from now on (the game layer only adds new `HudState` request types). UI art live
   [--query …] [--seconds 10]` → serves the production build (`npm run build` first), plays the
   ams boss for each viewport × mode and prints render + present frame times (avg / p95 / max),
   fps and texture-cache numbers as JSON lines.
+- First-person mode (`docs/design/fps.md` §10): `npm run shot -- --fps 1 --pose x,y,deg`,
+  `npm run sprites -- fps/ [--ray]` (screen sprites; with `--ray` the wall textures and
+  billboards at every yaw), `npm run sim -- --mode fps --floor 1|2 [--god] [--expect-complete]`,
+  `npm run perf -- --query "mode=fps&floor=1&god=1"`.
 - `npm test` → vitest.
 
 ## 10. Performance budget
@@ -640,6 +667,10 @@ the GPU (`--gpu`, Apple M5) 0.3–0.37 at every k up to 10, 60 fps, xbr p95 ≤ 
 caps the CPU cost: 4K draws at k = 6 with `smooth` (12.3 ms CPU, 57 fps on SwiftShader; GPU 0.37)
 and k = 4 with `xbr` (5.6 ms CPU); 1080p at k = 5 (8.6 ms CPU, GPU 0.33). `?kmax=4` is the knob
 for a slow software-rendered machine.
+
+First-person mode (`docs/design/fps.md` §3.5): `renderView` ≤ 2 ms per 384 × 176 frame headless
+at density 1, `FpsGame.step` ≤ 0.3 ms with 60 actors, zero per-tick allocations, one stream slot
+for the view, 60 fps at k = 6.
 
 ## 11. Definition of done (every task)
 

@@ -23,7 +23,7 @@ stacks (`demo/bg`), every background generator (`demo/bg-layers`) and every terr
 | Tones | 3–4 tones per material: base, highlight, shadow, deepest. Glints (one extra-light pixel) only on metal, boots and helmets. |
 | Clean clusters | No single-pixel noise. Texture comes from 2×2 clusters, seams, rivets, strata. Dither only with the ordered Bayer pattern and only at band borders (skies, explosions, smoke). `despeckle()` removes stray pixels from shaded parts. |
 | Readability | Big heads (10–12 px), big boots and gloves, exaggerated poses, faces never hidden by the near arm (the rig moves a face-crossing arm behind the head). |
-| Bloodless | Deaths are cartoon: stagger and fall, scorch-black tumble, soot statue that crumbles to ash, dizzy stars. Never blood. |
+| Bloodless | Deaths are cartoon: stagger and fall, scorch-black tumble, soot statue that crumbles to ash, dizzy stars. Never blood. (One dated exception: the first-person mode, section 10.) |
 | Originality | Our own designs only (see `docs/ORIGINALITY.md` §Art). No look-alikes of any existing game's characters, vehicles, crates or HUD. |
 
 **High-resolution displays** (`docs/ARCHITECTURE.md` §3): art is authored at 1× — every
@@ -464,3 +464,36 @@ materials (mission ams): `defineHiTerrainMaterial`, see "2x backgrounds and terr
 11. 2× art (mission ams only): same frames, sizes, anchors and points as the 1× strip, buffer
     twice the size, crisp, palette only, light top-left (section 1, "2x art (mission ams)");
     check with `npm run sprites -- <prefix> --density 2 --marks`.
+
+---
+
+## 10. First-person mode (after mission ams)
+
+The spec is `docs/design/fps.md` (ids in its §8); the originality rules are in
+`docs/ORIGINALITY.md`, "Exception: the first-person mode". This section adds the art rules of
+the mode. Everything in section 1 still applies, except where this section says otherwise.
+
+### Exception: red blood (user decision 2026-10-14)
+
+- **Only in the first-person mode** (sprite and texture ids under `fps/`). Every other mission,
+  the menus, the bridge's ams snapshot and the 2D cast stay bloodless (section 1).
+- Allowed: blood pools on the floor (`fps/fx/blood-pool`), hit spurts (`fps/fx/spurt`), blood in
+  the enemies' and MechaHitler's `die` and `dead` frames, a small red cut on the hero's face in
+  the two lowest health bands, and the `blood-pool` pickup.
+- Colours: `PAL.red[0..2]` only (no new colours, no gore: no severed parts, no exposed bones or
+  organs). Deaths read as the classic genre: a fall with a red splash, then a still corpse.
+
+### Raycaster art
+
+| Rule | Detail |
+|---|---|
+| Wall and door textures | 64 × 64, opaque, palette-only, registered with `defineRayTexture`. They tile seamlessly left/right (a test checks the edge columns). Light still comes from the top-left inside the texture; the engine makes the darker side (north/south faces) itself with `stepShade(c, −1)` — never draw a second, darker copy. Keep strong vertical structure (seams, posts, banners): horizontal detail shimmers less at a distance. |
+| Historical symbols | Allowed on banners and flags only (user decision 2026-10-14: "swastika banners and flags"): the `B` and `K` wall textures and the `banner-pole` prop. Not on uniforms (no armbands), not on the boss. Draw them in our own pixels on a red field with a white disc; no other text or slogans on walls. |
+| Protected emblems | Never draw the Red Cross emblem (a red cross on white) or any cross on a first-aid item, wall, vehicle or uniform. The first aid is an olive pouch with a white band (spec §4.5). |
+| Billboards | `defineRayBillboard`: 64 × 64 texels for people, props and items (96 × 96 for the mech), transparent background, the figure standing on the bottom row (its feet touch the floor line), centred on column 32 (48 for 96). A person fills about 52 of the 64 rows; items sit in the lower third. 1-px INK outline as everywhere. |
+| Yaws | Moving actors have 8 yaws: render 0 (facing the viewer) to 4 (facing away) with the 3D joint rig (`src/game/art/figure3d.ts`); the engine mirrors 5–7 from 3–1. Tell, attack, pain and death frames have 1 yaw (they always face the viewer). Keep the silhouette readable at 16 px tall (a far enemy). |
+| Frame sets | Exactly the frame counts of the spec's §8.2 table (people: `move` stand + 4 walk; `act` tell, shoot, pain, die 1–4, dead; the dog and both boss phases have their own counts, see the table). The tell pose must read at a glance (weapon raised to the eye), because it is the player's warning. |
+| Screen sprites | Weapon views (112 × 80, anchor bottom-centre), the status bar (384 × 40), HUD icons and the face (32 × 32 in a round porthole) are normal sprites (`defineSprite`) with ids under `fps/`. |
+| Originality | No traced or recreated sprite, texture, HUD layout, face portrait or treasure of the reference game. The setting is industrial (depot, rail yard, hangar), the treasures are our own (pocket watch, tuning fork, gold bars, music box, golden record), the 1UP is a tin toy swan. |
+| Look | `npm run sprites -- fps/` (screen sprites) and `npm run sprites -- fps/ --ray` (textures and billboards, all yaws); `npm run shot -- --fps 1 --pose x,y,deg` for the game view. Look at 1× too: the view is 384 × 176. |
+

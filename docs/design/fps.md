@@ -1,0 +1,1343 @@
+# First-person mode — the spec (after mission `ams`)
+
+> **Status:** draft 2026-10-16, written by group `spec` of `.claude/workflows/fps.mjs` from the
+> approved plan (`~/.claude/plans/next-up-i-want-vast-mccarthy.md`). It waits for the user's spec
+> gate (approve this spec and give the mode name). For this mode, **this spec wins over
+> `docs/GAME_DESIGN.md`**. The GDD only points here (GDD §17).
+>
+> Marks: **G** = a genre convention (the mechanics of the 1992 first-person genre-founder,
+> converted to 60 Hz), **I** = invented for this game. The reference game is never named in this
+> file; its name may appear only in `docs/ORIGINALITY.md`.
+
+## 0. Decisions and open items
+
+User decisions (2026-10-14, final; do not re-litigate):
+
+1. **Scope:** 1 floor + a separate boss floor, then the ending and the credits.
+2. **Transition:** a glitch + story bridge right after the ams boss. It skips the ams tally screen
+   and MISSION 2 (`m1`).
+3. **Iconography:** historical Nazi symbols (swastika banners and flags) are allowed in this mode.
+   The enemies are the villains.
+4. **Blood:** classic red blood in this mode only. The rest of the game stays bloodless.
+5. **Name:** the user gives the in-game name later. The code uses the constant `MODE_TITLE`
+   (placeholder `'OPERATION ???'`, `src/game/content/fps/names.ts`). The reference game's name
+   never appears in the game, the code, ids or docs (only in `docs/ORIGINALITY.md`).
+6. **Audio:** ElevenLabs takes are wanted. Every sound first gets a synth fallback. Generating
+   takes spends credits and needs a separate user OK.
+7. **Co-op:** only P1 plays the mode. P2's slot waits and carries over.
+8. **Controls:** keyboard + optional pointer-lock mouse look + gamepad.
+9. **Final boss:** "MechaHitler" — phase 1 in a mech suit, phase 2 on foot. A caricature with an
+   original design and a designed voice that never imitates the real person.
+
+Spec decisions taken here (2026-10-16; the user may overrule them at the spec gate):
+
+- **Carry-over (G):** HP, weapons and ammo carry from floor 1 to floor 2. The plan's "pistol + 8
+  ammo" applies to a fresh start (`?mode=fps`, the bridge) and to every restart after a death.
+- **The ams tally is paid silently at the bridge** and shown on the floor-1 tally as the info line
+  `MISSION 1 BONUS` (not counted again). See §1.2.
+- **Action bit 15 is `weaponPrev`**, not `map`. The debug map overlay uses F1 (§2.1).
+- **Attack tokens** (GDD §4.11.4) also apply here: at most 3 / 4 / 6 enemies (EASY / NORMAL / HARD)
+  in a tell or an attack at the same time. The boss does not use tokens.
+- **No stone-eagle wall.** The setting is industrial (depot, hangar). The historical symbol appears
+  on banners and flags only (§8.1, §8.2 `banner-pole`), the scope the user approved. Uniforms carry
+  no armbands; the boss's rostrum carries no symbol (§7.1).
+- **GDD §4.11 rule 3 ("no off-screen fire") is replaced in this mode** (2026-10-16): enemies
+  outside the view may fire (G; the hit chance is lower, §4.3). In exchange their tell sound
+  always plays at a volume of at least 0.5, panned (§9.1), and every hit shows a red edge marker
+  on the side it came from (§4.9). GDD rules 2 (tells ≥ 18 ticks) and 4 (attack tokens) apply.
+- **Strafe modifier is `KeyC`, not Alt** (§2.1): Alt + arrow keys navigate the browser back and
+  forward, and a lone Alt opens the Firefox menu bar.
+
+Open items (defaults are used until the user decides):
+
+| Item | Default |
+|---|---|
+| In-game name of the mode | `MODE_TITLE = 'OPERATION ???'`. The final name must not follow the reference game's episode or level names ("OPERATION <German word>", "CASTLE …", any of its episode or level titles) and must pass the self-check in `docs/ORIGINALITY.md`. |
+| Carry-over floor 1 → floor 2 | HP, weapons and ammo carry (G). The plan said "each floor starts with pistol + 8 ammo"; the spec keeps that only for a fresh start and for restarts. |
+| Historical symbol on armbands / the boss's emblem | not used (banners and flags only, the approved scope) |
+| `MISSION 1 BONUS` | paid at the bridge, shown as an info line on the floor-1 tally |
+| `m1`–`m5` | unreachable in a normal run (ams → bridge → fps → ending). They stay in the code and in `?mission=` (scope: ams only) |
+| ElevenLabs takes for this mode | not generated; needs the user's OK after the credit estimate (group `audio-spec`) |
+
+## 1. Flow
+
+### 1.1 Route
+
+```
+GameplayScene (ams, boss dies, victory poses + MISSION COMPLETE! for 210 ticks)
+  └─ runner 'complete'  →  GlitchBridgeScene  →  FpsIntroScene(floor 1)  →  FpsScene(floor 1)
+       → FpsTallyScene(floor 1) → FpsIntroScene(floor 2) → FpsScene(floor 2, boss)
+       → FpsTallyScene(floor 2) → EndingScene({ variant: 'fps' }) → FinalTallyScene → finishGame
+Death: FpsScene restarts the floor (lives left) or pushes ContinueScene (last life).
+ContinueScene timeout → GameOverScene → finishGame (unchanged).
+```
+
+**Hook (group `flow`).** `src/game/mission/types.ts` `MissionDef` gains
+`after?: 'fps'` (doc: "what follows the mission's 'complete' event instead of the tally"). AMS sets
+`after: 'fps'` and keeps `next: 'm1'` (`src/game/content/missions/ams/index.ts:44`), so the
+existing `next` tests stay green. The 'complete' handler is
+`src/game/scenes/gameplay.ts:248-251`:
+
+```ts
+runner.events.on('complete', () => {
+  if (this.demo) this.endDemo(false);
+  else if (runner.mission.after === 'fps') app.scenes.replace(new GlitchBridgeScene(app, { from: this, runner }), { fade: 0 });
+  else app.scenes.replace(new MissionCompleteScene(app, runner), { fade: 40 });
+});
+```
+
+The runner emits 'complete' at the end of its `victory` state, after
+`TUNING.transition.victoryTicks` = 210 ticks (`src/game/mission/runner.ts:441-447`,
+`src/game/tuning.ts:311`). So the ams victory poses, the `MISSION COMPLETE!` banner and the jingle
+still play. Then the game "breaks".
+
+### 1.2 `recordMissionClear` (group `flow`, `src/game/scenes/flow.ts`)
+
+Today the bookkeeping lives in `MissionCompleteScene`:
+
+- `recordCampaign()` (`src/game/scenes/mission-complete.ts:193-199`): pushes the mission id to
+  `app.campaign.missions` and adds it to `campaign.goldenRecords[slot]` for each slot with
+  `slot.mission.goldenRecord`.
+- The tally: `tallyLines(runner, session, slot)` (`:81-105`), `total = round(raw ×
+  session.mods.tallyScore)` (`:182`), paid by `payOut` with `slot.addScore` (`:233-244`).
+- `next()` (`:246-251`): pays the rest, sets `slot.rescued = 0`, calls `missionDone`.
+- `session.completed.push(id)` is already done by the runner (`runner.ts:653`, `:678`).
+
+Extract into `flow.ts`:
+
+```ts
+/** Campaign record of a finished mission (finished missions, golden records). Both routes call it. */
+export function recordMissionClear(app: GameApp, runner: MissionRunner): void;
+/**
+ * The mission tally without its page: computes each joined slot's TOTAL (tallyLines × tallyScore),
+ * pays it with slot.addScore (extends apply, no sound), zeroes slot.rescued and returns the
+ * totals [p1, p2] (0 for a slot that is not joined).
+ */
+export function silentTally(app: GameApp, runner: MissionRunner): [number, number];
+```
+
+`MissionCompleteScene.enter` calls `recordMissionClear` instead of its private `recordCampaign`
+(same behaviour). The bridge calls both and stores the totals in
+`session.records.set('fps/ams-bonus', [p1, p2])`. The floor-1 tally shows them as the info line
+`MISSION 1 BONUS` (§4.12).
+
+### 1.3 `GlitchBridgeScene` (group `flow`, `src/game/scenes/glitch-bridge.ts`)
+
+```ts
+export interface BridgeOpts { from?: Scene; runner?: MissionRunner }
+export class GlitchBridgeScene implements Scene { constructor(app: GameApp, o?: BridgeOpts) }
+```
+
+- **Constructor:** first `void loadFpsContent(app)` (§1.5; idempotent, so starting it here, before
+  anything else, gives the chunk download the most time). Then snapshot the last ams frame: draw
+  `o.from` once into a private `new SoftRenderer(384, 216, undefined, { res: d })`
+  (`src/engine/render-soft.ts:95`), `d = o.runner?.artDensity ?? 1` (ams: 2, so the 2× art keeps
+  its detail), and keep its `target` buffer as the snapshot `Frame` `{ buf, ox: 0, oy: 0,
+  density: d }`. This must happen in the constructor, before `scenes.replace` calls the gameplay
+  scene's `exit`. The 384×216 work buffer of the glitch is `lowRes(snapshot, d)`
+  (`src/engine/render-common.ts:106`; a copy when `d = 1`). Without `from` (`?mode=bridge`), draw a
+  placeholder at density 1: `PAL.navy[0]` fill + `MISSION COMPLETE!` (big, gold, C, y 100).
+- **enter:** with a runner: `recordMissionClear` + `silentTally` → `'fps/ams-bonus'`.
+  `app.input.suppress()`.
+- **Drawing:** `freeze` draws the snapshot frame with `r.frame(snap, 0, 0, { screen: true })` (a
+  still image, cached once), so the first bridge frame is the same picture as the last ams frame.
+  From `glitch` on it draws the 1× work buffer with `r.image(buf, 0, 0, { screen: true, stream:
+  true })`; the step down to 1× is hidden in the first corruption tick. All corruption works on
+  palette colours (`stepShade`, copies, shifts), so it stays palette-only.
+- **Waiting for the lazy content (cold load, e.g. GitHub Pages):** `freeze` lasts until
+  `fpsLoadState().registered` is true (the `fps` modules are imported and their sfx and songs are
+  defined, §1.5), at least 30 and at most 120 ticks. The later phases count their ticks from the
+  end of `freeze`. If the content is still not registered at the cap, the bridge goes on and calls
+  `music('fps-bridge')` again every 30 ticks until `fpsLoadState().registered` (an unknown song
+  only warns once and does not retry, `audio.browser.ts:350-357`).
+
+| Phase | Ticks | What |
+|---|---|---|
+| `freeze` | 0–29 (longer while the content loads, see above) | The snapshot, still. `music(null, { fadeTicks: 20 })`. The ticks below assume a 30-tick freeze. |
+| `glitch` | 30–149 | Corruption level `k = (t − 30) / 120`. Each tick (cosmetic `fxRng`): `1 + 6k` row bands (2–8 rows) shift by ±(1 + 23k) px; `2 + 10k` 8×8 blocks are copied from random places; a band of rows is shaded `stepShade(c, ±1)`. The `MISSION COMPLETE!` banner jitters. `fps/glitch` plays every 6–24 ticks (fxRng). Music `fps-bridge` starts at tick 30. Ticks 146–149 are black. |
+| `card` | 150 → | Black. The story lines (§1.4) type at 2 ticks per character (`fps/type` every second non-space character), 24 ticks between lines, **small font**, `UI_WHITE`, centred, one row per line (no wrapping: every line is at most 352 px wide in the small font with the longest callsign, a test checks it), first line y 52, 20 px per line (6 lines → the last row ends at y 161). The fps slot's callsign (§1.4) replaces `{CALLSIGN}`. After the last line: `PRESS START` (small, C, y 196, blink) and a 150-tick hold, then `fold`. From card tick 60, start / fire / Enter / click: the first press finishes the typing, the second press goes to `fold`. |
+| `fold` | 60 | The card collapses to a 1-px horizontal line at y 108 (ticks 0–29, like an old TV), holds the line (30–39), then black (40–59). `fps/fold` at tick 0. Then `startFpsRun(app, { floor: 1, fromBridge: true })` (§1.7; it creates the `FpsRun` and replaces the bridge with `FpsIntroScene`, `fade: 0`). |
+
+### 1.4 Story card text (DRAFT — `src/game/content/fps/story.ts`, pure data)
+
+```ts
+export const BRIDGE_LINES: readonly string[] = [
+  "ROBO-HALSEMA'S LAST STAMP HIT THE WRONG BUTTON.",
+  'AMSTERDAM FOLDED UP LIKE A CHEAP TOURIST MAP.',
+  '{CALLSIGN} WOKE UP IN A FREIGHT CAR. THE YEAR: 1944.',
+  'EVERYTHING LOOKED CLOSER. AND MUCH MORE FIRST-PERSON.',
+  'OUTSIDE: A SUPPLY DEPOT FULL OF VERY SERIOUS SOLDIERS.',
+  'SOMEWHERE ABOVE THEM, THEIR LEADER HAS BUILT HIMSELF A MECH.',
+];
+export const FPS_ENDING_CAPTIONS: readonly string[] = [
+  'THE STEEL SUIT WAS SOLD FOR SCRAP. IT FETCHED VERY LITTLE.',
+  'THE SUPPLY DEPOT IS A BICYCLE SHED NOW.',
+  'TASK FORCE CYGNET WOKE UP ON A BENCH IN AMSTERDAM, HOLDING FRIES.',
+  'NOBODY BELIEVED A WORD OF IT.',
+  'THE END ... FOR NOW.',
+];
+```
+
+`{CALLSIGN}` = `getCharacter(slot.character).name` of the fps slot (`GRACE`, `MITTENS`, `PIP`,
+`GRAMPS`, `RECRUIT`). `story.ts` and `names.ts` hold only constants (no `define*` calls), so eager
+scenes may import them statically. Every other `content/fps/*` file loads lazily.
+
+### 1.5 `FpsIntroScene` (group `fps-shell`, `src/game/scenes/fps-intro.ts`)
+
+```ts
+export interface FpsIntroOpts { floor: number; run?: FpsRun; fromBridge?: boolean }
+export class FpsIntroScene implements Scene { constructor(app: GameApp, o: FpsIntroOpts) }
+export function loadFpsContent(app: GameApp, onProgress?: (frac: number) => void): Promise<void>;
+/** Progress of the shared load (no allocation; read every tick by the bridge and the intro). */
+export function fpsLoadState(): { readonly registered: boolean; readonly ready: boolean; readonly frac: number };
+```
+
+1. **Load** (skipped when already done): `loadFpsContent` — one shared, idempotent promise that
+   never rejects (a failed step logs and goes on, like the boot):
+   1. `loadContent(isLazyContent)` (10 %) → `registered = true`.
+   2. Pre-render the bridge sfx `fps/glitch`, `fps/type`, `fps/fold` at once, then
+      `preloadSprites('fps/', …, { timeBudgetMs: 8 })` (25 %).
+   3. `prepareRayAssets(['fps/'], …, { timeBudgetMs: 8 })` (45 %).
+   4. Pre-render every other `listSfx('fps/')` id with `app.audio.preload` in slices of 8 per
+      tick, the same cast and loop as `boot.ts:52-58` (10 %), so no fps sound is rendered on the
+      main thread at its first play.
+   5. `app.audio.loadSamples?.('mode:fps')` with a 3000 ms cap (10 %; never blocks longer; an
+      unregistered group resolves at once) → `ready = true`.
+
+   Shows `LOADING n%` (small, C, y 112) and a 160×6 bar at (112, 122), `PAL.ui` ramp. From the
+   bridge the load has run since the bridge's constructor, so the bar is usually full already.
+2. **Floor card** (at least 120 ticks, `PRESS START` after 60, auto after 180): `MODE_TITLE` (big,
+   gold, C, y 40); `FLOOR 1` (big ×2, C, y 76); the floor name, e.g. `SUPPLY DEPOT` (small, C,
+   y 100); `LIVES n` (small, C, y 118); on floor 1 the controls hint (small, C, y 150–166, 2 lines:
+   `WASD MOVE  ARROWS OR MOUSE TURN` / `SPACE FIRE  E OPEN  1-4 WEAPONS`); when the waiting slot
+   is joined: `2P GUARDS THE SWAN` (small, P2 gold, C, y 178).
+3. On the first entry of a floor (not on a restart): `session.startMission('fps-' + floor)`
+   (`session.ts`: sets `missionId`, clears per-mission stats) and
+   `run.floorStartScore = slot.score`. Then `app.scenes.replace(new FpsScene(app, run), { fade: 20 })`.
+
+### 1.6 `FpsScene` (group `fps-shell`; pause/continue/route wiring by group `flow`)
+
+```ts
+export class FpsScene implements Scene, PauseHost, Continuable { constructor(app: GameApp, run: FpsRun) }
+```
+
+- Owns one `FpsGame` (§3.7) and one `RayView`. `enter`: `app.input.fpsMode = true`,
+  `app.pointerLockWanted = true`, music `fps-floor` (floor 2: `fps-boss` when the boss wakes).
+  `exit`/`pause`: `fpsMode = false`, `pointerLockWanted = false`. `enter` and `resume`: both back
+  on, then `app.input.suppress()` (it also suppresses the actions, §2.2), so the button or click
+  that confirmed RESUME (pad X = fire, pad A = use, the mouse) does not fire or use on the first
+  tick.
+- First 30 ticks of a floor: the view unfolds from the 1-px line (vertical scale 0 → 1) and input
+  is ignored.
+- **update:** pause when `input.pausePressed` (`Escape`, `KeyP`, pad button 8 Back),
+  `app.focusLost` (also set by main.ts on a lost pointer lock, §2.3; clear it after reading, like
+  `gameplay.ts:317-318`) or `input.keyPressed(padButtonCode(9))` (the raw pad Start button of any
+  gamepad) → `app.scenes.push(new PauseScene(app, this))`. **Never read
+  `input.pad(n).pressed('start')` here:** in a 2-player session slot 0's keyboard `start` is
+  `Digit1` (`input.ts:212`), the `weapon1` key. Else build `FpsInput` from `app.input.actions` +
+  `app.input.analog` and call `game.step(input)`. Debug keys (§1.11). Game events:
+  - `floorComplete(result)` → `fpsFloorDone(app, run, result)` (§1.7).
+  - `playerDead` → `slot.loseLife()`. Lives left: `game.restart()` (§4.11) with a 60-tick black
+    card `FLOOR n` + `LIVES n`. Last life (`loseLife` returned true): `slot.gameOver = true`, push
+    `ContinueScene(app, this)`.
+- **draw:** `r.begin(0x000000ff)`; `r.image(view.buf, 0, 0, { screen: true, stream: true })`; the
+  weapon view; the HUD (§8.6); overlays (damage flash, death fade, messages, boss bar, subtitles,
+  debug map).
+
+### 1.7 Route helpers (`src/game/scenes/fps-route.ts`)
+
+Group `fps-shell` creates the file with simple bodies (next floor or title). Group `flow` owns it
+from group `floors ‖ flow` on and writes the real route:
+
+```ts
+/** A fresh fps run from ?mode=fps, or from the bridge (slot = the fps slot, §1.10). */
+export function startFpsRun(app: GameApp, o: { floor: number; fromBridge?: boolean }): void;
+/** The elevator was used / the boss death-cam ended. → FpsTallyScene(app, run, result). */
+export function fpsFloorDone(app: GameApp, run: FpsRun, result: FloorResult): void;
+/** After a floor tally: the next floor's FpsIntroScene, or EndingScene({ variant: 'fps' }). */
+export function fpsTallyDone(app: GameApp, run: FpsRun): void;
+```
+
+### 1.8 `FpsTallyScene` (group `floors`, `src/game/scenes/fps-tally.ts`)
+
+`constructor(app: GameApp, run: FpsRun, result: FloorResult)`. Same timing and look as the ams
+newspaper tally where it fits, but its own page: a dark steel panel (`drawPanel`), heading
+`<FLOOR NAME> CLEARED` (`SUPPLY DEPOT CLEARED`, `HANGAR CLEARED`, `TEST RANGE CLEARED`; big, gold,
+C, y 16), then `FLOOR n` (small, C, y 28). Never the reference game's floor-complete wording
+(`docs/ORIGINALITY.md`). **One column:** the fps slot's lines, with its `1P` / `2P` tag in the
+slot colour at the top right. The waiting slot gets no tally of its own; only its
+`MISSION 1 BONUS` info line is shown (§4.12). Lines (§4.12) one every
+30 ticks with `ui/tally-tick`, TOTAL with `ui/tally-end`, `fps/tally-100` when a ratio is 100 %.
+`PRESS START` (C, y 206); the first press shows the whole page and pays out; it moves on by itself
+600 ticks after it opened. Music `fps-tally` (a jingle, no loop).
+`enter` records the floor: `campaign.missions.push('fps-N')`,
+`campaign.goldenRecords[run.slot].add('fps-N')` when `result.goldenRecord`,
+`session.completed.push('fps-N')`. `next` → `fpsTallyDone(app, run)`.
+
+### 1.9 Ending, final tally, game over
+
+- `EndingScene` gains `constructor(app: GameApp, o?: { variant?: 'campaign' | 'fps' })`. The fps
+  variant plays the phases `captions` (with `FPS_ENDING_CAPTIONS`) → `parade` → `poses`. It skips
+  `last-note` and `splashdown` (they show the m5 finale). **Its `parade` is the credits roll only:**
+  the `CREDITS` text with the same timing, over a plain night backdrop (`PAL.navy[0]` with slow
+  drifting embers), without the street, `STATIONS` (Blare, Rimshot, Puffington, Pizzicata),
+  `AUDIENCE`, `MARCHERS` or `BAND` (`ending.ts:713-735`): the fps route never met the m1–m5 cast,
+  and the variant loads none of its art. Music: `ending` at enter, `credits` at the parade
+  (unchanged). Then `FinalTallyScene` (unchanged route, `ending.ts:336`).
+- **Golden-record route list:** `flow-data.ts` adds `FPS_ROUTE = ['ams', 'fps-1', 'fps-2']` and
+  `goldenRecordRoute(c: CampaignRecord | null): readonly string[]` → `FPS_ROUTE` when
+  `c.missions` includes `'fps-1'`, else `CAMPAIGN_MISSIONS`. `finalTallyLines`
+  (`final-tally.ts:42-52`) uses it for `ALL GOLDEN RECORDS`. `CAMPAIGN_MISSIONS` stays unchanged
+  (tests check it).
+- **High scores:** `missionColumn` (`high-scores.ts:38-44`) shows `F1` / `F2` for `fps-1` /
+  `fps-2` (today it would print `FPS`). A finished run is `all` (unchanged, `flow.ts:entryFor`).
+- **Game over:** unchanged (`ContinueScene` → `GameOverScene` → `finishGame`). Name entry covers
+  every joined slot that qualifies, the waiting slot included.
+
+### 1.10 Continue, pause and P2
+
+- **`Continuable`** (`continue.ts`; replaces the `MissionRunner` field):
+
+  ```ts
+  export interface Continuable {
+    /** Use a continue for a slot. False when it is not possible (not out, no credits, not in this mode). */
+    continuePlayer(slot: SlotIndex): boolean;
+    /** Back to the scene's own music after a continue. */
+    resumeMusic(): void;
+    /** Hide stale banners and prompts under the overlay (optional). */
+    clearOverlays?(): void;
+    /**
+     * Did this slot's player press start this tick? (optional; default
+     * `input.pad(slot).pressed('start')`). The fps mode overrides it: its one player may use any
+     * device.
+     */
+    startPressed?(slot: SlotIndex, input: InputManager): boolean;
+  }
+  ```
+
+  `ContinueScene` asks `host.startPressed?.(i, input) ?? input.pad(i).pressed('start')` for slot
+  `i` (today `input.pad(i).pressed('start')`, `continue.ts:93-94`). `GameplayScene` passes an
+  adapter over its runner (`continuePlayer`, `resumeMusic`, `clearOverlays` =
+  `hud.clearBanner()` + `hud.hideGo()`; no `startPressed`). `FpsScene.startPressed(i)`: for the fps
+  slot `input.pad(0).pressed('start') || input.pad(1).pressed('start')` (any start key or pad
+  Start), for the waiting slot `false`. `FpsScene.continuePlayer(i)`: only the
+  fps slot, only when `slot.gameOver`:
+
+  ```ts
+  const before = slot.score;
+  if (!session.continueSlot(i)) return false;      // shared session.credits, session.ts:446-453
+  run.floorStartScore += slot.score - before;      // keep the continue point (the last score digit)
+  game.restart();                                  // §4.11: slot.score = run.floorStartScore
+  return true;
+  ```
+
+  The waiting slot → `false`. A flow test checks that the score's last digit counts the
+  continues after a continue in this mode, also when the fps slot is `slots[1]`.
+- **`PauseHost`** (`pause.ts`; replaces the `GameplayScene` field, `pause.ts:36,45,104`):
+
+  ```ts
+  export interface PauseHost { /** OPTIONS changed a setting while paused. */ applySettings?(s: GameSettings): void }
+  ```
+
+  `GameplayScene.applySettings` sets the camera shake (today's `onChange` body). `FpsScene` applies
+  MOUSE LOOK and SENSITIVITY. QUIT TO TITLE is unchanged.
+- **The fps slot:** `slots[0]` when it is active, else `slots[1]` (P1 can be out while P2 kills the
+  ROBO-HALSEMA). Input always comes from slot 0's devices: the keyboard (the fixed fps key map),
+  the mouse, and **every connected gamepad** (in `fpsMode` the gamepad source merges all pads into
+  slot 0's actions and analog, §2.2, so a P2 who played ams on the second pad keeps it). The HUD,
+  the tally and the continue prompt show the fps slot's own tag (`1P` or `2P`). The other slot
+  **waits**: it stays joined, keeps its lives, score and continues, cannot
+  join or act during the mode, and gets its ams bonus at the bridge. In the final tally it keeps
+  its own lines (its golden records lack `fps-1`/`fps-2`, so no ALL GOLDEN RECORDS).
+
+### 1.11 Debug and URL parameters (groups `fps-shell` + `flow`)
+
+`src/game/params.ts`: optional fields `mode?: 'fps' | 'bridge'` and `floor?: number` (0–2; default
+1 when `mode=fps`). Both stay `undefined` when the URL does not set them, so the exact `toEqual`
+of `parseLaunchParams` in `tests/game/core.test.ts:126-141` stays green without a change.
+
+| URL | Result |
+|---|---|
+| `?mode=fps&floor=0\|1\|2` | Boot → new session (`players`, `char`, `difficulty`, `seed` apply) + new campaign → `startFpsRun(app, { floor })` (fresh loadout, no ams bonus line). |
+| `?mode=bridge` | Boot → new session → `GlitchBridgeScene` with the placeholder snapshot and no runner. |
+| `?mission=ams&boss=1&debug=1` | The full route: F4 kills ROBO-HALSEMA → victory → bridge → floor 1. |
+| `?debug=1` in the fps mode | F1 toggles the map overlay (on at start; top-right, 2 px per tile: walls, doors by state, push walls, pickups, actors coloured by state, the player arrow). F2 stats, F3 god (as today, `src/engine/debug.ts:4-5`). F4 ends the floor (floors 0/1: as the elevator; floor 2: phase 1 → the suit breaks, phase 2 → the boss dies). F5 gives all weapons, 99 ammo and both keys. |
+| `?god=1` | The fps player takes no damage. |
+
+## 2. Controls
+
+### 2.1 `FpsAction` (group `input`, `src/engine/input-actions.ts`)
+
+A 16-bit mask. The 8-bit `Button` pad (`src/engine/input.ts:10-34`) stays unchanged for menus, the
+side-scroller, the bot and key rebinding.
+
+| Bit | Action | Keyboard (default `FpsKeyMap`) | Mouse (pointer lock) | Gamepad (standard mapping) |
+|---|---|---|---|---|
+| 0 | `forward` | `KeyW`, `ArrowUp` | — | left stick up, d-pad up (12) |
+| 1 | `back` | `KeyS`, `ArrowDown` | — | left stick down, d-pad down (13) |
+| 2 | `turnLeft` | `ArrowLeft` | movementX < 0 (analog) | right stick left, d-pad left (14) |
+| 3 | `turnRight` | `ArrowRight` | movementX > 0 (analog) | right stick right, d-pad right (15) |
+| 4 | `strafeLeft` | `KeyA`, `Comma` | — | left stick left |
+| 5 | `strafeRight` | `KeyD`, `Period` | — | left stick right |
+| 6 | `strafe` (turn keys strafe) | `KeyC` (never Alt, §0) | — | — |
+| 7 | `run` | `ShiftLeft`, `ShiftRight` | — | left stick press (10) |
+| 8 | `fire` | `Space` | left button | RT (7), X (2) |
+| 9 | `use` | `KeyE`, `KeyF` | right button | A (0) |
+| 10–13 | `weapon1`–`weapon4` | `Digit1`–`Digit4` | — | — |
+| 14 | `weaponNext` | `KeyQ` | wheel down | RB (5), Y (3) |
+| 15 | `weaponPrev` | — | wheel up | LB (4) |
+
+- Pause: the existing pause bindings (`Escape`, `KeyP`, pad button 8 Back = `padPause`) plus pad
+  button 9 Start, read raw as `keyPressed(padButtonCode(9))` (§1.6). Button 9 is the pad `start`
+  button and shares its edge with the keyboard `start` key (`Digit1` for slot 0 in a 2-player
+  session), so the fps mode never reads the `start` button. `Enter` is not an fps action.
+- **No `Control` or `Alt` key**: `Ctrl+W` closes the browser tab; Alt + arrows navigate the page.
+- **preventDefault:** while `fpsMode` is on, `KeyboardSource` calls `preventDefault` on keydown and
+  keyup of every `FpsKeyMap` key, also the keys that the 8-button bindings do not use (`Space`
+  would scroll the page; `KeyE`, `KeyQ`, `KeyC`, `Digit2`–`Digit4`, the Shift keys); it still
+  never prevents a key combined with Ctrl, Meta or Alt (`input.browser.ts:45`).
+- The key map is fixed in this wave (not rebindable). A player who rebound the 8-button keys in
+  CONTROLS still plays through the fallback below.
+
+### 2.2 Analog channel and fallback
+
+```ts
+export interface AnalogState { turn: number; moveX: number; moveY: number }
+```
+
+- Cleared every tick. `turn`: integer angle units this tick (mouse + right stick), clamped to
+  ±512. `moveX` (strafe, + = right) and `moveY` (+ = forward): integers −127..127.
+- Gamepad: left stick → `moveX` / `moveY` (after a 0.2 dead zone, rescaled to 0..1, then × 127);
+  right stick X → `turn = round(48 × s²·sign)` units/tick after a 0.2 dead zone (rescaled to
+  0..1). All values quantised to integers. In `fpsMode` every connected gamepad feeds slot 0
+  (buttons OR-ed; per stick axis the pad with the largest magnitude wins), §1.10.
+- **Stick → speed (I):** `m = min(1, hypot(moveX, moveY) / 127)`; speed = walk speed × `m`, or run
+  speed × `m` when `run` is held or `m > 0.9` (§4.1). Keys and stick add up as vectors, clamped to
+  the run speed.
+- **Fallback `actionsFromPad(mask)`**, used per source: a source without `readActions` gives
+  `actionsFromPad(src.read(slot))`. `up` → forward, `down` → back, `left` → turnLeft, `right` →
+  turnRight, `fire` → fire, `jump` → use, `bomb` → weaponNext, `start` → nothing. (Scripted
+  timelines, the 2D bot and rebound keys keep working; sources with `readActions` never get a
+  second, conflicting mapping.)
+- `InputManager` (additive): `actions: ActionPad` (held / pressed / released / `heldTicks(bit)` /
+  `suppress(mask = 0xffff)`: hide held actions until released, like `VirtualPad.suppress`),
+  `analog: AnalogState`, `fpsMode: boolean`. Only slot 0 is polled, only while `fpsMode`.
+  `InputManager.suppress(mask)` also calls `actions.suppress()` (all actions), so every scene
+  change and every resume hides the button that confirmed it.
+  `InputSource` gains `readActions?(slot, ctx): number` and `readAnalog?(slot, out, ctx): void`.
+  `ScriptedSource` gains an optional third argument
+  `{ actions?: (tick: number) => number; analog?: (tick: number, out: AnalogState) => void }`.
+
+### 2.3 Mouse look and settings
+
+- `src/game/settings.ts`: `mouseLook: boolean` (default `true`), `mouseSensitivity: number` (1–10,
+  default 5), persisted like the other settings. OPTIONS rows `MOUSE LOOK` (ON / OFF) and
+  `SENSITIVITY` (1–10).
+- **Turn per mouse pixel** = `0.6 × sensitivity` angle units (5 → 3 units/px → 1365 px per full
+  turn). The fractional rest carries to the next tick (`PointerLockSource`). Mouse Y is ignored
+  (no vertical look, G).
+- **Pointer lock rules** (`src/main.ts` + `src/engine/pointer.browser.ts`): a click on the canvas
+  requests the lock when `app.pointerLockWanted && settings.mouseLook`. The click that gets the
+  lock does not fire. When the lock is lost while it is wanted (Esc, alt-tab), main.ts sets
+  `app.focusLost = true` → FpsScene pauses. When `pointerLockWanted` turns false, main.ts calls
+  `document.exitPointerLock()`. While MOUSE LOOK is on and the lock is not held, the view shows
+  `CLICK TO LOOK WITH THE MOUSE` (small, C, y 34, blink; below the boss band, clear of the weapon view and the messages) for its first 300 ticks.
+- Headless runs never lock; the keyboard always works.
+
+## 3. Engine contract (`src/engine/ray/`, group `ray`)
+
+Pure, genre-agnostic, deterministic. No game ids, no DOM, no `Math.random`. No per-tick
+allocations: preallocated typed arrays, pools and reused out-objects.
+
+### 3.1 Units
+
+- **Tile = 1.0** world unit. Positions are float64 numbers in tiles; cell `(x, y)` covers
+  `[x, x+1) × [y, y+1)`; map `y` grows downward (south).
+- **Angles are integers 0..4095** (4096 = a full turn). `0` = east (+x), `1024` = south (+y),
+  `2048` = west, `3072` = north. Turning right adds, turning left subtracts. Direction vector =
+  `(COS[a], SIN[a])`.
+- Tables are built at module load with `Math.sin`/`Math.cos` and rounded to 1/65536, so every
+  JS engine gets the same values.
+- Speeds are tiles/tick; timers are ticks (60 Hz).
+
+### 3.2 Module API
+
+```ts
+// fixed.ts
+export const ANG_FULL = 4096, ANG_MASK = 4095, ANG_90 = 1024, ANG_180 = 2048, ANG_270 = 3072;
+export const SIN: Float64Array;            // 4096 entries
+export const COS: Float64Array;
+export function angNorm(a: number): number;            // any int → 0..4095
+export function angDelta(from: number, to: number): number; // signed shortest turn, −2047..2048
+export function angleTo(dx: number, dy: number): number;    // integer angle of a vector
+export function degToAng(deg: number): number;
+
+// grid.ts
+export const CELL_SOLID = 1, CELL_OPAQUE = 2, CELL_DOOR = 4, CELL_PUSH = 8, CELL_PROP = 16;
+export class RayGrid {
+  readonly w: number; readonly h: number;
+  readonly wall: Uint16Array;   // texture index + 1 per cell (0 = none)
+  readonly flags: Uint8Array;   // CELL_* bits
+  readonly area: Uint8Array;    // area id 1..255 (0 = wall / door)
+  readonly door: Int16Array;    // door index or −1
+  constructor(w: number, h: number);
+  idx(x: number, y: number): number; inside(x: number, y: number): boolean;
+  solidAt(x: number, y: number): boolean; opaqueAt(x: number, y: number): boolean;
+}
+export class DoorTable {
+  count: number;
+  readonly x: Int16Array; readonly y: Int16Array;
+  readonly vertical: Uint8Array; // 1 = the door plane runs north–south (you pass east–west)
+  readonly open: Float64Array;   // 0 closed .. 1 open (the game writes it)
+  readonly tex: Uint16Array;     // texture index of the door face
+  constructor(max = 64);
+  add(x: number, y: number, vertical: boolean, tex: number): number;
+}
+export interface PushWall { active: boolean; x: number; y: number; dx: number; dy: number; offset: number; tex: number }
+
+// cast.ts
+export interface RayHit { dist: number; cellX: number; cellY: number; side: 0 | 1; u: number; tex: number; door: number }
+export function castRay(g: RayGrid, d: DoorTable, push: PushWall | null, px: number, py: number,
+  dirX: number, dirY: number, out: RayHit, maxDist?: number): boolean;
+export function lineOfSight(g: RayGrid, d: DoorTable, push: PushWall | null,
+  x0: number, y0: number, x1: number, y1: number): boolean;
+
+// textures.ts
+export const RAY_TEX = 64;
+export function defineRayTexture(id: string, gen: () => PixelBuffer): void;
+export function rayTextureIndex(id: string): number;  // stable small int; unknown id → the magenta fallback (+ one warning)
+export function hasRayTexture(id: string): boolean;
+export interface RayBillboardDef { size?: 64 | 96 | 128; yaws: 1 | 8; frames: number; worldW?: number; worldH?: number; gen: (frame: number, yaw: number) => PixelBuffer }
+export function defineRayBillboard(id: string, def: RayBillboardDef): void;
+export interface RayBillboard { id: string; size: number; yaws: number; frames: number; worldW: number; worldH: number }
+export function getRayBillboard(id: string): RayBillboard;   // unknown → magenta fallback (+ one warning)
+export function listRayTextures(): string[]; export function listRayBillboards(): string[];
+export function prepareRayAssets(prefixes?: readonly string[], onProgress?: (done: number, total: number) => void,
+  opts?: { timeBudgetMs?: number; yieldFn?: () => Promise<void>; now?: () => number }): Promise<{ failed: string[] }>;
+export function billboardYaw(actorAngle: number, ax: number, ay: number, camX: number, camY: number): number; // 0..7
+
+// view.ts
+export const RAY_VIEW_W = 384, RAY_VIEW_H = 176, RAY_FOCAL = 296;
+export class RayView { readonly w: number; readonly h: number; readonly density: number; readonly buf: PixelBuffer; readonly zbuf: Float64Array; constructor(w?: number, h?: number, density?: number) }
+export interface RayCamera { x: number; y: number; angle: number; eyeZ: number /* 0.5 */; squash?: number /* 0..1, the unfold */ }
+export interface RaySprite { x: number; y: number; bb: RayBillboard; frame: number; yaw: number }
+export interface RayScene { grid: RayGrid; doors: DoorTable; push: PushWall | null; ceil: Color; floor: Color; sprites: RaySprite[]; spriteCount: number }
+export function renderView(view: RayView, scene: RayScene, cam: RayCamera): void;
+
+// move.ts
+export interface MoveBox { x: number; y: number; r: number }
+export interface Blockers { count: number; x: Float64Array; y: Float64Array; r: Float64Array }
+/** Axis-separated move (x, then y) of a square box (half-size r) against solid cells, closed or moving doors, props and blockers. Mutates `box`; returns bit 1 = moved on x, bit 2 = moved on y. */
+export function tryMove(g: RayGrid, d: DoorTable, push: PushWall | null, box: MoveBox, dx: number, dy: number, b?: Blockers, self?: number): number;
+
+// areas.ts
+export class AreaMap {
+  readonly count: number;
+  constructor(g: RayGrid, d: DoorTable);       // floods g.area; doors split areas
+  setDoorOpen(door: number, open: boolean): void;
+  computeReach(from: number): void;           // BFS over open links
+  reached(area: number): boolean;
+}
+```
+
+Rules:
+
+- **Doors** sit at the tile centre (the plane at +0.5 of the cell) and slide sideways: a ray that
+  meets the plane at `u < open` passes; else it hits the door face with `u − open` (G). The two
+  wall faces next to a door cell show the door-edge texture (G). A door cell is solid for movement
+  unless `open ≥ 1` (G).
+- **Push wall:** one active at a time (G). Its cell is drawn shifted by `offset` (0..1) in
+  `(dx, dy)`; the game moves it cell by cell (§4.7).
+- **Side shading (G):** faces hit on a y-side (`side = 1`, the north/south faces) use the dark
+  variant of the texture, made once by `stepShade(c, −1)` per texel (palette-only).
+- **Perpendicular distance** (no fisheye). Column `x` (0..383) casts at
+  `dir + plane × (x + 0.5 − 192) / RAY_FOCAL` (a per-column table). The horizontal field of view is
+  2·atan(192 / 296) ≈ 66°. A wall of height 1 at distance `d` is `RAY_FOCAL / d` px tall, centred
+  on the horizon `y = 88` (eye height 0.5); `eyeZ` moves the horizon (death fall).
+- **Ceiling and floor:** flat colours per floor (G), no texture.
+- **Billboards:** sorted far → near; each column tests `zbuf[x]` and draws only the texels inside
+  the frame's opaque span of that column. Size on screen = `RAY_FOCAL × worldW / d` wide,
+  `RAY_FOCAL × worldH / d` tall, standing on the floor. `renderView` ends with `buf.touch()`.
+
+### 3.3 Texture and billboard formats
+
+- **Wall and door textures:** 64×64 code-generated `PixelBuffer`s, palette-only, opaque. Stored
+  column-major (`cols[u × 64 + v]`, `u` = column 0..63 left → right, `v` = row top → bottom), plus
+  the dark variant. Textures tile without seams on the left/right edges.
+- **Billboards:** `size`² texels (64 for people, props and items; 96 for the mech), transparent =
+  `TRANSPARENT`. Stored column-major per (frame, yaw) with a `Uint16` span per column (first and
+  last opaque row; empty = `0xFFFF`).
+- **8 yaws (G):** yaw `k` = the actor faces `k × 45°` clockwise from "facing the viewer"
+  (`billboardYaw`). The generator renders `k = 0..4`; the registry builds `k = 5, 6, 7` by mirroring
+  `3, 2, 1` (reversed column order) at prepare time. Frames with `yaws: 1` always face the viewer.
+- **Magenta fallback:** a missing texture or billboard draws a 64×64 magenta/ink checker and
+  warns once per id (ARCHITECTURE rule 2.7).
+
+### 3.4 Render path and view size
+
+- The view is **384 × 176** at density 1, with the **40-px status bar** below (y 176–215).
+  `new RayView(384, 176, 2)` (768 × 352) stays a constructor option for later.
+- Presentation: `r.image(view.buf, 0, 0, { screen: true, stream: true })`. `DrawOpts.stream?:
+  boolean` (group `media`, `src/engine/render.ts:63-86`): "contents change most frames; never
+  cached as a texture". `SoftRenderer` may ignore it (identical pixels). The canvas renderer keeps
+  one streaming slot per buffer (one canvas + `ImageData` + `Uint32Array` view; on a version
+  change it converts `0xRRGGBBAA` to canvas byte order and calls `putImageData`), outside the LRU
+  budget, evicted after 120 unused frames. `textureStats()` reports `streams` and
+  `streamUploads`. This replaces the per-frame canvas from `upload()`
+  (`render-canvas.browser.ts:110`) for streamed buffers.
+- `image()` buffers are never filtered by the GRAPHICS mode (ART_GUIDE §1), so the view stays crisp
+  at every backbuffer factor.
+
+### 3.5 Performance budget
+
+- `renderView` ≤ **2.0 ms** per frame headless (Node, density 1, average of 300 frames at the
+  worst pose of floor 1 with 40 visible sprites). `FpsGame.step` ≤ 0.3 ms with 60 live actors.
+- Browser: 60 fps at k = 6 (`npm run perf -- --query "mode=fps&floor=1&god=1"`), exactly one
+  stream slot for the view.
+- **Zero per-tick allocations** in `step`, `castRay`, `renderView`, `tryMove`, AI and hitscan:
+  actor pool of 128, sprite list of 256 `RaySprite`s, reused event payloads.
+
+### 3.6 Lazy content
+
+- `src/game/content/index.ts` adds four manifest entries — `fps` (`content/fps/index.ts`),
+  `fps/art` (`content/fps/art.ts`), `fps/sound` (`content/fps/sound.ts`), `fps/floors`
+  (`content/fps/floors.ts`) — and
+  `export function isLazyContent(id: string): boolean` (`id === 'fps' || id.startsWith('fps/')`).
+- `loadContent`'s default filter becomes `(id) => !isLazyContent(id)`, so boot
+  (`boot.ts:45`), the sims, the 2D tools and existing tests keep loading exactly what they load
+  today. `loadFpsContent` (§1.5) and the fps tests call `loadContent(isLazyContent)`.
+- **Tools that must see every sound call `loadContent(() => true)`**, else they silently skip the
+  fps sounds: `tools/lib/audio-report.ts:124` and `tools/lib/audio-report.entry.ts:18` (group
+  `fps-sound`; the report is the only way to check sounds nobody can hear), and
+  `tools/audio/process.ts:283` (loudness match against the synth) and `tools/audio/review.ts:344`
+  (synth beside the takes) (group `audio-spec`). `tools/arena.ts` and `src/sim/headless.ts` keep
+  the default.
+- **`tests/content/samples.test.ts`** (group `audio-ship`, the group that writes the manifest
+  entries): its load filter adds `|| id === 'fps/sound'`, its file pattern becomes
+  `/^(boot|ams|fps)\/(sfx|music|voice)\/[a-z0-9._-]+\.mp3$/`, and `'mode:fps'` joins
+  `SAMPLE_GROUPS` (`src/engine/samples.ts:70`) **in the same change** that ships the first
+  `'mode:fps'` manifest group, because the test demands that the manifest keys equal
+  `SAMPLE_GROUPS`. Until then (and forever, if the user never approves the credits) the group
+  does not exist, `loadSamples('mode:fps')` resolves at once and the synth plays. Group
+  `audio-spec` writes its spec entries with `group: 'mode:fps'` in `tools/audio/**` only.
+- `ART_MODULE_IDS` contains `fps/art` (it ends in `/art`), so `npm run sprites -- fps/` loads it.
+- `prepareRayAssets` mirrors `preloadSprites` (`src/engine/sprites.ts:439`): slices of
+  `timeBudgetMs`, yields between slices, never rejects, reports progress and failures.
+
+### 3.7 Game API sketch (`src/game/fps/`, groups `fps-shell` → `actors` → `floors`)
+
+```ts
+export interface FpsInput { held: number; pressed: number; turn: number; moveX: number; moveY: number }
+export interface FpsCarry { hp: number; ammo: number; weapons: number /* bit 0 knife … bit 3 chaingun */; weapon: number }
+export interface FloorResult { floor: number; ticks: number; kills: number; killsTotal: number; secrets: number;
+  secretsTotal: number; treasure: number; treasureTotal: number; goldenRecord: boolean }
+export interface FpsRun { slot: SlotIndex; floor: number; carry: FpsCarry | null; floorStartScore: number; results: FloorResult[] }
+export interface FpsGameOpts { floor: FpsFloorDef; difficulty: Difficulty; seed: number; slot: PlayerSlot;
+  carry: FpsCarry | null; audio: AudioOut; god?: boolean }
+export class FpsGame {
+  constructor(o: FpsGameOpts);
+  readonly events: EventBus<FpsEvents>;   // 'floorComplete' {result}, 'playerDead', 'message' {text}, 'extend'
+  tick: number;
+  step(i: FpsInput): void;
+  restart(): void;                         // §4.11
+  carry(): FpsCarry;
+  stateHash(): number;                     // FNV-1a over player, actors, doors, push wall, rng state
+  render(view: RayView): void;
+}
+```
+
+The game rng is `new Rng(seed)` per `FpsGame` (restart re-seeds with `seed + attempt`); cosmetic
+choices (face glance, blood size) use a separate `fxRng`.
+
+## 4. Gameplay numbers
+
+### 4.1 Player
+
+| Value | Number | Mark |
+|---|---|---|
+| HP | 100 (max 100) | G |
+| Ammo cap | 99 (one shared pool for pistol, MG, chaingun) | G |
+| Start loadout (fresh / after a death) | knife + pistol, 8 ammo, HP 100, no keys | G |
+| Collision | square box, half-size 0.34 tiles | G |
+| Walk speed (forward, back, strafe) | 0.090 tiles/tick (5.4 tiles/s) | G |
+| Run speed | 0.150 tiles/tick (9 tiles/s) | G |
+| Combined move | forward + strafe vector, clamped to the run speed; the stick scales the speed (§2.2) | I |
+| Turn (keys) | 24 units/tick (127°/s); 44 units/tick with run; the first 6 ticks of a key turn at half speed | G/I |
+| Turn (mouse, stick) | §2.2, §2.3 | I |
+| Use reach | the cell next to the player's cell in the facing cardinal direction (`round(angle / 1024) & 3`) | G |
+| Pickup | the player's centre is in the item's cell | G |
+| Lives, score | the fps slot's `PlayerSlot` (§4.13) | — |
+
+### 4.2 Weapons (player)
+
+| Weapon | Key | Ammo/shot | Cycle (ticks) | Shot on tick | Hold | Noise |
+|---|---|---|---|---|---|---|
+| `knife` | 1 | 0 | 24 | 8 | repeats | silent (G) |
+| `pistol` | 2 | 1 | 20 | 4 | one shot per press; a press from tick 14 queues the next | yes |
+| `mg` | 3 | 1 | 10 | 2 | auto (6/s) | yes |
+| `chaingun` | 4 | 1 | 5 | 1 | auto (12/s) | yes |
+
+- Switching: 8 ticks down + 8 ticks up (I). `weaponNext`/`weaponPrev` skip weapons that are not
+  owned or have no ammo (the knife always counts). Out of ammo: after the last shot the knife comes
+  up (G); the first ammo pickup while on the knife raises the best owned gun (G).
+- **Target (G-shaped):** the nearest living actor in front whose centre is at most
+  `max(0.35, 0.06 × d)` tiles from the aim line, with `lineOfSight` and not behind a wall at the
+  centre column.
+- **Damage (player → actor), `d` = max(|dx|, |dy|) in tiles (G):**
+
+  | Band | Pistol / MG / chaingun per bullet | Knife |
+  |---|---|---|
+  | `d < 2` | `rng.int(1, 63)` | `rng.int(1, 16)` within d ≤ 1.25 |
+  | `2 ≤ d < 4` | `rng.int(1, 42)` | — |
+  | `d ≥ 4` | hit when `rng.int(0, 255) ≥ 12 × floor(d)` (at least 32/256 hit), then `rng.int(1, 42)` | — |
+
+### 4.3 Enemies
+
+Enemy HP is the same on every difficulty (G); the counts change (§6). Speeds in tiles/tick.
+
+| Type (id) | HP | Patrol | Chase | Reaction | Tell | Attack | Recover | Pain | Score | Drop |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `guard` | 25 | 0.009 | 0.027 | 1–55 ticks | 24 | 1 shot | 18 | 10 | 100 | clip (+4) |
+| `officer` | 50 | 0.009 | 0.046 | 2 ticks | 18 | 1 shot | 12 | 8 | 400 | clip (+4) |
+| `ss` | 100 | 0.009 | 0.036 | 1–37 ticks | 20 | burst of 3, 6 ticks apart | 24 | 10 | 500 | MG if the player has none, else clip |
+| `dog` | 1 | 0.027 | 0.053 | 1–27 ticks | 18 | 1 bite (d ≤ 1.0) | 20 | — | 200 | — |
+
+Marks: HP, scores and drops G; speeds and reactions G (converted from the genre's 70 Hz tics to
+60 Hz ticks: × 60/70); tells, recovers and pains I (chosen for the ≥ 18-tick fairness rule).
+Collision (I): every actor is a square box with half-size 0.4 tiles (dogs 0.3) for `tryMove`
+`Blockers` and for the target test of §4.2.
+
+- **States (table-driven):** `stand` → `path` (patrol) → `chase` → `tell` → `attack` → `recover`
+  → `chase`; `pain`; `die` (frames 3–6 of `act`, §8.2) → `dead` (a corpse, not solid).
+- **Tell rule (GDD §4.11.2):** every attack (a shot, a burst, a bite) starts with a tell of at
+  least 18 ticks: the aim pose (`act` frame 0) + `fps/enemy/aim` (dogs: `fps/dog/growl`). The
+  bullets of one burst follow inside the attack state. Pain cancels a tell; the next attack starts
+  a new full tell. A test checks every damaging enemy event for ≥ 18 tell ticks before it.
+- **Attack chance (G):** in `chase`, with `lineOfSight` and a free token, each tick
+  `rng.int(0, 255) < floor(19 / max(1, floor(d)))`; adjacent (`d < 1`) → always. Dogs attack when
+  `d ≤ 1.0`.
+- **Attack tokens (I, GDD §4.11.4):** at most 3 / 4 / 6 actors in `tell` or `attack` at once.
+- **Off-view fire (G; replaces GDD §4.11 rule 3 in this mode, §0):** an actor outside the
+  player's view may attack. Its tell sound always plays at volume ≥ 0.5, panned (§9.1), and its
+  hits show the edge marker (§4.9).
+- **Hit chance on the player (G):** `base = 256` (160 when the player moved at run speed this
+  tick, i.e. the player's move length this tick was ≥ 0.12 tiles); `k = 16` when the enemy is
+  inside the player's view (|angle| ≤ 375 units), else 8;
+  `chance = clamp(base − k × floor(d), 16, 256)`; hit when `rng.int(0, 255) < chance`.
+- **Damage to the player (I):** `d < 2`: `rng.int(8, 40)`; `d < 4`: `rng.int(4, 24)`; else
+  `rng.int(2, 12)`. Bite: `rng.int(4, 16)`, hit when `rng.int(0, 255) < 180`. Difficulty factor:
+  EASY × 0.5 (rounded up), NORMAL × 1, HARD × 1.
+- **Chase movement (G):** actors walk tile centre to tile centre in 8 directions (a diagonal needs
+  both orthogonal cells free), one actor per cell (the target cell is reserved). Direction: toward
+  the player (diagonal first, then the major axis, the minor axis, any free direction, reverse).
+  Guards, officers and SS with line of sight pick a **dodge** direction (perpendicular to the
+  player line) half of the time. Dogs chase straight.
+- **Doors:** people open doors they walk into (they wait until open); dogs do not (G).
+- **Patrol (G):** walk in the facing direction; turn at turn markers (§5.2); reverse when blocked.
+
+### 4.4 Sight and noise
+
+- **Sight (G):** the player is in the actor's front half (|`angDelta`| < 1024), or close
+  (`max(|dx|, |dy|) < 1.5` tiles: sight is automatic, also from behind), and `lineOfSight` holds
+  (closed or partly closed door parts block, §3.2). After the reaction delay the actor shouts
+  (§9.3; at most one shout per 30 ticks in the whole floor) and chases.
+- **Noise (G):** a pistol, MG or chaingun shot alerts every non-ambush actor whose area is reached
+  from the player's area. Areas link through doors with `open > 0`. The knife makes no noise.
+  Enemy shots are not noise.
+- **Ambush (`ambush` flag, G):** reacts to sight only.
+- **Hit while unaware (G):** an actor (not the boss) that is not in `chase`, `tell`, `attack` or `recover`
+  (standing, patrolling, ambushing, or still in its reaction delay) takes **double damage** from
+  every player hit (the payoff for stealth and the knife). A hit that does not kill → `pain`,
+  then `chase`. The hitscan tests check the × 2.
+
+### 4.5 Pickups
+
+| Char | Id | Look (our own design, `fps/item/<id>`) | Effect | Refused when | Score | Mark |
+|---|---|---|---|---|---|---|
+| `+` | `first-aid` | an olive canvas belt pouch with a white band and a brass snap; **no red cross**, no cross of any kind | HP +25 | HP 100 | 0 | G |
+| `n` | `food` | an open steel mess tin with a slice of bread and a sausage | HP +10 | HP 100 | 0 | G |
+| `r` | `ration` | a dented olive tin with a key on the lid | HP +4 | HP 100 | 0 | G |
+| `b` | `blood-pool` | a small red pool on the floor (no bowl, no plate) | HP +1 | HP > 10 | 0 | G |
+| `c` | `clip` | a small khaki cardboard box of cartridges, two rounds poking out | ammo +8 | ammo 99 | 0 | G |
+| (drop) | `clip-drop` | a single loose stripper clip of five brass rounds | ammo +4 | ammo 99 | 0 | G |
+| `w` | `mg` | the MG lying on its side, bipod folded | MG + ammo +6, face grin | owned and ammo 99 | 0 | G |
+| `y` | `chaingun` | the rotary gun on a canvas sling, a coiled ammo belt | chaingun + ammo +6, face grin 60 ticks | owned and ammo 99 | 0 | G |
+| `1` | `one-up` | a tin toy swan with a wind-up key | life +1 (lives full: +10,000 score), HP 100, ammo +25, grin | never | 0 | G/I |
+| `k` / `l` | `key-gold` / `key-silver` | a large old bit key on a paper tag, gold / silver | the key | never | 0 | G |
+| `5` | `pocket-watch` | an open brass pocket watch on a chain | treasure | never | 100 | G/I |
+| `6` | `tuning-fork` | a gold tuning fork on a velvet block | treasure | never | 500 | G/I |
+| `7` | `gold-bars` | three stacked gold bars | treasure | never | 1,000 | G/I |
+| `8` | `music-box` | a jewelled music box, lid open, a tiny brass cylinder | treasure | never | 5,000 | G/I |
+| `9` | `golden-record` | a gold vinyl disc half out of its paper sleeve (as the 2D pickup) | treasure, `result.goldenRecord = true` | never | 10,000 | I (GDD §14.3) |
+
+The reference game's items stay banned (`docs/ORIGINALITY.md`): no turkey plate, no dog bowl, no
+white kit with a red cross, no blue sphere, no cross, chalice, chest or crown. The Red Cross emblem
+is a protected emblem: never draw it on any item, wall or uniform.
+
+A refused item stays. Every pickup shows a message (§8.6) and a short gold flash (alpha 0.2, 4
+ticks; 30 % with REDUCE FLASHES).
+
+### 4.6 Doors and keys
+
+| Value | Number | Mark |
+|---|---|---|
+| Opening / closing | 54 ticks each | G |
+| Stays open | 258 ticks, then closes | G |
+| Blocked while closing (player, a living actor in the cell) | it opens again | G |
+| Use on an open door | it closes | G |
+| Locked door without the key | stays shut, `fps/door-locked`, message `YOU NEED THE GOLD KEY` / `… SILVER KEY` | G |
+| Keys | gold and silver; kept until the floor ends or the player dies | G |
+
+### 4.7 Push walls (secrets)
+
+- Use on a push wall → it moves in the facing cardinal direction, **110 ticks per tile, at most 2
+  tiles** (G); it stops early at a solid cell, a thing or an actor (I). It does not move when the
+  first cell behind it is blocked (`fps/use-wall`). Every push wall is one secret; it counts when
+  it starts to move. After it stops, it is a normal wall.
+- One push wall moves at a time (G).
+
+### 4.8 Elevator
+
+Use on the switch wall (`X`) from the elevator → the texture changes to the "on" frame,
+`fps/elevator`, input freezes, 60 ticks later the floor ends (`floorComplete`).
+
+### 4.9 Damage feedback and death
+
+- Damage: red flash (`PAL.red[1]`, alpha 0.3, 6 ticks; 30 % with REDUCE FLASHES), `fps/player-hurt`,
+  face `ouch` when one tick deals ≥ 20.
+- **Edge marker (I):** each hit also draws a red bar (`PAL.red[2]`, 4 px thick, alpha 0.8, 12
+  ticks) on the view edge toward the attacker: left (relative angle −1536..−512), right
+  (512..1536), bottom (behind, |angle| > 1536); none when the attacker is in front. Not reduced by
+  REDUCE FLASHES (it is information, not a flash).
+- Death (HP 0): `dying` for 90 ticks — face `dead`, `fps/player-die`, the camera turns toward the
+  killer at 32 units/tick, `eyeZ` falls 0.5 → 0.2 over 30 ticks, the view fades to red
+  (`PAL.red[0]`, alpha 0 → 0.6 over 30 ticks), ticks 60–89 fade to black. Then `playerDead` (§1.6).
+
+### 4.10 Face (HUD)
+
+7 health bands: 100–86, 85–72, 71–58, 57–43, 42–29, 28–15, 14–1. Each band has 3 glances (left,
+centre, right; a new glance every 30–90 ticks by fxRng, weights 1:2:1). Priority: `dead` >
+`ouch` (30 ticks) > `grin` (60 ticks after a weapon or 1UP pickup) > band glance (G).
+
+### 4.11 Floor start, restart, carry
+
+- **First entry of a floor:** floor 1 from the bridge or `?mode=fps` → the fresh loadout; floor 2 →
+  `run.carry` from floor 1 (HP, weapons, ammo; keys never carry). `run.floorStartScore` = the
+  score at the floor card.
+- **Restart after a death or a continue:** the floor is parsed again (actors, doors, pickups, push
+  walls, secrets, timer), the fresh loadout, and `slot.score = run.floorStartScore` (G). A
+  continue first adds its continue point to `run.floorStartScore` (§1.10), so the last score
+  digit still counts the continues. The extends already given stay given (`extendsGiven` is not
+  lowered), so re-earned points never give a second life.
+
+### 4.12 Floor tally (per floor; the fps slot's column)
+
+| Line | Points | Mark |
+|---|---|---|
+| `KILLS n%` | 10,000 at 100 % | G |
+| `SECRETS a/b` | 10,000 when all found | G |
+| `TREASURE n%` | 10,000 at 100 % | G |
+| `TIME m:ss  PAR m:ss` | (par − seconds) × 500 when under par | G |
+| `MISSION 1 BONUS` (floor 1, when `'fps/ams-bonus'` exists) | info only: the fps slot's amount already paid at the bridge; not in TOTAL. When the waiting slot is joined, a second info line `<its tag> MISSION 1 BONUS n` follows | I |
+| `DIFFICULTY` | × 0.5 / 1.0 / 1.5 (`session.mods.tallyScore`) | I (GDD §14.4) |
+| `TOTAL` | counted into the score (extends apply) | — |
+
+- Kill % = kills of placed enemies / placed enemies for the difficulty (the boss counts as one;
+  reinforcements count for neither), rounded down, at most 100. Treasure % includes the golden
+  record. Time = game ticks since the last (re)start of the floor, in whole seconds rounded up.
+  The clock stops when the elevator switch is used and at the boss's 0 HP (the death-cam, the
+  hold and the fade do not count), and it does not run while paused.
+- Par: floor 0 — 60 s; floor 1 — 210 s (3:30); floor 2 — 150 s (2:30) (I).
+
+### 4.13 Score, lives, extends
+
+- Every point goes through `slot.addScore` (`session.ts:258-266`), so the extends at 500,000 and
+  1,500,000 apply (GDD §14.5). An extend: `item/1up` + message `ONE MORE TRY!`.
+- Kill scores (§4.3), treasure (§4.5), the boss (§7.2), the tally (§4.12). No knife bonus in this
+  mode.
+- A death: `slot.loseLife()` (`session.ts:313-321`). The HUD shows the same life count as the 2D
+  HUD.
+
+## 5. Map format (`src/game/fps/map.ts`, `parseFloor`)
+
+```ts
+export interface FpsThing {
+  at: [number, number];
+  facing?: 'N' | 'E' | 'S' | 'W';
+  ambush?: boolean; patrol?: boolean;
+  turn?: 'N' | 'E' | 'S' | 'W';          // a patrol turn marker on a floor cell
+  minDiff?: Difficulty; maxDiff?: Difficulty; // for pickups and props (actors use their char)
+  tex?: string;                           // push wall texture (a wall letter)
+  spawn?: 'ss';                           // a boss reinforcement point (with minDiff)
+}
+export interface FpsFloorDef {
+  id: string;                 // 'fps-0' | 'fps-1' | 'fps-2'
+  number: number; name: string; par: number /* s */;
+  secrets: number;            // the number of push walls (floor 0: 1, floor 1: 5, floor 2: 2), checked by §5.3 rule 7
+  rows: readonly string[];    // one char per cell, all rows the same length
+  things?: readonly FpsThing[];
+  ceil: Color; floor: Color;
+  music: string;              // 'fps-floor' | 'fps-boss'
+  walls?: Partial<Record<string, string>>; // letter → texture id (overrides §5.1 defaults)
+  boss?: boolean;
+}
+```
+
+### 5.1 Legend (one char per cell)
+
+| Char | Meaning |
+|---|---|
+| `.` | floor |
+| `A`–`P` | wall by texture: `A` concrete, `B` concrete + banner, `C` brick, `D` brick + notice board, `E` crate stack, `F` wood panel, `G` wood + map, `H` steel plate, `I` steel + vent, `J` hangar wall, `K` hangar + banner, `L` freight-car planks, `M` white tile, `N` cellar stone, `O` sandbags, `P` steel + pipes (ids §8.1) |
+| `X` | elevator switch wall (`fps/wall/switch`, frame off/on) |
+| `Y` | elevator panel wall |
+| `*` | push wall (texture: `things.tex`, else the most common wall letter among its 4 neighbours; ties N, E, S, W) |
+| `\|` / `-` | door, vertical / horizontal plane (`\|`: walls north and south, you pass east–west) |
+| `!` / `=` | gold-locked door, vertical / horizontal |
+| `:` / `;` | silver-locked door, vertical / horizontal |
+| `]` / `_` | elevator door, vertical / horizontal |
+| `^` `>` `v` `<` | player start facing N / E / S / W (exactly one) |
+| `g` `h` `i` | guard: all difficulties / NORMAL+ / HARD only |
+| `o` `p` `q` | officer: all / NORMAL+ / HARD |
+| `s` `t` `u` | SS: all / NORMAL+ / HARD |
+| `d` `e` `f` | dog: all / NORMAL+ / HARD |
+| `@` | MechaHitler (boss floor only) |
+| `+` `n` `r` `b` `c` `w` `y` `1` `k` `l` `5` `6` `7` `8` `9` | pickups (§4.5) |
+| `Q` `R` `S` `T` `U` `V` `W` `Z` | solid props: barrel, crates, pillar, table, banner pole, lamp stand, sandbag pile, oil drum |
+| `'` `,` `"` | non-solid props: ceiling lamp, debris, hanging chains |
+
+- Unknown characters warn once and become floor (fail soft).
+- An actor's default facing = the cardinal direction with the longest free run of floor cells
+  (ties N, E, S, W); `things` may override it. Actors stand by default; `patrol: true` makes them
+  walk. Everything on a char cell sits on floor.
+
+### 5.2 `things[]`
+
+Options a char cannot carry: `facing`, `ambush`, `patrol`, `turn` markers, `minDiff`/`maxDiff` for
+pickups and props, a push wall `tex`, boss `spawn` points. Each entry with an option for a thing
+must point at a cell that holds that thing; `turn` and `spawn` entries point at floor cells.
+
+### 5.3 Validation (`src/game/fps/validate.ts`, group `floors`; errors fail the floor tests)
+
+1. All rows have the same length; floor 1 is 48×48, floor 2 is 32×32, at most 64×64.
+2. **Closed border:** every border cell is a wall (`A`–`P`, `X`, `Y`).
+3. Exactly one start.
+4. Every door has walls on both sides of its plane and floor on both passage sides. No thing on a
+   door, push wall or wall cell; at most one thing per cell.
+5. **Keys before doors:** a BFS from the start (plain doors open, locked doors shut, push walls
+   solid — secrets are never required) reaches the gold key; with gold, the silver key; with both,
+   the elevator switch (floors 0 and 1) or the boss (floor 2). Each key stage applies only when the
+   floor contains that key (floor 2 has none: the BFS from the start must reach the boss).
+6. **Every secret reachable:** each push wall can be pushed from a reachable cell, has a free cell
+   behind it, and its contents are reachable after the push.
+7. The number of push walls = `FpsFloorDef.secrets` (floor 0: 1, floor 1: 5, floor 2: 2). One
+   golden record per floor, inside a secret.
+8. **Ammo budget ≥ enemy HP budget × 1.5** (error on NORMAL, warning on EASY/HARD):
+   `rounds = 8 + 8 × clips + 6 × (MG + chaingun) + 25 × 1UPs + ½ × drops` (every drop counts 4;
+   reinforcements are not counted); items inside secrets do not count;
+   `rounds × 22 ≥ 1.5 × Σ HP` (22 = the average mid-band bullet; Σ HP includes the boss).
+9. **Fair start:** no enemy has line of sight to the start cell at load (doors closed).
+10. Reinforcement spawns (boss floor): 2 / 3 / 4 by difficulty, each in a cell behind a door.
+11. **Boss-fight ammo (boss floor, error on every difficulty):** `99 + arena rounds + drops ≥ 1.3
+    × (boss HP of both phases + reinforcement HP) / 19`. Arena rounds = 8 × the clips inside the
+    arena (alcoves and pillar clips) + 8 × the 2 wreck clips (§7.2); drops = 4 × the
+    reinforcements (19 = the average damage per bullet over the arena's mixed ranges, misses
+    included). Values: EASY 99 + 64 + 8 = 171 ≥ 1.3 × 1600 / 19 = 110; NORMAL 99 + 64 + 12 =
+    175 ≥ 1.3 × 2100 / 19 = 144; HARD 99 + 64 + 16 = 179 ≥ 1.3 × 2600 / 19 = 178. The player can
+    reach 99 before the arena on every attempt: the antechamber, supply and locker rooms hold 102
+    rounds outside the secrets.
+
+## 6. Floor plans (original layouts)
+
+Coordinates are cells `(x, y)`, `x` east, `y` south. Rectangles are interiors (floor). The builder
+draws the ASCII maps from these plans and may move a feature by 1–2 cells to fix validation.
+
+### 6.0 Floor 0 — `fps-0` "TEST RANGE" (20 × 12, group `fps-shell`)
+
+A starting map. The shell builder swaps wall letters so every texture `A`–`P` shows at least once
+(a texture gallery along room A's walls); group `actors` adds one of every enemy type and pickup.
+
+```
+AAAAAAAAAAAAAAAAAAAA
+A.......C.k...H....Y
+A.......C.....H....X
+A..Q....|.....H....Y
+A.......C..+..H....Y
+A>......C.....HY_YYA
+A.......CCC-CCH....A
+A.......C..l..H..w.A
+AAAA....!.....H....A
+A..*....C.....:....A
+A.9A..c.C.....H.n..A
+AAAAAAAAAAAAAAAAAAAA
+```
+
+Room A (start, x 1–7), room B (gold key, plain door), room C (silver key, gold door shortcut from
+A), the east room (silver door), the elevator (`_` door, switch `X` at (19, 2)), a push wall at
+(3, 9) that slides west into a closet with the golden record (`secrets: 1`). Par 60 s. Ceiling
+`PAL.steel[0]`, floor `PAL.stone[1]`.
+
+### 6.1 Floor 1 — `fps-1` "SUPPLY DEPOT" (48 × 48)
+
+Ceiling `PAL.steel[0]`, floor `PAL.stone[1]`, music `fps-floor`, par 210 s. Walls: border and
+band walls `A`; rows `y = 13` and `y = 30` and columns as listed. Three bands: north (y 1–12),
+middle (y 14–29), south (y 31–46).
+
+**Route (the forced key loop):** freight car → rail yard (a gold door north, locked) → barracks →
+mess hall → fuel store → motor pool (gold key) → gold door → warehouse (silver key; its second
+gold door opens back to the yard) → officers' wing → silver door → corridor → elevator. The path
+circles the whole map: south-west → east → centre → west → north → north-east.
+
+| # | Room | Interior | Doors | Contents (enemies E / N / H) |
+|---|---|---|---|---|
+| R1 | Freight car (start) — wrecked, tilted planks (`L`) | walls x 1–9, y 40–46; interior x 2–8, y 41–45 | `-` (5, 40) to the yard | start `^` (5, 44); clip (7, 42); ration (2, 41); debris `,` |
+| R2 | Rail yard | x 1–16, y 31–39 and x 10–16, y 40–46 | gold `=` (9, 30) north to R6; `\|` (17, 37) east to R3 | guards 3/4/5, dog 0/1/1 (patrol along y 36 between turn markers (3, 36) and (15, 36)); clips (12, 38), (15, 44); food (14, 46); crate stacks `R` (12–13, 33), barrels `Q` (6, 38), (7, 38); rails as debris `,` |
+| R3 | Barracks | x 18–30, y 31–46 | `\|` (31, 36) east to R4 | guards 3/4/5 (two asleep: `ambush`), officer 0/0/1; first aid (24, 46); clip (19, 40); pocket watches (20, 32), (29, 32); bunks `T` |
+| R4 | Mess hall | x 32–46, y 31–46 | `-` (40, 30) north to R7 | guards 2/3/3, officer 1/1/1, SS 0/0/1; food (34, 45), (36, 45); clip (46, 31); tuning fork (38, 33); tables `T`, ceiling lamps `'` |
+| R7 | Fuel store | x 35–46, y 14–29 | `\|` (34, 20) west to R5 | guards 1/2/3, SS 1/1/2; MG `w` (45, 15); clip (36, 28); first aid (46, 22); oil drums `Z` |
+| R5 | Motor pool + kennels | x 22–33, y 14–29 | gold `!` (21, 22) west to R6 | dogs 3/4/5, guard 1/1/2, officer 0/1/1; **gold key** (27, 15); ration (23, 28), (24, 28); clip (33, 16); gold bars (32, 28); props |
+| R6 | Warehouse — crate aisles at y 17 and y 23 (x 3–9, 12–18, gaps at x 10–11 and 19–20) | x 1–20, y 14–29 | `-` (12, 13) north to R8; gold `=` (9, 30) south to R2 | guards 2/3/3, SS 1/2/2, officer 1/1/2; **silver key** (2, 27); clips (18, 28), (5, 15); first aid (20, 14); gold bars (19, 15) |
+| R8 | Officers' wing — an office x 1–9, y 1–5 (walls x 10, y 1–6 and y 6, x 1–10; door `-` (5, 6)); the hall x 11–22, y 1–6 and x 1–22, y 7–12 | x 1–22, y 1–12 | silver `:` (23, 6) east to the corridor | guards 0/1/1, SS 1/1/2, officers 1/2/3; food (20, 11); clip (15, 2); tuning forks (2, 2), (9, 2); map wall `G` in the office; banners `B` |
+| — | Corridor | x 24–37, y 5–7 | elevator `]` (38, 6) | SS 0/1/1, dogs 1/1/2 |
+| R9 | Elevator (`Y` walls) | x 39–44, y 4–8 | — | switch `X` (45, 6) |
+
+Secrets (push walls, all 5):
+
+| # | Push wall | Push from / direction | Closet interior | Contents |
+|---|---|---|---|---|
+| S1 | (4, 32) | (5, 32), west | x 1–3, y 31–33 (walls x 4, y 31–34; y 34, x 1–4) | clips (1, 31), (1, 33); pocket watch (2, 33) |
+| S2 | (27, 45) | (26, 45), east | x 28–30, y 44–46 (walls x 27, y 43–46; y 43, x 27–30) | first aid (30, 44); tuning fork (28, 46); gold bars (30, 46) |
+| S3 | (43, 43) | (42, 43), east | x 44–46, y 41–46 (walls x 43, y 40–46; y 40, x 43–46) | 1UP (46, 41); food (44, 46), (46, 46) |
+| S4 | (30, 8) | (30, 7), south | x 28–32, y 9–11 (walls y 8 and y 12, x 27–33; x 27, x 33) | **golden record** (28, 11); clip (32, 11) |
+| S5 | (27, 4) | (27, 5), north | x 25–29, y 1–3 (walls y 4; x 24 and x 30, y 0–4) | music box (25, 1); chaingun (29, 1) |
+
+Everything else in the north band east of x 23 (outside the corridor, R9, S4, S5) is solid.
+
+A sketch drawn from these tables (not a contract; the key loop and every item were checked by a
+BFS): `tmp/fps-spec/floor1-plan.txt`.
+
+Enemy totals: **EASY 22** (guards 12, dogs 4, officers 3, SS 3), **NORMAL 34** (18, 6, 5, 5),
+**HARD 46** (22, 8, 8, 8). Per room E/N/H: R2 3/5/6, R3 3/4/6, R4 3/4/5, R7 2/3/5, R5 4/6/8,
+R6 4/6/7, R8 2/4/6, corridor 1/2/3. Treasure: 12 items (20,300 points). Ammo (NORMAL, secrets not
+counted): start 8 + 10 clips (80) + MG 6 + drops ½ × 112 = 150 rounds × 22 = 3300 ≥ 1.5 × 1206 HP
+= 1809.
+
+### 6.2 Floor 2 — `fps-2` "HANGAR" (32 × 32, boss floor)
+
+Ceiling `PAL.navy[0]`, floor `PAL.steel[1]`, music `fps-floor` until the boss wakes, then
+`fps-boss`; par 150 s. No keys and no elevator: the floor ends when MechaHitler dies.
+
+| Room | Interior | Doors | Contents (E / N / H) |
+|---|---|---|---|
+| Lift (arrival, `Y` walls) | x 14–17, y 28–30 | `_` (15, 27) north | start `^` (15, 29) |
+| Antechamber | x 9–22, y 21–26 | `-` (15, 20) north to the arena; `\|` (8, 24) west; `\|` (23, 24) east | guards 2/2/3, SS 0/1/2; clips (10, 26), (21, 26), (12, 22); banner poles `U` (9, 21), (22, 21) |
+| Supply room | x 1–7, y 21–27 | — | **chaingun** `y` (4, 26) (all difficulties); clips × 6 (1–6, 21); first aid (1, 27), (7, 27); food (7, 21); dog 0/1/1 |
+| Locker room | x 24–30, y 21–27 | — | officer 1/1/2; clips (30, 21), (30, 22), (30, 23); food (24, 27) |
+| Arena | 18 × 18: x 7–24, y 2–19 | spawn bay doors `\|` (6, 10), (25, 10) | MechaHitler `@` (15, 4) facing S; four 2 × 2 pillars (`K` hangar + banner faces) at x 10–11 / 20–21 × y 6–7 / 14–15; alcoves (one cell in the side walls) (6, 4) first aid, (25, 4) clip, (6, 16) clip, (25, 16) first aid; clips (14, 18), (17, 18), and between the pillar pairs (10, 10), (21, 10); banner poles `U` in the corners (8, 3), (23, 3), (8, 18), (23, 18) |
+| Spawn bays | x 3–5, y 9–11 (west), x 26–28, y 9–11 (east) | the arena doors | `spawn: 'ss'` points: (4, 10) all, (27, 10) all, (4, 9) NORMAL+, (27, 11) HARD |
+
+Secrets: S1 push wall (3, 28), pushed south from the supply room (3, 27); closet x 1–6, y 29–30 →
+**golden record** (1, 30), 1UP (6, 30). S2 push wall (27, 28), pushed south from the locker room
+(27, 27); closet x 24–30, y 29–30 → music box (25, 30), clips (30, 29), (30, 30).
+
+Sketch (not a contract): `tmp/fps-spec/floor2-plan.txt`. Enemies (not the boss): EASY 3, NORMAL 5,
+HARD 8. The 3-cell gaps between the pillars and the walls let the mech (radius 0.6) pass. The arena door is never locked; the mech cannot leave the
+arena (its leash = the arena rectangle). Ammo (NORMAL, secrets not counted): start 8 + 18 clips
+(144) + chaingun 6 + drops ½ × 16 = 166 rounds × 22 = 3652 ≥ 1.5 × 2001 HP = 3002; plus the carry
+from floor 1. The fight itself is checked by §5.3 rule 11 (it passes on every difficulty with the
+6 arena clips and the 2 wreck clips).
+
+## 7. MechaHitler
+
+### 7.1 Look (original design)
+
+- **Phase 1 — the suit "the walking podium":** a riveted gunmetal walker (`steel` ramp) built
+  around a speaker's rostrum. Two thick hydraulic legs with three-toed feet. The torso is the
+  rostrum: a front plate with a large round brass loudspeaker grille (no symbol: the historical
+  symbol stays on banners and flags, §0) and brass trim. On top, his head and shoulders under a
+  glass dome (the caricature: side-parted black hair, small black moustache, wide angry eyes,
+  cartoon proportions). Two shoulder pods, each with a **pair of brass loudspeaker horns**; a
+  rotary barrel sits inside each horn (4 chainguns). A row of brass medals bolted to the left pod.
+  Exhaust stacks on the back puff smoke. Billboard 96 × 96 texels, world 1.5 × 1.5, collision
+  radius 0.6.
+- **Phase 2 — on foot:** he climbs out of the burning wreck: field-grey greatcoat with a scorched
+  hem, the broken glass-dome collar still around his neck, one boot missing, soot on the face, a
+  chaingun in each hand on a leather harness. Billboard 64 × 64, world 1 × 1, radius 0.34.
+- **The wreck:** the opened, smoking suit stays as a solid prop (96 × 96, 1 frame) on the cell where
+  the suit broke.
+
+### 7.2 Numbers
+
+| Value | Phase 1 (suit) | Phase 2 (on foot) |
+|---|---|---|
+| HP (E / N / H) | 900 / 1100 / 1300 | 500 / 700 / 900 |
+| Chase speed | 0.020 tiles/tick | 0.040 tiles/tick |
+| Tell | 30 ticks (24 below 25 % HP): the horns glow, the barrels spin, `fps/boss/spin-up` | 24 ticks: raises both guns, `fps/boss/spin-up` |
+| Attack | burst of 8 shots, 1 per 4 ticks (32 ticks) | burst of 6 shots, 1 per 4 ticks (24 ticks) |
+| Recover | 45 ticks (vents steam: the safe window) | 40 ticks |
+| Pain | none (sparks only) | 6 ticks, no tell cancel |
+| Score | 25,000 when the suit breaks | 50,000 |
+
+- **Boss hit chance:** the enemy formula (§4.3) with `base = 208` (112 when the player runs).
+  **Boss damage per bullet:** `d < 2`: `rng.int(4, 20)`; `d < 4`: `rng.int(2, 12)`; else
+  `rng.int(1, 8)`; EASY × 0.5.
+- **Wake:** stands (ambush) until he sees the player. Then: taunt 1, music `fps-boss`, the boss
+  bar appears.
+- **Pattern:** chase → tell → burst → recover → chase. Without line of sight for 180 ticks he walks
+  to the last place he saw the player (inside the leash).
+- **Attack start (I; the boss uses no tokens):** in `chase` with line of sight, after at least 45
+  ticks of chase (phase 2: 30), each tick `rng.int(0, 255) < 24`; always after 120 ticks of chase
+  with line of sight. The chase counter resets when a burst starts and pauses (not resets) while
+  line of sight is lost. So the gap from the end of one burst to the start of the next tell is at
+  least recover + 45 ticks (90 in phase 1, 70 in phase 2), about 2.7 s per full phase-1 cycle. A
+  boss test checks the minimum gap and the 120-tick cap.
+- **Events:** 75 % suit HP → taunt 2. **50 % suit HP → taunt 3 + reinforcements:** the bay doors
+  open and 2 / 3 / 4 SS (E / N / H) come out of the spawn points. They count for no kill %.
+- **Suit breaks (0 suit HP):** 120 ticks, invulnerable: the suit stops, sparks, `fps/boss/break`,
+  the frames `act` 5–8, then the wreck appears and he jumps out on the cell next to the wreck
+  nearest to the player; taunt 4; phase 2 starts. **Two clips (`clip`, +8 each) spill out of the
+  wreck** onto the two free cells next to it farthest from the boss (I; §5.3 rule 11 counts them).
+- **Phase 2:** 50 % HP → taunt 5.
+
+### 7.3 Death-cam (I)
+
+At 0 HP in phase 2: all other actors freeze (no more attacks), the world runs in slow motion (one
+game step every 3rd tick) for 150 ticks, the camera turns to face him over 30 ticks, his `die`
+frames play (red blood), taunt 6 plays with its subtitle, `fps/boss/fall` at the last die frame.
+Then 60 ticks hold, a 30-tick fade, `floorComplete`. Input is off during the death-cam.
+
+### 7.4 Taunts (original lines; voice §9.3; subtitle small, C, y 18, 150 ticks)
+
+| # | When | German (spoken) | English subtitle |
+|---|---|---|---|
+| 1 | wakes | `IHR KOMMT ZU SPÄT. MEINE REDE BEGINNT!` | YOU ARE TOO LATE. MY SPEECH BEGINS! |
+| 2 | suit 75 % | `LAUTER! ICH WILL ES LAUTER!` | LOUDER! I WANT IT LOUDER! |
+| 3 | suit 50 % | `WER HAT DEN SCHWAN HEREINGELASSEN?` | WHO LET THE SWAN IN? |
+| 4 | suit breaks | `MEIN SCHÖNER ANZUG! DAS ZAHLT IHR MIR!` | MY BEAUTIFUL SUIT! YOU WILL PAY FOR THIS! |
+| 5 | on foot 50 % | `DAS IST NICHT FAIR! ICH HATTE VORTRITT!` | THIS IS NOT FAIR! I HAD RIGHT OF WAY! |
+| 6 | dies | `DAS... STAND NICHT... IM PLAN...` | THAT... WAS NOT... IN THE PLAN... |
+
+None of these is a line of the reference game or a quote of the real person.
+
+### 7.5 Boss bar
+
+When awake and `settings.bossBar` is on: `MECHAHITLER` (small, C, y 1; rows 1–9) and a 192 × 4
+bar at (96, 11) (rows 11–14). The taunt subtitle sits below them (y 18, rows 18–26); the
+messages are at the bottom-left (§8.6), so the top band never overlaps. Bar colours: phase 1
+`PAL.steel[3]` on `PAL.ink[1]`, phase 2 `PAL.red[2]`.
+
+## 8. Art list (groups `art`; ids are contracts)
+
+All art is code-generated from the 64-colour palette (`src/engine/palette.ts`), original, never
+traced. Blood uses `PAL.red[0..2]` only.
+
+### 8.1 Wall and door textures (`defineRayTexture`, 64 × 64)
+
+| Letter | Id | Look |
+|---|---|---|
+| A | `fps/wall/concrete` | grey cast concrete panels, form-board lines, stains |
+| B | `fps/wall/concrete-banner` | A + a hanging red banner with a white disc and the black historical symbol |
+| C | `fps/wall/brick` | red industrial brick |
+| D | `fps/wall/brick-notice` | C + a pinned notice board (unreadable scribble lines, no real text) |
+| E | `fps/wall/crates` | a wall of stacked wooden crates with stencil bars |
+| F | `fps/wall/wood` | dark wood panelling |
+| G | `fps/wall/wood-map` | F + a pinned map of invented coastlines and pins |
+| H | `fps/wall/steel` | riveted steel plate |
+| I | `fps/wall/steel-vent` | H + a vent grille |
+| J | `fps/wall/hangar` | corrugated hangar sheet |
+| K | `fps/wall/hangar-banner` | J + a tall red banner with the historical symbol |
+| L | `fps/wall/freight` | weathered freight-car planks, a sliding-door rail |
+| M | `fps/wall/tile` | white wall tile, grout lines |
+| N | `fps/wall/cellar` | rough cellar stone |
+| O | `fps/wall/sandbags` | stacked sandbags |
+| P | `fps/wall/steel-pipes` | H + horizontal pipes and a valve wheel |
+| X | `fps/wall/switch` + `fps/wall/switch-on` | `Y` + a lever box (down / up, a red / green lamp) |
+| Y | `fps/wall/elevator` | brushed-steel lift panels |
+| — | `fps/door/plain`, `fps/door/gold`, `fps/door/silver`, `fps/door/lift`, `fps/door/edge` | steel sliding doors; locked doors carry a gold / silver lock plate; `edge` = the door jamb |
+
+### 8.2 Billboards (`defineRayBillboard`)
+
+| Id | Size | Yaws | Frames |
+|---|---|---|---|
+| `fps/guard/move`, `fps/officer/move`, `fps/ss/move` | 64 | 8 | 5: stand, walk 1–4 |
+| `fps/guard/act`, `fps/officer/act`, `fps/ss/act` | 64 | 1 | 8: tell, shoot (muzzle flash), pain, die 1–4 (blood), dead |
+| `fps/dog/move` | 64 | 8 | 5: stand, run 1–4 |
+| `fps/dog/act` | 64 | 1 | 6: tell (crouch), bite, die 1–3, dead |
+| `fps/boss/mech/move` | 96 (world 1.5) | 8 | 5: stand, walk 1–4 |
+| `fps/boss/mech/act` | 96 (world 1.5) | 1 | 9: tell 1–2, fire 1–2, pain, break 1–4 |
+| `fps/boss/foot/move` | 64 | 8 | 5: stand, walk 1–4 |
+| `fps/boss/foot/act` | 64 | 1 | 11: tell, fire 1–2, pain, die 1–6, dead |
+| `fps/boss/wreck` | 96 (world 1.5) | 1 | 1 |
+| `fps/item/<id>` (every §4.5 id + `clip-drop`) | 64 | 1 | 1 (the item in the lower third) |
+| `fps/prop/<id>`: `barrel`, `crates`, `pillar`, `table`, `banner-pole` (a flag with the historical symbol), `lamp-stand`, `sandbags`, `oil-drum`, `ceiling-lamp`, `debris`, `chains` | 64 | 1 | 1 |
+| `fps/fx/blood-pool` | 64 | 1 | 3: small, medium, large (a floor decal, bottom rows only) |
+| `fps/fx/spurt` | 64 | 1 | 3: a hit spurt at chest height |
+
+Uniforms: 1940s style, our own drawing — `guard` field grey with a cap; `officer` darker
+grey-green coat, peaked cap, white gloves; `ss` black coat and helmet; no armbands and no
+symbols on uniforms (§0). The 3D joint rig `src/game/art/figure3d.ts` renders the yaws.
+
+### 8.3 Weapon views (normal sprites, screen space)
+
+`fps/view/knife`, `fps/view/pistol`, `fps/view/mg`, `fps/view/chaingun`: 112 × 80, anchor
+bottom-centre, drawn at (192, 176 + bob) with bob ±2 px while moving. 4 frames: idle, fire A
+(flash), fire B, recover (knife: idle, wind-up, stab, return). A dark glove and a khaki cuff.
+
+### 8.4 Face
+
+`fps/face/<character>` for `grace`, `mittens`, `pip`, `gramps`, `recruit`: 32 × 32, 24 frames:
+`band × 3 + glance` (0–20; glance 0 left, 1 centre, 2 right), 21 grin, 22 ouch, 23 dead. Built
+from the project's head rig in the character's own style (beret, bobble hat, helmet, goggles).
+Damage: soot, scratches, plasters, a black eye; bands 5–6 a small red cut (this mode only). The
+frame is a round porthole in the bar art, not a square box.
+
+### 8.5 Status bar (`fps/hud/*`, normal sprites)
+
+| Id | Size | Frames |
+|---|---|---|
+| `fps/hud/bar` | 384 × 40 | 1: navy-steel plate, rivets, the round porthole at the left (x 6–46), recessed panels for the middle block (x 118–238) and the weapon block (x 254–382), two key slots (x 243–253) |
+| `fps/hud/weapon` | 48 × 20 | 4: knife, pistol, mg, chaingun silhouettes |
+| `fps/hud/key` | 8 × 14 | 2: gold, silver |
+
+### 8.6 HUD layout (y 176–215; group `actors`, `src/game/fps/hud.ts`)
+
+Order left → right: face, health, score / lives / floor, keys, weapon + ammo. This order is our
+own: it does not follow the reference game's run of boxes (`docs/ORIGINALITY.md`), and the face
+sits at the left edge, not in the middle.
+
+| Element | Drawn with | Position |
+|---|---|---|
+| Bar | `fps/hud/bar` | (0, 176) |
+| Face | `fps/face/<char>` in the porthole | (10, 180) |
+| `HEALTH` | small text | (52, 181) |
+| Health value | big font × 2, right-aligned | right edge 110, y 192 |
+| Health bar | rect 56 × 3: `PAL.green[2]` > 50, `PAL.gold[2]` 26–50, `PAL.red[2]` ≤ 25 | (52, 210) |
+| `SCORE` + value | small label; big × 1 value right-aligned | (122, 181); right edge 234, y 181 |
+| Lives | `ui/icon-life` + `X3` small | (122, 194), (134, 194) |
+| Floor + tag | `FLOOR n` small (the floor number only; the name is on the cards); the fps slot's tag `1P` / `2P` in its slot colour, right-aligned | (122, 205); right edge 234, y 205 |
+| Keys | `fps/hud/key` 0 / 1 when held | (244, 182), (244, 199) |
+| Weapon | `fps/hud/weapon` frame = weapon | (258, 186) |
+| `AMMO` | small text | (314, 181) |
+| Ammo value | big × 2, right-aligned | right edge 378, y 192 |
+| Messages | small text, `PAL.snow[2]`, 90 ticks, 2 lines max, newest at the bottom; every message is at most 128 px wide in the small font (a hud test checks the message list) | bottom-left of the view: (4, 154), (4, 164) — clear of the boss band at the top and of the weapon view (x 136–248) |
+| Boss bar, subtitles | §7.4, §7.5 | top centre |
+
+## 9. Audio list
+
+Every id gets a synth fallback first (group `fps-sound`, `content/fps/sfx.ts`, `music.ts`). Group
+`audio-spec` prepares ElevenLabs takes for **all** of them (sfx, the 4 songs, every voice line)
+for the sample group **`'mode:fps'`** (spec entries in `tools/audio/**` only). Group
+`audio-ship` adds `'mode:fps'` to `SAMPLE_GROUPS` (`src/engine/samples.ts:70`, today
+`['boot', 'mission:ams']`) in the same change that ships its manifest group (§3.6). Nothing is
+generated before the user's OK.
+
+### 9.1 Sound effects (`fps/*`)
+
+| Group | Ids |
+|---|---|
+| Player weapons | `fps/knife`, `fps/knife-hit`, `fps/pistol`, `fps/mg`, `fps/chaingun`, `fps/weapon-up` |
+| Enemies | `fps/enemy/aim` (the tell click), `fps/enemy/pistol`, `fps/enemy/mg`, `fps/enemy/hurt`, `fps/enemy/fall`, `fps/blood` |
+| Dog | `fps/dog/bark`, `fps/dog/growl` (tell), `fps/dog/bite`, `fps/dog/die` |
+| Boss | `fps/boss/step`, `fps/boss/spin-up` (tell), `fps/boss/chaingun`, `fps/boss/break`, `fps/boss/fall`, `fps/boss/horn` (taunt stand-in) |
+| World | `fps/door-open`, `fps/door-close`, `fps/door-locked`, `fps/pushwall`, `fps/elevator`, `fps/use-wall` |
+| Pickups | `fps/pickup-health`, `fps/pickup-food`, `fps/pickup-ammo`, `fps/pickup-weapon`, `fps/pickup-key`, `fps/pickup-treasure`, `fps/pickup-record` (1UP reuses `item/1up`) |
+| Player | `fps/player-hurt`, `fps/player-die` |
+| Bridge, tally | `fps/glitch`, `fps/type`, `fps/fold`, `fps/tally-100` (ticks reuse `ui/tally-tick`, `ui/tally-end`) |
+| Shout stand-ins | `fps/shout-guard`, `fps/shout-officer`, `fps/shout-ss` (wordless, used when no voice sample is loaded) |
+
+**Positional sound (group `actors`, `src/game/fps/audio.ts`):** `pan = clamp(sin(relative
+angle), −0.8, 0.8)`; `vol = max(0.15, 1 − d / 20) × (area reached ? 1 : 0.35)`. Exception: the
+tell sounds (`fps/enemy/aim`, `fps/dog/growl`, `fps/boss/spin-up`) use `max(0.5, vol)`, so an
+attack from outside the view is always heard (§4.3).
+
+### 9.2 Songs (original; never quote an existing tune)
+
+| Id | Mood | Shape |
+|---|---|---|
+| `fps-floor` | brooding martial ostinato in a minor key, low brass pad, snare rolls, ~100 BPM | 60–90 s loop |
+| `fps-boss` | driving 140 BPM, organ-like stabs, timpani, rising tension | 60 s loop |
+| `fps-tally` | a short victory jingle | 6–8 s, no loop |
+| `fps-bridge` | a glitchy sting: our own ams street-organ motif breaks down into a low drone | 4 s sting + a drone loop under the story card |
+
+### 9.3 Voice lines (original German; `audio.say(text, speaker)`; when `audio.hasVoice?.(text)` is false the shout stand-in sfx plays)
+
+| Speaker | Event | Lines (English meaning) |
+|---|---|---|
+| `guard` | alert | `DA DRÜBEN!` (over there!), `EINDRINGLING!` (intruder!) |
+| `guard` | death | `MEINE BRILLE...!` (my glasses!), `NICHT SCHON WIEDER...` (not again...) |
+| `officer` | alert | `ALLE MANN AUF POSTEN!` (all hands to your posts!) |
+| `officer` | death | `MEIN SCHÖNER HUT...!` (my lovely hat!) |
+| `ss` | alert | `FEUER FREI!` (open fire!) |
+| `ss` | death | `DAS STEHT NICHT IM HANDBUCH...!` (that is not in the manual!) |
+| `mechahitler` | §7.4 | the six taunts |
+
+All spoken strings live in `src/game/content/fps/lines.ts` (pure data, group `actors`). The lines
+avoid every signature shout and death line of the reference game. `voiceKey` folds the umlauts.
+
+**Voice design (designed voices only — never a clone, never a real person, prompts never name a
+person, a game or a film):** `guard` — a young, nervous, slightly hoarse German-speaking soldier;
+`officer` — an older, pompous, nasal voice; `ss` — a flat, clipped, cold voice; `mechahitler` — a
+whiny, sulky, theatrical cartoon tyrant, a tenor that cracks into falsetto when upset, comic
+rather than menacing; processed afterwards through a tinny horn filter (phase 1). The design must
+not copy the cadence or sound of any real recording.
+
+## 10. Tests and tools
+
+| Test file (owner) | What it proves |
+|---|---|
+| `tests/engine/ray/*.test.ts` (`ray`) | axis and diagonal hits, perpendicular distance; door fractions; push-wall offset; `lineOfSight`; collision sliding, corners, doors, blockers; area reach when a door opens/closes; texture layout, spans, mirrors, fallback; `renderView` symmetry at a flat wall, z-buffer hides a billboard behind a wall, a golden hash at fixed poses, buffers reused; prints ms per frame |
+| `tests/media/browser.test.ts` (`media`) | a stream buffer changed 3 times: Canvas = Soft at res 1 and 3; exactly one stream slot |
+| `tests/engine/input-actions.test.ts` (`input`) | action edges, pad fallback, scripted actions/analog, mouse remainder carry, settings persistence, `suppress` hides a held action until released (also through `InputManager.suppress`), stick → speed scale |
+| `tests/game/fps/{map,doors,pushwall,determinism,scene}.test.ts` (`fps-shell`) | legend parsing and warnings, door timings and blocking, push walls, same seed + timeline → same `stateHash`, the scene starts headless and draws no magenta |
+| `tests/game/fps/{actors,ai,hitscan,weapons,pickups,hud}.test.ts` (`actors`) | wake by sight (also the automatic 1.5-tile sight from behind) and by noise (not through closed doors), tell ≥ 18 ticks before every damaging event, damage distributions per band (seeded), double damage to an unaware actor, fire rates, silent knife, pickup caps and refusals, drops, blood, every HUD message ≤ 128 px, the edge marker side |
+| `tests/art/fps-*.test.ts` (`art`) | every §8 id exists with its size and frame count, palette-only, textures tile without seams |
+| `tests/content/fps-sound.test.ts` (`fps-sound`) | every §9 id renders, songs loop cleanly |
+| `tests/game/fps/{floors,boss,validate,tally}.test.ts`, `tests/sim/fps-bot.test.ts` (`floors`) | validators (rules 1–11) pass on floors 0–2, enemy counts per difficulty, boss phases and events, the boss's minimum gap between bursts and the 120-tick cap, the wreck clips, tally math (TIME stops at the elevator and the boss's 0 HP), the bot clears floors 1 and 2 with god on seeds 1–3 |
+| `tests/game/fps/flow.test.ts` (`flow`) | ams complete → bridge → intro → floor 1; tally → floor 2 → ending → final tally; pause (Esc, raw pad Start; `Digit1` in a 2P session does not pause) / continue / game over from the mode; the continue keeps the last score digit; P1 out at the ams kill → P2's slot plays, dies, continues with slot 0's devices, HUD tag `2P`; P2 waits; golden-record route; every story line ≤ 352 px in the small font with the longest callsign; the bridge waits in `freeze` while the content is not registered |
+
+Tools:
+
+- `src/sim/headless-fps.ts` (`fps-shell`): `runFps({ floor, seed, difficulty, god, maxTicks,
+  input }) → { complete, deaths, kills, secrets, treasure, ticks, errors, stateHash }`.
+- `src/sim/bot-fps.ts` (`floors`): BFS through keys → doors → elevator / boss; turns to and shoots
+  visible enemies; picks up health below 40 HP and ammo below 20.
+- `npm run sim -- --mode fps --floor 1|2 [--god] [--seed n] [--difficulty …] [--expect-complete]`
+  (`tools/sim.ts`, `floors`).
+- `npm run shot -- --fps 1 --pose x,y,deg[;x,y,deg…] [--ticks n] [--every n --count k] [--bot]`
+  → `tmp/shots/fps-1-….png` (`tools/shot.ts`, `fps-shell`; deg: 0 east, 90 south).
+- `npm run sprites -- fps/` (HUD, faces, weapon views) and `npm run sprites -- fps/ --ray`
+  (textures and billboards; `tools/sprites.ts --ray`, `art`).
+- `npm run perf -- --query "mode=fps&floor=1&god=1"`; `npm run smoke -- --port <p> --query
+  "mode=fps&floor=0"`, `"mode=bridge"`, `"mission=ams&boss=1&debug=1&god=1"` (then F4).
+
+## 11. Build groups and file ownership
+
+Order: **spec** → user gate → **engine-a** (ray | media | input) → **engine-b** (fps-shell) →
+**cast** (actors | art | fps-sound) → **floors ‖ flow** → **audio-spec** → user gate (credits,
+takes) → **audio-ship** → **polish**. Within a group the areas run in parallel and never share a
+file. fps-shell runs after ray and input because it imports their APIs at compile time
+(`RayGrid`, `DoorTable`, `tryMove`, `renderView`, `RayView`; `input.actions`, `input.analog`,
+`input.fpsMode`, `app.pointerLockWanted`); its scene test cannot run before they exist. If the
+workflow must run all four at once, ray and input first publish compiling stubs with the exact
+§3.2 and §2.2 signatures, and fps-shell starts after that.
+
+| File | Owner (group / area) |
+|---|---|
+| `docs/design/fps.md`, `docs/ORIGINALITY.md` (fps section), `docs/ARCHITECTURE.md`, `docs/GAME_DESIGN.md` §17 | spec |
+| `src/engine/ray/**`, `tests/engine/ray/**`, `docs/api/fps.md` §1 | engine / ray |
+| `src/engine/render.ts` (`DrawOpts.stream` only), `render-canvas.browser.ts`, `render-soft.ts` (if needed), `tests/media/browser.test.ts`, `tests/engine/helpers.ts` (if needed), `docs/api/media.md` (stream) | engine / media |
+| `src/engine/input-actions.ts`, `input.ts` (additive), `input.browser.ts`, `pointer.browser.ts`, `src/main.ts` (wiring), `src/game/app.ts` (`pointerLockWanted`), `src/game/settings.ts`, `scenes/options.ts`, `tests/engine/input-actions.test.ts` + touched input/settings/options tests, `docs/api/fps.md` §2 | engine / input |
+| `src/game/fps/{types,registry,map,game,player,doors,pushwall,run}.ts`, `scenes/{fps,fps-intro,fps-route}.ts`, `content/fps/{index,names,floor-0,textures-basic}.ts` + empty stubs `content/fps/{art,sound,floors}.ts`, `content/index.ts` (lazy entries, `isLazyContent`, default filter), `scenes/boot.ts` (lazy filter, `?mode=fps`), `src/game/params.ts` (`mode`, `floor`), `scenes/index.ts` (fps scene exports), `src/sim/headless-fps.ts`, `tools/shot.ts` (`--fps`), `tests/game/fps/{map,doors,pushwall,determinism,scene}.test.ts`, `docs/api/fps.md` §3, §6 | engine / fps-shell |
+| `src/game/fps/{actors,ai,hitscan,weapons,pickups,hud,audio}.ts` + combat/pickup parts of `game.ts`, `player.ts`; `content/fps/{floor-0,lines}.ts`; `tests/game/fps/{actors,ai,hitscan,weapons,pickups,hud}.test.ts`; `docs/api/fps.md` §4 | cast / actors |
+| `src/game/art/{figure3d,wall-tex}.ts`, `content/fps/{art,textures,textures-basic,billboards,props,pickups-art,hud-art,weapon-art,faces}.ts`, `tools/sprites.ts` (`--ray` only), `tests/art/fps-*.test.ts`, `docs/ART_GUIDE.md` §10 (raycaster details) | cast / art |
+| `content/fps/{sound,sfx,music}.ts`, `tests/content/fps-sound.test.ts`, `tools/lib/audio-report.ts` + `audio-report.entry.ts` (`loadContent(() => true)` only, §3.6), `docs/api/sfx.md` (fps section) | cast / fps-sound |
+| `content/fps/{floors,floor-1,floor-2,episode}.ts`, `src/game/fps/{boss,validate}.ts` + boss hooks in `actors.ts`, `game.ts` (boss bar, subtitles, death-cam), `scenes/fps-tally.ts`, `src/sim/bot-fps.ts`, `tools/sim.ts` (`--mode fps --floor`), `tests/game/fps/{floors,boss,validate,tally}.test.ts`, `tests/sim/fps-bot.test.ts`, `docs/api/fps.md` §5 | floors |
+| `src/game/mission/types.ts` (`after`), `content/missions/ams/index.ts` (`after` only), `scenes/{gameplay,flow,mission-complete,pause,continue,game-over,ending,final-tally,flow-data,high-scores (missionColumn only),fps-route,glitch-bridge}.ts`, `scenes/fps.ts` (pause / continue / route wiring only), `scenes/index.ts` (`GlitchBridgeScene` export), `content/fps/story.ts`, `scenes/boot.ts` (`?mode=bridge`), `tests/game/scenes.test.ts`, `tests/game/scene-audio.test.ts` (the `PauseScene` argument), `tests/content/mission-ams.test.ts`, `tests/game/fps/flow.test.ts`, `docs/GAME_DESIGN.md` §13.1 flow row | flow |
+| `tools/audio/**` (fps spec entries with `group: 'mode:fps'`, the group in the tool's own lists, `process.ts` / `review.ts` → `loadContent(() => true)`), `docs/api/audio-pipeline.md` (fps section), `tmp/audio/fps-estimate.md` | audio-spec |
+| `public/audio/fps/**`, `src/game/content/samples/manifest.ts` (written by the tool), `src/engine/samples.ts` (`'mode:fps'` in `SAMPLE_GROUPS`, in the same change as the manifest group), `tests/content/samples.test.ts` (load filter, file pattern, §3.6) | audio-ship |
+
+Hand-overs: `content/fps/textures-basic.ts` passes from fps-shell to art (art may empty it once
+its own ids exist; the ids are the same). `content/fps/floor-0.ts` passes from fps-shell to
+actors. `scenes/fps-route.ts` and the wiring lines of `scenes/fps.ts` pass to flow. A builder who
+needs a change in a file it does not own makes a local workaround and names the change in its
+report.
