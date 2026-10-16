@@ -159,6 +159,40 @@ again only when its raw take is newer, or with `--force` (use it after a spec ch
 - Recordings must be original or made with the speaker's consent; never a cloned or imitated
   voice of the real person (docs/ORIGINALITY.md).
 
+## The first-person mode (group `'mode:fps'`, 2026-10-16)
+
+The mode after the ams boss (docs/design/fps.md §9) has its own sample group. Group audio-gen
+wrote the spec entries and generated the takes; group audio-ship ships them.
+
+- **Spec entries** (`tools/audio/spec.ts`, `group: 'mode:fps'`):
+  - 44 sfx `fps/*`, exactly the ids of fps.md §9.1. They carry `isNew`, because their synth
+    recipes are registered by the lazy fps content (`content/fps/sfx.ts`), not at boot.
+  - 4 songs: `fps-floor` (100 BPM, 32-bar loop), `fps-boss` (140 BPM, 2-bar intro + 32-bar loop),
+    `fps-tally` (one-shot jingle), `fps-bridge` (a 4 s sting as the intro bar + a 16 s drone loop).
+  - Voices (Voice Design, original cartoon voices, never a clone or a real person): `guard`,
+    `officer`, `ss`, `mechahitler` (all German), plus `mecha` (Dutch, `robot: true`). The saved
+    voice ids are in `tools/audio/voices.json`.
+  - Lines: 8 German shouts (fps.md §9.3) and the boss's taunts 4–6 (§7.4) with `lang: 'de'`;
+    `text` is the German string that `src/game/content/fps/lines.ts` passes to `audio.say` (the
+    subtitles of taunts 4–6 are English, but the clip is found by the German text). The 3 suit
+    lines (`mecha`, Dutch) get the robot filter; the boss on foot speaks without a filter.
+- **Language:** `LineSpec.lang` is `'en' | 'nl' | 'de'`.
+- **Content:** `process.ts` (synth levels) and `review.ts` (synth versions) load every content
+  module, the lazy fps ones too (`loadContent(() => true)`).
+- **Ship:** `'mode:fps'` goes to `public/audio/fps/<sfx|music|voice>/`. The manifest gets a
+  `'mode:fps'` group only when something of it is picked. audio-ship adds `'mode:fps'` to
+  `SAMPLE_GROUPS` (`src/engine/samples.ts`) in the same change.
+- **Selecting the group:** the CLI has no `--group` flag. The `--only` lists of this round are in
+  `tmp/fps-audio-gen/only-{sfx,music,line}.txt`, e.g.
+  `npm run audio:gen -- plan --only "$(cat tmp/fps-audio-gen/only-sfx.txt)"`.
+- **Estimate and spend:** `tmp/audio/fps-estimate.md`; the requests are in
+  `tmp/audio/raw/ledger.jsonl`.
+- **Picks:** on 2026-10-16 group audio-gen picked the takes (the user was away; re-pick on the
+  review page, filter "mode:fps"). Rules: reject silent, clipped (peak-limited by more than 3 LU),
+  too long (`maxSeconds`), and takes with a clicking loop seam; prefer the take closest to the
+  spec timing. Voice previews were picked by median pitch, pitch range, roughness and pace
+  against the description (measured with ffmpeg + numpy).
+
 ## A full round
 
 1. `npm run audio:gen` — read the plan and the estimate.

@@ -286,7 +286,8 @@ export async function synthLevels(p: Paths, ids: readonly string[]): Promise<Rec
   if (missing.length) {
     const { loadContent } = await import('../../src/game/content/index');
     const synth = await import('../../src/engine/synth');
-    await loadContent();
+    // Everything, the lazy first-person content too: the fps sfx are measured against their synth.
+    await loadContent(() => true);
     for (const id of missing) {
       const s = synth.hasSfx(id) ? synth.renderSfx(id) : null;
       if (!s) continue;

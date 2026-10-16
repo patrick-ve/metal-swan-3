@@ -13,12 +13,26 @@
     "preview": 1,
     "savedAt": "2026-10-14T10:38:58.750Z"
   },
+  "drill": {
+    "voice_id": "3IsRRoUAm35Y2BQeSLZ7",
+    "name": "MS3 Drill Sergeant",
+    "generated_voice_id": "3IsRRoUAm35Y2BQeSLZ7",
+    "preview": 2,
+    "savedAt": "2026-10-16T13:24:13.178Z"
+  },
   "gramps": {
     "voice_id": "qPQAwWgeGD5YK7OeYYkb",
     "name": "MS3 Gramps",
     "generated_voice_id": "qPQAwWgeGD5YK7OeYYkb",
     "preview": 1,
     "savedAt": "2026-10-14T10:39:01.518Z"
+  },
+  "guard": {
+    "voice_id": "m5wx7vgUrZyVyzlrTOJv",
+    "name": "MS3 Depot Guard",
+    "generated_voice_id": "m5wx7vgUrZyVyzlrTOJv",
+    "preview": 4,
+    "savedAt": "2026-10-16T13:24:14.985Z"
   },
   "gusto": {
     "voice_id": "Yjqp9vhcp4nOqTK9MUJ5",
@@ -41,12 +55,33 @@
     "preview": 5,
     "savedAt": "2026-10-16T13:09:57.154Z"
   },
+  "mechahitler": {
+    "voice_id": "VJvbYFbCYWaI0x30B3ao",
+    "name": "MS3 Final Boss",
+    "generated_voice_id": "VJvbYFbCYWaI0x30B3ao",
+    "preview": 4,
+    "savedAt": "2026-10-16T13:24:20.855Z"
+  },
+  "officer": {
+    "voice_id": "BumIjFRSWTMfjCIA7M2r",
+    "name": "MS3 Depot Officer",
+    "generated_voice_id": "BumIjFRSWTMfjCIA7M2r",
+    "preview": 5,
+    "savedAt": "2026-10-16T13:24:16.867Z"
+  },
   "rider": {
     "voice_id": "rrroHixH4RZbRXFjpcrE",
     "name": "MS3 Delivery Rider",
     "generated_voice_id": "rrroHixH4RZbRXFjpcrE",
     "preview": 1,
     "savedAt": "2026-10-14T10:39:07.744Z"
+  },
+  "ss": {
+    "voice_id": "69LTTc6x75a5tGt2cLSR",
+    "name": "MS3 Elite Guard",
+    "generated_voice_id": "69LTTc6x75a5tGt2cLSR",
+    "preview": 2,
+    "savedAt": "2026-10-16T13:24:18.658Z"
   },
   "staff1": {
     "voice_id": "MI1rdb3kxKs1miZJeoTS",

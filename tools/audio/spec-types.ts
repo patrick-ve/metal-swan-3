@@ -53,7 +53,8 @@ export interface LineSpec {
   text: string;
   /** TTS input; may use audio tags like [excited]. */
   say: string;
-  lang: 'en' | 'nl';
+  /** Pronunciation language: English, Dutch, or German (the first-person mode's shouts). */
+  lang: 'en' | 'nl' | 'de';
   group: SampleGroupName;
   maxSeconds?: number;
   takes: number;

@@ -84,11 +84,12 @@ export function reviewItems(list: readonly Item[], p: Paths, synth: SynthInfo | 
       text = v.previewText;
       details.push(`voice name "${v.name}"`);
       if (v.radio) details.push('radio');
+      if (v.robot) details.push('robot filter');
     } else {
       const l = it.spec as LineSpec;
       prompt = l.say;
       text = l.text;
-      details.push(`speaker ${l.speaker}`, l.lang === 'nl' ? 'Dutch' : 'English');
+      details.push(`speaker ${l.speaker}`, l.lang === 'nl' ? 'Dutch' : l.lang === 'de' ? 'German' : 'English');
       if (l.maxSeconds !== undefined) details.push(`max ${l.maxSeconds} s`);
     }
 
@@ -273,7 +274,7 @@ textarea{flex:1;min-width:200px;font:inherit;color:inherit;background:var(--bg);
 </style></head><body>
 <header><h1>Audio Review</h1>
 <span id="tabs"></span>
-<select id="group"><option value="">all groups</option><option>boot</option><option>mission:ams</option></select>
+<select id="group"><option value="">all groups</option><option>boot</option><option>mission:ams</option><option>mode:fps</option></select>
 <label><input type="checkbox" id="gen" checked> generated only</label>
 <label><input type="checkbox" id="open"> unpicked only</label>
 <input type="search" id="q" placeholder="filter">
@@ -341,7 +342,8 @@ async function main(): Promise<void> {
   const spec: Spec = { SFX: m.SFX ?? [], MUSIC: m.MUSIC ?? [], VOICES: m.VOICES ?? [], LINES: (m.LINES ?? []).filter((l) => !isMayor(l.speaker)) };
   const { loadContent } = await import('../../src/game/content/index');
   const synth = await import('../../src/engine/synth');
-  await loadContent();
+  // Everything, the lazy first-person content too (its synth versions play on the fps cards).
+  await loadContent(() => true);
   const server = createReviewServer({
     spec,
     p: paths(),

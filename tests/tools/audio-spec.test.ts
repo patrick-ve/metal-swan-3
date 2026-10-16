@@ -15,6 +15,17 @@ import '../../src/game/content/music/ams';
 import { LINES, MUSIC, SFX, VOICES } from '../../tools/audio/spec';
 
 const SRC = new URL('../../src/', import.meta.url).pathname;
+const FPS_SPEC = new URL('../../docs/design/fps.md', import.meta.url).pathname;
+
+/** The first-person mode's ids (group 'mode:fps') vs. the rest of the game. */
+const isFps = (x: { group: string }): boolean => x.group === 'mode:fps';
+
+/** Every backticked `fps/…` sfx id in docs/design/fps.md §9.1. */
+function fpsSpecSfx(): Set<string> {
+  const doc = readFileSync(FPS_SPEC, 'utf8');
+  const sec = doc.slice(doc.indexOf('### 9.1'), doc.indexOf('### 9.2'));
+  return new Set([...sec.matchAll(/`(fps\/[a-z0-9/-]+)`/g)].map((m) => m[1]));
+}
 const MAYOR_FILE = join(SRC, 'game/content/bosses/ams/mayor.ts');
 
 /** Every .ts file under src/, path → contents. */
@@ -43,10 +54,22 @@ describe('audio spec: sfx', () => {
 
   it('ids are unique; 100 recipes (98 + the 2 REPORT FOR DUTY shutter sounds) plus the 16 gap and wiring ids and the mayor babble', () => {
     expect(new Set(SFX.map((s) => s.id)).size).toBe(SFX.length);
-    expect(SFX.filter((s) => s.isNew).length).toBe(16);
-    expect(SFX.length).toBe(100 + 17);
+    const game = SFX.filter((s) => !isFps(s));
+    expect(game.filter((s) => s.isNew).length).toBe(16);
+    expect(game.length).toBe(100 + 17);
     expect(SFX.some((s) => s.id === 'ui/mil-shutter')).toBe(true);
     expect(SFX.some((s) => s.id === 'ui/mil-clank')).toBe(true);
+  });
+
+  it('the first-person mode has exactly the sfx ids of docs/design/fps.md §9.1 (group mode:fps)', () => {
+    const fps = SFX.filter(isFps);
+    expect(fps.map((s) => s.id).sort()).toEqual([...fpsSpecSfx()].sort());
+    for (const s of fps) {
+      expect(s.id.startsWith('fps/'), s.id).toBe(true);
+      // Their synth fallbacks live in the lazy fps content (group fps-sound): marked like gap sounds.
+      expect(s.isNew, s.id).toBe(true);
+    }
+    for (const s of SFX.filter((x) => !isFps(x))) expect(s.id.startsWith('fps/'), s.id).toBe(false);
   });
 
   it('requests fit the API and the take rule', () => {
@@ -73,11 +96,15 @@ describe('audio spec: sfx', () => {
 
 describe('audio spec: music', () => {
   it('every id is a registered song, once', () => {
-    for (const m of MUSIC) expect(hasSong(m.id), m.id).toBe(true);
+    // The fps songs register with the lazy fps content (group fps-sound), not at boot.
+    for (const m of MUSIC.filter((x) => !isFps(x))) expect(hasSong(m.id), m.id).toBe(true);
     expect(new Set(MUSIC.map((m) => m.id)).size).toBe(MUSIC.length);
-    expect(MUSIC.map((m) => m.id).sort()).toEqual(
+    expect(MUSIC.filter((x) => !isFps(x)).map((m) => m.id).sort()).toEqual(
       ['ams', 'ams-boss', 'briefing', 'continue', 'game-over', 'high-score', 'mission-complete', 'select', 'title'].sort(),
     );
+    // docs/design/fps.md §9.2: the four first-person songs.
+    expect(MUSIC.filter(isFps).map((m) => m.id).sort()).toEqual(['fps-boss', 'fps-bridge', 'fps-floor', 'fps-tally']);
+    expect(MUSIC.find((m) => m.id === 'fps-tally')?.loop).toBe(false);
   });
 
   it('the military title and select prompts are v2 takes (3-4); the v1 takes 1-2 keep their prompt on record', async () => {
@@ -93,7 +120,7 @@ describe('audio spec: music', () => {
   });
 
   it('a loop is long enough for its intro, one full loop and 2 s to cut', () => {
-    const loopBars: Record<string, number> = { title: 32, select: 16, briefing: 8, ams: 48, 'ams-boss': 40, continue: 6, 'high-score': 8 };
+    const loopBars: Record<string, number> = { title: 32, select: 16, briefing: 8, ams: 48, 'ams-boss': 40, continue: 6, 'high-score': 8, 'fps-floor': 32, 'fps-boss': 32, 'fps-bridge': 4 };
     for (const m of MUSIC.filter((x) => x.loop)) {
       const bar = (60 / m.bpm) * m.beatsPerBar;
       const need = ((m.introBars ?? 0) + loopBars[m.id]) * bar + 2;
@@ -108,7 +135,31 @@ describe('audio spec: voices and lines', () => {
   const all = [...src.values()].join('\n');
 
   it('every line is the game text verbatim', () => {
-    for (const l of LINES) expect(all.includes(asLiteral(l.text)), JSON.stringify(l.text)).toBe(true);
+    const missing = LINES.filter((l) => !all.includes(asLiteral(l.text))).map((l) => l.text);
+    expect(missing, 'line texts not found in src/').toEqual([]);
+  });
+
+  it('the first-person lines: German shouts and taunts (docs/design/fps.md §9.3, §7.4), the suit in Dutch', () => {
+    const fps = LINES.filter(isFps);
+    const by = (speaker: string): string[] => fps.filter((l) => l.speaker === speaker).map((l) => l.text);
+    expect(by('guard')).toEqual(['DA DRÜBEN!', 'EINDRINGLING!', 'MEINE BRILLE...!', 'NICHT SCHON WIEDER...']);
+    expect(by('officer')).toEqual(['ALLE MANN AUF POSTEN!', 'MEIN SCHÖNER HUT...!']);
+    expect(by('ss')).toEqual(['FEUER FREI!', 'DAS STEHT NICHT IM HANDBUCH...!']);
+    expect(by('mechahitler')).toEqual(['MEIN SCHÖNER ANZUG! DAS ZAHLT IHR MIR!', 'DAS IST NICHT FAIR! ICH HATTE VORTRITT!', 'DAS... STAND NICHT... IM PLAN...']);
+    expect(by('mecha').length).toBe(3);
+    for (const l of fps) expect(l.lang, l.text).toBe(l.speaker === 'mecha' ? 'nl' : 'de');
+    // Only the suit gets the robot filter; the boss on foot speaks plain.
+    expect(VOICES.find((v) => v.speaker === 'mecha')?.robot).toBe(true);
+    expect(VOICES.find((v) => v.speaker === 'mechahitler')?.robot).toBeFalsy();
+  });
+
+  it('the first-person voices are designed cartoon voices that name no real person', () => {
+    for (const speaker of ['guard', 'officer', 'ss', 'mechahitler']) {
+      const v = VOICES.find((x) => x.speaker === speaker);
+      expect(v, speaker).toBeDefined();
+      expect(`${v?.name} ${v?.description} ${v?.previewText}`, speaker).not.toMatch(/hitler|adolf|f(ü|ue)hrer/i);
+      expect(v?.description, speaker).toMatch(/original cartoon character voice/i);
+    }
   });
 
   it("the gag 'MMF?!' shares the clip of 'MMF!'", () => {

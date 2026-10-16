@@ -84,8 +84,9 @@ export function pickKey(kind: Kind, id: string): string {
   return `${kind}:${id}`;
 }
 
+/** Folder under public/audio/ of a sample group: boot, ams or fps. */
 export function groupDir(group: SampleGroupName): string {
-  return group === 'boot' ? 'boot' : 'ams';
+  return group === 'boot' ? 'boot' : group === 'mode:fps' ? 'fps' : 'ams';
 }
 
 /** The mayor's lines stay text-only: no voice is ever designed or spoken for her. */
@@ -183,7 +184,7 @@ export function validateSpec(spec: Spec): string[] {
     if (isMayor(l.speaker)) errs.push(`${w}: the mayor's lines stay text-only`);
     if (!speakers.has(l.speaker)) errs.push(`${w}: no VoiceSpec for speaker ${l.speaker}`);
     if (!GROUPS.includes(l.group)) errs.push(`${w}: bad group ${l.group}`);
-    if (l.lang !== 'en' && l.lang !== 'nl') errs.push(`${w}: bad lang ${String(l.lang)}`);
+    if (l.lang !== 'en' && l.lang !== 'nl' && l.lang !== 'de') errs.push(`${w}: bad lang ${String(l.lang)}`);
     if (!l.say.trim()) errs.push(`${w}: empty say`);
     if (!intIn(l.takes, 1, 10)) errs.push(`${w}: takes ${l.takes} not an integer 1..10`);
   }

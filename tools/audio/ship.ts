@@ -1,12 +1,13 @@
 /**
- * Ships the picked candidates: copies them to public/audio/<boot|ams>/<sfx|music|voice>/ and
+ * Ships the picked candidates: copies them to public/audio/<boot|ams|fps>/<sfx|music|voice>/ and
  * regenerates src/game/content/samples/manifest.ts (deterministic order, no timestamps).
  *
  *   npm run audio:ship [-- --dry-run]
  *
  * Reads tmp/audio/picks.json ({ 'sfx:ui/confirm': [1, 3], ... }) and the candidate metas that
- * tools/audio/process.ts wrote (durations, loop points). MP3s under public/audio/boot and
- * public/audio/ams that are no longer picked are removed.
+ * tools/audio/process.ts wrote (durations, loop points). MP3s under public/audio/boot,
+ * public/audio/ams and public/audio/fps that are no longer picked are removed. The 'mode:fps'
+ * group (the first-person mode) is written to the manifest only when it has picks.
  */
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -52,6 +53,7 @@ export function planShip(list: readonly Item[], picks: Picks, p: Paths): ShipPla
   const groups: Record<SampleGroupName, GroupData> = {
     boot: { sfx: {}, music: {}, voice: {} },
     'mission:ams': { sfx: {}, music: {}, voice: {} },
+    'mode:fps': { sfx: {}, music: {}, voice: {} },
   };
   const copies: [string, string][] = [];
   const errors: string[] = [];
@@ -129,8 +131,11 @@ export function renderManifest(groups: Record<SampleGroupName, GroupData>): stri
     '/** Sampled audio by group (see src/engine/samples.ts). Paths are relative to public/audio/. */',
     'export const SAMPLE_MANIFEST: Readonly<Record<string, SampleGroup>> = {',
   ];
-  for (const name of ['boot', 'mission:ams'] as const) {
-    const g = groups[name];
+  for (const name of ['boot', 'mission:ams', 'mode:fps'] as const) {
+    const g = groups[name] as GroupData | undefined;
+    if (!g) continue;
+    // The first-person mode's group appears once something of it is picked.
+    if (name === 'mode:fps' && !Object.keys(g.sfx).length && !Object.keys(g.music).length && !Object.keys(g.voice).length) continue;
     out.push(`  ${q(name)}: {`);
     out.push('    sfx: {');
     for (const [id, e] of byKey(g.sfx)) {
@@ -192,7 +197,7 @@ export function applyShip(plan: ShipPlan, p: Paths, dryRun = false): ShipResult 
     copyFileSync(src, dest);
   }
   const removed: string[] = [];
-  for (const g of ['boot', 'ams']) {
+  for (const g of ['boot', 'ams', 'fps']) {
     for (const f of mp3sUnder(join(p.publicAudio, g))) {
       if (keep.has(f)) continue;
       removed.push(relative(p.root, f));
@@ -216,7 +221,7 @@ async function main(): Promise<void> {
   for (const w of plan.warnings) console.warn(`  warning: ${w}`);
   const r = applyShip(plan, p, dryRun);
   for (const f of r.removed) console.log(`  remove ${f}`);
-  const count = (k: keyof GroupData): number => Object.keys(plan.groups.boot[k]).length + Object.keys(plan.groups['mission:ams'][k]).length;
+  const count = (k: keyof GroupData): number => Object.values(plan.groups).reduce((n, g) => n + Object.keys(g[k]).length, 0);
   console.log(`${dryRun ? 'dry run: ' : ''}${r.copied} copied, ${r.unchanged} unchanged, ${r.removed.length} removed; manifest: ${count('sfx')} sfx, ${count('music')} songs, ${count('voice')} lines → ${relative(p.root, p.manifest)}`);
 }
 

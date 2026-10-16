@@ -226,6 +226,55 @@ export const SFX: SfxSpec[] = [
   one('player/splash', AMS, 2, 0.6, `A small character splashing into canal water, a quick plunge with droplets, close, ${ONE}`, { seconds: 0.8, trimTo: 0.7, isNew: true }),
   one('ui/title-sting', BOOT, 1, 1.8, `Title logo hit: a big bright cymbal-and-brass stab with a mechanical swan honk on top and a short shimmering tail, comic heroic arcade, ${STING}`, { seconds: 2, trimTo: 2, isNew: true }),
   loop('env/title-lake', BOOT, 16, 'A calm lake at dusk: gentle water lapping on reeds, a soft breeze, distant crickets and a far-off duck now and then, wide stereo', true),
+
+  // --- First-person mode (docs/design/fps.md §9.1, group 'mode:fps'). The synth fallbacks live in
+  //     src/game/content/fps/sfx.ts (group fps-sound). `len` is the length the game expects
+  //     (§4.2 fire cycles, §4.6 doors, §4.7 push walls, §1.3 bridge). Gritty, dry, indoor
+  //     concrete-and-steel depot; never a sound of the reference game (docs/ORIGINALITY.md).
+  one('fps/knife', FPS, 2, 0.25, `Fast combat-knife slash through the air, a sharp steel whoosh, close, dry, ${ONE}`, { isNew: true }),
+  one('fps/knife-hit', FPS, 2, 0.2, `Combat knife stab into a thick wool coat, a short dull thud with a cloth rip, close, dry, ${ONE}`, { isNew: true }),
+  one('fps/pistol', FPS, 2, 0.4, `Single old military pistol shot in a concrete corridor, a sharp crack with a short boomy tail, punchy retro arcade shooter, close, ${ONE}`, { timing: 'the crack at 0.00 s; one shot per 0.33 s', isNew: true }),
+  one('fps/mg', FPS, 2, 0.2, `One round of a heavy submachine gun indoors, a hard punchy bang, tight, close, ${ONE}`, { timing: 'one round only; the game fires it 6 times per second', isNew: true }),
+  one('fps/chaingun', FPS, 2, 0.12, `One round of a fast rotary machine gun, a short heavy bang with a metallic rattle, close, dry, ${ONE}`, { timing: 'one round only; the game fires it 12 times per second', isNew: true }),
+  one('fps/weapon-up', FPS, 1, 0.3, `Gun raised and readied: a quick metal slide rack and a cloth rustle, close, dry, ${ONE}`, { isNew: true }),
+  one('fps/enemy/aim', FPS, 1, 0.2, `A soldier readies his gun: one crisp metal bolt click-clack, close, dry, ${ONE}`, { timing: TELL, isNew: true }),
+  one('fps/enemy/pistol', FPS, 2, 0.4, `Single pistol shot from a few metres away down a concrete corridor, a crack with a short echo, ${ONE}`, { isNew: true }),
+  one('fps/enemy/mg', FPS, 2, 0.2, `One round of a submachine gun fired down a concrete hallway, a sharp bang with a brief echo, ${ONE}`, { timing: 'one round only; bursts of 3, 0.1 s apart', isNew: true }),
+  one('fps/enemy/hurt', FPS, 2, 0.35, `Short pained male grunt, a soldier hit in the chest, one wordless oof, clean undistorted recording at a moderate level, close, dry, single one-shot, no music, no words`, { isNew: true }),
+  one('fps/enemy/fall', FPS, 1, 0.7, `A soldier's body collapsing onto a concrete floor: a heavy thud with a rifle clattering beside it, close, ${ONE}`, { isNew: true }),
+  one('fps/blood', FPS, 2, 0.3, `Short wet splat, a small liquid squelch, close, dry, ${ONE}`, { isNew: true }),
+  one('fps/dog/bark', FPS, 2, 0.45, `One loud aggressive bark of a big guard dog, clean undistorted recording at a moderate level, close, dry, ${ONE}`, { isNew: true }),
+  one('fps/dog/growl', FPS, 1, 0.4, `A big guard dog's short snarl before it lunges, a low growl rising into a snap, close, dry, ${ONE}`, { timing: TELL, isNew: true }),
+  one('fps/dog/bite', FPS, 1, 0.3, `Guard dog bite: a fast snap of jaws with a cloth tear, close, dry, ${ONE}`, { isNew: true }),
+  one('fps/dog/die', FPS, 1, 0.6, `A big dog's short yelp that fades into a whimper, close, ${ONE}`, { isNew: true }),
+  one('fps/boss/step', FPS, 2, 0.5, `Giant walking-mech footstep: a heavy steel foot slams onto concrete with a hydraulic hiss and a deep boom, close, ${ONE}`, { isNew: true }),
+  one('fps/boss/spin-up', FPS, 1, 0.5, `Four rotary gun barrels spinning up fast, a rising electric motor whine with a metal whirr, close, ${ONE}`, { timing: `rises for the full 0.5 s and stops at its peak; ${TELL}`, isNew: true }),
+  one('fps/boss/chaingun', FPS, 2, 0.12, `One round of a huge rotary cannon, a deep heavy bang with a metal clank, close, dry, ${ONE}`, { timing: 'one round only; the game fires it 15 times per second', isNew: true }),
+  one('fps/boss/break', FPS, 1, 2.0, `A giant mech suit breaking down: crackling sparks, metal groaning and tearing, a hydraulic burst, a power-down whine falling in pitch, ending in a heavy clunk, ${ONE}`, { timing: 'about 2 s, it ends on the clunk', isNew: true }),
+  one('fps/boss/fall', FPS, 1, 1.0, `A heavy armoured body crashing onto a steel floor: a deep thud, chains and metal gear clattering away, close, ${ONE}`, { isNew: true }),
+  one('fps/boss/horn', FPS, 1, 1.5, `A distorted brass loudspeaker horn blaring an angry electronic squawk that rises and falls like a tantrum, wordless, no speech, close, ${ONE}`, { isNew: true }),
+  one('fps/door-open', FPS, 1, 0.9, `A heavy steel sliding door rolls open on a rail: a latch clunk, then a smooth metal rumble that stops with a soft thud, close, ${ONE}`, { timing: 'the latch at once, the slide stops at about 0.9 s', isNew: true }),
+  one('fps/door-close', FPS, 1, 0.9, `A heavy steel sliding door rolls shut on a rail: a metal rumble that ends in a hard clang, close, ${ONE}`, { timing: 'the clang at about 0.85 s', isNew: true }),
+  one('fps/door-locked', FPS, 1, 0.3, `A locked heavy steel door handle rattled: two dull metal clunks, close, dry, ${ONE}`, { isNew: true }),
+  one('fps/pushwall', FPS, 1, 1.9, `A massive stone block grinding slowly across a stone floor, a deep scraping rumble, close, ${ONE}`, { timing: 'one tile: about 1.8 s of steady grinding', isNew: true }),
+  one('fps/elevator', FPS, 1, 1.0, `A big industrial lift lever thrown: a heavy switch clunk, then a rising electric motor hum, close, ${ONE}`, { isNew: true }),
+  one('fps/use-wall', FPS, 1, 0.2, `A dull thud of a hand pushing a solid stone wall, nothing moves, close, dry, ${ONE}`, { isNew: true }),
+  one('fps/pickup-health', FPS, 1, 0.4, `Medical pouch picked up: a quick canvas rustle and a bright two-note chime, arcade, close, ${ONE}`, { isNew: true }),
+  one('fps/pickup-food', FPS, 1, 0.4, `Food picked up: a quick crunchy bite and a happy little chime, arcade, close, ${ONE}`, { isNew: true }),
+  one('fps/pickup-ammo', FPS, 1, 0.3, `Ammo picked up: a cardboard box of cartridges rattling, a quick metallic jingle, close, dry, ${ONE}`, { isNew: true }),
+  one('fps/pickup-weapon', FPS, 1, 0.55, `New gun picked up: a heavy metal clack and a slide rack, then a short rising brassy note, arcade, close, ${ONE}`, { isNew: true }),
+  one('fps/pickup-key', FPS, 1, 0.4, `A big old iron key picked up: a bright metallic jingle with a soft chime, close, ${ONE}`, { isNew: true }),
+  one('fps/pickup-treasure', FPS, 1, 0.45, `Treasure picked up: a sparkling jingle of gold coins with a bright glassy ding, arcade, close, ${ONE}`, { isNew: true }),
+  one('fps/pickup-record', FPS, 1, 0.9, `Rare golden prize picked up: a shimmering harp glissando into a bright triumphant chime, arcade, close, ${STING}`, { isNew: true }),
+  one('fps/player-hurt', FPS, 2, 0.3, `Short sharp male grunt of pain, a soldier hit, one wordless ugh, clean undistorted recording at a moderate level, close, dry, single one-shot, no music, no words`, { isNew: true }),
+  one('fps/player-die', FPS, 1, 1.2, `A soldier's long falling groan, then a heavy body thud on a concrete floor, clean undistorted recording at a moderate level, close, single one-shot, no music, no words`, { isNew: true }),
+  one('fps/glitch', FPS, 3, 0.3, `Short digital video glitch: a burst of crunchy bit-crushed static with a stuttering electronic chirp, ${ONE}`, { timing: 'short; it repeats every 0.1-0.4 s', isNew: true }),
+  one('fps/type', FPS, 2, 0.05, `One old manual typewriter key strike, a crisp mechanical clack, very close, dry, ${ONE}`, { timing: 'one key only; the game types fast', isNew: true }),
+  one('fps/fold', FPS, 1, 0.5, `An old tube television switching off: a quick electric zap and a high whine collapsing down to a soft click, close, ${ONE}`, { isNew: true }),
+  one('fps/tally-100', FPS, 1, 0.4, `Bright perfect-score bonus: a bell ding with a short brassy fanfare stab, arcade, ${STING}`, { isNew: true }),
+  one('fps/shout-guard', FPS, 1, 0.6, `A nervous young soldier's short startled wordless yelp of alarm, close, dry, single one-shot, no music, no words, no speech`, { isNew: true }),
+  one('fps/shout-officer', FPS, 1, 0.6, `A pompous older man's short indignant wordless bellow of outrage, a nasal harrumph, close, dry, single one-shot, no music, no words, no speech`, { isNew: true }),
+  one('fps/shout-ss', FPS, 1, 0.5, `A cold soldier's short sharp wordless bark of command, one clipped grunt, close, dry, single one-shot, no music, no words, no speech`, { isNew: true }),
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -236,6 +285,8 @@ export const SFX: SfxSpec[] = [
 const MUSIC_STYLE = 'Instrumental only, no vocals, original composition. Bright cartoon arcade run-and-gun game score, punchy clean stereo mix.';
 /** A looping track: no ending, plus extra length so the tool can cut the loop on the bar grid. */
 const LOOP_TAIL = 'Steady tempo throughout, no fade-out, no ending: the last bar leads straight back into the first bar of the loop, and the first bar of the loop plays once more at the very end so the loop can be cut.';
+/** The first-person mode's songs (docs/design/fps.md §9.2): darker than the cartoon score. */
+const FPS_STYLE = 'Instrumental only, no vocals, original composition. Gritty retro arcade action game score, cinematic and punchy, clean stereo mix.';
 
 /** The v1 prompts (takes 1-2 of `title` and `select`, shipped 2026-10-14), kept as a record. */
 export const TITLE_V1_PROMPT = `${MUSIC_STYLE} Heroic-comic title theme, 112 BPM, D major, 4/4. Bars 1-8: a gentle intro of bell arpeggios over a warm pad. Then a 32-bar loop: a calm, graceful legato lead (soft square-wave synth doubled by flute) that leaps up a sixth and walks down in a dotted rhythm, over a frantic running 16th-note filtered-saw bass like legs paddling under water; full drums with kick, snare and hats; a light counter-melody in the middle 8 bars. Dignified on top, furious underneath, a little funny. ${LOOP_TAIL}`;
@@ -346,6 +397,55 @@ export const MUSIC: MusicSpec[] = [
     loop: true,
     takes: 2,
     prompt: `${MUSIC_STYLE} Perky name-entry music, 132 BPM, A major, 4/4, one 8-bar loop. A short bright pulse-wave tune over a bouncing octave bass pattern, light hi-hat and rim. Happy, a little smug. ${LOOP_TAIL}`,
+  },
+
+  // --- First-person mode (docs/design/fps.md §9.2, group 'mode:fps'): original tunes, never a
+  //     quote of an existing one.
+  {
+    id: 'fps-floor',
+    group: FPS,
+    // one 32-bar loop (76.8 s) + 2 s
+    seconds: 79,
+    bpm: 100,
+    beatsPerBar: 4,
+    loop: true,
+    takes: 3,
+    prompt: `${FPS_STYLE} Brooding martial ostinato, 100 BPM, C minor, 4/4, one 32-bar loop with no intro. A low repeating eighth-note ostinato of staccato strings and a dark synth, a low brass pad holding long minor chords, military snare rolls and a deep bass drum on beats 1 and 3. In bars 17-24 a sparse muted trumpet motif answers the ostinato, then it builds back. Tense, steady, sneaking through a fortified supply depot. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'fps-boss',
+    group: FPS,
+    // intro 2 bars (3.4 s) + loop 32 bars (54.9 s) + 2 s
+    seconds: 61,
+    bpm: 140,
+    beatsPerBar: 4,
+    introBars: 2,
+    loop: true,
+    takes: 3,
+    prompt: `${FPS_STYLE} Driving final boss battle, 140 BPM, D minor, 4/4. A 2-bar intro of a rolling timpani crescendo, then a 32-bar loop: pounding timpani and a hard rock drum kit, a galloping low synth bass, stabbing organ-like chords on the off-beats, a heroic distorted guitar and brass melody; in bars 17-32 the harmony climbs a step every 4 bars for rising tension. Huge, fast, a little over the top, cartoon villain showdown. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'fps-tally',
+    group: FPS,
+    // a 6-8 s jingle + 1.5 s of decay
+    seconds: 9,
+    bpm: 120,
+    beatsPerBar: 4,
+    loop: false,
+    takes: 2,
+    prompt: `${FPS_STYLE} Short victory jingle, 120 BPM, C major, about 7 seconds. A bold brass fanfare over a snare roll and timpani hits, a quick rising phrase that lands on a big held C major chord, which decays naturally to silence. Proud and a bit cheeky. No fade-in.`,
+  },
+  {
+    id: 'fps-bridge',
+    group: FPS,
+    // 1 intro bar (the 4 s sting) + loop 4 bars (16 s drone) + 2 s
+    seconds: 22,
+    bpm: 60,
+    beatsPerBar: 4,
+    introBars: 1,
+    loop: true,
+    takes: 2,
+    prompt: `${FPS_STYLE} Glitchy transition cue, 60 BPM, 4/4. The first 4 seconds: a cheerful street-organ waltz phrase starts, then stutters, skips like a broken tape, slows down and pitch-drops into a deep low drone. Then a dark, steady low drone loop: a low string and synth pad on one note, a slow pulse, faint digital crackle and a distant metallic hum, no melody. Uneasy, mysterious. The drone stays steady with no ending. ${LOOP_TAIL}`,
   },
 ];
 
@@ -466,6 +566,42 @@ export const VOICES: VoiceSpec[] = [
       'Stilte! Iedereen gaat zitten en pakt het boek erbij. Wij beginnen bij hoofdstuk drie, en ik wil geen enkel woord meer horen. Wie zijn huiswerk niet heeft gemaakt, blijft vanmiddag na. Is dat duidelijk?',
     robot: true,
   },
+  // --- First-person mode (docs/design/fps.md §9.3): designed voices only, never a clone, never a
+  //     real person. German speakers; the lines are original (not the reference game's shouts).
+  {
+    speaker: 'guard',
+    name: 'MS3 Depot Guard',
+    description:
+      'Young, nervous, slightly hoarse male soldier in his early twenties, a native German speaker from Germany. Jumpy and breathless, his voice goes a little too high when he shouts; comic and clumsy rather than menacing. An original cartoon character voice. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Halt! Wer ist da? Hallo? Ach, nur der Wind. Ich hasse die Nachtschicht. Meine Brille ist beschlagen, der Kaffee ist kalt, und der Hauptmann schreit schon wieder. Wenn jemand fragt: hier ist alles ruhig!',
+  },
+  {
+    speaker: 'officer',
+    name: 'MS3 Depot Officer',
+    description:
+      'Older, pompous, self-important male officer in his fifties, a native German speaker from Germany. A nasal, haughty voice that puffs itself up and turns shrill when he is offended; comic and vain rather than menacing. An original cartoon character voice. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Was ist das hier für eine Unordnung? Die Stiefel nicht geputzt, die Kisten nicht gezählt, und mein Hut ist schon wieder staubig! Ich verlange Ordnung, meine Herren, sofort! Und jemand bringt mir endlich einen frischen Kaffee.',
+  },
+  {
+    speaker: 'ss',
+    name: 'MS3 Elite Guard',
+    description:
+      'Flat, clipped, cold male voice in his thirties, a native German speaker from Germany. Emotionless and precise, short hard syllables, he speaks like a machine reading orders, with a dry deadpan that makes him a little funny. An original cartoon character voice. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Bericht. Sektor vier ist gesichert. Tor zwei ist geschlossen. Die Lieferung kommt um sechs Uhr. Keine Fragen. Keine Pausen. Keine Ausnahmen. Wer seine Papiere verliert, füllt das Formular dreimal aus. Ende des Berichts.',
+  },
+  {
+    // The final boss on foot (taunts 4-6, §7.4). A comic cartoon villain: never the cadence or
+    // sound of any real person or recording. No filter: the suit's lines are the 'mecha' voice.
+    speaker: 'mechahitler',
+    name: 'MS3 Final Boss',
+    description:
+      'Whiny, sulky, theatrical male cartoon villain, a tenor voice that cracks into a squeaky falsetto when he gets upset, like a spoiled little emperor throwing a tantrum. Speaks German with an exaggerated, operatic, pouting delivery; comic rather than menacing. An original cartoon character voice. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Nein, nein, nein! Das ist MEIN Spielzeug, und ich hatte es zuerst! Wer hat meine Kekse gegessen? Ich bin hier der Chef, ich, ich, ICH! Ich will einen neuen Anzug, einen größeren, mit mehr Knöpfen! Sofort, oder ich fange an zu weinen!',
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -584,4 +720,21 @@ export const LINES: LineSpec[] = [
   { ...line('mecha', 'IK BEN MECHA HOFMANS!', '[angry, booming] Ik ben... MECHA HOFMANS!', 'nl', FPS, 3), takes: 3 },
   { ...line('mecha', 'HET MUSJE, HET PRACHTIGE MUSJE...\nRED MIJ!', '[angry, anguished] Het musje... het prachtige musje... [shouting] RED MIJ!', 'nl', FPS, 4.5), takes: 3 },
   { ...line('mecha', 'PYRAMUS EN THISBE...\nLET OP DE ACCUSATIVUS!', '[angry, stern] Pyramus en Thisbe... [shouting] let op de ACCUSATIVUS!', 'nl', FPS, 4.5), takes: 3 },
+
+  // --- First-person mode (docs/design/fps.md §9.3): original German shouts. `text` is the string
+  //     src/game/content/fps/lines.ts passes to audio.say (voiceKey folds the umlauts). No bubble
+  //     limits these: `maxSeconds` is a pacing target (alerts short, death lines longer; the taunt
+  //     subtitle stays for the clip length + 30 ticks, §7.4).
+  bark('guard', 'DA DRÜBEN!', '[alarmed, shouting] Da drüben!', 'de', FPS, 1.2),
+  bark('guard', 'EINDRINGLING!', '[panicked shout] Eindringling!', 'de', FPS, 1.3),
+  bark('guard', 'MEINE BRILLE...!', '[pained, dismayed] Meine Brille...!', 'de', FPS, 1.8),
+  bark('guard', 'NICHT SCHON WIEDER...', '[groaning, defeated] Nicht schon wieder...', 'de', FPS, 2.5),
+  bark('officer', 'ALLE MANN AUF POSTEN!', '[pompous, bellowing] Alle Mann auf Posten!', 'de', FPS, 2.5),
+  bark('officer', 'MEIN SCHÖNER HUT...!', '[wailing, offended] Mein schöner Hut...!', 'de', FPS, 2.5),
+  bark('ss', 'FEUER FREI!', '[cold, clipped] Feuer frei!', 'de', FPS, 1.0),
+  bark('ss', 'DAS STEHT NICHT IM HANDBUCH...!', '[flat, baffled] Das steht nicht im Handbuch...!', 'de', FPS, 2.5),
+  // MechaHitler on foot (§7.4 taunts 4-6): spoken German, English subtitle; `text` is the German line.
+  { ...line('mechahitler', 'MEIN SCHÖNER ANZUG! DAS ZAHLT IHR MIR!', '[wailing] Mein schöner Anzug! [voice cracking into falsetto, tantrum] Das zahlt ihr mir!', 'de', FPS, 5), takes: 3 },
+  { ...line('mechahitler', 'DAS IST NICHT FAIR! ICH HATTE VORTRITT!', '[sulky, whining] Das ist nicht fair! [squeaky, stamping his foot] Ich hatte Vortritt!', 'de', FPS, 5), takes: 3 },
+  { ...line('mechahitler', 'DAS... STAND NICHT... IM PLAN...', '[weak, gasping, overly dramatic] Das... stand nicht... im Plan...', 'de', FPS, 5), takes: 3 },
 ];
