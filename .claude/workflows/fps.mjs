@@ -329,8 +329,11 @@ Fix every real finding, most severe first. Then re-read docs/design/fps.md end t
 3. Boss ammo: add two clips to the boss arena on EASY and NORMAL (one on HARD) at cover spots; keep validators and the ammo-budget rule green (update the spec numbers).
 4. Hide the weapon view during the death-cam (game.state === 'deathcam').
 5. Keep: a boss-floor restart puts the boss back to sleep and the floor music plays until he wakes.
-6. Earlier lead decisions: enemies never open gold/silver/lift doors; dog bite reach 1.5; the recruit face is a fallback only.
-Reports of the earlier groups: ${ROOT}/tmp/fps-cast-reports.md and ${ROOT}/tmp/fps-floors-reports.md (their unfinished items are candidates too).`
+6. Boss subtitles: subtitleTicks in src/game/fps/boss.ts = max(current value, round(clip duration x 60) + 30) with the clip duration from the 'mode:fps' sample group via voiceKey (spec 7.4), so no subtitle ends before its voice. Test it.
+7. docs/ARCHITECTURE.md section 1 and 5.7: the sampled-audio exception now also covers the 'mode:fps' group (loaded with the fps mode only) and the boot drill callouts.
+8. Leave public/audio/ams/voice/Tot ziens.mp3 alone (the user's own file).
+9. Earlier lead decisions: enemies never open gold/silver/lift doors; dog bite reach 1.5; the recruit face is a fallback only.
+Reports of the earlier groups: ${ROOT}/tmp/fps-cast-reports.md and ${ROOT}/tmp/fps-floors-reports.md and ${ROOT}/tmp/fps-audio-ship-reports.md (their unfinished items are candidates too).`
   const v = await agent(verifierPrompt('polish-fix', 5549, 'the final polish of the fps wave', 'every file changed in this wave (src/**, tests/**, docs/**, tools/**) - keep changes minimal and safe', `${LEAD}\n\nFINDINGS FROM THE REVIEW PANEL (verify each before fixing; skip false ones and say why):\n${JSON.stringify(all, null, 1)}`,
     'Fix the findings, most severe first. Then run all gates plus the fps sims (floors 1-2, --god --expect-complete, and normal seeds 1-3), npm run sim for ams/m0/m2 (--god), and smoke from mission=ams&boss=1&debug=1&god=1 through the bridge into floor 1. Update docs/api/fps.md with a final play-test record section.'), { label: 'polish:fix', phase: 'Verify', schema: VERIFY_SCHEMA }).catch(() => null)
   result = { group: GROUP, findings: all, verify: v }
