@@ -25,6 +25,7 @@ import {
 import { SampleBank } from '../../src/engine/samples.browser';
 import { GameAudio } from '../../src/game/app';
 import { loadContent } from '../../src/game/content/index';
+import { HAND_MUSIC } from '../../src/game/content/samples/index';
 import { SAMPLE_MANIFEST } from '../../src/game/content/samples/manifest';
 import { MissionRunner } from '../../src/game/mission/runner';
 import { GameSession } from '../../src/game/session';
@@ -188,7 +189,27 @@ describe('sample manifest (src/game/content/samples)', () => {
     expect(report.failed).toEqual([]);
     expect(Object.keys(SAMPLE_MANIFEST).sort()).toEqual([...SAMPLE_GROUPS].sort());
     for (const g of SAMPLE_GROUPS) expect(listSampleGroups()).toContain(g);
-    expect(getSampleGroup('boot')).toBe(SAMPLE_MANIFEST.boot);
+    const boot = getSampleGroup('boot')!;
+    expect(boot.sfx).toBe(SAMPLE_MANIFEST.boot!.sfx);
+    expect(boot.music).toEqual({ ...SAMPLE_MANIFEST.boot!.music, ...HAND_MUSIC.boot });
+  });
+
+  it("the user's music tracks (public/audio/user/music) replace the generated takes and loop sanely", () => {
+    const ids: Record<string, string[]> = { boot: ['title', 'select'], 'mission:ams': ['ams', 'ams-boss'] };
+    for (const [group, songs] of Object.entries(ids)) {
+      for (const id of songs) {
+        const song = getSampleGroup(group)!.music![id]!;
+        expect(song.file, id).toMatch(/^user\/music\/[a-z0-9-]+\.mp3$/);
+        expect(song).toBe(HAND_MUSIC[group]![id]);
+        const url = new URL(song.file, PUBLIC_AUDIO);
+        expect(existsSync(url), `missing public/audio/${song.file}`).toBe(true);
+        expect(statSync(url).size).toBeGreaterThan(100_000);
+        expect(song.loopStart).toBe(0);
+        expect(song.loopEnd!).toBeGreaterThan(20);
+        expect(song.loopEnd!).toBeLessThan(song.duration);
+        expect(hasSong(id), id).toBe(true);
+      }
+    }
   });
 
   it('keys are registered sound effect ids and song ids; files exist; loop points are sane', () => {

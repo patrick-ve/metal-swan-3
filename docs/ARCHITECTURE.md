@@ -39,7 +39,9 @@ multi-part bosses, and 2-player co-op.
    Exception (user decision 2026-10-14): MP3 samples in `public/audio/` for the start screens
    and mission `ams` only, listed in `src/game/content/samples/manifest.ts` (written by
    `tools/audio/`). Every sampled id keeps its synth version as the fallback, and headless runs
-   never load them.
+   never load them. Files kept by hand (the tool never touches them) join the groups in
+   `src/game/content/samples/index.ts`: ROBO-HALSEMA's clips (`public/audio/mayor/`) and the
+   user's own music tracks (`public/audio/user/music/`, user decision 2026-10-16).
 3. **Deterministic, headless-safe simulation.** Code in `src/engine/` and `src/game/` must not
    touch `window`, `document`, `navigator`, `localStorage`, `performance`, `AudioContext`,
    `requestAnimationFrame`, `Math.random`, `Date`, or `import.meta.env` — **except** in files

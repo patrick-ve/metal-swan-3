@@ -86,6 +86,10 @@ dialogue), shipped as MP3 files under `public/audio/`. Rules for this exception:
 - ROBO-HALSEMA never gets a voice: her lines stay text-only bubbles (the code passes
   `voice: false` for them).
 - Dialogue text is our own (the game's lines). The generation spec lives in `tools/audio/spec.ts`.
+- **The user's own music (2026-10-16).** Four tracks supplied by the user replace the generated
+  takes of `title` (title screen and mode select), `select` (REPORT FOR DUTY), `ams` and `ams-boss`
+  (`public/audio/user/music/`). The user supplied them for this game and is responsible for their
+  rights; we only trimmed them and set their loudness.
 
 ## Exception: the squad of friends (2026-10-16)
 

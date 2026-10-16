@@ -100,6 +100,27 @@ again only when its raw take is newer, or with `--force` (use it after a spec ch
 - Warns about (and skips) picks that match no spec item, e.g. a line whose game text changed
   (its voice key changed with it): generate and pick the new line.
 
+## The user's music tracks (by hand, not by the tool)
+
+- On 2026-10-16 the user supplied four tracks. They replace the generated takes of the same song
+  ids and live in `public/audio/user/music/` (the ship step never touches that folder):
+
+  | Id | Source file | Plays on |
+  |---|---|---|
+  | `title` | `menu_screen.mp3` | title screen, how-to-play and mode select (the theme keeps playing) |
+  | `select` | `character_select.mp3` | REPORT FOR DUTY |
+  | `ams` | `mission_1_ams_soundtrack.mp3` | mission ams, sections a–d up to the boss |
+  | `ams-boss` | `boss_music.mp3` | the ROBO-HALSEMA fight |
+- Processing (ffmpeg): leading 0.3 s and trailing silence trimmed; two-pass `loudnorm` to
+  −16 LUFS integrated (true peak ≤ −1 dBTP, linear); stereo MP3 160 kbps, 44.1 kHz.
+- Each track loops as a whole (`loopStart` 0, `loopEnd` = duration − 0.05 s): it plays to its own
+  fade-out and starts again.
+- Registered as `HAND_MUSIC` in `src/game/content/samples/index.ts`, merged over the manifest's
+  music. The `title` / `select` spec entries in `tools/audio/spec.ts` stay for reference; do not
+  ship new takes of these four ids unless the user asks.
+- To replace a track: process the new file the same way, overwrite the MP3, and update its
+  duration in `HAND_MUSIC`.
+
 ## The mayor's clips (by hand, not by the tool)
 
 - `src/game/content/bosses/ams/voice.ts` lists her 10 bubble lines (`MAYOR_LINES`). Each line has

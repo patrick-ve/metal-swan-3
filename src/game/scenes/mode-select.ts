@@ -42,12 +42,12 @@ export class ModeSelectScene implements Scene {
   enter(): void {
     this.app.input.players = 1;
     this.app.input.suppress();
-    this.app.audio.music('select', { fadeTicks: 30 });
+    this.app.audio.music('title', { fadeTicks: 30 });
   }
 
   resume(): void {
     this.app.input.suppress();
-    this.app.audio.music('select', { fadeTicks: 30 });
+    this.app.audio.music('title', { fadeTicks: 30 });
   }
 
   /** The label of a menu row. */
