@@ -260,7 +260,8 @@ Fix every real finding, most severe first. Then re-read docs/design/fps.md end t
   const first = await parallel([RAY, MEDIA, INPUT].map((a) => () => agent(builderPrompt(a), { label: `build:${a.key}`, phase: 'Build' })))
   result = { group: GROUP, ray: first[0], media: first[1], input: first[2] }
 } else if (GROUP === 'engine-b') {
-  const first = [args.reports && args.reports.ray, args.reports && args.reports.media, args.reports && args.reports.input]
+  const REPORTS_FILE = `${ROOT}/tmp/fps-engine-a-reports.md`
+  const first = [`(read ${REPORTS_FILE}, section ray)`, `(read ${REPORTS_FILE}, section media)`, `(read ${REPORTS_FILE}, section input)`]
   phase('Build')
   const shell = await agent(builderPrompt({ ...SHELL, task: `${SHELL.task}\n\nREPORTS OF THE ENGINE BUILDERS (use their real APIs):\n${reportsOf([RAY, MEDIA, INPUT], first)}` }), { label: 'build:fps-shell', phase: 'Build' })
   phase('Verify')
