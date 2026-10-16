@@ -129,7 +129,7 @@ By the user's decision (2026-10-14), the game turns into a first-person raycaste
 the ams boss (spec: `docs/design/fps.md`). It follows the genre founded by **Wolfenstein 3D** (id
 Software, 1992). This is the **only** place where that name may be written: never in the game,
 the code, ids, comments, commit messages, prompts or other docs (in-game the mode is
-`MODE_TITLE`, a name the user gives later). What the user decided:
+`MODE_TITLE` = "OPERATION OSTIA", the user's name of 2026-10-16). What the user decided:
 
 - **Genre mechanics are allowed:** first-person movement on a tile grid, sliding doors, gold and
   silver keys, push-wall secrets, treasure, health and ammo pickups, a shared ammo pool, knife /

@@ -19,8 +19,8 @@ User decisions (2026-10-14, final; do not re-litigate):
 3. **Iconography:** historical Nazi symbols (swastika banners and flags) are allowed in this mode.
    The enemies are the villains.
 4. **Blood:** classic red blood in this mode only. The rest of the game stays bloodless.
-5. **Name:** the user gives the in-game name later. The code uses the constant `MODE_TITLE`
-   (placeholder `'OPERATION ???'`, `src/game/content/fps/names.ts`). The reference game's name
+5. **Name:** **OPERATION OSTIA** (the user's name, 2026-10-16). The code uses the constant
+   `MODE_TITLE` (`src/game/content/fps/names.ts`). The reference game's name
    never appears in the game, the code, ids or docs (only in `docs/ORIGINALITY.md`).
 6. **Audio:** ElevenLabs takes are wanted. Every sound first gets a synth fallback. Generating
    takes spends credits and needs a separate user OK.
@@ -57,7 +57,7 @@ Open items (defaults are used until the user decides):
 
 | Item | Default |
 |---|---|
-| In-game name of the mode | `MODE_TITLE = 'OPERATION ???'`. The final name must not follow the reference game's episode or level names ("OPERATION <German word>", "CASTLE …", any of its episode or level titles) and must pass the self-check in `docs/ORIGINALITY.md`. |
+| In-game name of the mode | decided: `MODE_TITLE = 'OPERATION OSTIA'` (user, 2026-10-16). The final name must not follow the reference game's episode or level names ("OPERATION <German word>", "CASTLE …", any of its episode or level titles) and must pass the self-check in `docs/ORIGINALITY.md`. |
 | Carry-over floor 1 → floor 2 | HP, weapons and ammo carry (G). The plan said "each floor starts with pistol + 8 ammo"; the spec keeps that only for a fresh start and for restarts. |
 | Historical symbol on armbands / the boss's emblem | not used (banners and flags only, the approved scope) |
 | `MISSION 1 BONUS` | paid at the bridge, shown as an info line on the floor-1 tally |

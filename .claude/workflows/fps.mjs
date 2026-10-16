@@ -25,7 +25,7 @@ USER DECISIONS (2026-10-14, final - do not re-litigate):
 - Transition: glitch + story bridge right after the ams boss; it skips the ams tally screen and MISSION 2.
 - Historical Nazi symbols (swastika banners/flags) are allowed in this mode; the enemies are the villains.
 - Classic red blood in this mode only (the rest of the game stays bloodless).
-- The in-game NAME of the mode comes later from the user: use the constant MODE_TITLE (placeholder 'OPERATION ???'). Never write the reference game's name ('Wolfenstein') anywhere in the game, code, ids or docs except in docs/ORIGINALITY.md where it names what must not be copied.
+- The in-game NAME of the mode comes later from the user: use the constant MODE_TITLE = 'OPERATION OSTIA' (the user's name, 2026-10-16). Never write the reference game's name ('Wolfenstein') anywhere in the game, code, ids or docs except in docs/ORIGINALITY.md where it names what must not be copied.
 - Audio: ElevenLabs takes are wanted and every sound first gets a synth fallback. The user approved generation (2026-10-16), but only the audio-gen task calls the ElevenLabs API; nobody else does.
 - Boss face (user decision 2026-10-16, "face only"): the phase-1 mech suit wears the user's own pixel-art face "Mecha Hofmans" (art-src/user/, imported to palette data, spec 0 item 10, 7.1, 8.7) and speaks three Dutch lines the user wrote (spec 7.4, speaker 'mecha', already generated). The name MECHAHITLER, the phases and phase 2 stay unchanged.
 - Co-op: only P1 plays the mode; P2's slot waits and carries over.

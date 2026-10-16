@@ -3452,7 +3452,7 @@ By the user's decision (2026-10-14), the game changes style, direction and gamep
 with the classic mechanics of the genre (doors, keys, push-wall secrets, treasure, health, ammo,
 lives) against Nazi soldiers, one floor ("SUPPLY DEPOT") and a boss floor ("HANGAR") with the
 final boss MechaHitler (a mech suit, then on foot), then the ending. Only one player plays it
-(P1, or P2 when P1 is already out at the ams boss kill); the other slot waits. The in-game name of the mode is `MODE_TITLE` until the user names it.
+(P1, or P2 when P1 is already out at the ams boss kill); the other slot waits. The in-game name of the mode is `MODE_TITLE` = **OPERATION OSTIA** (user, 2026-10-16).
 
 **`docs/design/fps.md` is the spec of this mode and wins over this document for it** (flow,
 controls, numbers, maps, boss, art, audio, tests). Its originality rules and dated exceptions

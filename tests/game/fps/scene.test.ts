@@ -96,7 +96,8 @@ describe('FpsScene (headless)', () => {
     h.step(ELEVATOR_TICKS + 1);
     expect(h.complete).toBe(true);
     expect(h.run.results).toHaveLength(1);
-    expect(h.run.results[0]).toMatchObject({ floor: 0, secretsTotal: 1, treasureTotal: 1, goldenRecord: false });
+    // Floor 0 holds the four treasures and the golden record (group actors, spec §6.0).
+    expect(h.run.results[0]).toMatchObject({ floor: 0, secretsTotal: 1, treasureTotal: 5, goldenRecord: false });
     expect(h.run.carry).toMatchObject({ hp: 100, ammo: 8 });
     h.step(40);
     expect(h.app.scenes.top).toBeInstanceOf(TitleScene);
@@ -118,7 +119,7 @@ describe('FpsIntroScene', () => {
     app.scenes.draw(r);
     r.end();
     expect(magenta(r.target)).toBe(0);
-    expect(MODE_TITLE).toBe('OPERATION ???');
+    expect(MODE_TITLE).toBe('OPERATION OSTIA');
     for (let t = 0; t < CARD_AUTO + 30 && !(app.scenes.top instanceof FpsScene); t++) {
       input.update();
       app.scenes.update();

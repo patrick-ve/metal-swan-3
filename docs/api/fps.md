@@ -241,13 +241,91 @@ Spec: `docs/design/fps.md` §1.5–1.7, §3.7, §4.1, §4.6–4.8, §5. All pure
 
 ## 4. Actors, combat, pickups, HUD
 
-- Actor pool, the state table, per-type numbers (spec §4.3). TODO (group cast / actors)
-- Sight, noise, ambush, patrol, attack tokens (spec §4.4). TODO (group cast / actors)
-- Hitscan both ways, damage bands (spec §4.2, §4.3). TODO (group cast / actors)
-- Weapons and switching. TODO (group cast / actors)
-- Pickups, keys, treasure, score through `PlayerSlot.addScore`. TODO (group cast / actors)
-- HUD drawing (`hud.ts`, spec §8.6), face states, messages, `bossBar` / `subtitle` fields. TODO (group cast / actors)
-- Positional audio (`audio.ts`) and the spoken lines (`content/fps/lines.ts`). TODO (group cast / actors)
+Spec: `docs/design/fps.md` §4.2–4.5, §4.9–4.10, §8.6, §9.1, §9.3. All simulation code is pure and
+deterministic: every roll that changes the game uses `game.rng`; cosmetic choices (voice line,
+blood size, face glance) use `game.fxRng`. No allocations per tick.
+
+- **Actors** (`src/game/fps/actors.ts`): `ACTOR_TYPES` (`guard`, `officer`, `ss`, `dog`, and a
+  `boss` stand-in with the phase-1 numbers) — `hp [E, N, H]`, `patrol`, `chase` (tiles/tick),
+  `reactMin..reactMax`, `tell`, `burst` / `burstGap`, `recover`, `pain`, `score`, `drop`
+  (`'clip' | 'ss' | 'none'`), `radius` (0.4, dogs 0.3), `bite`, `opensDoors`, `tokens`, `dodges`,
+  `moveSheet` / `actSheet` (billboard ids, spec §8.2), `frames` (act frames), `dieTicks`,
+  `shotSfx`, `tellSfx`, `speaker`, `hitBase` / `hitBaseRun`. State ids `ST_STAND … ST_DEAD`
+  (`STATE_NAMES`). `Actor` (pool object: `x, y` centre; `cx, cy` cell; `tx, ty` reserved target;
+  `dir` 0..7 or −1; `angle`; `hp`; `state`, `timer`; `react` (reaction delay left: noticed but
+  still unaware); `ambush`, `patrol`, `placed`; `token`; `shots`; `tellDone` (ticks of the last
+  full tell); `walked`; `pool` (blood pool frame); `spurt`; `alive` (not dying), `aware`).
+  `ActorPool` (128 preallocated): `reset(w, h)`, `spawn(type, x, y, angle, difficulty, placed?)`,
+  `spawnParsed(list, difficulty, angleOf)`, cell occupancy (`occupant`, `claim`, `release`,
+  `cellTaken`: one actor per cell, the target cell reserved), `turns` / `setTurn` (patrol
+  markers), `buildBlockers()` (the player's `tryMove` blockers: living actors only), `frameOf(a,
+  camX, camY, out)` (sheet, frame, yaw), `kills`, `placedTotal`, `tokensUsed`. Hooks for group
+  floors: `bossThink(g, a) → handled`, `bossDamage(g, a, dmg) → dealt`; `onShot(e)` for tests.
+  `billboardOf(id)` = the billboard or null when not registered (drawn as nothing).
+- **AI** (`ai.ts`): `STATE_TABLE` (one `think` per state), `stepActors(g)` once per tick.
+  `canSee` (front half or within 1.5 tiles, plus `lineOfSight`; closed door parts block),
+  `notice` (start the reaction delay), `makeNoise(g)` (a gun shot: every non-ambush actor whose
+  area the player's area reaches over open doors notices; the knife is silent), `startTell`,
+  `damageActor(g, a, dmg)` (× 2 when unaware, not the boss; pain cancels a tell; death),
+  `killActor` (score through the slot, kill count, blood, death line, drop: guard / officer
+  `clip-drop`, SS `mg` when the player has none else `clip-drop`), `canStep`, `chooseChase`
+  (diagonal → major → minor → any → reverse; people with sight dodge half of the time),
+  `choosePatrol` (facing, turn markers, reverse when blocked). People open unlocked doors and wait;
+  dogs need an open door. Attack: in `chase` with sight and a free token (3 / 4 / 6), each tick
+  `rng(0..255) < floor(19 / max(1, floor(d)))`, always at `d < 1`; dogs at `d ≤ 1`. Every attack
+  = tell (≥ 18 ticks, `fps/enemy/aim` / `fps/dog/growl`) → shots (`ShotEvent {actor, damage,
+  tell, tick}`) → recover → chase. One alert shout per 30 ticks per floor (`audio.say` when
+  `hasVoice`, else `fps/shout-<type>`; dogs bark). `MIN_TELL = 18`.
+- **Hitscan** (`hitscan.ts`): `bandDist` (Chebyshev), `playerDamage(rng, weapon, d)` (spec §4.2
+  bands; knife `d ≤ 1.25`), `findTarget(pool, grid, doors, push, x, y, angle)` (nearest living
+  actor within `aimWidth(d) = max(0.35, 0.06 d)` of the aim line, in sight, not behind the centre
+  column's wall), `enemyHitChance(d, ran, inView, base?, baseRun?)`, `enemyDamage`, `bossDamage`,
+  `biteDamage`, `scaleForDifficulty` (EASY × 0.5 rounded up), `VIEW_HALF = 375`, `RUN_MOVE =
+  0.12`.
+- **Weapons** (`weapons.ts`): `WEAPONS[0..3]` (`cycle`, `shotOn`, `hold` = `repeat` / `press` /
+  `auto`, `queueFrom` 14 for the pistol, `noise`, `sfx`, `view` sprite id). `WeaponSystem`:
+  `step(player, input) → shot this tick`, `request(p, w)`, `cycle(p, ±1)` (skips weapons not
+  owned or without ammo), 8 + 8 tick switch (`viewDrop()`), out of ammo → the knife, `viewFrame(p)`
+  (0 idle, 1 flash, 2 fire B, 3 recover; knife: idle, wind-up, stab, return), `shots`.
+  `usable(p, w)`, `bestWeapon(p)`.
+- **Pickups** (`pickups.ts`): `applyPickup(host, id) → taken` with the §4.5 caps and refusals (HP
+  100, ammo 99, the blood pool only at ≤ 10 HP, a weapon refused when owned at 99 ammo, the 1UP
+  never: full lives → `ONE_UP_SCORE` points), `TREASURE_SCORE`, `PICKUP_MESSAGES` (each ≤ 128 px),
+  the first ammo on an empty pool raises the best gun. `ItemList` (placed items first, then up to
+  128 drops: `add`, `at`, `treasure()`); `FpsGame.taken` is a view of its placed part.
+- **Positional sound** (`audio.ts`): `panVol(out, lx, ly, angle, x, y, reached, tell)` = spec §9.1
+  (pan `clamp(sin rel, ±0.8)`, vol `max(0.15, 1 − d/20) × (reached ? 1 : 0.35)`, tells ≥ 0.5).
+  `FpsSound`: `setListener(...)` once per tick (it also computes the area reach that the noise rule
+  reads), `reachedCell(x, y)`, `play(id)` (at the player), `at(id, x, y)`.
+- **HUD** (`hud.ts`): `HudState` (face glance by `fxRng` 1:2:1 every 30–90 ticks, `ouch` 30 ticks
+  at ≥ 20 damage in one tick, `grin` 60 ticks, damage flash 6, pickup flash 4, edge markers 12;
+  `faceFrame(hp)` = dead > ouch > grin > band × 3 + glance), `healthBand`, `edgeSide(rel)`.
+  Draw: `drawStatusBar(r, src, info)` (§8.6 layout; `fps/hud/bar`, `fps/face/<character>`
+  (fallback `recruit`), `ui/icon-life`, `fps/hud/key`, `fps/hud/weapon`; an id that is not
+  registered draws a plain stand-in, never magenta), `drawWeaponView` (`fps/view/<weapon>`, anchor
+  bottom-centre at (192, 176 + bob ± 2)), `drawFeedback` (flashes × 0.3 with REDUCE FLASHES; edge
+  markers never reduced), `drawMessages`, `drawBossBand` (`bossBar`, `subtitle`), `messageFits`.
+- **Game wiring** (`game.ts`): `actors`, `items`, `weaponSys`, `sound`, `hud`, `playerMove`,
+  `walked`, `lastShout`, `bossBar {visible, name, frac, phase}` and `subtitle {text, ticks}` (group
+  floors fills them; `speak(line, subtitle?, ticks?)`), `dropItem`, `turnAt`, `addLife`, hooks
+  `actorWoke(a)` / `actorKilled(a)`. `step`: doors → push wall → `sound.setListener` → player
+  move (actor blockers) → use → weapon (a shot: `findTarget` → `playerDamage` → `damageActor`;
+  gunfire → `makeNoise`) → pickups → `stepActors` (also while dying and in the elevator) → HUD.
+  `hurt(n, fromX, fromY)` also sets the face, the flash and the edge marker. `cellOccupied`
+  counts living actors (doors stay open on them); `isCellFree` (push walls) also refuses items,
+  drops and corpses. `stateHash` mixes the actors, the items and the weapon state.
+- **Lines** (`content/fps/lines.ts`): `ALERT_LINES`, `DEATH_LINES` (guard, officer, ss),
+  `BOSS_TAUNTS` (taunts 1–6 verbatim from spec §7.4, the Dutch ones with their `\n`),
+  `ALL_FPS_LINES`; each `{speaker, text, meaning}`.
+- **Floor 0** (`content/fps/floor-0.ts`): a patrolling guard and a dog in room B, an officer and
+  the chaingun in room C, an ambush SS in the east room, the other pickups and the four treasures
+  along the south wall of room A; nothing in sight of the start.
+- **Tests** (`tests/game/fps/{actors,ai,hitscan,weapons,pickups,hud}.test.ts`): wake by sight
+  (cone, 1.5-tile all-round, doors block) and noise (not through closed doors; ambush ignores it;
+  the knife is silent), a ≥ 18-tick tell before every damaging event over long seeded fights with
+  every type, attack tokens, SS bursts, damage distributions per band, × 2 on unaware actors, fire
+  rates, the pistol queue, switching, the out-of-ammo knife, every pickup cap and refusal, drops,
+  blood and corpses, messages ≤ 128 px, the face and the edge markers, determinism with combat.
 
 ## 5. Floors, boss, tally, bot
 
@@ -272,7 +350,7 @@ Spec: `docs/design/fps.md` §1.5–1.7, §3.7, §4.1, §4.6–4.8, §5. All pure
 - `content/fps/floor-0.ts`: `fps-0` "TEST RANGE" (spec §6.0; the wall letters show every texture
   `A`–`P` along room A; hand-over to group actors).
 - Pure data modules that eager scenes may import: `content/fps/names.ts` (`MODE_TITLE =
-  'OPERATION ???'`, no imports). `content/fps/story.ts`: TODO (group flow)
+  'OPERATION OSTIA'`, no imports). `content/fps/story.ts`: TODO (group flow)
 - Art registration (`content/fps/art.ts` and its files; ids spec §8). TODO (group cast / art)
 - Sound registration (`content/fps/sound.ts`; ids spec §9). TODO (group cast / fps-sound)
 - `src/sim/headless-fps.ts`: `createHeadlessFps({floor = 0, seed, difficulty, god, players, input:
