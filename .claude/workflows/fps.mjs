@@ -323,7 +323,15 @@ Fix every real finding, most severe first. Then re-read docs/design/fps.md end t
   const all = found.filter(Boolean).flatMap((f) => f.findings || [])
   log(`polish: ${all.length} findings`)
   phase('Verify')
-  const v = await agent(verifierPrompt('polish-fix', 5549, 'the final polish of the fps wave', 'every file changed in this wave (src/**, tests/**, docs/**, tools/**) - keep changes minimal and safe', `FINDINGS FROM THE REVIEW PANEL (verify each before fixing; skip false ones and say why):\n${JSON.stringify(all, null, 1)}`,
+  const LEAD = `LEAD DECISIONS (2026-10-16; apply them first, update docs/design/fps.md to match, add tests):
+1. Lives: the fps HUD, the floor cards and the restart card show the 2D count (reserve lives = slot.lives - 1, as spec 4.13 says and as the ams HUD and the final tally show).
+2. Floor 2: add one clip (+8) inside the lift / at the arrival of floor 2 on every difficulty, so a restart with pistol + 8 is not hopeless on HARD.
+3. Boss ammo: add two clips to the boss arena on EASY and NORMAL (one on HARD) at cover spots; keep validators and the ammo-budget rule green (update the spec numbers).
+4. Hide the weapon view during the death-cam (game.state === 'deathcam').
+5. Keep: a boss-floor restart puts the boss back to sleep and the floor music plays until he wakes.
+6. Earlier lead decisions: enemies never open gold/silver/lift doors; dog bite reach 1.5; the recruit face is a fallback only.
+Reports of the earlier groups: ${ROOT}/tmp/fps-cast-reports.md and ${ROOT}/tmp/fps-floors-reports.md (their unfinished items are candidates too).`
+  const v = await agent(verifierPrompt('polish-fix', 5549, 'the final polish of the fps wave', 'every file changed in this wave (src/**, tests/**, docs/**, tools/**) - keep changes minimal and safe', `${LEAD}\n\nFINDINGS FROM THE REVIEW PANEL (verify each before fixing; skip false ones and say why):\n${JSON.stringify(all, null, 1)}`,
     'Fix the findings, most severe first. Then run all gates plus the fps sims (floors 1-2, --god --expect-complete, and normal seeds 1-3), npm run sim for ams/m0/m2 (--god), and smoke from mission=ams&boss=1&debug=1&god=1 through the bridge into floor 1. Update docs/api/fps.md with a final play-test record section.'), { label: 'polish:fix', phase: 'Verify', schema: VERIFY_SCHEMA }).catch(() => null)
   result = { group: GROUP, findings: all, verify: v }
 } else {
