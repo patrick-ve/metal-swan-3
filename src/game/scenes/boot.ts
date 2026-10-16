@@ -3,17 +3,19 @@
  * sound effects and fetches and decodes the 'boot' sample group (the start screens; a direct
  * `?mission=` start also loads that mission's group) while an ammunition belt fills in, waits
  * for a click or key (the gesture unlocks audio; one made while loading counts), then goes to
- * the title — or straight into a mission with `?mission=`.
+ * the title — or straight into a mission with `?mission=`, or into the first-person mode with
+ * `?mode=fps&floor=n` (docs/design/fps.md §1.11; its lazy content loads in FpsIntroScene).
  */
 import { listSfx } from '../../engine/audio';
 import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { preloadSprites } from '../../engine/sprites';
-import { blinkOn, centerText, type GameApp } from '../app';
-import { loadContent } from '../content/index';
+import { blinkOn, centerText, newCampaign, type GameApp } from '../app';
+import { isLazyContent, loadContent } from '../content/index';
 import { getMission } from '../registry';
-import { startNewGame } from './gameplay';
+import { newSession, startNewGame } from './gameplay';
+import { startFpsRun } from './fps-route';
 import { TitleScene } from './title';
 
 type Phase = 'content' | 'sprites' | 'sounds' | 'samples' | 'done';
@@ -42,7 +44,8 @@ export class BootScene implements Scene {
 
   private async load(): Promise<void> {
     try {
-      this.app.content = await loadContent();
+      // The lazy fps content stays out of the boot (FpsIntroScene loads it).
+      this.app.content = await loadContent((id) => !isLazyContent(id));
       this.phase = 'sprites';
       await preloadSprites(undefined, (d, t) => {
         this.done = d;
@@ -132,7 +135,13 @@ export class BootScene implements Scene {
     if (!app.gesture) return;
     this.leaving = true;
     const p = app.params;
-    if (p.mission) startNewGame(app, { mission: p.mission, section: p.section ?? undefined, players: p.players, bossRush: p.boss });
+    if (p.mode === 'fps') {
+      const char = p.char ?? 'recruit';
+      app.input.players = p.players;
+      app.session = newSession(app, p.players === 2 ? [char, char] : [char]);
+      app.campaign = newCampaign();
+      startFpsRun(app, { floor: p.floor ?? 1 });
+    } else if (p.mission) startNewGame(app, { mission: p.mission, section: p.section ?? undefined, players: p.players, bossRush: p.boss });
     else app.scenes.replace(new TitleScene(app), { fade: 30 });
   }
 

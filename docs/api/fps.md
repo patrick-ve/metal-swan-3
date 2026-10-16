@@ -167,14 +167,77 @@ and `SENSITIVITY` (1–10) after GRAPHICS (rows now 10 px apart).
 
 ## 3. Fps game shell
 
-- Types: `FpsFloorDef`, `FpsThing`, `FpsEpisodeDef`, `FpsInput`, `FpsCarry`, `FpsRun`,
-  `FloorResult`. TODO (group engine / fps-shell)
-- Registry: `defineFpsFloor`, `getFpsFloor`, `defineFpsEpisode`. TODO (group engine / fps-shell)
-- `parseFloor(def, difficulty)` — the legend (spec §5.1), warnings. TODO (group engine / fps-shell)
-- `FpsGame` — `step`, `restart`, `carry`, `stateHash`, `render`, events. TODO (group engine / fps-shell)
-- Doors and push walls (timings spec §4.6, §4.7). TODO (group engine / fps-shell)
-- `FpsIntroScene`, `loadFpsContent`, `FpsScene`, `fps-route.ts`. TODO (group engine / fps-shell; flow wires pause / continue / route)
-- `?mode=fps&floor=n`. TODO (group engine / fps-shell)
+Spec: `docs/design/fps.md` §1.5–1.7, §3.7, §4.1, §4.6–4.8, §5. All pure and deterministic.
+
+- **Types** (`src/game/fps/types.ts`): `FpsThing`, `FpsFloorDef` (spec §5), `FpsEpisodeDef {id,
+  floors}`, `FpsInput {held, pressed, turn, moveX, moveY}`, `FpsCarry {hp, ammo, weapons, weapon}`
+  (`WEAPON_KNIFE..WEAPON_CHAINGUN` = 0..3), `FloorResult`, `FpsRun {slot, floor, carry,
+  floorStartScore, results, entered?}`, `FpsEvents` (`floorComplete {result}`, `playerDead`,
+  `message {text}`, `extend {lives}`, `secret {x, y}`, `door`). Payloads are reused: copy them.
+- **Registry** (`registry.ts`): `defineFpsFloor(def)`, `getFpsFloor(id)` (unknown → undefined + one
+  warning), `hasFpsFloor`, `fpsFloorByNumber(n)` (id `fps-<n>`, no warning), `listFpsFloors()`,
+  `defineFpsEpisode`, `getFpsEpisode`.
+- **`parseFloor(def, difficulty = 'normal')`** (`map.ts`) → `ParsedFloor {grid, doors, doorLock,
+  start {x, y, angle}, actors, items, props, pushes, switches, turns, spawns, switchOnTex,
+  warnings}`. The §5.1 legend: wall letters → `WALL_TEXTURES` (or `def.walls`), doors via
+  `DoorTable.place` (+ `doorLock[i]`: `LOCK_NONE/GOLD/SILVER/LIFT`, `doors.edgeTex =
+  fps/door/edge`), push walls = wall + `CELL_PUSH` (texture: `things.tex`, else the most common
+  neighbour letter, ties N E S W), solid props = `CELL_PROP`, actors by char and difficulty
+  (`ParsedActor {type, x, y, facing, ambush, patrol, char}`; default facing = the longest free
+  run), pickups (`PICKUP_CHARS`) and props (`PROP_CHARS`) filtered by `things` min/max difficulty.
+  Fail soft: an unknown char warns once and is floor; ragged rows are padded with wall; no start →
+  the first floor cell. Helpers: `cardinalAngle(c)`, `cardinalIndex(angle)` (0 E, 1 S, 2 W, 3 N),
+  `DIR_DX/DIR_DY`. Parse after the fps content is loaded (texture ids resolve then).
+- **`FpsPlayer`** (`player.ts`): `box {x, y, r = 0.34}`, `angle`, `hp`, `ammo`, `weapons`,
+  `weapon`, `keys` (`KEY_GOLD | KEY_SILVER`), `move(input, grid, doors, push, blockers?)` (spec
+  §4.1: walk 0.09, run 0.15, key turn 24 / 44 with half speed for the first 6 ticks, analog turn,
+  stick via `stickSpeed`, keys + stick clamped to the run speed, `strafe` turns the turn keys into
+  strafes), `frontX/frontY` (the use cell), `reset(x, y, angle, carry|null)`, `carry()`.
+  `freshCarry()` = knife + pistol, 8 ammo, HP 100.
+- **`DoorSystem`** (`doors.ts`): `use(i, keys, blocked?)` → `'opened' | 'closed' | 'reopened' |
+  'locked-gold' | 'locked-silver' | 'busy' | 'blocked'`; `step(blocked: (i) => boolean)` once per
+  tick; `open(i)` (no key check; actors, debug). `state[i]` = `DOOR_CLOSED/OPENING/OPEN/CLOSING`,
+  `prog[i]` 0..54 (`doors.open[i] = prog / 54`), `timer[i]`. 54 ticks to move, 258 open; blocked
+  while open → waits, blocked while closing → opens again. It calls `AreaMap.setDoorOpen` when a
+  door starts to open and when it is shut. `sfx(id, i)` hook: `fps/door-open`, `fps/door-close`,
+  `fps/door-locked`.
+- **`PushSystem`** (`pushwall.ts`): `push` (the engine `PushWall`), `use(x, y, dir, free)` →
+  `'moved' | 'blocked' | 'busy' | 'none'`, `step(free)` → true on the tick it stops, `found`
+  (secrets). 110 ticks per tile, at most 2 tiles; stops early when the next cell is not `free`;
+  then a normal wall. The game floods a new `AreaMap` when it stops.
+- **`FpsGame`** (`game.ts`): `new FpsGame({floor, difficulty, seed, slot, carry, audio, god?,
+  run?})`. `step(input)`, `render(view)`, `stateHash()` (FNV-1a over the tick, the state, the
+  player, doors, push wall, taken items and the rng words), `restart()` (re-parse, fresh loadout,
+  rng seed + attempt, `slot.score = run.floorStartScore`), `carry()`, `setPose(x, y, angle)`,
+  `skipUnfold()`, `use()`, `useElevator()` (F4 on floors 0/1), `hurt(n, fromX, fromY)` (→ 90-tick
+  `dying` → `playerDead`), `addScore(points)` (extends → `extend` + `ONE MORE TRY!`),
+  `message(text)` (`messages`: 2 lines, 90 ticks), `giveAll()` (F5), `cellOccupied(x, y)`,
+  `isCellFree(x, y)`. Fields: `state` (`'play' | 'elevator' | 'dying' | 'dead' | 'done'`),
+  `tick` (since the (re)start; the first `UNFOLD_TICKS` = 30 ignore input and `camera.squash`
+  goes 0 → 1), `clock` (the floor time; stops at the elevator), `camera`, `map`, `grid`, `doors`,
+  `pushes`, `areas`, `taken`, `rng`, `fxRng`. Items and props draw as billboards
+  `fps/item/<id>` / `fps/prop/<id>` when registered (else nothing). The shell picks up keys only;
+  group actors adds actors, combat and the other pickups here.
+- **Run** (`run.ts`): `fpsSlotIndex(session)` (slot 0 when active, else 1), `fpsSlot`,
+  `newFpsRun(session, floor)`, `emptyFpsInput()`.
+- **Scenes:** `FpsIntroScene(app, {floor, run?, fromBridge?})` (spec §1.5; `loadFpsContent(app,
+  onProgress?)` = one shared promise, never rejects; `fpsLoadState()` → `{registered, ready,
+  frac}`; the card shows `MODE_TITLE`, `FLOOR n`, the name, lives and the controls hint; at least
+  120 ticks, start after 60, auto at 180; the first entry calls `session.startMission('fps-<n>')`
+  and sets `run.floorStartScore`). `FpsScene(app, run)` (spec §1.6): `enter`/`resume` turn on
+  `input.fpsMode` + `app.pointerLockWanted` and suppress held actions; `pause`/`exit` turn them
+  off; pause on `input.pausePressed`, `app.focusLost` or raw pad button 9; draws the view with
+  `r.image(view.buf, 0, 0, {screen: true, stream: true})`, the death fade, a basic status bar
+  (spec §8.6 layout), messages, the `CLICK TO LOOK WITH THE MOUSE` hint and, with `?debug=1`, the
+  map (top right; F1 hides it). A death: `slot.loseLife()` → `game.restart()` behind a 60-tick
+  `FLOOR n / LIVES n` card; the last life → `GameOverScene` (until group flow wires the
+  `ContinueScene`). The pause menu gets a stand-in host until `PauseHost` exists.
+- **Route** (`scenes/fps-route.ts`, group flow takes it over): `startFpsRun(app, {floor,
+  fromBridge?})`, `fpsFloorDone(app, run, result)`, `fpsTallyDone(app, run)` (the next floor's
+  intro, else the title; floor 0 → the title).
+- **`?mode=fps&floor=n`** (`params.ts`: `mode?: 'fps' | 'bridge'`, `floor?: 0..2`, default 1 with
+  `mode=fps`; both absent otherwise): the boot makes a new session + campaign and calls
+  `startFpsRun`. A floor that is not registered yet plays floor 0 (with a warning).
 
 ## 4. Actors, combat, pickups, HUD
 
@@ -197,15 +260,32 @@ and `SENSITIVITY` (1–10) after GRAPHICS (rows now 10 px apart).
 
 ## 6. Content registration and tools
 
-- Lazy manifest entries `fps`, `fps/art`, `fps/sound`, `fps/floors`; `isLazyContent`; the default
-  `loadContent` filter; `loadFpsContent` / `fpsLoadState` (spec §1.5). Tools that must see every
-  sound use `loadContent(() => true)` (spec §3.6). TODO (group engine / fps-shell)
-- Pure data modules that eager scenes may import: `content/fps/names.ts` (`MODE_TITLE`),
-  `content/fps/story.ts`. TODO (groups fps-shell, flow)
+- Lazy manifest entries `fps` (`content/fps/index.ts`: `textures-basic.ts` + `floor-0.ts`),
+  `fps/art`, `fps/sound`, `fps/floors` (stubs until their groups fill them).
+  `isLazyContent(id)` (`id === 'fps' || id.startsWith('fps/')`); `loadContent()`'s default filter
+  is `(id) => !isLazyContent(id)`, so the boot, the sims and the 2D tools load what they loaded
+  before. The fps mode loads with `loadFpsContent` (spec §1.5) or `loadContent(isLazyContent)`.
+  Tools that must see every sound use `loadContent(() => true)` (spec §3.6).
+- `content/fps/textures-basic.ts`: placeholder textures for every §8.1 id and placeholder
+  billboards for every §4.5 item and §5.1 prop. Each id is defined only when it is not registered
+  yet, so the real art wins whatever the load order (hand-over to group art).
+- `content/fps/floor-0.ts`: `fps-0` "TEST RANGE" (spec §6.0; the wall letters show every texture
+  `A`–`P` along room A; hand-over to group actors).
+- Pure data modules that eager scenes may import: `content/fps/names.ts` (`MODE_TITLE =
+  'OPERATION ???'`, no imports). `content/fps/story.ts`: TODO (group flow)
 - Art registration (`content/fps/art.ts` and its files; ids spec §8). TODO (group cast / art)
 - Sound registration (`content/fps/sound.ts`; ids spec §9). TODO (group cast / fps-sound)
-- `src/sim/headless-fps.ts` (`runFps`). TODO (group engine / fps-shell)
-- `npm run shot -- --fps n --pose x,y,deg`. TODO (group engine / fps-shell)
+- `src/sim/headless-fps.ts`: `createHeadlessFps({floor = 0, seed, difficulty, god, players, input:
+  {actions?(tick), analog?(tick, out)}, pose: {x, y, deg}, unfold = false, loadBase = false})` →
+  `{app, input, session, run, scene, game, ticks, complete, step(n), runUntil(pred, max),
+  setPose(x, y, deg), renderFrame(), report(), dispose()}` (the real app + `FpsScene`, software
+  renderer, `SimAudio`; it clears the scene's enter-suppression so a script may hold from tick 0).
+  `runFps(o + {maxTicks})` → `FpsReport {floor, seed, ticks, complete, deaths, kills, secrets,
+  treasure, stateHash, errors, warnings, missingSfx}`.
+- `npm run shot -- --fps n [--pose x,y,deg[;x,y,deg…]] [--ticks n] [--every n --count k] [--hold
+  forward,use] [--seed] [--difficulty] [--god] [--unfold] [--out] [--scale] [--cols]` → a labelled
+  sheet (`tmp/shots/fps-<n>[-sheet].png`); one frame per pose, or a timeline for one pose; `use`
+  and `fire` in `--hold` are tapped. Degrees: 0 east, 90 south.
 - `npm run sprites -- fps/ [--ray]`. TODO (group cast / art)
 - `npm run sim -- --mode fps --floor n`. TODO (group floors)
 

@@ -60,16 +60,30 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   'bosses/m3': () => import('./bosses/m3/index'),
   'bosses/m4': () => import('./bosses/m4/index'),
   'bosses/m5': () => import('./bosses/m5/index'),
+  // The first-person mode (docs/design/fps.md §3.6): LAZY — the boot skips them (isLazyContent);
+  // FpsIntroScene loads them behind its progress bar (loadFpsContent).
+  fps: () => import('./fps/index'),
+  'fps/art': () => import('./fps/art'),
+  'fps/sound': () => import('./fps/sound'),
+  'fps/floors': () => import('./fps/floors'),
 };
+
+/** Manifest ids loaded on demand, not at boot: the first-person mode (`fps`, `fps/…`). */
+export function isLazyContent(id: string): boolean {
+  return id === 'fps' || id.startsWith('fps/');
+}
 
 export interface ContentReport {
   loaded: string[];
   failed: Array<{ id: string; error: string }>;
 }
 
-/** Import every manifest entry accepted by `filter`. Never throws. */
+/**
+ * Import every manifest entry accepted by `filter` (default: every entry that is not lazy, see
+ * `isLazyContent`; pass `() => true` for everything, `isLazyContent` for the fps mode). Never throws.
+ */
 export async function loadContent(
-  filter: (id: string) => boolean = () => true,
+  filter: (id: string) => boolean = (id) => !isLazyContent(id),
 ): Promise<ContentReport> {
   const ids = Object.keys(CONTENT_MODULES).filter(filter);
   const results = await Promise.allSettled(ids.map((id) => CONTENT_MODULES[id]()));

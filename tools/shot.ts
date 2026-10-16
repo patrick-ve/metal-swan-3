@@ -3,6 +3,8 @@
  *                 [--seed 1] [--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss]
  *                 [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal]
  *                 [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2]
+ * npm run shot -- --fps 0 [--pose x,y,deg[;x,y,deg…]] [--ticks n] [--every n --count k] [--hold forward,use]
+ *                 [--seed 1] [--difficulty normal] [--god] [--unfold] [--out file.png] [--scale 2] [--cols 3]
  *
  * Headless gameplay screenshots with the software renderer (docs/ARCHITECTURE.md §9):
  * - one frame after --ticks ticks → tmp/shots/<mission>-<section>-t<tick>.png (scale 2), or
@@ -18,6 +20,12 @@
  * A mission with `artDensity: 2` (ams) draws its 2× art (docs/ART_GUIDE.md "2x art (mission
  * ams)") as in the browser: at --res 2 or more it shows the full 2× detail, at --res 1 its
  * reduction. --art 1 draws the 1× art instead (to compare); the sheet title names the art.
+ *
+ * --fps n shoots the first-person floor n instead (docs/design/fps.md §10, src/sim/headless-fps.ts):
+ * every --pose (tiles x, y and degrees: 0 east, 90 south) gives one frame after --ticks ticks
+ * (default 0); with one pose (or none: the floor start) --every / --count make a timeline.
+ * --hold keeps fps actions held (names from input-actions.ts, e.g. forward,turnRight,use).
+ * → tmp/shots/fps-<n>[-sheet].png.
  */
 import { pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
@@ -30,6 +38,8 @@ import { isGraphicsMode } from '../src/game/settings';
 import type { UpscaleMode } from '../src/engine/upscale';
 import type { Difficulty } from '../src/game/session';
 import { createHeadlessGame, type BotRoute, type HeadlessGame } from '../src/sim/index';
+import { ACTION_BIT, FPS_ACTIONS, type FpsAction } from '../src/engine/input-actions';
+import { createHeadlessFps, type HeadlessFps } from '../src/sim/headless-fps';
 import { resolveGfx } from './lib/gfx';
 import { savePNG, SHEET } from './lib/image';
 
@@ -232,7 +242,159 @@ function gfxNote(a: Args): string {
   return `${resolveGfx(a.res, a.gfx).note}${hi ? '  2x art' : ''}`;
 }
 
+// ------------------------------------------------------------------------------------- --fps
+
+interface FpsArgs {
+  floor: number;
+  poses: Array<{ x: number; y: number; deg: number }>;
+  ticks: number;
+  every: number;
+  count: number;
+  seed: number;
+  difficulty: Difficulty;
+  god: boolean;
+  unfold: boolean;
+  hold: FpsAction[];
+  out?: string;
+  scale: number;
+  cols: number;
+}
+
+const FPS_USAGE =
+  'usage: npm run shot -- --fps 0 [--pose x,y,deg[;x,y,deg…]] [--ticks n] [--every n --count k] [--hold forward,use] ' +
+  '[--seed 1] [--difficulty normal] [--god] [--unfold] [--out file.png] [--scale 2] [--cols 3]';
+
+function parseFpsArgs(argv: readonly string[]): FpsArgs {
+  const a: FpsArgs = { floor: 0, poses: [], ticks: 0, every: 0, count: 1, seed: 1, difficulty: 'normal', god: false, unfold: false, hold: [], scale: 0, cols: 3 };
+  for (let i = 0; i < argv.length; i++) {
+    const s = argv[i];
+    const next = (): string => {
+      const v = argv[++i];
+      if (v === undefined) throw new Error(`missing value after ${s}\n${FPS_USAGE}`);
+      return v;
+    };
+    const num = (): number => {
+      const v = Number(next());
+      if (!Number.isFinite(v)) throw new Error(`${s} needs a number\n${FPS_USAGE}`);
+      return v;
+    };
+    switch (s) {
+      case '--fps':
+        a.floor = Math.max(0, Math.round(num()));
+        break;
+      case '--pose':
+        for (const part of next().split(';')) {
+          const [x, y, deg] = part.split(',').map(Number);
+          if (![x, y, deg].every(Number.isFinite)) throw new Error(`--pose needs x,y,deg\n${FPS_USAGE}`);
+          a.poses.push({ x, y, deg });
+        }
+        break;
+      case '--ticks':
+        a.ticks = Math.max(0, Math.round(num()));
+        break;
+      case '--every':
+        a.every = Math.max(1, Math.round(num()));
+        break;
+      case '--count':
+        a.count = Math.max(1, Math.min(64, Math.round(num())));
+        break;
+      case '--seed':
+        a.seed = num() >>> 0;
+        break;
+      case '--difficulty': {
+        const d = next();
+        if (d !== 'easy' && d !== 'normal' && d !== 'hard') throw new Error(`--difficulty must be easy, normal or hard\n${FPS_USAGE}`);
+        a.difficulty = d;
+        break;
+      }
+      case '--god':
+        a.god = true;
+        break;
+      case '--unfold':
+        a.unfold = true;
+        break;
+      case '--hold':
+        a.hold = next()
+          .split(',')
+          .map((b) => b.trim())
+          .filter((b): b is FpsAction => (FPS_ACTIONS as readonly string[]).includes(b));
+        break;
+      case '--out':
+        a.out = next();
+        break;
+      case '--scale':
+        a.scale = Math.max(1, Math.min(6, Math.round(num())));
+        break;
+      case '--cols':
+        a.cols = Math.max(1, Math.min(8, Math.round(num())));
+        break;
+      case '--help':
+      case '-h':
+        console.log(FPS_USAGE);
+        process.exit(0);
+        break;
+      default:
+        throw new Error(`unknown option ${s}\n${FPS_USAGE}`);
+    }
+  }
+  return a;
+}
+
+function fpsLabel(h: HeadlessFps): string {
+  const g = h.game;
+  if (!g) return `t=${h.ticks}  (no game)`;
+  const p = g.player;
+  const deg = Math.round((p.angle * 360) / 4096);
+  return `t=${h.ticks}  x=${p.x.toFixed(2)} y=${p.y.toFixed(2)} ${deg}deg  ${g.state}`;
+}
+
+async function fpsMain(argv: readonly string[]): Promise<void> {
+  const a = parseFpsArgs(argv);
+  let mask = 0;
+  for (const name of a.hold) mask |= ACTION_BIT[name];
+  // `use` and `fire` are tapped (a press every other tick), the rest is held.
+  const tap = mask & (ACTION_BIT.use | ACTION_BIT.fire);
+  const held = mask & ~tap;
+  const frames: Array<{ buf: PixelBuffer; label: string }> = [];
+  const poses = a.poses.length ? a.poses : [null];
+  let last: HeadlessFps | null = null;
+  for (const pose of poses) {
+    const h = await createHeadlessFps({
+      floor: a.floor,
+      seed: a.seed,
+      difficulty: a.difficulty,
+      god: a.god,
+      unfold: a.unfold,
+      pose: pose ?? undefined,
+      input: mask ? { actions: (t) => held | (t % 2 === 0 ? tap : 0) } : undefined,
+    });
+    last?.dispose();
+    last = h;
+    h.step(a.ticks);
+    const n = poses.length === 1 ? a.count : 1;
+    for (let i = 0; i < n; i++) {
+      if (i > 0) h.step(a.every || 60);
+      frames.push({ buf: h.renderFrame().clone(), label: fpsLabel(h) });
+    }
+  }
+  const title = `FPS FLOOR ${a.floor}  seed ${a.seed}  ${a.difficulty}${a.god ? '  god' : ''}`;
+  const file = a.out ?? join('tmp/shots', frames.length === 1 ? `fps-${a.floor}.png` : `fps-${a.floor}-sheet.png`);
+  savePNG(sheet(frames, frames.length === 1 ? 1 : a.cols, title), file, a.scale || (frames.length === 1 ? 2 : 1));
+  console.log(`${frames.length} frame(s) → ${file}`);
+  if (last) {
+    const report = last.report();
+    for (const e of report.errors) console.error(`error: ${e.where}: ${e.message}${e.count > 1 ? ` (×${e.count})` : ''}`);
+    for (const w of report.warnings) console.warn(`warning: ${w}`);
+    if (report.errors.length) process.exitCode = 1;
+    last.dispose();
+  }
+}
+
 async function main(): Promise<void> {
+  if (process.argv.includes('--fps')) {
+    await fpsMain(process.argv.slice(2));
+    return;
+  }
   const args = parseArgs(process.argv.slice(2));
   if (args.art < 2) setHiArt(false);
   for (const m of args.imports) await import(pathToFileURL(resolve(m)).href);

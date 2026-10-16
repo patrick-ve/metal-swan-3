@@ -3,7 +3,8 @@
  * `?mission=m1&section=b&god=1&debug=1&seed=42&players=2&char=<id>&weapon=<id>&boss=1&mute=1`
  * plus `difficulty=easy|normal|hard`, `gfx=pixel|smooth|xbr` (the GRAPHICS filter for this
  * session; not saved; the older spelling `res=` is still read) and `kmax=1..12` (highest
- * backbuffer resolution; a perf / debug knob). Pure parsing (main.ts passes `location.search`).
+ * backbuffer resolution; a perf / debug knob), and `mode=fps|bridge` + `floor=0..2` (the
+ * first-person mode, docs/design/fps.md §1.11; `floor` defaults to 1 with `mode=fps`). Pure parsing (main.ts passes `location.search`).
  * With `mission` set the game skips the title and starts that mission at once.
  */
 import type { UpscaleMode } from '../engine/upscale';
@@ -26,6 +27,13 @@ export interface LaunchParams {
   gfx: UpscaleMode | null;
   /** Highest backbuffer resolution (default KMAX in render-common.ts; 1 = the classic 384×216). */
   kmax: number | null;
+  /**
+   * `?mode=fps` starts the first-person mode at `floor`; `?mode=bridge` the glitch bridge. Absent
+   * (undefined) when the URL does not set them.
+   */
+  mode?: 'fps' | 'bridge';
+  /** First-person floor 0..2 (default 1 with `mode=fps`; undefined otherwise). */
+  floor?: number;
 }
 
 export const DEFAULT_PARAMS: Readonly<LaunchParams> = Object.freeze({
@@ -61,7 +69,7 @@ export function parseLaunchParams(search: string): LaunchParams {
   const gfx = (q.get('gfx') ?? q.get('res'))?.toLowerCase() ?? null;
   const kmaxRaw = q.get('kmax');
   const kmax = kmaxRaw !== null && /^\d{1,2}$/.test(kmaxRaw) && Number(kmaxRaw) >= 1 && Number(kmaxRaw) <= 12 ? Number(kmaxRaw) : null;
-  return {
+  const p: LaunchParams = {
     mission: id(q.get('mission')),
     section: id(q.get('section')),
     god: flag(q.get('god')),
@@ -76,4 +84,10 @@ export function parseLaunchParams(search: string): LaunchParams {
     gfx: isGraphicsMode(gfx) ? gfx : null,
     kmax,
   };
+  const mode = q.get('mode')?.toLowerCase();
+  if (mode === 'fps' || mode === 'bridge') p.mode = mode;
+  const floorRaw = q.get('floor');
+  if (floorRaw !== null && /^[0-2]$/.test(floorRaw)) p.floor = Number(floorRaw);
+  else if (p.mode === 'fps') p.floor = 1;
+  return p;
 }
