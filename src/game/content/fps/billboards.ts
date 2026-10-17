@@ -51,6 +51,7 @@ export const MAT = {
   wood: m([PAL.brown[0], PAL.brown[1], PAL.brown[2], PAL.brown[3]]),
   rifleWood: m([PAL.brown[1], PAL.brown[2], PAL.brown[3], PAL.sand[2]], 0.4, PAL.brown[0]),
   gun: m([PAL.ink[0], PAL.steel[0], PAL.steel[1], PAL.steel[2]], 0.2, INK),
+  gunLit: m([PAL.steel[1], PAL.steel[2], PAL.steel[3], PAL.steel[4]], 0.2, INK),
   brass: m(PAL.brass),
   silver: m([PAL.steel[2], PAL.steel[3], PAL.steel[4]]),
   hairBrown: m([PAL.brown[0], PAL.brown[1], PAL.brown[2]]),
@@ -59,12 +60,11 @@ export const MAT = {
   red: m([PAL.red[0], PAL.red[1], PAL.red[2]]),
   tan: m([PAL.brown[1], PAL.brown[2], PAL.brown[3], PAL.sand[2]]),
   dogDark: m([PAL.ink[0], PAL.ink[1], PAL.brown[0], PAL.brown[1]], 0.2),
+  dogLight: m([PAL.brown[2], PAL.brown[3], PAL.sand[2], PAL.sand[3]], 0.2),
   bossCoat: m([PAL.ink[1], PAL.olive[0], PAL.olive[1], PAL.stone[1], PAL.stone[2]], 0, INK),
   glass: m([PAL.steel[2], PAL.sky[2], PAL.sky[3], PAL.snow[2]], 0.3, PAL.steel[1]),
   soot: m([PAL.ink[0], PAL.ink[1], PAL.stone[0]]),
 } as const;
-
-export const BLOOD: readonly Color[] = [PAL.red[0], PAL.red[1], PAL.red[2]];
 
 // ------------------------------------------------------------------------------------ soldiers
 
@@ -110,6 +110,8 @@ export interface SoldierPose {
   blood: number;
   /** Muzzle flash. */
   flash: boolean;
+  /** The tell: a bright glint on the aimed barrel's tip. */
+  glint?: boolean;
 }
 
 export const POSE0: SoldierPose = { walk: -1, aim: 0, lean: 0, crouch: 0, headRoll: 0, flail: 0, fall: 0, blood: 0, flash: false };
@@ -142,7 +144,9 @@ export function soldier(kind: SoldierKind, p: SoldierPose): Figure {
   const hipY = HIP_Y + bob - drop;
   const pelvis: V3 = [0, hipY + 1, 0];
   // torso pivots at the pelvis
-  const tor: M3 = mulMM(rotX(-p.lean), rotZ(p.headRoll * 0.3));
+  // walking: the shoulders dip over the planted foot (reads in the front and back yaws)
+  const roll = walking ? Math.cos(ph) * 0.09 : 0;
+  const tor: M3 = mulMM(rotX(-p.lean), rotZ(p.headRoll * 0.3 + roll));
   const T = (v: V3): V3 => add(pelvis, rotate(tor, v));
   const neck = T([0, 17.5, 0.3]);
   const headC = T([0, 22.5, 0.6]);
@@ -153,7 +157,7 @@ export function soldier(kind: SoldierKind, p: SoldierPose): Figure {
   for (const side of [1, -1]) {
     const s = walking ? swing * side : 0;
     // the knee bends while the leg swings forward (the passing pose), straight at contact
-    const bend = (walking ? 0.1 + 0.75 * Math.max(0, Math.cos(ph) * side) : 0.05) + kb;
+    const bend = (walking ? 0.1 + 1.1 * Math.max(0, Math.cos(ph) * side) : 0.05) + kb;
     const hip: V3 = [side * 3.1, hipY, 0];
     const a = s + kb * 0.5;
     const [knee, ankle] = leg(hip, a, bend);
@@ -176,12 +180,12 @@ export function soldier(kind: SoldierKind, p: SoldierPose): Figure {
   if (st.coatLong) {
     // a coat skirt flaring to the knees
     const hem = kind === 'boss' ? -12 : -8.5;
-    f.cap(T([0, 4, 0]), T([0, hem, 0.2]), 5.4, kind === 'boss' ? 7 : 6.4, st.coat);
+    f.cap(T([0, 4, 0]), T([0, hem, 0.2]), 5.4, kind === 'boss' ? 5.9 : 6.4, st.coat);
     if (kind === 'boss') {
-      // the scorched hem: soot all round the bottom of the greatcoat
-      for (let k = 0; k < 14; k++) {
-        const a = (k / 14) * Math.PI * 2;
-        f.dot(T([Math.sin(a) * 6.8, hem + 0.6 + (k % 3) * 0.7, Math.cos(a) * 6.8]), k % 2 ? INK : PAL.stone[0], 2, 1.5);
+      // the scorched hem: a few soot marks along the bottom of the greatcoat
+      for (let k = 0; k < 10; k++) {
+        const a = (k / 10) * Math.PI * 2;
+        f.dot(T([Math.sin(a) * 5.8, hem + 0.6 + (k % 3) * 0.6, Math.cos(a) * 5.8]), k % 2 ? INK : PAL.stone[0], 1, 1.5);
       }
     }
   } else {
@@ -238,7 +242,9 @@ export function soldier(kind: SoldierKind, p: SoldierPose): Figure {
     f.ell(hd([0.6, 2.6, -0.2]), [4.1, 2.4, 4.2], st.hair, H);
     f.cap(hd([-2.0, 3.5, 3.0]), hd([1.8, 1.4, 3.7]), 1.0, 0.7, st.hair);
     f.dot(hd([0, -1.4, 3.95]), INK, 2, 1);
-    for (const [x, y] of [[2.2, -0.8], [-2.4, 1.6], [1.0, 2.2]] as const) f.dot(hd([x, y, 3.6]), PAL.stone[0], 1, 1);
+    // soot: two thin streaks on one cheek and the brow (not a block: that read as an eye patch)
+    f.cap(hd([2.4, -0.6, 3.5]), hd([2.9, -2.4, 3.1]), 0.32, 0.25, MAT.soot);
+    f.cap(hd([-0.8, 2.3, 3.7]), hd([-2.6, 2.0, 3.4]), 0.3, 0.25, MAT.soot);
   } else {
     // steel helmet with the flared skirt
     f.ell(hd([0, 3.4, -0.4]), [4.7, 3.5, 4.9], st.hatMat, H);
@@ -252,9 +258,10 @@ export function soldier(kind: SoldierKind, p: SoldierPose): Figure {
   const flailOut = (sh: V3, side: number): V3 => add(sh, [side * 9, -4 + 4 * fl, -3]);
   let muzzle: V3 | null = null;
   if (st.weapon === 'rifle') {
-    // rest: rifle carried at low ready across the body; aim: at the right shoulder, at the viewer
-    const butt = lerp3(T([-4.5, 2.5, 4.0]), T([-3.2, 14.5, 2.0]), aim);
-    const tip = lerp3(T([5.5, 21, 9]), T([-2.0, 15.0, 23]), aim);
+    // rest: rifle carried at low ready across the body; aim: at the right shoulder, the barrel
+    // angled across toward the viewer's left so the long gun stays visible (a tell that reads)
+    const butt = lerp3(T([-4.5, 2.5, 4.0]), T([-4.0, 14.0, 2.0]), aim);
+    const tip = lerp3(T([5.5, 21, 9]), T([10.5, 16.5, 19]), aim);
     const dir = norm3(sub(tip, butt));
     const rot = lookAlong(dir);
     const len = Math.hypot(...sub(tip, butt));
@@ -262,7 +269,8 @@ export function soldier(kind: SoldierKind, p: SoldierPose): Figure {
     if (fl < 0.5) {
       f.box(at(0.2), [1.1, 1.9, len * 0.2], MAT.rifleWood, rot);
       f.box(at(0.52), [1.0, 1.2, len * 0.16], MAT.rifleWood, rot);
-      f.box(at(0.72), [0.75, 0.75, len * 0.3], MAT.gun, rot);
+      // the barrel in bright steel when aimed (the tell and the shot read at range)
+      f.box(at(0.74), [0.8, 0.8, len * 0.34], aim > 0.5 ? MAT.gunLit : MAT.gun, rot);
       f.box(at(0.4), [1.3, 0.8, 0.8], MAT.gun, rot); // bolt
       f.dot(tip, INK, 1, 3);
       const handR = at(0.3);
@@ -275,12 +283,12 @@ export function soldier(kind: SoldierKind, p: SoldierPose): Figure {
       armTo(f, shL, flailOut(shL, 1), st, [0, -1, 0]);
     }
   } else if (st.weapon === 'pistol') {
-    const hand = lerp3(T([-6.8, 2.5, 2.5]), T([-1.5, 14.5, 13]), aim);
+    const hand = lerp3(T([-6.8, 2.5, 2.5]), T([-7.5, 14.5, 11]), aim);
     if (fl < 0.5) {
       armTo(f, shR, hand, st, [-1, -0.5, -1]);
-      const dir = aim > 0.5 ? norm3([0.05, 0, 1]) : norm3([0, -0.7, 0.7]);
-      f.box(add(hand, mul3(dir, 2.2)), [0.6, 1.0, 2.3], MAT.gun, lookAlong(dir));
-      muzzle = add(hand, mul3(dir, 4.5));
+      const dir = aim > 0.5 ? norm3([0.75, 0.05, 1]) : norm3([0, -0.7, 0.7]);
+      f.box(add(hand, mul3(dir, 2.4)), [0.7, 1.1, 2.6], aim > 0.5 ? MAT.gunLit : MAT.gun, lookAlong(dir));
+      muzzle = add(hand, mul3(dir, 5));
       // the free arm swings while walking, rests on the hip otherwise
       const sw = walking ? -swing * 4 : 0;
       armTo(f, shL, aim > 0.5 ? T([7.8, 5, 1.5]) : T([7.5, 0, 1 + sw]), st, [1, 0, -1]);
@@ -299,27 +307,30 @@ export function soldier(kind: SoldierKind, p: SoldierPose): Figure {
         armTo(f, sh, flailOut(sh, side), st, [0, -1, 0]);
         continue;
       }
-      const grip = lerp3(T([side * 6.5, 1.5, 6]), T([side * 5.5, 11, 8]), aim);
-      const dir = norm3([side * -0.05, aim > 0.5 ? 0 : -0.12, 1]);
+      const grip = lerp3(T([side * 7, 2, 5]), T([side * 6, 9.5, 7]), aim);
+      // forward, outward and a little down (aimed: level): seen from the front the two bright
+      // barrels splay out at hip level, so he reads as armed at any range
+      const dir = norm3([side * 0.55, aim > 0.5 ? -0.05 : -0.3, 1]);
       const rot = lookAlong(dir);
       armTo(f, sh, grip, st, [side, -1, -1]);
-      f.box(add(grip, mul3(dir, 1.5)), [1.5, 1.6, 3.2], MAT.gun, rot);
-      f.cap(add(grip, mul3(dir, 3)), add(grip, mul3(dir, 10.5)), 1.25, 1.1, MAT.gun);
-      f.dot(add(grip, mul3(dir, 10.8)), INK, 2, 3);
-      f.box(add(grip, [0, -2.2, 0.5]), [1.1, 1.0, 1.6], MAT.brass, rot); // ammo box
-      muzzles.push(add(grip, mul3(dir, 11.5)));
+      f.box(add(grip, mul3(dir, 1.5)), [1.7, 1.8, 3.4], MAT.gun, rot);
+      f.cap(add(grip, mul3(dir, 3)), add(grip, mul3(dir, 11.5)), 1.5, 1.35, MAT.gunLit);
+      f.dot(add(grip, mul3(dir, 11.8)), PAL.gold[2], 2, 3); // brass muzzle ring
+      f.box(add(grip, [0, -2.4, 0.5]), [1.4, 1.3, 1.9], MAT.brass, rot); // ammo box
+      muzzles.push(add(grip, mul3(dir, 12.5)));
     }
-    if (p.flash) for (const mz of muzzles) f.overlay((b, pr) => muzzleFlash(b, pr, mz, 3));
+    if (p.flash) for (const mz of muzzles) f.overlay((b, pr) => muzzleFlash(b, pr, mz, 5));
+    if (p.glint) for (const mz of muzzles) f.overlay((b, pr) => glintAt(b, pr, mz));
   } else {
     // SMG held at the hip; aim raises it to the chest
-    const back = lerp3(T([-2.5, 7, 4]), T([-2.0, 11.5, 4]), aim);
-    const tip = lerp3(T([1.5, 6.5, 14]), T([-1.0, 11.8, 16]), aim);
+    const back = lerp3(T([-2.5, 7, 4]), T([-4.0, 11.0, 4]), aim);
+    const tip = lerp3(T([1.5, 6.5, 14]), T([8.5, 12.5, 14]), aim);
     const dir = norm3(sub(tip, back));
     const rot = lookAlong(dir);
     const len = Math.hypot(...sub(tip, back));
     const at = (t: number): V3 => lerp3(back, tip, t);
     if (fl < 0.5) {
-      f.box(at(0.45), [0.9, 1.1, len * 0.45], MAT.gun, rot);
+      f.box(at(0.45), [0.9, 1.1, len * 0.45], aim > 0.5 ? MAT.gunLit : MAT.gun, rot);
       f.box(add(at(0.42), rotate(rot, [0, -2.2, 0])), [0.5, 1.8, 0.6], MAT.gun, rot); // magazine
       f.box(at(0.08), [0.4, 0.9, len * 0.12], MAT.gun, rot); // folded stock
       armTo(f, shR, at(0.25), st, [-1, -1, -1]);
@@ -349,7 +360,10 @@ export function soldier(kind: SoldierKind, p: SoldierPose): Figure {
   }
   if (p.flash && muzzle) {
     const mz = muzzle;
-    f.overlay((b, pr) => muzzleFlash(b, pr, mz));
+    f.overlay((b, pr) => muzzleFlash(b, pr, mz, kind === 'officer' ? 5 : 6.5));
+  } else if (p.glint && muzzle) {
+    const mz = muzzle;
+    f.overlay((b, pr) => glintAt(b, pr, mz));
   }
   return f;
 }
@@ -369,26 +383,45 @@ function armTo(f: Figure, sh: V3, hand: V3, st: SoldierStyle, pole: V3): void {
   f.ball(hand, 1.55, st.hands);
 }
 
-/** A star-shaped muzzle flash (gold, white core) at a body-space point. */
-export function muzzleFlash(b: PixelBuffer, pr: Projector, at: V3, r = 4): void {
+/**
+ * A muzzle flash at a body-space point: a filled 8-point bloom (white core, gold, orange tips) of
+ * radius `r` texels, so a shot reads at range (polish-fix: the thin 1-px star did not).
+ */
+export function muzzleFlash(b: PixelBuffer, pr: Projector, at: V3, r = 6): void {
   const [x, y] = pr.p(at);
   const cx = Math.round(x);
   const cy = Math.round(y);
-  const put = (px: number, py: number, c: Color): void => {
+  const R = Math.ceil(r);
+  for (let dy = -R; dy <= R; dy++) {
+    for (let dx = -R; dx <= R; dx++) {
+      const px = cx + dx;
+      const py = cy + dy;
+      if (px < 0 || py < 0 || px >= b.w || py >= b.h) continue;
+      const d = Math.hypot(dx, dy);
+      const th = Math.atan2(dy, dx);
+      const rr = r * (0.5 + 0.5 * Math.abs(Math.cos(th * 4)) ** 3);
+      if (d > rr) continue;
+      const k = d / rr;
+      b.data[py * b.w + px] = d <= Math.max(1, r * 0.22) ? PAL.snow[3] : k < 0.5 ? PAL.gold[3] : k < 0.8 ? PAL.gold[2] : PAL.orange[1];
+    }
+  }
+}
+
+/** A bright glint (a 2 × 2 white core with short gold rays: the aimed barrel's tip in the tell). */
+export function glintAt(b: PixelBuffer, pr: Projector, at: V3): void {
+  const [x, y] = pr.p(at);
+  const cx = Math.round(x);
+  const cy = Math.round(y);
+  const pts: ReadonlyArray<readonly [number, number, Color]> = [
+    [0, 0, PAL.snow[3]], [1, 0, PAL.snow[3]], [0, 1, PAL.snow[3]], [1, 1, PAL.snow[3]],
+    [-1, 0, PAL.gold[3]], [2, 1, PAL.gold[3]], [1, -1, PAL.gold[3]], [0, 2, PAL.gold[3]],
+    [-2, 0, PAL.gold[2]], [3, 1, PAL.gold[2]], [1, -2, PAL.gold[2]], [0, 3, PAL.gold[2]],
+  ];
+  for (const [dx, dy, c] of pts) {
+    const px = cx + dx;
+    const py = cy + dy;
     if (px >= 0 && py >= 0 && px < b.w && py < b.h) b.data[py * b.w + px] = c;
-  };
-  for (let k = -r; k <= r; k++) {
-    const c = Math.abs(k) <= 1 ? PAL.gold[3] : Math.abs(k) <= r / 2 ? PAL.gold[2] : PAL.orange[1];
-    put(cx + k, cy, c);
-    put(cx, cy + k, c);
   }
-  const d = Math.round(r * 0.6);
-  for (let k = -d; k <= d; k++) {
-    put(cx + k, cy + k, Math.abs(k) <= 1 ? PAL.gold[3] : PAL.orange[0]);
-    put(cx + k, cy - k, Math.abs(k) <= 1 ? PAL.gold[3] : PAL.orange[0]);
-  }
-  for (let yy = -1; yy <= 1; yy++) for (let xx = -1; xx <= 1; xx++) put(cx + xx, cy + yy, PAL.gold[3]);
-  put(cx, cy, PAL.snow[3]);
 }
 
 /** A blood pool on the floor (an irregular ellipse in the bottom rows), size 0..1. */
@@ -450,7 +483,7 @@ function soldierFrame(kind: SoldierKind, p: SoldierPose, yaw: number): PixelBuff
 export function soldierActPose(frame: number): SoldierPose {
   switch (frame) {
     case 0:
-      return { ...POSE0, aim: 1 };
+      return { ...POSE0, aim: 1, glint: true };
     case 1:
       return { ...POSE0, aim: 1, flash: true, lean: 0.06 };
     case 2:
@@ -498,6 +531,8 @@ export function dog(p: DogPose): Figure {
   const running = p.run >= 0;
   const ph = running ? p.run * Math.PI * 2 : 0;
   const lift = running ? Math.abs(Math.sin(ph)) * 1.5 : 0;
+  // the head bobs twice per stride (reads as a run even head-on)
+  const nod = running ? Math.sin(ph * 2) * 1.1 : 0;
   const lunge = p.bite * 4;
   const cy = 13 - p.crouch * 3 + lift;
   const C = (v: V3): V3 => [v[0], v[1] + cy - 13, v[2] + lunge];
@@ -505,11 +540,13 @@ export function dog(p: DogPose): Figure {
   const dark = MAT.dogDark;
   // body + chest + saddle
   f.ell(C([0, 13, -1]), [3.6, 3.9, 8.5], tan);
-  f.ell(C([0, 14, 5]), [4.0, 4.9, 4.4], tan);
+  f.ell(C([0, 14, 5]), [5.0, 4.9, 4.4], tan);
+  // a pale chest blaze (the front view reads as a chest, not a pillar)
+  f.ell(C([0, 13.2, 8.6]), [2.4, 3.0, 1.2], MAT.dogLight);
   f.ell(C([0, 15.3, -1.5]), [3.7, 3.0, 7.4], dark);
   // neck + head
   const headDrop = p.crouch * 4 - p.bite * 1;
-  const neckTop = C([0, 19 - headDrop, 9.5]);
+  const neckTop = C([0, 20.5 - headDrop + nod, 9.5]);
   f.cap(C([0, 15.5, 7]), neckTop, 2.9, 2.4, tan);
   const hc = add(neckTop, [0, 1, 1.5]);
   f.ell(hc, [2.9, 2.8, 3.2], tan);
@@ -529,17 +566,17 @@ export function dog(p: DogPose): Figure {
   f.dot(add(hc, [1.5, 0.8, 2.6]), eyeC, 1, 1);
   f.dot(add(hc, [-1.5, 0.8, 2.6]), eyeC, 1, 1);
   const earBack = p.crouch > 0.3 ? -2.5 : 0;
-  for (const s of [1, -1]) f.cap(add(hc, [s * 1.6, 2.0, -0.8]), add(hc, [s * 2.0, 5.2, -1.2 + earBack]), 1.0, 0.25, dark);
+  for (const s of [1, -1]) f.cap(add(hc, [s * 1.7, 2.0, -0.8]), add(hc, [s * 2.4, 6.3, -1.2 + earBack]), 1.15, 0.3, dark);
   // collar
   f.ell(C([0, 17.6, 8.2]), [2.9, 0.8, 2.7], MAT.leather, rotX(0.6));
   // legs
   const legPair = (z: number, phase: number, back: boolean): void => {
     for (const s of [1, -1]) {
       const swing = running ? Math.sin(ph + phase + (s > 0 ? 0 : 0.6)) * 0.55 : 0;
-      const top = C([s * 2.4, 12, z]);
+      const top = C([s * (back ? 2.4 : 2.9), 12, z]);
       const kneeY = 6.5;
       const knee: V3 = add(top, [0, kneeY - 12 + p.crouch * 2, (back ? -1.5 : 0.5) + Math.sin(swing) * 5.5]);
-      const paw: V3 = [top[0], 1.0 + Math.max(0, Math.cos(ph + phase)) * 1.5, knee[2] + (back ? 1.2 : 0.3) + Math.sin(swing) * 4];
+      const paw: V3 = [top[0], 1.0 + Math.max(0, Math.cos(ph + phase + (s > 0 ? 0 : Math.PI))) * 3, knee[2] + (back ? 1.2 : 0.3) + Math.sin(swing) * 4];
       f.cap(top, knee, back ? 2.2 : 1.7, 1.4, tan);
       f.cap(knee, paw, 1.3, 1.1, tan);
       f.box(add(paw, [0, -0.2, 1.0]), [1.2, 0.8, 1.6], tan);
@@ -557,6 +594,21 @@ export function dog(p: DogPose): Figure {
   return f;
 }
 
+/**
+ * The dog seen a little from above (the player's eye is 0.5 tiles up): head-on and from behind
+ * the back and the saddle show above the head / the tail, so yaws 0 and 4 read as a dog and not
+ * as an upright pillar. The tilt turns about the view's x axis (pose = turn · rotX · turn).
+ */
+function dogTilt(yaw: number): { pose: M3; lift: number } {
+  const th = (yaw * Math.PI) / 4;
+  const a = 0.05 + 0.24 * Math.cos(th) * Math.cos(th);
+  const c = Math.cos(th);
+  const sn = Math.sin(th);
+  const turn: M3 = [-c, 0, -sn, 0, 1, 0, -sn, 0, c];
+  // the paws nearest the viewer sink by sin(a) × their depth: lift the body back onto the floor
+  return { pose: mulMM(turn, mulMM(rotX(a), turn)), lift: Math.sin(a) * (2.5 + 5 * Math.abs(c)) };
+}
+
 function dogFrame(p: DogPose, yaw: number): PixelBuffer {
   const fig = dog(p);
   let pose: M3 = IDENT;
@@ -564,6 +616,10 @@ function dogFrame(p: DogPose, yaw: number): PixelBuffer {
   if (p.fall > 0) {
     pose = rotZ(-p.fall * Math.PI * 0.5);
     offset = [-p.fall * 3, p.fall * 3.5, 0];
+  } else {
+    const t = dogTilt(yaw);
+    pose = t.pose;
+    offset = [0, t.lift, 0];
   }
   // the dog stands across the billboard when seen side-on: render it a little smaller than a person
   const b = renderFigure(fig, { size: SIZE, yaw, pose, offset, ground: GROUND, cx: SIZE / 2, scale: 1.3 });
@@ -591,7 +647,8 @@ const dogAct = (frame: number): DogPose => {
 defineRayBillboard('fps/dog/move', {
   yaws: 8,
   frames: 5,
-  gen: (frame, yaw) => dogFrame(frame === 0 ? DOG0 : { ...DOG0, run: (frame - 1) / 4 }, yaw),
+  // run phases 1/8, 3/8, 5/8, 7/8: no run frame repeats the stand pose
+  gen: (frame, yaw) => dogFrame(frame === 0 ? DOG0 : { ...DOG0, run: (frame - 0.5) / 4 }, yaw),
 });
 defineRayBillboard('fps/dog/act', { yaws: 1, frames: 6, gen: (frame) => dogFrame(dogAct(frame), 0) });
 
@@ -607,6 +664,9 @@ const MECH = {
   core: { ramp: [PAL.red[1], PAL.red[2]], glow: true } as Mat,
   dim: { ramp: [PAL.red[0], PAL.red[0]], glow: true } as Mat,
   brass: m([PAL.gold[0], PAL.gold[1], PAL.gold[2], PAL.gold[3]], 0.1, PAL.brown[0]),
+  /** The horn bells in the tell: warm (tell 1), glowing orange (tell 2 and the burst). */
+  hornWarm: { ramp: [PAL.orange[0], PAL.gold[2]], glow: true } as Mat,
+  hornHot: { ramp: [PAL.orange[1], PAL.orange[1]], glow: true } as Mat,
   barrel: m([PAL.ink[0], PAL.steel[0], PAL.steel[2]], 0, INK),
   hair: m([PAL.stone[0], PAL.stone[1], PAL.stone[2], PAL.stone[3]], 0.2, PAL.ink[1]),
   skin: m([PAL.rust[0], PAL.rust[1], PAL.skinA[1], PAL.skinA[2]], 0, PAL.brown[0]),
@@ -706,16 +766,18 @@ export function buildMech(p: MechPose, yaw: number): { fig: Figure; horns: V3[];
   const f = new Figure();
   const walking = p.walk >= 0;
   const ph = walking ? p.walk * Math.PI * 2 : 0;
-  const bob = walking ? -Math.abs(Math.sin(ph)) * 2 : 0;
+  // the stomp: the body drops 3 on the planted foot and sways over it
+  const bob = walking ? -Math.abs(Math.cos(ph)) * 3 : 0;
+  const sway = walking ? -Math.cos(ph) * 2.5 : 0;
   const kneel = p.wreck * 12;
-  const Y = (v: V3): V3 => [v[0], v[1] + bob - kneel, v[2]];
+  const Y = (v: V3): V3 => [v[0] + sway, v[1] + bob - kneel, v[2]];
   // ---- legs (hydraulic, three-toed)
   for (const side of [1, -1]) {
     const sw = walking ? Math.sin(ph) * 0.35 * side : 0;
     const hip: V3 = Y([side * 11, 27, 0]);
     const kneeBend = 0.35 + (walking ? Math.max(0, Math.cos(ph) * side) * 0.5 : 0) + p.wreck * 1.1;
     const knee: V3 = add(hip, [side * 2, -Math.cos(sw + kneeBend * 0.5) * 13, Math.sin(sw + kneeBend * 0.5) * 13]);
-    const ankle: V3 = [side * 13, 4 + (walking ? Math.max(0, Math.cos(ph) * side) * 3 : 0), knee[2] - 3 - p.wreck * 4];
+    const ankle: V3 = [side * 13, 4 + (walking ? Math.max(0, Math.cos(ph) * side) * 7 : 0), knee[2] - 3 - p.wreck * 4];
     f.cap(hip, knee, 6, 5, MECH.plate);
     f.ball(knee, 5.2, MECH.joint);
     f.dot(add(knee, [0, 0, 5.2]), PAL.red[2], 2, 2);
@@ -726,7 +788,7 @@ export function buildMech(p: MechPose, yaw: number): { fig: Figure; horns: V3[];
     f.box(lerp3(knee, ankle, 0.45), [3.6, 5, 1.2], MECH.plate, lookAlong([0, 0, 1]));
     f.box(lerp3(knee, ankle, 0.45), [3.8, 0.5, 1.3], MECH.seam);
     // three toes and a heel spur
-    const foot: V3 = [ankle[0], 2, ankle[2]];
+    const foot: V3 = [ankle[0], ankle[1] - 2, ankle[2]];
     for (const a of [-0.55, 0, 0.55]) {
       const dir = norm3([Math.sin(a), -0.15, Math.cos(a)]);
       f.box(add(foot, mul3(dir, 5)), [1.8, 1.8, 4.5], MECH.plate, lookAlong(dir));
@@ -762,6 +824,10 @@ export function buildMech(p: MechPose, yaw: number): { fig: Figure; horns: V3[];
     f.ell(add(chestC, [0, 0, 9.5]), [6.5, 6.5, 2], MECH.joint);
   }
   const core: V3 = add(chestC, [0, 0, 11.6]);
+  // the power pack on the back (bulk in profile; the exhaust stacks rise from it)
+  f.box(add(chestC, [0, 1, -12]), [11, 12, 4.5], MECH.plate);
+  f.box(add(chestC, [0, -4, -16.6]), [9, 0.5, 0.4], MECH.seam);
+  f.box(add(chestC, [0, 4, -16.6]), [9, 0.5, 0.4], MECH.seam);
   // ---- collar under the head
   f.ell(Y([0, 55.5, 0]), [13, 3.2, 9.5], MECH.plate);
   f.ell(Y([0, 57.5, 0]), [11.5, 1.2, 8.5], MECH.seamHot);
@@ -769,16 +835,19 @@ export function buildMech(p: MechPose, yaw: number): { fig: Figure; horns: V3[];
   const horns: V3[] = [];
   for (const side of [1, -1]) {
     const sh: V3 = Y([side * 21, 50, 0]);
-    f.ell(sh, [8.5, 7, 8.5], MECH.plateLit);
-    f.ell(add(sh, [0, -2, 0]), [8.8, 0.6, 8.8], MECH.seam);
-    // the pod on top
-    const pod: V3 = add(sh, [side * 1, 8, -1]);
+    // deep shoulder plates: the walker stays hulking in profile
+    f.ell(sh, [8.5, 7, 11.5], MECH.plateLit);
+    f.ell(add(sh, [0, -2, 0]), [8.8, 0.6, 11.8], MECH.seam);
+    // the pod on top (side and back yaws: set back behind the head, the horns point up and
+    // back, so in profile no horn sits in front of the mouth)
+    const profile = yaw >= 2;
+    const pod: V3 = add(sh, [side * 1, 8, profile ? -7 : -1]);
     f.box(pod, [6.5, 3.5, 6], MECH.plate);
     // two brass loudspeaker horns per pod, a rotary barrel in each mouth
     for (const dx of [-3, 3]) {
-      const base = add(pod, [dx, 1.5, 3]);
-      const mouth = add(pod, [dx * 1.5, 5.5 + p.charge * 0.5, 13]);
-      f.cap(base, mouth, 1.4, 4.3, MECH.brass);
+      const base = add(pod, [dx, 1.5, profile ? -1 : 3]);
+      const mouth = profile ? add(pod, [dx * 1.5, 11 + p.charge * 0.5, -5]) : add(pod, [dx * 1.5, 5.5 + p.charge * 0.5, 13]);
+      f.cap(base, mouth, 1.4, 4.3, p.charge >= 1 ? MECH.hornHot : p.charge > 0 ? MECH.hornWarm : MECH.brass);
       f.dot(mouth, p.charge > 0 ? (p.charge > 0.6 ? PAL.gold[3] : PAL.orange[1]) : INK, 4, 5);
       f.dot(mouth, p.charge > 0 ? PAL.snow[3] : PAL.steel[2], 1, 5);
       horns.push(mouth);
@@ -794,29 +863,35 @@ export function buildMech(p: MechPose, yaw: number): { fig: Figure; horns: V3[];
   // ---- back fins (spiked, red-lit edges) and exhaust stacks
   for (const side of [1, -1]) {
     const tilt = rotZ(-side * 0.22);
-    const finC: V3 = Y([side * 15, 70, -8]);
-    f.box(finC, [1.6, 17, 3.2], MECH.plate, tilt);
+    const finC: V3 = Y([side * 15, 70, -10]);
+    f.box(finC, [1.6, 17, 5.5], MECH.plate, tilt);
     f.box(add(finC, [side * 1.9, 0.5, 0]), [0.4, 16, 1], MECH.seam, tilt);
-    f.cap(add(finC, [side * 3.8, 16, 0]), add(finC, [side * 6.5, 27, -1]), 2.2, 0.2, MECH.plateLit);
-    f.cap(add(finC, [side * 1.5, 6, 0]), add(finC, [side * 7, 9, -1]), 1.6, 0.2, MECH.plateLit);
+    f.cap(add(finC, [side * 3.8, 16, -1]), add(finC, [side * 6.5, 27, -6]), 2.2, 0.2, MECH.plateLit);
+    f.cap(add(finC, [side * 1.5, 6, -2]), add(finC, [side * 7, 9, -8]), 1.6, 0.2, MECH.plateLit);
     f.cap(Y([side * 6, 56, -9]), Y([side * 6.5, 67, -10]), 2.2, 2.4, MECH.pipe);
     f.dot(Y([side * 6.5, 68, -10]), INK, 2, 3);
   }
   // ---- the head for the side and back yaws (the front yaws get the user's face)
   const head: V3 = Y([0, FACE_TOP - 21, 1]);
   if (yaw >= 2) {
-    f.ell(head, [14, 19, 13.5], MECH.skin);
-    f.ball(add(head, [13.5, 0, -1]), 3, MECH.skin);
-    f.ball(add(head, [-13.5, 0, -1]), 3, MECH.skin);
+    // a flatter skull (no tall dome) with the face forward
+    f.ell(add(head, [0, -2, 1]), [13.6, 16, 13], MECH.skin);
+    // ears
+    for (const sx of [1, -1]) {
+      f.ell(add(head, [sx * 13.4, -1, -1.5]), [2.2, 4, 3], MECH.skin);
+      f.dot(add(head, [sx * 14.6, -1, -1.5]), PAL.rust[0], 1, 1.5);
+    }
     // nose and jaw for the profile
-    f.cap(add(head, [0, 2, 12.5]), add(head, [0, -3, 15]), 2.4, 2.0, MECH.skin);
+    f.cap(add(head, [0, 1, 12.5]), add(head, [0, -4, 15]), 2.4, 2.0, MECH.skin);
     f.ell(add(head, [0, -11, 6]), [9, 6, 7], MECH.skin);
-    // grey swept-back hair: crown + back
-    f.ell(add(head, [0, 9, -3]), [14.6, 11, 13.5], MECH.hair);
-    f.ell(add(head, [0, 2, -6]), [14.2, 14, 9], MECH.hair);
-    // a glowing red eye on the profile side
-    f.dot(add(head, [6, 3, 11.5]), PAL.red[3], 2, 1.5);
-    f.dot(add(head, [-6, 3, 11.5]), PAL.red[3], 2, 1.5);
+    // grey swept-back hair over the whole crown and the back of the head
+    f.ell(add(head, [0, 9.5, -1]), [14.8, 10.5, 14.2], MECH.hair);
+    f.ell(add(head, [0, 1, -6.5]), [14.4, 14.5, 9], MECH.hair);
+    // swept strands toward the back
+    for (const sx of [-6, 0, 6]) f.cap(add(head, [sx, 15, 9]), add(head, [sx * 1.1, 13, -12]), 1.2, 1.0, MECH.hair);
+    // a glowing red eye at the front of the profile
+    f.dot(add(head, [6.5, 3, 11.8]), PAL.red[3], 3, 1.5);
+    f.dot(add(head, [-6.5, 3, 11.8]), PAL.red[3], 3, 1.5);
   } else {
     // neck stub under the face
     f.cap(Y([0, 52, 0]), Y([0, 58, 1]), 6, 6, MECH.skin);
@@ -898,10 +973,10 @@ export function mechFrame(walk: number, yaw: number, act = -1): PixelBuffer {
     reactor(b, Math.round(cxp) + 0.5, Math.round(cyp) + 0.5, pulse, p.broken >= 4);
   }
   if (p.fire >= 0) {
+    // all four horns fire; the pair of this frame flashes big (the burst reads at any range)
     for (let i = 0; i < horns.length; i++) {
-      if ((i >> 1) !== p.fire) continue;
       const [hx, hy] = pr(horns[i]);
-      flashAt(b, hx, hy, 4);
+      flashAt(b, hx, hy, (i >> 1) === p.fire ? 8 : 5);
     }
   }
   placeFace(b, yaw, fx, 0);
@@ -952,7 +1027,7 @@ export function wreckFrame(): PixelBuffer {
 /** Foot frames: `walk` −1 stands; act: tell, fire 1–2, pain, die 1–6, dead. */
 export function footFrame(walk: number, yaw: number, act = -1): PixelBuffer {
   let p: SoldierPose = walk >= 0 ? { ...POSE0, walk } : { ...POSE0 };
-  if (act === 0) p = { ...POSE0, aim: 1 };
+  if (act === 0) p = { ...POSE0, aim: 1, glint: true };
   else if (act === 1 || act === 2) p = { ...POSE0, aim: 1, flash: true, lean: 0.05 * act };
   else if (act === 3) p = { ...POSE0, aim: 0.4, lean: 0.25, headRoll: 0.25, blood: 1 };
   else if (act >= 4 && act <= 9) {
@@ -977,8 +1052,9 @@ export function footFrame(walk: number, yaw: number, act = -1): PixelBuffer {
 defineRayBillboard('fps/boss/mech/move', { size: 96, yaws: 8, frames: 5, worldW: 1.5, worldH: 1.5, gen: (frame, yaw) => mechFrame(frame === 0 ? -1 : (frame - 1) / 4, yaw) });
 defineRayBillboard('fps/boss/mech/act', { size: 96, yaws: 1, frames: 9, worldW: 1.5, worldH: 1.5, gen: (frame) => mechFrame(-1, 0, frame) });
 defineRayBillboard('fps/boss/wreck', { size: 96, yaws: 1, frames: 1, worldW: 1.5, worldH: 1.5, gen: () => wreckFrame() });
-defineRayBillboard('fps/boss/foot/move', { yaws: 8, frames: 5, gen: (frame, yaw) => footFrame(frame === 0 ? -1 : (frame - 1) / 4, yaw) });
-defineRayBillboard('fps/boss/foot/act', { yaws: 1, frames: 11, gen: (frame) => footFrame(-1, 0, frame) });
+// A little bigger than the troops (world 1.15): the boss on foot stands out at range.
+defineRayBillboard('fps/boss/foot/move', { yaws: 8, frames: 5, worldW: 1.15, worldH: 1.15, gen: (frame, yaw) => footFrame(frame === 0 ? -1 : (frame - 1) / 4, yaw) });
+defineRayBillboard('fps/boss/foot/act', { yaws: 1, frames: 11, worldW: 1.15, worldH: 1.15, gen: (frame) => footFrame(-1, 0, frame) });
 
 
 // ------------------------------------------------------------------------------------ fx
@@ -1000,37 +1076,60 @@ defineRayBillboard('fps/fx/spurt', {
     const b = new PixelBuffer(SIZE, SIZE);
     const cx = SIZE / 2;
     const cy = 28; // chest height of a 64-px person
-    const n = [8, 16, 12][frame] ?? 8;
-    const spread = [3, 6, 9][frame] ?? 4;
+    // a solid core and a dense spray (30–40 texels: it reads at range)
+    const core = [2.2, 1.6, 0][frame] ?? 0;
+    for (let y = -3; y <= 3; y++) {
+      for (let x = -3; x <= 3; x++) {
+        const d = Math.hypot(x, y);
+        if (d <= core) b.set(cx + x, cy + y + frame, d < core * 0.5 ? PAL.red[2] : PAL.red[1]);
+      }
+    }
+    const n = [22, 34, 26][frame] ?? 20;
+    const spread = [5, 8, 11][frame] ?? 5;
     for (let i = 0; i < n; i++) {
       const a = hash2(i, 1, 40 + frame) * Math.PI * 2;
-      const d = hash2(i, 2, 40 + frame) * spread;
+      const d = 1 + hash2(i, 2, 40 + frame) * spread;
       const x = Math.round(cx + Math.cos(a) * d);
-      const y = Math.round(cy + Math.sin(a) * d * 0.8 + frame * 1.5);
+      const y = Math.round(cy + Math.sin(a) * d * 0.8 + frame * 2);
       b.set(x, y, i % 4 === 0 ? PAL.red[2] : PAL.red[1]);
-      if (frame < 2 && i % 3 === 0) b.set(x + 1, y, PAL.red[0]);
+      if (i % 3 === 0) b.set(x + 1, y, PAL.red[0]);
     }
-    if (frame === 0) b.rect(cx - 1, cy - 1, 3, 3, PAL.red[2]);
     return b.touch();
   },
 });
 
-/** Ids of the actor billboards (tests). */
-export const ACTOR_BILLBOARDS = {
-  'fps/guard/move': { size: 64, yaws: 8, frames: 5 },
-  'fps/officer/move': { size: 64, yaws: 8, frames: 5 },
-  'fps/ss/move': { size: 64, yaws: 8, frames: 5 },
-  'fps/guard/act': { size: 64, yaws: 1, frames: 8 },
-  'fps/officer/act': { size: 64, yaws: 1, frames: 8 },
-  'fps/ss/act': { size: 64, yaws: 1, frames: 8 },
-  'fps/dog/move': { size: 64, yaws: 8, frames: 5 },
-  'fps/dog/act': { size: 64, yaws: 1, frames: 6 },
-  'fps/boss/mech/move': { size: 96, yaws: 8, frames: 5 },
-  'fps/boss/mech/act': { size: 96, yaws: 1, frames: 9 },
-  'fps/boss/foot/move': { size: 64, yaws: 8, frames: 5 },
-  'fps/boss/foot/act': { size: 64, yaws: 1, frames: 11 },
-  'fps/boss/wreck': { size: 96, yaws: 1, frames: 1 },
-  'fps/fx/blood-pool': { size: 64, yaws: 1, frames: 3 },
-  'fps/fx/spurt': { size: 64, yaws: 1, frames: 3 },
-} as const;
+/**
+ * The suit's hit sparks (§7.1/§7.2: the suit takes no pain, sparks only; also the break): a
+ * 1.5-tile billboard like the mech, the sparks at his chest and shoulders, gold / orange / white.
+ */
+defineRayBillboard('fps/fx/sparks', {
+  size: MECH_SIZE,
+  yaws: 1,
+  frames: 3,
+  worldW: 1.5,
+  worldH: 1.5,
+  gen: (frame) => {
+    const b = new PixelBuffer(MECH_SIZE, MECH_SIZE);
+    const cx = MECH_SIZE / 2;
+    const cy = MECH_GROUND - 46; // the chest of the suit
+    const n = [14, 22, 16][frame] ?? 12;
+    const spread = [8, 14, 20][frame] ?? 10;
+    for (let i = 0; i < n; i++) {
+      const a = hash2(i, 1, 60 + frame) * Math.PI * 2;
+      const d = 2 + hash2(i, 2, 60 + frame) * spread;
+      const x = Math.round(cx + Math.cos(a) * d);
+      const y = Math.round(cy + Math.sin(a) * d * 0.7 + frame * 2);
+      const c = i % 3 === 0 ? PAL.snow[3] : i % 3 === 1 ? PAL.gold[3] : PAL.orange[1];
+      b.set(x, y, c);
+      // short streaks flying outward
+      const ex = Math.round(Math.cos(a));
+      const ey = Math.round(Math.sin(a) * 0.7);
+      b.set(x + ex, y + ey, frame === 2 ? PAL.orange[0] : PAL.gold[2]);
+    }
+    if (frame === 0) {
+      for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) if (Math.abs(x) + Math.abs(y) <= 2) b.set(cx + x, cy + y, Math.abs(x) + Math.abs(y) <= 1 ? PAL.snow[3] : PAL.gold[3]);
+    }
+    return b.touch();
+  },
+});
 

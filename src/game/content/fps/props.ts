@@ -94,15 +94,17 @@ function table(): PixelBuffer {
 
 function bannerPole(): PixelBuffer {
   const f = new Figure();
-  f.cap([-12, 0, 0], [-12, 60, 0], 1.2, 1.0, BRASS);
-  f.ball([-12, 61, 0], 1.8, BRASS);
-  f.box([-12, 1, 0], [5, 1, 5], IRON);
+  // the pole at texel x 20 (yaw 0 mirrors body x): the flag hangs from it to the right
+  f.cap([12, 0, 0], [12, 60, 0], 1.2, 1.0, BRASS);
+  f.ball([12, 61, 0], 1.8, BRASS);
+  f.box([12, 1, 0], [5, 1, 5], IRON);
   const b = renderFigure(f, { size: S, yaw: 0, ground: G });
-  // the flag: red field, white disc, the black historical symbol, a slight wave
+  // the flag: red field, white disc, the black historical symbol, a slight wave. Big disc and
+  // strokes ≥ 3 texels: thin strokes aliased into a chequer at mid range (polish-fix).
   const x0 = 21;
-  const y0 = 4;
-  const w = 32;
-  const h = 22;
+  const y0 = 3;
+  const w = 38;
+  const h = 28;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const wave = Math.round(Math.sin(x / 5) * 1.2);
@@ -113,8 +115,8 @@ function bannerPole(): PixelBuffer {
   }
   const cx = x0 + w / 2;
   const cy = y0 + h / 2 + Math.round(Math.sin(w / 10) * 1.2);
-  b.circle(cx - 0.5, cy - 0.5, 7, PAL.snow[2]);
-  hookedCross(b, cx, cy, 5.6, INK, false);
+  b.circle(cx - 0.5, cy - 0.5, 10, PAL.snow[2]);
+  hookedCross(b, cx, cy, 7.8, INK, false);
   // fixings to the pole
   b.rect(x0 - 1, y0 + 1, 2, 2, PAL.steel[2]);
   b.rect(x0 - 1, y0 + h - 3, 2, 2, PAL.steel[2]);

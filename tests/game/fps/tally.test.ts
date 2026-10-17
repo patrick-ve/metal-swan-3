@@ -9,7 +9,8 @@ import { ELEVATOR_TICKS, FpsGame } from '../../../src/game/fps/game';
 import { getFpsFloor } from '../../../src/game/fps/registry';
 import { newFpsRun } from '../../../src/game/fps/run';
 import type { FloorResult, FpsInput } from '../../../src/game/fps/types';
-import { AMS_BONUS_RECORD, clockText, FPS_TALLY_AUTO_TICKS, fpsTally, FpsTallyScene, ratioPct, tallySeconds } from '../../../src/game/scenes/fps-tally';
+import { AMS_BONUS_KEY } from '../../../src/game/fps/run';
+import { clockText, FPS_TALLY_AUTO_TICKS, fpsTally, FpsTallyScene, ratioPct, tallySeconds } from '../../../src/game/scenes/fps-tally';
 import { GameSession, PlayerSlot, type Difficulty } from '../../../src/game/session';
 import { SimAudio } from '../../../src/sim/stats';
 
@@ -113,7 +114,7 @@ describe('FpsTallyScene (§1.8)', () => {
   it('records the floor, pays TOTAL into the score and moves on by itself after 600 ticks', () => {
     const { app, audio } = tallyApp('hard');
     const session = app.session!;
-    session.records.set(AMS_BONUS_RECORD, [12000, 0]);
+    session.records.set(AMS_BONUS_KEY, [12000, 0]);
     const run = newFpsRun(session, 1);
     const scene = new FpsTallyScene(app, run, result());
     app.scenes.reset(scene);

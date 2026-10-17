@@ -51,12 +51,6 @@ export function usable(p: FpsPlayer, w: number): boolean {
   return w === WEAPON_KNIFE || p.ammo > 0;
 }
 
-/** The best owned gun with ammo, else the knife. */
-export function bestWeapon(p: FpsPlayer): number {
-  for (let w = WEAPON_CHAINGUN; w >= WEAPON_PISTOL; w--) if (usable(p, w)) return w;
-  return WEAPON_KNIFE;
-}
-
 export class WeaponSystem {
   phase = WP_IDLE;
   /** Ticks in the phase (the cycle tick while firing). */
@@ -213,6 +207,4 @@ export class WeaponSystem {
   }
 }
 
-/** Weapon names for the HUD fallback and messages. */
-export const WEAPON_LABELS: readonly string[] = ['KNIFE', 'PISTOL', 'MACHINE GUN', 'CHAINGUN'];
 export { WEAPON_CHAINGUN, WEAPON_KNIFE, WEAPON_MG, WEAPON_PISTOL };

@@ -39,6 +39,11 @@ export interface Continuable {
    */
   startPressed?(slot: SlotIndex, input: InputManager): boolean;
   /**
+   * May this slot act on the continue screen at all (optional; default true)? The fps mode
+   * accepts only its one slot: the waiting slot can neither continue nor shorten the countdown.
+   */
+  acceptsSlot?(slot: SlotIndex): boolean;
+  /**
    * The 1-player chair-and-loudspeaker gag (default true). The fps mode turns it off: its stage
    * would stand on the first-person status bar.
    */
@@ -113,6 +118,7 @@ export class ContinueScene implements Scene {
     for (let i = 0; i < 2; i++) {
       const slot = this.app.session?.slots[i];
       if (!slot?.joined) continue;
+      if (this.host.acceptsSlot && !this.host.acceptsSlot(i as SlotIndex)) continue;
       const pad = input.pad(i as 0 | 1);
       const start = this.host.startPressed?.(i as SlotIndex, input) ?? pad.pressed('start');
       if (start && credits > 0 && this.host.continuePlayer(i as SlotIndex)) {

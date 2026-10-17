@@ -147,6 +147,25 @@ describe('target search (§4.2)', () => {
     expect(findTarget(g.actors, g.grid, g.map.doors, g.pushes.push, 9.5, 1.6, degToAng(90))).toBe(g.actors.actors[2]);
   });
 
+  it('the target test uses the actor box half-size: the mech (0.6) is hit on its arms, also past a pillar edge', () => {
+    const g = makeGame(['AAAAAAAAAA', 'A........A', 'A>...@...A', 'A........A', 'AAAAAAAAAA']);
+    const pool = g.actors;
+    const mech = pool.actors[0];
+    expect(mech.type).toBe('boss');
+    expect(mech.def.radius).toBe(0.6);
+    // d 3.5: 0.45 off the centre (an arm) hits; 0.65 misses.
+    expect(findTarget(pool, g.grid, g.map.doors, g.pushes.push, 2.5, 2.95, 0)).toBe(mech);
+    expect(findTarget(pool, g.grid, g.map.doors, g.pushes.push, 2.5, 3.15, 0)).toBe(null);
+    // A guard keeps its 0.4 box: 0.38 off hits, 0.45 misses (aim width 0.35 at this range).
+    const h = makeGame(['AAAAAAAAAA', 'A........A', 'A>...g...A', 'A........A', 'AAAAAAAAAA']);
+    expect(findTarget(h.actors, h.grid, h.map.doors, h.pushes.push, 2.5, 2.88, 0)).toBe(h.actors.actors[0]);
+    expect(findTarget(h.actors, h.grid, h.map.doors, h.pushes.push, 2.5, 2.95, 0)).toBe(null);
+    // The mech's centre behind a pillar edge, the aim line clear past it: the seen part is hit.
+    const k = makeGame(['AAAAAAAAA', 'A...A.@.A', 'A>......A', 'AAAAAAAAA']);
+    const m = k.actors.actors[0];
+    expect(findTarget(k.actors, k.grid, k.map.doors, k.pushes.push, 1.5, 2.05, 0)).toBe(m);
+  });
+
   it('bandDist is the Chebyshev distance', () => {
     expect(bandDist(-3, 1.5)).toBe(3);
     expect(bandDist(0.5, -2)).toBe(2);

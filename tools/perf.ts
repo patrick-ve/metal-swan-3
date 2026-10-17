@@ -164,10 +164,12 @@ async function main(): Promise<void> {
         const url = `${base}?${args.query}${args.query ? '&' : ''}gfx=${gfx}`;
         await page.goto(url, { waitUntil: 'load' });
         await page.locator('#game').click();
-        // Class names are minified in the build: the gameplay scene is the one with a runner.
+        // Class names are minified in the build: the gameplay scene is the one with a runner, the
+        // first-person scene (`?mode=fps`, spec §10) the one with a `game`.
         await page.waitForFunction(() => {
-          const app = (window as unknown as { __ms3?: { app: { scenes: { top: { runner?: unknown } | null } } } }).__ms3?.app;
-          return !!app?.scenes.top?.runner;
+          const app = (window as unknown as { __ms3?: { app: { scenes: { top: { runner?: unknown; game?: unknown } | null } } } }).__ms3?.app;
+          const top = app?.scenes.top;
+          return !!(top?.runner || top?.game);
         }, undefined, { timeout: 60_000, polling: 100 });
         // Warm up (first uploads and upscales), then measure.
         await page.waitForTimeout(2000);

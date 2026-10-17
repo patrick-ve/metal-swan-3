@@ -16,9 +16,10 @@ import { blinkOn, centerText, PLAYER_COLORS, type GameApp } from '../app';
 import { isLazyContent, loadContent } from '../content/index';
 import { MODE_TITLE } from '../content/fps/names';
 import { fpsFloorByNumber } from '../fps/registry';
-import { newFpsRun } from '../fps/run';
+import { newFpsRun, reserveLives } from '../fps/run';
 import type { FpsRun } from '../fps/types';
 import { FpsScene } from './fps';
+import { toTitle } from './flow';
 import { newSession } from './gameplay';
 
 export interface FpsIntroOpts {
@@ -169,6 +170,12 @@ export class FpsIntroScene implements Scene {
     this.leaving = true;
     const run = this.run;
     if (!fpsFloorByNumber(run.floor)) {
+      if (!fpsFloorByNumber(0)) {
+        // Fail soft (ARCHITECTURE rule 7): the fps content did not load; back to the title.
+        console.warn(`[fps] floor ${run.floor} and floor 0 are not registered (fps content not loaded) — back to the title`);
+        toTitle(app);
+        return;
+      }
       console.warn(`[fps] floor ${run.floor} is not registered — playing floor 0`);
       run.floor = 0;
     }
@@ -196,7 +203,7 @@ export class FpsIntroScene implements Scene {
     centerText(r, MODE_TITLE, 40, PAL.gold[3], 'big');
     centerText(r, `FLOOR ${this.floor}`, 76, PAL.snow[3], 'big', 2);
     centerText(r, def?.name ?? '???', 100, PAL.snow[2]);
-    centerText(r, `LIVES ${slot?.lives ?? 0}`, 118, PAL.stone[3]);
+    centerText(r, `LIVES ${slot ? reserveLives(slot) : 0}`, 118, PAL.stone[3]);
     if (this.floor <= 1) {
       centerText(r, 'WASD MOVE  ARROWS OR MOUSE TURN', 150, PAL.stone[2]);
       centerText(r, 'SPACE FIRE  E OPEN  1-4 WEAPONS', 160, PAL.stone[2]);

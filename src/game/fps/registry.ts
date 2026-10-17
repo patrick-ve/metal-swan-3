@@ -42,11 +42,6 @@ export function fpsFloorId(n: number): string {
   return `fps-${n}`;
 }
 
-/** Registered floor ids (sorted). */
-export function listFpsFloors(): string[] {
-  return [...floors.keys()].sort();
-}
-
 export function defineFpsEpisode(def: FpsEpisodeDef): FpsEpisodeDef {
   episodes.set(def.id, def);
   return def;

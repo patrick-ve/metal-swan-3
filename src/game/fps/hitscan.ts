@@ -91,8 +91,10 @@ const centreHit = newRayHit();
 
 /**
  * The player's target (§4.2): the nearest living actor in front whose centre is at most
- * `aimWidth(d)` from the aim line, with line of sight and not behind the wall at the centre
- * column. Returns the actor or null.
+ * `max(aimWidth(d), its box half-size)` from the aim line (so the 1.5-tile mech is hit on its arms
+ * and shoulders too, §4.3), not behind the wall at the centre column, and with line of sight to
+ * its centre or to the aim-line point beside it (the part of the body the player sees past a
+ * pillar edge). Returns the actor or null.
  */
 export function findTarget(
   pool: ActorPool,
@@ -117,8 +119,10 @@ export function findTarget(
     const along = dx * dirX + dy * dirY;
     if (along <= 0 || along >= bestAlong || along > wall + 0.01) continue;
     const perp = Math.abs(dx * dirY - dy * dirX);
-    if (perp > aimWidth(along)) continue;
-    if (!lineOfSight(g, doors, push, px, py, a.x, a.y)) continue;
+    const reach = a.def.radius > 0.35 ? a.def.radius : 0.35;
+    const aw = aimWidth(along);
+    if (perp > (aw > reach ? aw : reach)) continue;
+    if (!lineOfSight(g, doors, push, px, py, a.x, a.y) && !lineOfSight(g, doors, push, px, py, px + dirX * along, py + dirY * along)) continue;
     best = a;
     bestAlong = along;
   }

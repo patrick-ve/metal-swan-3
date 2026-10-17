@@ -52,11 +52,6 @@ function stepIn(r: Ramp, c: Color, d: number): Color {
   return r[Math.max(0, Math.min(r.length - 1, i + d))];
 }
 
-/** Darken / lighten every texel of a rect along `r` (wrapped x). */
-export function wshade(b: PixelBuffer, x: number, y: number, w: number, h: number, r: Ramp, d: number): void {
-  for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) wset(b, xx, yy, stepIn(r, wget(b, xx, yy), d));
-}
-
 /**
  * Seamless noisy fill: tone = base + amp × (noise − 0.5), dithered into the ramp (ordered dither,
  * so it reads as texture, not as random speckle).
@@ -207,19 +202,23 @@ function concrete(b: PixelBuffer): void {
     wset(b, 32, y, PAL.stone[0]);
     wset(b, 33, y, PAL.stone[2]);
   }
-  for (let x = 0; x < TEX; x++) {
-    wset(b, x, 31, PAL.stone[0]);
-    wset(b, x, 32, PAL.stone[2]);
+  // the shuttering joints at v 20 and v 44: never at v 28–36, the eye-line rows that every wall
+  // in view shares at eyeZ 0.5 (one dark line across the screen read as a render seam)
+  for (const jy of [20, 44]) {
+    for (let x = 0; x < TEX; x++) {
+      wset(b, x, jy, PAL.stone[0]);
+      wset(b, x, jy + 1, PAL.stone[2]);
+    }
   }
   // tie-rod holes
-  for (const [x, y] of [[8, 12], [24, 12], [40, 12], [56, 12], [8, 44], [24, 44], [40, 44], [56, 44]] as const) {
+  for (const [x, y] of [[8, 10], [24, 10], [40, 10], [56, 10], [8, 54], [24, 54], [40, 54], [56, 54]] as const) {
     wset(b, x, y, INK);
     wset(b, x + 1, y, PAL.stone[0]);
     wset(b, x, y + 1, PAL.stone[0]);
   }
   // water stains under the joints
-  stain(b, 20, 33, 18, r, 5);
-  stain(b, 50, 0, 12, r, 9);
+  stain(b, 20, 46, 12, r, 5);
+  stain(b, 50, 22, 12, r, 9);
   // dirty skirting
   for (let y = 58; y < TEX; y++) for (let x = 0; x < TEX; x++) if (hash2(x, y, 4) < (y - 56) / 9) wset(b, x, y, stepIn(r, wget(b, x, y), -1));
 }
@@ -311,22 +310,28 @@ function woodPanel(b: PixelBuffer): void {
   }
 }
 
+/** Steel plate rows: the plate joints sit at v 20 and v 44, clear of the eye-line rows 28–36. */
+const PLATE_ROWS: readonly (readonly [number, number])[] = [
+  [0, 20],
+  [20, 24],
+  [44, 20],
+];
+
 function steelPlate(b: PixelBuffer): void {
   const r: Ramp = PAL.steel;
   noiseFill(b, [r[1], r[1], r[2]], 0.9, 0.9, 16, 71);
-  for (let py = 0; py < 2; py++) {
+  for (const [y, h] of PLATE_ROWS) {
     for (let px = 0; px < 2; px++) {
       const x = px * 32;
-      const y = py * 32;
-      bevel(b, x, y, 32, 32, r[3], r[0]);
-      bevel(b, x + 1, y + 1, 30, 30, r[2], r[1]);
-      for (let k = 4; k < 30; k += 6) {
+      bevel(b, x, y, 32, h, r[3], r[0]);
+      bevel(b, x + 1, y + 1, 30, h - 2, r[2], r[1]);
+      for (let k = 4; k < h - 2; k += 6) {
         rivet(b, x + 3, y + k - 1);
         rivet(b, x + 27, y + k - 1);
       }
     }
   }
-  stain(b, 14, 33, 14, [PAL.rust[0], PAL.steel[0], PAL.steel[1], PAL.steel[2]], 72);
+  stain(b, 14, 45, 14, [PAL.rust[0], PAL.steel[0], PAL.steel[1], PAL.steel[2]], 72);
   speck(b, 73, 18, PAL.rust[0], 0, 0, TEX, TEX);
 }
 
@@ -349,19 +354,19 @@ function corrugated(b: PixelBuffer): void {
   const prof = [1, 2, 3, 3, 2, 1, 0, 0];
   const r: Ramp = [PAL.slate[0], PAL.slate[1], PAL.slate[2], PAL.slate[3]];
   for (let y = 0; y < TEX; y++) for (let x = 0; x < TEX; x++) wset(b, x, y, r[prof[x & 7]]);
-  // sheet overlap and fixing screws
-  whline(b, 0, M, 30, INK);
-  whline(b, 0, M, 31, PAL.slate[3]);
+  // the sheet overlap (at v 46: clear of the eye-line rows 28–36) and fixing screws
+  whline(b, 0, M, 46, INK);
+  whline(b, 0, M, 47, PAL.slate[3]);
   for (let x = 2; x < TEX; x += 8) {
     wset(b, x, 3, PAL.steel[4]);
-    wset(b, x, 28, PAL.steel[4]);
-    wset(b, x, 34, PAL.steel[4]);
+    wset(b, x, 44, PAL.steel[4]);
+    wset(b, x, 50, PAL.steel[4]);
     wset(b, x, 60, PAL.steel[4]);
   }
   // rust runs from the screws
   for (let i = 0; i < 6; i++) {
     const x = 2 + 8 * Math.floor(hash2(i, 0, 81) * 8);
-    const y0 = hash2(i, 1, 81) < 0.5 ? 4 : 35;
+    const y0 = hash2(i, 1, 81) < 0.5 ? 4 : 51;
     const len = 6 + Math.floor(hash2(i, 2, 81) * 14);
     for (let k = 0; k < len; k++) wset(b, x, y0 + k, k < len / 2 ? PAL.rust[1] : PAL.rust[0]);
   }
@@ -504,7 +509,7 @@ function pipes(b: PixelBuffer): void {
     }
   };
   pipe(14, 4, [PAL.steel[0], PAL.steel[1], PAL.steel[2], PAL.steel[3]]);
-  pipe(27, 2, [PAL.brown[0], PAL.rust[0], PAL.rust[1], PAL.orange[0]]);
+  pipe(23, 2, [PAL.brown[0], PAL.rust[0], PAL.rust[1], PAL.orange[0]]); // clear of the eye-line rows 28–36
   pipe(48, 5, [PAL.olive[0], PAL.olive[1], PAL.olive[2], PAL.olive[3]]);
   // valve wheel on the green pipe
   const cx = 26;

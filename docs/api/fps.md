@@ -2,8 +2,8 @@
 
 Spec: `docs/design/fps.md` (it wins over this file when they disagree; fix this file then).
 Originality: `docs/ORIGINALITY.md` ("Exception: the first-person mode"). Art rules:
-`docs/ART_GUIDE.md` §10. Each builder fills its own section and replaces the `TODO` marks with the
-final signatures, file names and examples. Keep it short: what a caller needs, not the internals.
+`docs/ART_GUIDE.md` §10. Every section describes the shipped code (polish-fix 2026-10-16: no open
+`TODO` marks). Keep it short: what a caller needs, not the internals.
 
 | Section | Code | Owner (group / area) |
 |---|---|---|
@@ -114,7 +114,7 @@ second channel that `InputManager` fills **for slot 0 only, only while `input.fp
 - `ActionPad`: `held(a)`, `pressed(a)`, `released(a)`, `heldTicks(a)` (a = name or bit index),
   `mask`, `pressedMask`, `releasedMask`, `anyPressed()`, `suppress(mask = 0xffff)` (held actions
   stay hidden until released; works even when the pad was not polled before), `reset()`.
-- `AnalogState { turn, moveX, moveY }`: integers, cleared every tick. `turn` ±512 (+ = right,
+- `AnalogState { turn, moveX, moveY }`: integers, cleared every tick. `turn` ±2048 (+ = right,
   the angle grows), `moveX` ±127 (+ = right), `moveY` ±127 (+ = forward).
 - `defaultFpsKeyMap()` / `FPS_KEY_CODES`, `defaultFpsPadMap()` (fixed in this wave),
   `actionsFromKeys`, `actionsFromPadButtons`, `actionsFromPad(mask)` (the 8-button fallback:
@@ -175,8 +175,9 @@ Spec: `docs/design/fps.md` §1.5–1.7, §3.7, §4.1, §4.6–4.8, §5. All pure
   floorStartScore, results, entered?}`, `FpsEvents` (`floorComplete {result}`, `playerDead`,
   `message {text}`, `extend {lives}`, `secret {x, y}`, `door`). Payloads are reused: copy them.
 - **Registry** (`registry.ts`): `defineFpsFloor(def)`, `getFpsFloor(id)` (unknown → undefined + one
-  warning), `hasFpsFloor`, `fpsFloorByNumber(n)` (id `fps-<n>`, no warning), `listFpsFloors()`,
-  `defineFpsEpisode`, `getFpsEpisode`.
+  warning), `hasFpsFloor`, `fpsFloorByNumber(n)` (id `fps-<n>`, no warning), `defineFpsEpisode`,
+  `getFpsEpisode`. The route goes by floor number (`fpsTallyDone`: floor + 1 while it is
+  registered); the episode `ostia` = [`fps-1`, `fps-2`] records the same order (a floors test).
 - **`parseFloor(def, difficulty = 'normal')`** (`map.ts`) → `ParsedFloor {grid, doors, doorLock,
   start {x, y, angle}, actors, items, props, pushes, switches, turns, spawns, switchOnTex,
   warnings}`. The §5.1 legend: wall letters → `WALL_TEXTURES` (or `def.walls`), doors via
@@ -212,29 +213,40 @@ Spec: `docs/design/fps.md` §1.5–1.7, §3.7, §4.1, §4.6–4.8, §5. All pure
   `skipUnfold()`, `use()`, `useElevator()` (F4 on floors 0/1), `hurt(n, fromX, fromY)` (→ 90-tick
   `dying` → `playerDead`), `addScore(points)` (extends → `extend` + `ONE MORE TRY!`),
   `message(text)` (`messages`: 2 lines, 90 ticks), `giveAll()` (F5), `cellOccupied(x, y)`,
-  `isCellFree(x, y)`. Fields: `state` (`'play' | 'elevator' | 'dying' | 'dead' | 'done'`),
+  `isCellFree(x, y)`, `fireOff` (the suit breaks: fire is masked out of the weapon input and
+  `weaponLower` takes the view down 60 px, 8 px per tick). Fields: `state` (`'play' | 'elevator' |
+  'dying' | 'dead' | 'done' | 'deathcam'`),
   `tick` (since the (re)start; the first `UNFOLD_TICKS` = 30 ignore input and `camera.squash`
   goes 0 → 1), `clock` (the floor time; stops at the elevator), `camera`, `map`, `grid`, `doors`,
   `pushes`, `areas`, `taken`, `rng`, `fxRng`. Items and props draw as billboards
   `fps/item/<id>` / `fps/prop/<id>` when registered (else nothing). The shell picks up keys only;
   group actors adds actors, combat and the other pickups here.
 - **Run** (`run.ts`): `fpsSlotIndex(session)` (slot 0 when active, else 1), `fpsSlot`,
-  `newFpsRun(session, floor)`, `emptyFpsInput()`.
+  `newFpsRun(session, floor)`, `emptyFpsInput()`, `reserveLives(slot)` (= `max(0, lives − 1)`: the
+  count every fps screen shows, spec §4.13), `AMS_BONUS_KEY` (`'fps/ams-bonus'`: the one key the
+  bridge writes and the floor-1 tally reads).
 - **Scenes:** `FpsIntroScene(app, {floor, run?, fromBridge?})` (spec §1.5; `loadFpsContent(app,
   onProgress?)` = one shared promise, never rejects; `fpsLoadState()` → `{registered, ready,
-  frac}`; the card shows `MODE_TITLE`, `FLOOR n`, the name, lives and the controls hint; at least
-  120 ticks, start after 60, auto at 180; the first entry calls `session.startMission('fps-<n>')`
-  and sets `run.floorStartScore`). `FpsScene(app, run)` (spec §1.6): `enter`/`resume` turn on
+  frac}`; the card shows `MODE_TITLE`, `FLOOR n`, the name, `LIVES` (reserve lives) and the
+  controls hint; at least 120 ticks, start after 60, auto at 180; the first entry calls
+  `session.startMission('fps-<n>')` and sets `run.floorStartScore`; when neither the floor nor
+  floor 0 is registered (the lazy chunk failed) it warns and goes to the title — fail soft). `FpsScene(app, run)` (spec §1.6): `enter`/`resume` turn on
   `input.fpsMode` + `app.pointerLockWanted` and suppress held actions; `pause`/`exit` turn them
   off; pause on `input.pausePressed`, `app.focusLost` or raw pad button 9; draws the view with
-  `r.image(view.buf, 0, 0, {screen: true, stream: true})`, the death fade, a basic status bar
-  (spec §8.6 layout), messages, the `CLICK TO LOOK WITH THE MOUSE` hint and, with `?debug=1`, the
-  map (top right; F1 hides it). A death: `slot.loseLife()` → `game.restart()` behind a 60-tick
-  `FLOOR n / LIVES n` card; the last life → `GameOverScene` (until group flow wires the
-  `ContinueScene`). The pause menu gets a stand-in host until `PauseHost` exists.
-- **Route** (`scenes/fps-route.ts`, group flow takes it over): `startFpsRun(app, {floor,
-  fromBridge?})`, `fpsFloorDone(app, run, result)`, `fpsTallyDone(app, run)` (the next floor's
-  intro, else the title; floor 0 → the title).
+  `r.image(view.buf, 0, 0, {screen: true, stream: true})`, the weapon view (not during the
+  death-cam), the damage feedback, the death fade, the boss band, the status bar (spec §8.6;
+  `HudInfo.lives` = reserve lives), messages, the `CLICK TO LOOK WITH THE MOUSE` hint
+  (`lookHintOn()`: 300 ticks after the start, a resume or the restart card; never over a subtitle),
+  the death-cam fade over the whole screen (`r.fade`, `game.fade`) and, with `?debug=1`, the map
+  (top right; F1 hides it). A death: `slot.loseLife()` → `game.restart()` behind a 60-tick
+  `FLOOR n / LIVES n` card; the last life → `ContinueScene(app, this)`. FpsScene is the
+  `PauseHost` (`applySettings`) and the `Continuable` (`continuePlayer`, `resumeMusic`,
+  `startPressed`: any start key for the fps slot, `acceptsSlot(i)`: only the fps slot acts on the
+  continue screen, `continueGag = false`).
+- **Route** (`scenes/fps-route.ts`): `startFpsRun(app, {floor, fromBridge?})` (no session → the
+  title), `fpsFloorDone(app, run, result)` (→ `FpsTallyScene`), `fpsTallyDone(app, run)` (floor 0 →
+  the title; the next registered floor's intro; after the last floor →
+  `EndingScene({ variant: 'fps' })`).
 - **`?mode=fps&floor=n`** (`params.ts`: `mode?: 'fps' | 'bridge'`, `floor?: 0..2`, default 1 with
   `mode=fps`; both absent otherwise): the boot makes a new session + campaign and calls
   `startFpsRun`. A floor that is not registered yet plays floor 0 (with a warning).
@@ -251,7 +263,7 @@ blood size, face glance) use `game.fxRng`. No allocations per tick.
   (`'clip' | 'ss' | 'none'`), `radius` (0.4, dogs 0.3), `bite`, `opensDoors`, `tokens`, `dodges`,
   `moveSheet` / `actSheet` (billboard ids, spec §8.2), `frames` (act frames), `dieTicks`,
   `shotSfx`, `tellSfx`, `speaker`, `hitBase` / `hitBaseRun`. State ids `ST_STAND … ST_DEAD`
-  (`STATE_NAMES`). `Actor` (pool object: `x, y` centre; `cx, cy` cell; `tx, ty` reserved target;
+  (`STATE_TABLE` names them). `Actor` (pool object: `x, y` centre; `cx, cy` cell; `tx, ty` reserved target;
   `dir` 0..7 or −1; `angle`; `hp`; `state`, `timer`; `react` (reaction delay left: noticed but
   still unaware); `ambush`, `patrol`, `placed`; `token`; `shots`; `tellDone` (ticks of the last
   full tell); `walked`; `pool` (blood pool frame); `spurt`; `alive` (not dying), `aware`).
@@ -280,7 +292,8 @@ blood size, face glance) use `game.fxRng`. No allocations per tick.
   `hasVoice`, else `fps/shout-<type>`; dogs bark). `MIN_TELL = 18`.
 - **Hitscan** (`hitscan.ts`): `bandDist` (Chebyshev), `playerDamage(rng, weapon, d)` (spec §4.2
   bands; knife `d ≤ 1.25`), `findTarget(pool, grid, doors, push, x, y, angle)` (nearest living
-  actor within `aimWidth(d) = max(0.35, 0.06 d)` of the aim line, in sight, not behind the centre
+  actor within `max(aimWidth(d) = max(0.35, 0.06 d), its box half-size)` of the aim line, in sight
+  (of its centre or of the aim-line point beside it), not behind the centre
   column's wall), `enemyHitChance(d, ran, inView, base?, baseRun?)`, `enemyDamage`, `bossDamage`,
   `biteDamage`, `scaleForDifficulty` (EASY × 0.5 rounded up), `VIEW_HALF = 375`, `RUN_MOVE =
   0.12`.
@@ -289,7 +302,7 @@ blood size, face glance) use `game.fxRng`. No allocations per tick.
   `step(player, input) → shot this tick`, `request(p, w)`, `cycle(p, ±1)` (skips weapons not
   owned or without ammo), 8 + 8 tick switch (`viewDrop()`), out of ammo → the knife, `viewFrame(p)`
   (0 idle, 1 flash, 2 fire B, 3 recover; knife: idle, wind-up, stab, return), `shots`.
-  `usable(p, w)`, `bestWeapon(p)`.
+  `usable(p, w)`.
 - **Pickups** (`pickups.ts`): `applyPickup(host, id) → taken` with the §4.5 caps and refusals (HP
   100, ammo 99, the blood pool only at ≤ 10 HP, a weapon refused when owned at 99 ammo, the 1UP
   never: full lives → `ONE_UP_SCORE` points), `TREASURE_SCORE`, `PICKUP_MESSAGES` (each ≤ 128 px),
@@ -369,37 +382,44 @@ first (textures). `room(cells, x, y)` floods a room without doors.
 - `installBoss(g)` runs in `FpsGame.load` (every attempt): it finds the `'boss'` actor and sets
   `ActorPool.bossThink` / `bossDamage`; `g.boss` is the `FpsBoss` (null on floors without one).
 - `FpsBoss`: `phase` 1 | 2, `awake`, `breakT` (−1 or the break ticks), `taunts` (bit n = taunt
-  n + 1 given), `reinforced`, `wreckX/Y`, `leash` (his room without one-cell pockets: no alcoves,
-  no corners), `think()`, `damage(dmg)`, `wake()`, `taunt(n)`, `reinforce()`, `slowStep()`,
+  n + 1 given), `reinforced` (bit 0 = the 50 % wave, bit 1 = the 25 % wave), `firstBay` (0 west, 1
+  east), `wreckX/Y`, `leash` (his room without one-cell pockets: no alcoves, no corners; the wreck
+  cell leaves it when the wreck appears), `think()`, `damage(dmg)`, `wake()`, `taunt(n)`,
+  `reinforce(wave)`, `slowStep()`,
   `debugSkip()` (debug F4 via `FpsGame.debugSkip()`: phase 1 → a fatal suit hit, so the 50 %
   events and the break; phase 2 → he dies; nothing during the break or the die frames).
 - Numbers (spec §7.2) are constants: `BOSS_HP`, `BOSS_TELL_1` 30 / `BOSS_TELL_1_LOW` 24 (below
   25 %) / `BOSS_TELL_2` 24, `BOSS_SHOT_GAP` 4 (bursts of 8 / 6), recover 45 / 40,
   `BOSS_MIN_CHASE_1/2` 45 / 30, `BOSS_ATTACK_ROLL` 24, `BOSS_ATTACK_CAP` 120, `BOSS_LOST_TICKS`
-  180, `BREAK_TICKS` 120, `DEATHCAM_SLOW/HOLD/FADE` 150 / 60 / 30. Phase 2 is the
+  180, `BREAK_TICKS` 120, `DEATHCAM_SLOW/HOLD/FADE` 150 / 60 / 30, `REINFORCE_REACT` 30,
+  `REINFORCE_MESSAGE`. Phase 2 is the
   `BOSS_FOOT` def in actors.ts (`actor.def` is swapped; radius 0.34, pain 6).
 - Behaviour: stands until he sees the player or is hit → horn, taunt 1, music `fps-boss`, the
   bar. Chase toward the player (stops at 2 tiles; leash BFS path, tile centre to tile centre);
   without sight he holds, after 180 ticks he walks to the last seen cell. The attack starts in
   chase with sight after the minimum chase ticks with chance 24/256 per tick, always at 120; the
   counter pauses without sight and resets at the tell. Suit hits only spark (no pain). Events:
-  75 % taunt 2; 50 % taunt 3 + `reinforce()` (bay doors within 3 cells of a spawn open; SS with
-  `placed = false`, chasing at once; a spawn point within `SPAWN_CLEAR` = 3 tiles of the player
-  stays empty, so nothing spawns at the back of a player who waits in a bay); 0 → the break (invulnerable, `forceFrame` act 5–8, 25,000,
+  75 % taunt 2; 50 % taunt 3 + `reinforce(0)`: the bay (west / east half of the map) farther from
+  the player; 25 % `reinforce(1)`: the other bay (bay doors within 3 cells of a spawn open, the
+  horn, the message `REINFORCEMENTS!`; SS with `placed = false` stand `REINFORCE_REACT` ticks, then
+  shout and chase; a spawn point within `SPAWN_CLEAR` = 3 tiles of the player stays empty); 0 →
+  the break (invulnerable, the player's fire is off — `FpsGame.fireOff` —, `forceFrame` act 5–8, 25,000,
   `fps/boss/break`), then the wreck (`g.addProp('fps/boss/wreck', …, solid)`; an item under it
   moves aside), he jumps out on the free cell next to it nearest to the player, taunt 4, two
   `clip` items spill onto the free cells next to it farthest from him. On foot: pain 6 ticks only
   out of chase; 50 % taunt 5; 0 → 50,000, a kill (`placed`), taunt 6, `g.startDeathCam(actor)`.
-- Taunts use `g.speak(line, line.meaning, subtitleTicks(text))` (≥ 150 ticks, ~5 ticks per
-  letter + 30).
+- Taunts use `g.speak(line, line.meaning, subtitleTicks(text))`: the longest of 150, 30 + 5 per
+  letter and the voice clip + 30 ticks (`getSampleGroup('mode:fps').voice[voiceKey(text)]`), so no
+  subtitle ends before its voice.
 - Hooks added to `actors.ts`: `Actor.forceFrame` (an act-sheet frame instead of the state's,
   −1 = off), `ActFrames.tell2` (the suit's two-frame tell), `BOSS_FOOT`. The act frame order is
   the art group's (mech: tell 0–1, fire 2–3, pain 4, break 5–8; foot: tell 0, fire 1–2, pain 3,
   die 4–9, dead 10).
-- Hooks added to `game.ts`: `boss`, `fade` (0..1; `render()` dithers the view to black with a
-  4 × 4 ordered pattern, palette-safe), `addProp(bbId, x, y, solid)`, `startDeathCam(actor)`, the
+- Hooks added to `game.ts`: `boss`, `fade` (0..1; FpsScene draws it over the whole screen),
+  `addProp(bbId, x, y, solid)`, `startDeathCam(actor)` (also puts the weapon to idle), the
   state `'deathcam'`: input off, the others frozen, doors / push wall / the boss step once per 3
-  ticks for 150 ticks, the camera turns to him over 30 ticks (`render()` skips a prop within
+  ticks for 150 ticks, the camera turns to him over 30 ticks and moves in along the clear line to
+  `DEATHCAM_NEAR` = 2.8 tiles over `DEATHCAM_DOLLY` = 60 ticks (`render()` skips a prop within
   0.9 tiles of the line from the camera to him, so the wreck never hides his fall), `fps/boss/fall` at the last die
   frame, 60 ticks hold, 30 ticks fade, then `floorComplete`. The floor clock only runs in
   `'play'`, so it stops at his 0 HP (and at the elevator). `restart()` on a boss floor plays the
@@ -414,7 +434,7 @@ first (textures). `room(cells, x, y)` floods a room without doors.
   `tallySeconds` (rounded up), `clockText` (m:ss). Lines: KILLS, SECRETS, TREASURE (10,000 each
   at 100 % / all), TIME `m:ss  PAR m:ss` ((par − s) × 500 under par), on floor 1 the info lines
   `MISSION 1 BONUS` (+ `<tag> MISSION 1 BONUS` for the joined waiting slot) read from
-  `session.records.get('fps/ams-bonus')` (`AMS_BONUS_RECORD`, written by flow), DIFFICULTY, TOTAL
+  `session.records.get('fps/ams-bonus')` (`AMS_BONUS_KEY` from `fps/run.ts`, written by the bridge), DIFFICULTY, TOTAL
   (= round(raw × `session.mods.tallyScore`)).
 - Page: `drawPanel` 304 × 188, `<NAME> CLEARED` big gold y 16, `FLOOR n` y 30, the slot tag top
   right, a line every 30 ticks from tick 40 (`ui/tally-tick`, TOTAL `ui/tally-end`,
@@ -428,7 +448,9 @@ first (textures). `room(cells, x, y)` floods a room without doors.
 
 - `new FpsBot(() => game, seed)` with `actions(tick)` / `analog(tick, out)` for a
   `ScriptedSource`; `createHeadlessFps({ bot: true })` wires it (`h.bot`). Per tick: fight the
-  nearest living enemy in line of sight (turn up to 96 units, fire when the aim line is on it;
+  nearest living enemy in line of sight (in the boss fight any other enemy in sight within 14
+  tiles first, and below 20 rounds it fetches a clip between his bursts — polish-fix 2026-10-16;
+  turn up to 96 units, fire when the aim line is on it;
   the pistol taps, the knife walks in); else BFS (walls, solid props, push walls and locked doors
   without the key block) to: health when HP < 40, ammo when < 20 or on the knife, an unowned gun,
   the gold key, the silver key, ammo before the boss wakes, the boss, the elevator switch (face
@@ -468,20 +490,23 @@ fight on NORMAL / HARD is still open.
 ## 6. Content registration and tools
 
 - Lazy manifest entries `fps` (`content/fps/index.ts`: `textures-basic.ts` + `floor-0.ts`),
-  `fps/art`, `fps/sound`, `fps/floors` (stubs until their groups fill them).
+  `fps/art` (`content/fps/art.ts`: textures, billboards incl. `fps/fx/sparks`, props, items,
+  weapon views, faces, HUD), `fps/sound` (`content/fps/sound.ts`: `sfx.ts` + `music.ts`, the synth
+  for every §9 id) and `fps/floors` (`content/fps/floors.ts`: floors 1 and 2 + the episode).
   `isLazyContent(id)` (`id === 'fps' || id.startsWith('fps/')`); `loadContent()`'s default filter
   is `(id) => !isLazyContent(id)`, so the boot, the sims and the 2D tools load what they loaded
   before. The fps mode loads with `loadFpsContent` (spec §1.5) or `loadContent(isLazyContent)`.
   Tools that must see every sound use `loadContent(() => true)` (spec §3.6).
-- `content/fps/textures-basic.ts`: placeholder textures for every §8.1 id and placeholder
-  billboards for every §4.5 item and §5.1 prop. Each id is defined only when it is not registered
-  yet, so the real art wins whatever the load order (hand-over to group art).
+- `content/fps/textures-basic.ts`: a re-export that imports the real §8.1 textures (the
+  placeholders are gone; the art group's files define every id).
 - `content/fps/floor-0.ts`: `fps-0` "TEST RANGE" (spec §6.0; the wall letters show every texture
   `A`–`P` along room A; hand-over to group actors).
-- Pure data modules that eager scenes may import: `content/fps/names.ts` (`MODE_TITLE =
-  'OPERATION OSTIA'`, no imports). `content/fps/story.ts`: TODO (group flow)
-- Art registration (`content/fps/art.ts` and its files; ids spec §8). TODO (group cast / art)
-- Sound registration (`content/fps/sound.ts`; ids spec §9). TODO (group cast / fps-sound)
+- Pure data modules that eager scenes and `src/game/fps/` may import: `content/fps/names.ts`
+  (`MODE_TITLE = 'OPERATION OSTIA'`, no imports), `content/fps/story.ts` (the bridge card lines,
+  `withCallsign`), `content/fps/lines.ts` (every spoken string, verbatim for `voiceKey`).
+- Samples: the `mode:fps` group (sfx, the four songs, the German shouts, the Mecha Hofmans taunts)
+  loads in `loadFpsContent` (10 % of the bar, capped at `FPS_SAMPLES_MAX_MS` = 3 s; the synth fills
+  in). docs/api/audio-pipeline.md has the takes.
 - `src/sim/headless-fps.ts`: `createHeadlessFps({floor = 0, seed, difficulty, god, players, input:
   {actions?(tick), analog?(tick, out)}, pose: {x, y, deg}, unfold = false, loadBase = false})` →
   `{app, input, session, run, scene, game, ticks, complete, step(n), runUntil(pred, max),
@@ -493,14 +518,53 @@ fight on NORMAL / HARD is still open.
   forward,use] [--seed] [--difficulty] [--god] [--unfold] [--out] [--scale] [--cols]` → a labelled
   sheet (`tmp/shots/fps-<n>[-sheet].png`); one frame per pose, or a timeline for one pose; `use`
   and `fire` in `--hold` are tapped. Degrees: 0 east, 90 south.
-- `npm run sprites -- fps/ [--ray]`. TODO (group cast / art)
-- `npm run sim -- --mode fps --floor n`. TODO (group floors)
+- `npm run sprites -- fps/` (the weapon views, faces, HUD sprites) and `npm run sprites -- fps/
+  --ray` (the textures and billboards; one row per yaw).
+- `npm run sim -- --mode fps --floor n` (§5.5). `npm run smoke -- --query "mode=fps&floor=1"`
+  (or `mode=bridge`; `mission=ams&boss=1&debug=1` plays the whole route and adds `god=1` itself).
+  `npm run perf -- --query "mode=fps&floor=1&god=1"` measures the fps scene (it waits for a scene
+  with a `runner` or a `game`).
 
 ## 7. Flow
 
-- `MissionDef.after`, the GameplayScene hook. TODO (group flow)
-- `recordMissionClear`, `silentTally`, the `'fps/ams-bonus'` record. TODO (group flow)
-- `GlitchBridgeScene` (phases spec §1.3). TODO (group flow)
-- `PauseHost`, `Continuable`. TODO (group flow)
-- `EndingScene({ variant: 'fps' })`, `goldenRecordRoute`, `missionColumn` (`F1`, `F2`). TODO (group flow)
-- `?mode=bridge`. TODO (group flow)
+- `MissionDef.after?: 'fps'` (`mission/types.ts`; ams sets it): on the mission's `complete`
+  GameplayScene replaces itself with `GlitchBridgeScene(app, { from, runner })` instead of the
+  tally (no MISSION 2).
+- `recordMissionClear(app, runner)` (`scenes/flow.ts`): the campaign's mission list and golden
+  records (both routes call it; idempotent). `silentTally(app, runner)` → `[p1, p2]`: each joined
+  slot's tally TOTAL paid with `slot.addScore` (no page, no sound); the bridge stores it under
+  `AMS_BONUS_KEY` for the floor-1 tally's `MISSION 1 BONUS` line.
+- `GlitchBridgeScene(app, { from?, runner? })` (spec §1.3): `freeze` (≥ `FREEZE_MIN` 30 ticks until
+  the lazy content is registered, ≤ `FREEZE_MAX` 120; it starts `loadFpsContent` at once) →
+  `glitch` (`GLITCH_TICKS` 120, palette-only corruption) → `card` (the story lines type in,
+  `TYPE_TICKS` 2 per letter, PRESS START from tick 60, `CARD_HOLD` 150) → `fold` (60) →
+  `startFpsRun(app, { floor: 1, fromBridge: true })`.
+- `PauseHost` (`scenes/pause.ts`: `applySettings?(s)`) and `Continuable` (`scenes/continue.ts`:
+  `continuePlayer(slot)`, `resumeMusic()`, `clearOverlays?()`, `startPressed?(slot, input)`,
+  `acceptsSlot?(slot)`, `continueGag?`): GameplayScene and FpsScene implement both.
+- `EndingScene(app, { variant: 'fps' })` (after the last floor; `'campaign'` after m5),
+  `goldenRecordRoute(campaign)` (`FPS_ROUTE` = ams, fps-1, fps-2 once the campaign played fps-1,
+  else the six missions), `missionColumn(entry)` (`fps-1` → `F1`, `fps-2` → `F2`).
+- `?mode=bridge` (`params.ts`): the boot makes a session and shows the bridge without a runner (a
+  placeholder freeze frame, no tally) — then floor 1.
+
+## 8. Final play-test record (polish-fix, 2026-10-16)
+
+The bot (`src/sim/bot-fps.ts`, perfect aim, no secrets) after the polish fixes; every floor-2 run
+starts with the fresh loadout (pistol, 8 rounds; no floor-1 carry), the hardest case.
+
+| Run | Result |
+|---|---|
+| floor 1, god, NORMAL, seeds 1–3 (`--expect-complete`) | complete in 4026 / 4494 / 4146 ticks, kills 33/34, 0 deaths |
+| floor 2, god, NORMAL, seeds 1–3 (`--expect-complete`) | complete in 2533 / 2198 / 2910 ticks, the boss dead, 0 deaths |
+| floor 2, no god, seeds 1–4 (`tmp/fps-polish-fix/arena.ts`) | EASY 4/4 complete, 0 deaths; NORMAL 4/4, 0 deaths; HARD 4/4, 1 death in all |
+| floor 2, no god, before the polish (same bot without the adds-first / fetch-a-clip rules) | NORMAL 2/4, HARD 0/4 (the reinforcement SS were the largest damage source, mostly off-view) |
+
+What changed the fight: the two reinforcement waves (50 % / 25 %, the farther bay first, a 30-tick
+stand in the door, the horn and `REINFORCEMENTS!`), the lift clip and the arena cover clips (lead
+decisions), no fire (and no wasted rounds) while the suit breaks, the mech hit on its arms
+(`findTarget` uses the box half-size), and a bot that kills the adds first and fetches clips —
+what a player does. Damage by source with that bot (seeds 1–4): NORMAL boss phase 1 252, phase 2
+84, reinforcements 18; HARD boss 290 / 162, placed SS 134, guards 59, reinforcements 8.
+
+Still open: no human has played the boss fight on NORMAL / HARD; the bot never opens secrets.

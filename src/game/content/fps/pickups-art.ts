@@ -266,7 +266,4 @@ function bitKey(r: Ramp): PixelBuffer {
 ITEMS['key-gold'] = () => bitKey([PAL.gold[0], PAL.gold[1], PAL.gold[2], PAL.gold[3]]);
 ITEMS['key-silver'] = () => bitKey([PAL.steel[1], PAL.steel[2], PAL.steel[3], PAL.steel[4], PAL.snow[2]]);
 
-/** The §4.5 item ids + `clip-drop` (tests). */
-export const ITEM_IDS: readonly string[] = Object.keys(ITEMS);
-
 for (const [id, gen] of Object.entries(ITEMS)) defineRayBillboard(`fps/item/${id}`, { yaws: 1, frames: 1, gen: () => gen() });

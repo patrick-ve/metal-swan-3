@@ -178,7 +178,7 @@ describe('ScriptedSource actions and analog', () => {
     expect(input.analog).toEqual({ turn: 7, moveX: 0, moveY: 0 });
     expect(input.actions.mask).toBe(0);
     input.update();
-    expect(input.analog).toEqual({ turn: -512, moveX: 127, moveY: -40 });
+    expect(input.analog).toEqual({ turn: -2048, moveX: 127, moveY: -40 });
     expect(input.actions.pressed('fire')).toBe(true);
     input.update();
     expect(input.analog).toEqual({ turn: 0, moveX: 0, moveY: 0 });
@@ -199,6 +199,26 @@ describe('ScriptedSource actions and analog', () => {
     input.fpsMode = true;
     input.update();
     expect(input.analog).toEqual({ turn: 6, moveX: 0, moveY: 127 });
+  });
+
+  it('a fast mouse flick turns in full (300 px at sensitivity 5 = 900 units in one tick)', () => {
+    const input = new InputManager();
+    const acc = new TurnAccumulator();
+    acc.sensitivity = 5;
+    input.addSource(
+      new ScriptedSource(() => 0, 0, {
+        analog: (t, out) => {
+          if (t === 0) acc.add(300);
+          out.turn += acc.take();
+        },
+      }),
+    );
+    input.fpsMode = true;
+    input.update();
+    const first = input.analog.turn;
+    input.update();
+    expect(first + input.analog.turn).toBe(900);
+    expect(first).toBe(900);
   });
 
   it('InputManager.suppress hides a held action until it is released', () => {

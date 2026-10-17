@@ -17,7 +17,8 @@
  * FpsScene. `--route` (on by default for `mission=ams` with `boss=1&debug=1`) plays the normal
  * script, then presses F4 (the boss dies), expects the bridge and follows it into FpsScene, then
  * plays the rest of the route with F4: floor-1 tally → floor 2 → the suit breaks → the boss dies →
- * floor-2 tally → the fps ending → the final tally → the name entry.
+ * floor-2 tally → the fps ending → the final tally → the name entry. The route adds `god=1` to
+ * the query when it is missing (the scripted 2D part would lose its lives before F4).
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -94,6 +95,13 @@ function parseArgs(argv: readonly string[]): Args {
   }
   const q = new URLSearchParams(a.query);
   if (q.get('mission') === 'ams' && q.get('boss') === '1' && q.get('debug') === '1') a.route = true;
+  // The scripted 2D part can lose every life before F4 (a continue / game over ends the route):
+  // the route always plays with god mode (debug only; it changes no route step).
+  if (a.route && q.get('god') !== '1') {
+    q.set('god', '1');
+    a.query = q.toString();
+    console.log(`[smoke] --route adds god=1: ${a.query}`);
+  }
   return a;
 }
 

@@ -12,7 +12,7 @@ import { lineOfSight } from '../../engine/ray';
 import type { Difficulty } from '../session';
 import { ACTOR_TYPES } from './actors';
 import { BOSS_HP } from './boss';
-import { isWallChar, LOCK_GOLD, LOCK_SILVER, parseFloor, PICKUP_CHARS, PROP_CHARS, type ParsedFloor } from './map';
+import { isWallChar, LOCK_GOLD, LOCK_SILVER, parseFloor, type ParsedFloor } from './map';
 import type { FpsFloorDef } from './types';
 
 export const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
@@ -391,7 +391,3 @@ export function room(c: { w: number; h: number; kind: Uint8Array }, x: number, y
   return seen;
 }
 
-/** The cells of a char that are things (actors, pickups, props) — for tools. */
-export function isThingChar(ch: string): boolean {
-  return ch in PICKUP_CHARS || ch in PROP_CHARS || 'ghiopqstudef@'.includes(ch);
-}

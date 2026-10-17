@@ -6,7 +6,8 @@ import { MemoryStore } from '../../../src/engine/storage';
 import { createApp } from '../../../src/game/app';
 import { MODE_TITLE } from '../../../src/game/content/fps/names';
 import { DYING_TICKS, ELEVATOR_TICKS } from '../../../src/game/fps/game';
-import { FpsScene, RESTART_CARD_TICKS } from '../../../src/game/scenes/fps';
+import { reserveLives } from '../../../src/game/fps/run';
+import { FpsScene, LOOK_HINT_TICKS, RESTART_CARD_TICKS } from '../../../src/game/scenes/fps';
 import { CARD_AUTO, FpsIntroScene, fpsLoadState, loadFpsContent } from '../../../src/game/scenes/fps-intro';
 import { ContinueScene } from '../../../src/game/scenes/continue';
 import { PauseScene } from '../../../src/game/scenes/pause';
@@ -75,6 +76,75 @@ describe('FpsScene (headless)', () => {
     h.step(40);
     expect(g.tick).toBe(40);
     expect(g.player.x).toBeGreaterThan(1.5); // a direction held through the card moves after the unfold
+    h.dispose();
+  });
+
+  it('every fps screen shows the 2D life count: reserve lives (spec §4.13)', async () => {
+    const h = await createHeadlessFps({ floor: 0 });
+    const slot = h.session.slots[0];
+    expect(slot.lives).toBe(3);
+    expect(reserveLives(slot)).toBe(2);
+    const texts: string[] = [];
+    const r = h.renderer;
+    const text = r.text.bind(r);
+    r.text = ((s: string, ...rest: unknown[]) => {
+      texts.push(s);
+      return (text as (...a: unknown[]) => unknown)(s, ...rest);
+    }) as typeof r.text;
+    h.renderFrame();
+    expect(texts).toContain('X2');
+    expect(texts).not.toContain('X3');
+    // The restart card after a death: LIVES 1 (2 lives left in the slot).
+    h.game!.hurt(500);
+    h.step(DYING_TICKS);
+    expect(slot.lives).toBe(2);
+    texts.length = 0;
+    h.renderFrame();
+    expect(texts).toContain('LIVES 1');
+    // The floor card.
+    const intro = new FpsIntroScene(h.app, { floor: 1, run: h.run });
+    texts.length = 0;
+    intro.draw(r);
+    expect(texts).toContain('LIVES 1');
+    r.text = text;
+    h.dispose();
+  });
+
+  it('the waiting slot cannot act on the continue screen (spec §1.10)', async () => {
+    const h = await createHeadlessFps({ floor: 0 });
+    const scene = h.scene as FpsScene;
+    expect(scene.acceptsSlot(0)).toBe(true);
+    expect(scene.acceptsSlot(1)).toBe(false);
+    h.dispose();
+  });
+
+  it('the CLICK TO LOOK hint comes back after a resume and hides under a subtitle', async () => {
+    const h = await createHeadlessFps({ floor: 0 });
+    const scene = h.scene as FpsScene;
+    h.app.settings.mouseLook = true;
+    let seen = false;
+    for (let t = 0; t < 60 && !seen; t++) {
+      h.step(1);
+      seen = scene.lookHintOn();
+    }
+    expect(seen).toBe(true);
+    h.step(LOOK_HINT_TICKS);
+    expect(scene.lookHintOn()).toBe(false);
+    scene.pause();
+    scene.resume();
+    seen = false;
+    for (let t = 0; t < 60 && !seen; t++) {
+      h.step(1);
+      seen = scene.lookHintOn();
+    }
+    expect(seen).toBe(true);
+    // Never over a taunt subtitle.
+    h.game!.subtitle.text = 'IK BEN MECHA HOFMANS!';
+    h.game!.subtitle.ticks = 200;
+    for (let t = 0; t < 60; t++) {
+      h.step(1);
+      expect(scene.lookHintOn()).toBe(false);
+    }
     h.dispose();
   });
 

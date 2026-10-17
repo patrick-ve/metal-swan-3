@@ -4,7 +4,7 @@ import { ACTION_BIT as B } from '../../../src/engine/input-actions';
 import { PAL } from '../../../src/engine/palette';
 import { CELL_PROP } from '../../../src/engine/ray';
 import { BOSS_TAUNTS } from '../../../src/game/content/fps/lines';
-import { ST_ATTACK, ST_CHASE, ST_DEAD, ST_RECOVER, ST_TELL } from '../../../src/game/fps/actors';
+import { ST_ATTACK, ST_CHASE, ST_DEAD, ST_RECOVER, ST_STAND, ST_TELL } from '../../../src/game/fps/actors';
 import { damageActor } from '../../../src/game/fps/ai';
 import {
   BOSS_ATTACK_CAP,
@@ -13,12 +13,15 @@ import {
   BOSS_TELL_1,
   BREAK_TICKS,
   SPAWN_CLEAR,
+  REINFORCE_MESSAGE,
+  REINFORCE_REACT,
+  subtitleTicks,
   DEATHCAM_FADE,
   DEATHCAM_HOLD,
   DEATHCAM_SLOW,
   type FpsBoss,
 } from '../../../src/game/fps/boss';
-import { FpsGame } from '../../../src/game/fps/game';
+import { FpsGame, WEAPON_LOWER_PX } from '../../../src/game/fps/game';
 import { getFpsFloor } from '../../../src/game/fps/registry';
 import type { FloorResult, FpsFloorDef, FpsInput } from '../../../src/game/fps/types';
 import { PlayerSlot, type Difficulty } from '../../../src/game/session';
@@ -92,13 +95,22 @@ describe('MechaHitler (§7)', () => {
     const before = g.actors.count;
     damageActor(g, a, Math.ceil(max * 0.25));
     expect(g.subtitle.text).toBe(BOSS_TAUNTS[2].text);
-    // NORMAL: 3 SS come out of the bays; they count for no kill %.
+    // NORMAL: 3 SS in two waves. 50 %: the bay farther from the player (east, 1 point) opens.
+    expect(g.actors.count - before).toBe(1);
+    expect(b.firstBay).toBe(1);
+    expect(g.messages.at(-1)?.text).toBe(REINFORCE_MESSAGE);
+    // 25 %: the other bay (west, 2 points).
+    damageActor(g, a, Math.ceil(max * 0.25));
     expect(g.actors.count - before).toBe(3);
     for (let i = before; i < g.actors.count; i++) {
+      // They count for no kill %, stand REINFORCE_REACT ticks in the door, then chase.
       expect(g.actors.actors[i].type).toBe('ss');
       expect(g.actors.actors[i].placed).toBe(false);
-      expect(g.actors.actors[i].state).toBe(ST_CHASE);
+      expect(g.actors.actors[i].state).toBe(ST_STAND);
+      expect(g.actors.actors[i].react).toBe(REINFORCE_REACT);
     }
+    for (let t = 0; t < REINFORCE_REACT; t++) g.step(idle());
+    for (let i = before; i < g.actors.count; i++) expect(g.actors.actors[i].state).toBeGreaterThanOrEqual(ST_CHASE);
     const placed = g.actors.placedTotal;
     // The suit breaks: invulnerable for 120 ticks, 25,000 points.
     const score0 = g.slot.score;
@@ -306,5 +318,81 @@ describe('MechaHitler (§7)', () => {
       const ss = g.actors.actors[i];
       expect(Math.max(Math.abs(ss.x - g.player.x), Math.abs(ss.y - g.player.y))).toBeGreaterThanOrEqual(SPAWN_CLEAR);
     }
+  });
+
+  it('fire is off while the suit breaks: holding the chaingun through the break spends no round', () => {
+    const g = hangar('normal');
+    const b = boss(g);
+    const a = b.actor;
+    g.giveAll(); // chaingun, 99 rounds
+    g.setPose(15.5, 9.5, 3072); // facing north, the boss at (15, 4)
+    g.step(idle());
+    expect(b.awake).toBe(true);
+    const fire: FpsInput = { held: B.fire, pressed: 0, turn: 0, moveX: 0, moveY: 0 };
+    damageActor(g, a, a.hp); // the suit breaks
+    expect(b.breakT).toBe(0);
+    const ammo0 = g.player.ammo;
+    let lowest = 0;
+    for (let t = 0; t < BREAK_TICKS - 1; t++) {
+      g.step(fire);
+      lowest = Math.max(lowest, g.weaponLower);
+    }
+    expect(g.player.ammo).toBe(ammo0);
+    expect(lowest).toBe(WEAPON_LOWER_PX);
+    // Phase 2: the weapon comes back up, then the held fire shoots again.
+    for (let t = 0; t < 30; t++) g.step(fire);
+    expect(b.phase).toBe(2);
+    expect(g.weaponLower).toBe(0);
+    expect(g.player.ammo).toBeLessThan(ammo0);
+  });
+
+  it('the boss on foot walks around his wreck to a player behind it (the wreck is off the leash)', () => {
+    const g = hangar('normal');
+    const b = boss(g);
+    const a = b.actor;
+    g.setPose(15.5, 9.5, 3072);
+    g.step(idle());
+    damageActor(g, a, a.hp);
+    for (let t = 0; t <= BREAK_TICKS; t++) g.step(idle());
+    expect(b.phase).toBe(2);
+    expect(b.leash[b.wreckY * g.grid.w + b.wreckX]).toBe(0);
+    // Put him on the far side of the wreck from the player, 3 tiles apart across it.
+    const wx = b.wreckX;
+    const wy = b.wreckY;
+    g.actors.releaseAll(a);
+    a.x = wx + 0.5;
+    a.y = wy + 1.5;
+    a.cx = a.tx = wx;
+    a.cy = a.ty = wy + 1;
+    a.dir = -1;
+    g.actors.claim(a, wx, wy + 1);
+    const x0 = a.x;
+    const y0 = a.y;
+    let walked = 0;
+    for (let t = 0; t < 240; t++) {
+      g.setPose(wx + 0.5, wy - 1.5, 1024); // the player stays put behind the wreck
+      g.step(idle());
+      walked = Math.max(walked, Math.hypot(a.x - x0, a.y - y0));
+    }
+    expect(walked).toBeGreaterThan(1);
+  });
+
+  it('a taunt subtitle never ends before its voice clip (§7.4: 150 or the clip + 30 ticks)', async () => {
+    const { SAMPLE_MANIFEST } = await import('../../../src/game/content/samples/manifest');
+    const { defineSampleGroup, voiceKey } = await import('../../../src/engine/samples');
+    const group = SAMPLE_MANIFEST['mode:fps'];
+    defineSampleGroup('mode:fps', group);
+    for (const line of BOSS_TAUNTS) {
+      const dur = group.voice?.[voiceKey(line.text)]?.duration;
+      expect(dur, line.text).toBeGreaterThan(0);
+      const ticks = subtitleTicks(line.text);
+      expect(ticks, line.text).toBeGreaterThanOrEqual(150);
+      expect(ticks, line.text).toBeGreaterThanOrEqual(Math.round(dur! * 60) + 30);
+    }
+    // The boss uses it: taunt 1 on wake.
+    const g = hangar();
+    g.setPose(15.5, 12.5, 3072);
+    g.step(idle());
+    expect(g.subtitle.ticks).toBeGreaterThanOrEqual(Math.round(group.voice![voiceKey(BOSS_TAUNTS[0].text)].duration * 60) + 30 - 1);
   });
 });

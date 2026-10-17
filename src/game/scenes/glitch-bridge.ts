@@ -26,7 +26,7 @@ import { Rng } from '../../engine/rng';
 import type { Scene } from '../../engine/scene';
 import { blinkOn, centerText, textWidth, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { BRIDGE_LINES, withCallsign } from '../content/fps/story';
-import { fpsSlotIndex } from '../fps/run';
+import { AMS_BONUS_KEY, fpsSlotIndex } from '../fps/run';
 import type { MissionRunner } from '../mission/runner';
 import { getCharacter, hasCharacter } from '../registry';
 import { recordMissionClear, silentTally } from './flow';
@@ -42,8 +42,8 @@ export interface BridgeOpts {
 
 export type BridgePhase = 'freeze' | 'glitch' | 'card' | 'fold';
 
-/** The session record of the silent ams tally: `[p1, p2]` (spec §1.2). */
-export const AMS_BONUS_KEY = 'fps/ams-bonus';
+/** The session record of the silent ams tally: `[p1, p2]` (spec §1.2; defined in fps/run.ts). */
+export { AMS_BONUS_KEY };
 
 /** Phase timing (spec §1.3). */
 export const FREEZE_MIN = 30;

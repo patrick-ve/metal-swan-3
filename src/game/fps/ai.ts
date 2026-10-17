@@ -537,9 +537,4 @@ export function choosePatrol(g: FpsGame, a: Actor): number {
   return -1;
 }
 
-/** For tests and the debug map: the state name. */
-export function stateName(a: Actor): string {
-  return STATE_TABLE[a.state]?.name ?? '?';
-}
-
 export { ST_STAND, ST_CHASE };

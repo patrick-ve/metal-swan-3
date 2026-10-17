@@ -42,6 +42,7 @@ const BILLBOARDS: ReadonlyArray<readonly [string, number, number, number]> = [
   ['fps/boss/wreck', 96, 1, 1],
   ['fps/fx/blood-pool', 64, 1, 3],
   ['fps/fx/spurt', 64, 1, 3],
+  ['fps/fx/sparks', 96, 1, 3],
   ...ITEMS.map((i) => [`fps/item/${i}`, 64, 1, 1] as const),
   ...PROPS.map((p) => [`fps/prop/${p}`, 64, 1, 1] as const),
 ];
@@ -93,6 +94,23 @@ describe('fps wall and door textures (§8.1)', () => {
     }
     // the wrap from column 63 to column 0 is no harsher than the texture's own column steps
     expect(diff(RAY_TEX - 1, 0)).toBeLessThanOrEqual(Math.max(max, (sum / (RAY_TEX - 1)) * 2 + 4));
+  });
+});
+
+describe('fps wall textures: no dark seam on the eye line', () => {
+  // At eyeZ 0.5 the texture rows v 28–36 land on the horizon row at every distance: a dark joint
+  // there joins into one flat line across every wall in view (it read as a render seam).
+  const lum = (c: number): number => ((c >>> 24) & 255) * 0.3 + ((c >>> 16) & 255) * 0.59 + ((c >>> 8) & 255) * 0.11;
+  it.each(['fps/wall/concrete', 'fps/wall/steel', 'fps/wall/hangar', 'fps/wall/concrete-banner', 'fps/wall/hangar-banner', 'fps/wall/steel-pipes'])('%s', (id) => {
+    const cols = rayTextureColumns(rayTextureIndex(id));
+    let total = 0;
+    for (const c of cols) total += lum(c);
+    const mean = total / cols.length;
+    for (let v = 28; v <= 36; v++) {
+      let row = 0;
+      for (let u = 0; u < RAY_TEX; u++) row += lum(cols[u * RAY_TEX + v]);
+      expect(row / RAY_TEX, `${id} row ${v}`).toBeGreaterThan(mean * 0.55);
+    }
   });
 });
 

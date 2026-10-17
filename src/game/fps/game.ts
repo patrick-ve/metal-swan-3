@@ -17,6 +17,7 @@ import {
   CELL_PROP,
   getRayBillboard,
   hasRayBillboard,
+  lineOfSight,
   renderView,
   type RayBillboard,
   type RayCamera,
@@ -40,7 +41,13 @@ import { applyPickup, ItemList, type PickupHost } from './pickups';
 import { FpsPlayer } from './player';
 import { PushSystem } from './pushwall';
 import type { FloorResult, FpsCarry, FpsEvents, FpsFloorDef, FpsInput, FpsRun } from './types';
-import { WeaponSystem, WEAPONS } from './weapons';
+import { emptyFpsInput } from './run';
+import { WeaponSystem, WEAPONS, WP_IDLE } from './weapons';
+
+/** The weapon view goes down this far (px) while the suit breaks (fire is off; spec §7.2). */
+export const WEAPON_LOWER_PX = 60;
+/** … at this many px per tick (down and up). */
+export const WEAPON_LOWER_STEP = 8;
 
 export interface FpsGameOpts {
   floor: FpsFloorDef;
@@ -139,11 +146,20 @@ export class FpsGame implements PickupHost {
   readonly bossBar: BossBarState = { visible: false, name: 'MECHAHITLER', frac: 1, phase: 1 };
   /** MechaHitler of a boss floor (boss.ts), else null. */
   boss: FpsBoss | null = null;
-  /** The view's fade to black 0..1 (the end of the death-cam; render() dithers it in). */
+  /** The fade to black 0..1 (the end of the death-cam; FpsScene draws it over the whole screen). */
   fade = 0;
+  /**
+   * How far (px) the weapon view is down because fire is off (the suit breaks, §7.2): the player
+   * cannot fire while the boss is invulnerable, so no round is spent on him.
+   */
+  weaponLower = 0;
+  /** The weapon input with fire masked out (reused). */
+  private readonly weaponIn: FpsInput = emptyFpsInput();
   /** The death-cam: the camera's start angle and the boss it turns to. */
   private camFrom = 0;
   private camBoss: Actor | null = null;
+  /** The line from the player to him is clear (the camera may move in along it). */
+  private camClear = false;
   /** The taunt subtitle (§7.4). */
   readonly subtitle: SubtitleState = { text: '', ticks: 0 };
   /** Recent messages, newest last (at most 2; spec §8.6), with the tick they appeared. */
@@ -210,6 +226,7 @@ export class FpsGame implements PickupHost {
     this.fade = 0;
     this.camBoss = null;
     this.weaponSys.reset();
+    this.weaponLower = 0;
     this.hud.reset();
     this.playerMove = 0;
     this.walked = 0;
@@ -294,6 +311,9 @@ export class FpsGame implements PickupHost {
     if (this.state === 'play' || this.state === 'dying' || this.state === 'elevator') {
       if (this.tick > UNFOLD_TICKS) stepActors(this);
     }
+    // The weapon goes down while the suit breaks (fire is off) and comes back up after.
+    if (this.fireOff) this.weaponLower = Math.min(WEAPON_LOWER_PX, this.weaponLower + WEAPON_LOWER_STEP);
+    else if (this.weaponLower > 0) this.weaponLower = Math.max(0, this.weaponLower - WEAPON_LOWER_STEP);
     if (this.subtitle.ticks > 0) this.subtitle.ticks--;
     this.hud.step(this.fxRng);
     this.pruneMessages();
@@ -308,8 +328,20 @@ export class FpsGame implements PickupHost {
     this.playerMove = Math.hypot(p.x - x0, p.y - y0);
     this.walked += this.playerMove;
     if ((i.pressed & ACTION_BIT.use) !== 0) this.use();
-    if (this.weaponSys.step(p, i)) this.playerShot();
+    let wi = i;
+    if (this.fireOff || this.weaponLower > 0) {
+      // No fire while the suit breaks (and until the weapon is back up): no wasted rounds.
+      wi = this.weaponIn;
+      wi.held = i.held & ~ACTION_BIT.fire;
+      wi.pressed = i.pressed & ~ACTION_BIT.fire;
+    }
+    if (this.weaponSys.step(p, wi)) this.playerShot();
     this.collect();
+  }
+
+  /** Fire is off: the boss's suit is breaking (he is invulnerable; spec §7.2). */
+  get fireOff(): boolean {
+    return this.boss !== null && this.boss.breakT >= 0;
   }
 
   /** The player's weapon fired this tick (§4.2): the hit, the knife sound, the noise. */
@@ -446,7 +478,11 @@ export class FpsGame implements PickupHost {
     this.stateTimer = 0;
     this.camFrom = this.player.angle;
     this.camBoss = a;
+    this.camClear = lineOfSight(this.grid, this.map.doors, this.pushes.push, this.player.x, this.player.y, a.x, a.y);
     this.fade = 0;
+    // The weapon view is hidden during the death-cam (FpsScene); no frame stays frozen.
+    this.weaponSys.phase = WP_IDLE;
+    this.weaponSys.timer = 0;
   }
 
   private deathCamTick(): void {
@@ -589,6 +625,19 @@ export class FpsGame implements PickupHost {
     c.x = p.x;
     c.y = p.y;
     c.angle = p.angle;
+    const b = this.camBoss;
+    if (this.state === 'deathcam' && b && this.camClear) {
+      // The death-cam moves in toward him (§7.3) along the clear line, so his fall fills the view.
+      const dx = b.x - p.x;
+      const dy = b.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > DEATHCAM_NEAR) {
+        const t = Math.min(1, this.stateTimer / DEATHCAM_DOLLY);
+        const move = (d - DEATHCAM_NEAR) * t * t * (3 - 2 * t);
+        c.x = p.x + (dx / d) * move;
+        c.y = p.y + (dy / d) * move;
+      }
+    }
     c.squash = Math.min(1, this.tick / UNFOLD_TICKS);
     // Death fall: eyeZ 0.5 → 0.2 over 30 ticks.
     c.eyeZ = this.state === 'dying' || this.state === 'dead' ? 0.5 - 0.3 * Math.min(1, this.stateTimer / 30) : 0.5;
@@ -614,16 +663,18 @@ export class FpsGame implements PickupHost {
     const cam = this.camera;
     const af = this.af;
     const spurtBb = billboardOf('fps/fx/spurt');
+    // The suit takes no blood: its hits and its break throw sparks (§7.1, §7.2).
+    const sparksBb = billboardOf('fps/fx/sparks') ?? spurtBb;
     for (let i = 0; i < pool.count; i++) {
       const a = pool.actors[i];
       if (!a.used) continue;
       pool.frameOf(a, cam.x, cam.y, af);
       this.addSprite(a.x, a.y, af.bb, af.frame, af.yaw);
-      if (spurtBb && a.spurt > 0) this.addSprite(a.x, a.y, spurtBb, Math.min(2, 2 - Math.floor((a.spurt - 1) / 3)), 0);
+      const fx = a.type === 'boss' && a.phase === 1 ? sparksBb : spurtBb;
+      if (fx && a.spurt > 0) this.addSprite(a.x, a.y, fx, Math.min(2, 2 - Math.floor((a.spurt - 1) / 3)), 0);
     }
     this.scene.spriteCount = this.spriteCount;
     renderView(view, this.scene, this.camera);
-    if (this.fade > 0) ditherFade(view, this.fade);
   }
 
   /** A prop at (x, y) stands on the line from the player to the boss (within DEATHCAM_CLEAR tiles). */
@@ -737,24 +788,11 @@ export class FpsGame implements PickupHost {
 
 /** The death-cam hides a prop this close (tiles) to the line from the camera to the boss. */
 const DEATHCAM_CLEAR = 0.9;
+/** The death-cam's camera moves to this distance from him (tiles) over DEATHCAM_DOLLY ticks. */
+export const DEATHCAM_NEAR = 2.8;
+export const DEATHCAM_DOLLY = 60;
 
 const STATE_CODE: Readonly<Record<FpsState, number>> = { play: 0, elevator: 1, dying: 2, dead: 3, done: 4, deathcam: 5 };
-
-/** 4 × 4 ordered-dither thresholds (0..15). */
-const BAYER4: readonly number[] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-
-/** Fade the view to black by `k` 0..1 with an ordered dither (palette-safe: only black is added). */
-function ditherFade(view: RayView, k: number): void {
-  const buf = view.buf;
-  const d = buf.data;
-  const level = Math.round(k * 16);
-  for (let y = 0; y < buf.h; y++) {
-    const row = y * buf.w;
-    const b = (y & 3) << 2;
-    for (let x = 0; x < buf.w; x++) if (BAYER4[b + (x & 3)] < level) d[row + x] = 0x000000ff;
-  }
-  buf.touch();
-}
 
 /** The billboard of an id, or null when it is not registered (drawn as nothing, not magenta). */
 function billboard(id: string): RayBillboard | null {

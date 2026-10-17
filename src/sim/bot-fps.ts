@@ -7,7 +7,8 @@
  * 1. **Fight:** the nearest living enemy in line of sight (24 tiles): turn to it, fire when the
  *    aim line is on it (the pistol taps, the MG and chaingun hold; the knife walks in). The boss
  *    with a gun up: keep 2.6–5 tiles, run sideways through his tell and burst, hold fire while
- *    the suit breaks (`bossTactic`).
+ *    the suit breaks (`bossTactic`); the adds (reinforcements) in sight within 14 tiles first;
+ *    below 20 rounds, fetch a clip between his bursts.
  * 2. **Navigate:** a BFS over the cells (walls, solid props and push walls block; locked doors
  *    without the key block) to the goal: health below 40 HP, ammo below 20 (or the knife is up),
  *    a gun not owned yet, the gold key, the silver key, then the elevator switch (use it) or the
@@ -41,6 +42,8 @@ const UNSTICK_TICKS = 20;
 /** The boss fight: keep this band distance (tiles) — close enough for the 1..42 band, outside the 1..63 return fire. */
 const BOSS_NEAR = 2.6;
 const BOSS_FAR = 5;
+/** In the boss fight, another enemy in sight this close is fought first (tiles). */
+const ADDS_RANGE = 14;
 
 const HEALTH = new Set(['first-aid', 'food', 'ration']);
 const AMMO = new Set(['clip', 'clip-drop', 'mg', 'chaingun']);
@@ -135,6 +138,9 @@ export class FpsBot {
     const d = bandDist(target.x - p.x, target.y - p.y);
     // Out of ammo with an enemy far away: go get ammo first when there is any.
     if (noAmmo && d > 2.5 && this.findItem(g, AMMO) >= 0) return -1;
+    // Low on ammo against the boss (not in his tell or burst): fetch a clip first, like a player.
+    const boss0 = g.boss;
+    if (boss0 && target === boss0.actor && p.ammo < BOT_LOW_AMMO && target.state !== ST_TELL && target.state !== ST_ATTACK && this.findItem(g, AMMO) >= 0) return -1;
     this.goal = 'fight';
     this.goalX = Math.floor(target.x);
     this.goalY = Math.floor(target.y);
@@ -180,22 +186,35 @@ export class FpsBot {
     return held;
   }
 
-  /** The nearest living enemy in line of sight, or null. */
+  /**
+   * The nearest living enemy in line of sight, or null. In the boss fight the adds come first (a
+   * player's tactic: they die in a few bullets and hit hard): any other enemy in sight within
+   * ADDS_RANGE tiles beats the boss.
+   */
   private target(g: FpsGame): Actor | null {
     const p = g.player;
     const pool = g.actors;
+    const bossActor = g.boss?.actor ?? null;
     let best: Actor | null = null;
     let bestD = FIGHT_RANGE;
+    let add: Actor | null = null;
+    let addD = ADDS_RANGE;
     for (let i = 0; i < pool.count; i++) {
       const a = pool.actors[i];
       if (!a.alive) continue;
       const d = Math.hypot(a.x - p.x, a.y - p.y);
-      if (d >= bestD) continue;
+      if (d >= bestD && (a === bossActor || d >= addD)) continue;
       if (!lineOfSight(g.grid, g.map.doors, g.pushes.push, p.x, p.y, a.x, a.y)) continue;
-      best = a;
-      bestD = d;
+      if (bossActor && a !== bossActor && d < addD) {
+        add = a;
+        addD = d;
+      }
+      if (d < bestD) {
+        best = a;
+        bestD = d;
+      }
     }
-    return best;
+    return add ?? best;
   }
 
   /** Navigate to the current goal: returns the held mask. */

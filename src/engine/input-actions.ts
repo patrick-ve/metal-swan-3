@@ -182,7 +182,11 @@ export interface AnalogState {
   moveY: number;
 }
 
-export const TURN_MAX = 512;
+/**
+ * Half a turn per tick: a sanity cap only. A fast mouse flick (sensitivity 10, ~340 px in one
+ * tick) still turns in full; the old ±512 lost the turn of quick flicks (polish-fix 2026-10-16).
+ */
+export const TURN_MAX = 2048;
 export const MOVE_MAX = 127;
 /** Dead zone of both sticks (0..1); the rest of the range is rescaled to 0..1. */
 export const STICK_DEAD_ZONE = 0.2;

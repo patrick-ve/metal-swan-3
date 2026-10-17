@@ -124,6 +124,8 @@ export interface HudSource {
   readonly subtitle: SubtitleState;
   /** Distance walked (tiles), for the weapon bob. */
   readonly walked: number;
+  /** Px the weapon view is down because fire is off (the suit breaks; FpsGame.weaponLower). */
+  readonly weaponLower?: number;
 }
 
 /** The boss bar (§7.5; group floors fills it). */
@@ -146,13 +148,12 @@ export interface SubtitleState {
 export interface HudInfo {
   floor: number;
   score: number;
+  /** The reserve lives (`slot.lives − 1`, as the 2D HUD shows them; spec §4.13). */
   lives: number;
   /** The fps slot index (its tag `1P` / `2P` and colour). */
   slot: number;
   /** The face's character id (`fps/face/<character>`). */
   character: string;
-  reduceFlashes: boolean;
-  bossBarOn: boolean;
 }
 
 const plain: DrawOpts = { screen: true };
@@ -248,7 +249,7 @@ export function drawWeaponView(r: Renderer, s: HudSource): void {
   if (!def) return;
   const frame = s.weaponSys.viewFrame(p);
   const bob = p.speed > 0.01 ? Math.round(2 * Math.sin(s.walked * 3)) : 0;
-  const drop = s.weaponSys.viewDrop();
+  const drop = Math.max(s.weaponSys.viewDrop(), s.weaponLower ?? 0);
   const x = 192;
   const y = BAR_Y + bob + drop + 2;
   if (hasSprite(def.view)) {

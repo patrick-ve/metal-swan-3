@@ -28,9 +28,10 @@ multi-part bosses, and 2-player co-op.
   `tools/art/import-face.ts` turns it into a committed palette-index module
   (`src/game/content/fps/art/mecha-face.gen.ts`), so the game still loads no image file.
 - All sound effects and music are **synthesized** with Web Audio (no audio files). Exception
-  (user decision 2026-10-14): the start screens and mission `ams` also ship sampled sound
-  effects, music and dialogue (MP3 under `public/audio/`, generated with ElevenLabs); the synth
-  stays the fallback for every id (§5.7).
+  (user decision 2026-10-14): the start screens (with the REPORT FOR DUTY drill callouts), mission
+  `ams` and the first-person mode (the `mode:fps` group, user approval 2026-10-16) also ship
+  sampled sound effects, music and dialogue (MP3 under `public/audio/`, generated with
+  ElevenLabs); the synth stays the fallback for every id (§5.7).
 - Content and design: `docs/GAME_DESIGN.md`. IP rules: `docs/ORIGINALITY.md` (mandatory reading).
 
 ## 2. Hard rules (all agents, all code)
@@ -298,10 +299,12 @@ on an audio error.
   hat, simple FM bell), order list and loop point; scheduled with a look-ahead timer.
   **Songs must be original compositions.**
 - `voice(line)`: announcer via `speechSynthesis` if available and enabled, else a short jingle.
-- Samples (exception of 2026-10-14, start screens and `ams` only; docs/api/media.md §9.5):
+- Samples (exception of 2026-10-14: the start screens with the boot drill callouts, `ams`, and —
+  2026-10-16 — the first-person mode; docs/api/media.md §9.5, docs/api/audio-pipeline.md):
   `samples.ts` (pure) holds the manifest types, `defineSampleGroup` and `voiceKey(text)`;
   `samples.browser.ts` fetches and decodes a group (`AudioOut.loadSamples?(group)`: 'boot' in the
-  boot scene, `MissionDef.audioGroup` 'mission:ams' on the intro card). A loaded sample skins an
+  boot scene, `MissionDef.audioGroup` 'mission:ams' on the intro card, 'mode:fps' by
+  `loadFpsContent` with the fps mode only — never at boot). A loaded sample skins an
   existing sfx id, song id or spoken line; while it is missing, loading or failed the synth (or
   the speech announcer) plays. `say?(text)` voices speech bubble lines that have a sample (no
   fallback). Voice samples duck the music. NullAudio and the sim stats have no `loadSamples` /
@@ -571,7 +574,8 @@ then generates their sprites (`preloadSprites('fps/')`) and ray textures (`prepa
 behind a progress bar, time-budgeted like the boot. The lazy entries are `fps` (game data, floor
 0), `fps/art`, `fps/sound` and `fps/floors`, one file each so the art, sound and floor builders
 never share a file. Pure-data modules without `define*` calls (`content/fps/names.ts`,
-`content/fps/story.ts`) may be imported statically by scenes. A tool or test that must see every
+`content/fps/story.ts`, `content/fps/lines.ts`) may be imported statically by scenes and by
+`src/game/fps/` (ai.ts and boss.ts read `lines.ts`). A tool or test that must see every
 id (the audio report, the audio pipeline's loudness match and review page, the sample-manifest
 test) passes its own filter: `loadContent(() => true)` or an explicit `fps/…` id.
 
@@ -675,7 +679,10 @@ for a slow software-rendered machine.
 
 First-person mode (`docs/design/fps.md` §3.5): `renderView` ≤ 2 ms per 384 × 176 frame headless
 at density 1, `FpsGame.step` ≤ 0.3 ms with 60 actors, zero per-tick allocations, one stream slot
-for the view, 60 fps at k = 6.
+for the view, 60 fps at k = 6. "Zero allocations" means no objects, arrays, closures or strings
+built per tick in the simulation; V8's boxing of double arguments in non-inlined hot calls
+(`castRay`, `lineOfSight`: about 24 KB per rendered frame, measured 2026-10-16) is out of scope —
+the young-generation GC absorbs it, and the measured frame times stay far inside the budget.
 
 ## 11. Definition of done (every task)
 

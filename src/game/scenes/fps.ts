@@ -21,7 +21,7 @@ import { DYING_TICKS, FpsGame } from '../fps/game';
 import { drawBossBand, drawFeedback, drawMessages, drawStatusBar, drawWeaponView, type HudInfo } from '../fps/hud';
 import { LOCK_GOLD, LOCK_SILVER } from '../fps/map';
 import { fpsFloorByNumber } from '../fps/registry';
-import { emptyFpsInput } from '../fps/run';
+import { emptyFpsInput, reserveLives } from '../fps/run';
 import type { FloorResult, FpsFloorDef, FpsInput, FpsRun } from '../fps/types';
 import type { PlayerSlot, SlotIndex } from '../session';
 import { ContinueScene, type Continuable } from './continue';
@@ -30,8 +30,10 @@ import { PauseScene, type PauseHost } from './pause';
 
 /** The black card between a death and the restart (spec §1.6). */
 export const RESTART_CARD_TICKS = 60;
-/** The CLICK TO LOOK hint shows for the first ticks of a floor (spec §2.3). */
+/** The CLICK TO LOOK hint shows for this many ticks after a start, a resume or a restart (spec §2.3). */
 export const LOOK_HINT_TICKS = 300;
+/** The hint's row (small text, centred; below the boss band, hidden while a subtitle shows). */
+export const LOOK_HINT_Y = 34;
 /** The status bar (spec §8.6): y 176–215. */
 const BAR_Y = 176;
 
@@ -48,10 +50,12 @@ export class FpsScene implements Scene, PauseHost, Continuable {
   readonly slot: PlayerSlot;
   private readonly input: FpsInput = emptyFpsInput();
   private t = 0;
+  /** `t` when the CLICK TO LOOK hint window started (the floor start, a resume, a restart). */
+  private hintFrom = 0;
   /** Ticks left on the restart card. */
   private restartCard = 0;
   private finished = false;
-  private readonly info: HudInfo = { floor: 0, score: 0, lives: 0, slot: 0, character: 'recruit', reduceFlashes: false, bossBarOn: true };
+  private readonly info: HudInfo = { floor: 0, score: 0, lives: 0, slot: 0, character: 'recruit' };
 
   constructor(app: GameApp, run: FpsRun) {
     this.app = app;
@@ -102,6 +106,7 @@ export class FpsScene implements Scene, PauseHost, Continuable {
 
   resume(): void {
     this.inputOn(true);
+    this.hintFrom = this.t;
     this.app.input.suppress();
     this.app.audio.duckMusic?.(1);
   }
@@ -117,7 +122,10 @@ export class FpsScene implements Scene, PauseHost, Continuable {
     if (this.restartCard > 0) {
       this.restartCard--;
       // Fire and use held through the card do nothing; a held direction keeps moving.
-      if (this.restartCard === 0) input.actions.suppress(ACTION_BIT.fire | ACTION_BIT.use);
+      if (this.restartCard === 0) {
+        input.actions.suppress(ACTION_BIT.fire | ACTION_BIT.use);
+        this.hintFrom = this.t;
+      }
       return;
     }
     if (input.pausePressed || app.focusLost || input.keyPressed(padButtonCode(9))) {
@@ -181,6 +189,11 @@ export class FpsScene implements Scene, PauseHost, Continuable {
     this.app.audio.music(this.def.music, { fadeTicks: 20 });
   }
 
+  /** Only the fps slot acts on the continue screen (spec §1.10: the waiting slot cannot act). */
+  acceptsSlot(i: SlotIndex): boolean {
+    return i === this.run.slot;
+  }
+
   /** The fps slot's player may use any start key or pad Start; the waiting slot cannot continue here. */
   startPressed(i: SlotIndex, input: InputManager): boolean {
     if (i !== this.run.slot) return false;
@@ -191,25 +204,38 @@ export class FpsScene implements Scene, PauseHost, Continuable {
     r.begin(0x000000ff);
     if (this.restartCard > 0) {
       centerText(r, `FLOOR ${this.def.number}`, 92, PAL.snow[3], 'big');
-      centerText(r, `LIVES ${this.slot.lives}`, 116, PAL.stone[3]);
+      centerText(r, `LIVES ${reserveLives(this.slot)}`, 116, PAL.stone[3]);
       return;
     }
     const g = this.game;
     g.render(this.view);
     r.image(this.view.buf, 0, 0, view);
-    const app0 = this.app;
-    drawWeaponView(r, g);
-    drawFeedback(r, g, app0.settings.reduceFlashes);
+    const app = this.app;
+    // The death-cam shows his fall: no weapon view in front of it (spec §7.3).
+    if (g.state !== 'deathcam') drawWeaponView(r, g);
+    drawFeedback(r, g, app.settings.reduceFlashes);
     this.drawDeath(r);
-    drawBossBand(r, g, app0.settings.bossBar);
+    drawBossBand(r, g, app.settings.bossBar);
     drawStatusBar(r, g, this.hudInfo());
     drawMessages(r, g);
-    const app = this.app;
-    if (app.settings.mouseLook && !app.pointerLocked && this.t < LOOK_HINT_TICKS && blinkOn(this.t)) {
-      centerText(r, 'CLICK TO LOOK WITH THE MOUSE', 34, PAL.snow[3]);
-    }
+    if (this.lookHintOn()) centerText(r, 'CLICK TO LOOK WITH THE MOUSE', LOOK_HINT_Y, PAL.snow[3]);
+    // The death-cam's fade covers the whole screen (view, HUD and bar).
+    if (g.fade > 0) r.fade(0x000000ff, g.fade);
     if (app.debug.enabled && !app.debug.hitboxes) this.drawMap(r);
     app.debug.draw(r, null);
+  }
+
+  /**
+   * The CLICK TO LOOK hint (spec §2.3): while MOUSE LOOK is on, the lock is not held and the floor
+   * plays, for LOOK_HINT_TICKS after the floor starts, after a pause / continue (the lock is gone
+   * then) and after the restart card; never over a taunt subtitle.
+   */
+  lookHintOn(): boolean {
+    const app = this.app;
+    const g = this.game;
+    if (!app.settings.mouseLook || app.pointerLocked || g.state !== 'play') return false;
+    if (g.subtitle.ticks > 0) return false;
+    return this.t - this.hintFrom < LOOK_HINT_TICKS && blinkOn(this.t);
   }
 
   /** Death (spec §4.9): red fade over the first 30 ticks, black over ticks 60–89. */
@@ -226,7 +252,7 @@ export class FpsScene implements Scene, PauseHost, Continuable {
     const info = this.info;
     info.floor = this.def.number;
     info.score = this.slot.score;
-    info.lives = this.slot.lives;
+    info.lives = reserveLives(this.slot);
     info.slot = this.run.slot;
     info.character = this.slot.character;
     return info;

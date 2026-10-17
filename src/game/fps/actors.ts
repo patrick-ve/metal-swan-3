@@ -23,8 +23,6 @@ export const ST_RECOVER = 5;
 export const ST_PAIN = 6;
 export const ST_DIE = 7;
 export const ST_DEAD = 8;
-export const STATE_NAMES: readonly string[] = ['stand', 'path', 'chase', 'tell', 'attack', 'recover', 'pain', 'die', 'dead'];
-
 /** 8 move directions, k × 45° clockwise from east (y grows south). */
 export const DIR8_DX: readonly number[] = [1, 1, 0, -1, -1, -1, 0, 1];
 export const DIR8_DY: readonly number[] = [0, 1, 1, 1, 0, -1, -1, -1];

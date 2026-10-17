@@ -9,16 +9,17 @@
  *   with line of sight (phase 2: 30), each tick with chance 24/256; always at 120 ticks. Without
  *   line of sight he holds; after 180 ticks he walks to the last place he saw the player.
  *   He never leaves the arena (the leash: his room, without its one-cell pockets).
- * - Events: suit 75 % → taunt 2; 50 % → taunt 3 + reinforcements (2 / 3 / 4 SS from the spawn
- *   bays, not counted for kill %); 0 → the break (120 ticks, invulnerable, act 5–8, 25,000), the
+ * - Events: suit 75 % → taunt 2; 50 % → taunt 3 + the bay farther from the player opens; 25 % →
+ *   the other bay (2 / 3 / 4 SS in all, not counted for kill %; each stands 30 ticks, then
+ *   shouts and chases); 0 → the break (120 ticks, invulnerable, act 5–8, 25,000), the
  *   wreck (a solid prop), he jumps out next to it toward the player, taunt 4, two clips spill.
  *   On foot 50 % → taunt 5; 0 → 50,000 and the death-cam (FpsGame.startDeathCam, §7.3).
  *
  * Deterministic (game rng only); no allocations per tick (the path search reuses its arrays).
  */
 import { angleTo, angDelta, CELL_DOOR, CELL_PROP, CELL_SOLID } from '../../engine/ray';
+import { getSampleGroup, voiceKey } from '../../engine/samples';
 import { BOSS_TAUNTS } from '../content/fps/lines';
-import type { Difficulty } from '../session';
 import {
   ACTOR_TYPES,
   BOSS_FOOT,
@@ -63,6 +64,13 @@ export const BOSS_KEEP_DIST = 2;
 export const BREAK_TICKS = 120;
 /** A reinforcement point this close to the player (Chebyshev, tiles) stays empty. */
 export const SPAWN_CLEAR = 3;
+/**
+ * A reinforcement SS stands this many ticks after it comes out (the bay door opens, the horn
+ * sounds), then shouts and chases: its first shot comes ≥ 30 + 20 (tell) ticks after the spawn.
+ */
+export const REINFORCE_REACT = 30;
+/** The message when a bay opens. */
+export const REINFORCE_MESSAGE = 'REINFORCEMENTS!';
 export const BREAK_FRAME = 5;
 /** The death-cam (§7.3): 150 slow ticks (one step per 3), 60 hold, 30 fade. */
 export const DEATHCAM_SLOW = 150;
@@ -89,7 +97,10 @@ export class FpsBoss {
   lost = 0;
   /** Taunts already given (bit n = taunt n + 1). */
   taunts = 0;
-  reinforced = false;
+  /** Reinforcement waves already sent (bit 0 = 50 %, bit 1 = 25 %). */
+  reinforced = 0;
+  /** The bay of the first wave (0 = west half of the map, 1 = east), -1 = not chosen yet. */
+  firstBay = -1;
   /** The wreck cell (-1 = none yet). */
   wreckX = -1;
   wreckY = -1;
@@ -310,8 +321,9 @@ export class FpsBoss {
       if (a.hp * 4 <= a.maxHp * 3) this.taunt(1);
       if (a.hp * 2 <= a.maxHp) {
         this.taunt(2);
-        this.reinforce();
+        this.reinforce(0);
       }
+      if (a.hp * 4 <= a.maxHp) this.reinforce(1);
       if (a.hp <= 0) this.startBreak();
     } else {
       g.sound.at('fps/enemy/hurt', a.x, a.y);
@@ -345,28 +357,49 @@ export class FpsBoss {
   }
 
   /**
-   * 50 % suit HP: the bay doors open and 2 / 3 / 4 SS come out (not counted for kill %). A spawn
-   * point within SPAWN_CLEAR cells of the player stays empty (no spawn behind the player).
+   * Reinforcements (§7.2; 2 / 3 / 4 SS by difficulty, not counted for kill %) in two waves: at 50 %
+   * suit HP the bay farther from the player opens, at 25 % the other one (wave 1). A spawn point
+   * within SPAWN_CLEAR cells of the player stays empty (no spawn at the player's back). Each SS
+   * stands REINFORCE_REACT ticks in the open bay door (the horn, the door, the message), then
+   * shouts and chases.
    */
-  reinforce(): void {
-    if (this.reinforced) return;
-    this.reinforced = true;
+  reinforce(wave: 0 | 1): void {
+    const bit = 1 << wave;
+    if (this.reinforced & bit) return;
+    this.reinforced |= bit;
     const g = this.g;
+    const p = g.player;
     const rank = DIFF_INDEX[g.difficulty];
+    const half = this.w / 2;
+    if (this.firstBay < 0) {
+      let west = -1;
+      let east = -1;
+      for (const s of g.map.spawns) {
+        if (DIFF_INDEX[s.minDiff] > rank) continue;
+        const d = Math.max(Math.abs(p.x - s.x - 0.5), Math.abs(p.y - s.y - 0.5));
+        if (s.x < half) west = Math.max(west, d);
+        else east = Math.max(east, d);
+      }
+      this.firstBay = west >= east ? 0 : 1;
+    }
+    const bay = wave === 0 ? this.firstBay : 1 - this.firstBay;
+    let n = 0;
     for (const s of g.map.spawns) {
-      if (DIFF_INDEX[s.minDiff] > rank) continue;
-      // Never spawn at the player's back: a point within 3 cells of the player (in its bay) stays empty.
-      if (Math.max(Math.abs(g.player.x - s.x - 0.5), Math.abs(g.player.y - s.y - 0.5)) < SPAWN_CLEAR) continue;
+      if (DIFF_INDEX[s.minDiff] > rank || (s.x < half ? 0 : 1) !== bay) continue;
+      if (Math.max(Math.abs(p.x - s.x - 0.5), Math.abs(p.y - s.y - 0.5)) < SPAWN_CLEAR) continue;
       const cell = this.freeCellNear(s.x, s.y, 1, false);
       if (cell < 0) continue;
       const x = cell % this.w;
       const y = (cell / this.w) | 0;
-      const ss = g.actors.spawn('ss', x, y, angleTo(g.player.x - x - 0.5, g.player.y - y - 0.5), g.difficulty, false);
+      const ss = g.actors.spawn('ss', x, y, angleTo(p.x - x - 0.5, p.y - y - 0.5), g.difficulty, false);
       if (!ss) continue;
-      ss.state = ST_CHASE;
+      n++;
+      // It stands in the open door, then shouts and chases (ai.ts reactTick → wake).
+      ss.state = ST_STAND;
       ss.timer = 0;
-      ss.seenX = Math.floor(g.player.x);
-      ss.seenY = Math.floor(g.player.y);
+      ss.react = REINFORCE_REACT;
+      ss.seenX = Math.floor(p.x);
+      ss.seenY = Math.floor(p.y);
       // The bay doors (within 3 cells of a spawn point) open.
       for (let d = 0; d < g.doors.count; d++) {
         const dx = g.map.doors.x[d] - s.x;
@@ -374,7 +407,12 @@ export class FpsBoss {
         if (Math.max(Math.abs(dx), Math.abs(dy)) <= 3) g.doors.open(d);
       }
     }
-    g.sound.play('fps/boss/horn');
+    if (n > 0) {
+      g.sound.play('fps/boss/horn');
+      // one message when both waves come in the same moment (debug F4: a fatal suit hit)
+      const last = g.messages.length ? g.messages[g.messages.length - 1] : null;
+      if (!last || last.text !== REINFORCE_MESSAGE || g.tick - last.tick > 30) g.message(REINFORCE_MESSAGE);
+    }
   }
 
   // --------------------------------------------------------------------------------- break
@@ -420,6 +458,8 @@ export class FpsBoss {
     this.wreckX = wx;
     this.wreckY = wy;
     g.addProp('fps/boss/wreck', wx, wy, true);
+    // The wreck is solid: off the leash, so the path search walks around it (never stuck behind it).
+    this.leash[wy * this.w + wx] = 0;
     // An item under the wreck moves to a free cell beside it.
     const it = g.items;
     for (let k = 0; k < it.count; k++) {
@@ -662,9 +702,15 @@ export class FpsBoss {
   }
 }
 
-/** Subtitle ticks of a line: 150, or about the clip length + 30 (≈ 5 ticks per letter). */
+/**
+ * Subtitle ticks of a spoken line (§7.4): the longest of 150, the text estimate (30 + 5 per
+ * letter) and the voice clip + 30 ticks (the clip's duration from the `mode:fps` sample group by
+ * `voiceKey`), so no subtitle ends before its voice. Without a sample the estimate stands.
+ */
 export function subtitleTicks(text: string): number {
-  return Math.max(SUBTITLE_TICKS, 30 + text.length * 5);
+  const est = Math.max(SUBTITLE_TICKS, 30 + text.length * 5);
+  const dur = getSampleGroup('mode:fps')?.voice?.[voiceKey(text)]?.duration ?? 0;
+  return Math.max(est, Math.round(dur * 60) + 30);
 }
 
 /**
@@ -727,12 +773,6 @@ export function installBoss(g: FpsGame): FpsBoss | null {
   pool.bossThink = () => boss.think();
   pool.bossDamage = (_g, _a, dmg) => boss.damage(dmg);
   return boss;
-}
-
-/** Boss HP of a difficulty (both phases; tools and docs). */
-export function bossHpTotal(d: Difficulty): number {
-  const i = DIFF_INDEX[d];
-  return BOSS_HP[1][i] + BOSS_HP[2][i];
 }
 
 export { ST_STAND };

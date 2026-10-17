@@ -40,9 +40,10 @@ describe('floor validators (§5.3)', () => {
     expect(f1.easy?.enemies).toBe(22);
     expect(f1.hard?.enemies).toBe(46);
     const f2 = validateFloor(getFpsFloor('fps-2')!).budget;
-    expect(f2.normal).toMatchObject({ enemies: 5, hp: 2001, rounds: 166, arenaRounds: 175, arenaNeed: 144 });
-    expect(f2.easy).toMatchObject({ arenaRounds: 171, arenaNeed: 110 });
-    expect(f2.hard).toMatchObject({ arenaRounds: 179, arenaNeed: 178 });
+    // + the lift clip (all) and the arena cover clips (2 on EASY / NORMAL, 1 on HARD; lead 2026-10-16).
+    expect(f2.normal).toMatchObject({ enemies: 5, hp: 2001, rounds: 190, arenaRounds: 191, arenaNeed: 144 });
+    expect(f2.easy).toMatchObject({ arenaRounds: 187, arenaNeed: 110 });
+    expect(f2.hard).toMatchObject({ arenaRounds: 187, arenaNeed: 178 });
   });
 
   it('a small valid floor passes', () => {

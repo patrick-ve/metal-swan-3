@@ -18,6 +18,7 @@ import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { blinkOn, centerText, drawPanel, PLAYER_COLORS, uiText, type GameApp } from '../app';
 import { fpsFloorByNumber, fpsFloorId } from '../fps/registry';
+import { AMS_BONUS_KEY } from '../fps/run';
 import type { FloorResult, FpsRun } from '../fps/types';
 import type { PlayerSlot } from '../session';
 import { fpsTallyDone } from './fps-route';
@@ -29,8 +30,6 @@ export const TALLY_PAR_POINTS = 500;
 export const FPS_TALLY_LINES_AT = 40;
 export const FPS_TALLY_LINE_TICKS = 30;
 export const FPS_TALLY_AUTO_TICKS = 600;
-/** The campaign record of the waiting slot's / the fps slot's ams tally (group flow, §1.2). */
-export const AMS_BONUS_RECORD = 'fps/ams-bonus';
 
 /** One tally line: `value` is the shown figure (KILLS 87%), `points` the bonus (null = info only / none). */
 export interface FpsTallyLine {
@@ -155,7 +154,7 @@ export class FpsTallyScene implements Scene {
     this.name = def?.name ?? `FLOOR ${result.floor}`;
     const slotIndex = run.slot;
     this.slot = session ? session.slots[slotIndex] : (null as unknown as PlayerSlot);
-    const bonus = result.floor === 1 ? session?.records.get<readonly [number, number]>(AMS_BONUS_RECORD) : undefined;
+    const bonus = result.floor === 1 ? session?.records.get<readonly [number, number]>(AMS_BONUS_KEY) : undefined;
     this.tally = fpsTally(result, {
       par: def?.par ?? 0,
       mul: session?.mods.tallyScore ?? 1,

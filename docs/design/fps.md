@@ -213,7 +213,7 @@ export function fpsLoadState(): { readonly registered: boolean; readonly ready: 
    bridge the load has run since the bridge's constructor, so the bar is usually full already.
 2. **Floor card** (at least 120 ticks, `PRESS START` after 60, auto after 180): `MODE_TITLE` (big,
    gold, C, y 40); `FLOOR 1` (big ×2, C, y 76); the floor name, e.g. `SUPPLY DEPOT` (small, C,
-   y 100); `LIVES n` (small, C, y 118); on floor 1 the controls hint (small, C, y 150–166, 2 lines:
+   y 100); `LIVES n` (small, C, y 118; n = the reserve lives `slot.lives − 1`, §4.13); on floor 1 the controls hint (small, C, y 150–166, 2 lines:
    `WASD MOVE  ARROWS OR MOUSE TURN` / `SPACE FIRE  E OPEN  1-4 WEAPONS`); when the waiting slot
    is joined: `2P GUARDS THE SWAN` (small, P2 gold, C, y 178).
 3. On the first entry of a floor (not on a restart): `session.startMission('fps-' + floor)`
@@ -243,7 +243,7 @@ export class FpsScene implements Scene, PauseHost, Continuable { constructor(app
   `app.input.analog` and call `game.step(input)`. Debug keys (§1.11). Game events:
   - `floorComplete(result)` → `fpsFloorDone(app, run, result)` (§1.7).
   - `playerDead` → `slot.loseLife()`. Lives left: `game.restart()` (§4.11) with a 60-tick black
-    card `FLOOR n` + `LIVES n`. Last life (`loseLife` returned true): `slot.gameOver = true`, push
+    card `FLOOR n` + `LIVES n` (reserve lives, §4.13). Last life (`loseLife` returned true): `slot.gameOver = true`, push
     `ContinueScene(app, this)`.
 - **draw:** `r.begin(0x000000ff)`; `r.image(view.buf, 0, 0, { screen: true, stream: true })`; the
   weapon view; the HUD (§8.6); overlays (damage flash, death fade, messages, boss bar, subtitles,
@@ -411,7 +411,7 @@ export interface AnalogState { turn: number; moveX: number; moveY: number }
 ```
 
 - Cleared every tick. `turn`: integer angle units this tick (mouse + right stick), clamped to
-  ±512. `moveX` (strafe, + = right) and `moveY` (+ = forward): integers −127..127.
+  ±2048 (half a turn: a sanity cap that never cuts a real mouse flick). `moveX` (strafe, + = right) and `moveY` (+ = forward): integers −127..127.
 - Gamepad: left stick → `moveX` / `moveY` (after a 0.2 dead zone, rescaled to 0..1, then × 127);
   right stick X → `turn = round(48 × s²·sign)` units/tick after a 0.2 dead zone (rescaled to
   0..1). All values quantised to integers. In `fpsMode` every connected gamepad feeds slot 0
@@ -446,7 +446,9 @@ export interface AnalogState { turn: number; moveX: number; moveY: number }
   lock does not fire. When the lock is lost while it is wanted (Esc, alt-tab), main.ts sets
   `app.focusLost = true` → FpsScene pauses. When `pointerLockWanted` turns false, main.ts calls
   `document.exitPointerLock()`. While MOUSE LOOK is on and the lock is not held, the view shows
-  `CLICK TO LOOK WITH THE MOUSE` (small, C, y 34, blink; below the boss band, clear of the weapon view and the messages) for its first 300 ticks.
+  `CLICK TO LOOK WITH THE MOUSE` (small, C, y 34, blink; below the boss band, clear of the weapon view and the messages) for 300 ticks after the floor starts, after every resume (a pause or a
+  continue drops the lock) and after the restart card; only while the floor plays and never while
+  a taunt subtitle shows (rows 18–35).
 - Headless runs never lock; the keyboard always works.
 
 ## 3. Engine contract (`src/engine/ray/`, group `ray`)
@@ -686,8 +688,10 @@ choices (face glance, blood size) use a separate `fxRng`.
   owned or have no ammo (the knife always counts). Out of ammo: after the last shot the knife comes
   up (G); the first ammo pickup while on the knife raises the best owned gun (G).
 - **Target (G-shaped):** the nearest living actor in front whose centre is at most
-  `max(0.35, 0.06 × d)` tiles from the aim line, with `lineOfSight` and not behind a wall at the
-  centre column.
+  `max(0.35, 0.06 × d, its box half-size)` tiles from the aim line (guards 0.4, dogs 0.3, the mech
+  0.6: its arms and shoulders count), not behind a wall at the centre column, and with
+  `lineOfSight` to its centre **or** to the aim-line point beside it (the part of the body seen
+  past a pillar edge is hit). A hitscan test checks the mech at offset 0.45.
 - **Damage (player → actor), `d` = max(|dx|, |dy|) in tiles (G):**
 
   | Band | Pistol / MG / chaingun per bullet | Knife |
@@ -720,7 +724,7 @@ Collision (I): every actor is a square box with half-size 0.4 tiles (dogs 0.3) f
   a new full tell. A test checks every damaging enemy event for ≥ 18 tell ticks before it.
 - **Attack chance (G):** in `chase`, with `lineOfSight` and a free token, each tick
   `rng.int(0, 255) < floor(19 / max(1, floor(d)))`; adjacent (`d < 1`) → always. Dogs attack when
-  `d ≤ 1.0`.
+  `d ≤ BITE_REACH` (1.5, see the table).
 - **Attack tokens (I, GDD §4.11.4):** at most 3 / 4 / 6 actors in `tell` or `attack` at once.
 - **Off-view fire (G; replaces GDD §4.11 rule 3 in this mode, §0):** an actor outside the
   player's view may attack. Its tell sound always plays at volume ≥ 0.5, panned (§9.1), and its
@@ -861,7 +865,9 @@ centre, right; a new glance every 30–90 ticks by fxRng, weights 1:2:1). Priori
 - Kill scores (§4.3), treasure (§4.5), the boss (§7.2), the tally (§4.12). No knife bonus in this
   mode.
 - A death: `slot.loseLife()` (`session.ts:313-321`). The HUD shows the same life count as the 2D
-  HUD.
+  HUD: the reserve lives `slot.lives − 1` (`reserveLives`, `src/game/fps/run.ts`) — the status
+  bar, the floor card and the restart card alike, as the ams HUD's icons and the final tally's
+  LIVES LEFT (lead decision 2026-10-16; a scene test checks `X2` / `LIVES n`).
 
 ## 5. Map format (`src/game/fps/map.ts`, `parseFloor`)
 
@@ -947,10 +953,11 @@ must point at a cell that holds that thing; `turn` and `spawn` entries point at 
     × (boss HP of both phases + reinforcement HP) / 19`. Arena rounds = 8 × the clips inside the
     arena (alcoves and pillar clips) + 8 × the 2 wreck clips (§7.2); drops = 4 × the
     reinforcements (19 = the average damage per bullet over the arena's mixed ranges, misses
-    included). Values: EASY 99 + 64 + 8 = 171 ≥ 1.3 × 1600 / 19 = 110; NORMAL 99 + 64 + 12 =
-    175 ≥ 1.3 × 2100 / 19 = 144; HARD 99 + 64 + 16 = 179 ≥ 1.3 × 2600 / 19 = 178. The player can
-    reach 99 before the arena on every attempt: the antechamber, supply and locker rooms hold 102
-    rounds outside the secrets.
+    included). Values (with the arena cover clips, lead decision 2026-10-16): EASY 99 + 80 + 8 =
+    187 ≥ 1.3 × 1600 / 19 = 110; NORMAL 99 + 80 + 12 = 191 ≥ 1.3 × 2100 / 19 = 144; HARD 99 + 72
+    + 16 = 187 ≥ 1.3 × 2600 / 19 = 178. The player can reach 99 before the arena on every attempt:
+    the lift, antechamber, supply and locker rooms hold 110 rounds outside the secrets. The fight
+    spends no round while the suit breaks: fire is off then (§7.2).
 
 ## 6. Floor plans (original layouts)
 
@@ -984,9 +991,14 @@ A), the east room (silver door), the elevator (`_` door, switch `X` at (19, 2)),
 
 ### 6.1 Floor 1 — `fps-1` "SUPPLY DEPOT" (48 × 48)
 
-Ceiling `PAL.steel[0]`, floor `PAL.stone[1]`, music `fps-floor`, par 210 s. Walls: border and
-band walls `A`; rows `y = 13` and `y = 30` and columns as listed. Three bands: north (y 1–12),
-middle (y 14–29), south (y 31–46).
+Ceiling `PAL.steel[0]`, floor `PAL.stone[1]`, music `fps-floor`, par 210 s. Walls: rows `y = 13`
+and `y = 30` and columns as listed. Three bands: north (y 1–12), middle (y 14–29), south (y 31–46).
+**Each room has its own wall letter** (polish-fix 2026-10-16; a shared wall takes one of its two
+rooms' letters): rail yard `C` brick, barracks `F` wood, mess hall `M` tile, fuel store `P` steel +
+pipes, motor pool `H` steel, warehouse `E` crates, the officers' wing and the corridor `A` concrete
+with the `B` banners (the office keeps `F` / `G`), the freight car `L`. A secret closet's walls take
+the room's letter where the room sees them (a push wall takes its neighbours' letter, §5.1), so no
+secret shows by its texture; the closets' hidden back walls are `N` cellar stone.
 
 **Route (the forced key loop):** freight car → rail yard (a gold door north, locked) → barracks →
 mess hall → fuel store → motor pool (gold key) → gold door → warehouse (silver key; its second
@@ -1034,23 +1046,27 @@ Ceiling `PAL.navy[0]`, floor `PAL.steel[1]`, music `fps-floor` until the boss wa
 
 | Room | Interior | Doors | Contents (E / N / H) |
 |---|---|---|---|
-| Lift (arrival, `Y` walls) | x 14–17, y 28–30 | `_` (15, 27) north | start `^` (15, 29) |
+| Lift (arrival, `Y` walls) | x 14–17, y 28–30 | `_` (15, 27) north | start `^` (15, 29); clip (17, 29) on every difficulty (a restart with pistol + 8 is not hopeless on HARD; lead decision 2026-10-16) |
 | Antechamber | x 9–22, y 21–26 | `-` (15, 20) north to the arena; `\|` (8, 24) west; `\|` (23, 24) east | guards 2/2/3, SS 0/1/2; clips (10, 26), (21, 26), (12, 22); banner poles `U` (9, 21), (22, 21) |
 | Supply room | x 1–7, y 21–27 | — | **chaingun** `y` (4, 26) (all difficulties); clips × 6 (1–6, 21); first aid (1, 27), (7, 27); food (7, 21); dog 0/1/1 |
 | Locker room | x 24–30, y 21–27 | — | officer 1/1/2; clips (30, 21), (30, 22), (30, 23); food (24, 27) |
-| Arena | 18 × 18: x 7–24, y 2–19 | spawn bay doors `\|` (6, 10), (25, 10) | MechaHitler `@` (15, 4) facing S; four 2 × 2 pillars (`K` hangar + banner faces) at x 10–11 / 20–21 × y 6–7 / 14–15; alcoves (one cell in the side walls) (6, 4) first aid, (25, 4) clip, (6, 16) clip, (25, 16) first aid; clips (14, 18), (17, 18), and between the pillar pairs (10, 10), (21, 10); banner poles `U` in the corners (8, 3), (23, 3), (8, 18), (23, 18) |
+| Arena | 18 × 18: x 7–24, y 2–19 | spawn bay doors `\|` (6, 10), (25, 10) | MechaHitler `@` (15, 4) facing S; four 2 × 2 pillars (`K` hangar + banner faces) at x 10–11 / 20–21 × y 6–7 / 14–15; alcoves (one cell in the side walls) (6, 4) first aid, (25, 4) clip, (6, 16) clip, (25, 16) first aid; clips (14, 18), (17, 18), and between the pillar pairs (10, 10), (21, 10); cover clips behind the south pillars (11, 16) (all) and (20, 16) (EASY and NORMAL; lead decision 2026-10-16); banner poles `U` in the corners (8, 3), (23, 3), (8, 18), (23, 18) |
 | Spawn bays | x 3–5, y 9–11 (west), x 26–28, y 9–11 (east) | the arena doors | `spawn: 'ss'` points: (4, 10) all, (27, 10) all, (4, 9) NORMAL+, (27, 11) HARD |
 
 Secrets: S1 push wall (3, 28), pushed south from the supply room (3, 27); closet x 1–6, y 29–30 →
 **golden record** (1, 30), 1UP (6, 30). S2 push wall (27, 28), pushed south from the locker room
 (27, 27); closet x 24–30, y 29–30 → music box (25, 30), clips (30, 29), (30, 30).
 
+Walls: the arena and the outer hangar `J` / `K`; the antechamber `H` steel, the supply room `P`
+steel + pipes, the locker room `O` sandbags, the lift `Y`, the closets' hidden walls `N` (as §6.1:
+push walls blend in).
+
 Sketch (not a contract): `tmp/fps-spec/floor2-plan.txt`. Enemies (not the boss): EASY 3, NORMAL 5,
 HARD 8. The 3-cell gaps between the pillars and the walls let the mech (radius 0.6) pass. The arena door is never locked; the mech cannot leave the
-arena (its leash = the arena rectangle). Ammo (NORMAL, secrets not counted): start 8 + 18 clips
-(144) + chaingun 6 + drops ½ × 16 = 166 rounds × 22 = 3652 ≥ 1.5 × 2001 HP = 3002; plus the carry
+arena (its leash = the arena rectangle). Ammo (NORMAL, secrets not counted): start 8 + 21 clips
+(168) + chaingun 6 + drops ½ × 16 = 190 rounds × 22 = 4180 ≥ 1.5 × 2001 HP = 3002; plus the carry
 from floor 1. The fight itself is checked by §5.3 rule 11 (it passes on every difficulty with the
-6 arena clips and the 2 wreck clips).
+8 / 8 / 7 arena clips and the 2 wreck clips).
 
 ## 7. MechaHitler
 
@@ -1105,20 +1121,33 @@ from floor 1. The fight itself is checked by §5.3 rule 11 (it passes on every d
   line of sight is lost. So the gap from the end of one burst to the start of the next tell is at
   least recover + 45 ticks (90 in phase 1, 70 in phase 2), about 2.7 s per full phase-1 cycle. A
   boss test checks the minimum gap and the 120-tick cap.
-- **Events:** 75 % suit HP → taunt 2. **50 % suit HP → taunt 3 + reinforcements:** the bay doors
-  open and 2 / 3 / 4 SS (E / N / H) come out of the spawn points. They count for no kill %.
+- **Events:** 75 % suit HP → taunt 2. **50 % suit HP → taunt 3 + the first reinforcement wave; 25 %
+  → the second:** 2 / 3 / 4 SS (E / N / H) in all come out of the spawn points — at 50 % the bay
+  (west / east half of the map) farther from the player, at 25 % the other one (polish-fix
+  2026-10-16: all at once from both sides was the floor's main damage source, mostly off-view).
+  A point within 3 cells of the player stays empty. The bay door opens, the horn sounds and the
+  message `REINFORCEMENTS!` shows; each SS stands 30 ticks in the open door, then shouts and
+  chases (its first shot comes ≥ 50 ticks after it appears). They count for no kill %.
 - **Suit breaks (0 suit HP):** 120 ticks, invulnerable: the suit stops, sparks, `fps/boss/break`,
-  the frames `act` 5–8, then the wreck appears and he jumps out on the cell next to the wreck
+  the frames `act` 5–8 — and **the player's fire is off**: the weapon view goes down (60 px, 8 px
+  per tick) and comes back up after the break, so no round is spent on the invulnerable suit (a
+  boss test holds the chaingun's fire through the break: 0 rounds), then the wreck appears and he jumps out on the cell next to the wreck
   nearest to the player; taunt 4; phase 2 starts. **Two clips (`clip`, +8 each) spill out of the
   wreck** onto the two free cells next to it farthest from the boss (I; §5.3 rule 11 counts them).
-- **Phase 2:** 50 % HP → taunt 5.
+- **Phase 2:** 50 % HP → taunt 5. The wreck cell leaves his leash when it appears, so he walks
+  round it (a boss test: he reaches a player behind the wreck).
+- **Hits on the suit** show `fps/fx/sparks` (gold / orange, at his chest; never blood); the man on
+  foot bleeds (`fps/fx/spurt`).
 
 ### 7.3 Death-cam (I)
 
 At 0 HP in phase 2: all other actors freeze (no more attacks), the world runs in slow motion (one
 game step every 3rd tick) for 150 ticks, the camera turns to face him over 30 ticks, his `die`
 frames play (red blood), taunt 6 plays with its subtitle, `fps/boss/fall` at the last die frame.
-Then 60 ticks hold, a 30-tick fade, `floorComplete`. Input is off during the death-cam.
+Then 60 ticks hold, a 30-tick fade, `floorComplete`. Input is off during the death-cam. The weapon
+view is hidden (lead decision 2026-10-16), the camera moves in along the clear line to 2.8 tiles
+from him over 60 ticks (he fills about 100 px), and the fade covers the whole screen (the view,
+the boss band and the status bar).
 
 ### 7.4 Taunts (original lines; voice §9.3; subtitle small, C, y 18, 150 ticks)
 
@@ -1138,7 +1167,9 @@ checks this, and the shipped clips are found by `voiceKey`). Taunts 4–6 stay M
 
 None of these is a line of the reference game or a quote of the real person. A two-line
 subtitle uses rows 18–35 (the `\n` splits it); the subtitle stays 150 ticks or the clip length +
-30 ticks, whichever is longer.
+30 ticks, whichever is longer (`subtitleTicks`: the clip's duration comes from the `mode:fps`
+sample group by `voiceKey(text)`; without a sample the text estimate 30 + 5 per letter; a boss
+test checks all six taunts against the manifest).
 
 ### 7.5 Boss bar
 
@@ -1176,6 +1207,11 @@ traced. Blood uses `PAL.red[0..2]` only.
 | Y | `fps/wall/elevator` | brushed-steel lift panels |
 | — | `fps/door/plain`, `fps/door/gold`, `fps/door/silver`, `fps/door/lift`, `fps/door/edge` | steel sliding doors; locked doors carry a gold / silver lock plate; `edge` = the door jamb |
 
+No dark horizontal joint on the eye line: at eyeZ 0.5 the texture rows v 28–36 land on the horizon
+row at every distance, so a joint there joins into one flat line across every wall in view. The
+plate, shuttering and sheet joints sit at v 20 / 44 / 46 (an art test checks the rows of `A`, `B`,
+`H`, `J`, `K`, `P`).
+
 ### 8.2 Billboards (`defineRayBillboard`)
 
 | Id | Size | Yaws | Frames |
@@ -1186,13 +1222,21 @@ traced. Blood uses `PAL.red[0..2]` only.
 | `fps/dog/act` | 64 | 1 | 6: tell (crouch), bite, die 1–3, dead |
 | `fps/boss/mech/move` | 96 (world 1.5) | 8 | 5: stand, walk 1–4 |
 | `fps/boss/mech/act` | 96 (world 1.5) | 1 | 9: tell 1–2, fire 1–2, pain, break 1–4 |
-| `fps/boss/foot/move` | 64 | 8 | 5: stand, walk 1–4 |
-| `fps/boss/foot/act` | 64 | 1 | 11: tell, fire 1–2, pain, die 1–6, dead |
+| `fps/boss/foot/move` | 64 (world 1.15: a little bigger than the troops) | 8 | 5: stand, walk 1–4 |
+| `fps/boss/foot/act` | 64 (world 1.15) | 1 | 11: tell, fire 1–2, pain, die 1–6, dead |
 | `fps/boss/wreck` | 96 (world 1.5) | 1 | 1 |
 | `fps/item/<id>` (every §4.5 id + `clip-drop`) | 64 | 1 | 1 (the item in the lower third) |
 | `fps/prop/<id>`: `barrel`, `crates`, `pillar`, `table`, `banner-pole` (a flag with the historical symbol), `lamp-stand`, `sandbags`, `oil-drum`, `ceiling-lamp`, `debris`, `chains` | 64 | 1 | 1 |
 | `fps/fx/blood-pool` | 64 | 1 | 3: small, medium, large (a floor decal, bottom rows only) |
-| `fps/fx/spurt` | 64 | 1 | 3: a hit spurt at chest height |
+| `fps/fx/spurt` | 64 | 1 | 3: a hit spurt at chest height (a solid core and 20–35 drops) |
+| `fps/fx/sparks` | 96 (world 1.5) | 1 | 3: the suit's hit and break sparks at its chest (gold, orange, white; phase 1 only — the suit never bleeds) |
+
+**Attacks read at range (GDD §4.11 fairness):** the tell (`act` 0) holds the gun in a side-aim
+(the barrel angled across the body in bright steel) with a 2-texel glint at its tip; the shot
+(`act` 1) is a filled bloom with a white core (radius 5–6.5). The mech's tell lights the horn bells
+(warm, then glowing orange); its burst flashes all four horns (the pair of the frame radius 8, the
+other 5). The boss on foot carries two bright barrels splayed out at hip level (world 1.15). The
+dog is drawn a little from above (head-on its back and pricked ears show) and every run frame moves.
 
 Uniforms: 1940s style, our own drawing — `guard` field grey with a cap; `officer` darker
 grey-green coat, peaked cap, white gloves; `ss` black coat and helmet; no armbands and no
@@ -1201,7 +1245,11 @@ symbols on uniforms (§0). The 3D joint rig `src/game/art/figure3d.ts` renders t
 ### 8.3 Weapon views (normal sprites, screen space)
 
 `fps/view/knife`, `fps/view/pistol`, `fps/view/mg`, `fps/view/chaingun`: 112 × 80, anchor
-bottom-centre, drawn at (192, 176 + bob) with bob ±2 px while moving. 4 frames: idle, fire A
+bottom-centre, drawn at (192, 176 + bob) with bob ±2 px while moving. The guns sit right of the
+screen centre: above y 120 no gun texel is left of x 191, so the aim point and the feet of a
+centred enemy stay clear. The pistol is a 3/4 view (slide top, sights, hammer, the grip in the
+glove); the chaingun a low, wide housing with a short six-barrel cluster seen nearly end-on; every
+fire frame a filled bloom (white core) of radius 9–10. 4 frames: idle, fire A
 (flash), fire B, recover (knife: idle, wind-up, stab, return). A dark glove and a khaki cuff.
 
 ### 8.4 Face
@@ -1234,7 +1282,7 @@ sits at the left edge, not in the middle.
 | Health value | big font × 2, right-aligned | right edge 110, y 192 |
 | Health bar | rect 56 × 3: `PAL.green[2]` > 50, `PAL.gold[2]` 26–50, `PAL.red[2]` ≤ 25 | (52, 210) |
 | `SCORE` + value | small label; big × 1 value right-aligned | (122, 181); right edge 234, y 181 |
-| Lives | `ui/icon-life` + `X3` small | (122, 194), (134, 194) |
+| Lives | `ui/icon-life` + `Xn` small, n = the reserve lives `slot.lives − 1` (§4.13; a fresh 3-life slot shows `X2`) | (122, 194), (134, 194) |
 | Floor + tag | `FLOOR n` small (the floor number only; the name is on the cards); the fps slot's tag `1P` / `2P` in its slot colour, right-aligned | (122, 205); right edge 234, y 205 |
 | Keys | `fps/hud/key` 0 / 1 when held | (244, 182), (244, 199) |
 | Weapon | `fps/hud/weapon` frame = weapon | (258, 186) |

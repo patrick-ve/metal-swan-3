@@ -125,7 +125,7 @@ describe('drawing', () => {
     drawWeaponView(r, g);
     drawFeedback(r, g, false);
     drawBossBand(r, g, true);
-    drawStatusBar(r, g, { floor: 1, score: 12345, lives: 3, slot: 0, character: 'recruit', reduceFlashes: false, bossBarOn: true });
+    drawStatusBar(r, g, { floor: 1, score: 12345, lives: 3, slot: 0, character: 'recruit' });
     drawMessages(r, g);
     r.end();
     const data = r.target.data;

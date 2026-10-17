@@ -19,7 +19,6 @@ import { greyed } from '../../art/portrait-kit';
 import { selectPortrait, type SquadId } from '../characters/select.art';
 
 export const FACE = 32;
-export const FACE_FRAMES = 24;
 export const FACE_CHARS = ['vincent', 'thom', 'dirk', 'bob', 'patrick', 'recruit'] as const;
 export type FaceChar = (typeof FACE_CHARS)[number];
 
@@ -101,8 +100,19 @@ function recruitBase(dx: number, expr: 'normal' | 'happy' | 'hurt' | 'dazed'): F
   const b = new PixelBuffer(FACE, FACE);
   b.fill(PAL.navy[0]);
   const ox = Math.round((FACE - head.w) / 2) + Math.round(dx / 2);
-  b.blit(head, ox, -1);
-  return { b, eyes: [[ox + 21, 17], [ox + 26, 17]], mouth: [ox + 24, 24] };
+  // centre the head's opaque box vertically in the porthole (it sat low, cut by the ring)
+  let top = head.h;
+  let bottom = -1;
+  for (let y = 0; y < head.h; y++) {
+    for (let x = 0; x < head.w; x++) {
+      if ((head.data[y * head.w + x] & 255) === 0) continue;
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  const oy = bottom >= top ? Math.round((FACE - (bottom - top + 1)) / 2) - top + 1 : -1;
+  b.blit(head, ox, oy);
+  return { b, eyes: [[ox + 21, 18 + oy], [ox + 26, 18 + oy]], mouth: [ox + 24, 25 + oy] };
 }
 
 // ------------------------------------------------------------------------------------ damage
@@ -115,11 +125,21 @@ function put(b: PixelBuffer, x: number, y: number, c: Color): void {
 function damage(f: FaceBase, band: number, seed: number): void {
   const { b, eyes, mouth } = f;
   const [l, r] = eyes;
-  // soot: dark specks, more with every band
-  for (let i = 0; i < band * 6; i++) {
-    const x = 6 + Math.floor(hash2(i, 1, seed) * 20);
-    const y = 6 + Math.floor(hash2(i, 2, seed) * 22);
-    put(b, x, y, i % 3 === 0 ? PAL.stone[0] : PAL.ink[1]);
+  // soot: 1–3 soft smudges (one cheek, then the forehead, then the jaw), growing with the band —
+  // grouped, so they read as soot and not as spots
+  const smudges: ReadonlyArray<readonly [number, number]> = [
+    [l[0] - 2, l[1] + 4],
+    [r[0] - 3, r[1] - 5],
+    [mouth[0] - 5, mouth[1] + 2],
+  ];
+  for (let s = 0; s < Math.min(3, Math.ceil(band / 2)); s++) {
+    const [sx, sy] = smudges[s];
+    const n = 4 + band * 2;
+    for (let i = 0; i < n; i++) {
+      const x = sx + Math.round((hash2(i, 1, seed + s) - 0.5) * 4);
+      const y = sy + Math.round((hash2(i, 2, seed + s) - 0.5) * 2.5);
+      put(b, x, y, i % 3 === 0 ? PAL.ink[1] : PAL.stone[0]);
+    }
   }
   if (band >= 2) {
     // a scratch across the cheek
@@ -138,8 +158,12 @@ function damage(f: FaceBase, band: number, seed: number): void {
   if (band >= 4) {
     // a black eye
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-2, 0], [2, 0], [-1, 1], [0, 1], [1, 1]] as const) put(b, l[0] + dx, l[1] + dy, dy === 1 ? PAL.purple[0] : PAL.purple[1]);
-    // a second plaster on the chin
-    for (let k = 0; k < 4; k++) put(b, mouth[0] + 3 + k, mouth[1] + 2, PAL.sand[2]);
+    // a cross-plaster on the jaw (4 × 3; a 1-row strip read as a cigarette)
+    const jx = mouth[0] + 4;
+    const jy = mouth[1] + 2;
+    for (let k = -1; k <= 2; k++) put(b, jx + k, jy, PAL.sand[3]);
+    for (let k = -1; k <= 1; k++) put(b, jx + (k === 0 ? 0 : k), jy + k, k === 0 ? PAL.sand[3] : PAL.sand[2]);
+    put(b, jx + 1, jy + 1, PAL.sand[2]);
   }
   if (band >= 5) {
     // a small red cut over the eyebrow (this mode only) and a trickle
