@@ -660,6 +660,15 @@ from now on (the game layer only adds new `HudState` request types). UI art live
   billboards at every yaw), `npm run sim -- --mode fps --floor 1|2 [--god] [--expect-complete]`,
   `npm run perf -- --query "mode=fps&floor=1&god=1"`.
 - `npm test` → vitest.
+- `npm run smoke -- --url http://host:port/ [--query …]` tests an already running server, for
+  example `vite preview` of the production build or the live site. The build keeps class names
+  (`rolldownOptions.output.keepNames` in `vite.config.ts`, about +2 % gzipped JS), because the
+  smoke tool finds scenes by `constructor.name`.
+- **Deploy gate** (`.github/workflows/pages.yml`): every push to `main` runs `npm test`,
+  `npm run build` (typecheck + vite build) and the route smoke
+  (`--query "mission=ams&boss=1&debug=1"`, ams boss → bridge → first-person mode → name entry)
+  against `vite preview` of that build. GitHub Pages deploys only when all of them pass; a
+  failed run keeps the smoke screenshots as the `smoke-screenshots` artifact.
 
 ## 10. Performance budget
 
