@@ -264,8 +264,10 @@ describe('scenes (headless)', () => {
       input.update();
       a.scenes.update();
     };
+    // The real preload is time-budgeted per tick; a busy CI runner (4 cores shared with the
+    // Chromium tests) needs about 75 s of wall time for it, a laptop about 12 s.
     const t0 = Date.now();
-    while (!boot.ready && Date.now() - t0 < 50000) {
+    while (!boot.ready && Date.now() - t0 < 170_000) {
       tick();
       await new Promise((res) => setTimeout(res, 0));
     }
@@ -277,7 +279,7 @@ describe('scenes (headless)', () => {
     held.length = 0;
     for (let i = 0; i < 40; i++) tick();
     expect(a.scenes.top).toBeInstanceOf(TitleScene);
-  }, 60000);
+  }, 180_000);
   it('2 PLAYERS: start on pad 2 joins an empty slot mid-mission (a free credit), never pausing', () => {
     const { app: a, step, tap, until } = app(timeline().idle(1));
     startNewGame(a, { mission: 'm1', players: 2, characters: ['grace'] });

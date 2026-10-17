@@ -21,6 +21,7 @@ import {
   parseEnv,
   paths,
   pickKey,
+  rawDir,
   readApiKey,
   selectItems,
   sfxRequest,
@@ -210,7 +211,7 @@ describe('idempotent planning', () => {
     expect(plan.jobs.map((j) => `${j.kind}:${j.id}:${j.takes.join(',')}`)).toEqual(['voice:GRAMPS:1,2,3', 'voice:VENDOR:1,2,3']);
 
     touch(p.voices, JSON.stringify({ VENDOR: { voice_id: 'vv1', name: 'x', generated_voice_id: 'g', preview: 1, savedAt: '' } }));
-    touch(join(p.raw, 'voice/GRAMPS/preview-1.mp3'));
+    touch(join(rawDir(p, 'voice', 'GRAMPS'), 'preview-1.mp3'));
     const plan2 = planJobs(selectItems(items(SPEC), ['line', 'voice'], null), p);
     expect(plan2.jobs.map((j) => `${j.kind}:${j.id}:${j.takes.join(',')}`)).toEqual([
       'voice:VENDOR:1,2,3',
@@ -315,7 +316,7 @@ describe('generation run (mocked fetch)', () => {
     expect(res.failed[0].error).not.toContain(KEY);
     expect(readdirSync(join(p.raw, 'music/ams')).filter((f) => f.endsWith('.mp3')).sort()).toEqual(['take-1.mp3', 'take-2.mp3']);
     expect(calls.filter((c) => c.url.includes('/v1/music') && !c.body?.model_id).length).toBe(2);
-    expect(JSON.parse(readFileSync(join(p.raw, 'voice/GRAMPS/preview-3.json'), 'utf8')).generated_voice_id).toBe('gen3');
+    expect(JSON.parse(readFileSync(join(rawDir(p, 'voice', 'GRAMPS'), 'preview-3.json'), 'utf8')).generated_voice_id).toBe('gen3');
     const ledger = readFileSync(p.ledger, 'utf8');
     expect(ledger).toContain('"error":"HTTP 401"');
     expect(ledger).not.toContain(KEY);
