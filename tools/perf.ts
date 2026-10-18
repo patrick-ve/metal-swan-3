@@ -159,6 +159,8 @@ async function main(): Promise<void> {
     for (const vp of args.viewports) {
       for (const gfx of args.gfx) {
         const page = await browser.newPage({ viewport: vp, deviceScaleFactor: args.dpr });
+        // The password gate in index.html.
+        page.on('dialog', (d) => void d.accept('SW4N'));
         const errors: string[] = [];
         page.on('pageerror', (e) => errors.push(e.message));
         const url = `${base}?${args.query}${args.query ? '&' : ''}gfx=${gfx}`;
