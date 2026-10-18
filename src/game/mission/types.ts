@@ -172,6 +172,13 @@ export interface MissionDef {
   preloadFirst?: readonly string[];
   preloadLast?: readonly string[];
   /**
+   * Sprite id prefixes of everything this mission draws at 1× (its enemies, props, effects,
+   * pickups; not the players' characters). When it is the first mission (or a direct `?mission=`
+   * start), the boot scene preloads only these and the start screens' sprites (`bootArt`); the
+   * rest is generated on first use. Without it the boot preloads every sprite.
+   */
+  art?: readonly string[];
+  /**
    * Sample group of this mission (src/engine/samples.ts, e.g. 'mission:ams'): fetched and
    * decoded on the intro card (`preloadMissionAudio`), or by the boot scene for a direct
    * `?mission=` start. Without it the mission plays the synth only.

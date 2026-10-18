@@ -79,10 +79,12 @@ export function missionArtOrder(
  * It also switches on `setDeferHiArt`: the 2× scenery (background layers, terrain chunks) of each
  * section becomes art jobs that this preload runs first in its slices (and, once it is done, the
  * section view within the same budget per frame), so a section start never stalls on 2× scenery.
+ * When it is done, the sprite cache saves the 2× frames (pack 'hi'; the boot restores it on a
+ * later visit, and then this preload finds every id made already).
  * Returns true when the preload runs (started now or before).
  */
 export function preloadMissionArt(
-  app: Pick<GameApp, 'preloadArt' | 'session'>,
+  app: Pick<GameApp, 'preloadArt' | 'session'> & { readonly artCache?: GameApp['artCache'] },
   mission: Pick<MissionDef, 'artDensity' | 'preloadFirst' | 'preloadLast'> | undefined,
   density = mission?.artDensity ?? 1,
   session: Pick<GameSession, 'slots'> | null = app.session,
@@ -95,7 +97,7 @@ export function preloadMissionArt(
     timeBudgetMs: MISSION_ART_BUDGET_MS,
     ...missionArtOrder(mission, session),
     yieldFn: nextFrame,
-  });
+  }).then(() => app.artCache?.save('hi', ['']));
   return true;
 }
 

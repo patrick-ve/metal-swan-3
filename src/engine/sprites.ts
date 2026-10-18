@@ -296,6 +296,43 @@ export function listSprites(prefix = ''): string[] {
 }
 
 /**
+ * Ids (sorted) whose frames at density `d` exist and came from their own generator without an
+ * error (generated or installed). `d` 2 lists the ids with 2× frames. The sprite cache saves these.
+ */
+export function generatedSprites(d = 1, prefix = ''): string[] {
+  const out: string[] = [];
+  if (d >= HI_DENSITY) {
+    for (const [id, h] of hiRegistry) if (h.frames && !h.error && id.startsWith(prefix)) out.push(id);
+  } else {
+    for (const e of registry.values()) if (e.frames && !e.error && e.id.startsWith(prefix)) out.push(e.id);
+  }
+  return out.sort();
+}
+
+/**
+ * The frames of `id` at density `d` (2: its 2× frames) when they exist without an error, else
+ * null. Never generates (the sprite cache reads what is already made).
+ */
+export function readyFrames(id: string, d = 1): readonly Frame[] | null {
+  const e = d >= HI_DENSITY ? hiRegistry.get(id) : registry.get(id);
+  return e?.frames && !e.error ? e.frames : null;
+}
+
+/**
+ * Give a registered id frames made earlier by its own generator (the sprite cache), so it never
+ * runs the generator. `d` 2 installs 2× frames (the id needs a 2× generator). Only an id without
+ * frames takes them; returns true when it did.
+ */
+export function installFrames(id: string, d: number, frames: readonly Frame[]): boolean {
+  const e = d >= HI_DENSITY ? hiRegistry.get(id) : registry.get(id);
+  if (!e || e.frames || frames.length === 0) return false;
+  e.frames = frames;
+  e.error = null;
+  for (const f of frames) if (!bufferIds.has(f.buf)) bufferIds.set(f.buf, id);
+  return true;
+}
+
+/**
  * The sprite id whose frames contain this buffer, or undefined (backgrounds, terrain, buffers made
  * by game code, placeholders). Renderers use it to decide which buffers the upscaler filters.
  */

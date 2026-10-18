@@ -15,6 +15,7 @@
     "arena": "tsx tools/arena.ts",
     "sim": "tsx tools/sim.ts",
     "smoke": "tsx tools/smoke.ts",
+    "cache-check": "tsx tools/cache-check.ts",
     "audio": "tsx tools/lib/audio-report.ts",
     "audio:gen": "tsx tools/elevenlabs.ts",
     "audio:process": "tsx tools/audio/process.ts",

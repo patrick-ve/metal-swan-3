@@ -87,7 +87,10 @@ async function runLoad(app: GameApp): Promise<void> {
   setFrac(0.1);
   await step('sprites', async () => {
     preload?.(BRIDGE_SFX.filter((id) => hasSfx(id)));
+    // The sprite cache (art-cache.ts) first: the preload then skips every id it installed.
+    await app.artCache?.restore('fps');
     await preloadSprites('fps/', (d, t) => setFrac(0.1 + 0.25 * (t > 0 ? d / t : 1)), { timeBudgetMs: 8 });
+    void app.artCache?.save('fps', ['fps/']);
   });
   setFrac(0.35);
   await step('ray', () => prepareRayAssets(['fps/'], (d, t) => setFrac(0.35 + 0.45 * (t > 0 ? d / t : 1)), { timeBudgetMs: 8 }));

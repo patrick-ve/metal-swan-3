@@ -57,6 +57,22 @@ export const AMS: MissionDef = {
   // while l first costs about 16 ms instead of 8).
   preloadFirst: ['vehicle/swan', 'enemy/delivery-rider', 'enemy/seagull/', 'item/', 'enemy/fatbike-youth', 'npc/ams/', 'decor/ams/', 'fx/explosion-s'],
   preloadLast: ['boss/', 'enemy/handhaver', 'enemy/boete-ticket/'],
+  // What this mission draws at 1× (the boot preloads only this; tests/game/boot-art.test.ts
+  // checks it against the start screens and a bot run of every section and the boss).
+  art: [
+    'vehicle/swan',
+    'decor/ams/',
+    'npc/ams/',
+    'boss/ams-mayor/',
+    'enemy/fatbike-youth',
+    'enemy/delivery-rider',
+    'enemy/seagull/',
+    'enemy/handhaver',
+    'enemy/boete-ticket/',
+    'item/',
+    'weapon/',
+    'fx/',
+  ],
   // Sampled music, sounds and dialogue (src/game/content/samples), loaded on the intro card.
   audioGroup: 'mission:ams',
 };

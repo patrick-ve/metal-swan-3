@@ -15,6 +15,7 @@ import { SceneManager } from '../engine/scene';
 import { frameH, frameW, getFrame, hasSprite } from '../engine/sprites';
 import type { Store } from '../engine/storage';
 import type { UpscaleMode } from '../engine/upscale';
+import type { ArtCache } from './art-cache';
 import type { ContentReport } from './content/index';
 import { DEFAULT_PARAMS, type LaunchParams } from './params';
 import { HighScoreTable, type GameSession, type HighScoreEntry } from './session';
@@ -89,6 +90,11 @@ export interface GameApp {
    * only in the browser (main.ts); headless apps leave it off so sims and tests do no 2× work.
    */
   readonly preloadArt: boolean;
+  /**
+   * The sprite cache (art-cache.ts): the browser app in a production build; null headless, in
+   * the dev server and with `?cache=0`.
+   */
+  readonly artCache: ArtCache | null;
 }
 
 export interface AppOptions {
@@ -101,6 +107,8 @@ export interface AppOptions {
   gesture?: boolean;
   /** Background 2× preload at a 2× mission's start (default false: headless). */
   preloadArt?: boolean;
+  /** The sprite cache (default none). */
+  artCache?: ArtCache | null;
 }
 
 /** The store key of the high score table (session.ts). */
@@ -162,6 +170,7 @@ export function createApp(o: AppOptions): GameApp {
     graphicsOverride: params.gfx,
     displayRes: 1,
     preloadArt: o.preloadArt ?? false,
+    artCache: o.artCache ?? null,
   };
 }
 

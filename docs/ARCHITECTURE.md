@@ -264,6 +264,32 @@ simulation side and the media side can be built in parallel: **extend them, do n
 - `Animator`: `play(id, {ticksPerFrame, loop, restart})`, `update()`, `frame`, `index`, `done`.
 - Missing ID → magenta placeholder frame + one `console.warn`.
 - Renderers derive flipped and white "hit flash" variants lazily and cache them.
+- **Boot preload** (2026-10-18): the boot scene generates only `bootArt(params)`
+  (scenes/boot.ts): the start screens (`START_ART`), the select roster's characters (a direct
+  start: only `?char=`, default recruit) and the `MissionDef.art` prefixes of the mission played
+  first. Everything else is generated on first use; a mission without `art` makes the boot
+  preload every sprite. `tests/game/boot-art.test.ts` checks that the list covers what the start
+  screens, the attract loop and every part of ams draw. First visit: about 3 s instead of 12 s.
+- **Sprite cache** (2026-10-18): the generators are pure, so their frames can be kept. A pack
+  (`sprite-pack.ts`: JSON metadata + all pixels, gzip, shared buffers stay shared, decoded
+  buffers are views into one ArrayBuffer) holds the ready frames of many ids;
+  `readyFrames(id, d)`, `generatedSprites(d, prefix?)` and `installFrames(id, d, frames)` read and
+  fill the registry without running a generator. `ArtCache` (src/game/art-cache.ts) keeps the
+  packs 'boot' (1×, saved after the boot preload), 'hi' (2×, saved after the background 2×
+  preload) and 'fps' (saved after the first-person preload) in a `ByteStore` (IndexedDB database
+  `ms3-cache`, `byte-store.browser.ts`). Every pack carries the build tag `__MS3_BUILD__`
+  (vite.config.ts: git commit + build time); a pack of another build, or one that does not
+  decode, is a miss and is deleted. The boot restores 'boot' and 'hi' before its preload, which
+  then skips the installed ids (repeat visit: about 1.4 s). Saves run in the background in
+  256 KB chunks with a yield after each. Only the browser app in a production build has a cache
+  (`app.artCache`); headless apps, the dev server and `?cache=0` run without one.
+- **Offline cache** (2026-10-18): the production build writes a service worker `sw.js`
+  (tools/sw/plugin.ts fills the template tools/sw/sw.js with every published file and a hash of
+  its content). It installs the page, the scripts and the boot sample group, caches other files
+  (mission and fps audio) when the game fetches them, serves a listed file from the cache only
+  while its hash matches (a deploy downloads only changed files), loads the page from the
+  network first and from the cache when offline. main.ts registers it once the boot scene is
+  done (its downloads then come from the HTTP cache); `?cache=0` removes it.
 
 ### 5.5 Rendering
 `render.ts` defines `Renderer`. Implementations: `render-canvas.browser.ts` (Canvas 2D) and
@@ -667,8 +693,12 @@ from now on (the game layer only adds new `HudState` request types). UI art live
 - **Deploy gate** (`.github/workflows/pages.yml`): every push to `main` runs `npm test`,
   `npm run build` (typecheck + vite build) and the route smoke
   (`--query "mission=ams&boss=1&debug=1"`, ams boss → bridge → first-person mode → name entry)
-  against `vite preview` of that build. GitHub Pages deploys only when all of them pass; a
+  and the cache check against `vite preview` of that build. GitHub Pages deploys only when all of them pass; a
   failed run keeps the smoke screenshots as the `smoke-screenshots` artifact.
+- `npm run cache-check -- --url http://host:port/` → checks the caches of a production build
+  in Chromium (§5.4): the first visit saves the 'boot' sprite pack and the service worker takes
+  over, the second visit installs the pack, an offline visit boots and reaches the title. CI runs
+  it after the route smoke.
 
 ## 10. Performance budget
 

@@ -12,18 +12,26 @@
  * Pointer lock (docs/design/fps.md §2.3): a click on the canvas takes the lock when
  * `app.pointerLockWanted` and the MOUSE LOOK setting are on; the lock is given back when either
  * turns off; losing it while it is wanted (Esc, alt-tab) sets `app.focusLost` (the scene pauses).
+ *
+ * Caches (docs/ARCHITECTURE.md §5.4), production builds only: the sprite cache in IndexedDB
+ * (`app.artCache`) and the offline cache (service worker), registered once the boot scene is done
+ * (its downloads then come from the HTTP cache instead of the network a second time). `?cache=0`
+ * turns both off and removes the service worker.
  */
 import { WebAudioOut } from './engine/audio.browser';
+import { idbByteStore } from './engine/byte-store.browser';
 import { Debug } from './engine/debug';
 import { createDisplay } from './engine/display.browser';
 import { InputManager, parseBindings } from './engine/input';
 import { GamepadSource, KeyboardSource, TouchSource } from './engine/input.browser';
 import { startBrowserLoop } from './engine/loop.browser';
+import { registerOfflineCache, removeOfflineCache } from './engine/offline.browser';
 import { PointerLockSource } from './engine/pointer.browser';
 import { CanvasRenderer } from './engine/render-canvas.browser';
 import { upscaleFactor } from './engine/upscale';
 import { createBrowserStore } from './engine/storage.browser';
 import { createApp, graphicsMode, type GameApp } from './game/app';
+import { ArtCache } from './game/art-cache';
 import { parseLaunchParams } from './game/params';
 import { BootScene } from './game/scenes/index';
 import { applyTuning } from './game/tuning';
@@ -103,7 +111,12 @@ function main(): void {
   const debug = new Debug(params.debug);
   if (params.debug) debug.reserveKeys(input);
 
-  const app = createApp({ input, audio, store, params, debug, gesture: false, preloadArt: true });
+  const caching = import.meta.env.PROD && !params.noCache;
+  const artCache = caching ? new ArtCache(idbByteStore('ms3-cache'), __MS3_BUILD__) : null;
+  if (import.meta.env.PROD && params.noCache) void removeOfflineCache();
+  let offlinePending = caching;
+
+  const app = createApp({ input, audio, store, params, debug, gesture: false, preloadArt: true, artCache });
   window.__ms3 = { app, renderer, frames };
   app.scenes.reset(new BootScene(app));
   // Losing focus (another window, a notification) pauses a game in progress.
@@ -133,6 +146,10 @@ function main(): void {
         audio.setMuted(muted);
       }
       app.scenes.update();
+      if (offlinePending && !(app.scenes.top instanceof BootScene && !app.scenes.top.ready)) {
+        offlinePending = false;
+        registerOfflineCache();
+      }
       if (pointer.locked && !lockWanted()) {
         releasing = true;
         pointer.exit();

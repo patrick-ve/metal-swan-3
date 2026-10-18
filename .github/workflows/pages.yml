@@ -2,7 +2,8 @@ name: Deploy to GitHub Pages
 
 # Every push to main is checked before it goes live: typecheck, the full test suite, the
 # production build, and a browser smoke test of that build (ams boss -> glitch bridge -> the
-# first-person mode -> ending -> name entry). The deploy job runs only when all of them pass.
+# first-person mode -> ending -> name entry), then a check of the sprite and offline caches
+# (tools/cache-check.ts). The deploy job runs only when all of them pass.
 
 on:
   push:
@@ -35,11 +36,12 @@ jobs:
         run: npm test
       - name: Build (typecheck + vite build)
         run: npm run build
-      - name: Smoke test the built site
+      - name: Smoke test and cache check of the built site
         run: |
           npx vite preview --port 4173 --strictPort --host 127.0.0.1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:4173/ > /dev/null && break; sleep 1; done
           npm run smoke -- --url http://127.0.0.1:4173/ --query "mission=ams&boss=1&debug=1" --timeout 180000
+          npm run cache-check -- --url http://127.0.0.1:4173/ --timeout 180000
       - name: Keep the smoke screenshots of a failed run
         if: failure()
         uses: actions/upload-artifact@v4

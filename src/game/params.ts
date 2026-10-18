@@ -4,7 +4,9 @@
  * plus `difficulty=easy|normal|hard`, `gfx=pixel|smooth|xbr` (the GRAPHICS filter for this
  * session; not saved; the older spelling `res=` is still read) and `kmax=1..12` (highest
  * backbuffer resolution; a perf / debug knob), and `mode=fps|bridge` + `floor=0..2` (the
- * first-person mode, docs/design/fps.md §1.11; `floor` defaults to 1 with `mode=fps`). Pure parsing (main.ts passes `location.search`).
+ * first-person mode, docs/design/fps.md §1.11; `floor` defaults to 1 with `mode=fps`), and
+ * `cache=0` (no sprite cache and no offline cache for this visit; docs/ARCHITECTURE.md §5.4).
+ * Pure parsing (main.ts passes `location.search`).
  * With `mission` set the game skips the title and starts that mission at once.
  */
 import type { UpscaleMode } from '../engine/upscale';
@@ -34,6 +36,8 @@ export interface LaunchParams {
   mode?: 'fps' | 'bridge';
   /** First-person floor 0..2 (default 1 with `mode=fps`; undefined otherwise). */
   floor?: number;
+  /** `?cache=0`: no sprite cache, and the offline cache (service worker) is removed. Absent otherwise. */
+  noCache?: true;
 }
 
 export const DEFAULT_PARAMS: Readonly<LaunchParams> = Object.freeze({
@@ -89,5 +93,7 @@ export function parseLaunchParams(search: string): LaunchParams {
   const floorRaw = q.get('floor');
   if (floorRaw !== null && /^[0-2]$/.test(floorRaw)) p.floor = Number(floorRaw);
   else if (p.mode === 'fps') p.floor = 1;
+  const cache = q.get('cache');
+  if (cache !== null && !flag(cache)) p.noCache = true;
   return p;
 }

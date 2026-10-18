@@ -274,10 +274,15 @@ export class PixelBuffer {
   /** Bumped by every mutating method (see the file comment). */
   version = 0;
 
-  constructor(w: number, h: number) {
+  /**
+   * A transparent w × h buffer, or one that uses `data` as its pixels (no copy; it must hold
+   * exactly w × h pixels). The sprite cache wraps its decoded pixels this way.
+   */
+  constructor(w: number, h: number, data?: Uint32Array) {
     this.w = Math.max(0, w | 0);
     this.h = Math.max(0, h | 0);
-    this.data = new Uint32Array(this.w * this.h);
+    if (data && data.length !== this.w * this.h) throw new Error(`PixelBuffer: ${data.length} pixels for ${this.w}×${this.h}`);
+    this.data = data ?? new Uint32Array(this.w * this.h);
   }
 
   /** Copy of raw packed pixels (0xRRGGBBAA, row-major). */

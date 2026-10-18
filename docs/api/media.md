@@ -141,7 +141,15 @@ setArtDensity(d) → previous / artDensity() / withArtDensity(d, fn) / setHiArt(
 setDeferHiArt(on) → previous / hiArtDeferred() / queueArtJob(key, run) / hasArtJob(key)
 cancelArtJobs(prefix) / pendingArtJobs() / runArtJobs(budgetMs, now?) → jobs run
 artPreloadActive() / HI_ART_FRAME_BUDGET_MS (8)
+// Sprite cache (docs/ARCHITECTURE.md §5.4): read and fill the registry without generating.
+readyFrames(id, d = 1) → frames | null / generatedSprites(d = 1, prefix?) → ids
+installFrames(id, d, frames) → true when the id (registered, without frames) took them
 ```
+`sprite-pack.ts`: `await encodeSpritePack(tag, density, [[id, frames], …], yieldFn?)` → gzip bytes;
+`await decodeSpritePack(bytes)` → `{ tag, density, sprites }` (throws on a broken pack, another
+`SPRITE_PACK_VERSION` or byte order). `byte-store.ts`: `ByteStore { get, put, delete }`,
+`MemoryByteStore`; `byte-store.browser.ts`: `idbByteStore(name)` (IndexedDB, opened on first
+use; without IndexedDB an empty store). `new PixelBuffer(w, h, data?)` wraps `data` without a copy.
 - Generated lazily on first use, then cached. Unknown id or a throwing generator → magenta
   placeholder (12×12, feet anchor) and **one** `console.warn` per id.
 - **Anchors.** `Frame = { buf, ox, oy, pts? }`. Drawing at (x, y) puts buffer pixel (ox, oy) on

@@ -1,5 +1,6 @@
 /**
- * Boot scene (GDD §13.2): loads the content manifest, generates every sprite, pre-renders the
+ * Boot scene (GDD §13.2): loads the content manifest, installs the cached sprite packs (art-cache.ts)
+ * and generates the rest of `bootArt` (the start screens and the first mission), pre-renders the
  * sound effects and fetches and decodes the 'boot' sample group (the start screens; a direct
  * `?mission=` start also loads that mission's group) while an ammunition belt fills in, waits
  * for a click or key (the gesture unlocks audio; one made while loading counts), then goes to
@@ -14,8 +15,10 @@ import type { Scene } from '../../engine/scene';
 import { preloadSprites } from '../../engine/sprites';
 import { blinkOn, centerText, newCampaign, type GameApp } from '../app';
 import { isLazyContent, loadContent } from '../content/index';
-import { getMission } from '../registry';
-import { newSession, startNewGame } from './gameplay';
+import type { LaunchParams } from '../params';
+import { getCharacter, getMission, hasCharacter } from '../registry';
+import { selectRoster } from './character-select';
+import { firstMission, newSession, startNewGame } from './gameplay';
 import { startFpsRun } from './fps-route';
 import { GlitchBridgeScene } from './glitch-bridge';
 import { TitleScene } from './title';
@@ -26,6 +29,25 @@ const nextTick = (): Promise<void> => new Promise((resolve) => setTimeout(resolv
 
 /** The boot never waits longer than this for the samples (a slow network): the synth fills in. */
 export const BOOT_SAMPLES_MAX_MS = 20000;
+
+/** Sprite id prefixes of the start screens (title, menus, mode select, character select, cards). */
+export const START_ART: readonly string[] = ['ui/'];
+
+/**
+ * The sprite id prefixes the boot preloads (docs/ARCHITECTURE.md §5.4): the start screens, the
+ * characters a player can pick (the select roster; for a direct start only `?char=`, default
+ * recruit) and the `art` of the mission played first (the first mission, or `?mission=`).
+ * Undefined (every sprite) when that mission has no `art` list. Everything else is generated
+ * on first use.
+ */
+export function bootArt(params: Pick<LaunchParams, 'mission' | 'char' | 'mode'>): readonly string[] | undefined {
+  const mission = getMission(params.mission ?? firstMission());
+  if (!mission?.art) return undefined;
+  const direct = params.mission !== null || params.mode !== undefined;
+  const chars = direct ? [params.char ?? 'recruit'] : selectRoster();
+  const charArt = chars.filter((c) => hasCharacter(c)).map((c) => `${getCharacter(c).art}/`);
+  return [...START_ART, ...charArt, ...mission.art];
+}
 
 export class BootScene implements Scene {
   private readonly app: GameApp;
@@ -49,10 +71,19 @@ export class BootScene implements Scene {
       // The lazy fps content stays out of the boot (FpsIntroScene loads it).
       this.app.content = await loadContent((id) => !isLazyContent(id));
       this.phase = 'sprites';
-      await preloadSprites(undefined, (d, t) => {
+      // The sprite cache (art-cache.ts) of an earlier visit first: the preload then skips every
+      // id it installed. The 2× pack too, so the ams intro card finds its 2× art made already.
+      const cache = this.app.artCache;
+      if (cache) {
+        await cache.restore('boot');
+        await cache.restore('hi');
+      }
+      const art = bootArt(this.app.params);
+      await preloadSprites(art, (d, t) => {
         this.done = d;
         this.total = t;
       });
+      void cache?.save('boot', art ?? ['']);
       this.phase = 'sounds';
       const audio = this.app.audio as { preload?: (ids: readonly string[]) => void };
       if (typeof audio.preload === 'function') {
