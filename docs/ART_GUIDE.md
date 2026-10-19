@@ -138,11 +138,12 @@ for a `PAL` colour, `hdTone(ramp, t)`, `inHdPalette(c)`, `HD_PALETTE`. ALL 2× a
 | Part | API |
 |---|---|
 | Canvas | `new HdCanvas(w, h, d)`: w × h LOGICAL px at d ∈ {2, 4}, float logical coordinates (1 / d = one art px). Drawing is deferred: primitives write a G-buffer (material, part, depth, normal, tone) with a depth test, so parts can be drawn in any order; `render(opts)` returns the (w·d) × (h·d) PixelBuffer. |
-| Materials | `c.material({ ramp, spec?, shine?, rim?, amb?, gain?, wrap?, bounce?, lo?, hi?, dither?, flat? })` → id. Diffuse light uses ramp indices `lo`..`hi` (default 1..n−2: index 0 is kept for separations, crevices and outline C, the top tone for speculars and rims). `dither` = ordered dither at band borders (backgrounds only); `flat` = no light, the tone alone picks the band (glass, water, lamps, fire). |
-| Primitives | `ellipsoid(cx, cy, rx, ry, o)`, `capsule(x0, y0, x1, y1, r0, r1, o)` (tapered: limbs, necks, barrels), `stroke(points, r0, r1, o)`, `box(x, y, w, h, { r, bevel, n })`, `cylinder(x, y, w, h, { axis, cap })`, `poly(points, { n })`, `plane(x, y, w, h, { mask, normal, height })`, `heightField(x, y, w, h, hf)` (the portrait-kit painter generalised: faces, rocks, cushions; normals by central differences one art px apart). Options `o`: `{ mat, part?, z?, tone?, tex?, round? }` — parts with one `part` id form one surface (no line where they meet); `z` is the base depth (larger = nearer). |
+| Materials | `c.material({ ramp, spec?, shine?, rim?, amb?, gain?, wrap?, bounce?, lo?, hi?, dither?, flat?, edge?, rimPx? })` → id. Diffuse light uses ramp indices `lo`..`hi` (default 1..n−2: index 0 is kept for separations, crevices and outline C, the top tone for speculars and rims). `dither` = ordered dither at band borders (backgrounds only); `flat` = no light, the tone alone picks the band (glass, water, lamps, fire). `edge: 'C'` = static façade decor in a painted scene: the px of the parts behind it along its silhouette take its deepest tone (lit side) or ink (shadow side), ½ logical px wide. `rimPx: false` = no rim px (soles). |
+| Primitives | `ellipsoid(cx, cy, rx, ry, o)`, `capsule(x0, y0, x1, y1, r0, r1, o)` (tapered: limbs, necks, barrels), `stroke(points, r0, r1, o)`, `box(x, y, w, h, { r, bevel, n })`, `cylinder(x, y, w, h, { axis, cap })`, `poly(points, { n })`, `plane(x, y, w, h, { mask, normal, height })`, `heightField(x, y, w, h, hf)` (the portrait-kit painter generalised: faces, rocks, cushions; normals by central differences one art px apart; `hf` is called once per art px centre, plus a 1 art px border, so it must be pure), `blob(points, r, { bulge })` (a soft cloth / leather volume over a polygon: flat middle, the edge rolling away over r logical px — vests, sleeves, trouser legs, boots, fists; NOT tubes). Options `o`: `{ mat, part?, z?, tone?, tex?, round? }` — parts with one `part` id form one surface (no line where they meet); `z` is the base depth (larger = nearer). |
 | Paint and compose | `shade(x, y, w, h, fn, part?)` (folds, stains, painted shadows), `paint(x, y, w, h, fn)` / `dot(x, y, c)` (fixed colours: pupils, catchlights, signs; unlit, kept by the clean-up), `image(buf, x, y, { z })` (a finished buffer of the same density, e.g. a head or a gun, joins the silhouette), `erase(…)`. |
+| Shapes | `shape.ts`: `limb(joints, halfWidths, cap = 3)` → the outline polygon of a limb (shoulder → elbow → wrist, hip → knee → ankle; mitred bends; round or square ends) for `blob`; `along(p, deg, len)` (deg from straight down, + = forward), `lerpPt`. `polyDist(x, y, pts)` (canvas.ts). |
 | Light | `light.ts`: `KEY` (upper left, in front), `BOUNCE` (lower right), `diffuse(…)` with a contrast curve (a plane facing the viewer is a mid tone; only planes facing the light reach the top bands), `specular` (Blinn-Phong). |
-| Render | `render({ outline: 'A' | 'B' | 'C' | 'none', ao = 0.35, clean = true, sep = true, sepZ = 0.5, sepW = 1, shadow = 0, shadowMax = 3 })`: ambient occlusion where a part meets a nearer one, cast shadows from the key light (`shadow` > 0: a part dz logical px in front throws a shadow about dz px down-right; façades, sills, an arm on the torso), quantise (hard bands; dither only for `dither` materials), cluster clean-up (an art px with no same-tone 4-neighbour in its part takes the common neighbour tone; speculars and fixed px are kept), interior separations (1 art px in the deepest tone of the part BEHIND), outline. |
+| Render | `render({ outline: 'A' | 'B' | 'C' | 'none', ao = 0.35, clean = true, sep = true, sepZ = 0.5, sepW = 1, shadow = 0, shadowMax = 3, rimLight = 0 })`: ambient occlusion where a part meets a nearer one, cast shadows from the key light (`shadow` > 0: a part dz logical px in front throws a shadow about dz px down-right; façades, sills, an arm on the torso), quantise (hard bands; dither only for `dither` materials), cluster clean-up (an art px with no same-tone 4-neighbour in its part takes the common neighbour tone; speculars and fixed px are kept), rim light (`rimLight` = n: a px in shade with an empty px to its right / lower right is lifted to the band lo + n — the thin cool rim of sprites; the low bands of every HD ramp lean cool), interior separations (1 art px in the deepest tone of the part BEHIND), `edge: 'C'` decor outlines, outline. |
 | Textures | `Texture = (s: TexSample) => void` changes the normal, tone, height, material or cuts the px; sizes in logical px, finer detail only where s.d = 4. `brick({ mortar, bw, bh, joint, wear })`, `plaster({ cracks, stains })`, `wood({ dir, plank, seam })`, `cobbles({ gap, cw, ch })`, `folds({ angle, spacing, amp, cover })` (creases in patches, never stripes), `strands({ angle, width })` (hair), `leaves({ size, ragged })`, `ripples({ spacing, phase })`, `grime(seed, amount)`, `texAll(…)`. |
 
 Example (a lit gun barrel with a wooden stock, the same code at 2× and 4×):
@@ -157,11 +158,30 @@ c.cylinder(12, 1.1, 7, 1.1, { mat: steel, z: 1, axis: 'h' });
 const buf = c.render({ outline: 'none' }); // 38 × 10 at d = 2, 76 × 20 at d = 4
 ```
 
-**Outline variants** (CHOICE PENDING — the lead decides at the style gate and writes it into the
-plan's "Style decisions"): **A** ink, 1 logical px (d art px; the weight of the 1× art, as the
-old 2× art), **B** ink, ½ logical px (1 art px at 2×, 2 at 4×), **C** selective, ½ logical px:
-the deepest tone of the material on the lit side (up / left), ink only on the shadow side
-(right / bottom). Interior separations are the same in all three.
+**Outline variants**: **A** ink, 1 logical px (d art px; the weight of the 1× art, as the old 2×
+art), **B** ink, ½ logical px (1 art px at 2×, 2 at 4×), **C** selective, ½ logical px: the
+deepest tone of the material on the lit side (up / left), ink only on the shadow side (right /
+bottom).
+
+**Style decisions** (style gate, 2026-10-19; the plan's "Style decisions"):
+
+- **Outline A** for everything that moves or can be hit or picked up (heroes, enemies, NPCs, the
+  Swan, the boss, vehicles, pickups, crates, breakables, shots, fx shapes): `render({ outline: 'A' })`.
+- **No ink outline** on backgrounds, sky, far layers and terrain: `render({ outline: 'none', sep: false })`
+  — painted, separated by tone, light, AO and cast shadows only (separation lines would read as
+  outlines round every house).
+- **C — selective** for static façade decor in the playfield (lamps, signs, trees, bollards, flower
+  boxes, benches, parked bikes): give its materials `edge: 'C'` in the background canvas.
+- **PAL_HD** unchanged. **Proportions**: today's arcade proportions (big head, chunky hands and
+  boots); the HD art adds detail, never slims a figure.
+- **Sprite shading**: 5–6 hard bands per material (`lo` / `hi` chosen so a face-on plane sits on
+  the material's own mid tone: tan sleeves stay tan, not brown), the light cluster upper left, the
+  deep core on the right, `rimLight: 2` for the thin cool rim; low `wrap` (0–0.1) for crisp
+  terminators. No stripe textures on limbs or hair (`folds` / `strands` give banding at sprite
+  size): model creases as a few `shade` clusters at bends, hair as locks (`hd/head.ts` short hair:
+  lock domes meeting in grooves, one highlight cluster per lock). Fine detail (creases, stitching,
+  studs, D-rings, laces, finger rows) only at 4×; at 2× the big shapes must read as well as the old
+  2× art.
 
 **Rig contracts** (working prototypes; the rig group replaces their bodies, the signatures,
 sizes and points stay):
@@ -172,11 +192,16 @@ sizes and points stay):
 | `gunArtHd(kind, d)`, `heldArtHd('grenade' | 'snack' | 'gift', d)`, `knifeArtHd(d)`, `propArtHd(kind, d)` (`hd/gear.ts`) | Exactly d × the 1× size of `gunArt(kind).buf` / `grenadeArt()` / `snackArt()` / `giftArt()` / `knifeArt()` / `propArt(kind).buf`; the logical points (grip, grip2, muzzle, tip) are the 1× ones; no outline. `propArtHd` is a stand-in (re-lit from the 1× silhouette) until the GEAR builder draws each prop. |
 
 **Style spike**: `npm run uhd-spike -- [--out tmp/uhd-style] [--palette] [--only hero|swan|street|gear]`
-renders a hero (recruit colours: idle, run, shoot), the Swan's head and neck, a 128 × 96 street
-crop and the gear / head contracts at 2× and 4×, each next to today's 2× art, in outline variants
-A / B / C, plus the PAL_HD sheet; `tmp/uhd-style/index.md` lists the PNGs and generation times
-(node, one thread: a 40 × 42 hero frame about 2–5 ms at 4×, the 128 × 96 street about 50 ms
-at 4×). Nothing in it is registered in the game. Tests: `tests/art/palette-hd.test.ts`,
+renders today's recruit as an HD hero (idle, run, shoot: `blob` cloth volumes over `limb` outlines,
+the vest over the tan shirt, cargo trousers, boots, black gloves, the head contract), the Swan's
+head and neck, a 128 × 96 ams street crop (varied façades and gables, white frames with glazing
+bars, the canal behind the railing with broken facade reflections, a bench, a bike, a flower box
+with tulips, an XXX bollard, a lamp, an elm; sky gradient with painted clouds) and the gear / head
+contracts at 2× and 4×, each next to today's 2× art, in the decided outline (plus one hero A vs B
+sheet, `hero-outline-ab.png`) and the PAL_HD sheet; `tmp/uhd-style/index.md` starts with what
+changed in the last style round and lists the PNGs and generation times (node, one thread, cold
+and warm median of 5: a 40 × 42 hero frame about 3 ms warm at 4× and 1–2 ms at 2×, the 128 × 96
+street about 80 ms at 4× and 18 ms at 2×). Nothing in it is registered in the game. Tests: `tests/art/palette-hd.test.ts`,
 `tests/art/hd-kit.test.ts`.
 
 ### Palette ramps per material

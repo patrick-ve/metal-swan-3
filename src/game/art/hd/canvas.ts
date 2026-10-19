@@ -38,6 +38,14 @@ export interface HdMaterial extends LightParams {
   dither?: boolean | number;
   /** No light: the tone offset alone picks the band (emissive: fire, lamps, lit windows). */
   flat?: boolean;
+  /**
+   * Static facade decor in a painted scene (style decision: outline C — selective): the px of the
+   * parts BEHIND this material, along its silhouette, take its deepest tone on the lit side and
+   * ink on the shadow side (right / bottom), ½ logical px wide. Backgrounds never set it.
+   */
+  edge?: 'C';
+  /** Rim light px on the shadow-side silhouette (RenderOpts.rimLight): false turns it off for this material. */
+  rimPx?: boolean;
 }
 
 /** Per-px record a texture reads and changes (reused: never keep a reference). */
@@ -108,6 +116,12 @@ export interface RenderOpts {
   shadow?: number;
   /** Longest cast shadow, logical px (default 3). */
   shadowMax?: number;
+  /**
+   * Thin cool rim light (sprites): a px in shade on the silhouette's shadow side (an empty px to
+   * its right or lower right) is lifted to the band `lo + rimLight` of its ramp — the low bands
+   * of every HD ramp lean cool, so the rim reads as cool sky light. 0 = off (default).
+   */
+  rimLight?: number;
 }
 
 const MAX_MATS = 255;
@@ -133,6 +147,8 @@ export class HdCanvas {
   readonly fix: Uint32Array;
   private readonly mats: HdMaterial[] = [];
   private nextPart = 1;
+  /** Scratch for heightField: the field per art px (reused; never kept). */
+  private hfGrid = new Float64Array(0);
   private readonly s: TexSample = { x: 0, y: 0, X: 0, Y: 0, d: 1, u: 0, v: 0, nx: 0, ny: 0, nz: 1, tone: 0, mat: 0, fix: 0, dz: 0, cut: false };
 
   constructor(w: number, h: number, d: number) {
@@ -489,16 +505,28 @@ export class HdCanvas {
     const X1 = this.bx1(x + w);
     const Y0 = this.bx0(y);
     const Y1 = this.by1(y + h);
+    if (X1 <= X0 || Y1 <= Y0) return this;
+    // The field once per art px centre (with a 1 px border for the differences): 1 call per px, not 5.
+    const gw = X1 - X0 + 2;
+    const gh = Y1 - Y0 + 2;
+    if (this.hfGrid.length < gw * gh) this.hfGrid = new Float64Array(gw * gh);
+    const g = this.hfGrid;
+    for (let gy = 0; gy < gh; gy++) {
+      const py = (Y0 - 1 + gy + 0.5) / d;
+      for (let gx = 0; gx < gw; gx++) g[gy * gw + gx] = hf((X0 - 1 + gx + 0.5) / d, py);
+    }
     for (let Y = Y0; Y < Y1; Y++) {
       const py = (Y + 0.5) / d;
+      const row = (Y - Y0 + 1) * gw + 1 - X0;
       for (let X = X0; X < X1; X++) {
         const px = (X + 0.5) / d;
-        const c = hf(px, py);
+        const gi = row + X;
+        const c = g[gi];
         if (c !== c) continue;
-        let l = hf(px - e, py);
-        let r = hf(px + e, py);
-        let t = hf(px, py - e);
-        let b = hf(px, py + e);
+        let l = g[gi - 1];
+        let r = g[gi + 1];
+        let t = g[gi - gw];
+        let b = g[gi + gw];
         if (l !== l) l = c;
         if (r !== r) r = c;
         if (t !== t) t = c;
@@ -510,6 +538,32 @@ export class HdCanvas {
       }
     }
     return this;
+  }
+
+  /**
+   * A soft volume over the polygon `pts` (cloth panels, vests, boots, hands): flat in the middle
+   * with the edge rolling away over `r` logical px, plus a gentle `bulge` (default 0.25) towards
+   * the middle. Reads as stuffed cloth or leather, not a tube. u, v = 0..1 over the bounds.
+   */
+  blob(pts: ReadonlyArray<readonly [number, number]>, r: number, o: DrawOpts & { bulge?: number }): this {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const [px, py] of pts) {
+      if (px < minX) minX = px;
+      if (px > maxX) maxX = px;
+      if (py < minY) minY = py;
+      if (py > maxY) maxY = py;
+    }
+    const bulge = o.bulge ?? 0.25;
+    const rr = Math.max(0.05, r);
+    return this.heightField(minX, minY, maxX - minX, maxY - minY, (x, y) => {
+      if (!inPoly(x, y, pts)) return NaN;
+      const dist = polyDist(x, y, pts);
+      const t = dist >= rr ? 1 : dist / rr;
+      return rr * Math.sqrt(1 - (1 - t) * (1 - t)) + bulge * Math.sqrt(dist);
+    }, o);
   }
 
   /** Add `fn(x, y)` to the tone of every drawn px in the box (folds, cast shadows, stains). Only `part` when given. */
@@ -765,7 +819,57 @@ export class HdCanvas {
       }
     }
 
+    // 3b. Rim light on the shadow-side silhouette.
+    const rimL = o.rimLight ?? 0;
+    if (rimL > 0) {
+      for (let Y = 0; Y < H; Y++) {
+        for (let X = 0; X < W - 1; X++) {
+          const i = Y * W + X;
+          if (mat[i] === 0 || prot[i] !== 0) continue;
+          const M = mats[mat[i]];
+          if (M.flat || M.rimPx === false) continue;
+          const open = mat[i + 1] === 0 || (Y + 1 < H && mat[i + 1 + W] === 0 && mat[i + W] !== 0);
+          if (!open) continue;
+          const rn = M.ramp.length;
+          const lo = Math.min(rn - 1, M.lo ?? (rn > 4 ? 1 : 0));
+          const k = Math.min(rn - 2, lo + rimL);
+          if (idx[i] < k) idx[i] = k;
+        }
+      }
+    }
+
     // 4. Interior separations: the px of the part BEHIND a nearer part gets its deepest tone.
+    //    Behind an `edge: 'C'` material the px instead take that material's deepest tone (lit
+    //    side) or ink (shadow side): the selective outline of facade decor.
+    const edgeCol = new Uint32Array(n);
+    let anyEdge = false;
+    for (const M of mats) if (M.edge) anyEdge = true;
+    if (anyEdge) {
+      const ew = Math.max(1, d >> 1);
+      const inkC = o.ink ?? PAL_HD.ink[0];
+      for (let Y = 0; Y < H; Y++) {
+        for (let X = 0; X < W; X++) {
+          const i = Y * W + X;
+          if (mat[i] === 0 || mats[mat[i]].edge) continue;
+          const z0 = pz[i] + sepZ;
+          let found = false;
+          for (let k = 1; k <= ew && !found; k++) {
+            for (let dir = 0; dir < 8; dir++) {
+              const XX = X + DX8[dir] * k;
+              const YY = Y + DY8[dir] * k;
+              if (XX < 0 || YY < 0 || XX >= W || YY >= H) continue;
+              const j = YY * W + XX;
+              const Mj = mats[mat[j]];
+              if (mat[j] === 0 || !Mj.edge || pz[j] <= z0) continue;
+              // This px lies right of / below the decor px: the shadow side.
+              edgeCol[i] = -DX8[dir] + -DY8[dir] > 0 ? inkC : Mj.ramp[0];
+              found = true;
+              break;
+            }
+          }
+        }
+      }
+    }
     if (o.sep ?? true) {
       const sw = Math.max(1, o.sepW ?? 1);
       for (let Y = 0; Y < H; Y++) {
@@ -796,6 +900,10 @@ export class HdCanvas {
     for (let i = 0; i < n; i++) {
       const m = mat[i];
       if (m === 0) continue;
+      if (edgeCol[i] !== 0) {
+        px[i] = edgeCol[i];
+        continue;
+      }
       if (fix[i] !== 0) {
         px[i] = fix[i];
         continue;
@@ -811,10 +919,26 @@ export class HdCanvas {
       const ink = o.ink ?? PAL_HD.ink[0];
       const rad = ol === 'A' ? d : Math.max(1, d >> 1);
       const offs = ringOffsets(rad);
+      // Summed-area table of drawn px: an empty px with nothing drawn in its (2·rad + 1)² box (a
+      // superset of the ring) skips the ring scan — most of a sprite frame is empty.
+      const W1 = W + 1;
+      const sat = new Int32Array(W1 * (H + 1));
       for (let Y = 0; Y < H; Y++) {
+        let row = 0;
+        for (let X = 0; X < W; X++) {
+          if (mat[Y * W + X] !== 0) row++;
+          sat[(Y + 1) * W1 + X + 1] = sat[Y * W1 + X + 1] + row;
+        }
+      }
+      for (let Y = 0; Y < H; Y++) {
+        const y0 = Y - rad < 0 ? 0 : Y - rad;
+        const y1 = Y + rad + 1 > H ? H : Y + rad + 1;
         for (let X = 0; X < W; X++) {
           const i = Y * W + X;
           if (mat[i] !== 0) continue;
+          const x0 = X - rad < 0 ? 0 : X - rad;
+          const x1 = X + rad + 1 > W ? W : X + rad + 1;
+          if (sat[y1 * W1 + x1] - sat[y0 * W1 + x1] - sat[y1 * W1 + x0] + sat[y0 * W1 + x0] === 0) continue;
           for (let q = 0; q < offs.length; q += 2) {
             const XX = X + offs[q];
             const YY = Y + offs[q + 1];
@@ -857,6 +981,25 @@ function ringOffsets(r: number): Int8Array {
   o = Int8Array.from(list.flatMap(([dx, dy]) => [dx, dy]));
   ringCache.set(r, o);
   return o;
+}
+
+/** Distance from (x, y) to the nearest edge of the polygon `pts`. */
+export function polyDist(x: number, y: number, pts: ReadonlyArray<readonly [number, number]>): number {
+  let best = Infinity;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const ax = pts[j][0];
+    const ay = pts[j][1];
+    const vx = pts[i][0] - ax;
+    const vy = pts[i][1] - ay;
+    const l2 = vx * vx + vy * vy;
+    let t = l2 === 0 ? 0 : ((x - ax) * vx + (y - ay) * vy) / l2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const ex = x - ax - vx * t;
+    const ey = y - ay - vy * t;
+    const q = ex * ex + ey * ey;
+    if (q < best) best = q;
+  }
+  return Math.sqrt(best);
 }
 
 /** Even-odd point-in-polygon test. */

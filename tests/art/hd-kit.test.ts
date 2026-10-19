@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PAL } from '../../src/engine/palette';
 import { PAL_HD, inHdPalette } from '../../src/engine/palette-hd';
 import type { PixelBuffer } from '../../src/engine/pixel';
-import { HdCanvas, brick, cobbles, folds, gunArtHd, heldArtHd, knifeArtHd, leaves, plaster, propArtHd, renderHeadHd, ripples, strands, wood, type Outline } from '../../src/game/art/hd/index';
+import { HdCanvas, limb, polyDist, brick, cobbles, folds, gunArtHd, heldArtHd, knifeArtHd, leaves, plaster, propArtHd, renderHeadHd, ripples, strands, wood, type Outline } from '../../src/game/art/hd/index';
 import { HEAD_H, HEAD_W, NECK, type Expression, type HeadStyle } from '../../src/game/art/humanoid-head';
 import { giftArt, grenadeArt, gunArt, knifeArt, propArt, snackArt, type PropKind } from '../../src/game/art/humanoid-gear';
 
@@ -162,6 +162,113 @@ describe('rig contracts (prototypes)', () => {
         expect([b.w, b.h], k).toEqual([lo.buf.w * d, lo.buf.h * d]);
         for (const v of b.data) if ((v & 255) !== 0) expect(inHdPalette(v)).toBe(true);
       }
+    }
+  });
+
+  it('blob: a soft volume over a polygon — flat middle, edges rolling away, deterministic, PAL_HD', () => {
+    for (const d of DS) {
+      const draw = (): PixelBuffer => {
+        const c = new HdCanvas(16, 12, d);
+        const m = c.material({ ramp: PAL_HD.olive });
+        c.blob([[2, 2], [14, 2], [14, 10], [2, 10]], 1.5, { mat: m });
+        return c.render({ outline: 'none', ao: 0 });
+      };
+      const b = draw();
+      expect(b.data).toEqual(draw().data);
+      // Inside the polygon only; the lit (left) edge is lighter than the shadow (right) edge.
+      expect(opaque(b, 1 * d, 6 * d)).toBe(false);
+      expect(opaque(b, 8 * d, 6 * d)).toBe(true);
+      const idx = (x: number): number => PAL_HD.olive.indexOf(b.get(Math.floor(x * d), 6 * d));
+      expect(idx(2.2)).toBeGreaterThan(idx(13.8));
+      for (const v of b.data) if ((v & 255) !== 0) expect(inHdPalette(v)).toBe(true);
+    }
+  });
+
+  it('limb: a closed outline around the joints with the given half widths', () => {
+    const pts = limb([[0, 0], [0, 6], [4, 10]], [2, 1.5, 1], 3);
+    const inside = (x: number, y: number): boolean => {
+      let r = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const [xi, yi] = pts[i];
+        const [xj, yj] = pts[j];
+        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) r = !r;
+      }
+      return r;
+    };
+    expect(inside(0, 3)).toBe(true);
+    expect(inside(1.6, 3)).toBe(true);
+    expect(inside(2.4, 3)).toBe(false);
+    expect(inside(2, 8)).toBe(true);
+    // The round caps reach past both end joints.
+    expect(inside(0, -1.5)).toBe(true);
+    expect(polyDist(0, 3, pts)).toBeGreaterThan(1.5);
+  });
+
+  it('rimLight lifts shadow-side silhouette px only; edge C outlines decor on the parts behind it', () => {
+    for (const d of DS) {
+      const c = new HdCanvas(16, 16, d);
+      const m = c.material({ ramp: PAL_HD.olive });
+      c.ellipsoid(8, 8, 6, 6, { mat: m });
+      const plain = c.render({ outline: 'none', ao: 0 });
+      const rim = c.render({ outline: 'none', ao: 0, rimLight: 2 });
+      const at = (b: PixelBuffer, x: number, y: number): number => PAL_HD.olive.indexOf(b.get(x, y));
+      // Rightmost px of the centre row: lifted to at least lo + 2; the lit left edge unchanged.
+      const row = 8 * d;
+      let xr = 16 * d - 1;
+      while (!opaque(plain, xr, row)) xr--;
+      let xl = 0;
+      while (!opaque(plain, xl, row)) xl++;
+      expect(at(rim, xr, row)).toBeGreaterThanOrEqual(3);
+      expect(at(rim, xr, row)).toBeGreaterThan(at(plain, xr, row));
+      expect(rim.get(xl, row)).toBe(plain.get(xl, row));
+
+      // Decor (edge C) in front of a wall: the wall px left of it take the decor's deepest tone,
+      // the px right of it ink; away from the decor the wall is untouched.
+      const s = new HdCanvas(24, 12, d);
+      const wall = s.material({ ramp: PAL_HD.stone });
+      const deco = s.material({ ramp: PAL_HD.green, edge: 'C' });
+      s.plane(0, 0, 24, 12, { mat: wall, z: -10 });
+      s.box(10, 2, 4, 8, { mat: deco, z: 0 });
+      const b = s.render({ outline: 'none', sep: false, ao: 0 });
+      const y = 6 * d;
+      expect(b.get(10 * d - 1, y)).toBe(PAL_HD.green[0]);
+      expect(b.get(14 * d, y)).toBe(PAL_HD.ink[0]);
+      expect(PAL_HD.stone.includes(b.get(4 * d, y))).toBe(true);
+    }
+  });
+
+  it('outline A rings even a lone art px far from the rest (the summed-area skip drops nothing)', () => {
+    for (const d of DS) {
+      const c = new HdCanvas(40, 40, d);
+      const m = c.material({ ramp: PAL_HD.steel, flat: true });
+      c.box(3, 3, 1 / d, 1 / d, { mat: m });
+      c.box(30, 30, 1 / d, 1 / d, { mat: m });
+      const b = c.render({ outline: 'A', ao: 0, clean: false });
+      let ring = 0;
+      for (let dy = -d; dy <= d; dy++) for (let dx = -d; dx <= d; dx++) {
+        const q = dx * dx + dy * dy;
+        if (q > 0 && q <= d * d + (d > 1 ? d * 0.5 : 0)) ring++;
+      }
+      let ink = 0;
+      for (const v of b.data) if (v === PAL_HD.ink[0]) ink++;
+      expect(ink, `d${d}`).toBe(2 * ring);
+    }
+  });
+
+  it('heightField evaluates the field once per art px (plus a 1 art px border) and keeps its normals', () => {
+    for (const d of DS) {
+      const c = new HdCanvas(12, 12, d);
+      const m = c.material({ ramp: PAL_HD.steel });
+      let calls = 0;
+      c.heightField(2, 2, 8, 8, (x, y) => {
+        calls++;
+        const q = 16 - (x - 6) ** 2 - (y - 6) ** 2;
+        return q > 0 ? Math.sqrt(q) : NaN;
+      }, { mat: m });
+      expect(calls, `d${d}`).toBe((8 * d + 2) * (8 * d + 2));
+      const i = 6 * d * 12 * d + 3 * d; // left of the centre: the normal leans left
+      expect(c.nx[i]).toBeLessThan(-0.3);
+      expect(c.nx[6 * d * 12 * d + 9 * d]).toBeGreaterThan(0.3);
     }
   });
 });
