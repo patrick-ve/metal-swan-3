@@ -31,6 +31,12 @@ export default defineConfig({
     // `constructor.name`, so the smoke test also works against the built (deployed) site.
     rolldownOptions: { output: { keepNames: true } },
   },
+  // The art pool's module worker (src/game/art-worker.ts, src/engine/art-pool.ts): ES format, so
+  // it can code-split the content registry's lazy imports; its chunks land in assets/ (precached).
+  worker: {
+    format: 'es',
+    rolldownOptions: { output: { keepNames: true } },
+  },
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',

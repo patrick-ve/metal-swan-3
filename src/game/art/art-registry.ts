@@ -8,13 +8,16 @@
  *   per-pixel sampler, so it does not depend on the terrain data structures.
  * Missing generators / painter fall back to simple flat art (never crash).
  *
- * 2× scenery (docs/ARCHITECTURE.md §3, docs/ART_GUIDE.md "2x art (mission ams)"): a background
- * generator may have a 2× version (`defineBgGenerator(id, gen, { hi })` or `defineHiBgGenerator`)
- * and the terrain may have a 2× painter (`setHiTerrainPainter`). Both get the same LOGICAL
- * arguments as the 1× ones and return a buffer twice as wide and high; a mission with
- * `artDensity: 2` draws them (SectionView), every other mission never calls them. A 2× result of
- * the wrong size, or a throwing 2× generator, falls back to the 1× art with a warning
- * (`hiSceneryErrors()`), like 2× sprites.
+ * Dense scenery (docs/ARCHITECTURE.md §3, docs/ART_GUIDE.md "2x art (mission ams)", "UHD art"):
+ * a background generator may have versions at density d ∈ {2, 4}
+ * (`defineBgGenerator(id, gen, { hi, hi4 })`, `defineHiBgGenerator(id, gen, d)`, or one
+ * density-generic `defineHdBgGenerator(id, (w, h, params, seed, d) => …)`), and the terrain may
+ * have painters per density (`setHiTerrainPainter(paint, supports, d)` / `setHdTerrainPainter`).
+ * They get the same LOGICAL arguments as the 1× ones and return a buffer d times as wide and
+ * high; a mission with `artDensity` ≥ 2 draws them (SectionView) at min(artDensity, art tier),
+ * falling back to the highest lower density that has art (4 → 2 → 1); every other mission never
+ * calls them. A dense result of the wrong size, or a throwing generator, falls back to lower art
+ * with a warning (`hiSceneryErrors()`, ids labelled '@<d>x'), like dense sprites.
  */
 import type { Color } from '../../engine/color';
 import { PixelBuffer } from '../../engine/pixel';
@@ -87,9 +90,10 @@ export type BgGenerator = (
 ) => PixelBuffer;
 
 /**
- * A 2× terrain painter: the same logical arguments as TerrainPainter, returns a buffer of
- * (2·w) × (2·h) for the world rect (x0, y0, w, h), or null when nothing in the rect has finer 2×
- * art (the view then keeps the 1× chunk, saving the memory of an enlarged copy).
+ * A dense terrain painter: the same logical arguments as TerrainPainter, returns a buffer of
+ * (d·w) × (d·h) for the world rect (x0, y0, w, h) at density d, or null when nothing in the rect
+ * has finer art (the view then keeps the lower chunk, saving the memory of an enlarged copy).
+ * Painters registered with `setHiTerrainPainter(paint, supports)` serve d 2 only.
  */
 export type HiTerrainPainter = (
   sample: TerrainSampler,
@@ -100,13 +104,46 @@ export type HiTerrainPainter = (
   h: number,
 ) => PixelBuffer | null;
 
+/** A density-generic terrain painter (UHD art): HiTerrainPainter with the density d (2 or 4) last. */
+export type HdTerrainPainter = (
+  sample: TerrainSampler,
+  style: TerrainStyleDef,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  d: SceneryDensity,
+) => PixelBuffer | null;
+
+/** A density-generic background generator (UHD art): BgGenerator with the density d (2 or 4) last. */
+export type HdBgGenerator = (
+  w: number,
+  h: number,
+  params: Readonly<Record<string, unknown>>,
+  seed: number,
+  d: SceneryDensity,
+) => PixelBuffer;
+
+/** Dense scenery densities. */
+export type SceneryDensity = 2 | 4;
+
 /** Density of 2× scenery (the same as 2× sprites, sprites.ts HI_DENSITY). */
 export const HI_SCENERY_DENSITY = 2;
+/** The dense scenery densities, highest first (the fallback order). */
+export const SCENERY_DENSITIES: readonly SceneryDensity[] = [4, 2];
+
+function sceneryDensity(d: number): SceneryDensity {
+  return d >= 4 ? 4 : 2;
+}
 
 const bgGenerators = new Map<string, BgGenerator>();
-const hiBgGenerators = new Map<string, BgGenerator>();
+const hiBgGenerators: Record<SceneryDensity, Map<string, BgGenerator>> = { 2: new Map(), 4: new Map() };
 let terrainPainter: TerrainPainter | null = null;
-let hiTerrainPainter: { paint: HiTerrainPainter; supports: (style: TerrainStyleDef) => boolean } | null = null;
+interface DenseTerrain {
+  paint: HiTerrainPainter;
+  supports: (style: TerrainStyleDef) => boolean;
+}
+const hiTerrainPainters: Record<SceneryDensity, DenseTerrain | null> = { 2: null, 4: null };
 const hiErrors = new Map<string, string>();
 const warned = new Set<string>();
 
@@ -119,39 +156,71 @@ function warnOnce(key: string, msg: string): void {
 export interface BgGeneratorOpts {
   /** A 2× generator for this id (same as `defineHiBgGenerator(id, hi)`). */
   hi?: BgGenerator;
+  /** A 4× generator for this id (same as `defineHiBgGenerator(id, hi4, 4)`). */
+  hi4?: BgGenerator;
+  /** One density-generic generator for 2× and 4× (same as `defineHdBgGenerator(id, hd)`); wins over hi / hi4. */
+  hd?: HdBgGenerator;
 }
 
 export function defineBgGenerator(id: string, gen: BgGenerator, opts: BgGeneratorOpts = {}): void {
   bgGenerators.set(id, gen);
-  if (opts.hi) hiBgGenerators.set(id, opts.hi);
+  if (opts.hd) defineHdBgGenerator(id, opts.hd);
+  else {
+    if (opts.hi) defineHiBgGenerator(id, opts.hi);
+    if (opts.hi4) defineHiBgGenerator(id, opts.hi4, 4);
+  }
 }
 
 /**
- * Add a 2× version of background generator `id`: called with the same LOGICAL (w, h, params,
- * seed) as the 1× generator, it returns a buffer of exactly (2·w) × (2·h) with the same design
- * (same shapes and placement, finer detail) and tiles horizontally like the 1× layer.
+ * Add a dense version (density d, default 2) of background generator `id`: called with the same
+ * LOGICAL (w, h, params, seed) as the 1× generator, it returns a buffer of exactly (d·w) × (d·h)
+ * with the same design (same shapes and placement, finer detail) and tiles horizontally like the
+ * 1× layer.
  */
-export function defineHiBgGenerator(id: string, gen: BgGenerator): void {
-  hiBgGenerators.set(id, gen);
+export function defineHiBgGenerator(id: string, gen: BgGenerator, d: SceneryDensity = 2): void {
+  hiBgGenerators[sceneryDensity(d)].set(id, gen);
 }
 
-export function hasHiBgGenerator(id: string): boolean {
-  return hiBgGenerators.has(id);
+/** Register ONE density-generic generator for the 2× and 4× layers of `id` (or only `densities`). */
+export function defineHdBgGenerator(id: string, gen: HdBgGenerator, densities: readonly SceneryDensity[] = SCENERY_DENSITIES): void {
+  for (const d of densities) defineHiBgGenerator(id, (w, h, params, seed) => gen(w, h, params, seed, d), d);
 }
 
-export function listHiBgGenerators(): string[] {
-  return [...hiBgGenerators.keys()].sort();
+/** Does `id` have a background generator at exactly density d (default 2)? */
+export function hasHiBgGenerator(id: string, d: number = HI_SCENERY_DENSITY): boolean {
+  return hiBgGenerators[sceneryDensity(d)].has(id);
 }
 
 /**
- * The 2× buffer of a background layer (density 2, (2·w) × (2·h)), or null when `id` has no 2×
- * generator or it fails (wrong size, throws): then the caller draws the 1× layer. Failures are
- * warned once and listed by `hiSceneryErrors()` as 'bg:id@2x'.
+ * The highest density ≤ d (4 → 2 → 1) at which background `id` has a generator (never an
+ * upscale; 1 = the 1× layer only).
  */
-export function makeHiBgLayer(id: string, w: number, h: number, params: Readonly<Record<string, unknown>>, seed: number): PixelBuffer | null {
-  const gen = hiBgGenerators.get(id);
+export function bgDensityFor(id: string, d: number): 1 | 2 | 4 {
+  for (const dd of SCENERY_DENSITIES) if (dd <= d && hiBgGenerators[dd].has(id)) return dd;
+  return 1;
+}
+
+/** Ids with a dense background generator at density d (default 2), sorted. */
+export function listHiBgGenerators(d: number = HI_SCENERY_DENSITY): string[] {
+  return [...hiBgGenerators[sceneryDensity(d)].keys()].sort();
+}
+
+/**
+ * The buffer of a background layer at dense density d (default 2; (d·w) × (d·h)), or null when
+ * `id` has no generator at d or it fails (wrong size, throws): then the caller draws a lower
+ * layer. Failures are warned once and listed by `hiSceneryErrors()` as 'bg:id@<d>x'.
+ */
+export function makeHiBgLayer(
+  id: string,
+  w: number,
+  h: number,
+  params: Readonly<Record<string, unknown>>,
+  seed: number,
+  density: number = HI_SCENERY_DENSITY,
+): PixelBuffer | null {
+  const d = sceneryDensity(density);
+  const gen = hiBgGenerators[d].get(id);
   if (!gen) return null;
-  const d = HI_SCENERY_DENSITY;
   try {
     const buf = gen(w, h, params, seed);
     if (!(buf instanceof PixelBuffer) || buf.w !== w * d || buf.h !== h * d) {
@@ -160,7 +229,7 @@ export function makeHiBgLayer(id: string, w: number, h: number, params: Readonly
     }
     return buf;
   } catch (err) {
-    hiFailed(`bg:${id}@2x`, err);
+    hiFailed(`bg:${id}@${d}x`, err);
     return null;
   }
 }
@@ -190,32 +259,61 @@ export function getTerrainPainter(): TerrainPainter {
 }
 
 /**
- * Register the 2× terrain painter. `supports(style)` tells whether a style uses any material with
- * 2× art (false: the view never asks for 2× chunks of that section).
+ * Register the dense terrain painter for density d (default 2). `supports(style)` tells whether a
+ * style uses any material with art at d (false: the view never asks for chunks of that section
+ * at d).
  */
-export function setHiTerrainPainter(paint: HiTerrainPainter, supports: (style: TerrainStyleDef) => boolean): void {
-  hiTerrainPainter = { paint, supports };
+export function setHiTerrainPainter(paint: HiTerrainPainter, supports: (style: TerrainStyleDef) => boolean, d: SceneryDensity = 2): void {
+  hiTerrainPainters[sceneryDensity(d)] = { paint, supports };
 }
 
-/** Does the 2× terrain painter have finer art for any material of `style`? */
-export function hasHiTerrain(style: TerrainStyleDef): boolean {
-  return hiTerrainPainter !== null && hiTerrainPainter.supports(style);
+/** Register ONE density-generic terrain painter for 2× and 4× (or only `densities`). */
+export function setHdTerrainPainter(
+  paint: HdTerrainPainter,
+  supports: (style: TerrainStyleDef, d: SceneryDensity) => boolean,
+  densities: readonly SceneryDensity[] = SCENERY_DENSITIES,
+): void {
+  for (const d of densities) {
+    setHiTerrainPainter((sample, style, x0, y0, w, h) => paint(sample, style, x0, y0, w, h, d), (style) => supports(style, d), d);
+  }
+}
+
+/** Does the terrain painter at density d (default 2) have finer art for any material of `style`? */
+export function hasHiTerrain(style: TerrainStyleDef, d: number = HI_SCENERY_DENSITY): boolean {
+  const t = hiTerrainPainters[sceneryDensity(d)];
+  return t !== null && t.supports(style);
+}
+
+/** The highest density ≤ d (4 → 2 → 1) with dense terrain art for `style`. */
+export function terrainDensityFor(style: TerrainStyleDef, d: number): 1 | 2 | 4 {
+  for (const dd of SCENERY_DENSITIES) if (dd <= d && hasHiTerrain(style, dd)) return dd;
+  return 1;
 }
 
 /**
- * The 2× buffer of a terrain rect (density 2), or null when there is no 2× painter, nothing in
- * the rect has finer art, or the painter fails (warned once, listed as 'terrain@2x').
+ * The buffer of a terrain rect at dense density d (default 2), or null when there is no painter
+ * at d, nothing in the rect has finer art, or the painter fails (warned once, listed as
+ * 'terrain@<d>x').
  */
-export function makeHiTerrain(sample: TerrainSampler, style: TerrainStyleDef, x0: number, y0: number, w: number, h: number): PixelBuffer | null {
-  if (!hiTerrainPainter || !hiTerrainPainter.supports(style)) return null;
-  const d = HI_SCENERY_DENSITY;
+export function makeHiTerrain(
+  sample: TerrainSampler,
+  style: TerrainStyleDef,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  density: number = HI_SCENERY_DENSITY,
+): PixelBuffer | null {
+  const d = sceneryDensity(density);
+  const t = hiTerrainPainters[d];
+  if (!t || !t.supports(style)) return null;
   try {
-    const buf = hiTerrainPainter.paint(sample, style, x0, y0, w, h);
+    const buf = t.paint(sample, style, x0, y0, w, h);
     if (buf === null) return null;
     if (buf.w !== w * d || buf.h !== h * d) throw new Error(`returned ${buf.w}×${buf.h}, expected ${w * d}×${h * d}`);
     return buf;
   } catch (err) {
-    hiFailed('terrain@2x', err);
+    hiFailed(`terrain@${d}x`, err);
     return null;
   }
 }
@@ -223,10 +321,10 @@ export function makeHiTerrain(sample: TerrainSampler, style: TerrainStyleDef, x0
 function hiFailed(key: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err);
   hiErrors.set(key, msg);
-  warnOnce(key, `[art] 2× ${key} failed: ${msg} — drawing the 1× art`);
+  warnOnce(key, `[art] ${key} failed: ${msg} — drawing the lower art`);
 }
 
-/** 2× scenery that fell back to its 1× art: 'bg:<id>@2x' or 'terrain@2x', with the reason. */
+/** Dense scenery that fell back to lower art: 'bg:<id>@<d>x' or 'terrain@<d>x', with the reason. */
 export function hiSceneryErrors(): Array<{ id: string; error: string }> {
   return [...hiErrors].map(([id, error]) => ({ id, error }));
 }

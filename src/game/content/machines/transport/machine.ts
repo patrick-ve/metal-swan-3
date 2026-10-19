@@ -23,7 +23,7 @@ import { Entity } from '../../../../engine/entity';
 import { overlaps, type Rect } from '../../../../engine/math';
 import { PAL } from '../../../../engine/palette';
 import { SolidBox } from '../../../../engine/physics';
-import type { DrawOpts, Renderer } from '../../../../engine/render';
+import { frameH, frameW, type DrawOpts, type Renderer } from '../../../../engine/render';
 import { getFrame, hasSprite } from '../../../../engine/sprites';
 import type { World } from '../../../../engine/world';
 import { sessionOf } from '../../../context';
@@ -291,8 +291,8 @@ export function drawAbove(r: Renderer, id: string, frame: number, x: number, y: 
   const rows = Math.round(clipY) - (Math.round(y) - f.oy);
   if (rows <= 0) return;
   const src = clipOpts.src as { x: number; y: number; w: number; h: number };
-  src.w = f.buf.w;
-  src.h = Math.min(f.buf.h, rows);
+  src.w = frameW(f);
+  src.h = Math.min(frameH(f), rows);
   clipOpts.flipX = flipX;
   r.sprite(id, frame, Math.round(x), Math.round(y), clipOpts);
 }

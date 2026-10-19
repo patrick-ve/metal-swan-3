@@ -160,7 +160,10 @@ describe('(a) 2× frames keep the 1× logical geometry', () => {
       throw new Error('x');
     })).toThrow();
     expect(artDensity()).toBe(1);
+    // UHD wave: densities are 1, 2 and 4 (was a {1, 2} clamp); 3 normalises to 2, ≥ 4 to 4.
     expect(setArtDensity(7)).toBe(1);
+    expect(artDensity()).toBe(4);
+    expect(setArtDensity(3)).toBe(4);
     expect(artDensity()).toBe(2);
     setArtDensity(1);
     const prev = setHiArt(false);

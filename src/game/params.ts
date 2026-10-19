@@ -5,6 +5,7 @@
  * session; not saved; the older spelling `res=` is still read) and `kmax=1..12` (highest
  * backbuffer resolution; a perf / debug knob), and `mode=fps|bridge` + `floor=0..2` (the
  * first-person mode, docs/design/fps.md §1.11; `floor` defaults to 1 with `mode=fps`), and
+ * `art=1|2|4` (the art tier for this session, docs/ARCHITECTURE.md §3; not saved), and
  * `cache=0` (no sprite cache and no offline cache for this visit; docs/ARCHITECTURE.md §5.4).
  * Pure parsing (main.ts passes `location.search`).
  * With `mission` set the game skips the title and starts that mission at once.
@@ -36,6 +37,8 @@ export interface LaunchParams {
   mode?: 'fps' | 'bridge';
   /** First-person floor 0..2 (default 1 with `mode=fps`; undefined otherwise). */
   floor?: number;
+  /** `?art=1|2|4`: the art tier for this session (wins over ART DETAIL until it is changed). Absent otherwise. */
+  art?: 1 | 2 | 4;
   /** `?cache=0`: no sprite cache, and the offline cache (service worker) is removed. Absent otherwise. */
   noCache?: true;
 }
@@ -93,6 +96,8 @@ export function parseLaunchParams(search: string): LaunchParams {
   const floorRaw = q.get('floor');
   if (floorRaw !== null && /^[0-2]$/.test(floorRaw)) p.floor = Number(floorRaw);
   else if (p.mode === 'fps') p.floor = 1;
+  const art = q.get('art');
+  if (art === '1' || art === '2' || art === '4') p.art = Number(art) as 1 | 2 | 4;
   const cache = q.get('cache');
   if (cache !== null && !flag(cache)) p.noCache = true;
   return p;

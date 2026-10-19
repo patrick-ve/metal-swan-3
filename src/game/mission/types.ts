@@ -94,6 +94,12 @@ export interface SectionDef {
    * replaces it, none fades it out. It stops when the mission ends (`MissionRunner.stopLoops`).
    */
   ambience?: string;
+  /**
+   * Sprite id prefixes this section draws (e.g. `'npc/ams/'`, `'decor/ams/'`): the art tier-4
+   * working set (gameplay.ts `denseWorkingSet`) builds the 4× art under them when the players
+   * enter this section or the one before it. Art only; game logic never reads it.
+   */
+  art?: readonly string[];
   script: SectionScript;
   exits?: ExitDef[];
   /** With ?boss=1 the players start here (and `ctx.bossRush` is true). */
@@ -156,12 +162,14 @@ export interface MissionDef {
    */
   hostages?: Readonly<Record<string, number>>;
   /**
-   * Art density of this mission (docs/ARCHITECTURE.md §3): 2 draws the 2× versions of the
-   * sprites that have one (`defineHiSprite`), 1 (default) the classic 1× art. The runner sets it
-   * around its drawing only (`MissionRunner.draw`, the HUD), so game logic, other missions and
-   * every other scene see density 1; frame geometry is the same at either density.
+   * The highest art density of this mission (docs/ARCHITECTURE.md §3): 4 draws the 4× versions
+   * of the sprites that have one at art tier 4 (and the 2× ones at tier 2), 2 at most the 2×
+   * versions (`defineHiSprite` / `defineHdSprite`), 1 (default) the classic 1× art. The runner
+   * draws at min(artDensity, `artTier()`) and sets it around its drawing only
+   * (`MissionRunner.draw`, the HUD), so game logic, other missions and every other scene see
+   * density 1; frame geometry is the same at every density.
    */
-  artDensity?: number;
+  artDensity?: 1 | 2 | 4;
   /**
    * The mission start drops the player in on a parachute (intro-drop status): only for a fresh
    * start of the mission's `start` section (no startSection, no boss rush, no start or carried

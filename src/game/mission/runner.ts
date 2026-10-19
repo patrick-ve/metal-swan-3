@@ -25,7 +25,7 @@ import type { Renderer } from '../../engine/render';
 import { hashString } from '../../engine/rng';
 import type { ScriptGen, Wait } from '../../engine/script';
 import { Terrain, terrain as terrainBuilder } from '../../engine/terrain';
-import { withArtDensity } from '../../engine/sprites';
+import { artTier, toArtDensity, withArtDensity, type ArtDensity } from '../../engine/sprites';
 import { World } from '../../engine/world';
 import { Boss } from '../boss';
 import { attachGame, HudState, type BannerOpts, type CalloutOpts, type GameContext, type GoDir } from '../context';
@@ -123,7 +123,8 @@ export class MissionRunner {
   private readonly startSection: string | undefined;
   /** The next loadSection is the fresh mission start of an introDrop mission (parachute drop). */
   private introDropPending = false;
-  private readonly density: number;
+  /** The highest art density of the drawing (option or mission); `artDensity` caps it by the tier. */
+  private readonly density: ArtDensity;
   private fadeT = 0;
   private fadeLen = TUNING.transition.fadeTicks;
   private pending: PendingExit | null = null;
@@ -157,7 +158,7 @@ export class MissionRunner {
     this.bossRush = o.bossRush ?? false;
     this.settings = o.settings ?? { ...DEFAULT_SETTINGS };
     this.startSection = o.section;
-    this.density = o.artDensity ?? this.mission.artDensity ?? 1;
+    this.density = toArtDensity(o.artDensity ?? this.mission.artDensity ?? 1);
     // Speech bubbles that show are voiced when a voice sample exists (audio only; the headless
     // outputs have no `say`). Gag bubbles hide with SPEECH BUBBLES OFF and stay silent then.
     // Hint and radio bubbles are important: a gag bark never cuts them off (SpeechLane).
@@ -461,8 +462,17 @@ export class MissionRunner {
     }
   }
 
-  /** Art density of the drawing: `RunnerOptions.artDensity`, else `MissionDef.artDensity`, else 1. */
-  get artDensity(): number {
+  /**
+   * Art density of the drawing now: min(`maxArtDensity`, `artTier()`) — e.g. ams (4) draws 4× art
+   * at tier 4 and 2× art at tier 2.
+   */
+  get artDensity(): ArtDensity {
+    const t = artTier();
+    return t < this.density ? t : this.density;
+  }
+
+  /** The highest art density: `RunnerOptions.artDensity`, else `MissionDef.artDensity`, else 1. */
+  get maxArtDensity(): ArtDensity {
     return this.density;
   }
 

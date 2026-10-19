@@ -9,6 +9,14 @@
  * resolution for that filter (`display.resFor`, re-checked every frame, so resizes and DPR
  * changes apply at once).
  *
+ * Art tier (docs/ARCHITECTURE.md §3): ART DETAIL (`settings.artDetail`, or `?art=` until the
+ * option is changed) and the display scale pick the art tier and the backbuffer res together
+ * (`display.tierRes`: AUTO tier 4 at an integer scale ≥ 8 with k 8, tier 2 from scale 2, tier 1
+ * below); `setArtTier` publishes it to the sprites and the mission runner. At tier 4 a missing 4×
+ * frame draws its 2× frame and is queued (`setDeferDense`), never generated here. A frame-time
+ * governor (`FrameGovernor`) caps the tier at 2 (k ≤ 6) once per session when render + present
+ * average more than 8 ms over 2 s at tier 4.
+ *
  * Pointer lock (docs/design/fps.md §2.3): a click on the canvas takes the lock when
  * `app.pointerLockWanted` and the MOUSE LOOK setting are on; the lock is given back when either
  * turns off; losing it while it is wanted (Esc, alt-tab) sets `app.focusLost` (the scene pauses).
@@ -28,11 +36,14 @@ import { startBrowserLoop } from './engine/loop.browser';
 import { registerOfflineCache, removeOfflineCache } from './engine/offline.browser';
 import { PointerLockSource } from './engine/pointer.browser';
 import { CanvasRenderer } from './engine/render-canvas.browser';
+import { FrameGovernor } from './engine/render-common';
+import { artTier, setArtTier, setDeferDense } from './engine/sprites';
 import { upscaleFactor } from './engine/upscale';
 import { createBrowserStore } from './engine/storage.browser';
 import { createApp, graphicsMode, type GameApp } from './game/app';
 import { ArtCache } from './game/art-cache';
 import { parseLaunchParams } from './game/params';
+import { artDetailTier } from './game/settings';
 import { BootScene } from './game/scenes/index';
 import { applyTuning } from './game/tuning';
 
@@ -46,7 +57,7 @@ export interface FrameTimes {
 declare global {
   interface Window {
     /** Debug handle for the console, the smoke / perf tools and browser tests. */
-    __ms3?: { app: GameApp; renderer: CanvasRenderer; frames: FrameTimes };
+    __ms3?: { app: GameApp; renderer: CanvasRenderer; frames: FrameTimes; tier: () => number };
   }
 }
 
@@ -103,6 +114,7 @@ function main(): void {
   const display = createDisplay(canvas, { kmax: params.kmax ?? undefined });
   const renderer = new CanvasRenderer(undefined, undefined, undefined, { res: display.res });
   const frames: FrameTimes = { ms: new Float32Array(1024), count: 0 };
+  const governor = new FrameGovernor();
 
   // The pointer-lock mouse of the first-person mode (reports nothing without the lock).
   const pointer = new PointerLockSource(canvas);
@@ -117,7 +129,15 @@ function main(): void {
   let offlinePending = caching;
 
   const app = createApp({ input, audio, store, params, debug, gesture: false, preloadArt: true, artCache });
-  window.__ms3 = { app, renderer, frames };
+  // `?art=` wins over ART DETAIL until the option is changed.
+  const artAtStart = app.settings.artDetail;
+  const wantedTier = (): number => {
+    const w = params.art !== undefined && app.settings.artDetail === artAtStart ? params.art : artDetailTier(app.settings.artDetail);
+    // The governor tripped: tier 2 at most for the rest of the session.
+    return governor.tripped ? (w === 1 ? 1 : 2) : w;
+  };
+  let tier = 0;
+  window.__ms3 = { app, renderer, frames, tier: artTier };
   app.scenes.reset(new BootScene(app));
   // Losing focus (another window, a notification) pauses a game in progress.
   window.addEventListener('blur', () => {
@@ -160,14 +180,24 @@ function main(): void {
       app.frame++;
       const mode = graphicsMode(app);
       if (renderer.mode !== mode) renderer.setMode(mode);
-      const res = display.resFor(upscaleFactor(mode));
+      const tr = display.tierRes(upscaleFactor(mode), wantedTier());
+      const res = tr.k;
       if (renderer.res !== res) renderer.setRes(res);
+      if (tr.tier !== tier) {
+        tier = tr.tier;
+        setArtTier(tier);
+        setDeferDense(tier >= 4);
+      }
       app.displayRes = res;
       renderer.begin();
       app.scenes.draw(renderer);
       renderer.end();
       display.present(renderer.canvas);
-      frames.ms[frames.count++ % frames.ms.length] = performance.now() - t0;
+      const t1 = performance.now();
+      frames.ms[frames.count++ % frames.ms.length] = t1 - t0;
+      if (governor.sample(t1 - t0, t1, tier)) {
+        console.info(`[metal-swan-3] render + present averaged ${governor.trippedMs.toFixed(1)} ms at 4× art: dropping to 2× art for this session`);
+      }
     },
     onError: showError,
   });

@@ -99,6 +99,86 @@ determinism, seam, 2× detail). `tests/art/scenery-hi.test.ts` checks size, foot
 the 1× geometry of the 2× terrain, lists the 2× layers, and keeps the 1× scenery of every mission
 byte-identical (fixtures/scenery-1x.json).
 
+### UHD art (2× and 4×, mission ams flow)
+
+The UHD wave replaces the ams 2× art with NEW art at arcade-level fidelity, drawn natively at
+2× (1080p / 1440p) and 4× (4K, backbuffer k = 8) by ONE density-generic drawer per id. It is
+never the 1× or old 2× art scaled (no MMPX / xBR / nearest look). The 1× art keeps `PAL` and stays
+byte-identical; the old 2× drawers are retired group by group. Fidelity of the arcade era, never
+its looks: our characters, Amsterdam, outfits, colour families and the squad's likenesses stay
+ours (docs/ORIGINALITY.md).
+
+**Fidelity targets** (every UHD builder):
+
+| Target | Rule |
+|---|---|
+| Tones | Sprites 5–6 tones per lit material (deep shade, shade, mid, light, highlight + a specular or rim where the material has one); backgrounds and big props 6–8. |
+| Light | One key light from the upper left and in front, a cool bounce on the shadow side, highlights near white on metal / skin / water / glass, deep shade near ink. |
+| Form | Limbs, torso, heads, the Swan and the boss read as volumes (cylinder / sphere / box shading), not flat fills; cloth folds at bends; at 4×: knuckles, laces, stitching, rivets, screws, buckles, seams. |
+| Clusters | Clean tone clusters, no orphan px except speculars, no pillow shading, no noise dither on sprites; ordered dither only on backgrounds, sky, water and large gradients. |
+| Outline | The variant chosen at the style gate (below); interior separations in the deepest tone of the part behind. |
+| Texture, wear, depth | Brick and mortar, plaster cracks and stains, moss near water, wood grain, rust, cobbles with lit edges, canal water with ripples and reflections; far layers lighter, cooler, lower contrast. |
+| Geometry is law | Every 2× / 4× frame has exactly its 1× frame's logical size, anchor and points; terrain cells and collision never change; logic never reads art px; 1× px stay byte-identical. |
+| Readability | Judge every frame at its real size (1 logical px = 2 or 4 art px) on the real background. |
+
+**HD palette** (`src/engine/palette-hd.ts`): `PAL_HD`, 209 unique colours in 36 named ramps
+of 6–8 tones (ink: 2), dark → light with rising luma, hue-shifted (shadows lean purple / blue,
+highlights warm yellow / cream, saturation peaks mid-ramp). Every `PAL` swatch sits in the HD ramp
+of its material; the extra tones are Oklab steps between those swatches plus a designed cool
+deep shade and a warm near-white highlight. It has every material family of `PAL` (ink, steel,
+stone, olive, sand, brown, rust, red, orange, gold, fire, green, teal, sky, navy, purple, pink,
+snow, skinA–C, hairA–C, black, cloth, slate) plus `brick`, `brickDark` (old canal-house brick),
+`canal`, `plaster`, `gable` (white trim), `glass`, `denim`, `wood` (warm painted / oiled), `moss`.
+API: `hdRampOf(PAL.olive | 'olive' | customRamp)` → the HD ramp, `hdHome(colour)` → `{ ramp, i }`
+for a `PAL` colour, `hdTone(ramp, t)`, `inHdPalette(c)`, `HD_PALETTE`. ALL 2× and 4× px are
+`PAL_HD` colours (`tests/art/palette-hd.test.ts`). Sheet: `npm run uhd-spike -- --palette`.
+
+**The kit** (`src/game/art/hd/`, import from `src/game/art/hd/index`):
+
+| Part | API |
+|---|---|
+| Canvas | `new HdCanvas(w, h, d)`: w × h LOGICAL px at d ∈ {2, 4}, float logical coordinates (1 / d = one art px). Drawing is deferred: primitives write a G-buffer (material, part, depth, normal, tone) with a depth test, so parts can be drawn in any order; `render(opts)` returns the (w·d) × (h·d) PixelBuffer. |
+| Materials | `c.material({ ramp, spec?, shine?, rim?, amb?, gain?, wrap?, bounce?, lo?, hi?, dither?, flat? })` → id. Diffuse light uses ramp indices `lo`..`hi` (default 1..n−2: index 0 is kept for separations, crevices and outline C, the top tone for speculars and rims). `dither` = ordered dither at band borders (backgrounds only); `flat` = no light, the tone alone picks the band (glass, water, lamps, fire). |
+| Primitives | `ellipsoid(cx, cy, rx, ry, o)`, `capsule(x0, y0, x1, y1, r0, r1, o)` (tapered: limbs, necks, barrels), `stroke(points, r0, r1, o)`, `box(x, y, w, h, { r, bevel, n })`, `cylinder(x, y, w, h, { axis, cap })`, `poly(points, { n })`, `plane(x, y, w, h, { mask, normal, height })`, `heightField(x, y, w, h, hf)` (the portrait-kit painter generalised: faces, rocks, cushions; normals by central differences one art px apart). Options `o`: `{ mat, part?, z?, tone?, tex?, round? }` — parts with one `part` id form one surface (no line where they meet); `z` is the base depth (larger = nearer). |
+| Paint and compose | `shade(x, y, w, h, fn, part?)` (folds, stains, painted shadows), `paint(x, y, w, h, fn)` / `dot(x, y, c)` (fixed colours: pupils, catchlights, signs; unlit, kept by the clean-up), `image(buf, x, y, { z })` (a finished buffer of the same density, e.g. a head or a gun, joins the silhouette), `erase(…)`. |
+| Light | `light.ts`: `KEY` (upper left, in front), `BOUNCE` (lower right), `diffuse(…)` with a contrast curve (a plane facing the viewer is a mid tone; only planes facing the light reach the top bands), `specular` (Blinn-Phong). |
+| Render | `render({ outline: 'A' | 'B' | 'C' | 'none', ao = 0.35, clean = true, sep = true, sepZ = 0.5, sepW = 1, shadow = 0, shadowMax = 3 })`: ambient occlusion where a part meets a nearer one, cast shadows from the key light (`shadow` > 0: a part dz logical px in front throws a shadow about dz px down-right; façades, sills, an arm on the torso), quantise (hard bands; dither only for `dither` materials), cluster clean-up (an art px with no same-tone 4-neighbour in its part takes the common neighbour tone; speculars and fixed px are kept), interior separations (1 art px in the deepest tone of the part BEHIND), outline. |
+| Textures | `Texture = (s: TexSample) => void` changes the normal, tone, height, material or cuts the px; sizes in logical px, finer detail only where s.d = 4. `brick({ mortar, bw, bh, joint, wear })`, `plaster({ cracks, stains })`, `wood({ dir, plank, seam })`, `cobbles({ gap, cw, ch })`, `folds({ angle, spacing, amp, cover })` (creases in patches, never stripes), `strands({ angle, width })` (hair), `leaves({ size, ragged })`, `ripples({ spacing, phase })`, `grime(seed, amount)`, `texAll(…)`. |
+
+Example (a lit gun barrel with a wooden stock, the same code at 2× and 4×):
+
+```ts
+const c = new HdCanvas(19, 5, d);
+const steel = c.material({ ramp: PAL_HD.steel, spec: 1, shine: 30 });
+const wd = c.material({ ramp: PAL_HD.wood, spec: 0.3 });
+c.poly([[0, 1], [6, 1], [6, 3], [0, 3.5]], { mat: wd, tex: wood({ seed: 5 }) });
+c.box(6, 1, 6, 2, { mat: steel, z: 1, bevel: 0.45, r: 0.2 });
+c.cylinder(12, 1.1, 7, 1.1, { mat: steel, z: 1, axis: 'h' });
+const buf = c.render({ outline: 'none' }); // 38 × 10 at d = 2, 76 × 20 at d = 4
+```
+
+**Outline variants** (CHOICE PENDING — the lead decides at the style gate and writes it into the
+plan's "Style decisions"): **A** ink, 1 logical px (d art px; the weight of the 1× art, as the
+old 2× art), **B** ink, ½ logical px (1 art px at 2×, 2 at 4×), **C** selective, ½ logical px:
+the deepest tone of the material on the lit side (up / left), ink only on the shadow side
+(right / bottom). Interior separations are the same in all three.
+
+**Rig contracts** (working prototypes; the rig group replaces their bodies, the signatures,
+sizes and points stay):
+
+| Contract | Rule |
+|---|---|
+| `renderHeadHd(s: HeadStyle, expr: Expression, d: 2 | 4, opts?: { glint?: boolean }): PixelBuffer` (`hd/head.ts`) | Exactly HEAD_W·d × HEAD_H·d, the logical layout of `renderHead` (facing right; NECK and HEAD_CENTER at d times them); no outline (the rig outlines the figure); `glint: false` for tilted heads. |
+| `gunArtHd(kind, d)`, `heldArtHd('grenade' | 'snack' | 'gift', d)`, `knifeArtHd(d)`, `propArtHd(kind, d)` (`hd/gear.ts`) | Exactly d × the 1× size of `gunArt(kind).buf` / `grenadeArt()` / `snackArt()` / `giftArt()` / `knifeArt()` / `propArt(kind).buf`; the logical points (grip, grip2, muzzle, tip) are the 1× ones; no outline. `propArtHd` is a stand-in (re-lit from the 1× silhouette) until the GEAR builder draws each prop. |
+
+**Style spike**: `npm run uhd-spike -- [--out tmp/uhd-style] [--palette] [--only hero|swan|street|gear]`
+renders a hero (recruit colours: idle, run, shoot), the Swan's head and neck, a 128 × 96 street
+crop and the gear / head contracts at 2× and 4×, each next to today's 2× art, in outline variants
+A / B / C, plus the PAL_HD sheet; `tmp/uhd-style/index.md` lists the PNGs and generation times
+(node, one thread: a 40 × 42 hero frame about 2–5 ms at 4×, the 128 × 96 street about 50 ms
+at 4×). Nothing in it is registered in the game. Tests: `tests/art/palette-hd.test.ts`,
+`tests/art/hd-kit.test.ts`.
+
 ### Palette ramps per material
 
 | Material | Ramp (`PAL.*`) | Notes |

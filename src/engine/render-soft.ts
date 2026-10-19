@@ -13,7 +13,8 @@ import {
   DEFAULT_SUBPIXEL,
   firstTile,
   layerCam,
-  lowRes,
+  drawDensity,
+  reducedFor,
   parallaxOrigin,
   placePart,
   solidColor,
@@ -219,10 +220,10 @@ export class SoftRenderer implements Renderer {
     const fine = this.subpixel !== 'off';
     const sx = parallaxOrigin(offsetX, layerCam(this.camX, this.exactX, factorX, k, this.subpixel), factorX, k, fine);
     const sy = parallaxOrigin(offsetY, layerCam(this.camY, this.exactY, factorY, k, this.subpixel), factorY, k, fine);
-    // A 2× layer tiles by its logical size; below res d it is drawn as its 1× reduction.
+    // A dense layer tiles by its logical size; below res d it is drawn reduced (4 → 2 → 1).
     const d = Math.max(1, Math.floor(o?.density ?? 1));
-    const img = d > k ? lowRes(buf, d) : buf;
-    const f = d > k ? 1 : d;
+    const img = reducedFor(buf, d, k);
+    const f = drawDensity(d, k);
     const tw = (img.w / f) * k;
     const th = (img.h / f) * k;
     const repeatX = o?.repeatX !== false;
@@ -282,8 +283,8 @@ export class SoftRenderer implements Renderer {
     let img = buf;
     let f = d;
     if (d > k) {
-      img = lowRes(buf, d);
-      f = 1;
+      img = reducedFor(buf, d, k);
+      f = drawDensity(d, k);
     } else if (d === 1 && sprite && k > 1 && this.mode !== 'pixel') {
       const m = spriteFilter(spriteIdOf(buf), this.mode, k);
       if (m !== 'pixel') {

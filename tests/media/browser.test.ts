@@ -259,8 +259,10 @@ describe('browser media', () => {
 
   // 2× art (density 2, never filtered, so 'smooth' must not change it): exact at res 1 (the
   // reduction) and where 2 divides the res; at odd res > 1 the 2× buffer is enlarged by k / 2 and
-  // Canvas may pick the other pixel on a nearest tie (same tolerance as above).
-  for (const k of [1, 2, 3, 4, 5, 6]) {
+  // Canvas may pick the other pixel on a nearest tie (same tolerance as above). At res 1, 2, 4
+  // and 8 (art tier 4's k) the scene also draws 4× art (density 4): exact as its 1× / 2×
+  // reduction at res 1 / 2 and as 4 | k blocks at res 4 and 8.
+  for (const k of [1, 2, 3, 4, 5, 6, 8]) {
     it(`2× art at res ${k}: canvas matches the software renderer`, async (ctx) => {
       if (!page) return ctx.skip();
       const c = await page.evaluate(
@@ -271,6 +273,7 @@ describe('browser media', () => {
       drawHiScene(soft);
       // The scene really draws 2× frames (a failing 2× generator would fall back to 1×).
       expect(getFrame('parity/hero2', 0, 2).density).toBe(2);
+      expect(getFrame('parity/hero4', 0, 4).density).toBe(4);
       expect([c.w, c.h]).toEqual([soft.target.w, soft.target.h]);
       const d = compare(soft.target.toRGBA(), Buffer.from(c.rgba, 'base64'), c.w);
       if (k % 2 === 0 || k === 1) expect(d.exact, `res ${k}: ${d.firstBig}`).toBe(c.w * c.h);

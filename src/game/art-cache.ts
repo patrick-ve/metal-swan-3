@@ -4,7 +4,10 @@
  * a later visit, so the generators run once per build instead of on every visit.
  *
  * Packs: 'boot' (the 1× frames the boot scene preloads), 'hi' (the 2× frames of the background
- * mission preload) and 'fps' (the first-person sprites, lazy content). Every pack carries the
+ * mission preload), 'fps' (the first-person sprites, lazy content) and the 4× packs of the tier-4
+ * working set: 'hd4-<section>' (a section's 4× ids) and 'hd4-char-<hero>' (a hero's 4× ids).
+ * The boot restores 'boot' and 'hi'; the 4× packs are restored at the mission start and on a
+ * section change (scenes/gameplay.ts), never at boot. Every pack carries the
  * build tag; a pack of another build is a miss and is deleted, so a deploy never draws old art.
  * Only the browser app has a cache (main.ts, production builds); headless apps and `?cache=0`
  * run without one. Every failure is a miss: the generators run as before.
@@ -13,10 +16,12 @@ import type { ByteStore } from '../engine/byte-store';
 import { decodeSpritePack, encodeSpritePack } from '../engine/sprite-pack';
 import { generatedSprites, installFrames, readyFrames } from '../engine/sprites';
 
-export type ArtPack = 'boot' | 'hi' | 'fps';
+export type ArtPack = 'boot' | 'hi' | 'fps' | `hd4-${string}`;
 
-/** Density of the frames in each pack. */
-const PACK_DENSITY: Readonly<Record<ArtPack, number>> = { boot: 1, hi: 2, fps: 1 };
+/** Density of the frames in a pack: 'hi' 2, 'hd4-…' 4, else 1. */
+export function packDensity(name: ArtPack): number {
+  return name === 'hi' ? 2 : name.startsWith('hd4-') ? 4 : 1;
+}
 
 const key = (name: ArtPack): string => `sprites:${name}`;
 
@@ -38,19 +43,20 @@ export class ArtCache {
 
   /**
    * Install the frames of pack `name` made by this build into the sprite registry (ids that have
-   * frames already keep theirs). Returns the number of ids installed; 0 on a miss.
+   * frames already keep theirs). `keep` (optional) limits the ids installed (a 4× pack installs
+   * only the current working set). Returns the number of ids installed; 0 on a miss.
    */
-  async restore(name: ArtPack): Promise<number> {
+  async restore(name: ArtPack, keep?: (id: string) => boolean): Promise<number> {
     const bytes = await this.store.get(key(name));
     if (!bytes) return 0;
     try {
       const pack = await decodeSpritePack(bytes);
-      if (pack.tag !== this.build || pack.density !== PACK_DENSITY[name]) {
+      if (pack.tag !== this.build || pack.density !== packDensity(name)) {
         await this.store.delete(key(name));
         return 0;
       }
       let n = 0;
-      for (const [id, frames] of pack.sprites) if (installFrames(id, pack.density, frames)) n++;
+      for (const [id, frames] of pack.sprites) if ((!keep || keep(id)) && installFrames(id, pack.density, frames)) n++;
       this.stored.set(name, pack.sprites.length);
       this.restored.set(name, n);
       return n;
@@ -65,18 +71,20 @@ export class ArtCache {
    * Save the ready frames of the ids that start with one of `prefixes` as pack `name`, unless the
    * stored pack already holds that many ids (a restored pack is not written again). Runs in the
    * background (the encoder yields between chunks); a second call while one runs waits for it.
+   * `prefixes` may also be a filter on ids (the 4× packs save an exact id set).
    * Returns true when it wrote the pack.
    */
-  save(name: ArtPack, prefixes: readonly string[]): Promise<boolean> {
+  save(name: ArtPack, prefixes: readonly string[] | ((id: string) => boolean)): Promise<boolean> {
     const prev = this.saving.get(name) ?? Promise.resolve(false);
     const next = prev.then(() => this.write(name, prefixes));
     this.saving.set(name, next);
     return next;
   }
 
-  private async write(name: ArtPack, prefixes: readonly string[]): Promise<boolean> {
-    const d = PACK_DENSITY[name];
-    const ids = generatedSprites(d).filter((id) => prefixes.some((p) => id.startsWith(p)));
+  private async write(name: ArtPack, prefixes: readonly string[] | ((id: string) => boolean)): Promise<boolean> {
+    const d = packDensity(name);
+    const keep = typeof prefixes === 'function' ? prefixes : (id: string): boolean => prefixes.some((p) => id.startsWith(p));
+    const ids = generatedSprites(d).filter(keep);
     if (ids.length === 0 || this.stored.get(name) === ids.length) return false;
     try {
       const sprites: Array<[string, NonNullable<ReturnType<typeof readyFrames>>]> = [];

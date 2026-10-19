@@ -47,8 +47,9 @@ export const AMS: MissionDef = {
   announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
   sections: { a: sectionA, b: sectionB, c: sectionC, d: sectionD },
   hostages: { a: 4, b: 3, c: 3 },
-  // 2× art (docs/ART_GUIDE.md "2x art (mission ams)"): only this mission draws it.
-  artDensity: 2,
+  // Dense art up to 4× (docs/ART_GUIDE.md "2x art (mission ams)", "UHD art"): only this mission
+  // draws it; the runner draws at min(4, artTier()).
+  artDensity: 4,
   // Footsteps on the cobbles (`player/step`; 2026-10-14, with the sampled ams audio).
   footsteps: true,
   // The mission start drops the players in on a parachute (fx/chute; Player.introDrop).

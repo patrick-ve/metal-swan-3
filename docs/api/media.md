@@ -128,6 +128,8 @@ defineSprite(id, gen, opts?)  // gen: () => Frame | PixelBuffer | (Frame | Pixel
 //         pts?: FramePoints | FramePoints[],                        (relative to the anchor)
 //         ticksPerFrame?: number, durations?: number[], loop?: boolean, trim?: boolean,
 //         hi?: gen2x,                                               (= defineHiSprite(id, gen2x))
+//         hi4?: gen4x,                                              (= defineHiSprite(id, gen4x, 4))
+//         hd?: (d) => frames,                  (= defineHdSprite(id, hd): one generator for d 2 and 4)
 //         defer?: boolean }       (rare cosmetic strip: not in the boot preload, last in the others)
 getFrames(id, density?) / getFrame(id, i, density?) / frameCount(id) / hasSprite(id) / listSprites(prefix?)
 spriteAnim(id) / spriteErrors() / clearSpriteCache(id?) / placeholderFrames()
@@ -138,8 +140,16 @@ await preloadSprites(prefixes?, (done, total) => …, { batch?, timeBudgetMs?, n
 isDeferredSprite(id) / preloadOrder(ids, first, last)   // defer flag; the preload's id order
 framePoint(frame, name, flipX?, flipY?, out?)
 frameW(f) / frameH(f) / frameDensity(f)          // logical size and density (also in render.ts)
-defineHiSprite(id, gen2x) / hasHiSprite(id) / listHiSprites(prefix?)              // 2× art
+defineHiSprite(id, gen, d = 2) / defineHdSprite(id, (d) => frames, densities = [4, 2])   // dense art
+hasHiSprite(id, d = 2) / listHiSprites(prefix?, d = 2)   // either argument order: listHiSprites(4, 'enemy/')
 setArtDensity(d) → previous / artDensity() / withArtDensity(d, fn) / setHiArt(on) → previous / hiArtOn()
+toArtDensity(n) → 1 | 2 | 4 / HI_DENSITY (2) / MAX_DENSITY (4) / DENSE_DENSITIES ([4, 2])
+// Art tier (UHD art, docs/ARCHITECTURE.md §3): the highest density the display draws (default 2).
+artTier() → 1 | 2 | 4 / setArtTier(t) → previous
+// Tier 4 in the browser: never generate 4× frames on the main thread; queue them for the art pool.
+setDeferDense(on) → previous / denseDeferred() / takeDenseQueue() → ids / pendingDense()
+hasFramesAt(id, d) → built at exactly d? / framesDensityAt(id, d) → the density getFrames would return, no generation
+releaseDense(ids, d = 4) → bytes freed / denseBytes(d = 4)   // working set
 // 2× art jobs (non-sprite 2× work such as 2× scenery, run in the same per-frame budget):
 setDeferHiArt(on) → previous / hiArtDeferred() / queueArtJob(key, run) / hasArtJob(key)
 cancelArtJobs(prefix) / pendingArtJobs() / runArtJobs(budgetMs, now?) → jobs run
@@ -153,6 +163,16 @@ installFrames(id, d, frames) → true when the id (registered, without frames) t
 `SPRITE_PACK_VERSION` or byte order). `byte-store.ts`: `ByteStore { get, put, delete }`,
 `MemoryByteStore`; `byte-store.browser.ts`: `idbByteStore(name)` (IndexedDB, opened on first
 use; without IndexedDB an empty store). `new PixelBuffer(w, h, data?)` wraps `data` without a copy.
+
+**Art pool** (`art-pool.ts`, worker entry `src/game/art-worker.ts`): `browserArtPool(size =
+poolSize())` starts min(cores − 1, 8) module workers (at least 1). `pool.build(ids, d,
+onProgress?)` → `Promise<ArtPoolReport>` sends the ids of one family (`familyOf(id)`) to the same
+worker; the worker sends back raw packs (`buildRawPack(ids, d)`) as transferred ArrayBuffers (no
+SharedArrayBuffer), and the main thread installs them with `installFrames`. The frames are
+byte-identical to `getFrames`. Without Worker, or after a worker fails, the pool warns once and
+builds on the main thread with the budgeted preload. Node tools and tests use `nodeArtPool(n)`
+(worker_threads through tsx) or `inProcessPort(createArtWorkerHandler(load))`. Also `reset()`,
+`close()`, `pending`, `workers`, `packFrames` / `unpackFrames` / `installRawPack`.
 - Generated lazily on first use, then cached. Unknown id or a throwing generator → magenta
   placeholder (12×12, feet anchor) and **one** `console.warn` per id.
 - **Anchors.** `Frame = { buf, ox, oy, pts? }`. Drawing at (x, y) puts buffer pixel (ox, oy) on
@@ -192,6 +212,16 @@ use; without IndexedDB an empty store). `new PixelBuffer(w, h, data?)` wraps `da
   in the same slice budget, and `artPreloadActive()` is true while it runs. `setDeferHiArt(true)`
   (set by `preloadMissionArt`, browser only) tells the scenery to queue its 2× work instead of
   doing it on the spot; off (default, headless tools and tests) it is built when first drawn.
+- **4× art and tiers (UHD art).** A density-generic generator (`defineHdSprite(id, (d) => …)`)
+  is called with d 2 and d 4 and returns buffers d times the 1× logical size; per-density
+  generators (`defineHiSprite(id, gen, 4)`) work too. `getFrames(id, d)` returns the highest
+  density ≤ d that the id has (4 → 2 → 1, never an upscale); validation and re-framing are the
+  2× rules at any d, failures labelled `id@<d>x` fall back to the next lower frames. The mission
+  runner sets the art density to min(`MissionDef.artDensity`, `artTier()`). With
+  `setDeferDense(true)` (main.ts at tier 4) a missing 4× frame gives the 2× frame and the id is
+  queued (`takeDenseQueue()`); `installFrames(id, 4, frames)` installs the pool's result.
+  `preloadSprites(…, { density: 4 })` makes each matching id at the highest density it has
+  (deferred 4× ids queued, their 2× frames made). Sprite packs carry any density.
 
 ```ts
 defineSprite('enemy/grunt/shoot', () => {
@@ -296,8 +326,10 @@ r.text('METAL SWAN', 192, 36, { font: 'big', scale: 2, align: 'center', outline:
   without a sprite id draw as crisp k × k blocks; registered sprites are filtered by
   `upscale(buf, m)` with m = `spriteFilter(spriteIdOf(buf), mode, k)` (render-common.ts) and
   cover exactly their logical footprint × k. Frames of density d > 1 are never filtered: exact
-  (k / d)-px blocks when d | k, nearest enlargement by k / d otherwise, and `lowRes(buf, d)`
-  (= `buf.downsampled(d)`, cached) at k < d. `spriteFilter` gives `'pixel'` for buffers that
+  (k / d)-px blocks when d | k, nearest enlargement by k / d otherwise, and at k < d the
+  reduction to `drawDensity(d, k)` (the highest density ≤ k that divides d: a 4× frame at k 2
+  or 3 draws its 2× image, at k 1 its 1× image; `reducedFor(buf, d, k)` = `lowRes(buf, d / that)`,
+  `lowRes` = `buf.downsampled(n)`, cached). `spriteFilter` gives `'pixel'` for buffers that
   `filtersId` rejects (`UNFILTERED_PREFIXES` `['ui/']` minus `FILTERED_UI_PREFIXES`, plus the
   exact ids in `UNFILTERED_IDS`), `'smooth'` for `XBR_AS_SMOOTH_PREFIXES` (`['decor/']`) in
   `'xbr'` mode, and else `modeAtRes(mode, k)` (a filter whose factor is above k steps down:
@@ -314,6 +346,13 @@ r.text('METAL SWAN', 192, 36, { font: 'big', scale: 2, align: 'center', outline:
   frame (`placePart(…, k)` with the logical size; × d addresses a 2× buffer). `chooseRes(scale, kmax = KMAX, factor = 1)` picks k for a display scale
   and filter factor: the scale itself up to kmax, else the largest k ≤ kmax that the factor
   divides (so filtered pixels land as a direct nearest-neighbour scale would put them).
+  Art tiers: `chooseTier(scale, want = 0)` (AUTO 0: 4 when the integer scale ≥ `TIER4_MIN_SCALE`
+  8, 2 from 2, else 1; `want` 1 / 2 / 4 forces), `kmaxForTier(t)` (`KMAX_TIER4` = 8 at tier 4,
+  else `KMAX` = 6), `tierAtRes(t, k)` (4 needs 4 | k, 2 needs k ≥ 2) and
+  `chooseTierRes(scale, want, factor, kmaxCap?, out?)` → `{ tier, k }` (4K AUTO → tier 4, k 8; a
+  forced 4× at scale 5–7 → k 4; a `?kmax` cap below 8 keeps AUTO at tier 2). `FrameGovernor`
+  (`sample(ms, now, tier)` → true once when tier-4 frames average more than
+  `GOVERNOR_LIMIT_MS` = 8 over `GOVERNOR_WINDOW_MS` = 2000; main.ts then caps the tier at 2).
 - `new SoftRenderer(w?, h?, target?, { res?, mode?, subpixel? })` → `.target` is a PixelBuffer
   of (w·res) × (h·res) (node tools, tests, screenshots). Defaults: res 1, `'pixel'` — the
   classic image. Upscaled sprites are cached in a WeakMap (no budget), so headless PNGs show
@@ -321,10 +360,14 @@ r.text('METAL SWAN', 192, 36, { font: 'big', scale: 2, align: 'center', outline:
   pixels differ on nearest-neighbour ties, `tests/media/browser.test.ts`). `PixelBuffer.blitScaled(src, dx, dy, num, den, opts)` is its
   nearest-neighbour enlargement (pixel-centre sampling; at ratios that are not integers a few
   tie columns may differ from Chromium).
-- `new CanvasRenderer(w?, h?, canvas?, { res?, mode?, subpixel?, budgetPx?, scaleBudgetMs? })`
+- `new CanvasRenderer(w?, h?, canvas?, { res?, mode?, subpixel?, budgetPx?, scaleBudgetMs?, uploadBudgetMs? })`
   (browser) → `.canvas` backbuffer; `setRes(k)` re-sizes it. Caches one canvas per buffer
   variant (normal / flipped / flash / tint colour, and the same of the upscaled copy) in one LRU
-  cache with a pixel budget (`TEXTURE_BUDGET_PX` = 48 M px); upscaling is lazy, at most
+  cache with a pixel budget (default `textureBudgetFor(k)`: `TEXTURE_BUDGET_PX` = 48 M px, 96 M
+  (`TEXTURE_BUDGET_PX_K8`) at k ≥ 8; it follows `setRes` unless `budgetPx` was given). Uploads
+  swizzle 32-bit words into one reused ImageData; dense frames (d > 1) have an upload budget
+  (`UPLOAD_BUDGET_MS` = 6 ms per frame): once spent, a dense frame without its texture draws its
+  1× reduction that frame and uploads later (`textureStats().uploadMs` / `uploadDeferred`); upscaling is lazy, at most
   `SCALE_BUDGET_MS` = 4 ms per frame (a sprite not scaled yet draws from 1× that frame). A buffer
   whose `version` changed is re-uploaded (call `buf.touch()` after writing `buf.data` directly),
   `forget(buf)` drops it, `clearUpscaled()` drops every upscaled copy (`setMode` does it),
@@ -344,7 +387,8 @@ r.text('METAL SWAN', 192, 36, { font: 'big', scale: 2, align: 'center', outline:
   (`tests/media/browser.test.ts`, res 1 and 3). Call `buf.touch()` after writing `buf.data`.
 - `createDisplay(visibleCanvas, { scanlines, kmax })` (browser) → `present(renderer.canvas)`
   each frame (any backbuffer size), `setScanlines(on)`, `toggleFullscreen()`,
-  `toGame(clientX, clientY)` (logical px), `scale` (device px per logical px), `resFor(factor)`
+  `toGame(clientX, clientY)` (logical px), `scale` (device px per logical px),
+  `tierRes(factor, want = 0)` → `{ tier, k }` (`chooseTierRes`, the object is reused), `resFor(factor)`
   (the backbuffer resolution for that scale and the filter's `upscaleFactor`) and `res`
   (= `resFor(1)`). Largest integer scale in device pixels, black letterbox, best-fit fallback
   when tiny; the backbuffer is presented by nearest neighbour at any ratio.
@@ -365,7 +409,7 @@ function draw() {
 
 ## 8. Tools
 
-`npm run sprites -- [prefix] [--marks] [--scale 3] [--palette] [--density 2 [--all]] [--out dir]`: loads the art
+`npm run sprites -- [prefix] [--marks] [--scale 3] [--palette] [--density 2|4 [--all]] [--out dir]`: loads the art
 modules (`ART_MODULE_IDS`), generates every sprite (or those matching `prefix`), writes one
 contact sheet per top-level group to `tmp/sprites/<group>.png` (split into `-2`, `-3` … when
 tall). Frames of one sprite are aligned by anchor. `--marks`: anchors cyan, points magenta.
@@ -375,7 +419,11 @@ failing generator is reported. `--density 2` draws the 2× frames at 2 sheet px 
 (only ids with 2× art, `--all` for every id with 1× ones doubled) to `<group>@2x.png` (default
 scale 2); marks cover the whole logical pixel where the game reads the point. `demo/anim` has a
 2× version. `npm run shot -- --mission ams …` draws ams with its 2× art like the browser;
-`--art 1` shows the 1× art for comparison.
+`--art 1` shows the 1× art for comparison. `--density 4` draws the ids with 4× or 2× art at 4
+sheet px per logical px, each at the highest density it has (to `<group>@4x.png`, default scale
+1; the summary counts frames per density). `npm run shot -- --mission ams --res 8 --art 4` (and
+`npm run arena -- --res 8 --art 4`) draws art tier 4 as on a 4K screen (a res that cannot show
+4× uses the browser's lower tier); `npm run perf -- --art auto,4,2` compares tiers.
 
 `npm run shot` / `npm run arena` take `--res k` (backbuffer resolution, default 1) and
 `--gfx pixel|smooth|xbr` (sprite filter at res > 1, default pixel as in the browser; `tools/lib/gfx.ts`: a filter

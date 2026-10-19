@@ -5,7 +5,7 @@
 import { PixelBuffer } from '../../../src/engine/pixel';
 import { INK, PAL } from '../../../src/engine/palette';
 import type { Renderer } from '../../../src/engine/render';
-import { defineHiSprite, defineSprite, withArtDensity } from '../../../src/engine/sprites';
+import { defineHdSprite, defineHiSprite, defineSprite, withArtDensity } from '../../../src/engine/sprites';
 
 let registered = false;
 
@@ -41,9 +41,42 @@ export function registerSceneSprites(): void {
     b.set(18, 7, PAL.sky[2]);
     return b.outline(INK);
   });
+  // UHD art: one density-generic generator for 2× and 4× (single art-pixel detail at each d).
+  defineSprite('parity/hero4', () => new PixelBuffer(10, 14).roundRect(1, 1, 8, 12, 2, PAL.steel[2]).outline(INK), { pts: { muzzle: [4, -9] } });
+  defineHdSprite('parity/hero4', (d) => {
+    const b = new PixelBuffer(10 * d, 14 * d).roundRect(d, d, 8 * d, 12 * d, 2 * d, PAL.steel[2]).bevel(PAL.steel, { only: PAL.steel[2] });
+    for (let y = 2 * d; y < 12 * d; y += d + 1) for (let x = 2 * d + (y % 3); x < 8 * d; x += d + 1) b.set(x, y, PAL.gold[3]);
+    b.set(2 * d + 1, 2 * d + 1, PAL.red[2]);
+    b.set(7 * d, 3 * d + d - 1, PAL.sky[2]);
+    return b.outline(INK);
+  });
 }
 
-/** 2× art (density 2) next to its 1× frames: exact where 2 divides res, nearest ties elsewhere. */
+/**
+ * 4× art (density 4) drawn only where the image is exact (4 | k, or k ≤ 2: the reduction to 2× or
+ * 1×), so the 2× checks at res 3, 5 and 6 keep their own tolerance.
+ */
+function drawHdRow(r: Renderer): void {
+  const k = r.res;
+  if (!(k % 4 === 0 || k <= 2)) return;
+  withArtDensity(4, () => {
+    r.sprite('parity/hero4', 0, 40, 180);
+    r.sprite('parity/hero4', 0, 70.4, 180, { flipX: true });
+    r.sprite('parity/hero4', 0, 100, 180, { flipY: true, flash: true });
+    r.sprite('parity/hero4', 0, 130.5, 180.5, { tint: PAL.red[2], flipX: true, flipY: true });
+    r.sprite('parity/hero4', 0, 160, 190, { screen: true });
+    for (let row = 0; row < 14; row += 2) {
+      const shift = Math.round(Math.sin(row * 0.9) * 2);
+      r.sprite('parity/hero4', 0, 200 + shift, 180, { src: { x: 0, y: row, w: 10, h: 2 }, flipX: row % 4 === 0 });
+    }
+    r.sprite('parity/hero4', 0, 240, 180, { src: { x: 2, y: -2, w: 6, h: 30 }, flipY: true });
+  });
+}
+
+/**
+ * 2× art (density 2) next to its 1× frames: exact where 2 divides res, nearest ties elsewhere;
+ * plus a row of 4× art at res 1, 2, 4 and 8 (`drawHdRow`).
+ */
 export function drawHiScene(r: Renderer): void {
   registerSceneSprites();
   r.begin(PAL.navy[0]);
@@ -61,6 +94,7 @@ export function drawHiScene(r: Renderer): void {
     }
     r.sprite('parity/hero2', 0, 280, 100, { src: { x: 3, y: -2, w: 7, h: 30 }, flipY: true });
   });
+  drawHdRow(r);
   r.end();
 }
 

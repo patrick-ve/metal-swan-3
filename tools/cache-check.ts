@@ -7,6 +7,8 @@
  *    (service worker) takes over the page;
  * 2. second visit: the boot installs the 'boot' pack (no sprite of the boot set is generated);
  * 3. offline: the page still loads, the boot ends and a key opens the title.
+ * The art pool's worker chunk (assets/art-worker-*.js) must be in the service worker's precache
+ * list and in its cache, and it must build a sprite in a module worker online and offline.
  * Prints the boot times and a JSON summary. Exit code 1 when a step fails or the page threw.
  * The site must be a production build (the dev server has no caches).
  */
@@ -90,6 +92,40 @@ async function packKeys(page: Page): Promise<string[]> {
   );
 }
 
+/**
+ * The art pool's worker chunk: listed in the service worker's PRECACHE, then a module worker of
+ * it builds one 2× sprite (the art pool's request / reply). `known`: the chunk found before (the
+ * offline visit; sw.js itself is not cached). Returns the chunk path.
+ */
+async function poolWorker(page: Page, label: string, known: string | null): Promise<string> {
+  const r = await page.evaluate(async (known: string | null) => {
+    const sw = known === null ? await (await fetch('sw.js')).text() : '';
+    const m = /const PRECACHE = (\[.*?\]);/.exec(sw);
+    const pre = m ? (JSON.parse(m[1]) as string[]) : [];
+    const chunk = known ?? pre.find((p) => /^assets\/art-worker-[\w-]+\.js$/.test(p));
+    if (!chunk) return { error: 'the art worker chunk is not in the precache list' };
+    if (known === null) {
+      let hit = false;
+      for (const k of await caches.keys()) if (await (await caches.open(k)).match(new URL(chunk, location.href).href)) hit = true;
+      if (!hit) return { error: `${chunk} is not in the offline cache` };
+    }
+    return await new Promise<{ error?: string; chunk?: string }>((resolve) => {
+      const w = new Worker(new URL(chunk, location.href), { type: 'module' });
+      const timer = setTimeout(() => resolve({ error: 'the art worker did not answer in 60 s' }), 60000);
+      w.onerror = (e) => resolve({ error: `art worker: ${e.message}` });
+      w.onmessage = (e: MessageEvent<{ t: string; pack?: { s: unknown[] }; message?: string }>) => {
+        clearTimeout(timer);
+        w.terminate();
+        const d = e.data;
+        resolve(d.t === 'done' && d.pack?.s.length === 1 ? { chunk } : { error: `art worker reply: ${JSON.stringify(d).slice(0, 200)}` });
+      };
+      w.postMessage({ t: 'build', job: 1, d: 2, ids: ['fx/explosion-s'] });
+    });
+  }, known);
+  if (r.error) throw new Error(`${label}: ${r.error}`);
+  return r.chunk as string;
+}
+
 async function waitFor(what: string, ms: number, test: () => Promise<boolean>): Promise<number> {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
@@ -118,6 +154,7 @@ async function main(): Promise<void> {
         return navigator.serviceWorker.controller !== null;
       }),
     );
+    summary.artWorker = await poolWorker(first.page, 'first visit', null);
     await first.page.close();
 
     const second = await visit(ctx, args.url, args.timeout, errors, 'second visit');
@@ -130,6 +167,7 @@ async function main(): Promise<void> {
     await ctx.setOffline(true);
     const off = await visit(ctx, args.url, args.timeout, errors, 'offline visit');
     summary.offlineBootMs = off.ms;
+    await poolWorker(off.page, 'offline visit', summary.artWorker as string);
     await off.page.keyboard.press('Enter');
     await waitFor('the title offline', 15000, async () => (await bootState(off.page))?.scene === 'TitleScene');
     await off.page.close();

@@ -12,7 +12,22 @@ import { NullAudio } from '../../engine/audio';
 import { ACTION_BUTTONS, type InputSource } from '../../engine/input';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { HI_ART_FRAME_BUDGET_MS, preloadSprites, setDeferHiArt, withArtDensity } from '../../engine/sprites';
+import { browserArtPool, type ArtPool } from '../../engine/art-pool';
+import {
+  artTier,
+  denseBytes,
+  hasFramesAt,
+  hasHiSprite,
+  HI_ART_FRAME_BUDGET_MS,
+  listHiSprites,
+  preloadOrder,
+  releaseDense,
+  setDeferDense,
+  setDeferHiArt,
+  takeDenseQueue,
+  toArtDensity,
+  withArtDensity,
+} from '../../engine/sprites';
 import { blinkOn, centerText, newCampaign, UI_WHITE, type GameApp } from '../app';
 import { drawHud } from '../hud';
 import type { MissionDef } from '../mission/index';
@@ -41,17 +56,10 @@ export interface NewGameOpts {
 /** The background 2× preload, once started (sprites.ts caches what it generated). */
 let hiPreload: Promise<unknown> | null = null;
 
-/** Wait for the next browser frame (a 0 ms timeout where there is no requestAnimationFrame). */
-function nextFrame(): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
-    else setTimeout(resolve, 0);
-  });
-}
-
 /**
  * Time budget (ms) of the 2× preload per browser frame: about half a 60 fps frame. The same
- * budget runs the queued 2× scenery jobs (background layers, terrain chunks; SectionView).
+ * budget runs the queued 2× scenery jobs (background layers, terrain chunks; SectionView), and
+ * the art pool's main-thread fallback (no Worker, or a broken worker).
  */
 export const MISSION_ART_BUDGET_MS = HI_ART_FRAME_BUDGET_MS;
 
@@ -67,38 +75,242 @@ export function missionArtOrder(
   return { first: [...new Set(chars), ...(mission?.preloadFirst ?? [])], last: [...(mission?.preloadLast ?? [])] };
 }
 
+/** The mission art the preload needs: its order prefixes, sections and boss section. */
+export type MissionArtDef = Pick<MissionDef, 'artDensity' | 'preloadFirst' | 'preloadLast'> &
+  Partial<Pick<MissionDef, 'id' | 'start' | 'sections' | 'bossSection'>>;
+
+type ArtApp = Pick<GameApp, 'preloadArt' | 'session'> & { readonly artCache?: GameApp['artCache'] };
+
 /**
- * Start generating the 2× sprites (docs/ARCHITECTURE.md §3) in the background when a mission
- * draws 2× art (`density` 2, default the mission's `artDensity`): boot only makes the 1× frames,
- * so without this the first seconds of the mission would generate 2× frames lazily while drawing.
- * Each browser frame generates ids for MISSION_ART_BUDGET_MS, in `missionArtOrder` (the players'
- * characters, then what the first section shows; the boss last). The mission intro card starts
- * it; gameplay calls it again for a direct start (`?mission=`). Once is enough: later calls do
- * nothing. Only the browser app asks for it (`app.preloadArt`): headless runs (sims, tests,
- * shots) generate 2× frames lazily, if they draw at all.
+ * Bytes of 4× frames the tier-4 working set keeps resident (plan: 256 MB). Over it, the ids of
+ * the sections behind are released, least recently used first (the chosen heroes never are).
+ */
+export const DENSE_BUDGET_BYTES = 256 * 1024 * 1024;
+/** How often (ms) the tier-4 pump hands the 4× ids drawn without frames to the pool. */
+export const DENSE_PUMP_MS = 250;
+
+let denseBudget = DENSE_BUDGET_BYTES;
+let poolFactory: () => ArtPool = () => browserArtPool(undefined, { fallbackBudgetMs: MISSION_ART_BUDGET_MS });
+let pool: ArtPool | null = null;
+
+/** The art pool of the mission preloads (created on first use: browser workers, or main thread). */
+function missionPool(): ArtPool {
+  return (pool ??= poolFactory());
+}
+
+/** The tier-4 working set of the running mission. */
+interface DenseRun {
+  key: string;
+  app: ArtApp;
+  mission: MissionArtDef;
+  /** Section ids in play order. */
+  order: string[];
+  /** `char/<id>/` of the chosen heroes (pinned: never released, never another hero at 4×). */
+  heroes: string[];
+  index: number;
+  /** Section index of each 4× id's last use (built for, or drawn in, that section). */
+  lastUse: Map<string, number>;
+  inFlight: Set<string>;
+  /**
+   * Ids a pool build did not deliver at 4× (a broken 4× generator, or the main-thread fallback
+   * without workers, which never generates 4× art): they keep their 2× frames and are not
+   * queued again this run (no rebuild loop every DENSE_PUMP_MS).
+   */
+  unbuilt: Set<string>;
+  /** Ids already in a section pack this session. */
+  packed: Set<string>;
+  timer: ReturnType<typeof setInterval> | null;
+}
+
+let dense: DenseRun | null = null;
+
+/** Sprite id prefixes a section declares (`art` on its SectionDef, when present). */
+function sectionArt(mission: MissionArtDef, section: string | undefined): readonly string[] {
+  if (!section) return [];
+  return mission.sections?.[section]?.art ?? [];
+}
+
+/** Ids (4× generators only) under `prefixes`, ranked by the first prefix each matches. */
+function idsUnder(prefixes: readonly string[], all: readonly string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of prefixes) {
+    for (const id of all) {
+      if (!seen.has(id) && id.startsWith(p)) {
+        seen.add(id);
+        out.push(id);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The tier-4 working set of section `index` in build order: the chosen heroes, the mission's
+ * `preloadFirst`, the current and the next section's `art`, the boss (`preloadLast`) at the end.
+ * Only ids with a 4× generator; the other heroes never.
+ */
+export function denseWorkingSet(
+  mission: MissionArtDef,
+  heroes: readonly string[],
+  section: string | undefined,
+  next: string | undefined,
+): string[] {
+  const all = listHiSprites(4).filter((id) => !id.startsWith('char/') || heroes.some((h) => id.startsWith(h)));
+  return idsUnder([...heroes, ...(mission.preloadFirst ?? []), ...sectionArt(mission, section), ...sectionArt(mission, next), ...(mission.preloadLast ?? [])], all);
+}
+
+/**
+ * Release 4× ids of the sections behind (least recently used first, never the heroes) until
+ * the resident 4× frames fit `budget`. Returns the bytes freed.
+ */
+function trimDense(run: DenseRun, budget = denseBudget): number {
+  let over = denseBytes(4) - budget;
+  if (over <= 0) return 0;
+  const behind = [...run.lastUse].filter(([id, at]) => at < run.index && !run.heroes.some((h) => id.startsWith(h)));
+  behind.sort((a, b) => a[1] - b[1]);
+  let freed = 0;
+  for (const [id] of behind) {
+    if (over <= 0) break;
+    const n = releaseDense([id], 4);
+    run.lastUse.delete(id);
+    freed += n;
+    over -= n;
+  }
+  return freed;
+}
+
+/** Build `ids` at 4× through the pool (those not built or in flight), then trim to the budget. */
+async function buildDense(run: DenseRun, ids: readonly string[]): Promise<void> {
+  const todo = ids.filter((id) => !hasFramesAt(id, 4) && !run.inFlight.has(id) && !run.unbuilt.has(id));
+  for (const id of ids) run.lastUse.set(id, run.index);
+  if (todo.length === 0) return;
+  for (const id of todo) run.inFlight.add(id);
+  try {
+    await missionPool().build(todo, 4);
+  } catch (err) {
+    // A failed build leaves the 2× stand-ins; the ids may be queued and tried again.
+    console.warn('[art-pool] 4× build failed', err);
+  } finally {
+    for (const id of todo) {
+      run.inFlight.delete(id);
+      if (!hasFramesAt(id, 4)) run.unbuilt.add(id);
+    }
+  }
+  if (dense === run) trimDense(run);
+}
+
+/** Hand the 4× ids drawn without frames (sprites.ts `takeDenseQueue`) to the pool. */
+export function pumpDenseQueue(): number {
+  const run = dense;
+  const ids = takeDenseQueue();
+  if (!run) return 0;
+  const todo = ids.filter((id) => hasHiSprite(id, 4));
+  if (todo.length) void buildDense(run, todo);
+  return todo.length;
+}
+
+/** Enter section `section` of the tier-4 run: restore its 4× packs, build its working set, save. */
+async function enterDenseSection(run: DenseRun, section: string): Promise<void> {
+  const i = run.order.indexOf(section);
+  run.index = Math.max(run.index, i < 0 ? 0 : i);
+  const next = run.order[run.index + 1];
+  const set = denseWorkingSet(run.mission, run.heroes, section, next);
+  const inSet = new Set(set);
+  const cache = run.app.artCache;
+  if (cache) {
+    for (const h of run.heroes) await cache.restore(`hd4-char-${h.split('/')[1]}`, (id) => id.startsWith(h));
+    for (const s of [section, next]) if (s) await cache.restore(`hd4-${s}`, (id) => inSet.has(id));
+  }
+  if (dense !== run) return;
+  await buildDense(run, set);
+  if (!cache || dense !== run) return;
+  for (const h of run.heroes) void cache.save(`hd4-char-${h.split('/')[1]}`, (id) => id.startsWith(h));
+  const own = set.filter((id) => !run.packed.has(id) && !run.heroes.some((h) => id.startsWith(h)));
+  for (const id of own) run.packed.add(id);
+  const ownSet = new Set(own);
+  void cache.save(`hd4-${section}`, (id) => ownSet.has(id));
+}
+
+/**
+ * Tier 4: start (or keep) the working set of this mission and these heroes, from `section`.
+ * Turns on `setDeferDense`: the main thread never generates 4× art during play.
+ */
+function startDense(app: ArtApp, mission: MissionArtDef, session: Pick<GameSession, 'slots'> | null, section: string | undefined): void {
+  const heroes = [...new Set((session?.slots ?? []).filter((s) => s.joined).map((s) => `char/${s.character}/`))];
+  const key = `${mission.id ?? '?'}|${heroes.join(',')}`;
+  setDeferDense(true);
+  if (dense?.key !== key) {
+    if (dense?.timer) clearInterval(dense.timer);
+    const order = Object.keys(mission.sections ?? {});
+    dense = { key, app, mission, order, heroes, index: 0, lastUse: new Map(), inFlight: new Set(), unbuilt: new Set(), packed: new Set(), timer: null };
+    if (app.preloadArt && typeof setInterval === 'function') dense.timer = setInterval(pumpDenseQueue, DENSE_PUMP_MS);
+  }
+  void enterDenseSection(dense, section ?? mission.start ?? dense.order[0] ?? '');
+}
+
+/**
+ * A section of the running mission loaded (gameplay's `sectionLoaded`): at tier 4 the working
+ * set moves on (restore / build the new section's 4× ids; release the sections behind within
+ * DENSE_BUDGET_BYTES). Nothing at tier 2.
+ */
+export function missionArtSection(section: string): void {
+  if (dense) void enterDenseSection(dense, section);
+}
+
+/**
+ * Start generating the dense sprites (docs/ARCHITECTURE.md §3) in the background when a mission
+ * draws dense art (`density` ≥ 2, default the mission's `artDensity`): boot only makes the 1×
+ * frames, so without this the first seconds of the mission would generate frames lazily while
+ * drawing. The ART POOL (src/engine/art-pool.ts) builds them in workers, in `missionArtOrder`
+ * (the players' characters, then what the first section shows; the boss last), and this thread
+ * only installs them; without workers the pool falls back to today's budgeted main-thread
+ * preload (MISSION_ART_BUDGET_MS per frame). The mission intro card starts it; gameplay calls it
+ * again for a direct start (`?mission=`). Only the browser app asks for it (`app.preloadArt`):
+ * headless runs (sims, tests, shots) generate dense frames lazily, if they draw at all.
+ *
+ * - Tier 2 (`artTier()` < 4): the whole 2× set, once; then the sprite cache saves pack 'hi'.
+ * - Tier 4: the 2× set as above (the stand-in of every 4× frame not built yet), and the tier-4
+ *   WORKING SET (`denseWorkingSet`) at 4× with `setDeferDense(true)`, so the main thread never
+ *   generates 4× art; 4× ids drawn without frames are queued and pumped to the pool; a section
+ *   change (`missionArtSection`) moves the set on and releases the sections behind within
+ *   DENSE_BUDGET_BYTES. 4× packs ('hd4-<section>', 'hd4-char-<hero>') are restored and saved here.
+ *
  * It also switches on `setDeferHiArt`: the 2× scenery (background layers, terrain chunks) of each
- * section becomes art jobs that this preload runs first in its slices (and, once it is done, the
- * section view within the same budget per frame), so a section start never stalls on 2× scenery.
- * When it is done, the sprite cache saves the 2× frames (pack 'hi'; the boot restores it on a
- * later visit, and then this preload finds every id made already).
+ * section becomes art jobs the section view runs within the same budget per frame (the pool's
+ * main-thread fallback runs them first in its slices), so a section start never stalls.
  * Returns true when the preload runs (started now or before).
  */
 export function preloadMissionArt(
-  app: Pick<GameApp, 'preloadArt' | 'session'> & { readonly artCache?: GameApp['artCache'] },
-  mission: Pick<MissionDef, 'artDensity' | 'preloadFirst' | 'preloadLast'> | undefined,
+  app: ArtApp,
+  mission: MissionArtDef | undefined,
   density = mission?.artDensity ?? 1,
   session: Pick<GameSession, 'slots'> | null = app.session,
+  section?: string,
 ): boolean {
-  if (density < 2 || !app.preloadArt) return hiPreload !== null;
+  // The density checks: the mission's highest density, capped by the art tier (tier 1: nothing).
+  const tier = Math.min(toArtDensity(density), artTier());
+  if (tier < 2 || !app.preloadArt) return hiPreload !== null;
   // The 2× scenery of the sections becomes art jobs in the same budget (never a stalled frame).
   setDeferHiArt(true);
-  hiPreload ??= preloadSprites(undefined, undefined, {
-    density,
-    timeBudgetMs: MISSION_ART_BUDGET_MS,
-    ...missionArtOrder(mission, session),
-    yieldFn: nextFrame,
-  }).then(() => app.artCache?.save('hi', ['']));
+  const { first, last } = missionArtOrder(mission, session);
+  // Ids the boot installed from pack 'hi' are not built again.
+  hiPreload ??= missionPool()
+    .build(preloadOrder(listHiSprites(2).filter((id) => !hasFramesAt(id, 2)), first, last), 2)
+    .then(() => app.artCache?.save('hi', ['']));
+  if (tier >= 4 && mission) startDense(app, mission, session, section);
   return true;
+}
+
+/** Tests: forget the preloads and the working set; `factory` makes the next pool (null: browser). */
+export function resetMissionArt(factory: (() => ArtPool) | null = null, budget = DENSE_BUDGET_BYTES): void {
+  if (dense?.timer) clearInterval(dense.timer);
+  dense = null;
+  hiPreload = null;
+  pool?.close();
+  pool = null;
+  poolFactory = factory ?? (() => browserArtPool(undefined, { fallbackBudgetMs: MISSION_ART_BUDGET_MS }));
+  denseBudget = budget;
 }
 
 /**
@@ -256,7 +468,7 @@ export class GameplayScene implements Scene, PauseHost {
     });
     this.runner = runner;
     if (!demo) {
-      preloadMissionArt(app, runner.mission, runner.artDensity, this.session);
+      preloadMissionArt(app, runner.mission, runner.artDensity, this.session, this.session.sectionId || undefined);
       // A direct start (?mission=, a continue, the next mission): the intro card did not run.
       preloadMissionAudio(app, runner.mission);
     }
@@ -271,7 +483,9 @@ export class GameplayScene implements Scene, PauseHost {
       else app.scenes.push(new ContinueScene(app, continuableRunner(runner)));
     });
     // TIME UP! is an announcer line too (GDD §12.3).
-    runner.events.on('sectionLoaded', () => {
+    runner.events.on('sectionLoaded', ({ id }) => {
+      // Tier 4: the 4× working set moves on with the sections (preloadMissionArt).
+      if (!this.demo) missionArtSection(id);
       runner.world.events.on('timeOut', () => {
         if (!this.demo) app.audio.voice('TIME UP!');
       });

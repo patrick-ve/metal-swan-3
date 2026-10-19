@@ -146,6 +146,40 @@ multi-part bosses, and 2-player co-op.
     is built when first drawn. Measured in node: a 2× ams-skyline layer 1.4 ms / 2.5 MB, a 2×
     terrain chunk about 6 ms (at most 14) / at most 1 MB; ams section a keeps about 19 MB of 2×
     chunks next to 7 MB of 1× chunks.
+  - **Art tiers and 4× art (UHD art, mission ams flow).** The art tier T ∈ {1, 2, 4}
+    (`artTier()` / `setArtTier(t)` in `sprites.ts`, default 2 for tools and tests) is the
+    highest art density the display draws. main.ts picks T and the backbuffer res together
+    (`display.tierRes(f, want)` → `chooseTierRes` in `render-common.ts`): AUTO gives tier 4 when
+    the integer display scale s ≥ 8 (4K s = 10, 5K, Retina fullscreen s = 9) with k = 8
+    (`KMAX_TIER4`; 4K keeps exact 2 × 2 blocks per 4× pixel and every filter factor divides
+    k), tier 2 for 2 ≤ s < 8 with k ≤ `KMAX` = 6 as before, tier 1 below. Tier 4 keeps 4 | k (a
+    forced 4× at s 5–7 gives k = 4) and AUTO keeps tier 2 under a `?kmax=` cap below 8. Option
+    ART DETAIL (AUTO / 4X / 2X / 1X, `settings.artDetail`; the Options hint shows the tier in
+    effect) and `?art=1|2|4` (wins until the option is changed). `MissionDef.artDensity` is the
+    mission's HIGHEST density (ams: 4); the runner and the HUD draw at min(artDensity, T)
+    (`MissionRunner.artDensity`; `maxArtDensity` is the cap). Frames: `defineHiSprite(id, gen,
+    d)` / `{ hi, hi4 }` or ONE density-generic `defineHdSprite(id, (d) => …)` / `{ hd }`
+    (called with d 2 and 4); one cache per density; `getFrames(id, d)` returns the highest
+    density ≤ d the id has (4 → 2 → 1, never an upscale); validation is generic (buffer size
+    divisible by d, the 1× frame count, the 1× points; failures `id@<d>x` fall back to the next
+    lower frames). At tier 4 the browser never generates 4× frames on the main thread
+    (`setDeferDense(true)`): a missing one draws its 2× frame and the id is queued
+    (`takeDenseQueue()`) for the art pool, which installs the result (`installFrames(id, 4, …)`);
+    `hasFramesAt` / `framesDensityAt` peek without generating, `releaseDense(ids, 4)` /
+    `denseBytes(4)` serve the working set. Renderers: a frame of density d > k is drawn as its
+    reduction to the highest density ≤ k that divides d (`drawDensity`, `reducedFor`: a 4×
+    frame at k 2 or 3 shows its 2× image, at k 1 its 1× image; never filtered). Scenery:
+    `defineHiBgGenerator(id, gen, d)` / `defineHdBgGenerator(id, (w, h, params, seed, d) => …)`,
+    `setHiTerrainPainter(paint, supports, d)` / `setHdTerrainPainter`; `SectionView` draws each
+    layer and chunk at the highest density ≤ min(its density, T) that has art and that k can
+    show (4 needs 4 | k), draws the lower one while a 4× item is not built yet, and releases
+    dense chunks `EVICT_BEHIND_CHUNKS` (2) or more chunks left of the view (ams scrolls
+    forward). **Governor:** at tier 4 main.ts averages render + present over 2 s windows
+    (`FrameGovernor`); above 8 ms (software rendering of the k 8 backbuffer) it caps the tier
+    at 2 (k ≤ 6) for the rest of the session and logs it with `console.info`. Checks:
+    `tests/engine/density4.test.ts` (tier table s 1–16, fallback, validation, peek, deferral,
+    release, preload, renderers, scenery, runner, governor, options) and the Canvas / software
+    parity of 4× frames at k 1, 2, 4 and 8 (`tests/media/browser.test.ts`).
   - Modes (option GRAPHICS, URL `?gfx=`): `pixel` (no sprite filter, the default: the look the
     user prefers; saves without `SETTINGS_VERSION` 2 load GRAPHICS as `pixel` once, because
     earlier builds saved their old `smooth` default with the other options), `smooth` (MMPX 2×, palette-exact), `xbr` (xBR 4×, blending: smoother curves, new colours at edges;
@@ -282,7 +316,13 @@ simulation side and the media side can be built in parallel: **extend them, do n
   decode, is a miss and is deleted. The boot restores 'boot' and 'hi' before its preload, which
   then skips the installed ids (repeat visit: about 1.4 s). Saves run in the background in
   256 KB chunks with a yield after each. Only the browser app in a production build has a cache
-  (`app.artCache`); headless apps, the dev server and `?cache=0` run without one.
+  (`app.artCache`); headless apps, the dev server and `?cache=0` run without one. UHD art
+  (2026-10-19): the packs are 'boot' (1×), 'hi' (2×), 'fps', 'hd4-<section>' and
+  'hd4-char-<hero>' (4×; `packDensity(name)`). Boot restores 'boot' and 'hi' only; the 4× packs
+  are restored at the mission start and on a section change (gameplay.ts `missionArtSection`),
+  installing only the working set's ids (`restore(name, keep?)`). The art pool (worker chunk
+  `assets/art-worker-*.js`, precached by the service worker) builds the 2× set and the 4× working
+  set off the main thread.
 - **Offline cache** (2026-10-18): the production build writes a service worker `sw.js`
   (tools/sw/plugin.ts fills the template tools/sw/sw.js with every published file and a hash of
   its content). It installs the page, the scripts and the boot sample group, caches other files
@@ -729,6 +769,18 @@ the GPU (`--gpu`, Apple M5) 0.3–0.37 at every k up to 10, 60 fps, xbr p95 ≤ 
 caps the CPU cost: 4K draws at k = 6 with `smooth` (12.3 ms CPU, 57 fps on SwiftShader; GPU 0.37)
 and k = 4 with `xbr` (5.6 ms CPU); 1080p at k = 5 (8.6 ms CPU, GPU 0.33). `?kmax=4` is the knob
 for a slow software-rendered machine.
+
+Art tier 4 (§3): the texture budget follows k (`textureBudgetFor(k)`: 48 M px up to k = 7,
+`TEXTURE_BUDGET_PX_K8` = 96 M px ≈ 384 MB at k ≥ 8, since 4× frames hold four times the pixels of
+2× frames). Texture uploads are one 32-bit byte-order swizzle per pixel into a reused ImageData
+(no per-channel writes), and dense frames have an upload budget (`UPLOAD_BUDGET_MS` = 6 ms per
+frame): once spent, a dense frame whose texture is not uploaded yet draws its 1× reduction for
+that frame and is uploaded on a later one (`TextureStats.uploadMs` / `uploadDeferred`). Targets
+(proposal, fixed by the lead in tmp/uhd-budget.md): render + present ≤ 2 ms at k = 8 on the GPU
+(`npm run perf -- --viewport 3840x2160 --gpu`, `--art auto,2` to compare); on a software
+rasteriser the governor drops to tier 2 when the 2 s average passes 8 ms. 4× frames are never
+generated on the main thread during play (the art pool builds them; resident 4× frames ≤ 256 MB
+working set).
 
 First-person mode (`docs/design/fps.md` §3.5): `renderView` ≤ 2 ms per 384 × 176 frame headless
 at density 1, `FpsGame.step` ≤ 0.3 ms with 60 actors, zero per-tick allocations, one stream slot

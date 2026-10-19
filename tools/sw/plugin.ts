@@ -13,7 +13,8 @@ export const SW_FILE = 'sw.js';
 const TEMPLATE = fileURLToPath(new URL('./sw.js', import.meta.url));
 
 /**
- * The files the service worker fetches when it installs: the page, the scripts and the boot
+ * The files the service worker fetches when it installs: the page, the scripts (with the art
+ * pool's worker chunk assets/art-worker-*.js and the chunks it imports) and the boot
  * sample group (the start screens' audio: public/audio/boot/ and the two user tracks of the
  * 'boot' group in src/game/content/samples/index.ts). The rest is cached when the game fetches it.
  */

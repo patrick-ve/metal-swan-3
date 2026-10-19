@@ -14,7 +14,9 @@ import {
   DEFAULT_SUBPIXEL,
   firstTile,
   layerCam,
+  drawDensity,
   lowRes,
+  reducedFor,
   parallaxOrigin,
   placePart,
   solidColor,
@@ -51,6 +53,15 @@ type AnyContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 /** Default texture budget: canvases + upscaled buffers, in pixels (4 bytes each). */
 export const TEXTURE_BUDGET_PX = 48_000_000;
+/** Texture budget at k ≥ 8 (art tier 4: 4× frames hold 4 times the pixels of 2× frames). */
+export const TEXTURE_BUDGET_PX_K8 = 96_000_000;
+/** Default time per frame spent uploading textures of dense frames (ms); see `blit`. */
+export const UPLOAD_BUDGET_MS = 6;
+
+/** The default texture budget for backbuffer res k: TEXTURE_BUDGET_PX, TEXTURE_BUDGET_PX_K8 at k ≥ 8. */
+export function textureBudgetFor(k: number): number {
+  return k >= 8 ? TEXTURE_BUDGET_PX_K8 : TEXTURE_BUDGET_PX;
+}
 /** Default time per frame spent upscaling sprites (ms). */
 export const SCALE_BUDGET_MS = 4;
 
@@ -59,8 +70,11 @@ export interface CanvasRendererOpts {
   res?: number;
   mode?: UpscaleMode;
   subpixel?: SubpixelMode;
+  /** Texture budget in pixels (default `textureBudgetFor(res)`, following setRes). */
   budgetPx?: number;
   scaleBudgetMs?: number;
+  /** Upload time per frame for dense frames (default UPLOAD_BUDGET_MS). */
+  uploadBudgetMs?: number;
 }
 
 /** Variant index: flipX | flipY << 1 | upscaled << 2. */
@@ -118,6 +132,10 @@ export interface TextureStats {
   streams: number;
   /** Stream uploads (putImageData after a version change) so far. */
   streamUploads: number;
+  /** Time spent uploading textures in the last frame (ms). */
+  uploadMs: number;
+  /** Dense frames drawn from their 1× reduction because the upload budget ran out (last frame). */
+  uploadDeferred: number;
 }
 
 function makeCanvas(w: number, h: number): AnyCanvas {
@@ -135,34 +153,61 @@ function context(c: AnyCanvas): AnyContext {
   return ctx;
 }
 
-/** Upload a buffer variant (pixels computed in TS) into a new canvas; `tint` = silhouette colour. */
+/**
+ * Scratch ImageData reused by every upload (grown to the largest buffer seen, at most
+ * UPLOAD_SCRATCH_MAX_PX; larger buffers get their own) and its bytes as 32-bit words.
+ */
+let scratchImg: ImageData | null = null;
+let scratchWords: Uint32Array | null = null;
+/** Largest scratch ImageData kept for reuse (pixels; 4 bytes each). */
+const UPLOAD_SCRATCH_MAX_PX = 4_194_304;
+
+/** A word in canvas byte order (R, G, B, A in memory) for a 0xRRGGBBAA pixel. */
+function swizzle(p: number): number {
+  return LITTLE_ENDIAN ? ((p >>> 24) | ((p >>> 8) & 0xff00) | ((p & 0xff00) << 8) | (p << 24)) >>> 0 : p >>> 0;
+}
+
+/**
+ * Upload a buffer variant (pixels computed in TS) into a new canvas; `tint` = silhouette colour.
+ * One pass of 32-bit word swizzles into a reused ImageData (no per-channel byte writes);
+ * transparent pixels become 0.
+ */
 function upload(buf: PixelBuffer, flipX: boolean, flipY: boolean, tint: Color | null): AnyCanvas {
-  const c = makeCanvas(buf.w, buf.h);
-  const ctx = context(c);
-  const img = ctx.createImageData(buf.w, buf.h);
-  const out = img.data;
-  const src = buf.data;
   const { w, h } = buf;
+  const c = makeCanvas(Math.max(1, w), Math.max(1, h));
+  if (w === 0 || h === 0) return c;
+  const ctx = context(c);
+  let img: ImageData;
+  let words: Uint32Array;
+  let stride: number;
+  if (w * h > UPLOAD_SCRATCH_MAX_PX) {
+    img = ctx.createImageData(w, h);
+    words = new Uint32Array(img.data.buffer, img.data.byteOffset, w * h);
+    stride = w;
+  } else {
+    if (!scratchImg || scratchImg.width < w || scratchImg.height < h) {
+      const sw = Math.max(w, scratchImg?.width ?? 0);
+      const sh = Math.max(h, scratchImg?.height ?? 0);
+      scratchImg = sw * sh > UPLOAD_SCRATCH_MAX_PX ? ctx.createImageData(w, h) : ctx.createImageData(sw, sh);
+      scratchWords = new Uint32Array(scratchImg.data.buffer, scratchImg.data.byteOffset, scratchImg.width * scratchImg.height);
+    }
+    img = scratchImg;
+    words = scratchWords as Uint32Array;
+    stride = img.width;
+  }
+  const src = buf.data;
+  // Tint: the RGB of `tint`, the alpha of the pixel (as bytes R, G, B, A).
+  const rgb = tint === null ? 0 : swizzle((tint & 0xffffff00) >>> 0);
   for (let y = 0; y < h; y++) {
-    const sy = flipY ? h - 1 - y : y;
+    const row = (flipY ? h - 1 - y : y) * w;
+    const o = y * stride;
     for (let x = 0; x < w; x++) {
-      const p = src[sy * w + (flipX ? w - 1 - x : x)];
-      const o = (y * w + x) * 4;
+      const p = src[row + (flipX ? w - 1 - x : x)];
       const a = p & 255;
-      if (a === 0) continue; // ImageData starts transparent
-      if (tint !== null) {
-        out[o] = tint >>> 24;
-        out[o + 1] = (tint >>> 16) & 255;
-        out[o + 2] = (tint >>> 8) & 255;
-      } else {
-        out[o] = p >>> 24;
-        out[o + 1] = (p >>> 16) & 255;
-        out[o + 2] = (p >>> 8) & 255;
-      }
-      out[o + 3] = a;
+      words[o + x] = a === 0 ? 0 : tint === null ? swizzle(p) : (rgb | (LITTLE_ENDIAN ? a << 24 : a)) >>> 0;
     }
   }
-  ctx.putImageData(img, 0, 0);
+  ctx.putImageData(img, 0, 0, 0, 0, w, h);
   return c;
 }
 
@@ -180,8 +225,13 @@ export class CanvasRenderer implements Renderer {
   subpixel: SubpixelMode;
   budgetPx: number;
   scaleBudgetMs: number;
+  uploadBudgetMs: number;
 
   private k = 1;
+  /** budgetPx follows the res (`textureBudgetFor`) unless the caller set it. */
+  private autoBudget: boolean;
+  private uploadMs = 0;
+  private uploadDeferred = 0;
   /** Camera in backbuffer px. */
   private cx = 0;
   private cy = 0;
@@ -199,7 +249,7 @@ export class CanvasRenderer implements Renderer {
   private readonly pending: PixelBuffer[] = [];
   /** Did the last variant() call return an upscaled texture? */
   private variantUp = false;
-  private lastStats: TextureStats = { entries: 0, px: 0, budgetPx: 0, scaled: 0, deferred: 0, scaleMs: 0, evicted: 0, streams: 0, streamUploads: 0 };
+  private lastStats: TextureStats = { entries: 0, px: 0, budgetPx: 0, scaled: 0, deferred: 0, scaleMs: 0, evicted: 0, streams: 0, streamUploads: 0, uploadMs: 0, uploadDeferred: 0 };
   /** Stream slots: lookup by buffer, plus a list for the idle sweep (no iterator allocations). */
   private readonly streamMap = new Map<PixelBuffer, StreamSlot>();
   private readonly streamList: StreamSlot[] = [];
@@ -263,8 +313,10 @@ export class CanvasRenderer implements Renderer {
     this.k = Math.max(1, Math.floor(opts.res ?? 1));
     this.mode = opts.mode ?? 'pixel';
     this.subpixel = opts.subpixel ?? DEFAULT_SUBPIXEL;
-    this.budgetPx = opts.budgetPx ?? TEXTURE_BUDGET_PX;
+    this.autoBudget = opts.budgetPx === undefined;
+    this.budgetPx = opts.budgetPx ?? textureBudgetFor(this.k);
     this.scaleBudgetMs = opts.scaleBudgetMs ?? SCALE_BUDGET_MS;
+    this.uploadBudgetMs = opts.uploadBudgetMs ?? UPLOAD_BUDGET_MS;
     this.canvas = canvas ?? makeCanvas(w * this.k, h * this.k);
     this.canvas.width = w * this.k;
     this.canvas.height = h * this.k;
@@ -280,6 +332,7 @@ export class CanvasRenderer implements Renderer {
     const n = Math.max(1, Math.floor(k));
     if (n === this.k) return;
     this.k = n;
+    if (this.autoBudget) this.budgetPx = textureBudgetFor(n);
     this.canvas.width = this.w * n;
     this.canvas.height = this.h * n;
     // Resizing resets the context state.
@@ -311,6 +364,8 @@ export class CanvasRenderer implements Renderer {
     this.scaleMs = 0;
     this.scaledCount = 0;
     this.deferredCount = 0;
+    this.uploadMs = 0;
+    this.uploadDeferred = 0;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
     this.setAlpha(1);
@@ -348,6 +403,8 @@ export class CanvasRenderer implements Renderer {
       evicted: this.evicted,
       streams: this.streamList.length,
       streamUploads: this.streamUploads,
+      uploadMs: this.uploadMs,
+      uploadDeferred: this.uploadDeferred,
     };
   }
 
@@ -463,10 +520,10 @@ export class CanvasRenderer implements Renderer {
     const fine = this.subpixel !== 'off';
     const sx = parallaxOrigin(offsetX, layerCam(this.camX, this.exactX, factorX, k, this.subpixel), factorX, k, fine);
     const sy = parallaxOrigin(offsetY, layerCam(this.camY, this.exactY, factorY, k, this.subpixel), factorY, k, fine);
-    // A 2× layer tiles by its logical size; below res d it is drawn as its 1× reduction.
+    // A dense layer tiles by its logical size; below res d it is drawn reduced (4 → 2 → 1).
     const d = Math.max(1, Math.floor(o?.density ?? 1));
-    const src = d > k ? lowRes(buf, d) : buf;
-    const f = d > k ? 1 : d;
+    const src = reducedFor(buf, d, k);
+    const f = drawDensity(d, k);
     const tw = (src.w / f) * k;
     const th = (src.h / f) * k;
     const repeatX = o?.repeatX !== false;
@@ -543,10 +600,18 @@ export class CanvasRenderer implements Renderer {
       else this.ctx.drawImage(c, left, top, lw * k, lh * k);
       return;
     }
-    // The texture source and its px per logical px: the buffer, or the 1× reduction of a 2×
-    // buffer below res d.
-    const src = d > k ? lowRes(buf, d) : buf;
-    const sd = d > k ? 1 : d;
+    // The texture source and its px per logical px: the buffer, or its reduction below res d
+    // (a 4× frame at k 2 or 3 → its 2× image, at k 1 → 1×).
+    let src = reducedFor(buf, d, k);
+    let sd = drawDensity(d, k);
+    // Upload budget: a dense frame whose texture is not uploaded yet, once this frame's upload
+    // time is spent, draws its 1× reduction this frame (d² fewer pixels); the full texture is
+    // uploaded on a later frame.
+    if (sd > 1 && this.uploadMs >= this.uploadBudgetMs && !this.hasTexture(src, flipX, flipY, tint)) {
+      src = lowRes(buf, d);
+      sd = 1;
+      this.uploadDeferred++;
+    }
     let f = sd * upscaleFactor(m);
     const img = this.variant(src, flipX, flipY, tint, m);
     // The upscaled copy may not be ready (scaling budget): then this is the 1× texture.
@@ -624,6 +689,14 @@ export class CanvasRenderer implements Renderer {
     this.cachePx += px;
   }
 
+  /** Is the plain (unfiltered) texture of this buffer variant uploaded and current? */
+  private hasTexture(buf: PixelBuffer, flipX: boolean, flipY: boolean, tint: Color | null): boolean {
+    const e = this.cache.get(buf);
+    if (!e || e.version !== buf.version) return false;
+    const list = tint === null ? e.plain : e.tinted?.get(tint >>> 0);
+    return list?.[(flipX ? 1 : 0) | (flipY ? 2 : 0)] !== undefined;
+  }
+
   /** Texture of a buffer variant; `m` = the filter wanted ('pixel' = the 1× texture). */
   private variant(buf: PixelBuffer, flipX: boolean, flipY: boolean, tint: Color | null, m: UpscaleMode): AnyCanvas {
     const e = this.entry(buf);
@@ -653,7 +726,9 @@ export class CanvasRenderer implements Renderer {
     const i = (flipX ? 1 : 0) | (flipY ? 2 : 0) | (up ? 4 : 0);
     let c = list[i];
     if (!c) {
+      const t0 = now();
       c = upload(up && e.up ? e.up : buf, flipX, flipY, tint);
+      this.uploadMs += now() - t0;
       list[i] = c;
       this.grow(e, c.width * c.height);
     }

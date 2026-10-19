@@ -2,7 +2,7 @@
  * npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6]
  *                 [--seed 1] [--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss]
  *                 [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal]
- *                 [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2]
+ *                 [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4]
  * npm run shot -- --fps 0 [--pose x,y,deg[;x,y,deg…]] [--ticks n] [--every n --count k] [--hold forward,use]
  *                 [--seed 1] [--difficulty normal] [--god] [--unfold] [--out file.png] [--scale 2] [--cols 3]
  *
@@ -20,6 +20,8 @@
  * A mission with `artDensity: 2` (ams) draws its 2× art (docs/ART_GUIDE.md "2x art (mission
  * ams)") as in the browser: at --res 2 or more it shows the full 2× detail, at --res 1 its
  * reduction. --art 1 draws the 1× art instead (to compare); the sheet title names the art.
+ * --art 4 (with --res 8, the 4K backbuffer, or --res 4) draws the 4× art of a mission with
+ * `artDensity: 4` (ids without 4× art draw their 2× art).
  *
  * --fps n shoots the first-person floor n instead (docs/design/fps.md §10, src/sim/headless-fps.ts):
  * every --pose (tiles x, y and degrees: 0 east, 90 south) gives one frame after --ticks ticks
@@ -32,7 +34,8 @@ import { join, resolve } from 'node:path';
 import { buttonMask, type Button } from '../src/engine/input';
 import { drawText } from '../src/engine/font';
 import { PixelBuffer } from '../src/engine/pixel';
-import { setHiArt } from '../src/engine/sprites';
+import { tierAtRes } from '../src/engine/render-common';
+import { setArtTier, setHiArt, toArtDensity } from '../src/engine/sprites';
 import { getMission } from '../src/game/registry';
 import { isGraphicsMode } from '../src/game/settings';
 import type { UpscaleMode } from '../src/engine/upscale';
@@ -68,13 +71,16 @@ interface Args {
   res: number;
   /** Sprite filter at res > 1 (null = pixel). */
   gfx: UpscaleMode | null;
-  /** 2 (default): a 2× mission draws its 2× art; 1: the 1× art everywhere. */
+  /**
+   * The art tier (`setArtTier`): 2 (default) a dense mission draws its 2× art, 4 its 4× art (at
+   * --res 4 or 8; a lower res draws the next lower tier, like the browser), 1 the 1× art everywhere.
+   */
   art: number;
 }
 
 const USAGE =
   'usage: npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6] [--seed 1] ' +
-  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2]';
+  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4]';
 
 const BUTTONS: readonly Button[] = ['left', 'right', 'up', 'down', 'fire', 'jump', 'bomb', 'start'];
 
@@ -188,7 +194,7 @@ function parseArgs(argv: readonly string[]): Args {
         break;
       }
       case '--art':
-        a.art = num() >= 2 ? 2 : 1;
+        a.art = toArtDensity(num());
         break;
       case '--help':
       case '-h':
@@ -237,9 +243,18 @@ function sheet(frames: ReadonlyArray<{ buf: PixelBuffer; label: string }>, cols:
   return out;
 }
 
+/**
+ * The art tier of a shot: the browser's rule (the tier the backbuffer can show: 4 needs 4 | res)
+ * at res ≥ 2; at res 1 the asked tier (its art drawn reduced, as before); 1 with --art 1.
+ */
+function shotTier(a: Args): number {
+  if (a.art < 2) return 1;
+  return a.res >= 2 ? tierAtRes(a.art, a.res) : a.art;
+}
+
 function gfxNote(a: Args): string {
-  const hi = a.art >= 2 && (getMission(a.mission)?.artDensity ?? 1) >= 2;
-  return `${resolveGfx(a.res, a.gfx).note}${hi ? '  2x art' : ''}`;
+  const d = Math.min(shotTier(a), getMission(a.mission)?.artDensity ?? 1);
+  return `${resolveGfx(a.res, a.gfx).note}${d >= 2 ? `  ${d}x art` : ''}`;
 }
 
 // ------------------------------------------------------------------------------------- --fps
@@ -397,6 +412,7 @@ async function main(): Promise<void> {
   }
   const args = parseArgs(process.argv.slice(2));
   if (args.art < 2) setHiArt(false);
+  else setArtTier(shotTier(args));
   for (const m of args.imports) await import(pathToFileURL(resolve(m)).href);
   const gfx = resolveGfx(args.res, args.gfx);
   if (gfx.warning) console.warn(`[shot] ${gfx.warning}`);

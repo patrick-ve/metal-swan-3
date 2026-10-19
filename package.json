@@ -24,6 +24,7 @@
     "audio:mayor-placeholders": "tsx tools/audio/mayor-placeholders.ts",
     "perf": "tsx tools/perf.ts",
     "anim-bench": "tsx tools/anim-bench.ts",
+    "uhd-spike": "tsx tools/uhd-spike.ts",
     "geometry-fixture": "tsx tools/geometry-fixture.ts",
     "art:import-face": "tsx tools/art/import-face.ts"
   },

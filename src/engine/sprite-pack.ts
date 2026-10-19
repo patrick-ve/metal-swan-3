@@ -32,7 +32,7 @@ type PackFrame = [number, number, number, number, Pts | 0];
 interface PackMeta {
   /** Who made the pack (the cache compares it with the running build). */
   tag: string;
-  /** Density of the frames (1, or 2 for 2× art): `installFrames(id, d, …)`. */
+  /** Density of the frames (1, 2 or 4): `installFrames(id, d, …)`. */
   d: number;
   /** [id, frames] per sprite. */
   s: Array<[string, PackFrame[]]>;
@@ -55,7 +55,7 @@ function pixelBytes(bufs: readonly PixelBuffer[]): number {
 
 /**
  * Encode sprites as one gzip pack. `tag` identifies the build that made it; `density` is the
- * density of the frames (1 or 2). Feeds the compressor in 256 KB chunks and calls `yieldFn`
+ * density of the frames (1, 2 or 4; any integer density round-trips). Feeds the compressor in 256 KB chunks and calls `yieldFn`
  * (default: a 0 ms timeout) after each one, so a large pack never blocks the main thread for long.
  */
 export async function encodeSpritePack(

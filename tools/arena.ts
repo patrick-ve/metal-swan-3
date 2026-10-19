@@ -5,7 +5,7 @@
  *                  [--every N --count K] [--scale 2] [--cols 3] [--out file.png] [--hold right,fire]
  *                  [--press "30:jump;45:jump,fire"] [--trace id,player] [--trace-every 1]
  *                  [--players 1|2] [--god] [--bot] [--weapon id] [--difficulty normal] [--seed 1]
- *                  [--res 1] [--gfx pixel|smooth|xbr]
+ *                  [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4]
  *
  * Entity sandbox (docs/api/slice.md §8, docs/ARCHITECTURE.md §9): a flat test section — floor at
  * y 170, no timer, empty script — with optional water, pits, platforms, solids, slopes and steps.
@@ -27,7 +27,8 @@ import { drawText, measure } from '../src/engine/font';
 import { buttonMask, type Button } from '../src/engine/input';
 import { PAL } from '../src/engine/palette';
 import { PixelBuffer } from '../src/engine/pixel';
-import { Animator, defineSprite, hasSprite } from '../src/engine/sprites';
+import { tierAtRes } from '../src/engine/render-common';
+import { Animator, defineSprite, hasSprite, setArtTier, toArtDensity } from '../src/engine/sprites';
 import { Terrain, terrain, type TerrainDef } from '../src/engine/terrain';
 import { loadContent } from '../src/game/content/index';
 import type { BackgroundDef, DecorDef, MissionDef, SectionDef, TerrainStyleDef } from '../src/game/mission/index';
@@ -103,6 +104,11 @@ export interface ArenaArgs {
   res: number;
   /** Sprite filter at res > 1 (null = smooth). */
   gfx: UpscaleMode | null;
+  /**
+   * Art density of the arena mission (1 default: the 1× art; 2 / 4 the dense art of the ids that
+   * have it, at the tier the backbuffer can show: 4 needs --res 4 or 8).
+   */
+  art: 1 | 2 | 4;
   cols: number;
   out?: string;
   trace: string[];
@@ -136,6 +142,7 @@ export function defaultArenaArgs(): ArenaArgs {
     scale: 0,
     res: 1,
     gfx: null,
+    art: 1,
     cols: 3,
     trace: [],
     traceEvery: 1,
@@ -278,6 +285,9 @@ export function parseArenaArgs(argv: readonly string[]): ArenaArgs {
         break;
       case '--res':
         a.res = int(1, 8);
+        break;
+      case '--art':
+        a.art = toArtDensity(int(1, 4));
         break;
       case '--gfx': {
         const g = next().toLowerCase();
@@ -741,6 +751,7 @@ export function buildArena(a: ArenaArgs, base: Pick<SectionDef, 'background' | '
     *script() {},
   };
   const mission: MissionDef = { id: ARENA_ID, name: 'ARENA', subtitle: 'SANDBOX', music: '', start: 'a', sections: { a: section } };
+  if (a.art > 1) mission.artDensity = a.art;
   return { mission, ground };
 }
 
@@ -851,6 +862,8 @@ export async function runArena(a: ArenaArgs, o: ArenaRunOpts = {}): Promise<Aren
   defineMission(mission);
   if (a.weapon && !hasWeapon(a.weapon)) warn(`unknown weapon "${a.weapon}" (the pistol is used); weapons: ${listWeapons().join(' ')}`);
 
+  // --art: the browser's tier for this res (4 needs 4 | res; at res 1 the asked art, reduced).
+  if (a.art > 1) setArtTier(a.res >= 2 ? tierAtRes(a.art, a.res) : a.art);
   const gfxWarning = resolveGfx(a.res, a.gfx).warning;
   if (gfxWarning) warn(gfxWarning);
   const hold = buttonMask(...a.hold.filter((b) => b !== 'fire'));
@@ -1144,6 +1157,7 @@ Output:
   --scale n  --cols 3  --out file.png     (several agents at once: give each run its own --out)
   --res k  --gfx pixel|smooth|xbr          high-resolution frames as the browser draws them at display
                             scale k (sprite filter, default pixel); PNG scale 1
+  --art 1|2|4               art density of the arena (default 1); 4 with --res 8 shows the 4× art
   --trace id[,id…]          one line per tick for the first live entity of each id (player = P1, p2):
                             t x y vx vy gnd|air state anim:frame hp
   --trace-every N           trace every N ticks (default 1)

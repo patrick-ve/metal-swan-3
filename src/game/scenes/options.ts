@@ -6,6 +6,8 @@
  * BOSS BAR · SCREEN SHAKE · REDUCE FLASHES · GRAPHICS (PIXEL / SMOOTH / XBR: the sprite filter on
  * a high-resolution display; main.ts applies it; the row shows the filter in effect, `?gfx=`
  * included, and while it is selected a hint line says when the window is too small for it) ·
+ * ART DETAIL (AUTO / 4X / 2X / 1X: the art tier of the dense art, main.ts applies it; added
+ * 2026-10-19; rows 9 px apart since) ·
  * MOUSE LOOK (ON / OFF) · SENSITIVITY (1–10) (the first-person mode's pointer-lock mouse,
  * docs/design/fps.md §2.3; added 2026-10-16) · CONTROLS (the rebind screen) · RESET HIGH
  * SCORES (`ARE YOU SURE?` → `YES` / `NO`) · BACK. Changes apply at once and are saved on the way
@@ -17,7 +19,8 @@ import type { Scene } from '../../engine/scene';
 import { applyAudioSettings, blinkOn, centerText, defaultHighScores, drawCursor, graphicsMode, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { modeAtRes } from '../../engine/render-common';
 import { UPSCALE_MODES, type UpscaleMode } from '../../engine/upscale';
-import { CREDIT_STEPS, saveSettings, type GameSettings, type ShakeLevel } from '../settings';
+import { artTier } from '../../engine/sprites';
+import { ART_DETAILS, CREDIT_STEPS, saveSettings, type ArtDetail, type GameSettings, type ShakeLevel } from '../settings';
 import { ControlsScene } from './controls';
 import { DIFFICULTIES, DIFFICULTY_INFO } from './flow-data';
 import { drawBase, drawMilPanel, drawStencilTitle } from './base';
@@ -36,6 +39,7 @@ export type OptionId =
   | 'shake'
   | 'flashes'
   | 'graphics'
+  | 'artDetail'
   | 'mouseLook'
   | 'sensitivity'
   | 'controls'
@@ -59,6 +63,7 @@ export const OPTION_ROWS: readonly Row[] = [
   { id: 'shake', label: 'SCREEN SHAKE' },
   { id: 'flashes', label: 'REDUCE FLASHES' },
   { id: 'graphics', label: 'GRAPHICS' },
+  { id: 'artDetail', label: 'ART DETAIL' },
   { id: 'mouseLook', label: 'MOUSE LOOK' },
   { id: 'sensitivity', label: 'SENSITIVITY' },
   { id: 'controls', label: 'CONTROLS' },
@@ -69,7 +74,7 @@ export const OPTION_ROWS: readonly Row[] = [
 const SHAKES: readonly ShakeLevel[] = ['full', 'low', 'off'];
 /** First row y and row spacing (px); the last row ends above the hint line at y 200. */
 export const OPTION_TOP = 40;
-export const OPTION_STEP = 10;
+export const OPTION_STEP = 9;
 const TOP = OPTION_TOP;
 const STEP = OPTION_STEP;
 const LABEL_X = 64;
@@ -100,6 +105,8 @@ export function optionValue(s: GameSettings, id: OptionId): string {
       return s.reduceFlashes ? 'ON' : 'OFF';
     case 'graphics':
       return s.graphics.toUpperCase();
+    case 'artDetail':
+      return s.artDetail === 'auto' ? 'AUTO' : `${s.artDetail}X`;
     case 'mouseLook':
       return s.mouseLook ? 'ON' : 'OFF';
     case 'sensitivity':
@@ -116,6 +123,15 @@ export function optionValue(s: GameSettings, id: OptionId): string {
 export function graphicsHint(mode: UpscaleMode, res: number): string {
   const used = modeAtRes(mode, res);
   return used === mode ? '' : `${mode.toUpperCase()} NEEDS A LARGER WINDOW: ${used.toUpperCase()}`;
+}
+
+/**
+ * Hint for the ART DETAIL row: the tier in effect (`tier`, sprites.ts `artTier`), e.g.
+ * `AUTO: 4X ART`, or `4X NEEDS A LARGER WINDOW: 2X` when the backbuffer cannot show the chosen one.
+ */
+export function artDetailHint(a: ArtDetail, tier: number): string {
+  if (a === 'auto') return `AUTO: ${tier}X ART`;
+  return a > tier ? `${a}X NEEDS A LARGER WINDOW: ${tier}X` : '';
 }
 
 /** Change one setting by one step (`d` = −1 / +1). Returns true when something changed. */
@@ -154,6 +170,9 @@ export function stepOption(s: GameSettings, id: OptionId, d: number): boolean {
       return true;
     case 'graphics':
       s.graphics = cycle(UPSCALE_MODES, s.graphics);
+      return true;
+    case 'artDetail':
+      s.artDetail = cycle(ART_DETAILS, s.artDetail);
       return true;
     case 'mouseLook':
       s.mouseLook = !s.mouseLook;
@@ -303,6 +322,8 @@ export class OptionsScene implements Scene {
     } else if (OPTION_ROWS[this.sel].id === 'graphics') {
       const hint = graphicsHint(graphicsMode(this.app), this.app.displayRes);
       if (hint) centerText(r, hint, 212 - 12, PAL.stone[3]);
+    } else if (OPTION_ROWS[this.sel].id === 'artDetail') {
+      centerText(r, artDetailHint(s.artDetail, artTier()), 212 - 12, PAL.stone[3]);
     }
     if (this.confirm !== null) this.drawConfirm(r);
   }

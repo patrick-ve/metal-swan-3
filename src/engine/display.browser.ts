@@ -1,5 +1,5 @@
 import { VIEW_H, VIEW_W } from './render';
-import { chooseRes, KMAX } from './render-common';
+import { chooseRes, chooseTierRes, KMAX, type TierRes } from './render-common';
 
 /**
  * Presents the backbuffer on the visible canvas (docs/ARCHITECTURE.md §3):
@@ -13,6 +13,9 @@ import { chooseRes, KMAX } from './render-common';
  *   that the factor divides), so filtered pixels land where a direct nearest-neighbour scale
  *   would put them. The backbuffer may have any size: present() scales it (nearest neighbour,
  *   any ratio).
+ * - `tierRes(factor, want)` picks the art tier and the backbuffer res together
+ *   (`chooseTierRes`): AUTO tier 4 at an integer scale ≥ 8 with k up to 8 (KMAX_TIER4), tier 2
+ *   from scale 2 with k up to 6 (KMAX), tier 1 below; `want` 1 / 2 / 4 forces a tier.
  * - Optional scanline overlay (only at scale ≥ 2) and a fullscreen helper.
  */
 
@@ -24,7 +27,7 @@ export interface DisplayOpts {
   /** Logical size (default VIEW_W × VIEW_H). */
   width?: number;
   height?: number;
-  /** Highest backbuffer resolution (default KMAX). */
+  /** Highest backbuffer resolution (default KMAX; for `tierRes` a cap on the tier's kmax). */
   kmax?: number;
 }
 
@@ -36,6 +39,11 @@ export interface Display {
   readonly res: number;
   /** Backbuffer resolution for this scale when sprites are upscaled by `factor` (1…kmax). */
   resFor(factor: number): number;
+  /**
+   * Art tier and backbuffer resolution for this scale, the sprite filter's upscale `factor` and
+   * the wanted tier (`want`: 0 AUTO, or 1 / 2 / 4; `chooseTierRes`).
+   */
+  tierRes(factor: number, want?: number): Readonly<TierRes>;
   readonly scanlines: boolean;
   /** Draw the backbuffer (e.g. CanvasRenderer.canvas, any res) scaled into the visible canvas. */
   present(src: CanvasImageSource): void;
@@ -77,6 +85,7 @@ export function createDisplay(canvas: HTMLCanvasElement, opts: DisplayOpts = {})
   let devW = 0;
   let devH = 0;
   let dirty = true;
+  const tierOut: TierRes = { tier: 1, k: 1 };
 
   function layout(w: number, h: number): void {
     w = Math.max(1, Math.round(w));
@@ -149,6 +158,9 @@ export function createDisplay(canvas: HTMLCanvasElement, opts: DisplayOpts = {})
     },
     resFor(factor: number): number {
       return chooseRes(scale, kmax, factor);
+    },
+    tierRes(factor: number, want = 0): Readonly<TierRes> {
+      return chooseTierRes(scale, want, factor, opts.kmax ?? Infinity, tierOut);
     },
     get scanlines() {
       return scan;

@@ -22,8 +22,9 @@ import { upscaleFactor, type UpscaleMode } from './upscale';
  * - Frames of density d > 1 (2× art) are never filtered. With d | k each buffer pixel is an
  *   exact (k / d) × (k / d) block; with k > d otherwise the buffer is enlarged by k / d with the
  *   nearest-neighbour rule of `PixelBuffer.blitScaled` (Canvas may pick the other pixel on ties);
- *   with k < d (res 1) the renderers draw `lowRes(buf, d)` (the top-left pixel of every d × d
- *   block, flips mirror that image), so res 1 shows a deterministic 1× image.
+ *   with k < d the renderers draw the reduction to `drawDensity(d, k)` (`reducedFor`: the
+ *   top-left pixel of every block, flips mirror that image): a 4× frame at k 2 or 3 draws as a
+ *   2× image, any dense frame at res 1 as a deterministic 1× image.
  * - Parallax layers: screen origin Math.round(offset − cam × factor), tiled by the buffer size;
  *   at k > 1 with any sub-pixel policy but 'off' in 1/k steps, and with 'parallax' / 'all' by
  *   the unrounded camera (`layerCam`).
@@ -55,8 +56,62 @@ export const SUBPIXEL_MODES: readonly SubpixelMode[] = ['off', 'parallax', 'came
  */
 export const DEFAULT_SUBPIXEL: SubpixelMode = 'all';
 
-/** Highest backbuffer resolution the browser uses (backbuffer px per logical px). */
+/** Highest backbuffer resolution the browser uses at art tier 1 or 2 (backbuffer px per logical px). */
 export const KMAX = 6;
+/** Highest backbuffer resolution at art tier 4 (4K: the 4× art lands as exact 2 × 2 blocks). */
+export const KMAX_TIER4 = 8;
+/** Lowest integer display scale that picks art tier 4 in AUTO (4K s 10, 5K, Retina fullscreen s 9). */
+export const TIER4_MIN_SCALE = 8;
+/** Lowest integer display scale that picks art tier 2 in AUTO. */
+export const TIER2_MIN_SCALE = 2;
+
+/** The highest backbuffer resolution for art tier `tier` (KMAX_TIER4 at tier 4, else KMAX). */
+export function kmaxForTier(tier: number): number {
+  return tier >= 4 ? KMAX_TIER4 : KMAX;
+}
+
+/**
+ * The AUTO art tier for a display scale `s` (device px per logical px): 4 when the integer scale
+ * is ≥ TIER4_MIN_SCALE, 2 when it is ≥ TIER2_MIN_SCALE, else 1. `want` (ART DETAIL 1, 2 or 4;
+ * 0 = AUTO) caps it: a forced tier is used as asked (4× on a small window still draws 4× art,
+ * reduced by the renderers; `tierAtRes` limits it to what the backbuffer can show).
+ */
+export function chooseTier(s: number, want = 0): 1 | 2 | 4 {
+  if (want === 1 || want === 2 || want === 4) return want;
+  const n = s >= 1 ? Math.floor(s) : 0;
+  return n >= TIER4_MIN_SCALE ? 4 : n >= TIER2_MIN_SCALE ? 2 : 1;
+}
+
+/**
+ * The art tier a backbuffer of res k can show for a wanted tier: d > k falls back to the next
+ * lower density (4 → 2; tier 4 also needs 4 | k), and to 1 only below k 2.
+ */
+export function tierAtRes(tier: number, k: number): 1 | 2 | 4 {
+  if (tier >= 4 && k >= 4 && k % 4 === 0) return 4;
+  if (tier >= 2 && k >= 2) return 2;
+  return 1;
+}
+
+/**
+ * The density at which a buffer of density `d` is drawn on a backbuffer of res `k`: d itself when
+ * d ≤ k, else the highest density ≤ k that divides d (4 at k 2 or 3 → 2; at k 1 → 1). The
+ * renderers draw the reduction `lowRes(buf, d / drawDensity(d, k))`.
+ */
+export function drawDensity(d: number, k: number): number {
+  if (d <= k) return d;
+  for (let e = Math.min(k, d); e > 1; e--) if (d % e === 0) return e;
+  return 1;
+}
+
+/**
+ * The image the renderers draw for a buffer of density `d` at res `k` (the buffer itself, or its
+ * `lowRes` reduction to `drawDensity(d, k)`); no allocation once cached.
+ */
+export function reducedFor(buf: PixelBuffer, d: number, k: number): PixelBuffer {
+  if (d <= k) return buf;
+  const r = d / drawDensity(d, k);
+  return r > 1 ? lowRes(buf, r) : buf;
+}
 
 /**
  * Backbuffer resolution k for a display scale `s` (device px per logical px) and the largest
@@ -70,7 +125,8 @@ export const KMAX = 6;
  *   so rects, lines and text stay even blocks too.
  * - Below 1× (a fractional scale under 1): 1.
  * Examples with kmax 6: 1080p (s 5) → 5; 4K (s 10) → 6 ('pixel', 'smooth') or 4 ('xbr');
- * 16-inch MacBook Pro fullscreen (s 9) → 6 or 4.
+ * 16-inch MacBook Pro fullscreen (s 9) → 6 or 4. At art tier 4 pass `kmaxForTier(4)` (8):
+ * 4K (s 10) → 8, so the 4× art lands as exact 2 × 2 blocks (`chooseTierRes`).
  */
 export function chooseRes(s: number, kmax = KMAX, factor = 1): number {
   const max = Math.max(1, Math.floor(kmax));
@@ -80,6 +136,30 @@ export function chooseRes(s: number, kmax = KMAX, factor = 1): number {
   const f = Math.max(1, Math.floor(factor));
   for (let k = max; k >= f; k--) if (k % f === 0) return k;
   return max;
+}
+
+/**
+ * Backbuffer resolution and art tier for a display scale `s`, the wanted tier (`want`: 0 AUTO,
+ * or 1 / 2 / 4) and the upscale factor of the GRAPHICS mode: the tier picks kmax
+ * (`kmaxForTier`), `chooseRes` picks k, and the tier is cut to what k can show (`tierAtRes`).
+ * Tier 4 keeps 4 | k (a forced 4× at s 5–7 → k 4); a forced 4× below s 4 draws 2× (or 1×) art.
+ * The result goes into `out` (reused by the display, no allocation per frame).
+ */
+export interface TierRes {
+  tier: 1 | 2 | 4;
+  k: number;
+}
+
+export function chooseTierRes(s: number, want = 0, factor = 1, kmaxCap = Infinity, out: TierRes = { tier: 1, k: 1 }): TierRes {
+  let t = chooseTier(s, want);
+  // AUTO picks tier 4 only with its k 8 (a lower ?kmax cap keeps AUTO at tier 2).
+  if (t === 4 && want !== 4 && Math.min(KMAX_TIER4, kmaxCap) < KMAX_TIER4) t = 2;
+  let k = chooseRes(s, Math.min(kmaxForTier(t), kmaxCap), factor);
+  // Tier 4 wants 4 | k (exact 2 × 2 or 1 × 1 blocks): s 5–7 with a forced 4× → k 4.
+  if (t === 4 && k > 4 && k % 4 !== 0) k -= k % 4;
+  out.tier = tierAtRes(t, k);
+  out.k = k;
+  return out;
 }
 
 /** Camera offset in backbuffer px for a camera at `v` (world px). */
@@ -350,4 +430,60 @@ export function clipLine(out: LineEnds, x0: number, y0: number, x1: number, y1: 
 export function solidColor(c: Color, o: DrawOpts | undefined): Color {
   const t = o?.tint ?? (o?.flash ? WHITE : undefined);
   return t === undefined ? c >>> 0 : ((t & 0xffffff00) | (c & 255)) >>> 0;
+}
+
+/** Average render + present time (ms) above which the governor drops art tier 4. */
+export const GOVERNOR_LIMIT_MS = 8;
+/** Length of one governor measuring window (ms). */
+export const GOVERNOR_WINDOW_MS = 2000;
+
+/**
+ * Frame-time governor (docs/ARCHITECTURE.md §3): at art tier 4 it averages render + present time
+ * over windows of GOVERNOR_WINDOW_MS; when a window averages more than GOVERNOR_LIMIT_MS (e.g.
+ * software rendering of a k 8 backbuffer) it trips, once per session: the app then caps the tier
+ * at 2 (k ≤ 6). Pure; no allocation per frame.
+ */
+export class FrameGovernor {
+  /** True once tripped (stays true). */
+  tripped = false;
+  /** The window average that tripped it (ms; 0 before). */
+  trippedMs = 0;
+  private start = -1;
+  private sum = 0;
+  private n = 0;
+
+  readonly limitMs: number;
+  readonly windowMs: number;
+
+  constructor(limitMs = GOVERNOR_LIMIT_MS, windowMs = GOVERNOR_WINDOW_MS) {
+    this.limitMs = limitMs;
+    this.windowMs = windowMs;
+  }
+
+  /**
+   * Record one frame: `ms` its render + present time, `now` a clock (ms), `tier` the art tier it
+   * was drawn at (only tier-4 frames count; another tier restarts the window). Returns true on
+   * the frame that trips the governor.
+   */
+  sample(ms: number, now: number, tier: number): boolean {
+    if (this.tripped) return false;
+    if (tier < 4) {
+      this.start = -1;
+      return false;
+    }
+    if (this.start < 0) {
+      this.start = now;
+      this.sum = 0;
+      this.n = 0;
+    }
+    this.sum += ms;
+    this.n++;
+    if (now - this.start < this.windowMs) return false;
+    const avg = this.sum / this.n;
+    this.start = -1;
+    if (avg <= this.limitMs) return false;
+    this.tripped = true;
+    this.trippedMs = avg;
+    return true;
+  }
 }

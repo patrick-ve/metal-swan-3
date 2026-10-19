@@ -8,7 +8,9 @@
  * uses --url), opens Chromium (Playwright) for every viewport × graphics mode with
  * `?<query>&gfx=<gfx>`, clicks the canvas, lets the game run for --seconds and reads the
  * render + present time of every frame (window.__ms3.frames, recorded by main.ts) and the
- * requestAnimationFrame intervals. Prints one JSON line per run: backbuffer resolution, average
+ * requestAnimationFrame intervals. --art runs every ART DETAIL value given (`?art=`; default
+ * auto: a 3840×2160 viewport at dpr 1 is display scale 10 → art tier 4 with k 8). Prints one JSON
+ * line per run: art tier, backbuffer resolution, average
  * / p95 / max frame time (ms), average frame interval and fps, texture cache numbers.
  * Headless Chromium rasterises on the CPU (SwiftShader) unless --gpu asks for the hardware GPU
  * (ANGLE / Metal on macOS); without it absolute numbers are pessimistic, so compare modes and
@@ -26,11 +28,13 @@ interface Args {
   seconds: number;
   headed: boolean;
   gpu: boolean;
+  /** ART DETAIL per run (`?art=`): 'auto' (the display picks: 4K → tier 4, k 8), '4', '2', '1'. */
+  art: string[];
 }
 
 const USAGE =
   'usage: npm run perf -- [--port 4179] [--url http://127.0.0.1:4179/] [--query "mission=ams&section=d&boss=1&god=1"] ' +
-  '[--gfx pixel,smooth,xbr] [--viewport 1920x1080,3840x2160] [--dpr 1] [--seconds 10] [--headed] [--gpu]';
+  '[--gfx pixel,smooth,xbr] [--viewport 1920x1080,3840x2160] [--dpr 1] [--seconds 10] [--art auto,4,2] [--headed] [--gpu]';
 
 function parseArgs(argv: readonly string[]): Args {
   const a: Args = {
@@ -45,6 +49,7 @@ function parseArgs(argv: readonly string[]): Args {
     seconds: 10,
     headed: false,
     gpu: false,
+    art: ['auto'],
   };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
@@ -89,6 +94,13 @@ function parseArgs(argv: readonly string[]): Args {
       case '--headed':
         a.headed = true;
         break;
+      case '--art':
+        a.art = next()
+          .split(',')
+          .map((v) => v.trim().toLowerCase())
+          .filter((v) => v === 'auto' || v === '1' || v === '2' || v === '4');
+        if (a.art.length === 0) throw new Error(`--art takes auto,4,2,1\n${USAGE}`);
+        break;
       case '--gpu':
         a.gpu = true;
         break;
@@ -107,6 +119,7 @@ function parseArgs(argv: readonly string[]): Args {
 interface PageStats {
   res: number;
   mode: string;
+  tier: number;
   frames: number[];
   intervals: number[];
   textures: { entries: number; px: number; evicted: number } | null;
@@ -130,7 +143,7 @@ const MEASURE = `(async () => {
   const n = Math.min(h.frames.count - start, h.frames.ms.length);
   const frames = [];
   for (let i = h.frames.count - n; i < h.frames.count; i++) frames.push(h.frames.ms[i % h.frames.ms.length]);
-  return { res: h.renderer.res, mode: h.renderer.mode, frames, intervals: intervals.slice(1), textures: h.renderer.textureStats() };
+  return { res: h.renderer.res, mode: h.renderer.mode, tier: h.tier ? h.tier() : 0, frames, intervals: intervals.slice(1), textures: h.renderer.textureStats() };
 })()`;
 
 function pct(list: readonly number[], p: number): number {
@@ -157,46 +170,50 @@ async function main(): Promise<void> {
     const gpuArgs = ['--enable-gpu', '--ignore-gpu-blocklist', ...(process.platform === 'darwin' ? ['--use-angle=metal'] : [])];
     browser = await chromium.launch({ headless: !args.headed, args: args.gpu ? gpuArgs : [] });
     for (const vp of args.viewports) {
-      for (const gfx of args.gfx) {
-        const page = await browser.newPage({ viewport: vp, deviceScaleFactor: args.dpr });
-        // The password gate in index.html.
-        page.on('dialog', (d) => void d.accept('SW4N'));
-        const errors: string[] = [];
-        page.on('pageerror', (e) => errors.push(e.message));
-        const url = `${base}?${args.query}${args.query ? '&' : ''}gfx=${gfx}`;
-        await page.goto(url, { waitUntil: 'load' });
-        await page.locator('#game').click();
-        // Class names are minified in the build: the gameplay scene is the one with a runner, the
-        // first-person scene (`?mode=fps`, spec §10) the one with a `game`.
-        await page.waitForFunction(() => {
-          const app = (window as unknown as { __ms3?: { app: { scenes: { top: { runner?: unknown; game?: unknown } | null } } } }).__ms3?.app;
-          const top = app?.scenes.top;
-          return !!(top?.runner || top?.game);
-        }, undefined, { timeout: 60_000, polling: 100 });
-        // Warm up (first uploads and upscales), then measure.
-        await page.waitForTimeout(2000);
-        // A plain string: tsx would wrap named functions in a helper the page does not have.
-        const stats = (await page.evaluate(MEASURE.replace('SECONDS', String(args.seconds)))) as PageStats;
-        const avg = stats.frames.reduce((a, v) => a + v, 0) / Math.max(1, stats.frames.length);
-        const iv = stats.intervals.reduce((a, v) => a + v, 0) / Math.max(1, stats.intervals.length);
-        console.log(
-          JSON.stringify({
-            viewport: `${vp.width}x${vp.height}@${args.dpr}`,
-            gpu: args.gpu,
-            gfx,
-            res: stats.res,
-            mode: stats.mode,
-            frames: stats.frames.length,
-            avgMs: r2(avg),
-            p95Ms: r2(pct(stats.frames, 0.95)),
-            maxMs: r2(Math.max(0, ...stats.frames)),
-            avgIntervalMs: r2(iv),
-            fps: r2(1000 / Math.max(1e-6, iv)),
-            textures: stats.textures,
-            errors,
-          }),
-        );
-        await page.close();
+      for (const art of args.art) {
+        for (const gfx of args.gfx) {
+          const page = await browser.newPage({ viewport: vp, deviceScaleFactor: args.dpr });
+          // The password gate in index.html.
+          page.on('dialog', (d) => void d.accept('SW4N'));
+          const errors: string[] = [];
+          page.on('pageerror', (e) => errors.push(e.message));
+          const url = `${base}?${args.query}${args.query ? '&' : ''}gfx=${gfx}${art === 'auto' ? '' : `&art=${art}`}`;
+          await page.goto(url, { waitUntil: 'load' });
+          await page.locator('#game').click();
+          // Class names are minified in the build: the gameplay scene is the one with a runner, the
+          // first-person scene (`?mode=fps`, spec §10) the one with a `game`.
+          await page.waitForFunction(() => {
+            const app = (window as unknown as { __ms3?: { app: { scenes: { top: { runner?: unknown; game?: unknown } | null } } } }).__ms3?.app;
+            const top = app?.scenes.top;
+            return !!(top?.runner || top?.game);
+          }, undefined, { timeout: 60_000, polling: 100 });
+          // Warm up (first uploads and upscales), then measure.
+          await page.waitForTimeout(2000);
+          // A plain string: tsx would wrap named functions in a helper the page does not have.
+          const stats = (await page.evaluate(MEASURE.replace('SECONDS', String(args.seconds)))) as PageStats;
+          const avg = stats.frames.reduce((a, v) => a + v, 0) / Math.max(1, stats.frames.length);
+          const iv = stats.intervals.reduce((a, v) => a + v, 0) / Math.max(1, stats.intervals.length);
+          console.log(
+            JSON.stringify({
+              viewport: `${vp.width}x${vp.height}@${args.dpr}`,
+              gpu: args.gpu,
+              gfx,
+              art,
+              tier: stats.tier,
+              res: stats.res,
+              mode: stats.mode,
+              frames: stats.frames.length,
+              avgMs: r2(avg),
+              p95Ms: r2(pct(stats.frames, 0.95)),
+              maxMs: r2(Math.max(0, ...stats.frames)),
+              avgIntervalMs: r2(iv),
+              fps: r2(1000 / Math.max(1e-6, iv)),
+              textures: stats.textures,
+              errors,
+            }),
+          );
+          await page.close();
+        }
       }
     }
   } finally {

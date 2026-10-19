@@ -23,16 +23,24 @@ export { frameDensity, frameH, frameW } from './render';
  * Anchors are logical pixels: for a frame of density d (2× art) 'feet' is (floor(w / 2), h) of
  * the logical size w × h = buffer size / d, and [ox, oy] is a logical pixel.
  *
- * 2× art (docs/ARCHITECTURE.md §3, docs/ART_GUIDE.md "2x art (mission ams)"): `defineHiSprite(id,
- * gen2x)` (or `defineSprite(id, gen, { hi: gen2x })`) adds a second generator for an existing id
- * whose frames have density 2 (buffers twice as wide and high). getFrames / getFrame return them
- * only while the art density is 2 (`setArtDensity`, set by the mission runner for a mission with
- * `artDensity: 2` around its drawing) AND a 2× generator exists; otherwise the 1× frames. Both are
- * cached separately. The 2× frames always get the logical geometry of the 1× frames — frame
- * count, logical size, anchor and every point — so game logic sees the same numbers at either
- * density: each 2× frame is re-framed to its 1× frame's rectangle (pixels outside it are cut and
- * reported once), its points are the 1× points, and a wrong frame count or odd buffer size makes
- * the id fall back to its 1× frames with a warning (`spriteErrors()` lists it as 'id@2x').
+ * Dense art (docs/ARCHITECTURE.md §3, docs/ART_GUIDE.md "2x art (mission ams)", "UHD art"):
+ * `defineHiSprite(id, gen2x)` (or `defineSprite(id, gen, { hi: gen2x })`) adds a 2× generator for
+ * an existing id (buffers twice as wide and high), `defineHiSprite(id, gen4x, 4)` / `{ hi4 }` a 4×
+ * one, and `defineHdSprite(id, (d) => …)` / `{ hd }` ONE density-generic generator called with
+ * d 2 and d 4 (the UHD art). One cache per density. getFrames(id, d) returns the frames of the
+ * highest density ≤ d that the id has (4 → 2 → 1; never an upscale); the default d is the art
+ * density (`setArtDensity`, set by the mission runner to min(mission `artDensity`, `artTier()`)
+ * around its drawing). The dense frames always get the logical geometry of the 1× frames — frame
+ * count, logical size, anchor and every point — so game logic sees the same numbers at every
+ * density: each dense frame is re-framed to its 1× frame's rectangle (pixels outside it are cut
+ * and reported once), its points are the 1× points, and a wrong frame count, a buffer size that d
+ * does not divide or other points make the id fall back to its next lower frames with a warning
+ * (`spriteErrors()` lists it as 'id@<d>x').
+ *
+ * Tier 4 in the browser (`setDeferDense(true)`): getFrames never generates 4× frames; a missing
+ * one draws the 2× frame and the id is queued (`takeDenseQueue`) for the art pool, which installs
+ * the result (`installFrames`). `hasFramesAt` / `framesDensityAt` peek without generating, and
+ * `releaseDense` drops the 4× frames the working set no longer needs.
  */
 
 export type SpriteAnchor = 'feet' | 'center' | 'top-left' | readonly [number, number];
@@ -40,6 +48,13 @@ export type SpriteAnchor = 'feet' | 'center' | 'top-left' | readonly [number, nu
 export type FramePoints = Readonly<Record<string, readonly [number, number]>>;
 export type SpriteGenResult = Frame | PixelBuffer | readonly (Frame | PixelBuffer)[];
 export type SpriteGen = () => SpriteGenResult;
+/** A density-generic generator: frames at density `d` (2 or 4). */
+export type HdSpriteGen = (d: DenseDensity) => SpriteGenResult;
+/** Art densities: 1 (classic), 2 and 4 (dense art). */
+export type ArtDensity = 1 | 2 | 4;
+export type DenseDensity = 2 | 4;
+/** Art tier: the highest art density the display draws (set by the app from the backbuffer). */
+export type ArtTier = ArtDensity;
 
 export interface SpriteOpts {
   /** Anchor for frames returned as PixelBuffers (default 'feet'). Frames keep their own. */
@@ -59,6 +74,13 @@ export interface SpriteOpts {
   trim?: boolean;
   /** A 2× generator for this id (same as `defineHiSprite(id, hi)`). */
   hi?: SpriteGen;
+  /** A 4× generator for this id (same as `defineHiSprite(id, hi4, 4)`). */
+  hi4?: SpriteGen;
+  /**
+   * One density-generic HD generator for both dense densities (same as `defineHdSprite(id, hd)`):
+   * called with d 2 and d 4, it returns buffers d times the logical size. Wins over `hi` / `hi4`.
+   */
+  hd?: HdSpriteGen;
   /**
    * Deferred (rare cosmetic strips, e.g. fidgets): the boot preload skips it (`skipDeferred`),
    * and every other preload makes it after its `last` ids. Made on first use otherwise.
@@ -90,11 +112,22 @@ interface HiEntry {
 
 /** Density of 2× art. */
 export const HI_DENSITY = 2;
+/** The highest art density (4× art, tier 4). */
+export const MAX_DENSITY = 4;
+/** The dense densities, highest first (the fallback order of getFrames). */
+export const DENSE_DENSITIES: readonly DenseDensity[] = [4, 2];
 
 const registry = new Map<string, Entry>();
-const hiRegistry = new Map<string, HiEntry>();
-/** The art density getFrames uses when none is passed (1, or 2 while a 2× mission draws). */
-let density = 1;
+/** Dense generators and caches, one map per density. */
+const denseRegistry: Record<DenseDensity, Map<string, HiEntry>> = { 2: new Map(), 4: new Map() };
+const hiRegistry = denseRegistry[2];
+/** The art density getFrames uses when none is passed (1, or 2 / 4 while a dense mission draws). */
+let density: ArtDensity = 1;
+/** The art tier (`setArtTier`): the highest density the display draws. Default 2. */
+let tier: ArtTier = 2;
+/** Tier-4 deferral (`setDeferDense`): a missing 4× frame draws its lower frame and is queued. */
+let deferDense = false;
+const denseQueue = new Set<string>();
 /** False: getFrames ignores the 2× generators (`setHiArt`, tools and tests). */
 let hiArt = true;
 /** Sprite id of every generated frame buffer (the first id wins when ids share a buffer). */
@@ -133,9 +166,16 @@ export function placeholderFrames(): readonly Frame[] {
  */
 export function defineSprite(id: string, gen: SpriteGen, opts: SpriteOpts = {}): void {
   registry.set(id, { id, gen, opts, frames: null, error: null });
-  const hi = hiRegistry.get(id);
-  if (opts.hi) defineHiSprite(id, opts.hi);
-  else if (hi) hi.frames = null; // the 2× frames take their geometry from the 1× frames
+  if (opts.hd) defineHdSprite(id, opts.hd);
+  else {
+    if (opts.hi) defineHiSprite(id, opts.hi);
+    if (opts.hi4) defineHiSprite(id, opts.hi4, 4);
+  }
+  // Dense frames take their geometry from the 1× frames.
+  for (const d of DENSE_DENSITIES) {
+    const h = denseRegistry[d].get(id);
+    if (h) h.frames = null;
+  }
 }
 
 /**
@@ -150,8 +190,27 @@ export function defineSprite(id: string, gen: SpriteGen, opts: SpriteOpts = {}):
  * defineHiSprite('fx/spark', () => [0, 1, 2].map((i) => new PixelBuffer(10, 10).circle(4.5, 4.5, 4 - 2 * i, PAL.gold[3])));
  * ```
  */
-export function defineHiSprite(id: string, gen: SpriteGen): void {
-  hiRegistry.set(id, { gen, frames: null, error: null });
+export function defineHiSprite(id: string, gen: SpriteGen, d: DenseDensity = 2): void {
+  denseRegistry[denseOf(d)].set(id, { gen, frames: null, error: null });
+}
+
+/**
+ * Register ONE density-generic generator for the 2× and 4× frames of `id` (the UHD art): it is
+ * called with d 2 and d 4 and returns buffers d times the 1× logical size, with the 1× frame
+ * count, anchor and points. `densities` (default both) limits it, e.g. [2] for a rare strip.
+ */
+export function defineHdSprite(id: string, gen: HdSpriteGen, densities: readonly DenseDensity[] = DENSE_DENSITIES): void {
+  for (const d of densities) defineHiSprite(id, () => gen(d), d);
+}
+
+/** 2 or 4 for a dense density request (values ≥ 4 → 4, else 2). */
+function denseOf(d: number): DenseDensity {
+  return d >= MAX_DENSITY ? 4 : 2;
+}
+
+/** Normalise any number to an art density: ≥ 4 → 4, ≥ 2 → 2, else 1. */
+export function toArtDensity(d: number): ArtDensity {
+  return d >= MAX_DENSITY ? 4 : d >= HI_DENSITY ? 2 : 1;
 }
 
 /** Is `id` registered with `defer: true` (SpriteOpts.defer)? */
@@ -163,27 +222,120 @@ export function hasSprite(id: string): boolean {
   return registry.has(id);
 }
 
-/** Does `id` have a 2× generator? */
-export function hasHiSprite(id: string): boolean {
-  return hiRegistry.has(id);
+/** Does `id` have a generator at dense density `d` (default 2)? */
+export function hasHiSprite(id: string, d: DenseDensity = 2): boolean {
+  return denseRegistry[denseOf(d)].has(id);
 }
 
-/** Ids with a 2× generator (sorted), optionally only those starting with `prefix`. */
-export function listHiSprites(prefix = ''): string[] {
+/**
+ * Ids with a generator at dense density `d` (sorted), optionally only those starting with
+ * `prefix`. Both argument orders work: listHiSprites('enemy/'), listHiSprites(4),
+ * listHiSprites('enemy/', 4), listHiSprites(4, 'enemy/'). Default density 2.
+ */
+export function listHiSprites(a: string | number = '', b: string | number = ''): string[] {
+  const prefix = typeof a === 'string' ? a : typeof b === 'string' ? b : '';
+  const d = typeof a === 'number' ? a : typeof b === 'number' ? b : 2;
   const out: string[] = [];
-  for (const id of hiRegistry.keys()) if (id.startsWith(prefix)) out.push(id);
+  for (const id of denseRegistry[denseOf(d)].keys()) if (id.startsWith(prefix)) out.push(id);
   return out.sort();
 }
 
 /**
- * Set the art density getFrames / getFrame use by default (1 or 2; other values clamp) and
- * return the previous one. The mission runner sets its mission's `artDensity` around drawing
+ * Non-generating peek: are the frames of `id` at exactly density `d` built (generated or
+ * installed)? d 1: the 1× frames.
+ */
+export function hasFramesAt(id: string, d: number): boolean {
+  const e = d >= HI_DENSITY ? denseRegistry[denseOf(d)].get(id) : registry.get(id);
+  return !!e?.frames;
+}
+
+/**
+ * The density getFrames(id, d) would return now WITHOUT generating: the highest density ≤ d
+ * whose frames are built, else the highest density ≤ d with a generator (1 at least).
+ */
+export function framesDensityAt(id: string, d: number): ArtDensity {
+  if (hiArt) {
+    for (const dd of DENSE_DENSITIES) {
+      if (dd > d) continue;
+      const h = denseRegistry[dd].get(id);
+      if (!h || (h.frames && h.error)) continue;
+      if (h.frames || !(deferDense && dd > HI_DENSITY)) return dd;
+    }
+  }
+  return 1;
+}
+
+/** The art tier (1, 2 or 4): the highest density the display draws. */
+export function artTier(): ArtTier {
+  return tier;
+}
+
+/** Set the art tier (values normalise like `toArtDensity`); returns the previous one. */
+export function setArtTier(t: number): ArtTier {
+  const prev = tier;
+  tier = toArtDensity(t);
+  return prev;
+}
+
+/**
+ * Tier-4 deferral (the browser at tier 4): getFrames at density 4 never generates 4× frames;
+ * it returns the next lower frames and queues the id (`takeDenseQueue`) for the art pool.
+ * Returns the previous value. Off by default (tools and tests generate at once).
+ */
+export function setDeferDense(on: boolean): boolean {
+  const prev = deferDense;
+  deferDense = on;
+  return prev;
+}
+
+export function denseDeferred(): boolean {
+  return deferDense;
+}
+
+/** Ids queued by deferred 4× requests (insertion order), and clear the queue. */
+export function takeDenseQueue(): string[] {
+  const out = [...denseQueue];
+  denseQueue.clear();
+  return out;
+}
+
+export function pendingDense(): number {
+  return denseQueue.size;
+}
+
+/**
+ * Drop the cached frames of `ids` at dense density `d` (the tier-4 working set releases ids it
+ * no longer needs); they regenerate (or are queued) on next use. Returns the bytes freed.
+ */
+export function releaseDense(ids: Iterable<string>, d: DenseDensity = 4): number {
+  let bytes = 0;
+  const reg = denseRegistry[denseOf(d)];
+  for (const id of ids) {
+    const h = reg.get(id);
+    if (!h?.frames) continue;
+    if (!h.error) for (const f of h.frames) bytes += f.buf.data.byteLength;
+    h.frames = null;
+    h.error = null;
+  }
+  return bytes;
+}
+
+/** Bytes of the built frames at dense density `d` (own frames, not fallbacks). */
+export function denseBytes(d: DenseDensity = 4): number {
+  let bytes = 0;
+  for (const h of denseRegistry[denseOf(d)].values()) if (h.frames && !h.error) for (const f of h.frames) bytes += f.buf.data.byteLength;
+  return bytes;
+}
+
+/**
+ * Set the art density getFrames / getFrame use by default (1, 2 or 4; other values normalise
+ * like `toArtDensity`) and return the previous one. The mission runner sets its mission's `artDensity` around drawing
  * and restores the old value, so everything else (other missions, title, attract demo, tests,
  * game logic) sees density 1.
  */
-export function setArtDensity(d: number): number {
+export function setArtDensity(d: number): ArtDensity {
   const prev = density;
-  density = d >= HI_DENSITY ? HI_DENSITY : 1;
+  density = toArtDensity(d);
   return prev;
 }
 
@@ -198,8 +350,8 @@ export function setHiArt(on: boolean): boolean {
   return prev;
 }
 
-/** The current art density (1 or 2). */
-export function artDensity(): number {
+/** The current art density (1, 2 or 4). */
+export function artDensity(): ArtDensity {
   return density;
 }
 
@@ -312,7 +464,7 @@ export function listSprites(prefix = ''): string[] {
 export function generatedSprites(d = 1, prefix = ''): string[] {
   const out: string[] = [];
   if (d >= HI_DENSITY) {
-    for (const [id, h] of hiRegistry) if (h.frames && !h.error && id.startsWith(prefix)) out.push(id);
+    for (const [id, h] of denseRegistry[denseOf(d)]) if (h.frames && !h.error && id.startsWith(prefix)) out.push(id);
   } else {
     for (const e of registry.values()) if (e.frames && !e.error && e.id.startsWith(prefix)) out.push(e.id);
   }
@@ -324,7 +476,7 @@ export function generatedSprites(d = 1, prefix = ''): string[] {
  * null. Never generates (the sprite cache reads what is already made).
  */
 export function readyFrames(id: string, d = 1): readonly Frame[] | null {
-  const e = d >= HI_DENSITY ? hiRegistry.get(id) : registry.get(id);
+  const e = d >= HI_DENSITY ? denseRegistry[denseOf(d)].get(id) : registry.get(id);
   return e?.frames && !e.error ? e.frames : null;
 }
 
@@ -334,7 +486,7 @@ export function readyFrames(id: string, d = 1): readonly Frame[] | null {
  * frames takes them; returns true when it did.
  */
 export function installFrames(id: string, d: number, frames: readonly Frame[]): boolean {
-  const e = d >= HI_DENSITY ? hiRegistry.get(id) : registry.get(id);
+  const e = d >= HI_DENSITY ? denseRegistry[denseOf(d)].get(id) : registry.get(id);
   if (!e || e.frames || frames.length === 0) return false;
   e.frames = frames;
   e.error = null;
@@ -357,9 +509,17 @@ export function spriteIdOf(buf: PixelBuffer): string | undefined {
  */
 export function getFrames(id: string, d: number = density): readonly Frame[] {
   if (d >= HI_DENSITY && hiArt) {
-    const h = hiRegistry.get(id);
-    if (h) {
-      if (!h.frames) generateHi(id, h);
+    for (const dd of DENSE_DENSITIES) {
+      if (dd > d) continue;
+      const h = denseRegistry[dd].get(id);
+      if (!h) continue;
+      if (!h.frames) {
+        if (deferDense && dd > HI_DENSITY) {
+          denseQueue.add(id);
+          continue;
+        }
+        generateHi(id, h, dd);
+      }
       return h.frames as readonly Frame[];
     }
   }
@@ -405,7 +565,7 @@ export function spriteAnim(id: string): SpriteAnimInfo {
 export function spriteErrors(): Array<{ id: string; error: string }> {
   const out: Array<{ id: string; error: string }> = [];
   for (const e of registry.values()) if (e.error) out.push({ id: e.id, error: e.error });
-  for (const [id, h] of hiRegistry) if (h.error) out.push({ id: `${id}@2x`, error: h.error });
+  for (const d of DENSE_DENSITIES) for (const [id, h] of denseRegistry[d]) if (h.error) out.push({ id: `${id}@${d}x`, error: h.error });
   return out;
 }
 
@@ -417,10 +577,12 @@ export function clearSpriteCache(id?: string): void {
       e.error = null;
     }
   }
-  for (const [hid, h] of hiRegistry) {
-    if (id === undefined || hid === id) {
-      h.frames = null;
-      h.error = null;
+  for (const d of DENSE_DENSITIES) {
+    for (const [hid, h] of denseRegistry[d]) {
+      if (id === undefined || hid === id) {
+        h.frames = null;
+        h.error = null;
+      }
     }
   }
 }
@@ -450,7 +612,9 @@ export interface PreloadOpts {
   skipDeferred?: boolean;
   /**
    * 1 (default): the 1× frames of every matching id. 2: the 2× frames of the matching ids that
-   * have a 2× generator (and nothing else) — for a 2× mission's start, not for boot.
+   * have a 2× generator (and nothing else) — for a 2× mission's start, not for boot. 4: the ids
+   * with 4× or 2× art, each at the highest density it has; with `setDeferDense(true)` a 4× id is
+   * queued (`takeDenseQueue`) instead and its 2× frames are made.
    */
   density?: number;
   /** How to yield between batches (default: a 0 ms timeout, so the browser can paint). */
@@ -494,8 +658,12 @@ export async function preloadSprites(
 ): Promise<PreloadReport> {
   const list = prefixes === undefined ? [''] : typeof prefixes === 'string' ? [prefixes] : prefixes;
   const hi = (opts?.density ?? 1) >= HI_DENSITY;
+  const pd = denseOf(opts?.density ?? 1);
+  // Density 4: the ids with 4× or 2× art (each at the highest density it has; deferred 4× ids are
+  // queued for the pool and get their 2× frames meanwhile).
+  const keys: Iterable<string> = !hi ? registry.keys() : pd === 4 ? new Set([...denseRegistry[4].keys(), ...hiRegistry.keys()]) : hiRegistry.keys();
   const ids = preloadOrder(
-    [...(hi ? hiRegistry : registry).keys()].filter(
+    [...keys].filter(
       (id) => list.some((p) => id.startsWith(p)) && !(opts?.skipDeferred && isDeferredSprite(id)),
     ),
     opts?.first ?? [],
@@ -526,9 +694,19 @@ export async function preloadSprites(
         }
       }
       if (hi) {
-        const h = hiRegistry.get(ids[i]);
-        if (h && !h.frames) generateHi(ids[i], h);
-        if (h?.error) failed.push(`${ids[i]}@2x`);
+        const id = ids[i];
+        let dd: DenseDensity = pd;
+        let h = denseRegistry[pd].get(id);
+        if (pd === 4 && h && !h.frames && deferDense) {
+          denseQueue.add(id);
+          h = undefined;
+        }
+        if (!h && pd === 4) {
+          dd = 2;
+          h = hiRegistry.get(id);
+        }
+        if (h && !h.frames) generateHi(id, h, dd);
+        if (h?.error) failed.push(`${id}@${dd}x`);
       } else {
         const e = registry.get(ids[i]);
         if (e && !e.frames) generate(e);
@@ -587,9 +765,16 @@ function generate(e: Entry): void {
  * failure falls back to the 1× frames, so a broken 2× generator never changes what is drawn
  * beyond losing the extra detail.
  */
-function generateHi(id: string, h: HiEntry): void {
+function generateHi(id: string, h: HiEntry, d: DenseDensity): void {
   const base = getFrames(id, 1);
   const e = registry.get(id);
+  // A failing 4× generator falls back to the 2× frames (when the id has them), else 1×.
+  const lower = (): readonly Frame[] => {
+    const h2 = d > HI_DENSITY ? hiRegistry.get(id) : undefined;
+    if (!h2) return base;
+    if (!h2.frames) generateHi(id, h2, 2);
+    return h2.frames as readonly Frame[];
+  };
   if (!e || e.error) {
     h.frames = base;
     h.error = e ? null : 'no 1× sprite with this id';
@@ -599,14 +784,14 @@ function generateHi(id: string, h: HiEntry): void {
   try {
     const items = runGen(h.gen);
     if (items.length !== base.length) throw new Error(`${items.length} frames, the 1× sprite has ${base.length}`);
-    h.frames = items.map((item, i) => normalizeHi(id, item, i, e.opts, base[i]));
+    h.frames = items.map((item, i) => normalizeHi(id, item, i, e.opts, base[i], d));
     h.error = null;
     for (const f of h.frames) if (!bufferIds.has(f.buf)) bufferIds.set(f.buf, id);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     h.error = msg;
-    h.frames = base;
-    warnOnce(`hi:${id}`, `[sprites] 2× generator for "${id}" failed: ${msg} — drawing the 1× frames`);
+    h.frames = lower();
+    warnOnce(`hi:${id}@${d}`, `[sprites] ${d}× generator for "${id}" failed: ${msg} — drawing the lower frames`);
   }
 }
 
@@ -637,8 +822,7 @@ function samePoints(a: FramePoints | undefined, b: FramePoints | undefined): boo
 }
 
 /** A 2× item → a density-2 frame with exactly the logical geometry of the 1× frame `base`. */
-function normalizeHi(id: string, item: Frame | PixelBuffer, i: number, opts: SpriteOpts, base: Frame): Frame {
-  const d = HI_DENSITY;
+function normalizeHi(id: string, item: Frame | PixelBuffer, i: number, opts: SpriteOpts, base: Frame, d: DenseDensity): Frame {
   let buf: PixelBuffer;
   let ox: number;
   let oy: number;
@@ -664,7 +848,7 @@ function normalizeHi(id: string, item: Frame | PixelBuffer, i: number, opts: Spr
   const y = oy - base.oy;
   if (x !== 0 || y !== 0 || buf.w !== bw * d || buf.h !== bh * d) {
     const cut = opaqueOutside(buf, x * d, y * d, bw * d, bh * d);
-    if (cut > 0) warnOnce(`hi-cut:${id}`, `[sprites] 2× frame ${i} of "${id}" has ${cut} pixels outside the 1× frame — cut`);
+    if (cut > 0) warnOnce(`hi-cut:${id}@${d}`, `[sprites] ${d}× frame ${i} of "${id}" has ${cut} pixels outside the 1× frame — cut`);
     buf = buf.crop(x * d, y * d, bw * d, bh * d);
   }
   return base.pts ? { buf, ox: base.ox, oy: base.oy, pts: base.pts, density: d } : { buf, ox: base.ox, oy: base.oy, density: d };

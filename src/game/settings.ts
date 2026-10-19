@@ -1,7 +1,7 @@
 /**
  * Player options that content and the HUD read (GDD §13.13): difficulty, credits, volumes, the
  * announcer, speech bubbles, the boss bar, screen shake, reduced flashes, the graphics filter
- * (read by main.ts) and the first-person mouse look and sensitivity (main.ts, the fps scene). Saved through the engine `Store`.
+ * and the art detail (read by main.ts) and the first-person mouse look and sensitivity (main.ts, the fps scene). Saved through the engine `Store`.
  *
  * Content reaches them with `settingsOf(world)` (context.ts); the Options scene edits
  * `app.settings` and calls `saveSettings`. Pure data, no DOM.
@@ -11,6 +11,25 @@ import { UPSCALE_MODES, type UpscaleMode } from '../engine/upscale';
 import { isDifficulty, type Difficulty } from './session';
 
 export type ShakeLevel = 'full' | 'low' | 'off';
+
+/**
+ * ART DETAIL option: 'auto' (the display picks the art tier: 4× at an integer scale ≥ 8, e.g. 4K,
+ * 2× from scale 2, else 1×; render-common.ts `chooseTier`) or a fixed tier 4, 2 or 1.
+ */
+export type ArtDetail = 'auto' | 4 | 2 | 1;
+
+/** The values of the ART DETAIL option in menu order. */
+export const ART_DETAILS: readonly ArtDetail[] = ['auto', 4, 2, 1];
+
+/** Is `v` an ART DETAIL value? */
+export function isArtDetail(v: unknown): v is ArtDetail {
+  return v === 'auto' || v === 4 || v === 2 || v === 1;
+}
+
+/** The wanted art tier of an ART DETAIL value (0 = AUTO), as `chooseTier` takes it. */
+export function artDetailTier(a: ArtDetail): 0 | 1 | 2 | 4 {
+  return a === 'auto' ? 0 : a;
+}
 
 /** CREDITS option (GDD §4.6): continues per game, 'free' = FREE PLAY. */
 export type CreditSetting = 'free' | 9 | 5 | 3;
@@ -39,6 +58,8 @@ export interface GameSettings {
   credits: CreditSetting;
   /** GRAPHICS: sprite filter on a high-resolution display (PIXEL / SMOOTH / XBR). */
   graphics: UpscaleMode;
+  /** ART DETAIL: the art tier (AUTO / 4× / 2× / 1×; main.ts applies it; added 2026-10-19). */
+  artDetail: ArtDetail;
   /** MOUSE LOOK: the first-person mode turns with the pointer-lock mouse (docs/design/fps.md §2.3). */
   mouseLook: boolean;
   /** SENSITIVITY 1..10 of the mouse look (0.6 × s angle units per pixel). */
@@ -57,6 +78,7 @@ export const DEFAULT_SETTINGS: Readonly<GameSettings> = Object.freeze({
   difficulty: 'normal',
   credits: 'free',
   graphics: 'pixel',
+  artDetail: 'auto',
   mouseLook: true,
   mouseSensitivity: 5,
 });
@@ -112,6 +134,8 @@ function clean(v: unknown): GameSettings {
     difficulty: isDifficulty(o.difficulty) ? o.difficulty : d.difficulty,
     credits: 'credits' in o ? cleanCredits(o.credits) : d.credits,
     graphics: isGraphicsMode(o.graphics) && Number(o.version) >= SETTINGS_VERSION ? o.graphics : d.graphics,
+    // Added 2026-10-19 (UHD art): older saves have none and get AUTO.
+    artDetail: isArtDetail(o.artDetail) ? o.artDetail : d.artDetail,
     // Added 2026-10-16 (first-person mode): older saves have none and get the defaults.
     mouseLook: bool('mouseLook', d.mouseLook),
     mouseSensitivity: Math.max(1, vol('mouseSensitivity', d.mouseSensitivity)),
