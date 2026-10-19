@@ -8,23 +8,33 @@
  * white neck ring, chestnut breast, curled tail and white-edged speculum (the hen mottled with an
  * eye stripe); the tour boat's tourists with faces, glints on the glass roof, hull plating, a
  * waving flag fold and finer foam; the cat's ears, slit eyes, whiskers and tabby stripes.
+ *
+ * Motion strips (docs/ART_GUIDE.md "Motion"; 1× and 2× both defined here, drawn by ambient.ts):
+ * `npc/ams/ams-pigeons/takeoff` (2: crouch with the wings half up, push off), `npc/ams/ams-ducks/paddle`
+ * (8: 4 paddle phases per drake / hen), `npc/ams/ams-window-waver/cat-swish` (4: an eased tail swish
+ * with a slow blink), `npc/ams/ams-window-waver/lean` (3: the person rises into the window),
+ * `npc/ams/ams-tour-boat/turn` (2: `turnSquash` of the boat, played at the ends of its run).
  */
 import type { Color } from '../../../../engine/color';
 import { INK, PAL } from '../../../../engine/palette';
 import { PixelBuffer } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
-import { defineHiSprite } from '../../../../engine/sprites';
+import { defineHiSprite, defineSprite, getFrames } from '../../../../engine/sprites';
 import { HI, outlineHi } from '../../../art/hi';
+import { renderHuman, type Density, type HumanStyle, type Pose } from '../../../art/humanoid';
 import { hash2 } from '../../../art/paint';
-import { windowDoneHi, windowFrameHi } from './npc.art';
+import { turnSquash } from '../../creatures/draw';
+import { WAVER_STYLE, windowDone, windowDoneHi, windowFrame, windowFrameHi } from './npc.art';
 
 // ------------------------------------------------------------------------------------ pigeons
 
 /** `pigeon(f)` at 2× (14 × 12 logical, feet anchor 6, 10): stand, peck, step, wings up, wings down. */
 function pigeonHi(f: number): Frame {
   const b = new PixelBuffer(28, 24);
-  const fly = f >= 3;
+  const fly = f === 3 || f === 4;
   const peck = f === 1;
+  const crouch = f === 5;
+  if (crouch) return pigeonCrouchHi();
   // Tail with its dark tip band, the body.
   b.poly([[2, 12], [9, 10], [9, 17]], PAL.steel[1]);
   b.vline(2, 12, 12, PAL.steel[0]);
@@ -49,7 +59,7 @@ function pigeonHi(f: number): Frame {
   b.rect(hx + 4, hy, 2, 2, PAL.stone[1]);
   b.set(hx + 4, hy, PAL.snow[2]);
   // Wing: raised, lowered, or folded with two dark bars.
-  if (f === 3) {
+  if (f === 3 || f === 6) {
     b.poly([[8, 10], [17, 10], [11, 0], [6, 2]], PAL.steel[3]);
     b.line(9, 9, 7, 3, PAL.steel[2]);
     b.line(12, 9, 10, 2, PAL.steel[2]);
@@ -78,12 +88,74 @@ function pigeonHi(f: number): Frame {
 }
 defineHiSprite('npc/ams/ams-pigeons', () => [0, 1, 2, 3, 4].map(pigeonHi));
 
+/**
+ * The take-off crouch at 2×: `pigeonHi(0)` one logical px lower (the 1× crouch frame), the head
+ * pulled in and the wing half raised.
+ */
+function pigeonCrouchHi(): Frame {
+  const b = new PixelBuffer(28, 24);
+  b.poly([[2, 14], [9, 12], [9, 19]], PAL.steel[1]);
+  b.vline(2, 14, 14, PAL.steel[0]);
+  b.ellipse(6, 10, 14, 10, PAL.steel[2]);
+  b.hline(10, 16, 12, PAL.steel[3]);
+  b.hline(10, 17, 18, PAL.steel[1]);
+  const hx = 9 * HI;
+  const hy = 4 * HI;
+  b.rect(hx - 2, hy + 2, 4, 4, PAL.teal[2]);
+  b.rect(hx - 2, hy + 4, 2, 2, PAL.purple[2]);
+  b.ellipse(hx - 2, hy - 2, 6, 6, PAL.steel[2]);
+  b.hline(hx - 1, hx + 1, hy - 2, PAL.steel[3]);
+  b.rect(hx + 4, hy, 2, 2, PAL.stone[1]);
+  b.set(hx + 4, hy, PAL.snow[2]);
+  // The wing half up (1× poly (4, 6) (8, 6) (7, 3) (3, 4)).
+  b.poly([[8, 12], [17, 12], [15, 6], [6, 8]], PAL.steel[3]);
+  b.line(10, 11, 8, 8, PAL.steel[2]);
+  outlineHi(b, 2);
+  b.rect(hx, hy, 2, 2, INK);
+  b.set(hx, hy, PAL.orange[2]);
+  for (const x of [6, 7]) {
+    b.rect(x * HI, 18, 2, 2, PAL.pink[1]);
+    b.set(x * HI, 18, PAL.pink[2]);
+  }
+  return { buf: b, ox: 6, oy: 10, density: HI };
+}
+
+/** The 1× pigeon of the take-off (npc.art.ts `pigeon` geometry): 5 crouch, 6 push off. */
+function pigeonLo(f: 5 | 6): Frame {
+  const b = new PixelBuffer(14, 12);
+  const c = f === 5 ? 1 : 0;
+  b.poly([[1, 6 + c], [4, 5 + c], [4, 8 + c]], PAL.steel[1]);
+  b.ellipse(3, 4 + c, 7, 5, PAL.steel[2]);
+  b.hline(4, 8, 5 + c, PAL.steel[3]);
+  b.hline(5, 8, 8 + c, PAL.steel[1]);
+  const hx = 9;
+  const hy = 3 + c;
+  b.rect(hx - 1, hy + 1, 2, 2, PAL.teal[2]);
+  b.set(hx - 1, hy + 2, PAL.purple[2]);
+  b.circle(hx, hy, 1, PAL.steel[2]);
+  b.set(hx + 2, hy, PAL.stone[1]);
+  b.set(hx, hy - 1, PAL.steel[3]);
+  if (f === 5) b.poly([[4, 6], [8, 6], [7, 3], [3, 4]], PAL.steel[3]);
+  else b.poly([[4, 5], [8, 5], [5, 0], [3, 1]], PAL.steel[3]);
+  b.outline(INK);
+  b.set(hx, hy, INK);
+  b.set(6, 9, PAL.pink[1]);
+  b.set(7, 9, PAL.pink[1]);
+  return { buf: b, ox: 6, oy: 10 };
+}
+defineSprite('npc/ams/ams-pigeons/takeoff', () => [pigeonLo(5), pigeonLo(6)], { ticksPerFrame: 3, loop: false, hi: () => [pigeonHi(5), pigeonHi(6)] });
+
 // ------------------------------------------------------------------------------------ ducks
 
-/** `duck(f, drake)` at 2× (12 × 9 logical, waterline anchor 5, 7): paddle bob up, down. */
-function duckHi(f: number, drake: boolean): Frame {
+/**
+ * `duck(f, drake)` at 2× (12 × 9 logical, waterline anchor 5, 7): f 0 / 1 = bob up, down (the
+ * `ams-ducks` strip); `phase` 0–3 = the 4-step paddle (`ams-ducks/paddle`): up, easing down by
+ * half a logical px, down, easing up, with the ripple and a paddle swirl moving along.
+ */
+function duckHi(f: number, drake: boolean, phase = -1): Frame {
   const b = new PixelBuffer(24, 18);
-  const d = f === 1 ? 2 : 0;
+  const d = phase >= 0 ? PADDLE_HI[phase] : f === 1 ? 2 : 0;
+  if (phase >= 0) f = phase;
   const body = drake ? PAL.stone : PAL.brown;
   b.ellipse(2, 6 + d, 16, 8, body[2]);
   // Lit back (1× row 3), the darker tail (1× (1, 4)).
@@ -120,9 +192,38 @@ function duckHi(f: number, drake: boolean): Frame {
   // Ripple at the waterline (1× row 7): a lit crest over a softer line.
   for (let x = 0; x < 20; x++) b.set(x, 14, (x + f * 3) % 7 === 0 ? PAL.sky[2] : PAL.snow[3]);
   for (let x = 2; x < 18; x++) b.set(x, 15, PAL.snow[2]);
+  // The paddle swirl behind the tail.
+  if (phase >= 0) b.set(phase & 1 ? 0 : 1, 13, PAL.snow[3]);
   return { buf: b, ox: 5, oy: 7, density: HI };
 }
 defineHiSprite('npc/ams/ams-ducks', () => [duckHi(0, true), duckHi(1, true), duckHi(0, false), duckHi(1, false)]);
+
+/** Paddle bob per phase: 2× px (half logical px steps) and the 1× rounding. */
+const PADDLE_HI = [0, 1, 2, 1];
+const PADDLE_LO = [0, 1, 1, 0];
+
+/** The 1× mallard of the paddle (npc.art.ts `duck` geometry) at `phase` 0–3. */
+function duckLo(phase: number, drake: boolean): Frame {
+  const b = new PixelBuffer(12, 9);
+  const dy = PADDLE_LO[phase];
+  b.ellipse(1, 3 + dy, 8, 4, drake ? PAL.stone[2] : PAL.brown[2]);
+  b.hline(2, 7, 3 + dy, drake ? PAL.stone[3] : PAL.brown[3]);
+  b.set(1, 4 + dy, drake ? PAL.ink[1] : PAL.brown[1]);
+  b.rect(4, 5 + dy, 3, 1, drake ? PAL.sky[1] : PAL.brown[1]);
+  b.circle(8, 2 + dy, 1, drake ? PAL.green[1] : PAL.brown[2]);
+  b.rect(7, 1 + dy, 2, 2, drake ? PAL.green[2] : PAL.brown[2]);
+  b.outline(INK);
+  b.set(9, 1 + dy, INK);
+  b.rect(10, 2 + dy, 2, 1, PAL.gold[2]);
+  // Ripple at the waterline: a lit crest that moves along with the paddle.
+  b.hline(0, 9, 7, PAL.snow[2]);
+  b.set((phase * 3 + 1) % 10, 7, PAL.sky[2]);
+  return { buf: b, ox: 5, oy: 7 };
+}
+defineSprite('npc/ams/ams-ducks/paddle', () => [true, false].flatMap((dr) => [0, 1, 2, 3].map((k) => duckLo(k, dr))), {
+  ticksPerFrame: 8,
+  hi: () => [true, false].flatMap((dr) => [0, 1, 2, 3].map((k) => duckHi(0, dr, k))),
+});
 
 // ------------------------------------------------------------------------------------ tour boat
 
@@ -215,8 +316,11 @@ defineHiSprite('npc/ams/ams-tour-boat', () => [tourBoatHi(0), tourBoatHi(1)]);
 
 // ------------------------------------------------------------------------------------ window cat
 
+/** The tail tip (1× inner px) per phase of the 4-step swish (`cat-swish`), shut eyes on phase 3. */
+const SWISH: readonly (readonly [number, number])[] = [[2, 6], [1, 7], [0, 9], [1, 8]];
+
 /** The ginger cat on the window sill at 2× (the 1× inner 14 × 16 picture, tail swishing). */
-function catHi(t: number): Frame {
+function catHi(t: number, phase = -1): Frame {
   const c = new PixelBuffer(28, 32);
   // Body (1× ellipse (3, 7, 9, 9)) with a lit back and chest (1× row 8), tabby stripes.
   c.ellipse(6, 14, 18, 18, PAL.orange[1]);
@@ -236,6 +340,10 @@ function catHi(t: number): Frame {
   c.vline(17, 8, 10, PAL.orange[1]);
   // Eyes (1× (7, 6) and (10, 6)): green with a dark slit.
   for (const ex of [14, 20]) {
+    if (phase === 3) {
+      c.hline(ex, ex + 1, 13, PAL.orange[0]);
+      continue;
+    }
     c.rect(ex, 12, 2, 2, PAL.green[3]);
     c.vline(ex + 1, 12, 13, INK);
   }
@@ -246,9 +354,57 @@ function catHi(t: number): Frame {
   c.hline(20, 21, 18, PAL.snow[2]);
   c.hline(10, 13, 16, PAL.snow[3]);
   // Tail (1× thickLine (3, 14) → (t ? 0 : 1, t ? 8 : 7), 2 px) with a darker tip.
-  c.thickLine(6, 28, t ? 0 : 2, t ? 16 : 14, 4, PAL.orange[0]);
-  c.thickLine(6, 27, t ? 1 : 3, t ? 18 : 16, 1, PAL.orange[1]);
-  c.rect(t ? 0 : 2, t ? 15 : 13, 2, 2, PAL.brown[1]);
+  const tx = phase >= 0 ? SWISH[phase][0] * HI : t ? 0 : 2;
+  const ty = phase >= 0 ? SWISH[phase][1] * HI : t ? 16 : 14;
+  c.thickLine(6, 28, tx, ty, 4, PAL.orange[0]);
+  c.thickLine(6, 27, tx + 1, ty + 2, 1, PAL.orange[1]);
+  c.rect(tx, ty - 1, 2, 2, PAL.brown[1]);
   return windowDoneHi(windowFrameHi(), c);
 }
 defineHiSprite('npc/ams/ams-window-waver/cat', () => [catHi(0), catHi(1)]);
+
+
+/** The 1× ginger cat (npc.art.ts geometry) at swish `phase` 0–3. */
+function catLo(phase: number): Frame {
+  const inner = new PixelBuffer(14, 16);
+  inner.ellipse(3, 7, 9, 9, PAL.orange[1]);
+  inner.hline(5, 9, 8, PAL.orange[2]);
+  inner.circle(8, 6, 3, PAL.orange[2]);
+  inner.tri(5, 4, 6, 1, 7, 4, PAL.orange[2]);
+  inner.tri(9, 4, 10, 1, 11, 4, PAL.orange[2]);
+  const eye = phase === 3 ? PAL.orange[0] : PAL.green[3];
+  inner.set(7, 6, eye);
+  inner.set(10, 6, eye);
+  inner.set(8, 8, PAL.pink[2]);
+  inner.thickLine(3, 14, SWISH[phase][0], SWISH[phase][1], 2, PAL.orange[0]);
+  return windowDone(windowFrame(), inner);
+}
+defineSprite('npc/ams/ams-window-waver/cat-swish', () => [0, 1, 2, 3].map(catLo), { durations: [14, 10, 14, 10], hi: () => [0, 1, 2, 3].map((k) => catHi(0, k)) });
+
+// ------------------------------------------------------------------------------------ window lean
+
+/** The waver (npc.art.ts `WAVER_STYLE`, `waverFrames` idle pose). */
+const WAVER: HumanStyle = WAVER_STYLE;
+const WAVER_IDLE: Pose = { weapon: 'none', armN: { sh: 6, el: 30, hand: 'open' }, armF: { sh: -4, el: 30, hand: 'open' }, expr: 'normal' };
+/** Lean in: the hip this far (px) below the idle frame's hip and to the side, eased out. */
+export const LEAN_DROP = [9, 5, 2];
+const LEAN_DX = [-3, -1, 0];
+
+/** The 3 lean-in frames (played backwards to lean out). */
+function leanFrames(d: Density): Frame[] {
+  const f = renderHuman(WAVER, WAVER_IDLE, 'upper', d);
+  return LEAN_DROP.map((drop, i) => {
+    const inner = new PixelBuffer(14 * d, 16 * d);
+    inner.blitFrame(f, (7 + LEAN_DX[i]) * d, (16 + 1 + drop) * d, undefined, d);
+    return d === 1 ? windowDone(windowFrame(), inner) : windowDoneHi(windowFrameHi(), inner);
+  });
+}
+defineSprite('npc/ams/ams-window-waver/lean', () => leanFrames(1), { ticksPerFrame: 3, loop: false, hi: () => leanFrames(2) });
+
+// ------------------------------------------------------------------------------------ tour boat turn
+
+/** The tour boat squeezed end-on (2 frames); ambient.ts plays them, flips, plays them back. */
+defineSprite('npc/ams/ams-tour-boat/turn', () => turnSquash(getFrames('npc/ams/ams-tour-boat', 1)[0]), {
+  ticksPerFrame: 6,
+  hi: () => turnSquash(tourBoatHi(0)),
+});

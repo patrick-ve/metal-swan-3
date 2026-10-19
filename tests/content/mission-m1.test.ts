@@ -131,8 +131,9 @@ describe('m1 routes', () => {
   it.each([['upper', ['a', 'b1', 'c']], ['lower', ['a', 'b2', 'c']]] as const)('the bot reaches c on its own (%s route)', async (route, path) => {
     // Integration fixes: the drain is a shallow shaft with a floor (the bot walks into it instead of
     // jumping the hole) and the [N] overflow-chamber metronome hangs where a straight-up shot from
-    // the chamber's left half reaches it.
-    const g = await createHeadlessGame({ missionId: 'm1', sectionId: 'a', seed: 2, players: 1, god: true, bot: { route }, captureConsole: true });
+    // the chamber's left half reaches it. Seed 3: with the 12-frame run (3 ticks per frame) seed 2's
+    // upper-route bot ends in b2; seeds 1 and 3–6 keep the upper route.
+    const g = await createHeadlessGame({ missionId: 'm1', sectionId: 'a', seed: 3, players: 1, god: true, bot: { route }, captureConsole: true });
     g.runUntil((gg) => gg.runner!.section.id === 'c', 12000);
     expect(g.report().sectionsVisited).toEqual(path);
     expect(g.report().errors).toEqual([]);

@@ -22,8 +22,10 @@
 import { Entity, type Damage } from '../../engine/entity';
 import type { HazardDef } from '../../engine/terrain';
 import { VirtualPad } from '../../engine/input';
-import { approach, clamp, type Rect } from '../../engine/math';
+import { approach, clamp, strideRate, type Rect } from '../../engine/math';
 import { Body, dropThrough, jump, moveBody, pushX, settle } from '../../engine/physics';
+import type { Color } from '../../engine/color';
+import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import { Animator, frameCount, framePoint, getFrame, getFrames, hasSprite, spriteAnim, type PlayOpts } from '../../engine/sprites';
 import type { World } from '../../engine/world';
@@ -49,6 +51,7 @@ import {
   type WeaponDef,
   type WeaponPose,
 } from '../weapons';
+import { CHUTE_COLLAPSE_SPRITE, drawChute, INTRO_DROP, INTRO_DROP_ID } from './intro-drop';
 import { StatusEffects } from './status';
 
 export type PlayerState = 'play' | 'spawn' | 'dead' | 'out' | 'mounted' | 'victory';
@@ -105,7 +108,14 @@ type TorsoAction =
   | 'diag-down'
   | 'shoot-diag-down'
   | 'throw'
-  | 'knife';
+  | 'knife'
+  // Draw-only twins (outside the Helium loop; gameplay points read the base actions above).
+  | 'run'
+  | 'crouch'
+  | 'crouch-shoot'
+  | 'crouch-throw'
+  | 'crouch-knife'
+  | 'knife-b';
 const TORSO_ACTIONS: readonly TorsoAction[] = [
   'idle',
   'shoot',
@@ -119,20 +129,47 @@ const TORSO_ACTIONS: readonly TorsoAction[] = [
   'shoot-diag-down',
   'throw',
   'knife',
+  'run',
+  'crouch',
+  'crouch-shoot',
+  'crouch-throw',
+  'crouch-knife',
+  'knife-b',
 ];
+/** Crouched twin of a forward torso action (draw-only). */
+const CROUCH_TWIN: Partial<Record<TorsoAction, TorsoAction>> = {
+  idle: 'crouch',
+  shoot: 'crouch-shoot',
+  throw: 'crouch-throw',
+  knife: 'crouch-knife',
+  'knife-b': 'crouch-knife',
+};
+/** The base action a draw-only twin falls back to under a status art (Helium) or without art. */
+const BASE_ACTION: Partial<Record<TorsoAction, TorsoAction>> = {
+  run: 'idle',
+  crouch: 'idle',
+  'crouch-shoot': 'shoot',
+  'crouch-throw': 'throw',
+  'crouch-knife': 'knife',
+  'knife-b': 'knife',
+};
 /** Elevations from 22.5° to 67.5° use the diagonal torso frames (machine-gun sweep), when drawn. */
 const DIAG_MIN = Math.PI / 8 - 1e-6;
 const DIAG_MAX = (3 * Math.PI) / 8 + 1e-6;
-const LEGS = ['idle', 'run', 'jump', 'fall', 'land', 'crouch', 'crouch-walk'] as const;
+const LEGS = ['idle', 'run', 'jump', 'fall', 'land', 'crouch', 'crouch-walk', 'dangle', 'crouch-in', 'crouch-out'] as const;
 type LegsAnim = (typeof LEGS)[number];
-const FULL = ['die', 'die-burn', 'die-blast', 'victory', 'spawn', 'bored', 'mount'] as const;
+const FULL = ['die', 'die-burn', 'die-blast', 'die-drown', 'die-flat', 'victory', 'spawn', 'bored', 'mount', 'flip', 'mount-hop', 'fidget-a', 'fidget-b', 'timeout-yawn', 'timeout-sleep'] as const;
 type FullAnim = (typeof FULL)[number];
 
 const HALF_PI = Math.PI / 2;
 const QUARTER_PI = Math.PI / 4;
 const drawOpts: DrawOpts = {};
 const tintOpts: DrawOpts = {};
+const PICKUP_TINT = PAL.fire[PAL.fire.length - 1];
 const hipPt: [number, number] = [0, 0];
+const headPt: [number, number] = [0, 0];
+/** The time-out snore (rule 15), drawn at the sleeper's head. */
+const SNORE_SPRITE = 'fx/snore';
 const pt: [number, number] = [0, 0];
 const rectScratch: Rect = { x: 0, y: 0, w: 0, h: 0 };
 const hazardList: HazardDef[] = [];
@@ -239,7 +276,37 @@ export class Player extends Entity {
   private altInfix = '';
   private readonly altIds = new Map<string, string>();
   private idleTicks = 0;
+  /** Idle fidgets played so far (fidget-a / fidget-b alternate). */
+  private fidgetCount = 0;
+  /** Knife slashes so far (knife / knife-b alternate). */
+  private knifeCount = 0;
+  /** Legs playback rate this tick (strideRate while running / crouch-walking). */
+  private legsRate = 1;
+  /** Draw-only crouch transition: ticks left and direction (legs-crouch-in / -out). */
+  private crouchT = 0;
+  private crouchIn = true;
+  /** Draw-only aim: steps toward `elev` one 45° step every 2 ticks (fwd -> diag -> up). */
+  aimVis = 0;
+  private aimVisT = 0;
   private spawnFloor = Infinity;
+  /** Ticks left of the running-jump somersault (`<art>/flip`, draw-only; any action cancels it). */
+  private flipT = 0;
+  /** checkMount armed the Swan mount-hop; enterVehicle stores its start point and tick. */
+  private hopArmed = false;
+  private hopTick = -1;
+  private hopX = 0;
+  private hopY = 0;
+  /** Draw-only pick-up flash (ticks left). */
+  private pickupT = 0;
+  /** Water surface of a drowning (die-drown is drawn on it). */
+  private drownY = 0;
+  /** Intro parachute drop: the floor to land on (Infinity = no drop) and the fall speed. */
+  private dropFloor = Infinity;
+  private dropVy = 0;
+  /** Where and when the intro chute collapsed (draw-only). */
+  private collapseTick = -1;
+  private collapseX = 0;
+  private collapseY = 0;
   private readonly legIds: Record<LegsAnim, string>;
   private readonly fullIds: Record<FullAnim, string>;
   private readonly rideIds: Record<RidePose, string>;
@@ -270,6 +337,9 @@ export class Player extends Entity {
     this.addTag('player', 'shootable');
     this.legs.play(this.legIds.idle);
     this.torso.play(this.torsoIds.pistol.idle);
+    world.events.on('pickup', (e) => {
+      if (e.player === this) this.pickupT = TUNING.life.pickupFlashTicks;
+    });
   }
 
   // ------------------------------------------------------------------------------- weapons
@@ -320,6 +390,7 @@ export class Player extends Entity {
     }
     this.gun.setWeapon(this.weapon);
     this.gun.lock = 0;
+    this.pickupT = TUNING.life.pickupFlashTicks;
     this.world.events.emit('weaponChanged', { player: this, slot: this.index, weapon: def.id });
     if (announce) {
       hudOf(this.world).message(this.index, def.name);
@@ -413,6 +484,9 @@ export class Player extends Entity {
   override update(): void {
     if (this.state !== 'out') this.status.update();
     if (this.remountTicks > 0) this.remountTicks--;
+    if (this.pickupT > 0) this.pickupT--;
+    if (this.flipT > 0) this.flipT--;
+    if (this.crouchT > 0) this.crouchT--;
     switch (this.state) {
       case 'play':
         this.updatePlay();
@@ -430,7 +504,8 @@ export class Player extends Entity {
       case 'out':
         break;
     }
-    this.legs.update();
+    this.legs.update(this.legsRate);
+    this.legsRate = 1;
     this.torso.update();
     this.full.update();
   }
@@ -488,12 +563,15 @@ export class Player extends Entity {
     b.gravity = floating && st.fallGravity !== null ? st.fallGravity : TUNING.physics.gravity * st.gravity * (hang ? T.apexHangGravity : 1);
     b.maxFall = floating && st.maxFall !== null ? st.maxFall : TUNING.physics.maxFall;
 
+    if (this.dropFloor !== Infinity) this.vy = this.dropVy;
     const c = moveBody(this, this.world.terrain, this.world);
     if (c.landed) this.onLanded();
+    else if (this.dropFloor !== Infinity && this.y >= this.dropFloor) this.landDrop();
     this.clampToView();
     if (this.checkHazards()) return;
 
     this.updateAim(up, down, ax);
+    this.updateAimVis();
     // The legs strip first: shots leave from the hip of THIS tick's pose (crouch + fire together).
     const legs = this.updateLegs(ax);
     this.footsteps(legs);
@@ -518,7 +596,16 @@ export class Player extends Entity {
     }
     jump(this, T.jumpVelocity * this.status.jump * (this.character.stats?.jump ?? 1));
     this.legs.play(this.alt(this.legIds.jump), once(true));
+    if (!this.standingJump) this.startFlip();
     this.sfx('player/jump');
+  }
+
+  /** The somersault of a running jump / vehicle bail (draw-only; not under a status art). */
+  private startFlip(): void {
+    const id = this.fullIds.flip;
+    if (this.status.art || !hasSprite(id)) return;
+    this.flipT = stripTicks(id);
+    this.full.play(id, once(true));
   }
 
   /**
@@ -530,11 +617,18 @@ export class Player extends Entity {
     return Number.isFinite(surface) && this.world.terrain.groundY(this.x) >= surface;
   }
 
+  /** Ticks of the landing legs (`legs-land` strip length; 6 without art). */
+  private landLength(): number {
+    const id = this.alt(this.legIds.land);
+    return hasSprite(id) ? stripTicks(id) : 6;
+  }
+
   private onLanded(): void {
+    this.flipT = 0;
     this.jumped = false;
     this.standingJump = false;
     this.landLock = TUNING.player.landFireLockTicks;
-    this.landTicks = 6;
+    this.landTicks = this.landLength();
     this.mountLock = false;
     dust(this.world, this.x, this.y, 2);
     this.sfx('player/land');
@@ -550,6 +644,9 @@ export class Player extends Entity {
     if (!on && !force && !this.canStand()) return true;
     const T = TUNING.player;
     this.crouching = on;
+    const tr = on ? this.legIds['crouch-in'] : this.legIds['crouch-out'];
+    this.crouchIn = on;
+    this.crouchT = !force && this.body.onGround && !this.status.art && hasSprite(tr) ? stripTicks(tr) : 0;
     const w = on ? T.crouchBodyW : T.bodyW;
     const h = on ? T.crouchBodyH : T.bodyH;
     this.body.w = T.bodyW;
@@ -614,7 +711,10 @@ export class Player extends Entity {
           break;
         case 'water':
           // Deep water = the surface above a STANDING head (crouching in knee-deep water is safe).
-          if (h.y <= this.y - TUNING.player.bodyH + 2) return this.kill('drown');
+          if (h.y <= this.y - TUNING.player.bodyH + 2) {
+            this.drownY = h.y;
+            return this.kill('drown');
+          }
           wading = true;
           break;
         case 'spikes':
@@ -655,6 +755,28 @@ export class Player extends Entity {
       this.sweepT = 0;
       this.elev = approach(this.elev, this.elevTarget, TUNING.fire.sweepStep);
     }
+  }
+
+  /** Draw-only aim (rule 11): one 45° step toward `elev` now, then one every 2 ticks. */
+  private updateAimVis(): void {
+    if (this.aimVis === this.elev) {
+      this.aimVisT = 0;
+      return;
+    }
+    if (this.aimVisT > 0) {
+      this.aimVisT--;
+      return;
+    }
+    this.aimVis = approach(this.aimVis, this.elev, QUARTER_PI);
+    this.aimVisT = this.aimVis === this.elev ? 0 : 1;
+  }
+
+  /** An action cancels every cosmetic transition (control first). */
+  private cancelCosmetic(): void {
+    this.flipT = 0;
+    this.crouchT = 0;
+    this.aimVis = this.elev;
+    this.aimVisT = 0;
   }
 
   private updateArms(): void {
@@ -701,8 +823,9 @@ export class Player extends Entity {
     const m = this.muzzleWorld(pt);
     this.gun.fire(this.fireArgs(m[0], m[1], aimAngle(this.facing, this.elev), aimDirOf(this.elev)));
     this.slot.stats.shots++;
+    this.cancelCosmetic();
     this.shootTicks = TUNING.fire.shootAnimTicks * 2;
-    this.torso.play(this.torsoId(this.aimAction(true)), once(true, TUNING.fire.shootAnimTicks));
+    this.torso.play(this.drawTorsoId(this.aimAction(true)), once(true, TUNING.fire.shootAnimTicks));
     // Ammo (status-effect weapons are free).
     if (def.ammo !== Infinity && !this.status.weapon) {
       this.slot.ammo -= def.ammoPerShot ?? 1;
@@ -737,8 +860,11 @@ export class Player extends Entity {
     this.meleeGun.setWeapon(this.meleeDef);
     this.meleeGun.fire(this.fireArgs(box.x + box.w / 2, box.y + box.h / 2, this.facing > 0 ? 0 : Math.PI, 'forward'));
     this.action = 'knife';
+    this.cancelCosmetic();
     this.actionTicks = TUNING.fire.knifeTicks;
-    this.torso.play(this.torsoId('knife'), once(true, Math.max(1, Math.floor(TUNING.fire.knifeTicks / 4))));
+    // Alternate slashes (rule 12): knife, knife-b, knife … by a per-player counter.
+    const id = this.drawTorsoId(this.knifeCount++ % 2 === 1 ? 'knife-b' : 'knife');
+    this.torso.play(id, once(true, Math.max(1, Math.floor(TUNING.fire.knifeTicks / Math.max(1, frameCount(id))))));
   }
 
   private throwBomb(): void {
@@ -749,9 +875,11 @@ export class Player extends Entity {
     this.slot.bombs--;
     this.slot.stats.bombsThrown++;
     this.action = 'throw';
+    this.cancelCosmetic();
     this.actionTicks = TUNING.fire.throwTicks;
-    // The bomb leaves at once (input never waits), so the animation starts at the release frame.
-    const id = this.torsoId('throw');
+    // The bomb leaves at once (input never waits), so the animation starts at the release frame
+    // (of the drawn strip; the bomb itself leaves from the standing strip's hand, handWorld).
+    const id = this.drawTorsoId('throw');
     const release = releaseFrame(id);
     const n = Math.max(1, frameCount(id) - release.index);
     this.torso.play(id, once(true, Math.max(1, Math.floor(TUNING.fire.throwTicks / n)), release.index));
@@ -782,14 +910,30 @@ export class Player extends Entity {
     return this.alt(this.torsoIds[this.pose][action]);
   }
 
-  private aimAction(shooting: boolean): TorsoAction {
-    const a = Math.abs(this.elev);
+  /**
+   * The torso strip the animator plays for `action` (draw-only twins): crouched twins while
+   * crouching, the alternate knife; under a status art (Helium) or without the twin's art, the
+   * base action's (status) strip. Gameplay points (muzzleWorld, handWorld) keep `torsoId`.
+   */
+  private drawTorsoId(action: TorsoAction): string {
+    const ids = this.torsoIds[this.pose];
+    const art = this.status.art !== '';
+    let a = action;
+    if (this.crouching) a = CROUCH_TWIN[a] ?? a;
+    if (a !== action && (art || !hasSprite(ids[a]))) a = action;
+    const base = BASE_ACTION[a];
+    if (base && (art || !hasSprite(ids[a]))) a = base;
+    return this.torsoId(a);
+  }
+
+  private aimAction(shooting: boolean, elev = this.elev): TorsoAction {
+    const a = Math.abs(elev);
     if (a >= DIAG_MIN && a <= DIAG_MAX) {
-      const up = this.elev < 0;
+      const up = elev < 0;
       const diag: TorsoAction = up ? (shooting ? 'shoot-diag-up' : 'diag-up') : shooting ? 'shoot-diag-down' : 'diag-down';
       if (hasSprite(this.torsoIds[this.pose][diag])) return diag;
     }
-    const d = aimDirOf(this.elev);
+    const d = aimDirOf(elev);
     if (d === 'up') return shooting ? 'shoot-up' : 'up';
     if (d === 'down') return shooting ? 'shoot-down' : 'down';
     return shooting ? 'shoot' : 'idle';
@@ -852,7 +996,10 @@ export class Player extends Entity {
     for (let i = 0; i < list.length; i++) {
       const v = list[i];
       if (v.alive && isMountable(v) && v.canMount(this)) {
+        // Only the Swan has a mount-hop (start and carried vehicles never come through here).
+        this.hopArmed = v.hasTag('swan') && hasSprite(this.fullIds['mount-hop']);
         v.mount(this);
+        this.hopArmed = false;
         return;
       }
     }
@@ -862,6 +1009,12 @@ export class Player extends Entity {
   enterVehicle(v: Mountable, invuln: number = TUNING.vehicle.mountInvulnTicks): void {
     this.state = 'mounted';
     this.vehicle = v;
+    this.flipT = 0;
+    this.endDrop(false);
+    this.hopTick = this.hopArmed ? this.world.tick : -1;
+    this.hopX = this.x;
+    this.hopY = this.y;
+    this.hopArmed = false;
     this.setCrouch(false, true);
     this.vx = 0;
     this.vy = 0;
@@ -891,7 +1044,9 @@ export class Player extends Entity {
     this.invulnTicks = Math.max(this.invulnTicks, o.invuln ?? TUNING.vehicle.ejectInvulnTicks);
     this.remountTicks = TUNING.vehicle.remountTicks;
     this.mountLock = true;
+    this.hopTick = -1;
     this.legs.play(this.alt(this.legIds.jump), once(true));
+    this.startFlip();
   }
 
   /** Draw the seated driver (the vehicle calls this with its 'seat' point). */
@@ -909,9 +1064,11 @@ export class Player extends Entity {
    * `mount` frame 1 drawn 17 px lower (its hip point is (0, −17)).
    */
   drawRide(r: Renderer, x: number, y: number, flipX: boolean, pose: RidePose, frame?: number): void {
+    drawOpts.flash = false;
+    // The hop never blinks: the mount invulnerability (20 ticks) would hide half of its frames.
+    if (this.hopTick >= 0 && this.drawHop(r, x, y, flipX)) return;
     if (this.invulnTicks > 0 && Math.floor(this.world.tick / TUNING.life.respawnBlinkTicks) % 2 === 1) return;
     drawOpts.flipX = flipX;
-    drawOpts.flash = false;
     let id = this.rideIds[pose] ?? this.rideIds.sit;
     if (!hasSprite(id)) id = this.rideIds.sit;
     if (hasSprite(id)) {
@@ -920,6 +1077,33 @@ export class Player extends Entity {
       return;
     }
     r.sprite(this.fullIds.mount, 1, x, y + MOUNT_HIP_DROP, drawOpts);
+  }
+
+  /**
+   * The Swan mount-hop (draw-only): `<art>/mount-hop` from the boarding spot toward the CURRENT
+   * seat (hip) point, eased, so a moving Swan never leaves him behind. The last frame's `hip`
+   * lands on the seat. Returns false when the hop is over (then the ride pose draws).
+   */
+  private drawHop(r: Renderer, x: number, y: number, flipX: boolean): boolean {
+    const id = this.fullIds['mount-hop'];
+    const age = this.world.tick - this.hopTick;
+    const total = hasSprite(id) ? stripTicks(id) : 0;
+    if (age < 0 || age >= total) {
+      this.hopTick = -1;
+      return false;
+    }
+    const n = frameCount(id);
+    const hip = framePoint(getFrame(id, n - 1), 'hip', flipX, false, pt);
+    // Feet target: the seat hip minus the last frame's hip offset (mirrored when flipped).
+    const tx = x - (hip ? hip[0] : 0);
+    const ty = y - (hip ? hip[1] : 0);
+    const t = age / total;
+    const e = t * t * (3 - 2 * t);
+    // Up and over the hull, then down into the seat (a straight line would pass through her body).
+    const lift = HOP_ARC * 4 * t * (1 - t);
+    drawOpts.flipX = flipX;
+    r.sprite(id, onceFrame(id, age), this.hopX + (tx - this.hopX) * e, this.hopY + (ty - this.hopY) * e - lift, drawOpts);
+    return true;
   }
 
   // ------------------------------------------------------------------------------- damage & death
@@ -944,7 +1128,9 @@ export class Player extends Entity {
     this.state = 'dead';
     this.dead = true;
     this.cause = cause;
-    this.deathTimer = cause === 'pit' || cause === 'drown' ? TUNING.life.pitDeathTicks : TUNING.life.deathAnimTicks;
+    this.flipT = 0;
+    this.endDrop();
+    this.deathTimer = cause === 'pit' ? TUNING.life.pitDeathTicks : TUNING.life.deathAnimTicks;
     this.setCrouch(false, true);
     this.status.clear();
     this.gun.reset();
@@ -958,14 +1144,19 @@ export class Player extends Entity {
       jump(this, -2.2);
     } else this.vx = 0;
     if (cause === 'drown') {
-      splash(this.world, this.x, this.y - 8, 12);
+      splash(this.world, this.x, Math.min(this.y - 8, this.drownY || this.y), 12);
       this.sfx('player/splash');
     }
     this.full.play(this.deathAnim(cause), once(true));
+    // Time-out (rule 15): yawn, then two sleep loops before the respawn.
+    if (this.full.id === this.fullIds['timeout-yawn']) {
+      const sleep = this.fullIds['timeout-sleep'];
+      this.deathTimer = stripTicks(this.full.id) + (hasSprite(sleep) ? 2 * stripTicks(sleep) : 0);
+    }
     // The hostage tally drops by the difficulty rule (GDD §4.10: EASY keeps the checkpoint count).
     const keep = difficultyOf(this.world).hostageLoss === 'checkpoint' ? this.slot.checkpointRescued : 0;
     this.slot.loseLife(keep);
-    this.sfx('player/die');
+    this.sfx(cause === 'timeout' ? 'player/yawn' : 'player/die');
     this.world.events.emit('playerDied', { player: this, slot: this.index, cause });
     return true;
   }
@@ -976,6 +1167,9 @@ export class Player extends Entity {
     const blast = this.alt(this.fullIds['die-blast']);
     if (cause === 'fire' && hasSprite(burn)) return burn;
     if (cause === 'explosion' && hasSprite(blast)) return blast;
+    if (cause === 'drown' && hasSprite(this.fullIds['die-drown'])) return this.fullIds['die-drown'];
+    if (cause === 'crush' && hasSprite(this.fullIds['die-flat'])) return this.fullIds['die-flat'];
+    if (cause === 'timeout' && hasSprite(this.fullIds['timeout-yawn'])) return this.fullIds['timeout-yawn'];
     return this.alt(this.fullIds.die);
   }
 
@@ -985,6 +1179,10 @@ export class Player extends Entity {
     } else if (this.cause !== 'pit' && this.cause !== 'drown' && this.y < this.world.terrain.killY) {
       const c = moveBody(this, this.world.terrain, this.world);
       if (c.onGround) this.vx = 0;
+    }
+    const yawn = this.fullIds['timeout-yawn'];
+    if (this.full.id === yawn && this.full.done && hasSprite(this.fullIds['timeout-sleep'])) {
+      this.full.play(this.fullIds['timeout-sleep'], loopFrom0());
     }
     if (--this.deathTimer > 0) return;
     if (this.slot.lives > 0) this.respawn();
@@ -1041,6 +1239,8 @@ export class Player extends Entity {
     this.vy = L.respawnFallSpeed;
     this.facing = 1;
     this.dead = false;
+    this.flipT = 0;
+    this.endDrop(false);
     this.state = 'spawn';
     this.body.collide = !Number.isFinite(floor);
     this.setCrouch(false, true);
@@ -1049,6 +1249,7 @@ export class Player extends Entity {
     this.gun.reset();
     this.gun.lock = 0;
     this.elev = this.elevTarget = 0;
+    this.aimVis = 0;
     this.invulnTicks = L.respawnInvulnTicks + L.respawnDropTicks;
     this.addTag('shootable');
     if (hasSprite(this.fullIds.spawn)) this.full.play(this.alt(this.fullIds.spawn), once(true));
@@ -1158,7 +1359,7 @@ export class Player extends Entity {
     this.state = 'play';
     this.vy = 0;
     this.jumped = false;
-    this.landTicks = 6;
+    this.landTicks = this.landLength();
     this.mountLock = false;
     dust(this.world, this.x, this.y, 4);
     this.sfx('player/land');
@@ -1166,6 +1367,73 @@ export class Player extends Entity {
     poofCircle.x = this.x;
     poofCircle.y = this.y - 15;
     eraseEnemyShots(this.world, poofCircle);
+  }
+
+  // ------------------------------------------------------------------------------- intro drop
+
+  /** Under the intro parachute (MissionDef.introDrop)? */
+  get dropping(): boolean {
+    return this.dropFloor !== Infinity;
+  }
+
+  /**
+   * Mission-start parachute drop (the runner calls it after the camera snapped onto the start):
+   * lift the player above the view over his current floor spot and let him float down onto it in
+   * `TUNING.life.introDropTicks`. Collisions are off until he lands (nothing above the start
+   * catches him). Only from 'play' on foot.
+   */
+  introDrop(): void {
+    if (this.state !== 'play' || this.vehicle) return;
+    const floor = this.y;
+    const top = this.world.camera.top - 2;
+    if (top >= floor) return;
+    this.dropFloor = floor;
+    this.dropVy = (floor - top) / Math.max(1, TUNING.life.introDropTicks);
+    this.prevX = this.x;
+    this.y = this.prevY = top;
+    this.invulnTicks = 0; // the status absorbs hits; no blinking under the chute
+    this.vx = 0;
+    this.vy = this.dropVy;
+    this.body.collide = false;
+    this.body.onGround = false;
+    this.jumped = true;
+    this.status.add(INTRO_DROP);
+    this.legs.play(this.alt(this.legIds[this.dangleLegs()]));
+  }
+
+  private dangleLegs(): LegsAnim {
+    return hasSprite(this.legIds.dangle) ? 'dangle' : 'fall';
+  }
+
+  /** The drop reached its floor: collisions back on, the chute collapses, the status ends. */
+  private landDrop(): void {
+    this.y = this.dropFloor;
+    this.vy = 0;
+    this.dropFloor = Infinity;
+    this.body.collide = true;
+    settle(this, this.world.terrain, this.world);
+    this.status.remove(INTRO_DROP_ID);
+    this.invulnTicks = Math.max(this.invulnTicks, TUNING.life.respawnInvulnTicks / 2);
+    if (hasSprite(CHUTE_COLLAPSE_SPRITE)) {
+      this.collapseTick = this.world.tick;
+      this.collapseX = this.x;
+      this.collapseY = this.y;
+    }
+    this.onLanded();
+  }
+
+  /**
+   * Stop the intro drop (death, victory, a respawn, a vehicle). `handoff`: the body still falls
+   * onto the drop floor through the respawn drop (`continueDrop`), so nobody falls through it.
+   */
+  private endDrop(handoff = true): void {
+    if (this.dropFloor === Infinity) return;
+    if (handoff) {
+      this.spawnFloor = this.dropFloor;
+      this.vy = this.dropVy;
+    } else this.body.collide = true;
+    this.dropFloor = Infinity;
+    this.status.remove(INTRO_DROP_ID);
   }
 
   // ------------------------------------------------------------------------------- victory
@@ -1180,6 +1448,8 @@ export class Player extends Entity {
       this.cheering = true;
       return;
     }
+    this.flipT = 0;
+    this.endDrop();
     this.state = 'victory';
     this.setCrouch(false, true);
     this.vx = 0;
@@ -1214,7 +1484,8 @@ export class Player extends Entity {
   private updateLegs(ax: number): LegsAnim {
     const b = this.body;
     let legs: LegsAnim;
-    if (!b.onGround) legs = this.vy < 0 ? 'jump' : 'fall';
+    if (this.dropFloor !== Infinity) legs = this.dangleLegs();
+    else if (!b.onGround) legs = this.vy < 0 ? 'jump' : 'fall';
     else if (this.crouching) legs = ax !== 0 ? 'crouch-walk' : 'crouch';
     else if (Math.abs(this.vx) > 0.1) legs = 'run';
     else if (this.landTicks > 0) legs = 'land';
@@ -1223,18 +1494,34 @@ export class Player extends Entity {
     if (legs === 'jump' || legs === 'land') this.legs.play(id, once(false));
     else if (legs === 'run') this.legs.play(id, looping(TUNING.player.runTicksPerFrame));
     else this.legs.play(id);
+    // Stride strips follow the speed (rule 7): no skating at a wading / slowed pace.
+    if (legs === 'run') this.legsRate = strideRate(this.vx, TUNING.player.runSpeed);
+    else if (legs === 'crouch-walk') this.legsRate = strideRate(this.vx, TUNING.player.crawlSpeed);
     return legs;
   }
 
   /** Torso idle / aim pose (when not shooting, throwing or knifing) and the idle fidget. */
   private updateTorso(legs: LegsAnim): void {
-    if (this.action === 'none' && this.shootTicks <= 0) this.torso.play(this.torsoId(this.aimAction(false)));
+    if (this.action === 'none' && this.shootTicks <= 0) {
+      // Drawn aim (aimVis) eases through the diagonal; a forward-aiming runner swings his arms.
+      let act = this.aimAction(false, this.aimVis);
+      if (legs === 'run' && act === 'idle') act = 'run';
+      this.torso.play(this.drawTorsoId(act));
+    }
 
     // Optional idle fidget.
     const idle = legs === 'idle' && this.action === 'none' && this.shootTicks <= 0 && !this.pad.mask;
     // The fidget ends: the hero may leave a cosmetic status behind (Gramps' squeaky boot).
     if (!idle && this.bored) this.applyBoredStatus();
     this.idleTicks = idle ? this.idleTicks + 1 : 0;
+    // Short fidgets (a / b alternate) before the long `bored` one; never under a status art.
+    if (this.idleTicks === TUNING.player.fidgetTicks && !this.status.art) {
+      const id = this.fullIds[this.fidgetCount % 2 === 0 ? 'fidget-a' : 'fidget-b'];
+      if (hasSprite(id)) {
+        this.full.play(id, once(true));
+        this.fidgetCount++;
+      }
+    }
     if (this.idleTicks === TUNING.player.boredTicks && hasSprite(this.fullIds.bored)) {
       this.full.play(this.alt(this.fullIds.bored), loopFrom0());
     }
@@ -1247,6 +1534,17 @@ export class Player extends Entity {
     if (st) this.status.add(st);
   }
 
+  /** A short idle fidget is playing (full body, draw-only). */
+  private get fidgeting(): boolean {
+    const id = this.full.id;
+    return (
+      this.idleTicks >= TUNING.player.fidgetTicks &&
+      !this.status.art &&
+      !this.full.done &&
+      (id === this.fullIds['fidget-a'] || id === this.fullIds['fidget-b'])
+    );
+  }
+
   private get bored(): boolean {
     return this.idleTicks >= TUNING.player.boredTicks && this.full.id === this.alt(this.fullIds.bored);
   }
@@ -1254,7 +1552,8 @@ export class Player extends Entity {
   override draw(r: Renderer): void {
     const s = this.state;
     if (s === 'out' || s === 'mounted') return;
-    if (s === 'dead' && (this.cause === 'pit' || this.cause === 'drown')) return;
+    this.drawCollapse(r);
+    if (s === 'dead' && (this.cause === 'pit' || (this.cause === 'drown' && this.full.id !== this.fullIds['die-drown']))) return;
     const blinking = this.invulnTicks > 0 && s !== 'victory' && s !== 'dead';
     if (blinking && Math.floor(this.world.tick / TUNING.life.respawnBlinkTicks) % 2 === 1) return;
     // Unrounded: the renderer places the body at 1/res steps; legs, torso and tints share the
@@ -1262,29 +1561,84 @@ export class Player extends Entity {
     const x = this.x;
     const y = this.y;
     drawOpts.flipX = this.facing < 0;
-    drawOpts.flash = false;
-    const fullBody = s === 'dead' || s === 'victory' || this.bored || (s === 'spawn' && this.full.id === this.alt(this.fullIds.spawn));
+    // Pick-up flash (draw-only): white on ages 0-1 and 4-5, a white tint fading over ages 4-9.
+    const pAge = TUNING.life.pickupFlashTicks - this.pickupT;
+    drawOpts.flash = this.pickupT > 0 && (pAge < 2 || (pAge >= 4 && pAge < 6));
+    let tint = this.status.tint;
+    let tintA = this.status.tintAlpha;
+    if (this.pickupT > 0 && pAge >= 4 && !drawOpts.flash) {
+      tint = PICKUP_TINT;
+      tintA = (0.6 * this.pickupT) / Math.max(1, TUNING.life.pickupFlashTicks - 4);
+    }
+    const flipping = this.flipT > 0 && s === 'play' && !this.status.art && this.full.id === this.fullIds.flip;
+    const fullBody = s === 'dead' || s === 'victory' || this.bored || flipping || (s === 'play' && this.fidgeting) || (s === 'spawn' && this.full.id === this.alt(this.fullIds.spawn));
     if (fullBody) {
-      r.sprite(this.full.id, this.full.index, x, y, drawOpts);
-      if (this.status.tintAlpha > 0) this.drawTint(r, this.full.id, this.full.index, x, y);
+      // A drowning plays on the water surface (the strip is cropped at its anchor line).
+      const fy = s === 'dead' && this.cause === 'drown' ? this.drownY : y;
+      r.sprite(this.full.id, this.full.index, x, fy, drawOpts);
+      if (tintA > 0) this.drawTint(r, this.full.id, this.full.index, x, fy, tint, tintA);
+      // Time-out sleep: the snore letters rise from the head (draw-only, world tick paced).
+      if (s === 'dead' && this.full.id === this.fullIds['timeout-sleep'] && hasSprite(SNORE_SPRITE)) {
+        const head = framePoint(getFrame(this.full.id, this.full.index), 'head', drawOpts.flipX, false, headPt);
+        if (head) {
+          const n = frameCount(SNORE_SPRITE);
+          const fi = Math.floor(this.world.tick / 8) % Math.max(1, n);
+          r.sprite(SNORE_SPRITE, fi, x + head[0] + (drawOpts.flipX ? -2 : 2), fy + head[1] - 3, drawOpts);
+        }
+      }
     } else {
-      const hip = this.hip(hipPt);
-      r.sprite(this.legs.id, this.legs.index, x, y, drawOpts);
-      r.sprite(this.torso.id, this.torso.index, x + hip[0], y + hip[1], drawOpts);
-      if (this.status.tintAlpha > 0) {
-        this.drawTint(r, this.legs.id, this.legs.index, x, y);
-        this.drawTint(r, this.torso.id, this.torso.index, x + hip[0], y + hip[1]);
+      // Draw-only crouch transition: the in / out legs, the torso on that frame's hip.
+      let legsId = this.legs.id;
+      let legsIdx = this.legs.index;
+      let hip: [number, number] | undefined;
+      const tr = this.crouchLegs();
+      if (tr) {
+        legsId = tr;
+        legsIdx = onceFrame(tr, stripTicks(tr) - this.crouchT);
+        hip = framePoint(getFrame(tr, legsIdx), 'hip', drawOpts.flipX, false, hipPt);
+      }
+      if (!hip) hip = this.hip(hipPt);
+      // The run torso swings in step with the legs (same index).
+      const tIdx = this.torso.id === this.torsoId('run') ? this.legs.index % Math.max(1, frameCount(this.torso.id)) : this.torso.index;
+      r.sprite(legsId, legsIdx, x, y, drawOpts);
+      r.sprite(this.torso.id, tIdx, x + hip[0], y + hip[1], drawOpts);
+      if (tintA > 0) {
+        this.drawTint(r, legsId, legsIdx, x, y, tint, tintA);
+        this.drawTint(r, this.torso.id, tIdx, x + hip[0], y + hip[1], tint, tintA);
       }
     }
+    drawOpts.flash = false;
     // Status extras on top (a wobbling balloon head, a parachute …).
     if (s !== 'dead') this.status.draw(r);
   }
 
-  private drawTint(r: Renderer, id: string, frame: number, x: number, y: number): void {
+  /** The crouch-in / crouch-out legs strip to draw this frame, or '' (draw-only `crouchT`). */
+  crouchLegs(): string {
+    if (this.crouchT <= 0 || this.state !== 'play' || !this.body.onGround) return '';
+    if (this.crouchIn) {
+      if (!this.crouching || this.legs.id !== this.alt(this.legIds.crouch)) return '';
+      return hasSprite(this.legIds['crouch-in']) ? this.legIds['crouch-in'] : '';
+    }
+    if (this.crouching || this.legs.id !== this.alt(this.legIds.idle)) return '';
+    return hasSprite(this.legIds['crouch-out']) ? this.legIds['crouch-out'] : '';
+  }
+
+  private drawTint(r: Renderer, id: string, frame: number, x: number, y: number, tint: Color | undefined, alpha: number): void {
     tintOpts.flipX = this.facing < 0;
-    tintOpts.tint = this.status.tint;
-    tintOpts.alpha = this.status.tintAlpha;
+    tintOpts.tint = tint;
+    tintOpts.alpha = alpha;
     r.sprite(id, frame, x, y, tintOpts);
+  }
+
+  /** The intro chute folding down where he landed (one-shot, draw-only). */
+  private drawCollapse(r: Renderer): void {
+    if (this.collapseTick < 0) return;
+    const age = this.world.tick - this.collapseTick;
+    if (age < 0 || age >= stripTicks(CHUTE_COLLAPSE_SPRITE)) {
+      this.collapseTick = -1;
+      return;
+    }
+    drawChute(r, CHUTE_COLLAPSE_SPRITE, onceFrame(CHUTE_COLLAPSE_SPRITE, age), this.collapseX, this.collapseY);
   }
 }
 
@@ -1330,6 +1684,35 @@ export function stripFrame(id: string, tick: number): number {
   let total = 0;
   for (let i = 0; i < n; i++) total += Math.max(1, Math.round(d[i % d.length]));
   let t = tick % total;
+  for (let i = 0; i < n; i++) {
+    t -= Math.max(1, Math.round(d[i % d.length]));
+    if (t < 0) return i;
+  }
+  return n - 1;
+}
+
+/** Peak height (px) of the Swan mount-hop arc above the straight boarding line. */
+const HOP_ARC = 14;
+
+/** Total ticks of one pass of a strip (its `durations`, else `ticksPerFrame` per frame). */
+export function stripTicks(id: string): number {
+  const n = frameCount(id);
+  const a = spriteAnim(id);
+  const d = a.durations;
+  if (!d || d.length === 0) return n * Math.max(1, a.ticksPerFrame);
+  let total = 0;
+  for (let i = 0; i < n; i++) total += Math.max(1, Math.round(d[i % d.length]));
+  return total;
+}
+
+/** The frame of a one-shot strip `age` ticks after it started (holds the last frame). */
+export function onceFrame(id: string, age: number): number {
+  const n = frameCount(id);
+  if (n <= 1 || age <= 0) return 0;
+  const a = spriteAnim(id);
+  const d = a.durations;
+  if (!d || d.length === 0) return Math.min(n - 1, Math.floor(age / Math.max(1, a.ticksPerFrame)));
+  let t = age;
   for (let i = 0; i < n; i++) {
     t -= Math.max(1, Math.round(d[i % d.length]));
     if (t < 0) return i;

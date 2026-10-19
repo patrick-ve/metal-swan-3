@@ -341,7 +341,11 @@ up), anchored at the hip (the pelvis pixel), `weapon: 'none'`. Points `head` and
 `muzzle`. Both hands hold the handle grips, except in `ride-ears` (both hands open on the ears)
 and `ride-cheer` (near fist raised). They are registered by `definePlayerSprites` from `RIDE_*`
 tables in `src/game/art/poses.ts`. There are no `helium-ride-*` strips (Helium Head cannot
-mount) and no `mount-duck` frame (`ride-duck` replaces it). Pose rules, arm targets and the
+mount) and no `mount-duck` frame (`ride-duck` replaces it). Animation wave (mission ams, 2026-10-19): every character also has the
+smooth-animation strips of ARCHITECTURE §6.1 (12-frame run with a synced run torso, 4-frame idle,
+crouch torsos and crouch-in/out, 6-frame knife a/b and throw, `flip` 14 f for a running jump,
+`mount-hop`, `legs-dangle`, the longer deaths, `fidget-a/b`, `timeout-*`); hero tables can key
+their own fidgets. Pose rules, arm targets and the
 pose for each moment: `docs/design/swan-mount/look.md` §6. The knife look is a per-character
 `held` prop; when the prop art is missing, draw the standard knife.
 
@@ -402,6 +406,8 @@ fire is always a plain jump: her squat starts and fire is a shot (8.2).
   in the air it steers as usual) and **down** (only in the air, down
   alone or with a side: straight down). There are no down-diagonals. Every weapon fires along the
   diagonal; the torso shows the diagonal frames (`torso-<w>-diag-up`, `shoot-diag-up`).
+  Draw-only (animation wave): the shown torso steps toward a new aim one 45° step every 2 ticks
+  (`aimVis`: forward → diagonal → up); shots always leave along the real aim at once.
 - **Grenades** keep the high **up lob** whenever up is held, also with up + left/right (no
   diagonal throw). The bounce mine (a fire weapon) counts the diagonal as forward: up +
   left/right throws it low and forward, up alone lobs it.
@@ -433,8 +439,13 @@ fire is always a plain jump: her squat starts and fire is a shot (8.2).
 - **One hit kills** a player on foot: any enemy projectile, explosion, flame, beam, crush, a
   charging enemy or a boss part flagged `contact`, and the hazards above. Walking into a standing
   infantryman does **not** kill (the player knifes him if fire is pressed).
-- **Death:** 60-tick death animation chosen by damage kind (`die`; `die-burn` for fire;
-  explosions use `die` with the `soot` expression), with the character's flourish (section 3).
+- **Death:** 60-tick death animation chosen by damage kind (`die` 12 frames with a real bounce
+  and a settle; `die-burn` for fire; `die-blast` 10 frames for explosions; `die-drown` 12 frames
+  in deep water, drawn at the surface with nothing below it; `die-flat` 7 frames for a crush),
+  with the character's flourish (section 3).
+- **Mission start (ams only):** the first section of `ams` starts with a parachute drop
+  (`introDrop`, status `INTRO_DROP`, 80 ticks: `fx/chute` sway, `legs-dangle`, landing, then
+  `fx/chute-collapse`). Not after a checkpoint, a `startSection`, a boss rush or a vehicle start.
 - **Respawn:** right after the animation the new life drops from the top of the view at the
   death x (clamped 32 px inside the view; over a pit or hazard: the nearest safe ground in view)
   and lands in **12 ticks** (`spawn` animation). On landing, every enemy projectile within 64 px
@@ -468,6 +479,11 @@ fire is always a plain jump: her squat starts and fire is a shot (8.2).
   ticks** (≈ 4.3 s), so a full timer lasts about 4 min 16 s. The HUD shows the counts (2 digits).
 - It resets to full at every checkpoint, at every section start and whenever a player respawns.
 - At 10 the digits blink red and `ui/timer-warn` ticks once per count.
+- Time-out (cosmetic): the player yawns (`timeout-yawn`, 8 f) and then sleeps
+  (`timeout-sleep`, 4 f loop, with `fx/snore` at the `head` point) before the time-out death; any
+  input cancels it on the same tick. After `TUNING.player.fidgetTicks` (150) of standing still the
+  player plays a fidget (`fidget-a` / `fidget-b`); shoot, knife, throw, hit, jump, land, vehicle
+  and victory cancel it on the same tick.
 - At 0: `TIME UP!` — every living player yawns (20 ticks), falls asleep standing up (snore
   bubble) and loses a life. Then the timer resets. Vehicles are not destroyed.
 - The timer pauses during intro cards, boss entrances, cutscenes, section transition fades and
@@ -631,7 +647,7 @@ laser 240 per target, homing ≈ 160, tuba ≈ 120, bounce mine ≈ 210, knife 9
 | Property | Value |
 |---|---|
 | Count | 10 at every life start (EASY 15); `pickup-bombs` +10; cap 99 |
-| Throw | `torso-<w>-throw` (4 frames, 12 ticks); the grenade leaves the `hand` point (≈ 38 px above the feet, 8 px ahead) on tick 4. Legs keep running |
+| Throw | `torso-<w>-throw` (6 frames, `P.THROW6`: wind-up, cock, release at index 2, follow-through, settle, recover; the game starts the strip at the release frame, so the grenade leaves at once from the same `hand` point (≈ 38 px above the feet, 8 px ahead)); `throwTicks` 12 is unchanged. Legs keep running |
 | Velocity | forward: vx = 2.1 × facing + the player's vx, vy = −1.5 · aiming up: vx = 0.8 × facing, vy = −3.5 · crouched (released 16 px above the feet): vx = 2.4, vy = −1.2 · aiming down in the air: vx = 0.5 × player vx, vy = +1.5 |
 | Gravity | 0.2 px/tick² |
 | Bounce | first ground contact: vy × −0.65, vx kept; walls: vx × −0.5 |
@@ -649,7 +665,7 @@ laser 240 per target, homing ≈ 160, tuba ≈ 120, bounce mine ≈ 210, knife 9
 | Trigger | fire pressed while a knifeable enemy hurtbox (or a knifeable slow projectile: enemy grenade, golden egg, record, barrel) overlaps the melee box |
 | Melee box | 26 px ahead of the hitbox front edge × 28 px tall from the feet (crouched 26 × 18) |
 | Damage | **30** (`knife`) to every knifeable target in the box (projectiles are destroyed, 50 points) |
-| Timing | `torso-<w>-knife` 4 frames × 3 ticks; active on ticks 3–6; cooldown 20 ticks (≈ 3 slashes/s) |
+| Timing | `torso-<w>-knife` and `torso-<w>-knife-b` 6 frames each (anticipation, slash, follow-through, settle; `knifeTiming(6)`, 14 ticks = `TUNING.player.knifeTicks`), the two alternate by a per-player counter; the hit lands on the press tick, so the slash shows about 2 ticks after the damage (draw-only); cooldown 20 ticks (≈ 3 slashes/s) |
 | Knifeable | all infantry, creatures up to 40 px tall, boss and mini-boss parts flagged `knifeable` (section 10). Never machines, vehicles or the knife in a vehicle |
 | Score | knife kill = **5 ×** the target's kill score (a `rifleman` gives 500) |
 | Kill animation | infantry: `die-knife`, the **operatic swoon** (kneels, raises one arm, sings one note `enemy/aria`, collapses). The note rises one step of the major scale for each knife kill within 180 ticks (cosmetic) |

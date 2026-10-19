@@ -3,8 +3,10 @@
  * and cap, a yellow hi-vis vest with silver bands, a radio, a ticket book. Sets for the three
  * skin tones: `enemy/handhaver` (a), `enemy/handhaver-b`, `enemy/handhaver-c`.
  *
- * Strips: idle (2), walk (8), alert (1), tell (3: opens the book, licks the pencil, writes),
- * throw (3: the flick), photo-pose (1), die (6: swoons), die-knife, die-blast, die-burn,
+ * Strips: idle (4: breathing), walk (8, the free arm swings against the legs), turn (2: the
+ * idle frame squeezed by turnSquash; the Turner in handhaver.ts plays it narrowing, flips, then
+ * widening), alert (1), tell (3: opens the book, licks the pencil, writes),
+ * throw (5: the flick at frame 1, then a 2-frame recover that eases the arm down), photo-pose (1), die (6: swoons), die-knife, die-blast, die-burn,
  * die-crush. `enemy/boete-ticket/fly` (4: the fluttering ticket, centre anchor).
  *
  * 2× art (mission ams): every strip is registered again at density 2 (the rig at 2×, the ticket
@@ -16,10 +18,11 @@ import type { Frame } from '../../../engine/render';
 import { defineSprite, getFrames, type SpriteOpts } from '../../../engine/sprites';
 import { HI, outlineHi } from '../../art/hi';
 import { withPieces, type Piece } from '../../art/human-fx';
-import { blastFrames, burnFrames } from '../../art/human-sprites';
+import { blastFrames, burnFrames, withSwing } from '../../art/human-sprites';
 import { renderHuman, type Density, type HumanStyle, type Pose } from '../../art/humanoid';
 import * as P from '../../art/poses';
-import { CRUSH_TIMING, crushStrip } from '../creatures/draw';
+import { CRUSH_TIMING, crushStrip, turnSquash } from '../creatures/draw';
+import { tween } from '../../art/tween';
 import { crushStripHi } from '../../art/hi-strips';
 
 export const HANDHAVER_STYLE: HumanStyle = {
@@ -119,6 +122,16 @@ const THROW: readonly Pose[] = [
   { ...P.STAND, armF: HOLD, armN: { to: [10, -6], hand: 'open' }, lean: 8, expr: 'shout' },
   { ...P.STAND, armF: HOLD, armN: A(60, 20, 'open'), lean: 4, expr: 'happy' },
 ];
+/** Throw recover (2 frames after the follow-through): the arm eases down to the side, the back straightens. */
+const THROW_REST: Pose = { ...P.STAND, armF: HOLD, armN: A(10, 30, 'fist'), expr: 'normal' };
+export const THROW_ALL = (s: HumanStyle): Pose[] => tween(s, [...THROW, THROW_REST], { perKey: [0, 0, 1], ease: 'out' });
+/** Ticks per throw frame: the release keeps its timing (3, then the flick 5); recover 4 + 4 + 4. */
+export const HANDHAVER_THROW_TIMING: readonly number[] = [3, 5, 4, 4, 4];
+/** Ticks per walk frame at the nominal walk speed (Animator rate = strideRate). */
+export const HANDHAVER_WALK_TPF = 6;
+
+/** Walk with the free (near) arm swinging against the legs; the far hand keeps the book. */
+export const WALK_SWING: readonly Pose[] = withSwing(P.WALK, 0.6, 24);
 
 /** Register a strip at 1× and its 2× twin (the same recipe at density 2). */
 function defHi(id: string, gen: (d: Density) => Frame[], o: SpriteOpts): void {
@@ -129,11 +142,13 @@ function defHi(id: string, gen: (d: Density) => Frame[], o: SpriteOpts): void {
 function defineOfficer(set: string, style: HumanStyle): void {
   const pre = `enemy/${set}/`;
   const o = { trim: true };
-  defHi(pre + 'idle', (d) => P.BREATH.map((b) => officer(style, { ...P.STAND, ...b, armF: HOLD }, 'shut', d)), { ...o, ticksPerFrame: 24 });
-  defHi(pre + 'walk', (d) => P.WALK.map((w) => officer(style, { ...w, armF: HOLD }, 'shut', d)), { ...o, ticksPerFrame: 6 });
+  const idle = (d: Density): Frame => officer(style, { ...P.STAND, armF: HOLD }, 'shut', d);
+  defHi(pre + 'idle', (d) => P.BREATH4.map((b) => officer(style, { ...P.STAND, ...b, armF: HOLD }, 'shut', d)), { ...o, ticksPerFrame: 12 });
+  defHi(pre + 'walk', (d) => WALK_SWING.map((w) => officer(style, { ...w, armF: HOLD }, 'shut', d)), { ...o, ticksPerFrame: HANDHAVER_WALK_TPF });
+  defHi(pre + 'turn', (d) => turnSquash(idle(d)), { ...o, ticksPerFrame: 2 });
   defHi(pre + 'alert', (d) => [officer(style, { ...P.STAND, armF: HOLD, armN: A(150, 20, 'point'), expr: 'shout' }, 'shut', d)], { ...o, ticksPerFrame: 30 });
   defHi(pre + 'tell', (d) => TELL.map((p) => officer(style, p, 'open', d)), { ...o, durations: [8, 8, 9999] });
-  defHi(pre + 'throw', (d) => THROW.map((p) => officer(style, p, 'open', d)), { ...o, durations: [3, 5, 9999], loop: false });
+  defHi(pre + 'throw', (d) => THROW_ALL(style).map((p, i) => officer(style, p, i < 3 ? 'open' : 'shut', d)), { ...o, durations: HANDHAVER_THROW_TIMING, loop: false });
   defHi(pre + 'photo-pose', (d) => [officer(style, { ...P.STAND, armN: A(160, 30, 'open'), armF: HOLD, expr: 'happy' }, 'shut', d)], o);
   const swoon: readonly Pose[] = [
     { ...P.STAND, armN: A(170, 30, 'open'), armF: A(-20, 40, 'open'), head: { tilt: -10 }, expr: 'dazed' },

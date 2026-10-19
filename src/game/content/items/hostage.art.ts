@@ -20,6 +20,12 @@
  * chairs and sacks, so the tourist's strips of that flow (`HI_STRIPS`) and `item/hostage/flash`
  * have 2× twins: the rig at 2×, the palm print, ropes, chair, sack, dropped rope and camera
  * redrawn on the 2× grid.
+ *
+ * Motion (tourist only, docs/ART_GUIDE.md "Motion"; the timings stay inside the Hostage state
+ * ticks): `bow` 5 (open arms, two eased in-betweens, the deep bow, a rise; 12 ticks), `freed` 7
+ * (a crouch, the hop, an in-between, the landing with arms up, the stretch, an in-between, relax;
+ * 20 ticks), `turn` (2: turnSquash of the standing frame, turn-to-run) and `sack-turn` (2: the
+ * sack squeezed). hostages.ts plays the turn strips on a facing change (draw only).
  */
 import { ascii } from '../../../engine/ascii';
 import type { Color } from '../../../engine/color';
@@ -32,6 +38,8 @@ import { withPieces, type Piece } from '../../art/human-fx';
 import { withSwing } from '../../art/human-sprites';
 import { renderHuman, stackFrames, type ArmPose, type Density, type HumanStyle, type Pose } from '../../art/humanoid';
 import * as P from '../../art/poses';
+import { turnSquash } from '../creatures/draw';
+import { tween } from '../../art/tween';
 import { cageBack, cageFront, canopyPiece, chairPiece, chairPieceHi, sackPiece, sackPieceHi } from './binds.art';
 import { DANGLE_HANDS, HOSTAGE_KINDS, type HostageKindId } from './ids';
 
@@ -476,6 +484,20 @@ const BOW_CRITIC: readonly Pose[] = [
   { ...P.STAND, lean: 36, armN: { sh: 70, el: 10, hand: 'grip' }, armF: { sh: -45, el: 10, hand: 'open' }, head: { tilt: 10 }, expr: 'blink' },
 ];
 
+/** Tourist bow (5): open arms → two eased in-betweens → deep bow → rise back toward the stance. */
+const BOW_RISE: Pose = { ...P.STAND, lean: 14, armN: { to: [4, 4], hand: 'open' }, armF: { sh: -20, el: 14, hand: 'open' }, expr: 'happy' };
+const BOW_OPEN: Pose = { ...BOW[0], armF: { sh: 80, el: 14, hand: 'open' } };
+const BOW_DEEP: Pose = { ...BOW[1], armF: { sh: -24, el: 14, hand: 'open' } };
+export const BOW5 = (k: HostageKindId): Pose[] => tween(HOSTAGE_STYLES[k], [BOW_OPEN, BOW_DEEP, BOW_RISE], { perKey: [2, 0], ease: 'linear' });
+export const TOURIST_BOW_TIMING: readonly number[] = [3, 3, 3, 2, 1];
+
+/** Tourist freed (7): a crouch (anticipation), the hop, in-between, land arms up, in-between, stretch, relax. */
+const FREED_CROUCH: Pose = { legN: P.LAND.legN, legF: P.LAND.legF, armN: { sh: 30, el: 60, hand: 'open' }, armF: { sh: 20, el: 60, hand: 'open' }, expr: 'panic' };
+/** The tourist relaxes with the hands at the belly (the arms come halfway down: a smaller drop). */
+const FREED_RELAX: Pose = { ...P.STAND, armN: { to: [5, 0], hand: 'fist' }, armF: { to: [7, 0], hand: 'fist' }, expr: 'happy' };
+export const FREED7 = (k: HostageKindId): Pose[] => tween(HOSTAGE_STYLES[k], [FREED_CROUCH, FREED[0], FREED[1], FREED[2], FREED_RELAX], { perKey: [0, 1, 0, 1], ease: ['out', 'in', 'inOut', 'inOut'] });
+export const TOURIST_FREED_TIMING: readonly number[] = [3, 3, 2, 3, 3, 4, 2];
+
 const WALK = withSwing(P.WALK, 0.9, 30).map((p) => ({ ...p, expr: 'happy' as const }));
 const RUN = withSwing(P.RUN, 1.1, 80).map((p) => ({ ...p, lean: 10, expr: 'happy' as const }));
 
@@ -688,9 +710,18 @@ function fitHands(f: Frame): Frame {
 /** Freed: the ropes drop to the ground while they hop up, stretch and relax. */
 function freedFrames(kind: HostageKindId, d: Density = 1): Frame[] {
   const rope = d === 1 ? droppedRope() : droppedRopeHi();
-  return FREED.map((p, i) => {
+  // The tourist's tweened hop (the rope lies at the feet until the stretch).
+  const seven = kind === 'tourist';
+  const poses = seven ? FREED7(kind) : FREED;
+  const ropeUntil = seven ? 5 : 3;
+  return poses.map((p, i) => {
     const f = figure(kind, p, d);
-    if (i >= 3) return f;
+    if (i >= ropeUntil) return f;
+    if (seven) {
+      const piece: Piece = { buf: rope, x: -8 + Math.min(2, Math.floor(i / 2)), y: -4, behind: i > 1 };
+      if (d !== 1) piece.density = HI;
+      return withPieces(f, [piece]);
+    }
     const piece: Piece = { buf: rope, x: -8 + i, y: -4, behind: i > 0 };
     if (d !== 1) piece.density = HI;
     return withPieces(f, [piece]);
@@ -866,6 +897,7 @@ function giveFrames(kind: HostageKindId, d: Density = 1): Frame[] {
 }
 
 function bowFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+  if (kind === 'tourist') return BOW5(kind).map((p) => figure(kind, p, d));
   const poses = kind === 'critic' ? BOW_CRITIC : kind === 'composer' ? BOW.map((p, i) => (i === 1 ? { ...p, lean: 46 } : { ...p, armN: { sh: 150, el: 10, hand: 'grip' as const } })) : BOW;
   return poses.map((p, i) => {
     const f = figure(kind, p, d);
@@ -989,13 +1021,28 @@ const HI_STRIPS: Readonly<Record<string, (k: HostageKindId, d: Density) => Frame
 /** Hostage kinds mission ams frees (its only kind is the tourist). */
 export const HI_KINDS: readonly HostageKindId[] = ['tourist'];
 
+/** Tourist timing overrides (its bow and freed strips have more frames, same total ticks). */
+const TOURIST_OPTS: Readonly<Record<string, SpriteOpts>> = {
+  bow: { durations: TOURIST_BOW_TIMING, loop: false },
+  freed: { durations: TOURIST_FREED_TIMING, loop: false },
+};
+
+/** Ticks per turn frame (hostages.ts plays narrowing, flip, widening). */
+export const HOSTAGE_TURN_TICKS = 2;
+
 export function defineHostageSprites(): void {
   for (const kind of HOSTAGE_KINDS) {
-    for (const [name, gen, opts] of STRIPS) {
+    for (const [name, gen, base] of STRIPS) {
       const hi = HI_KINDS.includes(kind) ? HI_STRIPS[name] : undefined;
+      const opts = (kind === 'tourist' && TOURIST_OPTS[name]) || base;
       defineSprite(`item/hostage/${kind}/${name}`, () => gen(kind), hi ? { ...opts, hi: () => hi(kind, 2) } : opts);
     }
   }
+  // Tourist turn strips (turn-to-run, the blind sack turn).
+  const T = 'item/hostage/tourist/';
+  const stand = (d: Density): Frame => figure('tourist', { ...P.STAND, armN: { sh: 10, el: 30, hand: 'fist' }, armF: { sh: -6, el: 30 }, expr: 'happy' }, d);
+  defineSprite(T + 'turn', () => turnSquash(stand(1)), { ticksPerFrame: HOSTAGE_TURN_TICKS, hi: () => turnSquash(stand(2)) });
+  defineSprite(T + 'sack-turn', () => turnSquash(getFrames(T + 'sack', 1)[0]), { ticksPerFrame: HOSTAGE_TURN_TICKS, hi: () => turnSquash(getFrames(T + 'sack', 2)[0]) });
   defineSprite('item/hostage/roadie/carry', () => carryFrames('roadie'), { ticksPerFrame: 7 });
   // The kind-less strips are the critic's (the default kind).
   for (const [name, , opts] of STRIPS) defineSprite(`item/hostage/${name}`, () => [...getFrames(`item/hostage/critic/${name}`)], opts);

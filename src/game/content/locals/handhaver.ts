@@ -10,6 +10,11 @@
  *   RECOVER 40, then a 50 ± 20 tick pause (difficulty-scaled). Never more than 2 tickets in the
  *   air per officer.
  * - Death: he swoons; his tickets scatter like confetti.
+ * - Motion (draw only, docs/ART_GUIDE.md "Motion"): the walk cadence follows the speed
+ *   (strideRate); while walking he turns with a `Turner` (the player ≥ 12 px behind for 8 ticks,
+ *   then the 2-frame `turn` strip narrowing, the flip, widening); the tell and the throw still
+ *   face the player at once. After the flick the throw strip plays its 2-frame recover before
+ *   the idle breathing.
  *
  * Params: `enter` / `entry` (`left` / `right`: walks in), `facing`, `skin` (`a` / `b` / `c`), `hold`
  * (px: stand this far from the player, default 130), + the Enemy params `hp`, `drop`, `tag`.
@@ -17,12 +22,16 @@
  * `boete-ticket` (projectile): y = the thrower's feet; params `facing`, `speed`.
  */
 import type { Damage } from '../../../engine/entity';
+import { strideRate } from '../../../engine/math';
+import type { DrawOpts, Renderer } from '../../../engine/render';
 import type { World } from '../../../engine/world';
 import { hudOf } from '../../context';
 import { confetti, tumble } from '../../fx';
 import { Projectile, type ProjectileOpts } from '../../projectile';
 import { defineEntity, paramNum, paramStr, type SpawnParams } from '../../registry';
-import { Creature, entryParam } from '../creatures/common';
+import { Creature, entryParam, Turner } from '../creatures/common';
+
+const turnOpts: DrawOpts = {};
 
 /** Handhaver numbers (NORMAL). */
 export const HANDHAVER = {
@@ -98,6 +107,9 @@ export class Handhaver extends Creature {
   private telegraph: number = HANDHAVER.tele;
   private cool: number;
   private readonly hold: number;
+  /** Walk turns (hysteresis + the 2-frame turn strip). */
+  private readonly turner: Turner;
+  private turnId = '';
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     const sk = paramStr(p, 'skin', '');
@@ -110,6 +122,7 @@ export class Handhaver extends Creature {
     if (entry === 'left') this.facing = 1;
     else if (entry === 'right') this.facing = -1;
     else this.facePlayer();
+    this.turner = new Turner(this.facing, 2, 2);
     this.setMode('walk');
   }
 
@@ -142,7 +155,8 @@ export class Handhaver extends Creature {
         return;
       case 'recover':
         this.vx = 0;
-        this.play('idle');
+        // The throw strip's recover frames finish first (draw only), then the idle breathing.
+        if (!this.playing('throw') || this.anim.done) this.play('idle');
         if (this.modeT >= HANDHAVER.recover) {
           this.releaseToken();
           this.cool = this.fireInterval(HANDHAVER.cool, HANDHAVER.coolJitter);
@@ -152,8 +166,18 @@ export class Handhaver extends Creature {
     }
   }
 
+  /** Walk-time facing: the Turner (hysteresis, turn frames, flip at the midpoint). */
+  private turnToPlayer(): ReturnType<Handhaver['target']> {
+    const t = this.target();
+    if (!t) return t;
+    if (this.turner.facing !== this.facing && !this.turner.turning) this.turner.snap(this.facing);
+    this.turner.update(t.x - this.x);
+    this.facing = this.turner.facing;
+    return t;
+  }
+
   private thinkWalk(): void {
-    const t = this.facePlayer();
+    const t = this.turnToPlayer();
     if (!t) {
       this.vx = 0;
       this.play('idle');
@@ -164,15 +188,22 @@ export class Handhaver extends Creature {
     const ahead = this.x + this.facing * 10;
     const floorAhead = terr.surfaceY(ahead, this.y - 12, this.y + 24);
     const blocked = terr.isSolid(ahead, this.y - 12) || !Number.isFinite(floorAhead);
-    if (dist > this.hold && !blocked) {
+    if (this.turner.turning) {
+      this.vx = 0;
+      this.play('idle');
+    } else if (dist > this.hold && !blocked) {
       this.vx = HANDHAVER.walk * this.facing;
       this.play('walk');
+      // Cadence by speed: Enemy.update adds 1 tick; the difference speeds / slows the stride.
+      this.anim.tick += strideRate(this.vx, HANDHAVER.walk) - 1;
     } else {
       this.vx = 0;
       this.play('idle');
     }
     if (--this.cool > 0) return;
     if (dist <= HANDHAVER.range && Math.abs(t.y - this.y) < 40 && this.handInView() && this.onScreen(-8) && this.airborne() < HANDHAVER.maxTickets && this.takeToken()) {
+      this.facePlayer();
+      this.turner.snap(this.facing);
       this.telegraph = this.tele(HANDHAVER.tele);
       this.vx = 0;
       this.setMode('tell');
@@ -187,6 +218,7 @@ export class Handhaver extends Creature {
     if (this.modeT < this.telegraph) return;
     if (!this.handInView() || !this.target()) return this.cancelAttack();
     this.facePlayer();
+    this.turner.snap(this.facing);
     const p = throwTicket(this.world, this.x + this.facing * 10, this.y, this.facing, HANDHAVER.ticketSpeed * this.mods.enemyBulletSpeed, this);
     const slot = this.tickets[0] && !this.tickets[0].removed ? 1 : 0;
     this.tickets[slot] = p;
@@ -201,6 +233,15 @@ export class Handhaver extends Creature {
       this.cool = 30;
       this.setMode('walk');
     }
+  }
+
+  override draw(r: Renderer): void {
+    const f = this.dead ? -1 : this.turner.frame();
+    if (f < 0) return super.draw(r);
+    if (!this.turnId) this.turnId = this.spriteId('turn');
+    turnOpts.flipX = this.facing < 0;
+    turnOpts.flash = this.flashTicks > 0;
+    r.sprite(this.turnId, f, this.x, this.y, turnOpts);
   }
 
   protected override deathEffects(d: Damage): void {

@@ -20,6 +20,7 @@ import type { SpriteOpts } from '../../engine/sprites';
 import { liftHi } from './hi';
 import { crumble, scorch, sootify, withFlames } from './human-fx';
 import { renderHuman } from './humanoid';
+import { inbetween, tween } from './tween';
 import type { ArmPose, Density, HumanStyle, Pose, RenderPart, WeaponPose } from './humanoid';
 import * as P from './poses';
 
@@ -74,8 +75,8 @@ export function burnFrames(style: HumanStyle, base: Pose = {}, seed = 9, density
 }
 
 /** Explosion death: a scorched (two shades darker), tumbling launch (DIE_BLAST). */
-export function blastFrames(style: HumanStyle, base: Pose = {}, density: Density = 1): FrameList {
-  return P.DIE_BLAST.map((p) => scorch(renderHuman(style, { ...base, ...p }, 'full', density), 2));
+export function blastFrames(style: HumanStyle, base: Pose = {}, density: Density = 1, poses: readonly Pose[] = P.DIE_BLAST): FrameList {
+  return poses.map((p) => scorch(renderHuman(style, { ...base, ...p }, 'full', density), 2));
 }
 
 function def(id: string, gen: () => FrameList, opts: SpriteOpts): void {
@@ -93,7 +94,7 @@ function defHi(id: string, gen: DGen, opts: SpriteOpts): void {
 // ------------------------------------------------------------------------------------ player
 
 /** Strips a character may decorate with props (`withPieces`) after the rig rendered them. */
-export type DecoratedAnim = 'bored' | 'victory' | 'die' | 'salute' | 'knife';
+export type DecoratedAnim = 'bored' | 'victory' | 'die' | 'salute' | 'knife' | 'fidget-a' | 'fidget-b' | 'knife-b';
 
 export interface PlayerArtOpts {
   /** Full-body idle fidget (≥ 4 frames). Default: stretch and yawn. */
@@ -108,6 +109,12 @@ export interface PlayerArtOpts {
   idle?: readonly Pose[];
   /** Knife strip frames (≥ 4) with the gun carried low; a knife-look prop via `held`. Default: KNIFE. */
   knife?: readonly Pose[];
+  /** Full-body idle fidget A (8-14 frames), themed on the hero's prop. Default: the ART default. */
+  fidgetA?: readonly Pose[];
+  /** Full-body idle fidget B (8-14 frames), alternates with A. Default: the ART default. */
+  fidgetB?: readonly Pose[];
+  /** Second knife strip (6 frames; `held` from the knife table). Default: derived from KNIFE. */
+  knifeB?: readonly Pose[];
   /** Legs run cycle (8 frames). Default: RUN. */
   run?: readonly Pose[];
   /** Fields under every torso frame, e.g. `{ flutter: 1 }`: a scarf that always trails. */
@@ -142,6 +149,7 @@ export const BORED_STRETCH: readonly Pose[] = [
 export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtOpts = {}): void {
   const pre = `char/${id}/`;
   const lower = (poses: readonly Pose[]) => (d: Density): FrameList => poseFrames(style, poses, 'lower', d);
+  const torsoOf = (poses: readonly Pose[]) => (d: Density): FrameList => poseFrames(style, poses, 'upper', d);
   const full = (poses: readonly Pose[]) => (d: Density): FrameList => poseFrames(style, poses, 'full', d);
   /** Render poses, then let the character add its props to that strip (2× frames: logical px). */
   const deco = (name: DecoratedAnim, poses: readonly Pose[], part: RenderPart) => (d: Density): FrameList => {
@@ -156,15 +164,20 @@ export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtO
     return t;
   };
 
-  defHi(pre + 'legs-idle', lower([P.STAND]), { ticksPerFrame: 30 });
-  defHi(pre + 'legs-run', lower(o.run ?? P.RUN), { ticksPerFrame: 4 });
-  defHi(pre + 'legs-jump', lower(P.JUMP), { ticksPerFrame: 6, loop: false });
-  defHi(pre + 'legs-fall', lower([P.FALL]), { ticksPerFrame: 30 });
-  defHi(pre + 'legs-land', lower([P.LAND]), { ticksPerFrame: 6, loop: false });
+  const run = runPoses(style, o.run ?? P.RUN);
+  defHi(pre + 'legs-idle', lower(P.IDLE_SHIFT), { ticksPerFrame: 16 });
+  defHi(pre + 'legs-run', lower(run), { ticksPerFrame: 3 });
+  defHi(pre + 'legs-jump', lower(P.JUMP4), { ticksPerFrame: 3, loop: false });
+  defHi(pre + 'legs-fall', lower(P.FALL2), { ticksPerFrame: 8 });
+  defHi(pre + 'legs-land', lower(P.LAND3), { durations: LAND_TIMING, loop: false });
   defHi(pre + 'legs-crouch', lower([P.CROUCH]), { ticksPerFrame: 30 });
+  defHi(pre + 'legs-crouch-in', lower(crouchInPoses(style)), { durations: [2, 2, 2], loop: false });
+  defHi(pre + 'legs-crouch-out', lower(crouchOutPoses(style)), { durations: [2, 2], loop: false });
   defHi(pre + 'legs-crouch-walk', lower(P.CROUCH_WALK), { ticksPerFrame: 6 });
+  const knife = knifePoses(o.knife ?? P.KNIFE);
 
   // The torso set and the idle / victory strips, plain and for every status art variant.
+  const victory = victoryPoses(style);
   const sets: Array<[string, (p: Pose) => Pose]> = [['', (p) => p]];
   for (const [infix, fx] of Object.entries(o.variants ?? {})) sets.push([infix + '-', fx]);
   for (const [vx, fx] of sets) {
@@ -173,7 +186,7 @@ export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtO
       const t = `${pre}${vx}torso-${w}-`;
       const base: Pose = { ...o.torso, weapon: w };
       const kick = w === 'pistol' ? 2 : 1;
-      defHi(t + 'idle', upper(P.seq(base, o.idle ?? P.BREATH)), { ticksPerFrame: 20 });
+      defHi(t + 'idle', upper(P.seq(base, idlePoses(o.idle))), { ticksPerFrame: 12 });
       defHi(t + 'shoot', upper(P.seq(base, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
       defHi(t + 'up', upper([{ ...base, aim: 'up' }]), { ticksPerFrame: 30 });
       defHi(t + 'shoot-up', upper(P.seq({ ...base, aim: 'up' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
@@ -186,21 +199,204 @@ export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtO
         defHi(t + 'shoot-' + d, upper(P.seq({ ...base, aim: d }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
       }
       const carry: Pose = { ...o.torso, weapon: w, gunHand: 'far' };
-      defHi(t + 'throw', upper(P.seq(carry, P.THROW)), { durations: [5, 4, 3, 5, 6], loop: false });
-      defHi(t + 'knife', deco('knife', P.seq(carry, o.knife ?? P.KNIFE).map(fx), 'upper'), timing('knife', { durations: [3, 3, 3, 4, 5] }, false));
+      defHi(t + 'throw', upper(P.seq(carry, P.THROW6)), { durations: P.THROW6_TIMING, loop: false });
+      defHi(t + 'knife', deco('knife', P.seq(carry, knife).map(fx), 'upper'), timing('knife', { durations: knifeTiming(knife.length) }, false));
     }
-    defHi(pre + vx + 'victory', deco('victory', (o.victory ?? P.VICTORY).map(fx), 'full'), timing('victory', { ticksPerFrame: 8 }));
+    defHi(pre + vx + 'victory', deco('victory', (o.victory ?? victory).map(fx), 'full'), timing('victory', { ticksPerFrame: o.victory ? 8 : 4 }));
     defHi(pre + vx + 'bored', deco('bored', (o.bored ?? BORED_STRETCH).map(fx), 'full'), timing('bored', { durations: [12, 10, 24, 10, 10, 10] }));
   }
 
-  defHi(pre + 'die', deco('die', o.die ?? P.DIE, 'full'), timing('die', { durations: [6, 6, 6, 6, 8, 40] }, false));
+  // Anim wave p2 (plan Phase 2): torso actions outside the Helium loop (the player falls back to
+  // the base action's Helium twin), crouch transitions, time-out and the longer default strips.
+  for (const w of ['pistol', 'heavy'] as const satisfies readonly WeaponPose[]) {
+    const t = `${pre}torso-${w}-`;
+    const base: Pose = { ...o.torso, weapon: w };
+    const carry: Pose = { ...o.torso, weapon: w, gunHand: 'far' };
+    const kick = w === 'pistol' ? 2 : 1;
+    const crouched = (p: Pose): Pose => ({ ...p, lean: (p.lean ?? 0) + 4, hunch: (p.hunch ?? 0) + 1 });
+    defHi(t + 'run', torsoOf(P.seq(base, runTorsoPoses(run.length))), { ticksPerFrame: 3 });
+    defHi(t + 'crouch', torsoOf(P.seq(base, P.CROUCH_TORSO)), { ticksPerFrame: 12 });
+    // Frame 0 is the standing shoot frame (same muzzle); the settle leans into the crouch.
+    defHi(t + 'crouch-shoot', torsoOf(P.seq(base, [{ recoil: kick, expr: 'shout' }, { recoil: 0, lean: 2 }])), { ticksPerFrame: 3, loop: false });
+    defHi(t + 'crouch-throw', torsoOf(P.seq(carry, P.THROW6).map(crouched)), { durations: P.THROW6_TIMING, loop: false });
+    defHi(t + 'crouch-knife', torsoOf(P.seq(carry, knife).map(crouched)), { durations: knifeTiming(knife.length), loop: false });
+    defHi(t + 'knife-b', torsoOf(P.seq(carry, o.knifeB ?? knifeBPoses(o.knife ?? P.KNIFE))), { durations: o.durations?.['knife-b'] ?? P.KNIFE6_TIMING, loop: false });
+  }
+  defHi(pre + 'die', deco('die', o.die ?? diePoses(style), 'full'), timing('die', { durations: o.die ? [6, 6, 6, 6, 8, 40] : P.DIE12_TIMING }, false));
   defHi(pre + 'die-burn', (d) => burnFrames(style, {}, 9, d), { durations: [5, 5, 8, 12, 8, 8, 40], loop: false });
-  defHi(pre + 'die-blast', (d) => blastFrames(style, {}, d), { durations: [5, 5, 5, 5, 30], loop: false });
-  defHi(pre + 'spawn', full(P.SPAWN), { durations: [4, 4, 6, 10], loop: false });
+  defHi(pre + 'die-blast', (d) => blastFrames(style, {}, d, blastPoses(style)), { durations: P.DIE_BLAST10_TIMING, loop: false });
+  defHi(pre + 'spawn', full(spawnPoses(style)), { durations: P.SPAWN6_TIMING, loop: false });
+  // Idle fidgets (row 14): the hero's own tables, else the defaults; rare, so deferred.
+  const fidgetA = o.fidgetA ?? tween(style, P.FIDGET_A_KEYS, { perKey: P.FIDGET_A_PER, ease: 'inOut' });
+  const fidgetB = o.fidgetB ?? tween(style, P.FIDGET_B_KEYS, { perKey: P.FIDGET_B_PER, ease: 'inOut' });
+  defHi(pre + 'fidget-a', deco('fidget-a', fidgetA, 'full'), { ...timing('fidget-a', { durations: P.FIDGET_A_TIMING }, false), defer: true });
+  defHi(pre + 'fidget-b', deco('fidget-b', fidgetB, 'full'), { ...timing('fidget-b', { durations: P.FIDGET_B_TIMING }, false), defer: true });
+  defHi(pre + 'timeout-yawn', full(P.TIMEOUT_YAWN), { durations: P.TIMEOUT_YAWN_TIMING, loop: false, defer: true });
+  defHi(pre + 'timeout-sleep', full(P.TIMEOUT_SLEEP), { ticksPerFrame: 12, defer: true });
   defHi(pre + 'mount', full(P.MOUNT), { ticksPerFrame: 6, loop: false });
+  // Anim wave p1 (plan Phase 1): flip and legs-dangle play in normal play; the rare strips are deferred.
+  defHi(pre + 'flip', full(flipPoses(style)), { ticksPerFrame: 2, loop: false });
+  defHi(pre + 'mount-hop', full(P.MOUNT_HOP), { durations: MOUNT_HOP_TIMING, loop: false, defer: true });
+  defHi(pre + 'legs-dangle', lower(danglePoses(style)), { ticksPerFrame: 6 });
+  defHi(pre + 'die-drown', (d) => drownFrames(style, d), { durations: P.DROWN_TIMING, loop: false, defer: true });
   defHi(pre + 'salute', deco('salute', o.salute ?? P.SALUTE, 'full'), timing('salute', { durations: [8, 60] }, false));
   defineSprite(pre + 'portrait', () => portrait(style), { anchor: 'top-left', hi: () => portrait(style, 2) });
   defineRiderSprites(id, style);
+}
+
+/** Ticks per `mount-hop` frame: crouch, spring, tuck rise, over the seat, settle. */
+export const MOUNT_HOP_TIMING: readonly number[] = [3, 3, 3, 3, 4];
+
+/** The 14 `flip` poses: the keyed somersault (P.FLIP_KEYS) with eased in-betweens. */
+export function flipPoses(style: HumanStyle): Pose[] {
+  return tween(style, P.FLIP_KEYS, { perKey: [2, 3, 3, 1], ease: 'linear' });
+}
+
+/** The 6 `legs-dangle` poses: three keys, eased in-betweens, looped. */
+export function danglePoses(style: HumanStyle): Pose[] {
+  return tween(style, P.DANGLE_KEYS, { counts: 1, loop: true });
+}
+
+// ------------------------------------------------------------------------------------ anim wave p2
+
+/** Ticks per `legs-land` frame (9 in all: the player's land timer). */
+export const LAND_TIMING: readonly number[] = [2, 3, 4];
+
+/**
+ * The 12-frame run: an 8-frame cycle (P.RUN or a hero's own, e.g. Grace's long stride) with one
+ * linear in-between after every even key (contact → down, passing → push-off), looped. Any other
+ * length is kept as it is.
+ */
+export function runPoses(style: HumanStyle, run: readonly Pose[]): Pose[] {
+  if (run.length !== 8) return [...run];
+  return tween(style, run, { perKey: [1, 0, 1, 0, 1, 0, 1, 0], ease: 'linear', loop: true });
+}
+
+/** The run torso (hip anchor) over one stride of 6 legs frames: hunch, lean and a head bob, hand-keyed. */
+export const RUN_TORSO_HALF: readonly Pose[] = [
+  { lean: 8, hunch: 1 },
+  { lean: 10, hunch: 2, head: { dy: 1 } },
+  { lean: 10, hunch: 1, head: { dy: 1 } },
+  { lean: 8, hunch: 0 },
+  { lean: 6, hunch: 0, head: { dy: -1 } },
+  { lean: 6, hunch: 1, head: { dy: -1 } },
+];
+
+/** `n` run torso frames, one per legs-run frame (two strides of RUN_TORSO_HALF for 12). */
+export function runTorsoPoses(n: number): Pose[] {
+  return Array.from({ length: n }, (_, i) => RUN_TORSO_HALF[i % RUN_TORSO_HALF.length]);
+}
+
+/**
+ * Four idle torso frames (12 ticks each): BREATH4, or a hero's own 2-frame table [a, b] wrapped
+ * to a, b, b + nod, a + nod (a 1 px head nod), so no two neighbours match. Other lengths stay.
+ */
+export function idlePoses(idle?: readonly Pose[]): Pose[] {
+  if (!idle) return [...P.BREATH4];
+  if (idle.length !== 2) return [...idle];
+  const nod = (p: Pose): Pose => ({ ...p, head: { ...p.head, dy: (p.head?.dy ?? 0) + 1 } });
+  return [idle[0], idle[1], nod(idle[1]), nod(idle[0])];
+}
+
+/**
+ * The knife strip with an anticipation frame derived from frame 0: the body coils back (lean −6,
+ * shoulders down 1 px) and the striking arm draws further back. Works for every hero's table.
+ */
+export function knifePoses(knife: readonly Pose[]): Pose[] {
+  const k = knife[0];
+  const a = k.armN;
+  const armN: ArmPose | undefined = a?.to ? { ...a, to: [a.to[0] - 2, a.to[1] + 1] } : a ? { ...a, sh: (a.sh ?? 0) - 20 } : a;
+  const antic: Pose = { ...k, lean: (k.lean ?? 0) - 6, hunch: (k.hunch ?? 0) + 1 };
+  if (armN) antic.armN = armN;
+  if (k.heldAngle !== undefined) antic.heldAngle = k.heldAngle - 15;
+  return [antic, ...knife];
+}
+
+/** Knife durations for `n` frames: P.KNIFE6_TIMING (14 ticks) for 6, else 3 per frame. */
+export function knifeTiming(n: number): readonly number[] {
+  return n === 6 ? P.KNIFE6_TIMING : Array.from({ length: n }, () => 3);
+}
+
+/** Knife variant B: P.KNIFE_B with the prop (`held`) of the hero's knife table. */
+export function knifeBPoses(knife: readonly Pose[]): Pose[] {
+  const held = knife.find((p) => p.held)?.held ?? 'knife';
+  return P.KNIFE_B.map((p) => ({ ...p, held }));
+}
+
+/** Crouch-in legs (3 frames): eased from the stance into the crouch (the crouch itself not repeated). */
+export function crouchInPoses(style: HumanStyle): Pose[] {
+  return [0.3, 0.6, 0.85].map((t) => inbetween(style, P.STAND, P.CROUCH, t));
+}
+
+/** Crouch-out legs (2 frames): up from the crouch toward the stance. */
+export function crouchOutPoses(style: HumanStyle): Pose[] {
+  return [0.35, 0.7].map((t) => inbetween(style, P.CROUCH, P.STAND, t));
+}
+
+/** The default 12-frame death: DIE with eased in-betweens and the hand-keyed settle. */
+export function diePoses(style: HumanStyle): Pose[] {
+  const keys = [P.DIE[0], P.DIE[1], P.DIE[2], P.DIE[3], P.DIE12_BOUNCE, P.DIE[5]];
+  return [...tween(style, keys, { perKey: [1, 1, 1, 1, 1], ease: 'inOut' }), P.DIE12_SETTLE];
+}
+
+/** The default 10-frame blast death (tumble in-betweens, two on the slam). */
+export function blastPoses(style: HumanStyle): Pose[] {
+  return tween(style, P.DIE_BLAST_KEYS, { perKey: [1, 1, 1, 2], ease: 'linear' });
+}
+
+/** The default 8-frame victory loop. */
+export function victoryPoses(style: HumanStyle): Pose[] {
+  return tween(style, P.VICTORY_KEYS, { perKey: [2, 2, 1], loop: true });
+}
+
+/** The default 6-frame spawn: in-betweens on the landing and the stand-up. */
+export function spawnPoses(style: HumanStyle): Pose[] {
+  return tween(style, P.SPAWN, { perKey: [0, 1, 1] });
+}
+
+/** Surface ripple half-widths per drown frame (logical px). */
+const RIPPLE = [8, 7, 6, 6, 6, 6, 6, 5, 5, 4, 5, 3] as const;
+/** Bubbles per drown frame: [x, y above the surface] (logical px). */
+const BUBBLES: Readonly<Record<number, ReadonlyArray<readonly [number, number]>>> = {
+  9: [[3, -1]],
+  10: [[-2, -1], [1, -2], [4, -1]],
+  11: [[0, -3], [-3, -1]],
+};
+
+/**
+ * `die-drown` at density d: P.DROWN rendered full body, every frame cropped at the anchor line
+ * (the water surface: nothing below it), a ripple on the surface, splash drops in frames 0–1,
+ * bubbles at the end (frames 10–11 show no figure).
+ */
+export function drownFrames(style: HumanStyle, d: Density = 1): FrameList {
+  return P.DROWN.map((pose, i) => {
+    const fig = i < 10 ? renderHuman(style, pose, 'full', d) : null;
+    const fw = fig ? fig.buf.w / d : 0;
+    const left = Math.min(fig ? -fig.ox : 0, -10);
+    const right = Math.max(fig ? fw - fig.ox : 0, 10);
+    const top = Math.min(fig ? -fig.oy : 0, -6);
+    const out = new PixelBuffer((right - left) * d, -top * d);
+    if (fig) out.blit(fig.buf, (-fig.ox - left) * d, (-fig.oy - top) * d);
+    const px = (x: number, y: number, c: Color): void => {
+      out.rect((x - left) * d, (y - top) * d, d, d, c);
+    };
+    const r = RIPPLE[i];
+    for (let x = -r; x <= r; x++) if ((x + i) % 3 !== 0 || Math.abs(x) < 2) px(x, -1, Math.abs(x) === r ? PAL.sky[2] : PAL.snow[1]);
+    if (i < 2) {
+      const h = i === 0 ? 4 : 2;
+      px(-r - 1, -h, PAL.snow[2]);
+      px(r + 1, -h - 1, PAL.snow[2]);
+      px(-r + 1, -h - 2, PAL.sky[3]);
+    }
+    for (const [bx, by] of BUBBLES[i] ?? []) {
+      px(bx, by, PAL.snow[3]);
+      px(bx + 1, by, PAL.sky[2]);
+      px(bx, by - 1, PAL.sky[3]);
+    }
+    const pts = fig?.pts ? { ...fig.pts } : undefined;
+    const f: Frame = { buf: out.touch(), ox: -left, oy: -top, ...(pts ? { pts } : {}), ...(d > 1 ? { density: d } : {}) };
+    return f;
+  });
 }
 
 /**

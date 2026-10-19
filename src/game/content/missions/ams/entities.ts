@@ -15,7 +15,11 @@
  * `AmsPerson` (all three): `setMode(mode, ticks = Infinity, then = 'idle')`, `walkTo(x, then = 'idle')`
  * (walks at `speed`, turns to face the way it goes, `arrived` turns true), `clap()`, `cheer()`,
  * `wave()`, `idle()`, `talk(ticks = 150)`, `say(text, ticks = 150, kind = 'gag')` (a HUD bubble over
- * the head; returns the Bubble), `face(x)` (turn toward an x). Spawn param `mode`: any mode name;
+ * the head; returns the Bubble), `face(x)` (turn toward an x).
+ * Motion (draw only; docs/ART_GUIDE.md "Motion"): a facing change plays the 2-frame `turn` strip
+ * (narrowing in the old facing, widening in the new one, 8 ticks); idle → talk / clap / cheer /
+ * wave plays `in-<mode>` forward and the way back plays it backward (6 ticks); the walk cadence
+ * follows `speed` (strideRate). `facing`, `mode` and the toss release change at once as before. Spawn param `mode`: any mode name;
  * `mode: 'walk'` with `to` walks there on its own.
  *
  * ## Ambient life (cosmetic, cheap)
@@ -44,7 +48,8 @@ import { defineEntity, paramBool, paramNum, paramStr, toSpawnSpec, type SpawnPar
 import { Entity } from '../../../../engine/entity';
 import { farOff, playerPos } from './ambient';
 import './breakables';
-import { STAFF_LOOKS, TOSS_RELEASE } from './npc.art';
+import { strideRate } from '../../../../engine/math';
+import { PERSON_TR_TICKS, PERSON_TURN_TICKS, PERSON_WALK_SPEED, STAFF_LOOKS, TOSS_RELEASE, TRANSITION_MODES } from './npc.art';
 
 export { AmsBoatPlatform, AmsCyclistBg, AmsPigeons, AmsTourBoat, AmsWindowWaver, PIGEONS } from './ambient';
 export { AMS_BREAKABLES, AMS_BREAKABLE_SCORE, AmsBreakable } from './breakables';
@@ -72,10 +77,20 @@ export class AmsPerson extends Entity {
   protected after: PersonMode = 'idle';
   /** Who speaks the bubbles (the voice sample's speaker; '' = no voice). */
   speaker = '';
+  /** Draw-only turn: ticks left (0 = none) and the facing it started from. */
+  turnT = 0;
+  private turnFrom: 1 | -1 = 1;
+  private lastFacing: 1 | -1 = 1;
+  /** Draw-only mode transition: ticks left, its strip id, played backward when leaving a mode. */
+  trT = 0;
+  private trId = '';
+  private trBack = false;
+  private readonly turnId: string;
 
   constructor(world: World, x: number, y: number, p: SpawnParams, prefix: string) {
     super(world, x, y);
     this.prefix = prefix;
+    this.turnId = `${prefix}/turn`;
     this.facing = paramNum(p, 'facing', -1) < 0 ? -1 : 1;
     this.targetX = paramNum(p, 'to', x);
     this.speed = Math.max(0.1, paramNum(p, 'speed', 0.8));
@@ -87,6 +102,8 @@ export class AmsPerson extends Entity {
     const m = paramStr(p, 'mode', 'idle') as PersonMode;
     if (m === 'walk') this.walkTo(this.targetX);
     else this.setMode(MODES.includes(m) ? m : 'idle');
+    this.lastFacing = this.facing < 0 ? -1 : 1;
+    this.trT = 0;
   }
 
   /** Sprite id of a mode (falls back to idle when the strip does not exist). */
@@ -96,6 +113,18 @@ export class AmsPerson extends Entity {
   }
 
   setMode(mode: PersonMode, ticks = Infinity, then: PersonMode = 'idle'): void {
+    const prev = this.mode;
+    this.trT = 0;
+    if (prev !== mode) {
+      const into = prev === 'idle' && TRANSITION_MODES.includes(mode);
+      const out = mode === 'idle' && TRANSITION_MODES.includes(prev);
+      const id = `${this.prefix}/in-${into ? mode : prev}`;
+      if ((into || out) && hasSprite(id)) {
+        this.trId = id;
+        this.trBack = out;
+        this.trT = 2 * PERSON_TR_TICKS;
+      }
+    }
     this.mode = mode;
     this.modeLeft = ticks;
     this.after = then;
@@ -151,8 +180,15 @@ export class AmsPerson extends Entity {
         this.setMode(this.after);
       } else this.x += Math.sign(d) * this.speed;
     } else if (this.modeLeft !== Infinity && --this.modeLeft <= 0) this.setMode(this.after);
+    const f: 1 | -1 = this.facing < 0 ? -1 : 1;
+    if (f !== this.lastFacing) {
+      this.turnFrom = this.lastFacing;
+      this.lastFacing = f;
+      this.turnT = this.turnT > 0 ? 0 : 4 * PERSON_TURN_TICKS;
+    } else if (this.turnT > 0) this.turnT--;
+    if (this.trT > 0) this.trT--;
     if (this.mode !== 'walk' && farOff(this, 160)) return;
-    this.anim.update();
+    this.anim.update(this.mode === 'walk' ? strideRate(this.speed, PERSON_WALK_SPEED) : 1);
   }
 
   override draw(r: Renderer): void {
@@ -160,7 +196,16 @@ export class AmsPerson extends Entity {
     const y = this.y;
     drawOpts.flipX = this.facing < 0;
     drawOpts.flash = false;
-    r.sprite(this.anim.id, this.anim.index, x, y, drawOpts);
+    if (this.turnT > 0 && hasSprite(this.turnId)) {
+      // Narrowing in the old facing (frames 0, 1), then widening in the new one (1, 0).
+      const i = Math.floor((4 * PERSON_TURN_TICKS - this.turnT) / PERSON_TURN_TICKS);
+      drawOpts.flipX = (i < 2 ? this.turnFrom : this.facing) < 0;
+      r.sprite(this.turnId, i < 2 ? i : 3 - i, x, y, drawOpts);
+    } else if (this.trT > 0) {
+      const k = Math.min(1, Math.floor((2 * PERSON_TR_TICKS - this.trT) / PERSON_TR_TICKS));
+      r.sprite(this.trId, this.trBack ? 1 - k : k, x, y, drawOpts);
+    } else r.sprite(this.anim.id, this.anim.index, x, y, drawOpts);
+    drawOpts.flipX = this.facing < 0;
     if (this.counter) {
       drawOpts.flipX = false;
       r.sprite('npc/ams/counter', 0, x + this.facing * 5, y, drawOpts);

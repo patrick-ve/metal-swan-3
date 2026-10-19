@@ -59,6 +59,11 @@ export interface SpriteOpts {
   trim?: boolean;
   /** A 2× generator for this id (same as `defineHiSprite(id, hi)`). */
   hi?: SpriteGen;
+  /**
+   * Deferred (rare cosmetic strips, e.g. fidgets): the boot preload skips it (`skipDeferred`),
+   * and every other preload makes it after its `last` ids. Made on first use otherwise.
+   */
+  defer?: boolean;
 }
 
 /** Animation defaults of a sprite, used by Animator.play. */
@@ -147,6 +152,11 @@ export function defineSprite(id: string, gen: SpriteGen, opts: SpriteOpts = {}):
  */
 export function defineHiSprite(id: string, gen: SpriteGen): void {
   hiRegistry.set(id, { gen, frames: null, error: null });
+}
+
+/** Is `id` registered with `defer: true` (SpriteOpts.defer)? */
+export function isDeferredSprite(id: string): boolean {
+  return registry.get(id)?.opts.defer === true;
 }
 
 export function hasSprite(id: string): boolean {
@@ -434,8 +444,10 @@ export interface PreloadOpts {
    * second, …); the other ids follow in id order.
    */
   first?: readonly string[];
-  /** Id prefixes to generate last, in this order, after every other id. */
+  /** Id prefixes to generate last, in this order, after every other id (deferred ids follow). */
   last?: readonly string[];
+  /** Leave out the deferred ids (SpriteOpts.defer) — for the boot preload. */
+  skipDeferred?: boolean;
   /**
    * 1 (default): the 1× frames of every matching id. 2: the 2× frames of the matching ids that
    * have a 2× generator (and nothing else) — for a 2× mission's start, not for boot.
@@ -454,10 +466,12 @@ const clock = (): number => (typeof performance !== 'undefined' ? performance.no
 
 /**
  * Sort `ids` (id order) by `first` / `last` priority: ids under first[0], first[1], …, then the
- * rest, then ids under last[0], last[1], …. An id under a `first` prefix never moves to `last`.
+ * rest, then ids under last[0], last[1], …, then the deferred ids (SpriteOpts.defer). An id under
+ * a `first` prefix never moves to `last`; a deferred id always goes to the end.
  */
-function preloadOrder(ids: string[], first: readonly string[], last: readonly string[]): string[] {
+export function preloadOrder(ids: string[], first: readonly string[], last: readonly string[]): string[] {
   const rank = (id: string): number => {
+    if (isDeferredSprite(id)) return first.length + 1 + last.length;
     const f = first.findIndex((p) => id.startsWith(p));
     if (f >= 0) return f;
     const l = last.findIndex((p) => id.startsWith(p));
@@ -481,7 +495,9 @@ export async function preloadSprites(
   const list = prefixes === undefined ? [''] : typeof prefixes === 'string' ? [prefixes] : prefixes;
   const hi = (opts?.density ?? 1) >= HI_DENSITY;
   const ids = preloadOrder(
-    [...(hi ? hiRegistry : registry).keys()].filter((id) => list.some((p) => id.startsWith(p))),
+    [...(hi ? hiRegistry : registry).keys()].filter(
+      (id) => list.some((p) => id.startsWith(p)) && !(opts?.skipDeferred && isDeferredSprite(id)),
+    ),
     opts?.first ?? [],
     opts?.last ?? [],
   );
@@ -787,13 +803,18 @@ export class Animator {
     return this;
   }
 
-  /** Advance one tick. */
-  update(): this {
+  /**
+   * Advance one tick, or `rate` ticks (a float, e.g. strideRate for a walk cycle that follows the
+   * speed). The remainder carries over to the next frame; at most one frame advances per update.
+   * Rate 1 is exactly the integer tick count.
+   */
+  update(rate = 1): this {
     this.changed = false;
     if (this.done || this.id === '') return this;
-    this.tick++;
-    if (this.tick < this.duration(this.index)) return this;
-    this.tick = 0;
+    this.tick += rate;
+    const dur = this.duration(this.index);
+    if (this.tick < dur) return this;
+    this.tick = rate === 1 ? 0 : Math.min(this.tick - dur, dur - 1e-9);
     if (this.index + 1 < this.count) {
       this.index++;
       this.changed = true;

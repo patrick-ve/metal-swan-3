@@ -455,9 +455,11 @@ standing shots hit it). All frames are anchored at the **feet centre** unless no
 frames rest on the ground line.
 
 Playable characters — `char/<id>/…`:
-- Lower body: `legs-idle`, `legs-run` (8f), `legs-jump` (2f), `legs-fall`, `legs-land`,
-  `legs-crouch`, `legs-crouch-walk` (6f). **Every legs frame has a `hip` point** (where the torso
-  attaches; it bobs during the run).
+- Lower body: `legs-idle` (4f), `legs-run` (12f, 3 ticks scaled by `strideRate`), `legs-jump`
+  (4f), `legs-fall` (2f loop), `legs-land` (3f), `legs-crouch`, `legs-crouch-walk` (6f),
+  `legs-crouch-in` (3f) and `legs-crouch-out` (2f, draw-only transitions), `legs-dangle` (6f,
+  the parachute drop). **Every legs frame has a `hip` point** (where the torso attaches; it bobs
+  during the run; idle and crouch keep it constant).
 - Upper body, anchored at the **hip**, for weapon pose `<w>` ∈ `pistol | heavy`:
   `torso-<w>-idle` (≥2f), `torso-<w>-shoot` (≥2f), `torso-<w>-up`, `torso-<w>-shoot-up` (≥2f),
   `torso-<w>-down`, `torso-<w>-shoot-down` (≥2f), `torso-<w>-throw` (≥4f), `torso-<w>-knife`
@@ -465,11 +467,23 @@ Playable characters — `char/<id>/…`:
   (≥2f; up + left/right, GDD §4.3); heavy only: `torso-heavy-diag-down` and
   `torso-heavy-shoot-diag-down` (the machine-gun sweep). Aims between 22.5° and 67.5° use the
   diagonal strips when registered (else the nearest of forward / up / down). Aim and shoot frames have a `muzzle`
-  point; throw frames have a `hand` point. A status effect may swap any strip for
+  point; throw frames have a `hand` point. Animation wave (mission ams): `torso-<w>-idle` 4f,
+  `-throw` 6f (release frame and `hand` unchanged at index 2), `-knife` 6f and `-knife-b` 6f
+  (anticipation first, sum 14 ticks), and outside the Helium set `torso-<w>-run` (12f, synced to
+  the legs), `-crouch` (4f), `-crouch-shoot` (2f), `-crouch-throw` (6f), `-crouch-knife` (6f).
+  Gameplay reads the steady-state strips (`muzzleWorld`, `handWorld`); transitions are
+  draw-only timers. A status effect may swap any strip for
   `<art>/<infix>-<anim>` (e.g. `helium-legs-run`) when that variant is registered.
-- Full body (feet anchor): `die` (≥6f), `die-burn` (≥4f), optional `die-blast` (explosions),
-  `victory` (≥2f), `spawn` (≥3f), `bored` (≥4f, optional idle fidget), `mount` (≥2f); `portrait`
-  (1f, about 32×32, for menus).
+- Full body (feet anchor): `die` (≥6f; players 12f), `die-burn` (≥4f), optional `die-blast`
+  (explosions; players 10f), `victory` (≥2f; players 8f), `spawn` (≥3f; players 6f), `bored`
+  (≥4f, optional idle fidget), `mount` (≥2f); `portrait` (1f, about 32×32, for menus).
+  Animation wave (players): `flip` (14f, the running jump), `mount-hop` (5f, last frame has
+  `hip`), `die-drown` (12f, anchor = the water surface, cropped there), `die-flat` (7f, crush),
+  `fidget-a` / `fidget-b` (9–14f), `timeout-yawn` (8f), `timeout-sleep` (4f loop). Deferred
+  (`SpriteOpts.defer`, made on first use / last in the 2× preload): the fidgets, the time-out
+  strips, `die-drown`, `die-flat`, `mount-hop`. FX used by the player: `fx/chute` (6f loop),
+  `fx/chute-collapse` (8f; anchor = rim centre, point `harness` [0, 16]), `fx/snore` (6f,
+  deferred; drawn at the `head` point).
 - **Rider strips for open-seat mounts (the Swan)**, upper body only, **hip anchor**, rig part
   `'upper'`, `weapon: 'none'`, points `head` and `hand` (no `muzzle`): `ride-sit` (2f, 20 ticks,
   loop), `ride-lean` (2f, 6, loop), `ride-up` (1f), `ride-hunch` (1f), `ride-hold` (2f, 4, loop),

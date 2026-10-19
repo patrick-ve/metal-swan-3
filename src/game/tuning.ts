@@ -56,8 +56,8 @@ export const TUNING = {
     bodyH: 30,
     crouchBodyW: 16,
     crouchBodyH: 20,
-    /** Legs anim speed while running (ticks per frame of the 8-frame cycle). */
-    runTicksPerFrame: 4,
+    /** Legs anim speed while running (ticks per frame of the 12-frame cycle at full run speed). */
+    runTicksPerFrame: 3,
     /** Players more than this far below the view bottom of an 'up' section fell out. */
     fallOutMargin: 40,
     /**
@@ -72,6 +72,8 @@ export const TUNING = {
     fallbackHand: [9, -15] as const,
     /** Ticks without input before the optional 'bored' fidget plays. */
     boredTicks: 300, // GDD §3.1
+    /** Ticks without input before a short idle fidget (fidget-a / fidget-b alternate). */
+    fidgetTicks: 150,
   },
 
   /** Shooting input (mechanics.md §22.2). */
@@ -157,8 +159,12 @@ export const TUNING = {
   /** Death and respawn (mechanics.md §22.6). */
   life: {
     deathAnimTicks: 60,
-    /** Death by a pit: nothing to watch, so respawn sooner. */
+    /** Death by a pit: nothing to watch, so respawn sooner (drowning plays die-drown: deathAnimTicks). */
     pitDeathTicks: 40,
+    /** Mission-start parachute drop (MissionDef.introDrop): ticks from above the view to the floor (≤ 90, inside the banner). */
+    introDropTicks: 80,
+    /** Draw-only pick-up flash: white silhouette on ticks 0-1 and 4-5, a white tint fading over ticks 4-9. */
+    pickupFlashTicks: 10,
     respawnDropTicks: 12,
     /** Blinking invulnerability after (re)spawning. */
     respawnInvulnTicks: 120,

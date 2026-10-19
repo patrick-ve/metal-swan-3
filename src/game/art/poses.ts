@@ -247,3 +247,203 @@ export const RIDE_GRIPS = {
   nearFolded: [12, -3] as const,
   farFolded: [13, -3] as const,
 };
+
+// ------------------------------------------------------------------------------------ moves (anim wave p1)
+
+/**
+ * Somersault keys (`char/<id>/flip`, 14 frames × 2 ticks; human-sprites `flipPoses` tweens
+ * them): open take-off, tuck, one full turn about the pelvis (rot 0 → 360), open for the fall.
+ */
+export const FLIP_KEYS: readonly Pose[] = [
+  { legN: L(84, 118, 10), legF: L(48, 124, -10), armN: A(64, 96, 'fist'), armF: A(56, 102, 'fist'), lean: 8, grounded: false, rot: 0 },
+  { legN: L(118, 146, 10), legF: L(104, 150, 0), armN: A(50, 110, 'fist'), armF: A(44, 114, 'fist'), lean: 16, hunch: 1, grounded: false, rot: 72 },
+  { legN: L(124, 152, 10), legF: L(110, 154, 0), armN: A(46, 114, 'fist'), armF: A(40, 118, 'fist'), lean: 18, hunch: 1, grounded: false, rot: 190 },
+  { legN: L(118, 146, 10), legF: L(104, 150, 0), armN: A(50, 110, 'fist'), armF: A(44, 114, 'fist'), lean: 16, hunch: 1, grounded: false, rot: 310 },
+  { legN: L(84, 110, 4), legF: L(46, 118, -12), armN: A(70, 80, 'open'), armF: A(58, 88, 'open'), lean: 8, grounded: false, rot: 360 },
+];
+
+/**
+ * Hop onto the Swan's seat (`char/<id>/mount-hop`, 5 frames [3, 3, 3, 3, 4]): crouch, spring,
+ * tuck rise, swing a leg over the seat, settle seated (the logic carries the figure toward the
+ * seat point; the frames only add the small local arc).
+ */
+export const MOUNT_HOP: readonly Pose[] = [
+  { legN: L(70, 100), legF: L(30, 104), armN: A(-10, 40, 'fist'), armF: A(-20, 34, 'fist'), lean: 14, hunch: 1 },
+  { legN: L(14, 14, -10), legF: L(-18, 24, -20), armN: A(70, 40, 'fist'), armF: A(60, 44, 'fist'), lean: 4, grounded: false, dy: -3 },
+  { legN: L(70, 104, 10), legF: L(30, 112, -10), armN: A(80, 50, 'fist'), armF: A(72, 54, 'fist'), lean: 8, grounded: false, dy: -6 },
+  { legN: L(100, 70), legF: L(20, 100), armN: A(60, 60, 'grip'), armF: A(64, 54, 'grip'), lean: 6, grounded: false, dy: -4 },
+  { legN: L(90, 90), legF: L(80, 100), armN: A(50, 60, 'grip'), armF: A(60, 50, 'grip'), grounded: false, dy: -2 },
+];
+
+/** Legs hanging under the canopy (`legs-dangle`, loop): three keys, toes down, a slow sway. */
+export const DANGLE_KEYS: readonly Pose[] = [
+  { legN: L(22, 32, -24), legF: L(-10, 38, -30), grounded: false },
+  { legN: L(4, 16, -30), legF: L(10, 46, -22), grounded: false },
+  { legN: L(-14, 26, -26), legF: L(24, 34, -20), grounded: false },
+];
+
+/**
+ * Drowning (`die-drown`, 12 frames): `dy` is the depth of the feet below the water surface (the
+ * strip's anchor line; human-sprites crops every frame there). Splash drop, bob up with the
+ * arms high, wave twice, sink, the last hand,
+ * (the near arm swings up and BACK in the raised frames so it never covers the face at 2×), then only bubbles (frames 10–11 draw no figure).
+ */
+export const DROWN: readonly Pose[] = [
+  { legN: L(30, 40, -10), legF: L(-10, 50, -20), armN: A(150, 30, 'open'), armF: A(130, 40, 'open'), expr: 'panic', grounded: false, dy: 12 },
+  { legN: L(40, 60, -10), legF: L(0, 70, -20), armN: A(165, 20, 'open'), armF: A(150, 24, 'open'), expr: 'panic', grounded: false, dy: 19 },
+  { legN: L(20, 40, -20), legF: L(-6, 60, -20), armN: A(205, 24, 'open'), armF: A(160, 14, 'open'), expr: 'shout', grounded: false, dy: 14 },
+  { legN: L(30, 50, -20), legF: L(-16, 50, -20), armN: A(160, 40, 'open'), armF: A(124, 40, 'open'), expr: 'panic', grounded: false, dy: 14 },
+  { legN: L(10, 40, -20), legF: L(4, 60, -20), armN: A(126, 44, 'open'), armF: A(168, 30, 'open'), expr: 'shout', grounded: false, dy: 15 },
+  { legN: L(30, 50, -20), legF: L(-16, 50, -20), armN: A(204, 30, 'open'), armF: A(126, 38, 'open'), expr: 'panic', grounded: false, dy: 16 },
+  { legN: L(10, 40, -20), legF: L(4, 60, -20), armN: A(128, 40, 'open'), armF: A(166, 30, 'open'), expr: 'shout', grounded: false, dy: 17 },
+  { legN: L(20, 30, -20), legF: L(0, 40, -20), armN: A(200, 16, 'open'), armF: A(164, 16, 'open'), expr: 'hurt', grounded: false, dy: 21 },
+  { legN: L(20, 30, -20), legF: L(0, 40, -20), armN: A(196, 10, 'open'), armF: A(170, 10, 'open'), expr: 'hurt', grounded: false, dy: 25 },
+  { legN: L(20, 30, -20), legF: L(0, 40, -20), armN: A(192, 6, 'open'), armF: A(162, 14, 'open'), expr: 'hurt', grounded: false, dy: 28 },
+  { legN: L(20, 30, -20), legF: L(0, 40, -20), armN: A(180, 4, 'open'), armF: A(158, 16, 'open'), expr: 'hurt', grounded: false, dy: 31 },
+  { legN: L(20, 30, -20), legF: L(0, 40, -20), armN: A(180, 4, 'open'), armF: A(156, 18, 'open'), expr: 'hurt', grounded: false, dy: 33 },
+];
+
+/** Ticks per `die-drown` frame (60 in all: the player's death timer). */
+export const DROWN_TIMING: readonly number[] = [3, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 7];
+
+// ------------------------------------------------------------------------------------ moves (anim wave p2)
+
+/**
+ * Legs idle weight shift (`legs-idle`, 4 frames × 16 ticks, loop): the weight rocks onto the near
+ * leg (far heel lifts), back to centre, then onto the far leg. The lowest boot never leaves the
+ * ground, so the hip point stays the same in every frame.
+ */
+export const IDLE_SHIFT: readonly Pose[] = [
+  STAND,
+  { legN: L(20, 14), legF: L(-10, 22, -8) },
+  { legN: L(18, 12), legF: L(-14, 16, -4) },
+  { legN: L(16, 8), legF: L(-20, 14) },
+];
+
+/**
+ * Torso idle breathing (4 frames × 12 ticks, hand-keyed): a two-step "grey code" of the shoulder
+ * drop (hunch) and a 1 px head nod, so every frame differs from its neighbours (and 3 → 0 too).
+ */
+export const BREATH4: readonly Pose[] = [{}, { hunch: 1 }, { hunch: 1, head: { dy: 1 } }, { head: { dy: 1 } }];
+
+/** Jump (4 frames): push-off with the toes down, take-off, rising, full tuck. */
+export const JUMP4: readonly Pose[] = [
+  { legN: L(26, 30, -24), legF: L(-18, 40, -34), grounded: false },
+  JUMP[0],
+  { legN: L(74, 108, 10), legF: L(24, 112, -14), grounded: false },
+  JUMP[1],
+];
+/** Fall loop (2 frames): the legs paddle a little. */
+export const FALL2: readonly Pose[] = [FALL, { legN: L(30, 44, 0), legF: L(-8, 48, -22), grounded: false }];
+/** Land (3 frames [2, 3, 4]): impact squash, the normal landing bend, rise toward the stance. */
+export const LAND3: readonly Pose[] = [{ legN: L(70, 104), legF: L(14, 100) }, LAND, { legN: L(36, 44), legF: L(-6, 40) }];
+
+/** Throw follow-through added AFTER the release frame (index 2 stays the release). */
+export const THROW6: readonly Pose[] = [
+  THROW[0],
+  THROW[1],
+  THROW[2],
+  { armN: A(40, 30, 'open'), lean: 10, expr: 'shout' },
+  THROW[3],
+  THROW[4],
+];
+/** Ticks per throw frame: the release keeps its tick (5 + 4), the total stays 23. */
+export const THROW6_TIMING: readonly number[] = [5, 4, 3, 3, 3, 5];
+
+/** Ticks per knife frame (anticipation + the 5-frame table): 14 in all. */
+export const KNIFE6_TIMING: readonly number[] = [2, 2, 2, 3, 3, 2];
+
+/**
+ * Knife variant B (6 frames, `knife-b`): a low backhand. Chamber the blade at the hip, cock it
+ * back, sweep forward and up, full reach, recoil, recover. `held` comes from the hero's knife.
+ */
+export const KNIFE_B: readonly Pose[] = [
+  { armN: A(-20, 60, 'fist'), heldAngle: 150, lean: -6, hunch: 1, expr: 'shout' },
+  { armN: A(-50, 70, 'fist'), heldAngle: 170, lean: -8, hunch: 1, expr: 'shout' },
+  { armN: A(40, 50, 'fist'), heldAngle: 30, lean: 6, expr: 'shout' },
+  { armN: { to: [10, -2], hand: 'fist' }, heldAngle: -10, lean: 12, expr: 'shout' },
+  { armN: A(70, 30, 'fist'), heldAngle: 10, lean: 8 },
+  { armN: A(20, 60, 'fist'), heldAngle: -40, lean: 2 },
+];
+
+/** Crouched torso (4 frames × 12 ticks): a forward lean with the idle breathing. */
+export const CROUCH_TORSO: readonly Pose[] = BREATH4.map((p) => ({ ...p, lean: 4 }));
+
+/**
+ * Death by a hit (player default, 12 frames): DIE's six keys with eased in-betweens (the bounce
+ * stays: impact, up, down) and a last, hand-keyed settle (the arm flops, the eyes close).
+ */
+/** The player death's bounce key (replaces DIE[4] in `diePoses`): a real rebound, knees and arms up. */
+export const DIE12_BOUNCE: Pose = { legN: L(85, 75), legF: L(55, 85), armN: A(130, 50, 'open'), armF: A(150, 45, 'open'), rot: -84, grounded: false, dy: -5, expr: 'dazed' };
+export const DIE12_SETTLE: Pose = { ...DIE[5], armN: A(176, 24, 'open'), expr: 'blink' };
+export const DIE12_TIMING: readonly number[] = [3, 3, 3, 3, 3, 3, 3, 3, 4, 5, 6, 35];
+
+/**
+ * Thrown by a blast (player default, 10 frames): DIE_BLAST's limbs on a three-quarter backward
+ * tumble (−20 → −270, the figure ends face down), so each displayed tick turns a few px.
+ */
+export const DIE_BLAST_KEYS: readonly Pose[] = [
+  { ...DIE_BLAST[0], rot: -20 },
+  { ...DIE_BLAST[1], armF: A(180, 30, 'open'), rot: -80 },
+  { ...DIE_BLAST[2], armF: A(165, 35, 'open'), rot: -145 },
+  { ...DIE_BLAST[3], armF: A(175, 25, 'open'), rot: -210 },
+  { ...DIE_BLAST[4], rot: -270 },
+];
+export const DIE_BLAST10_TIMING: readonly number[] = [3, 4, 4, 4, 4, 4, 4, 4, 5, 14];
+
+/** Victory (player default, 8 frames loop): three keys of the fist pump and hop, eased. */
+export const VICTORY_KEYS: readonly Pose[] = [VICTORY[0], VICTORY[1], VICTORY[2]];
+export const SPAWN6_TIMING: readonly number[] = [4, 4, 4, 3, 3, 6];
+
+/**
+ * Time-out (`timeout-yawn` 8 once, `timeout-sleep` 4 loop): a huge yawn and stretch, the arms
+ * drop, the knees give, he sits down on the floor, the head nods; then he sleeps sitting, the
+ * shoulders rising and falling.
+ */
+export const TIMEOUT_YAWN: readonly Pose[] = [
+  { ...STAND, armN: A(10, 30), armF: A(-6, 26), expr: 'blink' },
+  { ...STAND, armN: { to: [-2, -11], hand: 'fist' }, armF: { to: [4, -12], hand: 'fist' }, lean: -6, expr: 'yawn' },
+  { ...STAND, armN: { to: [-3, -12], hand: 'fist' }, armF: { to: [3, -13], hand: 'fist' }, lean: -9, expr: 'yawn', bob: -1 },
+  { ...STAND, armN: A(36, 34, 'open'), armF: A(24, 34, 'open'), lean: -2, expr: 'blink' },
+  { legN: L(40, 50), legF: L(4, 44), armN: A(20, 20, 'open'), armF: A(10, 20, 'open'), lean: 8, expr: 'blink' },
+  { legN: L(70, 80), legF: L(40, 90), armN: A(30, 20, 'open'), armF: A(20, 20, 'open'), lean: 12, expr: 'blink' },
+  { legN: L(86, 30), legF: L(80, 40), armN: A(20, 30, 'open'), armF: A(14, 30, 'open'), lean: 10, head: { dy: 1 }, expr: 'blink' },
+  { legN: L(86, 20), legF: L(80, 30), armN: A(30, 40, 'open'), armF: A(20, 40, 'open'), lean: 16, head: { dy: 2, tilt: 8 }, expr: 'blink' },
+];
+export const TIMEOUT_YAWN_TIMING: readonly number[] = [8, 8, 16, 6, 5, 5, 6, 10];
+const SIT: Pose = { legN: L(86, 20), legF: L(80, 30), armN: A(30, 40, 'open'), armF: A(20, 40, 'open'), expr: 'blink' };
+export const TIMEOUT_SLEEP: readonly Pose[] = [
+  { ...SIT, lean: 16, head: { dy: 2, tilt: 8 } },
+  { ...SIT, lean: 16, hunch: 1, head: { dy: 2, tilt: 8 } },
+  { ...SIT, lean: 18, hunch: 1, head: { dy: 3, tilt: 8 } },
+  { ...SIT, lean: 18, head: { dy: 3, tilt: 8 } },
+];
+
+// Default idle fidgets (anim wave p2, row 14) for heroes without their own table: keys only,
+// `human-sprites.ts` tweens them with the hero's style. Both stay close to the stand.
+/** Fidget A keys: a neck stretch to each side, a shoulder roll, then a pleased settle. */
+export const FIDGET_A_KEYS: readonly Pose[] = [
+  { ...STAND, armN: A(8, 30), armF: A(-6, 26) },
+  { ...STAND, armN: A(8, 30), armF: A(-6, 26), head: { tilt: -22 }, lean: -4, expr: 'blink' },
+  { ...STAND, armN: A(8, 30), armF: A(-6, 26), head: { tilt: 22 }, lean: 4, expr: 'blink' },
+  { ...STAND, armN: A(16, 44), armF: A(-14, 40), hunch: 2, bob: -1 },
+  { ...STAND, armN: A(8, 30), armF: A(-6, 26), expr: 'happy' },
+];
+/** In-betweens per key pair of fidget A (10 frames). */
+export const FIDGET_A_PER: readonly number[] = [1, 2, 1, 1];
+/** Ticks per fidget A frame: keys hold, in-betweens 4 ticks. */
+export const FIDGET_A_TIMING: readonly number[] = [10, 4, 16, 4, 4, 14, 4, 12, 4, 18];
+
+/** Fidget B keys: looks down, brushes dust off his chest (in and out), shakes out the arm. */
+export const FIDGET_B_KEYS: readonly Pose[] = [
+  { ...STAND, armN: A(8, 30), armF: A(-6, 26) },
+  { ...STAND, armN: { to: [3, 5], hand: 'open' }, armF: A(-6, 26), head: { tilt: 8 } },
+  { ...STAND, armN: { to: [6, 7], hand: 'open' }, armF: A(-6, 26), head: { tilt: 8 }, expr: 'blink' },
+  { ...STAND, armN: { to: [3, 5], hand: 'open' }, armF: A(-6, 26), head: { tilt: 8 } },
+  { ...STAND, armN: A(14, 40, 'open'), armF: A(-6, 26), expr: 'happy' },
+  { ...STAND, armN: A(8, 30), armF: A(-6, 26) },
+];
+/** In-betweens per key pair of fidget B (10 frames). */
+export const FIDGET_B_PER: readonly number[] = [1, 1, 0, 1, 1];
+/** Ticks per fidget B frame. */
+export const FIDGET_B_TIMING: readonly number[] = [10, 4, 8, 4, 8, 10, 4, 10, 4, 16];

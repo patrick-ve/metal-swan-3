@@ -176,6 +176,35 @@ export function squashed(f: Frame, scaleY: number, widen = 1.3): Frame {
   return { buf: out, ox: (w + 2) >> 1, oy: h + 2, pts: f.pts };
 }
 
+/**
+ * Turn-around frames (docs/ART_GUIDE.md "Motion"): the frame squeezed to each width factor of
+ * `widths` (default 2/3 then 1/3), full height, ground-anchored on the same anchor column, with
+ * speckles smoothed and the INK outline redrawn. Play them, flip the facing, then play them in
+ * reverse (the Turner helper in common.ts counts the ticks). Works at any frame density.
+ */
+export function turnSquash(f: Frame, widths: readonly number[] = [0.66, 0.33]): Frame[] {
+  const D = f.density ?? 1;
+  const out: Frame[] = [];
+  for (const k of widths) {
+    // Whole logical pixels on each side of the anchor column, so the anchor stays put.
+    const left = Math.max(1, Math.round(f.ox * k));
+    const right = Math.max(1, Math.round((f.buf.w / D - f.ox) * k));
+    const w = (left + right) * D;
+    const flat = f.buf.resized(w, f.buf.h);
+    // Same height: the outline is clipped at the bottom edge, so the feet stay on the ground line.
+    const buf = new PixelBuffer(w + 2 * D, f.buf.h);
+    buf.blit(flat, D, 0);
+    despeckle(buf, undefined, D);
+    // One outline ring per density step: the 2× outline weight is 2 buffer px.
+    for (let i = 0; i < D; i++) buf.outline(INK);
+    const pts: Record<string, readonly [number, number]> = {};
+    for (const [n, p] of Object.entries(f.pts ?? {})) pts[n] = [Math.round(p[0] * k), p[1]];
+    const fr: Frame = { buf, ox: left + 1, oy: f.oy, pts };
+    out.push(D === 1 ? fr : { ...fr, density: D });
+  }
+  return out;
+}
+
 /** Soot-black copy with two white blinking eyes at `eyes` (body space) when open. */
 function soot(f: Frame, eyesAt: readonly [number, number] | null, open: boolean): Frame {
   const s = sootify(f, 1, false);

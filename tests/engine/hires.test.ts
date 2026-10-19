@@ -14,7 +14,8 @@ import { INK, PAL } from '../../src/engine/palette';
 import type { Renderer } from '../../src/engine/render';
 import { chooseRes, filtersId, KMAX, modeAtRes, spriteFilter, type SubpixelMode } from '../../src/engine/render-common';
 import { SoftRenderer } from '../../src/engine/render-soft';
-import { defineSprite, hasSprite, setHiArt } from '../../src/engine/sprites';
+import { clearSpriteCache, defineSprite, hasSprite, setHiArt } from '../../src/engine/sprites';
+import { setHalfPxJoints } from '../../src/game/art/humanoid';
 import { upscaleFactor, UPSCALE_MODES, type UpscaleMode } from '../../src/engine/upscale';
 import { loadContent } from '../../src/game/content/index';
 import { createHeadlessGame, type HeadlessGame } from '../../src/sim/index';
@@ -400,5 +401,15 @@ describe('sprite geometry is unchanged', () => {
     // The 2× frames (mission ams) have the same logical geometry.
     const hi = spriteGeometrySample(ids, 2);
     for (const id of ids) expect(hi[id], `${id} at density 2`).toBe(want[id]);
-  }, 60_000);
+    // The HALF_PX_JOINTS spike (default off) keeps the same 2× geometry when it is on.
+    const prev = setHalfPxJoints(true);
+    clearSpriteCache();
+    try {
+      const half = spriteGeometrySample(ids, 2);
+      for (const id of ids) expect(half[id], `${id} at density 2, half-px joints`).toBe(want[id]);
+    } finally {
+      setHalfPxJoints(prev);
+      clearSpriteCache();
+    }
+  }, 120_000);
 });

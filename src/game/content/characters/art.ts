@@ -9,9 +9,12 @@
  * gramps.art.ts (GDD §3.1–§3.4). Menu portraits: portrait.art.ts (`PORTRAITS[id]` replaces the
  * rig's default portrait).
  */
-import { defineSprite } from '../../../engine/sprites';
+import { defineSprite, getFrames } from '../../../engine/sprites';
+import { crushStripHi } from '../../art/hi-strips';
 import { definePlayerSprites, type PlayerArtOpts } from '../../art/human-sprites';
-import type { HumanStyle, Pose } from '../../art/humanoid';
+import { renderHuman, type Density, type HumanStyle, type Pose } from '../../art/humanoid';
+import * as P from '../../art/poses';
+import { CRUSH_TIMING, crushStrip } from '../creatures/draw';
 import { BOB_ART, BOB_STYLE } from './bob.art';
 import { DIRK_ART, DIRK_STYLE } from './dirk.art';
 import { GRACE_ART, GRACE_STYLE } from './grace.art';
@@ -22,6 +25,8 @@ import { PIP_ART, PIP_STYLE } from './pip.art';
 import { THOM_ART, THOM_STYLE } from './thom.art';
 import { VINCENT_ART, VINCENT_STYLE } from './vincent.art';
 import { heroPortrait, PORTRAITS } from './portrait.art';
+// The time-out snore (fx/snore) belongs to the player's sleep strip.
+import '../fx/snore.art';
 
 export { BOB_STYLE } from './bob.art';
 export { DIRK_STYLE } from './dirk.art';
@@ -81,6 +86,29 @@ export const HERO_STYLES: Readonly<Record<string, HumanStyle>> = {
 function defineHero(id: string, style: HumanStyle, art: PlayerArtOpts = {}): void {
   definePlayerSprites(id, style, { ...art, variants: HELIUM_VARIANTS });
   // A hero's own portrait replaces the rig's default one.
+  // Crushed flat (anim wave p1): the shared pancake / peel strip over the hero's standing pose.
+  // Frame 2 (the long hold) is the pancake settling with its arms splayed, so no two frames match.
+  const stand = (d: Density) => renderHuman(style, P.STAND, 'full', d);
+  const splay = (d: Density) => renderHuman(style, { ...P.STAND, armN: { sh: 80, el: 10, hand: 'open' }, armF: { sh: -70, el: 10, hand: 'open' }, expr: 'dazed' }, 'full', d);
+  const flat = `char/${id}/die-flat`;
+  defineSprite(
+    flat,
+    () => {
+      const a = crushStrip(stand(1));
+      a[2] = crushStrip(splay(1))[1];
+      return a;
+    },
+    {
+      durations: CRUSH_TIMING,
+      loop: false,
+      defer: true,
+      hi: () => {
+        const a = crushStripHi(stand(1), stand(2), getFrames(flat, 1));
+        a[2] = crushStripHi(splay(1), splay(2), crushStrip(splay(1)))[1];
+        return a;
+      },
+    },
+  );
   const pc = PORTRAITS[id];
   if (pc) defineSprite(`char/${id}/portrait`, () => heroPortrait(style, pc), { anchor: 'top-left', hi: () => heroPortrait(style, pc, 2) });
 }

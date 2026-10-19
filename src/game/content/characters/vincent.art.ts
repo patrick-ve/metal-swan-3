@@ -10,6 +10,7 @@ import { PAL } from '../../../engine/palette';
 import type { ArmPose, HumanStyle, Pose } from '../../art/humanoid';
 import type { PlayerArtOpts } from '../../art/human-sprites';
 import * as P from '../../art/poses';
+import { tween } from '../../art/tween';
 import { at, decorateFrames, planSheet, pt } from './pieces';
 
 const A = (sh: number, el: number, hand: ArmPose['hand'] = 'fist'): ArmPose => ({ sh, el, hand });
@@ -44,8 +45,8 @@ const VINCENT_KNIFE: readonly Pose[] = [
 /** Both hands hold the open plan in front of the chest. */
 const READ: Pose = { ...P.STAND, armN: { to: [7, 4], hand: 'fist' }, armF: { to: [6, 4], hand: 'fist' }, head: { tilt: 10 } };
 
-/** Takes out the roll, unrolls it, reads, nods twice, rolls it up, pleased. */
-const VINCENT_BORED: readonly Pose[] = [
+/** Takes out the roll, unrolls it, reads, nods twice, rolls it up, pleased (keys). */
+const VINCENT_BORED_KEYS: readonly Pose[] = [
   { ...P.STAND, armN: A(30, 70), armF: A(-6, 26), held: 'plan', heldAngle: -70, expr: 'normal' },
   { ...READ, expr: 'normal' },
   { ...READ, expr: 'blink' },
@@ -55,6 +56,44 @@ const VINCENT_BORED: readonly Pose[] = [
   { ...P.STAND, armN: A(30, 70), armF: A(-6, 26), held: 'plan', heldAngle: -70, expr: 'happy' },
 ];
 
+/** Key durations + in-betweens per pair (each in-between `inb` ticks) → one duration per frame. */
+const keyed = (keys: readonly number[], per: readonly number[], inb: number): number[] =>
+  keys.flatMap((d, i) => (i < per.length ? [d, ...Array<number>(per[i]).fill(inb)] : [d]));
+
+/** Bored (12 frames): the keys with eased in-betweens on the unroll, the nods and the roll-up. */
+const BORED_PER = [2, 0, 1, 1, 1, 1];
+const VINCENT_BORED = tween(VINCENT_STYLE, VINCENT_BORED_KEYS, { perKey: BORED_PER });
+const VINCENT_BORED_T = keyed([14, 14, 30, 8, 8, 8, 24], BORED_PER, 4);
+
+/** Fidget A (13 frames): pulls the plan from the jacket, unfolds it, studies it, traces a line, folds it away. */
+const FIDGET_A_KEYS: readonly Pose[] = [
+  { ...P.STAND, armN: A(8, 30), armF: A(-6, 26), expr: 'normal' },
+  { ...P.STAND, armN: A(30, 70), armF: A(-6, 26), held: 'plan', heldAngle: -70, lean: 1, expr: 'normal' },
+  { ...READ, armF: { to: [4, 3], hand: 'fist' }, head: { tilt: 8 }, expr: 'normal' },
+  { ...READ, head: { tilt: 14, dy: 1 }, hunch: 1, expr: 'blink' },
+  { ...READ, armF: { to: [6, 1], hand: 'point' }, head: { tilt: 14, dy: 1 }, hunch: 1, expr: 'normal' },
+  { ...READ, armF: { to: [5, 4], hand: 'point' }, head: { tilt: 10 }, expr: 'happy' },
+  { ...P.STAND, armN: A(30, 70), armF: A(-6, 26), held: 'plan', heldAngle: -70, expr: 'happy' },
+];
+const FIDGET_A_PER = [1, 1, 1, 1, 1, 1];
+const VINCENT_FIDGET_A = tween(VINCENT_STYLE, FIDGET_A_KEYS, { perKey: FIDGET_A_PER, ease: ['inOut', 'outBack', 'inOut', 'inOut', 'inOut', 'inOut'] });
+const VINCENT_FIDGET_A_T = keyed([10, 10, 16, 24, 14, 16, 12], FIDGET_A_PER, 4);
+
+/** Fidget B (10 frames): straightens the tie, a smug look over the shoulder, back. */
+const FIDGET_B_KEYS: readonly Pose[] = [
+  { ...P.STAND, armN: A(8, 30), armF: A(-6, 26), expr: 'normal' },
+  { ...P.STAND, armN: { to: [4, -6], hand: 'fist' }, armF: { to: [5, -4], hand: 'open' }, head: { tilt: 8 }, expr: 'normal' },
+  { ...P.STAND, armN: { to: [4, -8], hand: 'fist' }, armF: { to: [5, -4], hand: 'open' }, head: { tilt: -8 }, lean: -2, expr: 'blink' },
+  { ...P.STAND, armN: A(20, 50), armF: A(-6, 26), head: { dx: -1, tilt: -8 }, lean: -3, expr: 'happy' },
+  { ...P.STAND, armN: A(8, 30), armF: A(-6, 26), expr: 'happy' },
+];
+const FIDGET_B_PER = [1, 1, 2, 1];
+const VINCENT_FIDGET_B = tween(VINCENT_STYLE, FIDGET_B_KEYS, { perKey: FIDGET_B_PER });
+const VINCENT_FIDGET_B_T = keyed([8, 14, 18, 30, 10], FIDGET_B_PER, 6);
+
+/** The open plan shows on every frame after the first without the rolled prop (bored, fidget A). */
+const planOpen = (p: Pose, i: number): boolean => i > 0 && p.held === undefined;
+
 /** Taps the roll in his palm, then the smug thumbs-up. */
 const VINCENT_VICTORY: readonly Pose[] = [
   { ...P.STAND, armN: { to: [6, 2] }, armF: { to: [6, 4], hand: 'open' }, held: 'plan', heldAngle: 20, expr: 'normal' },
@@ -63,20 +102,29 @@ const VINCENT_VICTORY: readonly Pose[] = [
   { ...P.STAND, armN: { sh: 100, el: 70, hand: 'thumb' }, armF: A(-6, 26), lean: -4, expr: 'blink' },
 ];
 
+/** The open plan sheet at the near hand on every frame where both hands hold it. */
+function withPlan(frames: Parameters<typeof decorateFrames>[0], poses: readonly Pose[]) {
+  return decorateFrames(frames, (f, i) => {
+    if (!planOpen(poses[i], i)) return null;
+    const [hx, hy] = pt(f, 'hand', [7, -18]);
+    return [at(planSheet(), hx - 1, hy - 2)];
+  });
+}
+
 export const VINCENT_ART: PlayerArtOpts = {
   knife: VINCENT_KNIFE,
   bored: VINCENT_BORED,
   victory: VINCENT_VICTORY,
+  fidgetA: VINCENT_FIDGET_A,
+  fidgetB: VINCENT_FIDGET_B,
   durations: {
-    bored: [20, 14, 30, 10, 10, 10, 30],
+    bored: VINCENT_BORED_T,
+    'fidget-a': VINCENT_FIDGET_A_T,
+    'fidget-b': VINCENT_FIDGET_B_T,
     victory: [10, 10, 30, 30],
   },
   decorate: {
-    bored: (frames) =>
-      decorateFrames(frames, (f, i) => {
-        if (i < 1 || i > 5) return null;
-        const [hx, hy] = pt(f, 'hand', [7, -18]);
-        return [at(planSheet(), hx - 1, hy - 2)];
-      }),
+    bored: (frames, poses) => withPlan(frames, poses),
+    'fidget-a': (frames, poses) => withPlan(frames, poses),
   },
 };

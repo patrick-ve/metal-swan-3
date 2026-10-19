@@ -156,11 +156,36 @@ function legsFrame(f: number, d = 1): Frame {
     leg(c, [2, -14], [22, -10], [42, -6], false);
     return c.frame(true);
   }
-  const squat = f === 3 ? 6 : 0;
+  if (f >= 5 && f <= 8) return walkLegs(WALK_K[f - 5], c);
+  if (f === 10) {
+    // Push-off for the stomp hop: hips up, both legs straight, toes down.
+    leg(c, [-10, -43], [-11, -24], [-11, -6], true);
+    leg(c, [8, -43], [10, -24], [10, -6], false);
+    return c.frame(true);
+  }
+  const squat = f === 3 ? 6 : f === 9 ? 3 : 0;
   const hipY = -40 + squat;
   const stepA = f === 1 ? 6 : f === 2 ? -6 : 0;
   leg(c, [-10, hipY], [-12 - stepA - squat, -22 + squat / 2], [-14 - stepA, -6], true);
   leg(c, [8, hipY], [12 + stepA + squat, -22 + squat / 2], [12 + stepA, -6], false);
+  return c.frame(true);
+}
+
+/** Walk cycle phase (of 6) of the in-between leg frames 5–8 (phase 0 = frame 1, phase 3 = frame 2). */
+const WALK_K = [1, 2, 4, 5] as const;
+/** The 6-frame walk loop as `legs` frame indices (docs/ART_GUIDE.md "Motion"). */
+export const MAYOR_WALK = [1, 5, 6, 2, 7, 8] as const;
+
+/** One walk in-between: the stride eases on a cosine, the swinging foot lifts at the passing point. */
+function walkLegs(k: number, c: Canvas): Frame {
+  const ph = (k / 6) * Math.PI * 2;
+  const stepA = Math.round(6 * Math.cos(ph));
+  const sn = Math.sin(ph);
+  const liftN = sn > 0 ? Math.round(4 * sn) : 0;
+  const liftF = sn < 0 ? Math.round(-4 * sn) : 0;
+  const hipY = -40 - (Math.abs(sn) > 0.5 ? 1 : 0);
+  leg(c, [-10, hipY], [-12 - stepA + liftF, -22 - liftF], [-14 - stepA, -6 - liftF], true);
+  leg(c, [8, hipY], [12 + stepA + liftN, -22 - liftN], [12 + stepA, -6 - liftN], false);
   return c.frame(true);
 }
 
@@ -378,23 +403,30 @@ function armBackFrame(f: number, d = 1): Frame {
     if (c.d === 2) hi.mitten(c, -30, -47, 4);
     return c.frame(true);
   }
-  const high = f === 1;
+  // Frames 1 / 2: the loop high / low at phase 0; 3–7 high and 8–12 low at phases 1–5 (the whirl).
+  const high = f === 1 || (f >= 3 && f <= 7);
+  const p = f <= 2 ? 0 : high ? f - 2 : f - 7;
+  const ph = (p / 6) * Math.PI * 2;
+  // The hand circles a little as it swings the loop; the loop centre lags behind it.
+  const hdx = Math.round(2 * Math.sin(ph));
+  const hdy = Math.round(-2 * Math.cos(ph)) + 2;
   // High: the forearm passes under the chin, so the face stays clear.
   const elbow: [number, number] = high ? [-2, -95] : [-10, -74];
-  const hand: [number, number] = high ? [26, -118] : [12, -48];
+  const hand: [number, number] = high ? [26 + hdx, -118 + hdy] : [12 + hdx, -48 + hdy];
   limb(c, sh[0], sh[1], elbow[0], elbow[1], 10, JACKET);
   limb(c, elbow[0], elbow[1], hand[0], hand[1], 8, JACKET);
   boucle(c, -30, high ? -124 : -106, 30, high ? -86 : -44, JACKET, 53);
   joint(c, elbow[0], elbow[1], 3);
-  // The whirling chain loop (held by the hand).
-  const lx = high ? 46 : 30;
-  const ly = high ? -142 : -26;
+  // The whirling chain loop (held by the hand): the loop sways, the shields travel round it.
+  // (Both offsets are 0 at phase 0, so frames 1 / 2 keep their old shape.)
+  const lx = (high ? 46 : 30) + Math.round(3 * (Math.sin(ph - 1) + Math.sin(1)));
+  const ly = (high ? -142 : -26) + Math.round(2 * (Math.cos(1) - Math.cos(ph - 1)));
   const rx = high ? 18 : 22;
   const ry = high ? 12 : 14;
   // The same links as the chain on her chest.
-  chainBand(c, curvePts((t) => [lx + Math.cos(t * Math.PI * 2) * rx, ly + Math.sin(t * Math.PI * 2) * ry], 160));
+  chainBand(c, curvePts((t) => [lx + Math.cos(t * Math.PI * 2) * rx, ly + Math.sin(t * Math.PI * 2) * ry], 160), p);
   for (let k = 0; k < 4; k++) {
-    const t = (k / 4) * Math.PI * 2 + 0.4;
+    const t = ((k + p / 6) / 4) * Math.PI * 2 + 0.4;
     chainShield(c, Math.round(lx + Math.cos(t) * rx), Math.round(ly + Math.sin(t) * ry), ENAMEL[k % 4]);
   }
   chainBand(c, curvePts((t) => [hand[0] + (lx - rx * 0.7 - hand[0]) * t, hand[1] + (ly + ry * 0.7 - hand[1]) * t], 40));
@@ -431,13 +463,29 @@ function stamp(c: Canvas, cx: number, bottom: number, state: number): void {
   if (state > 0) scuffs(c, cx - 28, top - 20, 57, 44, state, 7, WOOD[3]);
 }
 
+/**
+ * Stamp arm poses (elbow, hand = the knob, block bottom): 0 low (idle), 1 raised (telegraph),
+ * 2 impact (slam), 3 anticipation (a dip and pull back before the lift), 4 smear (mid swing),
+ * 5 recoil (the block bounces off the floor). 0–2 keep their old indices and shapes.
+ */
+const ARM_POSES: ReadonlyArray<readonly [readonly [number, number], readonly [number, number], number]> = [
+  [[32, -76], [55, -60], -12],
+  [[40, -122], [46, -148], -106],
+  [[42, -72], [57, -40], 0],
+  [[28, -72], [50, -54], -6],
+  [[44, -100], [58, -96], -54],
+  [[40, -80], [56, -50], -8],
+];
+/** Poses per facing in the `stamp-arm-*` strips (frames 0–5 face right, 6–11 pre-mirrored). */
+export const ARM_FRAMES = ARM_POSES.length;
+
 /** Label text spots (local: the block centre x, the text top) of the stamp being drawn. */
 const labels: Array<[number, number]> = [];
 /** 2×: the canvas with the clean label face, before any scuffs. */
 let labelFace: PixelBuffer | null = null;
 
 /**
- * Stamp arm frames 0–2 face right; frames 3–5 are the same poses pre-mirrored for facing left
+ * Stamp arm frames 0–5 face right; frames 6–11 are the same poses pre-mirrored for facing left
  * (drawn without flipX) so the GESLOTEN label always reads left to right.
  */
 function stampArmFrame(f: number, state: number, mirror = false, d = 1): Frame {
@@ -462,9 +510,11 @@ function stampArmFrame(f: number, state: number, mirror = false, d = 1): Frame {
 function stampArmPose(f: number, state: number, d = 1): Frame {
   const c = canvas(d);
   const sh: [number, number] = [24, -97];
-  const elbow: [number, number] = f === 0 ? [32, -76] : f === 1 ? [40, -122] : [42, -72];
-  const hand: [number, number] = f === 0 ? [55, -60] : f === 1 ? [46, -148] : [57, -40];
-  const bottom = f === 0 ? -12 : f === 1 ? -106 : 0;
+  const [elbow, hand, bottom] = ARM_POSES[f];
+  if (f === 4) {
+    // Smear: speed streaks above the block as it travels (the frame between raised and the floor).
+    for (const dx of [-24, -12, 0, 12, 24]) c.rect(hand[0] + dx, bottom - 58, 1, 28 - (Math.abs(dx) >> 1), dx % 24 === 0 ? WOOD[1] : SILVER[2]);
+  }
   // The stamp hangs from the hand (raised: the hand holds the knob, the block above the head line).
   // The arm is drawn first so the block (and its GESLOTEN face) always sits in front of it.
   limb(c, sh[0], sh[1], elbow[0], elbow[1], 11, JACKET);
@@ -1407,6 +1457,36 @@ function wigFrame(d = 1): Frame {
   return d === 1 ? { buf: fr.buf, ox, oy } : { buf: fr.buf, ox, oy, density: d };
 }
 
+/** Wig flight frames: the wig turned in 8 steps of 45° about its middle (PixelBuffer.rotated). */
+export const WIG_STEPS = 8;
+function wigFrames(d = 1): Frame[] {
+  const raw = wigFrame(d);
+  // Crop to whole logical pixels first, so both densities turn about the same middle.
+  const b = raw.buf.trimBounds() ?? { x: 0, y: 0, w: d, h: d };
+  const x0 = Math.floor(b.x / d) * d;
+  const y0 = Math.floor(b.y / d) * d;
+  const cw = Math.ceil((b.x + b.w) / d) * d - x0;
+  const ch = Math.ceil((b.y + b.h) / d) * d - y0;
+  const cropped = raw.buf.crop(x0, y0, cw, ch);
+  const base: Frame = d === 1 ? { buf: cropped, ox: raw.ox - x0, oy: raw.oy - y0 } : { buf: cropped, ox: raw.ox - x0 / d, oy: raw.oy - y0 / d, density: d };
+  const out: Frame[] = [base];
+  // 1×: a 2-px clear margin round each turned frame, so the 2× twin (its own rounding) fits inside.
+  const m = d === 1 ? 2 : 0;
+  const w = base.buf.w / d;
+  const h = base.buf.h / d;
+  for (let k = 1; k < WIG_STEPS; k++) {
+    const a = (k * Math.PI) / 4;
+    const rot = base.buf.rotated(a, { align: d });
+    const buf = m > 0 ? rot.padded(m) : rot;
+    const rx = base.ox - w / 2;
+    const ry = base.oy - h / 2;
+    const ox = Math.round(rot.w / d / 2 + m + rx * Math.cos(a) - ry * Math.sin(a));
+    const oy = Math.round(rot.h / d / 2 + m + rx * Math.sin(a) + ry * Math.cos(a));
+    out.push(d === 1 ? { buf, ox, oy } : { buf, ox, oy, density: d });
+  }
+  return out;
+}
+
 /** A coil spring `h` px tall (bottom anchor). */
 function springFrame(h: number, d = 1): Frame {
   const c = canvas(d);
@@ -1428,19 +1508,21 @@ function springFrame(h: number, d = 1): Frame {
 
 // Every strip has a 2× twin for mission ams (docs/ART_GUIDE.md "2x art (mission ams)"): the
 // same recipe on a density-2 canvas, with finer details drawn by art-hi.ts.
-defineSprite(`${ART}/legs`, () => [0, 1, 2, 3, 4].map((f) => legsFrame(f)), { trim: true, hi: () => [0, 1, 2, 3, 4].map((f) => legsFrame(f, 2)) });
+const LEGS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+defineSprite(`${ART}/legs`, () => LEGS.map((f) => legsFrame(f)), { trim: true, hi: () => LEGS.map((f) => legsFrame(f, 2)) });
 for (const s of [0, 1, 2] as const) {
   defineSprite(`${ART}/body-${s}`, () => bodyFrame(s), { trim: true, hi: () => [bodyFrame(s, 2)] });
-  const arm = (d: number): Frame[] => [0, 1, 2, 3, 4, 5].map((f) => stampArmFrame(f % 3, s, f >= 3, d));
+  const arm = (d: number): Frame[] => Array.from({ length: ARM_FRAMES * 2 }, (_, f) => stampArmFrame(f % ARM_FRAMES, s, f >= ARM_FRAMES, d));
   defineSprite(`${ART}/stamp-arm-${s}`, () => arm(1), { trim: true, hi: () => arm(2) });
   defineSprite(`${ART}/chain-${s}`, () => chainFrame(s), { trim: true, hi: () => [chainFrame(s, false, 2)] });
   defineSprite(`${ART}/medallion-${s}`, () => [0, 1, 2].map((f) => medallionFrame(f, s)), { trim: true, hi: () => [0, 1, 2].map((f) => medallionFrame(f, s, 2)) });
   defineSprite(`${ART}/head-${s}`, () => [0, 1, 2, 3, 4, 5].map((f) => headFrame(f, s)), { trim: true, hi: () => [0, 1, 2, 3, 4, 5].map((f) => headFrame(f, s, 2)) });
 }
-defineSprite(`${ART}/arm-back`, () => [0, 1, 2].map((f) => armBackFrame(f)), { trim: true, hi: () => [0, 1, 2].map((f) => armBackFrame(f, 2)) });
+const ARM_BACK = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+defineSprite(`${ART}/arm-back`, () => ARM_BACK.map((f) => armBackFrame(f)), { trim: true, hi: () => ARM_BACK.map((f) => armBackFrame(f, 2)) });
 defineSprite(`${ART}/stamp-arm-gone`, () => stampStump(), { trim: true, hi: () => [stampStump(2)] });
 defineSprite(`${ART}/chain-gone`, () => chainFrame(2, true), { trim: true, hi: () => [chainFrame(2, true, 2)] });
-defineSprite(`${ART}/wig`, () => wigFrame(), { trim: true, hi: () => [wigFrame(2)] });
+defineSprite(`${ART}/wig`, () => wigFrames(1), { hi: () => wigFrames(2) });
 defineSprite(`${ART}/spring`, () => [6, 14, 22, 30].map((h) => springFrame(h)), { trim: true, hi: () => [6, 14, 22, 30].map((h) => springFrame(h, 2)) });
 
 /** A soft floor shadow (the stamp target and the stomp landing): 56 and 52 px wide. */

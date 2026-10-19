@@ -307,7 +307,7 @@ describe('locals: tickets and gulls', () => {
     for (const e of [d, h, y]) tw.world.damage(e, { amount: 100, kind: 'bullet', dirX: 1, owner: 0 });
     tw.run(1);
     expect(tw.session.slot(0)?.score).toBe(200 + 300 + 300);
-    expect(d.playing('die') && h.playing('die') && y.playing('die')).toBe(true);
+    expect(d.playing('die') && h.playing('die') && y.playing('die-seat')).toBe(true); // anim wave: the youth falls off the seat
     tw.run(10);
     expect(tw.ofType('pickup-food').length).toBe(1);
     tw.run(200);

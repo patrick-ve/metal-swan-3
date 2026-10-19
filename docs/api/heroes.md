@@ -52,6 +52,13 @@ Weapons (registered, used by the vehicles; never give them to a player on foot):
 - **Idle fidget** (`bored`): plays after 300 ticks without input (`TUNING.player.boredTicks`).
   Gramps' boot then squeaks for 120 ticks when he walks again (status `squeaky-boot`, applied by
   the player). Pure cosmetics; no rule changes.
+- **Smooth animation (2026-10-19, mission ams; strips: characters.md §2):** short fidgets
+  `fidget-a` / `fidget-b` after `TUNING.player.fidgetTicks` (150) standing still, a time-out yawn
+  and sleep, a 14-frame `flip` on a running jump, the Swan `mount-hop`, the ams parachute drop
+  (`introDrop`), drowning (`die-drown`) and crush (`die-flat`) deaths. All are draw-only: shoot,
+  knife, throw, hit, jump, land, vehicle and victory cancel a cosmetic strip on the same tick, the
+  player keeps instant turns, and hitboxes, muzzle origins, release frames and sim timing are
+  unchanged (the run torso and legs play at `strideRate`, `runTicksPerFrame` 3).
 - **Helium Head** (GDD §4.13, status `helium-head`, 600 ticks): the `helium-tank` cloud applies it;
   a script can too: `const st = getStatus('helium-head'); if (st) player.status.add(st);`. While
   it lasts: jump −4.5 (apex ≈ 78), slow fall with jump held (0.05 / max 1.0), speed × 0.9, **no

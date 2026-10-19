@@ -57,10 +57,19 @@ and their tests use them by id.
 ## 2. Sprites (`characters/art.ts`), `char/<id>/…` for all ten characters
 
 - The ARCHITECTURE §6.1 contract: `legs-*` (point `hip`), `torso-{pistol,heavy}-*` (aim / shoot:
-  `muzzle`; throw / knife: `hand`; diag-up strips for pistol and heavy; diag-down for heavy only), `die` (6–7 f), `die-burn`,
-  `die-blast`, `victory`, `spawn`, `bored`, `mount`, `salute` (2 f), `portrait` (32×32, top-left
+  `muzzle`; throw / knife: `hand`; diag-up strips for pistol and heavy; diag-down for heavy only), `die` (12 f), `die-burn`,
+  `die-blast` (10 f), `victory` (8 f), `spawn` (6 f), `bored`, `mount`, `salute` (2 f), `portrait` (32×32, top-left
   anchor).
-- The knife strips `torso-<w>-knife` hold the hero's prop (5 frames); `recruit` holds the knife.
+- **Animation wave (2026-10-19)**, registered by `definePlayerSprites` for every hero: `legs-run`
+  12 f, `legs-idle` 4, `legs-jump` 4, `legs-fall` 2, `legs-land` 3, `legs-crouch-in` 3,
+  `legs-crouch-out` 2, `legs-dangle` 6; `torso-<w>-idle` 4, `-throw` 6, `-knife` 6, `-knife-b` 6,
+  `-run` 12, `-crouch` 4, `-crouch-shoot` 2, `-crouch-throw` 6, `-crouch-knife` 6; `flip` 14,
+  `mount-hop` 5, `die-drown` 12, `die-flat` 7, `fidget-a` / `fidget-b` (defaults 10 f each, or the
+  hero table), `timeout-yawn` 8, `timeout-sleep` 4. Deferred (`defer: true`): the fidgets,
+  `timeout-*`, `die-drown`, `die-flat`, `mount-hop`. `PlayerArtOpts` takes `fidgetA`, `fidgetB`
+  and their `durations` / `decorate` entries (`'fidget-a'`, `'fidget-b'`, `'knife-b'`).
+- The knife strips `torso-<w>-knife` and `-knife-b` hold the hero's prop (6 frames, anticipation
+  first); `recruit` holds the knife.
 - **Rider strips** (open-seat mounts, look.md §6.4): `ride-sit` 2 f (20 ticks), `ride-lean` 2 f (6),
   `ride-up` 1 f, `ride-hunch` 1 f, `ride-hold` 2 f (4), `ride-brace` 1 f, `ride-duck` 1 f,
   `ride-ears` 2 f (6), `ride-cheer` 2 f (8), all looping; hip anchor, points `head` + `hand`, no

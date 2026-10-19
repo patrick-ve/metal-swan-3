@@ -6,6 +6,7 @@
  * tmp/sprites/<group>.png (split into <group>-2.png … when tall). --marks shows anchors (cyan)
  * and named points (magenta). --palette writes tmp/sprites/palette.png.
  * Demo sprites ('demo/…') are registered here so the tool works before any content exists.
+ * --half-px turns the HALF_PX_JOINTS spike on for the 2× frames (src/game/art/humanoid.ts).
  * --density 2 draws the 2× frames (docs/ART_GUIDE.md "2x art (mission ams)") at 2 sheet px per
  * logical px, only for the ids that have a 2× generator (add --all for every id, 1× ones
  * enlarged); marks then cover the whole logical pixel, so they sit where the game reads the
@@ -15,6 +16,7 @@
  * texture group (`ray-tex-<group>.png`), one row per billboard yaw (`ray-bb-<group>.png`, every
  * frame of a yaw in a row; yaws 5–7 are the registry's mirrors).
  */
+import { setHalfPxJoints } from '../src/game/art/humanoid';
 import { join } from 'node:path';
 import { defineSprite, getFrames, hasHiSprite, listSprites, spriteErrors } from '../src/engine/sprites';
 import { loadContent, ART_MODULE_IDS } from '../src/game/content/index';
@@ -40,12 +42,14 @@ interface Args {
   palette: boolean;
   out: string;
   density: number;
+  /** --half-px: the HALF_PX_JOINTS spike on (humanoid.ts; A/B only, default off). */
+  halfPx: boolean;
   all: boolean;
   ray: boolean;
 }
 
 function parseArgs(argv: readonly string[]): Args {
-  const a: Args = { prefix: '', marks: false, scale: 0, palette: false, out: 'tmp/sprites', density: 1, all: false, ray: false };
+  const a: Args = { prefix: '', marks: false, scale: 0, palette: false, out: 'tmp/sprites', density: 1, all: false, ray: false, halfPx: false };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
     if (s === '--marks') a.marks = true;
@@ -54,9 +58,10 @@ function parseArgs(argv: readonly string[]): Args {
     else if (s === '--density') a.density = Number(argv[++i]) >= 2 ? 2 : 1;
     else if (s === '--all') a.all = true;
     else if (s === '--ray') a.ray = true;
+    else if (s === '--half-px') a.halfPx = true;
     else if (s === '--out') a.out = argv[++i] ?? a.out;
     else if (s === '--help' || s === '-h') {
-      console.log('usage: npm run sprites -- [prefix] [--ray] [--marks] [--scale 3] [--palette] [--density 2 [--all]] [--out dir]');
+      console.log('usage: npm run sprites -- [prefix] [--ray] [--marks] [--scale 3] [--palette] [--density 2 [--all] [--half-px]] [--out dir]');
       process.exit(0);
     } else if (!s.startsWith('--')) a.prefix = s;
     else console.warn(`unknown option ${s}`);
@@ -66,6 +71,7 @@ function parseArgs(argv: readonly string[]): Args {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.halfPx) setHalfPxJoints(true);
   if (args.scale === 0) args.scale = args.density > 1 ? 2 : 3;
   const t0 = process.hrtime.bigint();
 

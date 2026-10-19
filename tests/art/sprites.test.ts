@@ -56,11 +56,11 @@ function contract(id: string, min: number, exact = false, pts: readonly string[]
 describe('player sprite contract (char/recruit)', () => {
   const C = 'char/recruit/';
   it('legs frames with hip points', () => {
-    contract(C + 'legs-idle', 1, false, ['hip']);
-    contract(C + 'legs-run', 8, true, ['hip']);
-    contract(C + 'legs-jump', 2, false, ['hip']);
-    contract(C + 'legs-fall', 1, false, ['hip']);
-    contract(C + 'legs-land', 1, false, ['hip']);
+    contract(C + 'legs-idle', 4, false, ['hip']);
+    contract(C + 'legs-run', 12, true, ['hip']);
+    contract(C + 'legs-jump', 4, false, ['hip']);
+    contract(C + 'legs-fall', 2, false, ['hip']);
+    contract(C + 'legs-land', 3, false, ['hip']);
     contract(C + 'legs-crouch', 1, false, ['hip']);
     contract(C + 'legs-crouch-walk', 6, true, ['hip']);
     // The hip bobs during the run.

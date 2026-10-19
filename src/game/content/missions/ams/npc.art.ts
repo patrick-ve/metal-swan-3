@@ -6,6 +6,10 @@
  * - `npc/ams/ams-baker/<anim>`          idle talk toss walk clap cheer wave
  * - `npc/ams/ams-hotdog-vendor/<anim>`  idle salute talk wave
  * - `npc/ams/ams-staff/<look>/<anim>`   look 0–2; idle walk clap cheer wave
+ *   Motion (docs/ART_GUIDE.md "Motion"): idle 4 (breathing), clap 4 and wave 4 (tweened loops);
+ *   per person a `turn` (2, turnSquash of the idle frame) and `in-<mode>` (2: in-betweens from the
+ *   idle frame to the mode's first frame) for the modes of `TRANSITION_MODES`; entities.ts plays
+ *   them forward into the mode and backward out of it (draw only).
  * - `npc/ams/counter`                   a small Fabel Friet counter drawn in front of an NPC
  *
  * Ambient life: `npc/ams/ams-tour-boat` (2, wake), `npc/ams/ams-cyclist-bg/<look>` (4, pedalling;
@@ -25,7 +29,9 @@ import { drawText } from '../../../../engine/font';
 import { INK, PAL } from '../../../../engine/palette';
 import { PixelBuffer } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
-import { defineSprite } from '../../../../engine/sprites';
+import { defineSprite, getFrames } from '../../../../engine/sprites';
+import { turnSquash } from '../../creatures/draw';
+import { inbetween, tween } from '../../../art/tween';
 import { HI, outlineHi } from '../../../art/hi';
 import { withPieces, type Piece } from '../../../art/human-fx';
 import { withSwing } from '../../../art/human-sprites';
@@ -86,8 +92,8 @@ export const STAFF_LOOKS = STAFF_STYLES.length;
 
 const ARMS_DOWN: Pose = { armN: A(6, 24, 'open'), armF: A(-4, 20, 'open') };
 
-/** Breathing at rest, the arms loose. */
-export const IDLE: readonly Pose[] = P.seq({ ...P.STAND, ...ARMS_DOWN }, [{}, { hunch: 1 }]);
+/** Breathing at rest, the arms loose (4 hand-keyed frames: shoulders drop, head nods). */
+export const IDLE: readonly Pose[] = P.seq({ ...P.STAND, ...ARMS_DOWN }, P.BREATH4);
 
 /** Clapping: the two hands meet in front of the chest, then part. (The far shoulder sits 2 px ahead.) */
 export const CLAP: readonly Pose[] = [
@@ -118,8 +124,8 @@ export const TALK: readonly Pose[] = [
   { ...P.STAND, armN: { to: [7, 3], hand: 'grip' }, armF: A(-4, 20, 'open'), expr: 'normal' },
 ];
 
-/** The baker holds the scoop at his belt. */
-const HOLD_SCOOP: readonly Pose[] = P.seq({ ...P.STAND, armN: { to: [6, 7], hand: 'grip' }, armF: A(-4, 20, 'open') }, [{}, { hunch: 1 }]);
+/** The baker holds the scoop at his belt (breathing, 4 frames). */
+const HOLD_SCOOP: readonly Pose[] = P.seq({ ...P.STAND, armN: { to: [6, 7], hand: 'grip' }, armF: A(-4, 20, 'open') }, P.BREATH4);
 
 /** Toss: wind-up, overhead, release (frame 2: the item leaves the `hand` point), follow-through. */
 export const TOSS: readonly Pose[] = [
@@ -133,6 +139,18 @@ export const TOSS_RELEASE = 2;
 export const TOSS_TICKS = 7;
 
 const WALK_POSES: readonly Pose[] = withSwing(P.WALK, 0.6, 30);
+
+/** Clap and wave as 4-frame loops: one eased in-between at each turning point. */
+export const CLAP4: readonly Pose[] = tween(BAKER_STYLE, CLAP, { counts: 1, loop: true, ease: 'inOut' });
+export const WAVE4: readonly Pose[] = tween(BAKER_STYLE, WAVE, { counts: 1, loop: true, ease: 'inOut' });
+
+/** Modes with a 2-frame `in-<mode>` transition strip (from the idle frame; played backward to leave). */
+export const TRANSITION_MODES: readonly string[] = ['talk', 'clap', 'cheer', 'wave'];
+/** Ticks per frame of the `in-<mode>` and `turn` strips. */
+export const PERSON_TR_TICKS = 3;
+export const PERSON_TURN_TICKS = 2;
+/** Walk speed (px/tick) the person walk strips are drawn for (6 ticks per frame). */
+export const PERSON_WALK_SPEED = 0.8;
 
 // ------------------------------------------------------------------------------------ pieces
 
@@ -351,19 +369,38 @@ function defineStrips(prefix: string, style: HumanStyle, apron: (d: Density) => 
   for (const [name, s] of Object.entries(strips)) {
     defineSprite(`${prefix}/${name}`, gen(s, 1), { ticksPerFrame: s.ticks, loop: s.loop ?? true, hi: gen(s, 2) });
   }
+  // Mode transitions: two eased in-betweens from the idle frame to the mode's first frame.
+  const idle = strips.idle;
+  if (!idle) return;
+  for (const m of TRANSITION_MODES) {
+    const to = strips[m];
+    if (!to) continue;
+    const a = idle.poses[0];
+    const b = to.poses[0];
+    // The wave's second in-between bends the elbow up (a straight arm held out at shoulder height
+    // read as an odd reach); the other modes ease straight in.
+    const second = m === 'wave' ? { ...inbetween(style, a, b, 0.7, { hold: 'b' }), armN: A(95, 45, 'open') } : inbetween(style, a, b, 0.7, { hold: 'b' });
+    const tr: Strip = { poses: [inbetween(style, a, b, 0.35, { hold: 'b' }), second], ticks: PERSON_TR_TICKS, scoop: to.scoop };
+    defineSprite(`${prefix}/in-${m}`, gen(tr, 1), { ticksPerFrame: PERSON_TR_TICKS, loop: false, hi: gen(tr, 2) });
+  }
+  // Turn-around: the idle frame squeezed (play narrowing, flip, widening).
+  defineSprite(`${prefix}/turn`, () => turnSquash(getFrames(`${prefix}/idle`, 1)[0]), {
+    ticksPerFrame: PERSON_TURN_TICKS,
+    hi: () => turnSquash(getFrames(`${prefix}/idle`, 2)[0]),
+  });
 }
 
 const dark = (d: Density): PixelBuffer => (d === 1 ? darkApron() : darkApronHi());
 const white = (d: Density): PixelBuffer => (d === 1 ? whiteApron() : whiteApronHi());
 
 defineStrips('npc/ams/ams-baker', BAKER_STYLE, dark, {
-  idle: { poses: HOLD_SCOOP, ticks: 30, scoop: true },
+  idle: { poses: HOLD_SCOOP, ticks: 15, scoop: true },
   talk: { poses: TALK, ticks: 8, scoop: true },
   toss: { poses: TOSS, ticks: TOSS_TICKS, loop: false },
   walk: { poses: WALK_POSES, ticks: 6 },
-  clap: { poses: CLAP, ticks: 6 },
+  clap: { poses: CLAP4, ticks: 3 },
   cheer: { poses: P.VICTORY, ticks: 8 },
-  wave: { poses: WAVE, ticks: 10 },
+  wave: { poses: WAVE4, ticks: 5 },
 });
 
 defineStrips(
@@ -371,21 +408,21 @@ defineStrips(
   VENDOR_STYLE,
   white,
   {
-    idle: { poses: IDLE, ticks: 30 },
+    idle: { poses: IDLE, ticks: 15 },
     salute: { poses: SALUTE_CALM, ticks: 20, salute: true },
     talk: { poses: TALK, ticks: 8 },
-    wave: { poses: WAVE, ticks: 10 },
+    wave: { poses: WAVE4, ticks: 5 },
   },
   tricolorCap,
 );
 
 STAFF_STYLES.forEach((style, i) => {
   defineStrips(`npc/ams/ams-staff/${i}`, style, dark, {
-    idle: { poses: IDLE, ticks: 30 + i * 4 },
+    idle: { poses: IDLE, ticks: 15 + i * 2 },
     walk: { poses: WALK_POSES, ticks: 6 },
-    clap: { poses: CLAP, ticks: 6 + (i % 2) },
+    clap: { poses: CLAP4, ticks: 3 + (i % 2) },
     cheer: { poses: P.VICTORY, ticks: 8 },
-    wave: { poses: WAVE, ticks: 10 },
+    wave: { poses: WAVE4, ticks: 5 },
   });
 });
 
@@ -711,7 +748,7 @@ defineSprite('npc/ams/ams-ducks', () => [duck(0, true), duck(1, true), duck(0, f
 // ------------------------------------------------------------------------------------ window waver
 
 /** A canal-house sash window (18×24, feet anchor at the sill) with a flower box. */
-function windowFrame(): PixelBuffer {
+export function windowFrame(): PixelBuffer {
   const b = new PixelBuffer(20, 26);
   b.rect(1, 1, 18, 22, PAL.cloth[3]);
   b.rect(3, 3, 14, 16, PAL.navy[0]);
@@ -723,7 +760,7 @@ function windowFrame(): PixelBuffer {
   return b;
 }
 
-function windowDone(b: PixelBuffer, inner: PixelBuffer | null): Frame {
+export function windowDone(b: PixelBuffer, inner: PixelBuffer | null): Frame {
   if (inner) b.blit(inner, 3, 3);
   // Sash bars over everything.
   b.hline(3, 16, 6, PAL.cloth[2]);
@@ -782,7 +819,7 @@ export function windowDoneHi(b: PixelBuffer, inner: PixelBuffer | null): Frame {
   return { buf: outlineHi(b, 2), ox: 10, oy: 24, density: HI };
 }
 
-const WAVER_STYLE: HumanStyle = { skin: 'skinA', hair: 'hairC', hairStyle: 'bob', headgear: 'none', top: 'teal', topType: 'sweater', pants: 'slate', boots: 'black', gloves: null, build: 'slim' };
+export const WAVER_STYLE: HumanStyle = { skin: 'skinA', hair: 'hairC', hairStyle: 'bob', headgear: 'none', top: 'teal', topType: 'sweater', pants: 'slate', boots: 'black', gloves: null, build: 'slim' };
 
 /** The window waver's person strip (`d` 2: the 2× window and the rig at 2×). */
 function waverFrames(d: Density): Frame[] {

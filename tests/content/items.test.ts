@@ -197,7 +197,8 @@ describe('ids and sprites (GDD §15.3, §15.6)', () => {
       for (const anim of ['tied', 'freed', 'walk', 'give', 'run', 'caged', 'sack', 'mast', 'dangle', 'chute']) {
         expect(hasSprite(`item/hostage/${kind}/${anim}`), `${kind}/${anim}`).toBe(true);
       }
-      expect(frameCount(`item/hostage/${kind}/bow`), `${kind}/bow`).toBe(2);
+      // Anim wave (group npc, PEOPLE): the tourist (mission ams) bows in 5 tweened frames.
+      expect(frameCount(`item/hostage/${kind}/bow`), `${kind}/bow`).toBe(kind === 'tourist' ? 5 : 2);
       expect(frameCount(`item/hostage/${kind}/gag`), `${kind}/gag`).toBe(4);
     }
     expect(BIND_IDS).toEqual(['chair', 'cage', 'sack', 'float', 'balloon']);

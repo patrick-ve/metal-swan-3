@@ -54,14 +54,19 @@ export function playerNear(world: World, x: number, y: number, dx: number, dy: n
 
 // ============================================================================== ambient
 
-/** The tour boat's diesel loop: plays while the boat is within this margin of the view. */
-export const TOUR_BOAT = { sfx: 'ams/tour-boat', margin: 48, vol: 0.6 } as const;
+/**
+ * The tour boat's diesel loop: plays while the boat is within this margin of the view.
+ * `turn`: ticks of the end-of-run turn (squash 2 frames, flip, back; the boat waits meanwhile).
+ */
+export const TOUR_BOAT = { sfx: 'ams/tour-boat', margin: 48, vol: 0.6, turn: 24 } as const;
 
 export class AmsTourBoat extends Entity {
   readonly x0: number;
   readonly range: number;
   readonly speed: number;
   private t = 0;
+  /** Ticks left of the end-of-run turn (0 = cruising). */
+  private turnT = 0;
   /** Its engine loop is playing (key `tour-boat-<id>`). */
   private looping = false;
   /** The section or the mission ended ('stopLoops'): the loop stays off. */
@@ -101,13 +106,18 @@ export class AmsTourBoat extends Entity {
     this.engine(!this.silenced && !farOff(this, TOUR_BOAT.margin));
     if (farOff(this, 320)) return;
     this.t++;
+    if (this.turnT > 0) {
+      // Turning at the end of the run: the facing flips half-way through the squash.
+      if (--this.turnT === TOUR_BOAT.turn / 2) this.facing = this.facing > 0 ? -1 : 1;
+      return;
+    }
     this.x += this.facing * this.speed;
     if (this.x > this.x0 + this.range) {
       this.x = this.x0 + this.range;
-      this.facing = -1;
+      this.turnT = TOUR_BOAT.turn;
     } else if (this.x < this.x0) {
       this.x = this.x0;
-      this.facing = 1;
+      this.turnT = TOUR_BOAT.turn;
     }
   }
 
@@ -115,6 +125,11 @@ export class AmsTourBoat extends Entity {
     drawOpts.flipX = this.facing < 0;
     drawOpts.flash = false;
     const bob = Math.round(Math.sin((this.t / 90) * TAU));
+    if (this.turnT > 0) {
+      const k = Math.floor((TOUR_BOAT.turn - this.turnT) / (TOUR_BOAT.turn / 4));
+      r.sprite('npc/ams/ams-tour-boat/turn', k < 2 ? k : 3 - k, this.x, this.y + bob, drawOpts);
+      return;
+    }
     r.sprite('npc/ams/ams-tour-boat', (this.t >> 4) & 1, this.x, this.y + bob, drawOpts);
   }
 }
@@ -198,6 +213,8 @@ export class AmsPigeons extends Entity {
   private readonly act: Uint8Array;
   private readonly timer: Uint16Array;
   private t = 0;
+  /** Tick of the scare (the 2-frame take-off plays from it, each bird a little later). */
+  private fledAt = 0;
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     super(world, x, y);
@@ -227,6 +244,7 @@ export class AmsPigeons extends Entity {
   scare(fromX: number): void {
     if (this.fled) return;
     this.fled = true;
+    this.fledAt = this.t;
     const rng = this.world.fxRng;
     for (let i = 0; i < this.count; i++) {
       const away = this.px[i] >= fromX ? 1 : -1;
@@ -275,10 +293,17 @@ export class AmsPigeons extends Entity {
     drawOpts.flash = false;
     for (let i = 0; i < this.count; i++) {
       let f: number;
-      if (this.fled) f = ((this.t + i * 3) >> 2) & 1 ? 3 : 4;
-      else f = this.act[i] === 1 ? ((this.t >> 3) & 1 ? 1 : 0) : this.act[i] === 2 ? ((this.t >> 3) & 1 ? 2 : 0) : 0;
+      let id = 'npc/ams/ams-pigeons';
+      if (this.fled) {
+        // Take-off: crouch, push off (3 ticks each, staggered by bird), then the flap.
+        const k = this.t - this.fledAt - (i % 3);
+        if (k < 6) {
+          id = 'npc/ams/ams-pigeons/takeoff';
+          f = k < 3 ? 0 : 1;
+        } else f = ((this.t + i * 3) >> 2) & 1 ? 3 : 4;
+      } else f = this.act[i] === 1 ? ((this.t >> 3) & 1 ? 1 : 0) : this.act[i] === 2 ? ((this.t >> 3) & 1 ? 2 : 0) : 0;
       drawOpts.flipX = this.dir[i] < 0;
-      r.sprite('npc/ams/ams-pigeons', f, this.px[i], this.py[i], drawOpts);
+      r.sprite(id, f, this.px[i], this.py[i], drawOpts);
     }
     drawOpts.flipX = false;
   }
@@ -339,13 +364,17 @@ export class AmsDucks extends Entity {
   override draw(r: Renderer): void {
     drawOpts.flash = false;
     for (let i = 0; i < this.count; i++) {
-      const f = (i % 2 ? 2 : 0) + (((this.t >> 4) + i) & 1);
+      // 4-step paddle (8 ticks a step, the same 32-tick cycle as before); drakes 0–3, hens 4–7.
+      const f = (i % 2 ? 4 : 0) + (((this.t >> 3) + i * 2) & 3);
       drawOpts.flipX = this.dir[i] < 0;
-      r.sprite('npc/ams/ams-ducks', f, this.px[i], this.y, drawOpts);
+      r.sprite('npc/ams/ams-ducks/paddle', f, this.px[i], this.y, drawOpts);
     }
     drawOpts.flipX = false;
   }
 }
+
+/** Ticks per lean frame of the window waver (3 frames in, 3 out). */
+const LEAN_TICKS = 3;
 
 export class AmsWindowWaver extends Entity {
   readonly cat: boolean;
@@ -383,12 +412,27 @@ export class AmsWindowWaver extends Entity {
     }
   }
 
+  /** Lean frame (0–2) while the person rises into / sinks out of the window, else −1 (draw only). */
+  private lean(): number {
+    const t = this.t % this.period;
+    if (t >= 100 && t < 100 + LEAN_TICKS * 3) return Math.floor((t - 100) / LEAN_TICKS);
+    if (t >= 280 - LEAN_TICKS * 3 && t < 280) return 2 - Math.floor((t - (280 - LEAN_TICKS * 3)) / LEAN_TICKS);
+    return -1;
+  }
+
   override draw(r: Renderer): void {
     drawOpts.flipX = false;
     drawOpts.flash = false;
     const x = this.x;
     const y = this.y;
-    if (this.cat) r.sprite('npc/ams/ams-window-waver/cat', (this.t >> 5) & 1, x, y, drawOpts);
+    if (this.cat) {
+      // 4-step tail swish (durations in the strip: 48 ticks a cycle).
+      const c = (this.t % 48);
+      r.sprite('npc/ams/ams-window-waver/cat-swish', c < 14 ? 0 : c < 24 ? 1 : c < 38 ? 2 : 3, x, y, drawOpts);
+      return;
+    }
+    const k = this.lean();
+    if (k >= 0) r.sprite('npc/ams/ams-window-waver/lean', k, x, y, drawOpts);
     else r.sprite('npc/ams/ams-window-waver/person', this.frame(), x, y, drawOpts);
   }
 }

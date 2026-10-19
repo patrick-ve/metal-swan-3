@@ -275,11 +275,11 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
   it.each(ALL)('%s: legs with hip points, feet on the ground line', (c) => {
     const P = `char/${c}/`;
     for (const [a, n, exact] of [
-      ['idle', 1, false],
-      ['run', 8, true],
-      ['jump', 2, false],
-      ['fall', 1, false],
-      ['land', 1, false],
+      ['idle', 4, false],
+      ['run', 12, true],
+      ['jump', 4, false],
+      ['fall', 2, false],
+      ['land', 3, false],
       ['crouch', 1, false],
       ['crouch-walk', 6, true],
     ] as const) {
@@ -482,8 +482,11 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     const ids = listSprites('char/');
     // Per character: legs 7, torsos 22 (pistol 10 with the up diagonal, heavy 12 with both;
     // + 22 helium, + 22 helium-wob), bored and victory (× 3), die, die-burn, die-blast, spawn,
-    // mount, salute, portrait and the 9 rider strips.
-    for (const c of ALL) expect(listSprites(`char/${c}/`).filter((id) => !SELECT_ART.test(id)).length, c).toBe(7 + 66 + 6 + 7 + 9);
+    // mount, salute, portrait and the 9 rider strips; + 5 of anim wave p1 (flip, mount-hop,
+    // legs-dangle, die-drown, die-flat); + 16 of anim wave p2 (legs-crouch-in / -out,
+    // timeout-yawn / -sleep, and per weapon torso run, crouch, crouch-shoot, -throw, -knife, knife-b)
+    // + 2 idle fidgets (fidget-a / -b).
+    for (const c of ALL) expect(listSprites(`char/${c}/`).filter((id) => !SELECT_ART.test(id)).length, c).toBe(7 + 66 + 6 + 7 + 9 + 5 + 16 + 2);
     expect(ids.length).toBeGreaterThanOrEqual(ALL.length * 95);
     for (const id of ids) {
       for (const f of getFrames(id)) {

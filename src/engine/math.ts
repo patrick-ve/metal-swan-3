@@ -89,6 +89,18 @@ export const easeOutQuad = (t: number): number => t * (2 - t);
 export const easeInOutQuad = (t: number): number =>
   t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) * (-2 * t + 2)) / 2;
 
+/** Ease out with a small overshoot past 1 (follow-through), back to 1 at t = 1. */
+export const easeOutBack = (t: number, s = 1.70158): number => 1 + (s + 1) * (t - 1) ** 3 + s * (t - 1) ** 2;
+
+/**
+ * Playback rate of a stride strip (Animator.update(rate)) for a body moving at `speed` whose strip
+ * is drawn for `nominal` speed: |speed| / nominal, clamped to [min, max]. `min` when nominal <= 0.
+ */
+export function strideRate(speed: number, nominal: number, min = 0.5, max = 1.6): number {
+  if (!(nominal > 0)) return min;
+  return clamp(Math.abs(speed) / nominal, min, max);
+}
+
 export function rect(x: number, y: number, w: number, h: number): Rect {
   return { x, y, w, h };
 }

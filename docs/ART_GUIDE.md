@@ -72,6 +72,13 @@ Check it: `npm run sprites -- <prefix> --density 2 --marks` (2× sheet, points w
 reads them), `npm run shot -- --mission ams --res 2` (or `--res 5`) for the game look, `--art 1`
 for the 1× look. `tests/engine/hires-density.test.ts` checks the geometry of every 2× sprite.
 
+**Spike: half-pixel joints (`HALF_PX_JOINTS`, default OFF; plan Phase 4, user A/B).** In
+`humanoid.ts`, `setHalfPxJoints(on)` makes `cp()` round joints to 0.5 on the 1× grid at density 2,
+so the 2× drawers (which place by `v * 2`) can move a limb by one 2× pixel. Frame size, anchor
+and points stay the 1× geometry (`tests/engine/hires.test.ts` checks the fixture with the flag on
+and off). Try it with `npm run sprites -- <prefix> --density 2 --half-px` and
+`npm run anim-bench -- --half-px`. The user decides whether it goes on.
+
 ### 2x backgrounds and terrain (mission ams)
 
 Parallax layers and terrain can have 2× art too; the rules of the table above apply (same
@@ -137,15 +144,38 @@ byte-identical (fixtures/scenery-1x.json).
 
 | Animation | Frames | Timing |
 |---|---|---|
-| legs-run / enemy run | 8 (contact, down, passing, push-off ×2) | 4 per frame |
+| player `legs-run` | 12 (`runPoses(style, run8)`: the 8 keys + eased in-betweens) | 3 per frame, scaled by `strideRate` |
+| player `torso-<w>-run` | 12 (index synced to the legs) | follows the legs |
+| enemy run | 8 (contact, down, passing, push-off ×2) | 4 per frame |
 | walk | 8 | 6 |
 | crouch-walk | 6 | 6 |
-| idle (breathing) | 2 | 20–24 |
+| player `legs-idle` / `torso-<w>-idle` | 4 / 4 (hand-keyed breathing, `idlePoses`) | 16 / 12 |
+| enemy idle (breathing) | 2 | 20–24 |
+| player `legs-jump` / `legs-fall` / `legs-land` | 4 / 2 loop / 3 | 3 / 8 / 2,3,4 (`LAND_TIMING`) |
+| player `legs-crouch-in` / `legs-crouch-out` | 3 / 2 (draw-only `crouchT`) | 2 each |
+| player `torso-<w>-crouch` (+ `-shoot`, `-throw`, `-knife`) | 4 (+ 2, 6, 6) | 12 |
 | shoot | 2 (recoil, rest) | 3–4, no loop |
-| throw | 5 (wind-up, cock, release, follow-through, recover) | 5,4,3,5,6 |
-| knife | 5 (raise, slash, follow-through ×2, recover) | 3,3,3,4,5 |
-| die | 6 (hit, fall back, airborne, land, bounce, still) | last frame long |
+| player throw (`P.THROW6`) | 6 (wind-up, cock, release = index 2, follow-through, settle, recover) | `P.THROW6_TIMING` (23); the game starts at the release frame |
+| enemy throw | 5 (wind-up, cock, release, follow-through, recover) | 5,4,3,5,6 |
+| player knife / `knife-b` | 6 / 6 (anticipation first; a/b alternate by `knifeCount`) | `knifeTiming(6)`, sum 14 |
+| enemy knife | 5 (raise, slash, follow-through ×2, recover) | 3,3,3,4,5 |
+| player `flip` (running jump) | 14 (`rot` 0 → 360) | 2 |
+| player `die` | 12 (DIE keys with `DIE12_BOUNCE` + eased in-betweens + hand-keyed settle) | `P.DIE12_TIMING` |
+| player `die-blast` / `die-drown` / `die-flat` | 10 / 12 / 7 | — / `P.DROWN_TIMING` (60) / `CRUSH_TIMING` |
+| enemy die | 6 (hit, fall back, airborne, land, bounce, still) | last frame long |
 | die-burn | 7 (2 on fire, smoking statue, statue, crumble ×2, ash) | |
+| player `victory` / `spawn` | 8 / 6 | 4 (8 with a hero table) / — |
+| player `fidget-a` / `fidget-b` (deferred) | 10 defaults, 9–14 per squad hero | `P.FIDGET_A_TIMING` / hero tables |
+| player `timeout-yawn` / `timeout-sleep` (deferred) | 8 / 4 loop | — |
+| player `mount-hop` (deferred) / `legs-dangle` | 5 / 6 loop | 3,3,3,3,4 / 6 |
+| `fx/chute` / `fx/chute-collapse` / `fx/snore` (deferred) | 6 loop / 8 / 6 | — / — / 8 |
+| riders (`enemy/fatbike-youth*`, `delivery-rider*`) | ride 8, idle 4, turn 3, tell 4, kick 4; fatbike `die-seat` 6, `get-up` 5 (deferred) | `RIDE_DURATIONS` (20-tick crank), `KICK_DURATIONS` [2,1,3,30] |
+| `enemy/seagull` | walk 6, idle 6, takeoff 3, pull-up 2, turn 2 | — |
+| `enemy/handhaver*` | idle 4, walk (with swing), turn 2, throw 5 | 12 / `HANDHAVER_WALK_TPF` |
+| ams people (baker, vendor, staff 0–2) | idle 4, clap 4, wave 4, `in-<mode>` 2, turn 2 | `PERSON_TR_TICKS` 3, `PERSON_TURN_TICKS` 2 |
+| tourist hostage | bow 5, freed 7, turn 2, sack-turn 2 | — |
+| ams ambient | pigeons takeoff 2, ducks paddle 4, waver cat-swish 4 / lean 3, tour boat turn 2 | — |
+| `boss/ams-mayor` | stamp-arm-0/1/2 12 (6 poses × 2 facings), arm-back 13, legs 11, wig 8 | — |
 | explosions | 7–12 | 3–4 |
 
 Each sprite registers its own defaults (`ticksPerFrame`, `durations`, `loop`), so
@@ -251,7 +281,13 @@ strip for every id that is missing.
 `STAND`, `RUN` (8), `WALK` (8), `CROUCH`, `CROUCH_WALK` (6), `JUMP` (2), `FALL`, `LAND`,
 `BREATH` (2), `THROW` (5), `KNIFE` (5), `DIE` (6), `DIE_BLAST` (5), `DIE_KNIFE` (5), `BURN` (2),
 `PANIC_COWER` (4, hands up, knees knocking), `PANIC_FLAIL` (4, arm-flail run for civilians),
-`VICTORY` (4), `SPAWN` (4), `MOUNT` (2). Merge them over a base with `seq(base, frames)`;
+`VICTORY` (4), `SPAWN` (4), `MOUNT` (2). Animation wave (players): `BREATH4` (4), `CROUCH_TORSO`
+(4), `JUMP4`, `FALL2`, `LAND3`, `THROW6` (+ `THROW6_TIMING`), `KNIFE_B` (6), `DIE12_BOUNCE`,
+`DIE12_SETTLE` (+ `DIE12_TIMING`), `DROWN` (12, + `DROWN_TIMING`; the near arm swings up and back
+so the face stays visible at 2×), `FLIP_KEYS`, `MOUNT_HOP`, `DANGLE_KEYS`, `FIDGET_A_KEYS` /
+`FIDGET_B_KEYS` (+ `_PER`, `_TIMING`). Builders in `human-sprites.ts`: `runPoses`, `idlePoses`,
+`knifePoses`, `diePoses`, `flipPoses`, `danglePoses`, `drownFrames`, `crouchOutPoses`.
+Merge them over a base with `seq(base, frames)`;
 `swapLegs(p)` mirrors a leg phase; `withSwing(poses, k, elbow)` adds arm swing to leg cycles.
 
 ### Adding a playable character (≈ 30 lines)
@@ -538,3 +574,73 @@ Rules learned while building it:
   damage marks. The recruit uses the 2× head rig (`renderHeadHi`).
 - **Look:** `npm run sprites -- fps/ --ray` writes `ray-tex-*` (each texture twice side by side
   plus its dark side) and `ray-bb-*` (one row per yaw; one-frame items and props share rows).
+
+## Motion
+
+Smooth animation with the 1990s arcade *fidelity* (frame counts, timing, anticipation,
+follow-through, in-betweens), never its looks: every frame is our own rig, styles and palette.
+
+### The 9 motion rules
+
+1. **Own looks.** Existing styles, rig and 64-colour palette. Never copy a reference pose.
+2. **Key, then tween.** Hand-key 3–6 poses; generate in-betweens with `tween` + an easing.
+   Hand-key tiny motions (idle, breathing): a tween of a 1-px move only makes duplicate frames.
+3. **One-shot actions:** anticipation (1–2 frames), fast action (1–2 ticks/frame), follow-through
+   and settle (2–3 frames). Loops ease at the turning points.
+4. **Control first.** Shoot, knife, throw, hit, jump, land, vehicle and victory cancel a cosmetic
+   strip on the same tick. The player keeps instant turns. Hitboxes, muzzle origins, release
+   frames and sim timing do not change.
+5. **Transitions are draw-only timers.** Gameplay reads the steady-state strips.
+6. **Smoothness gate:** no two consecutive frames identical; joint travel ≤ 3 px per displayed
+   tick at 1× (after `rot`/`dx`/`dy`); at most 2 frames per strip marked smear.
+7. **Determinism:** no `Math.random` / `Date`; variants by per-entity counters, never
+   `world.rng` / `fxRng`.
+8. **Budget:** report frames added and generation ms (`npm run anim-bench`); limits in
+   `tmp/anim-budget.md`.
+9. **Per-hero tables:** wrap them generically; rewrite a hero's own table only in its owner area.
+
+### Tween API (`src/game/art/tween.ts`)
+
+`inbetween(style, a, b, t, {hold?})` and `tween(style, keys, {counts | perKey, ease, loop, hold})`.
+Numbers lerp (a missing side is neutral: 0, or `legScale` from `crouch`); angles take the
+shortest arc; `rot` lerps literally (0 → 360 = one flip); `armN/armF`, `flutter`, `heldAngle`,
+`gunAngle` are never invented (the nearer key holds); discrete fields switch at t ≥ 0.5 or by
+`hold`; an FK arm against an IK arm converts the IK one with `poseJoints`; `head.tilt` snaps to
+0 / ±8; a `grounded` change makes airborne in-betweens that lerp the pelvis height.
+Easings: `EASE.linear | in | out | inOut | outBack`.
+
+```ts
+import { tween } from '../art/tween';
+// Anticipation, strike, follow-through, settle: 4 keys, eased in-betweens.
+const KEYS: Pose[] = [READY, WIND, STRIKE, SETTLE];
+const poses = tween(style, KEYS, {
+  perKey: [1, 0, 2],               // in-betweens per key pair
+  ease: ['in', 'linear', 'outBack'],
+});
+defHi(pre + 'swing', full(poses), { durations: [4, 3, 2, 2, 3, 4, 6], loop: false });
+// Loops: tween(style, RUN, { counts: 1, ease: 'linear', loop: true }) wraps last -> first.
+```
+
+### Smoothness gate (`tests/art/motion.ts`)
+
+`poseJoints(style, pose)` (humanoid.ts) gives the solved joints in 1× px. `motionReport({style,
+poses, durations, smear?, loop?})` gives the largest joint travel per displayed tick for each step;
+`assertSmooth(opts, 3)` fails with the step index; `assertNoDuplicateFrames(id)` compares the
+rendered frames of a sprite id at 1× and 2×. Today: `legs-run` worst 1.97 px/tick, `die` worst
+2.56 px/tick (recruit).
+
+### Creature turns
+
+`turnSquash(frame, widths = [0.66, 0.33])` (`creatures/draw.ts`) squeezes a frame to each width,
+ground-anchored on the same anchor column, despeckled and re-outlined (any density). `Turner`
+(`creatures/common.ts`) times it: a turn starts only after the target was ≥ 12 px behind for ≥ 8
+ticks; `frame()` narrows, `facing` flips at the midpoint, then it widens; `snap(f)` cancels.
+
+### Engine hooks (docs/api/media.md §5, §8)
+
+- `Animator.update(rate)` with `strideRate(speed, nominal)` (`math.ts`): a walk or run cycle that
+  follows the speed (draw-side only). `easeOutBack` is the shared overshoot curve.
+- `SpriteOpts.defer`: rare cosmetic strips (fidgets, timeout, drown, get-up) leave the boot
+  preload and come last in the 2× preload; first use makes them.
+- `npm run anim-bench` (baseline `tmp/anim-baseline.json`, budget `tmp/anim-budget.md`) and
+  `npm run geometry-fixture -- <ids>` (verifiers only, for strips changed on purpose).

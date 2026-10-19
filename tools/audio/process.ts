@@ -45,13 +45,19 @@ export const ROBOT_FILTER =
 
 // ------------------------------------------------------------------------------------------ ffmpeg I/O
 
+/**
+ * Upper bound for one ffmpeg run. spawnSync blocks the whole process, so a test runner's own
+ * timeout cannot fire; a rare hang on the stdin pipe would stall a test run forever without it.
+ */
+const FFMPEG_TIMEOUT_MS = 120_000;
+
 /** Decodes any audio file to `nch` float channels at 44.1 kHz, with an optional ffmpeg filter. */
 export function decode(file: string, nch: 1 | 2, filter?: string): Float32Array[] {
   const args = ['-v', 'error', '-i', file];
   if (filter) args.push('-af', filter);
   args.push('-f', 'f32le', '-ac', String(nch), '-ar', String(FS), 'pipe:1');
-  const r = spawnSync(FFMPEG, args, { maxBuffer: 1 << 30 });
-  if (r.status !== 0) throw new Error(`ffmpeg decode failed for ${file}: ${r.stderr?.toString().trim()}`);
+  const r = spawnSync(FFMPEG, args, { maxBuffer: 1 << 30, timeout: FFMPEG_TIMEOUT_MS });
+  if (r.status !== 0) throw new Error(`ffmpeg decode failed for ${file}: ${r.error?.message ?? r.stderr?.toString().trim()}`);
   const buf = r.stdout;
   const all = new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength - (buf.byteLength % 4)));
   const frames = Math.floor(all.length / nch);
@@ -70,9 +76,9 @@ export function encodeMp3(channels: readonly Float32Array[], file: string): void
   const r = spawnSync(
     FFMPEG,
     ['-v', 'error', '-y', '-f', 'f32le', '-ar', String(FS), '-ac', String(nch), '-i', 'pipe:0', '-c:a', 'libmp3lame', '-b:a', '128k', file],
-    { input: Buffer.from(inter.buffer), maxBuffer: 1 << 26 },
+    { input: Buffer.from(inter.buffer), maxBuffer: 1 << 26, timeout: FFMPEG_TIMEOUT_MS },
   );
-  if (r.status !== 0) throw new Error(`ffmpeg encode failed for ${file}: ${r.stderr?.toString().trim()}`);
+  if (r.status !== 0) throw new Error(`ffmpeg encode failed for ${file}: ${r.error?.message ?? r.stderr?.toString().trim()}`);
 }
 
 // ------------------------------------------------------------------------------------------ DSP

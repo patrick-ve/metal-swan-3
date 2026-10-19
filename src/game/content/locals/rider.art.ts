@@ -9,10 +9,13 @@
  *   small speaker on the rear rack) or `city` (thin tyres r 8, phone on the bar).
  * - The delivery rider wears the green cube backpack (a `withPieces` piece behind the torso).
  *
- * Strips per set (`enemy/<set>/…`): idle (2), ride (4, pedalling), gag (4: fatbike = head bob to
- * the music, delivery = checking his phone), alert (1), tell (2: fatbike wheelie, delivery bell),
- * kick (2), photo-pose (2), die / die-knife / die-blast / die-burn / die-crush (the rider alone,
- * the bike leaves as an fx), flee (4: runs off), bike (6: the riderless bike skids and fades),
+ * Strips per set (`enemy/<set>/…`): idle (4, breathing + blink), ride (8 crank positions, 4 upper
+ * poses), turn (3: the idle frame squeezed, drawn by `Rider` on a facing change), gag (4: fatbike
+ * = head bob to the music, delivery = checking his phone), alert (1), tell (fatbike: 4-frame
+ * wheelie, the bike tilt tweened; delivery: 2-frame bell), kick (4: chamber, swing, extend,
+ * retract), photo-pose (2), die / die-knife / die-blast / die-burn / die-crush (the rider alone,
+ * the bike leaves as an fx), fatbike only: die-seat (6) and get-up (5) (deferred; falls off the
+ * seat, gets up, then flee), flee (4: runs off), bike (6: the riderless bike skids and fades),
  * cap (4: the flying cap), food-cube (4: the popped cube backpack).
  *
  * 2× art (mission ams): every strip is registered again at density 2 — the rider from the rig at
@@ -31,7 +34,8 @@ import { blastFrames, burnFrames } from '../../art/human-sprites';
 import { renderHuman, type ArmPose, type Density, type HumanStyle, type LegPose, type Pose } from '../../art/humanoid';
 import * as P from '../../art/poses';
 import { R } from '../../art/paint';
-import { CRUSH_TIMING, FLAT, Sketch, crushStrip } from '../creatures/draw';
+import { CRUSH_TIMING, FLAT, Sketch, crushStrip, turnSquash } from '../creatures/draw';
+import { inbetween, tween } from '../../art/tween';
 
 export type BikeKind = 'fat' | 'city';
 
@@ -645,6 +649,59 @@ const PASSENGER_KICK: readonly Pose[] = [
   { lean: -20, armN: { sh: 150, el: 10, hand: 'open' }, armF: { sh: -40, el: 20, hand: 'grip' }, legN: { hip: 88, knee: 0, foot: 20 }, legF: { hip: 40, knee: 80 }, legScale: 1.4, expr: 'shout' },
 ];
 
+/** Turn-around squash widths (3 frames; `Rider` plays them narrowing, flips, then widening). */
+export const TURN_WIDTHS: readonly number[] = [0.75, 0.5, 0.25];
+/** Ride: 8 crank positions; durations keep the old 20-tick crank turn. */
+export const RIDE_DURATIONS: readonly number[] = [3, 2, 3, 2, 3, 2, 3, 2];
+/** Idle: breathe in, hold, breathe out, blink. */
+export const IDLE_DURATIONS: readonly number[] = [10, 5, 10, 5];
+/** Wheelie tell: the front comes up over 3 frames, then rocks on the back wheel (bike tilt, °). */
+export const WHEELIE_TILT: readonly number[] = [-7, -13, -18, -16];
+export const WHEELIE_DURATIONS: readonly number[] = [3, 3, 4, 6];
+/** Kick: chamber, (smear) in-between, full extension, retract — inside the 6-8 tick kick window. */
+export const KICK_DURATIONS: readonly number[] = [2, 1, 3, 30];
+/** Fall off the seat (rider alone, bike gone as an fx) and the get-up before the flee. */
+export const DIE_SEAT_DURATIONS: readonly number[] = [4, 3, 3, 5, 6, 20];
+export const GET_UP_DURATIONS: readonly number[] = [8, 5, 5, 4, 4];
+
+/** Four upper-body poses for the 8-frame ride (lean in, ease, lean deeper, ease back). */
+function rideUpper(style: HumanStyle): Pose[] {
+  const [a, b] = P.RIDE_LEAN;
+  return [a, { ...inbetween(style, a, b, 0.5), head: { dx: 1, dy: 1 } }, b, inbetween(style, b, a, 0.5)];
+}
+
+/** Idle breathing (hand-keyed 1-px motion) with a blink on the way back. */
+function idleUpper(style: HumanStyle): Pose[] {
+  const [a, b] = P.RIDE_SIT;
+  const m = inbetween(style, a, b, 0.5);
+  return [a, { ...m, head: { dy: 1 } }, b, { ...m, expr: 'blink' }];
+}
+
+/** Kick keys + eased in-betweens: chamber, mid-swing, extended, retract. */
+function kick4(style: HumanStyle, keys: readonly Pose[], back: Pose): Pose[] {
+  return [keys[0], inbetween(style, keys[0], keys[1], 0.5), keys[1], inbetween(style, keys[1], back, 0.45)];
+}
+
+/** Seat on the saddle (rider alone; hip lifted to the fatbike saddle). */
+const FALL_SEAT: Pose = { legN: { hip: 70, knee: 80 }, legF: { hip: 55, knee: 95 }, armN: A_(60, 50), armF: A_(80, 40), lean: -10, grounded: false, dy: -8, expr: 'hurt' };
+const DIE_SEAT_KEYS: readonly Pose[] = [
+  FALL_SEAT,
+  { legN: { hip: 80, knee: 50 }, legF: { hip: 60, knee: 70 }, armN: A_(140, 40), armF: A_(160, 30), lean: -10, rot: -40, grounded: false, dy: -7, expr: 'hurt' },
+  P.DIE[3],
+  P.DIE[4],
+  P.DIE[5],
+];
+const GET_UP_KEYS: readonly Pose[] = [
+  P.DIE[5],
+  { legN: { hip: 90, knee: 110 }, legF: { hip: 60, knee: 120 }, armN: A_(30, 10), armF: A_(20, 20), rot: -45, lean: 10, grounded: false, dy: -1, expr: 'dazed' },
+  { ...P.CROUCH, armN: A_(30, 10), armF: A_(20, 10), lean: 20, expr: 'dazed' },
+  { ...P.STAND, armN: A_(40, 40), armF: A_(20, 50), lean: 6, expr: 'panic' },
+  P.PANIC_FLAIL[0],
+];
+function A_(sh: number, el: number): ArmPose {
+  return { sh, el, hand: 'open' };
+}
+
 const PASSENGER_SIT: Pose = { lean: 2, armN: { sh: 30, el: 60, hand: 'grip' }, armF: { sh: 20, el: 70, hand: 'grip' }, legN: { hip: 70, knee: 80 }, legF: { hip: 60, knee: 90 } };
 
 // ------------------------------------------------------------------------------------ sets
@@ -666,7 +723,7 @@ export interface RiderSetOpts {
   same?: string;
 }
 
-type StripOpts = { ticksPerFrame?: number; durations?: readonly number[]; loop?: boolean };
+type StripOpts = { ticksPerFrame?: number; durations?: readonly number[]; loop?: boolean; defer?: boolean };
 
 /** Register a trimmed strip at 1× and its 2× twin (the same recipe at density 2). */
 const def = (id: string, gen: (d: Density) => Frame[], o: StripOpts = {}): void => defineSprite(id, () => gen(1), { trim: true, ...o, hi: () => gen(2) });
@@ -684,8 +741,12 @@ export function defineRiderSet(set: string, o: RiderSetOpts): void {
   };
   const lean = P.RIDE_LEAN;
   const sit = P.RIDE_SIT;
-  def(pre + 'ride', (d) => [0, 1, 2, 3].map((i) => combo(kind, color, i, 0, crew(lean[i % 2], i / 4), cube, d)), { ticksPerFrame: 5 });
-  def(pre + 'idle', (d) => [0, 1].map((i) => combo(kind, color, i * 2, 0, crew(sit[i], i / 2), cube, d)), { ticksPerFrame: 12 });
+  const up4 = rideUpper(style);
+  const idle4 = idleUpper(style);
+  def(pre + 'ride', (d) => [0, 1, 2, 3, 4, 5, 6, 7].map((i) => combo(kind, color, i % 4, 0, crew(up4[i % 4], i / 8), cube, d)), { durations: RIDE_DURATIONS });
+  def(pre + 'idle', (d) => [0, 1, 2, 3].map((i) => combo(kind, color, 0, 0, crew(idle4[i], 0), cube, d)), { durations: IDLE_DURATIONS });
+  // Turn-around (U-turn, circle ends, walls): the idle frame squeezed (draw-only, see Rider).
+  def(pre + 'turn', (d) => turnSquash(getFrames(pre + 'idle', d)[0], TURN_WIDTHS), { ticksPerFrame: 2, loop: false });
   def(pre + 'alert', (d) => [combo(kind, color, 0, 0, crew({ ...P.RIDE_UP[0], expr: 'shout' }, 0), cube, d)], { ticksPerFrame: 30 });
   if (o.gag === 'bob') {
     def(pre + 'gag', (d) => [0, 1, 2, 3].map((i) => combo(kind, color, i, 0, crew({ ...sit[0], head: { dy: i % 2, tilt: i % 2 ? 8 : -4 }, expr: i % 2 ? 'blink' : 'happy' }, i / 4), cube, d)), { ticksPerFrame: 7 });
@@ -697,18 +758,24 @@ export function defineRiderSet(set: string, o: RiderSetOpts): void {
   if (o.tell === 'wheelie') {
     // At 2× the passenger keeps a closed mouth: his open red mouth just behind the rider's neck
     // reads as a stray red mark.
-    def(pre + 'tell', (d) => [0, 1].map((i) => combo(kind, color, i * 2, -16 - i * 2, crew({ ...P.RIDE_UP[0], lean: -6, expr: 'shout' }, i / 2, { ...PASSENGER_SIT, lean: -10, expr: d === 1 ? 'shout' : 'normal' }), cube, d)), { ticksPerFrame: 6 });
+    // The bike tilt is tweened (−7 → −18), then it rocks on the back wheel; the strip holds its
+    // last frame for the rest of the telegraph.
+    def(pre + 'tell', (d) => WHEELIE_TILT.map((rot, i) => combo(kind, color, i, rot, crew({ ...P.RIDE_UP[0], lean: i < 1 ? -2 : -6, expr: 'shout' }, i / 4, { ...PASSENGER_SIT, lean: i < 1 ? -4 : -10, expr: d === 1 ? 'shout' : 'normal' }), cube, d)), { durations: WHEELIE_DURATIONS, loop: false });
   } else {
     // Ringing the bell: the near thumb flicks, he shouts.
     def(pre + 'tell', (d) => [0, 1].map((i) => combo(kind, color, i * 2, 0, crew({ ...lean[0], armN: grip(9, 1 + i), expr: i ? 'shout' : 'normal' }, i / 2), cube, d)), { ticksPerFrame: 5 });
   }
-  def(pre + 'kick', (d) => [0, 1].map((i) => combo(kind, color, i * 2, 0, pass ? crew(lean[0], i / 2, PASSENGER_KICK[i]) : crew(KICK_POSES[i], i / 2), cube, d)), { durations: [3, 30] , loop: false });
+  const kickR = kick4(style, KICK_POSES, { ...lean[0], expr: 'shout' });
+  const kickP = pass ? kick4(pass, PASSENGER_KICK, { ...PASSENGER_SIT, expr: 'shout' }) : null;
+  def(pre + 'kick', (d) => [0, 1, 2, 3].map((i) => combo(kind, color, i, 0, kickP ? crew(lean[0], i / 4, kickP[i]) : crew(kickR[i], i / 4), cube, d)), { durations: KICK_DURATIONS, loop: false });
   def(pre + 'photo-pose', (d) => [0, 1].map((i) => combo(kind, color, 0, 0, crew({ ...P.RIDE_CHEER[i], expr: 'happy' }, 0), cube, d)), { ticksPerFrame: 10 });
   // Deaths: the rider alone (the bike goes its own way as an fx).
   const bareStyle = style;
-  const rideOnly = (name: string, gen: (d: Density) => Frame[], so: StripOpts): void => {
+  // `all`: share the twin at 1× as well (the rider alone is the same art; used for the rare
+  // deferred strips to keep the rider set inside its generation budget).
+  const rideOnly = (name: string, gen: (d: Density) => Frame[], so: StripOpts, all = false): void => {
     const twin = o.same;
-    def(pre + name, (d) => (d !== 1 && twin ? [...getFrames(`enemy/${twin}/${name}`, d)] : gen(d)), so);
+    def(pre + name, (d) => ((d !== 1 || all) && twin ? [...getFrames(`enemy/${twin}/${name}`, d)] : gen(d)), so);
   };
   const people = (poses: readonly Pose[], hat: boolean) => (d: Density): Frame[] => poses.map((p) => {
     let f: Frame = renderHuman(bareStyle, { weapon: 'none', ...p, hat }, 'full', d);
@@ -722,6 +789,11 @@ export function defineRiderSet(set: string, o: RiderSetOpts): void {
   const stand = (d: Density): Frame => renderHuman(bareStyle, { weapon: 'none', ...P.STAND }, 'full', d);
   rideOnly('die-crush', (d) => (d === 1 ? crushStrip(stand(1)) : crushStripHi(stand(1), stand(2), getFrames(pre + 'die-crush', 1))), { durations: CRUSH_TIMING, loop: false });
   rideOnly('flee', people(P.PANIC_FLAIL, false), { ticksPerFrame: 4 });
+  if (o.tell === 'wheelie') {
+    // The youth falls off the seat, lies still, then gets up and runs (rare: deferred).
+    rideOnly('die-seat', people(tween(style, DIE_SEAT_KEYS, { perKey: [0, 1, 0, 0], ease: ['in', 'out', 'linear', 'linear'] }), false), { durations: DIE_SEAT_DURATIONS, loop: false, defer: true }, true);
+    rideOnly('get-up', people(GET_UP_KEYS, false), { durations: GET_UP_DURATIONS, loop: false, defer: true }, true);
+  }
   def(pre + 'bike', (d) => bikeWreck(kind, color, !!pass, d), { durations: [6, 6, 6, 8, 6, 6], loop: false });
   // The passenger jumps off and runs for it (an fx, see FatbikeYouth.deathEffects).
   if (pass) def(pre + 'passenger-flee', (d) => P.PANIC_FLAIL.map((p) => renderHuman(pass, { weapon: 'none', ...p, hat: false }, 'full', d)), { ticksPerFrame: 4 });

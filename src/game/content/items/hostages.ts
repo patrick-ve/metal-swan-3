@@ -14,13 +14,13 @@
  * (the gift pops from the hand) → a curtain-call bow → runs off left (GDD §7.2).
  */
 import type { Entity } from '../../../engine/entity';
-import type { Renderer } from '../../../engine/render';
+import type { DrawOpts, Renderer } from '../../../engine/render';
 import { hasSprite } from '../../../engine/sprites';
 import type { World } from '../../../engine/world';
 import { hudOf } from '../../context';
 import { Enemy } from '../../enemy';
 import { FxEntity } from '../../fx';
-import { Hostage, type HostageKind } from '../../hostage';
+import { Hostage, type HostageBind, type HostageKind } from '../../hostage';
 import { defineEntity, hasEntity, paramNum, paramStr, type SpawnParams } from '../../registry';
 import { makeBind } from './binds';
 import { contentsSpecs, KIND_TABLES } from './drops';
@@ -212,6 +212,56 @@ function defaultDrop(kind: HostageKindId, p: SpawnParams): unknown {
 // The entity
 // ---------------------------------------------------------------------------------------------
 
+const turnDraw: DrawOpts = {};
+/** Ticks per turn frame (= the `turn` strips' ticksPerFrame in hostage.art.ts). */
+const HOSTAGE_TURN_TICKS = 2;
+
+/**
+ * A hostage whose art has turn strips (the tourist: `turn`, `sack-turn`): a facing change plays
+ * the 2 squeezed frames narrowing in the old facing, then widening in the new one (draw only;
+ * the facing, the walk and the run change at once as before).
+ */
+export class TurningHostage extends Hostage {
+  /** Ticks left of the turn (0 = none). */
+  turnT = 0;
+  private turnFrom: 1 | -1 = -1;
+  private lastFacing: 1 | -1 = -1;
+  private turnStrip = '';
+  private readonly turnId: string;
+  private readonly sackTurnId: string;
+
+  constructor(world: World, x: number, y: number, p: SpawnParams, o: { kind: HostageKind | null; bind: HostageBind }) {
+    super(world, x, y, p, o);
+    this.turnId = `${this.art}/turn`;
+    this.sackTurnId = `${this.art}/sack-turn`;
+    this.lastFacing = this.facing < 0 ? -1 : 1;
+  }
+
+  override update(): void {
+    super.update();
+    if (this.removed) return;
+    const f: 1 | -1 = this.facing < 0 ? -1 : 1;
+    if (f !== this.lastFacing) {
+      const sack = this.state === 'tied' && this.bind.id === 'sack';
+      const id = sack ? this.sackTurnId : this.state === 'tied' || this.state === 'release' ? '' : this.turnId;
+      this.turnFrom = this.lastFacing;
+      this.lastFacing = f;
+      this.turnStrip = id;
+      this.turnT = id && hasSprite(id) && this.turnT === 0 ? 4 * HOSTAGE_TURN_TICKS : 0;
+    } else if (this.turnT > 0) this.turnT--;
+  }
+
+  override draw(r: Renderer): void {
+    if (this.turnT <= 0) return super.draw(r);
+    this.bind.drawBack?.(this, r);
+    const i = Math.floor((4 * HOSTAGE_TURN_TICKS - this.turnT) / HOSTAGE_TURN_TICKS);
+    turnDraw.flipX = (i < 2 ? this.turnFrom : this.facing) < 0;
+    r.sprite(this.turnStrip, i < 2 ? i : 3 - i, this.x + this.offX, this.y + this.offY, turnDraw);
+    this.bind.drawFront?.(this, r);
+    this.kind?.drawFront?.(this, r);
+  }
+}
+
 /** Build a hostage from spawn params (also used by tests and tools). */
 export function makeHostage(world: World, x: number, y: number, p: SpawnParams): Hostage {
   const id = kindId(paramStr(p, 'kind', 'critic'));
@@ -220,7 +270,9 @@ export function makeHostage(world: World, x: number, y: number, p: SpawnParams):
   if (value === undefined || ((id === 'composer' || id === 'dollop') && value === 'auto')) value = defaultDrop(id, p);
   const item = contentsSpecs(value, world, KIND_TABLES[id] ?? 'table-a')[0] ?? null;
   const bind = makeBind(paramStr(p, 'bind', 'chair'), p, y);
-  return new Hostage(world, x, y, { ...p, art, item }, { kind: KINDS[id], bind });
+  const o = { kind: KINDS[id], bind };
+  if (hasSprite(`${art}/turn`)) return new TurningHostage(world, x, y, { ...p, art, item }, o);
+  return new Hostage(world, x, y, { ...p, art, item }, o);
 }
 
 defineEntity('hostage', makeHostage, {

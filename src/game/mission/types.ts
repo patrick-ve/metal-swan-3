@@ -162,6 +162,12 @@ export interface MissionDef {
    * every other scene see density 1; frame geometry is the same at either density.
    */
   artDensity?: number;
+  /**
+   * The mission start drops the player in on a parachute (intro-drop status): only for a fresh
+   * start of the mission's `start` section (no startSection, no boss rush, no start or carried
+   * vehicle). Continue and a P2 join keep the normal respawn. Default off.
+   */
+  introDrop?: boolean;
   /** The players' footsteps are audible (`player/step` while running on foot; default off). */
   footsteps?: boolean;
   /**

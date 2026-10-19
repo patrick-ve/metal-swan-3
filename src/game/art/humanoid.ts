@@ -671,8 +671,32 @@ function rp(v: V): V {
   return [Math.round(v[0]), Math.round(v[1])];
 }
 
-/** Canvas pixel (1× grid) of a body-space point. */
+/**
+ * Spike (animation wave, plan Phase 4; user A/B, DEFAULT OFF): at density 2, joints round to half
+ * a 1× pixel instead of a whole one, so a 2× limb can move by one 2× pixel between frames. The 2×
+ * drawers already place by `v * 2`, so a half value lands on the 2× grid. Frame size, anchor and
+ * points stay the 1× geometry (renderHuman takes them from the 1× render).
+ */
+let HALF_PX_JOINTS = false;
+
+/** Turn the half-pixel joint spike on or off (A/B only; clear the sprite cache after a change). */
+export function setHalfPxJoints(on: boolean): boolean {
+  const prev = HALF_PX_JOINTS;
+  HALF_PX_JOINTS = on;
+  return prev;
+}
+
+/** Is the half-pixel joint spike on? */
+export function halfPxJoints(): boolean {
+  return HALF_PX_JOINTS;
+}
+
+/** Canvas pixel (1× grid) of a body-space point (half pixels at 2× under HALF_PX_JOINTS). */
 function cp(c: Ctx, p: V): V {
+  if (c.D === 2 && HALF_PX_JOINTS) {
+    const v = c.T(p);
+    return [Math.round(v[0] * 2) / 2, Math.round(v[1] * 2) / 2];
+  }
   return rp(c.T(p));
 }
 
@@ -1808,4 +1832,58 @@ export function stackFrames(legs: Frame, torso: Frame): Frame {
   for (const [k, p] of Object.entries(torso.pts ?? {})) pts[k] = [p[0] + hip[0], p[1] + hip[1]];
   const f: Frame = { buf: out, ox: -left, oy: -top, pts };
   return d === 1 ? f : { ...f, density: d };
+}
+
+/** Named joint points of a solved pose (docs/ART_GUIDE.md "Motion"). */
+export interface PoseJoints {
+  pelvis: [number, number];
+  neck: [number, number];
+  hipN: [number, number];
+  kneeN: [number, number];
+  ankleN: [number, number];
+  hipF: [number, number];
+  kneeF: [number, number];
+  ankleF: [number, number];
+  shN: [number, number];
+  elN: [number, number];
+  wrN: [number, number];
+  shF: [number, number];
+  elF: [number, number];
+  wrF: [number, number];
+}
+
+/** Joint names of PoseJoints, in a fixed order. */
+export const JOINT_NAMES = ['pelvis', 'neck', 'hipN', 'kneeN', 'ankleN', 'hipF', 'kneeF', 'ankleF', 'shN', 'elN', 'wrN', 'shF', 'elF', 'wrF'] as const;
+
+/**
+ * The joints of `pose` for `style`, in 1× canvas px relative to the feet anchor (x forward, y
+ * down; unrounded), after `rot` (about the pelvis), `dx` and `dy` — the same placement
+ * renderHuman uses (without the lying-figure re-grounding of turned grounded poses). For the
+ * tween helper and the smoothness gate (src/game/art/tween.ts, tests/art/motion.ts).
+ */
+export function poseJoints(style: HumanStyle, pose: Pose = {}): PoseJoints {
+  const sk = solve(resolve(style), pose);
+  const rot = pose.rot ?? 0;
+  const dx = pose.dx ?? 0;
+  const dy = pose.dy ?? 0;
+  const T = (p: V): [number, number] => {
+    const r = rotateAbout(p, sk.pelvis, rot);
+    return [r[0] + dx, r[1] + dy];
+  };
+  return {
+    pelvis: T(sk.pelvis),
+    neck: T(sk.neck),
+    hipN: T(sk.hipN),
+    kneeN: T(sk.kneeN),
+    ankleN: T(sk.ankleN),
+    hipF: T(sk.hipF),
+    kneeF: T(sk.kneeF),
+    ankleF: T(sk.ankleF),
+    shN: T(sk.shN),
+    elN: T(sk.elN),
+    wrN: T(sk.wrN),
+    shF: T(sk.shF),
+    elF: T(sk.elF),
+    wrF: T(sk.wrF),
+  };
 }

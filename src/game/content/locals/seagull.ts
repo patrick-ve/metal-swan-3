@@ -12,20 +12,24 @@
  *   The peck is contact damage ONLY while diving; the rest of the time the gull is harmless.
  * - `flock: n` (2–5): the spawn is a flock of n gulls that share one hover area (spread round
  *   the player) and take turns diving (pattern: kazoo-drone `KazooFormation`).
+ * - Motion (draw-only, docs/ART_GUIDE.md "Motion"): a 3-frame take-off off the perch, a 2-frame
+ *   pull-up out of the dive, and a 2-frame squash turn (Turner hysteresis) instead of an instant
+ *   mid-air flip. A tell or a dive cancels them on the same tick; the tell timing is unchanged.
  * - Death: a feather puff; it falls (into the canal over water: a splash, gone).
  *
  * Params: `perch`, `gag` (`sleep` / `fries` / true / false), `flock`, `enter` / `entry`
  * (`left` / `right` / `top`: flies in), `facing`, + the Enemy params `hp`, `drop`, `tag`.
  */
 import type { Damage } from '../../../engine/entity';
-import type { Renderer } from '../../../engine/render';
+import type { DrawOpts, Renderer } from '../../../engine/render';
 import type { World } from '../../../engine/world';
 import { PAL } from '../../../engine/palette';
 import { hudOf } from '../../context';
 import { doubleTakeTicks } from '../../enemy';
 import { FxEntity, splash } from '../../fx';
 import { defineEntity, paramBool, paramFacing, paramNum, paramStr, type SpawnParams } from '../../registry';
-import { Creature, contactHit, entryParam } from '../creatures/common';
+import { Creature, Turner, contactHit, entryParam } from '../creatures/common';
+import { PULLUP_TIMING, TAKEOFF_TIMING, TURN_TICKS } from './seagull.art';
 
 /** Seagull numbers (NORMAL). */
 export const SEAGULL = {
@@ -57,6 +61,19 @@ export const SEAGULL = {
 const A = 'enemy/seagull';
 const TAU = Math.PI * 2;
 const goalPt: [number, number] = [0, 0];
+const gullOpts: DrawOpts = {};
+const TAKEOFF_TICKS = TAKEOFF_TIMING.reduce((a, b) => a + b, 0);
+const PULLUP_TICKS = PULLUP_TIMING.reduce((a, b) => a + b, 0);
+
+/** Frame of a draw-only strip `timing` with `left` ticks to go. */
+function stripFrame(timing: readonly number[], total: number, left: number): number {
+  let t = total - left;
+  for (let i = 0; i < timing.length; i++) {
+    if (t < timing[i]) return i;
+    t -= timing[i];
+  }
+  return timing.length - 1;
+}
 
 /** One flock (shared by its gulls). */
 export class SeagullFlock {
@@ -85,6 +102,11 @@ export class Seagull extends Creature {
   private readonly peck: Damage;
   private flash = false;
   private overWater = false;
+  /** Draw-only transitions: ticks left of the take-off and the pull-up strips. */
+  private takeoffT = 0;
+  private pullupT = 0;
+  /** Mid-air turns: squash frames, the facing flips half-way (hysteresis 12 px / 8 ticks). */
+  private readonly turner = new Turner(1, 2, TURN_TICKS);
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     super(world, x, y, p, { art: A, hp: SEAGULL.hp, w: 20, h: 13, body: false });
@@ -121,6 +143,7 @@ export class Seagull extends Creature {
       if (entry === 'top') this.y = Math.min(this.y, world.camera.top - 12);
       this.setMode('fly');
     }
+    this.turner.snap(this.facing);
     this.prevY = this.y;
     this.bx = this.x;
     this.by = this.y;
@@ -137,6 +160,8 @@ export class Seagull extends Creature {
 
   protected override think(): void {
     this.modeT++;
+    if (this.takeoffT > 0) this.takeoffT--;
+    if (this.pullupT > 0) this.pullupT--;
     this.flash = false;
     this.contactDamage = null;
     if (this.slot === 0 && this.flock && this.flock.members.length === 1) this.spawnFlock();
@@ -190,7 +215,10 @@ export class Seagull extends Creature {
   private takeOff(): void {
     if (this.perched) {
       this.perched = false;
+      // Same body position: the anchor moves from the feet to the body centre (11 px up); the
+      // take-off strip lifts the drawn bird off the perch over 3 frames.
       this.y -= 11;
+      this.takeoffT = TAKEOFF_TICKS;
       this.world.audio.sfx('ams/gull', { vol: 0.6 });
     }
     this.setBox(SEAGULL.box);
@@ -238,7 +266,9 @@ export class Seagull extends Creature {
     const oy = Math.sin(this.phase) * SEAGULL.amp * 0.5;
     this.placeAt(this.bx + ox, this.by + oy);
     const t = this.target();
-    if (t && Math.abs(t.x - this.x) > 2) this.facing = t.x < this.x ? -1 : 1;
+    if (this.turner.facing !== this.facing && !this.turner.turning) this.turner.snap(this.facing);
+    if (t) this.turner.update(t.x - this.x);
+    this.facing = this.turner.facing;
     if (--this.diveCool <= 0) {
       if (this.onScreen(-8) && t && this.takeToken()) this.startTell();
       else this.diveCool = 12;
@@ -255,6 +285,7 @@ export class Seagull extends Creature {
 
   private startTell(): void {
     this.telegraph = this.tele(SEAGULL.tele);
+    this.cancelMotion();
     this.setMode('tell');
     this.play('tell', { restart: true });
     this.world.audio.sfx('ams/gull');
@@ -276,6 +307,7 @@ export class Seagull extends Creature {
     this.diveVy = ((ty - this.y) / d) * SEAGULL.dive;
     this.diveLeft = Math.min(SEAGULL.diveMax, d + 12);
     this.facing = this.diveVx < 0 ? -1 : 1;
+    this.cancelMotion();
     this.setMode('dive');
     this.play('attack');
   }
@@ -286,7 +318,8 @@ export class Seagull extends Creature {
     this.diveLeft -= SEAGULL.dive;
     if (this.world.terrain.isSolid(nx, ny + 5) || this.diveLeft <= 0) {
       this.setMode('climb');
-      this.play('walk');
+      this.play('walk', { restart: true });
+      this.pullupT = PULLUP_TICKS;
       return;
     }
     this.vx = this.diveVx;
@@ -310,6 +343,13 @@ export class Seagull extends Creature {
       this.diveCool = SEAGULL.diveEvery + (this.flock ? this.flock.size * 10 : 0);
       this.setMode('fly');
     }
+  }
+
+  /** Control first: drop every draw-only transition (a tell or a dive starts on this tick). */
+  private cancelMotion(): void {
+    this.takeoffT = 0;
+    this.pullupT = 0;
+    this.turner.snap(this.facing);
   }
 
   protected override cancelAttack(): void {
@@ -376,6 +416,24 @@ export class Seagull extends Creature {
   }
 
   override draw(r: Renderer): void {
+    if (!this.dead && (this.takeoffT > 0 || this.pullupT > 0 || this.turner.turning)) {
+      let name: string;
+      let i: number;
+      if (this.takeoffT > 0) {
+        name = 'takeoff';
+        i = stripFrame(TAKEOFF_TIMING, TAKEOFF_TICKS, this.takeoffT);
+      } else if (this.pullupT > 0) {
+        name = 'pull-up';
+        i = stripFrame(PULLUP_TIMING, PULLUP_TICKS, this.pullupT);
+      } else {
+        name = 'turn';
+        i = this.turner.frame();
+      }
+      gullOpts.flipX = this.facing < 0;
+      gullOpts.flash = this.flashTicks > 0;
+      r.sprite(this.spriteId(name), i, this.x, this.y, gullOpts);
+      return;
+    }
     super.draw(r);
     if (this.flash && !this.dead) this.drawTint(r, PAL.gold[3], 0.55);
   }

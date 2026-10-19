@@ -121,6 +121,8 @@ export class MissionRunner {
   readonly bodyWalls: BodyWall[] = [];
 
   private readonly startSection: string | undefined;
+  /** The next loadSection is the fresh mission start of an introDrop mission (parachute drop). */
+  private introDropPending = false;
   private readonly density: number;
   private fadeT = 0;
   private fadeLen = TUNING.transition.fadeTicks;
@@ -174,6 +176,7 @@ export class MissionRunner {
     this.fightTicks = 0;
     let id = this.startSection ?? (this.bossRush ? (m.bossSection ?? m.start) : m.start);
     if (!m.sections[id]) id = m.start;
+    this.introDropPending = m.introDrop === true && this.startSection === undefined && !this.bossRush && id === m.start;
     // Banner first, so a section script may replace it on its first tick.
     const b = m.startBanner;
     this.hud.showBanner(b?.text ?? m.name, { sub: b?.sub ?? m.subtitle ?? '', style: 'mission', ticks: 170 });
@@ -231,6 +234,12 @@ export class MissionRunner {
     world.flush();
     cam.follow(world.players);
     cam.snap();
+    // Mission start of an introDrop mission: lift the players above the snapped view (after the
+    // snap, so the camera frames the landing spot); no drop with a start or carried vehicle.
+    if (this.introDropPending) {
+      this.introDropPending = false;
+      if (!def.startVehicle) for (const p of this.players) p.introDrop();
+    }
     this.view.prepare(cam.x, cam.y);
     this.wire(world);
     this.resetTimer();

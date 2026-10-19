@@ -79,10 +79,15 @@ export class BootScene implements Scene {
         await cache.restore('hi');
       }
       const art = bootArt(this.app.params);
-      await preloadSprites(art, (d, t) => {
-        this.done = d;
-        this.total = t;
-      });
+      // Deferred sprites (SpriteOpts.defer: rare cosmetic strips) are made on first use.
+      await preloadSprites(
+        art,
+        (d, t) => {
+          this.done = d;
+          this.total = t;
+        },
+        { skipDeferred: true },
+      );
       void cache?.save('boot', art ?? ['']);
       this.phase = 'sounds';
       const audio = this.app.audio as { preload?: (ids: readonly string[]) => void };

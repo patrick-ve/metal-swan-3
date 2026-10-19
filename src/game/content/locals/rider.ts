@@ -9,9 +9,13 @@
  * during the kick's active ticks. Bumping into the bike is harmless; a jump clears the kick.
  *
  * Modes (traced by the arena tool): gag, notice, ride, tell, kick, away, turn.
+ * Turns: every facing change (U-turn, circle end, wall) plays the 3-frame `turn` strip (narrowing
+ * with the old facing, widening with the new) — a draw-only timer; the logic facing flips at once.
+ * A tell or kick cancels it on the same tick.
  * Deaths: the rider tumbles off (`die*` strips), the bike skids away as an fx (`<art>/bike`).
  */
 import type { Damage } from '../../../engine/entity';
+import type { DrawOpts, Renderer } from '../../../engine/render';
 import { rectAt, type Rect } from '../../../engine/math';
 import type { World } from '../../../engine/world';
 import { hudOf } from '../../context';
@@ -39,6 +43,11 @@ export function gagBubble(world: World, e: { x: number; y: number }, text: strin
 export const KICK_BOX: Readonly<Rect> = { x: 4, y: -22, w: 20, h: 16 };
 /** Rider hurtbox (bike + rider, 24 × 34). */
 export const RIDER_BOX = { w: 24, h: 34 } as const;
+
+/** Turn strip: frames and ticks per frame (the strip plays forward, then backward). */
+export const RIDER_TURN = { frames: 3, ticksPerFrame: 2 } as const;
+const TURN_TICKS = 2 * RIDER_TURN.frames * RIDER_TURN.ticksPerFrame;
+const turnOpts: DrawOpts = {};
 
 export interface RiderOpts {
   art: string;
@@ -75,6 +84,38 @@ export abstract class Rider extends Creature {
     else if (p.facing === 1 || p.facing === 'right') this.facing = 1;
     else if (p.facing === -1 || p.facing === 'left') this.facing = -1;
     else this.facing = t && t.x < this.x ? -1 : 1;
+  }
+
+  /** Draw-only turn timer (ticks left), the facing it turns from, last tick's facing. */
+  private turnT = 0;
+  private turnFrom: 1 | -1 = 1;
+  private lastFacing: 1 | -1 | 0 = 0;
+
+  override update(): void {
+    super.update();
+    if (this.dead || this.mode === 'tell' || this.mode === 'kick') {
+      this.turnT = 0;
+    } else if (this.lastFacing !== 0 && this.facing !== this.lastFacing && this.hasAnim('turn')) {
+      this.turnFrom = this.lastFacing;
+      this.turnT = TURN_TICKS;
+    } else if (this.turnT > 0) this.turnT--;
+    this.lastFacing = this.facing < 0 ? -1 : 1;
+  }
+
+  /** The turn frame index (0..frames − 1) and its facing, or −1 when not turning. */
+  turnFrame(): number {
+    if (this.turnT <= 0) return -1;
+    const k = Math.floor((TURN_TICKS - this.turnT) / RIDER_TURN.ticksPerFrame);
+    return k < RIDER_TURN.frames ? k : 2 * RIDER_TURN.frames - 1 - k;
+  }
+
+  override draw(r: Renderer): void {
+    const i = this.turnFrame();
+    if (i < 0) return super.draw(r);
+    const k = Math.floor((TURN_TICKS - this.turnT) / RIDER_TURN.ticksPerFrame);
+    turnOpts.flipX = (k < RIDER_TURN.frames ? this.turnFrom : this.facing) < 0;
+    turnOpts.flash = this.flashTicks > 0;
+    r.sprite(this.spriteId('turn'), i, this.x, this.y, turnOpts);
   }
 
   /** Only the kick hurts (and only while `contactDamage` is set, during the kick). */

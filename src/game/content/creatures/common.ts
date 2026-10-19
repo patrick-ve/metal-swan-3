@@ -147,6 +147,76 @@ export function drawDizzy(r: Renderer, x: number, y: number, t: number, n = 3): 
 // Creature
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Turn-around timing for a creature (docs/ART_GUIDE.md "Motion"; art: `turnSquash` in draw.ts).
+ * Hysteresis: a turn starts only after the target was at least `dist` px behind for `hold`
+ * ticks in a row. A turn shows the squash frames narrowing (`frame()` 0 .. widths − 1), flips
+ * `facing` at the midpoint, then shows them widening again; `ticksPerFrame` ticks each.
+ * Plain numbers only: no allocation per tick.
+ * ```ts
+ * this.turner.update(target.x - this.x);           // once per tick
+ * this.facing = this.turner.facing;
+ * const f = this.turner.frame();                   // −1: draw the normal strip
+ * ```
+ */
+export class Turner {
+  facing: 1 | -1;
+  private behind = 0;
+  private t = 0;
+  private readonly total: number;
+  readonly widths: number;
+  readonly ticksPerFrame: number;
+  readonly dist: number;
+  readonly hold: number;
+
+  constructor(facing: 1 | -1 = 1, widths = 2, ticksPerFrame = 2, dist = 12, hold = 8) {
+    this.facing = facing;
+    this.widths = widths;
+    this.ticksPerFrame = ticksPerFrame;
+    this.dist = dist;
+    this.hold = hold;
+    this.total = 2 * widths * ticksPerFrame;
+  }
+
+  /** True while the turn frames play. */
+  get turning(): boolean {
+    return this.t > 0;
+  }
+
+  /** Advance one tick; `dx` = target x − own x. Returns true on the tick the facing flips. */
+  update(dx: number): boolean {
+    if (this.t > 0) {
+      this.t--;
+      if (this.t === this.total / 2) {
+        this.facing = this.facing === 1 ? -1 : 1;
+        return true;
+      }
+      return false;
+    }
+    if (dx * this.facing <= -this.dist) this.behind++;
+    else this.behind = 0;
+    if (this.behind >= this.hold) {
+      this.behind = 0;
+      this.t = this.total;
+    }
+    return false;
+  }
+
+  /** Index into the turnSquash frames, or −1 when not turning. */
+  frame(): number {
+    if (this.t <= 0) return -1;
+    const i = Math.floor((this.total - this.t) / this.ticksPerFrame);
+    return i < this.widths ? i : 2 * this.widths - 1 - i;
+  }
+
+  /** Face `f` at once (spawn, scripted moves, knock-back); cancels a turn. */
+  snap(f: 1 | -1): void {
+    this.facing = f;
+    this.t = 0;
+    this.behind = 0;
+  }
+}
+
 /** Rule 1 notice ranges for gags (px in front / behind, max height difference). */
 export const GAG_NOTICE = { front: 160, behind: 48, dy: 110, shot: 48, shout: 96 } as const;
 

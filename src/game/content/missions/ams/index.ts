@@ -51,6 +51,8 @@ export const AMS: MissionDef = {
   artDensity: 2,
   // Footsteps on the cobbles (`player/step`; 2026-10-14, with the sampled ams audio).
   footsteps: true,
+  // The mission start drops the players in on a parachute (fx/chute; Player.introDrop).
+  introDrop: true,
   // The 2× preload during the intro card: after the players' characters, the Swan and what
   // section a shows first; the boss last. The small explosion goes before the big ones: the first
   // explosion generated pays the JIT warm-up of the 2× explosion code (about 1 ms more for s,
@@ -72,6 +74,7 @@ export const AMS: MissionDef = {
     'item/',
     'weapon/',
     'fx/',
+    'fx/chute',
   ],
   // Sampled music, sounds and dialogue (src/game/content/samples), loaded on the intro card.
   audioGroup: 'mission:ams',

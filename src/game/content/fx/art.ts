@@ -32,6 +32,8 @@ import { cloudFrames, explosionFrames, explosionFramesHi, type ExplosionSpec } f
 import { defineGagSprites } from './gags.art';
 // 2× art of the fx that mission ams shows (registers at import).
 import './hi.art';
+// The player's drop canopy (fx/chute, fx/chute-collapse; mission ams intro drop).
+import './chute.art';
 
 const center = (buf: PixelBuffer): Frame => ({ buf, ox: buf.w >> 1, oy: buf.h >> 1 });
 

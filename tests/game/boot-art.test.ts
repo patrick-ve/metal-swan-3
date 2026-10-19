@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { NullAudio } from '../../src/engine/audio';
 import { InputManager, ScriptedSource, timeline, type Button } from '../../src/engine/input';
 import { SoftRenderer } from '../../src/engine/render-soft';
-import { clearSpriteCache, generatedSprites } from '../../src/engine/sprites';
+import { clearSpriteCache, generatedSprites, isDeferredSprite } from '../../src/engine/sprites';
 import { MemoryStore } from '../../src/engine/storage';
 import { createApp } from '../../src/game/app';
 import { isLazyContent, loadContent } from '../../src/game/content/index';
@@ -23,9 +23,12 @@ import { createHeadlessGame } from '../../src/sim/index';
 
 await loadContent((id) => !isLazyContent(id));
 
-/** Ids generated so far that no prefix of `art` covers. */
+/**
+ * Ids generated so far that no prefix of `art` covers. Deferred sprites (SpriteOpts.defer) are
+ * made on first use by design, so they never count.
+ */
 function outside(art: readonly string[]): string[] {
-  return generatedSprites(1).filter((id) => !art.some((p) => id.startsWith(p)));
+  return generatedSprites(1).filter((id) => !isDeferredSprite(id) && !art.some((p) => id.startsWith(p)));
 }
 
 describe('bootArt', () => {

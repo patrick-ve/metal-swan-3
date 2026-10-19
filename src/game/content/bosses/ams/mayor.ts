@@ -35,11 +35,17 @@ import { Boss, type BossPart } from '../../../boss';
 import { difficultyOf } from '../../../context';
 import { debris, dust, explosion, hitSpark, smokeTrail } from '../../../fx';
 import { defineEntity, paramFacing, paramNum, type SpawnParams } from '../../../registry';
+import { easeInQuad } from '../../../../engine/math';
+import { ARM_FRAMES, MAYOR_WALK } from './art';
 import { ADD_TAG, MAYOR, MAYOR_NAME } from './geometry';
 import { floorAt, NoiseLetter, ShieldShot, StampWave } from './shots';
 import { MAYOR_LINES, type MayorLineId } from './voice';
 
 const ART = 'boss/ams-mayor';
+// Hoisted sprite ids of the per-tick draw (no template strings in the hot path).
+const ID_ARM_BACK = ART + '/arm-back';
+const ID_LEGS = ART + '/legs';
+const ID_WIG = ART + '/wig';
 const OFFICER_TAG = 'ams-mayor-officer';
 const RIDER_TAG = 'ams-mayor-rider';
 const drawOpts: DrawOpts = {};
@@ -94,6 +100,14 @@ export class AmsMayor extends Boss {
   private wigVx = 0;
   private wigVy = 0;
   springH = 0;
+  /** Death: the wig's spin (ticks; 3 per 45° step). */
+  wigSpin = 0;
+  /** Draw-only transition timers (docs/ART_GUIDE.md "Motion"): the tick the arm / legs look changed and from what. */
+  private armAt = -99;
+  private armFrom: 0 | 1 | 2 = 0;
+  private legsAt = -99;
+  private legsFrom = 0;
+  private legsSeen = 0;
   private nextLane: Lane = 'high';
   private addT = 0;
   private addSide: 1 | -1 = -1;
@@ -155,6 +169,10 @@ export class AmsMayor extends Boss {
   }
 
   private setArm(pose: 0 | 1 | 2): void {
+    if (pose !== this.armPose) {
+      this.armFrom = this.armPose;
+      this.armAt = this.world.tick;
+    }
     this.armPose = pose;
     const src = pose === 0 ? MAYOR.box.armLow : pose === 1 ? MAYOR.box.armHigh : MAYOR.box.armSlam;
     const b = this.armPart.box;
@@ -211,7 +229,8 @@ export class AmsMayor extends Boss {
       if (t >= I.dim && t < I.dim + I.walk) {
         const k = (t - I.dim + 1) / I.walk;
         this.x = this.doorX + (this.homeX - this.doorX) * k;
-        this.legsFrame = 1 + (((t - I.dim) >> 3) & 1);
+        // A 6-frame walk loop over the 16-tick stride (the footfall stays on tick 15).
+        this.legsFrame = MAYOR_WALK[(((t - I.dim) % 16) * 6) >> 4];
         if ((t - I.dim) % 16 === 15) {
           this.world.audio.sfx('hit/ground', { vol: 0.6 });
           this.world.camera.shake(2, 6);
@@ -495,6 +514,11 @@ export class AmsMayor extends Boss {
 
   override update(): void {
     super.update();
+    if (this.legsFrame !== this.legsSeen) {
+      this.legsFrom = this.legsSeen;
+      this.legsSeen = this.legsFrame;
+      this.legsAt = this.world.tick;
+    }
     if (this.babbleT > 0 && --this.babbleT === 0) this.world.audio.stopSfx?.(BABBLE_KEY);
   }
 
@@ -711,6 +735,8 @@ export class AmsMayor extends Boss {
         this.wigX += this.wigVx;
         this.wigY = Math.min(this.floorY - 34, this.wigY + this.wigVy);
         if (this.wigY >= this.floorY - 34) this.wigVx *= 0.8;
+        // It tumbles in flight and finishes the turn it is in once it lands.
+        if (this.wigY < this.floorY - 34 || this.wigSpin % 24 !== 0) this.wigSpin++;
       }
       // The head boings on a spring.
       if (t >= 50 && t < 150) {
@@ -720,9 +746,12 @@ export class AmsMayor extends Boss {
       } else if (t >= 150) this.springH = Math.max(0, this.springH - 1);
       // She sits down and powers off.
       if (t >= 120 && t < 140) {
-        this.sitDrop = Math.round(((t - 120) / 20) * 24);
+        // Eased: the knees give slowly, then she drops onto the floor.
+        this.sitDrop = Math.round(easeInQuad((t - 119) / 20) * 24);
         this.legsFrame = 4;
       }
+      // A small bounce as she lands on the floor.
+      if (t >= 140 && t < 144) this.sitDrop = [22, 23, 24, 24][t - 140];
       if (t === 140) {
         w.camera.shake(4, 12);
         w.audio.sfx('hit/ground');
@@ -768,6 +797,35 @@ export class AmsMayor extends Boss {
     drawOpts.alpha = undefined;
   }
 
+  /** Stamp arm frame (0–5, facing right) with the draw-only in-betweens round `armPose`. */
+  private armShown(): number {
+    const t = this.world.tick - this.armAt;
+    if (this.armPose === 1) {
+      if (this.glowT > 0 && this.glowT <= 2) return 4; // smear into the slam
+      return t < 3 ? 3 : t < 6 ? 4 : 1; // anticipation, smear, raised
+    }
+    if (this.armPose === 2) return t < 4 ? 2 : t < 9 ? 5 : 2; // impact, recoil, settle
+    if (this.armFrom === 2 && t < 4) return 5;
+    if (this.armFrom === 1 && t < 3) return 4;
+    return 0;
+  }
+
+  /** Legs frame with the squat / hop transitions (half squat 9, push-off 10). */
+  private legsShown(): number {
+    const t = this.world.tick - this.legsAt;
+    const f = this.legsFrame;
+    if (f === 3 && this.legsFrom === 0 && t < 4) return 9;
+    if (f === 0 && this.legsFrom === 3 && t < 4) return this.lift > 0 ? 10 : 9;
+    return f;
+  }
+
+  /** Far-arm frame: the chain loop whirls through 6 frames (2 ticks each). */
+  private backArmShown(): number {
+    const p = (this.world.tick >> 1) % 6;
+    if (this.backArm === 0 || p === 0) return this.backArm;
+    return (this.backArm === 1 ? 2 : 7) + p;
+  }
+
   override draw(r: Renderer): void {
     if (this.state === 'done') return;
     const w = this.world;
@@ -789,8 +847,8 @@ export class AmsMayor extends Boss {
     const telegraphOn = this.glowT > 0 && this.glowT % 8 < 5;
     const glowCol = this.glowT % 16 < 8 ? PAL.gold[3] : PAL.snow[3];
     // Far arm at rest sits behind the body.
-    if (this.backArm === 0) this.piece(r, `${ART}/arm-back`, 0, dy);
-    this.piece(r, `${ART}/legs`, this.legsFrame, this.lift > 0 ? -this.lift : 0);
+    if (this.backArm === 0) this.piece(r, ID_ARM_BACK, 0, dy);
+    this.piece(r, ID_LEGS, this.legsShown(), this.lift > 0 ? -this.lift : 0);
     const bodyId = `${ART}/body-${this.dead ? 2 : this.damageState}`;
     this.piece(r, bodyId, 0, dy);
     // Head (on its spring during the death boing).
@@ -808,15 +866,16 @@ export class AmsMayor extends Boss {
     if (this.medFrame === 2 && telegraphOn) this.glow(r, medId, 2, dy, glowCol);
     // Far arm holding the chain loop (in front of the chest).
     if (this.backArm > 0) {
-      this.piece(r, `${ART}/arm-back`, this.backArm, dy);
-      if (telegraphOn) this.glow(r, `${ART}/arm-back`, this.backArm, dy, glowCol);
+      const bf = this.backArmShown();
+      this.piece(r, ID_ARM_BACK, bf, dy);
+      if (telegraphOn) this.glow(r, ID_ARM_BACK, bf, dy, glowCol);
     }
     // Stamp arm.
     const arm = this.armPart;
     if (arm.destroyed) this.piece(r, `${ART}/stamp-arm-gone`, 0, dy);
     else {
       const id = `${ART}/stamp-arm-${this.partState(arm)}`;
-      const fr = this.armPose + (this.facing < 0 ? 3 : 0);
+      const fr = this.armShown() + (this.facing < 0 ? ARM_FRAMES : 0);
       this.piece(r, id, fr, dy, arm.flash >= 3, true);
       if (this.armPose === 1 && telegraphOn) this.glow(r, id, fr, dy, glowCol, true);
     }
@@ -839,7 +898,7 @@ export class AmsMayor extends Boss {
     if (!this.wigOn) {
       drawOpts.flipX = this.facing < 0;
       drawOpts.flash = false;
-      r.sprite(`${ART}/wig`, 0, this.wigX, this.wigY, drawOpts);
+      r.sprite(ID_WIG, ((this.wigSpin / 3) | 0) % 8, this.wigX, this.wigY, drawOpts);
     }
   }
 }

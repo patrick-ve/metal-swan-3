@@ -105,9 +105,11 @@ describe('fx sprites', () => {
     for (const id of ids) {
       getFrames(id).forEach((f, i) => {
         const label = `${id}[${i}]`;
-        expect(Math.abs(f.ox - f.buf.w / 2), label).toBeLessThanOrEqual(1);
+        // The drop canopy (fx/chute*) is anchored at its rim centre (tests/art/moves-p1.test.ts).
+        const rim = id.startsWith('fx/chute');
+        if (!rim) expect(Math.abs(f.ox - f.buf.w / 2), label).toBeLessThanOrEqual(1);
         // Dust and splashes sit on the ground line (anchored near their bottom).
-        if (id !== 'fx/dust' && id !== 'fx/splash') expect(Math.abs(f.oy - f.buf.h / 2), label).toBeLessThanOrEqual(1);
+        if (!rim && id !== 'fx/dust' && id !== 'fx/splash') expect(Math.abs(f.oy - f.buf.h / 2), label).toBeLessThanOrEqual(1);
         const d = f.buf.data;
         for (let k = 0; k < d.length; k++) {
           if ((d[k] & 255) === 0) continue;

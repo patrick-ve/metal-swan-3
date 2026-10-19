@@ -127,12 +127,15 @@ defineSprite(id, gen, opts?)  // gen: () => Frame | PixelBuffer | (Frame | Pixel
 // opts: { anchor?: 'feet' | 'center' | 'top-left' | [ox, oy],   (default 'feet')
 //         pts?: FramePoints | FramePoints[],                        (relative to the anchor)
 //         ticksPerFrame?: number, durations?: number[], loop?: boolean, trim?: boolean,
-//         hi?: gen2x }                                              (= defineHiSprite(id, gen2x))
+//         hi?: gen2x,                                               (= defineHiSprite(id, gen2x))
+//         defer?: boolean }       (rare cosmetic strip: not in the boot preload, last in the others)
 getFrames(id, density?) / getFrame(id, i, density?) / frameCount(id) / hasSprite(id) / listSprites(prefix?)
 spriteAnim(id) / spriteErrors() / clearSpriteCache(id?) / placeholderFrames()
-await preloadSprites(prefixes?, (done, total) => …, { batch?, timeBudgetMs?, now?, first?, last?, yieldFn?, density? })  // never rejects
+await preloadSprites(prefixes?, (done, total) => …, { batch?, timeBudgetMs?, now?, first?, last?, yieldFn?, density?, skipDeferred? })  // never rejects
 //   batch: ids per slice (default 24); timeBudgetMs: generate until this much time has passed,
-//   then yield (at least one id per slice); first / last: id prefixes generated first / last, in order
+//   then yield (at least one id per slice); first / last: id prefixes generated first / last, in order;
+//   deferred ids (SpriteOpts.defer) come after the `last` ids; skipDeferred leaves them out (the boot)
+isDeferredSprite(id) / preloadOrder(ids, first, last)   // defer flag; the preload's id order
 framePoint(frame, name, flipX?, flipY?, out?)
 frameW(f) / frameH(f) / frameDensity(f)          // logical size and density (also in render.ts)
 defineHiSprite(id, gen2x) / hasHiSprite(id) / listHiSprites(prefix?)              // 2× art
@@ -206,10 +209,23 @@ const anim = new Animator();
 anim.play('enemy/grunt/run');                  // no restart if already playing
 anim.play('enemy/grunt/die', { loop: false, restart: true, ticksPerFrame: 5 });
 anim.update();                                 // once per tick
+anim.update(strideRate(speed, nominalSpeed));  // or a float rate (math.ts), e.g. a walk that follows the speed
 r.sprite(anim.id, anim.index, x, y, { flipX: facing < 0 });
 anim.done; anim.changed; anim.loops; anim.length; anim.point('muzzle', facing < 0, scratch);
 ```
 A non-looping strip stops on the last frame; `done` turns true after that frame's duration.
+`update(rate = 1)`: `tick` grows by `rate` (a float); when it reaches the frame's duration the
+remainder carries to the next frame, and at most one frame advances per update (a 1-tick frame is
+never skipped). Rate 1 is exactly the integer behaviour. `strideRate(speed, nominal, min = 0.5,
+max = 1.6)` (`math.ts`) = `|speed| / nominal` clamped; `easeOutBack(t)` eases with a small
+overshoot (follow-through). Rates are draw-side only: gameplay never reads a rate-driven index.
+
+Motion helpers for the animation wave live in the game layer (docs/ART_GUIDE.md "Motion"):
+`tween` / `inbetween` (`src/game/art/tween.ts`), `poseJoints` (`humanoid.ts`), the smoothness gate
+(`tests/art/motion.ts`), and creature turns: `turnSquash(frame, widths = [0.66, 0.33])`
+(`creatures/draw.ts`, squeezed frames on the same ground line and anchor column) timed by
+`new Turner(facing, widths, ticksPerFrame, dist, hold)` (`creatures/common.ts`: `update(dx)` is
+true on the flip tick, `frame()` is −1 when not turning, `snap(f)` cancels).
 
 ## 6. Fonts — `font.ts`
 
@@ -366,6 +382,16 @@ scale 2); marks cover the whole logical pixel where the game reads the point. `d
 that needs a larger res steps down as in the browser, with a warning on stderr and the filter
 drawn in the sheet title); the PNG scale then defaults to 1. `npm run smoke` takes `--viewport WxH` and `--dpr n`. `npm run perf` measures browser
 frame times of the production build per viewport and mode (`docs/ARCHITECTURE.md` §9).
+
+`npm run anim-bench -- [prefix] [--density 1|2] [--runs 3] [--json out]`: generation ms (median
+of `--runs`, each group from an empty sprite cache) and frame counts per hero (`hero:<id>@1x/2x`),
+per rider set (`enemy/fatbike-youth`, `enemy/delivery-rider`), for the boot list (`boot@1x`:
+`bootArt` of the default launch, deferred sprites left out) and the ams 2× set (`ams-hi@2x`: every
+id with 2× art). The baseline of the animation wave is `tmp/anim-baseline.json`.
+
+`npm run geometry-fixture -- <ids…> [--dry-run]`: rewrites only the named ids in
+`tests/engine/fixtures/sprite-geometry.json` (the geometry test, `tests/engine/hires.test.ts`) with
+their current digest (`spriteGeometrySample`); `--dry-run` prints the diff only. Verifiers only.
 
 `tools/lib/png.ts`: `encodePNG(w, h, rgba)`, `crc32`. `tools/lib/image.ts`: `savePNG(buf, file, scale)`,
 `composeSheets(items, opts)`, `drawChecker(...)`.

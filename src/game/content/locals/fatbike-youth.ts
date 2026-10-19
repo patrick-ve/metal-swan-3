@@ -61,6 +61,8 @@ export class FatbikeYouth extends Rider {
   private fleeing = false;
   private fleeT = 0;
   private canFlee = false;
+  /** Draw-side: the get-up strip plays between the fall and the flee. */
+  private gettingUp = false;
   private readonly artSet: string;
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
@@ -180,6 +182,8 @@ export class FatbikeYouth extends Rider {
       tumble(this.world, 'enemy/fatbike-youth/cap', this.x - this.facing * 2, this.y - 34, -this.facing * 0.8 + d.dirX * 0.6, -2.4, { life: 50 });
     }
     this.corpseTicks = this.canFlee ? 9999 : 40;
+    // Not launched by a blast: he falls off the seat (then gets up before the flee).
+    if (this.canFlee && d.kind !== 'explosion' && this.hasAnim('die-seat')) this.play('die-seat', { restart: true, loop: false });
     if (this.pair) {
       // The passenger jumps off the rack and runs for it (yelling too), away from the player.
       const t = this.target();
@@ -198,7 +202,18 @@ export class FatbikeYouth extends Rider {
       if (this.fleeT > 200 || (this.fleeT > 20 && !this.onScreen(8))) this.remove();
       return;
     }
-    super.updateDeath();
+    if (this.gettingUp) {
+      if (this.body) this.physics();
+      this.anim.update();
+      if (!this.anim.done) return;
+    } else {
+      super.updateDeath();
+      if (this.canFlee && !this.removed && this.anim.done && this.hasAnim('get-up')) {
+        this.gettingUp = true;
+        this.play('get-up', { restart: true, loop: false });
+        return;
+      }
+    }
     if (this.canFlee && !this.removed && this.anim.done) {
       // Up again, and away from the nearest player.
       this.fleeing = true;
