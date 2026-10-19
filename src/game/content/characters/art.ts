@@ -102,9 +102,9 @@ function defineHero(id: string, style: HumanStyle, art: PlayerArtOpts = {}): voi
       durations: CRUSH_TIMING,
       loop: false,
       defer: true,
-      hi: () => {
-        const a = crushStripHi(stand(1), stand(2), getFrames(flat, 1));
-        a[2] = crushStripHi(splay(1), splay(2), crushStrip(splay(1)))[1];
+      hd: (d) => {
+        const a = crushStripHi(stand(1), stand(d), getFrames(flat, 1));
+        a[2] = crushStripHi(splay(1), splay(d), crushStrip(splay(1)))[1];
         return a;
       },
     },

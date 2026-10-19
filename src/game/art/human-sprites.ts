@@ -6,9 +6,9 @@
  *   animations and a menu portrait.
  * - `defineSoldierSprites(id, style, opts)` registers the `enemy/<id>/…` contract for a rifle
  *   soldier (full-body frames, `muzzle` on shoot frames, `hand` on throw frames).
- * The player sets also register their 2× art (`defineSprite(id, gen, { hi })`, used only by a
- * mission with `artDensity: 2`): every strip rendered again by the rig at density 2, with the
- * same logical geometry (docs/ART_GUIDE.md "2x art (mission ams)").
+ * The player sets also register their UHD art (`defineSprite(id, gen, { hd })`, used only by a
+ * mission with `artDensity` 2 or 4): every strip rendered again by the rig at density 2 and 4 (the
+ * HD body, src/game/art/hd/body.ts), with the same logical geometry (docs/ART_GUIDE.md "UHD art").
  * A new character or enemy is one style object plus optional pose overrides (ART_GUIDE.md §5).
  */
 import type { Color } from '../../engine/color';
@@ -17,8 +17,7 @@ import { INK, PAL } from '../../engine/palette';
 import type { Frame } from '../../engine/render';
 import { defineSprite } from '../../engine/sprites';
 import type { SpriteOpts } from '../../engine/sprites';
-import { liftHi } from './hi';
-import { crumble, scorch, sootify, withFlames } from './human-fx';
+import { crumble, crumbleDense, scorch, sootify, withFlames, withFlamesDense } from './human-fx';
 import { renderHuman } from './humanoid';
 import { inbetween, tween } from './tween';
 import type { ArmPose, Density, HumanStyle, Pose, RenderPart, WeaponPose } from './humanoid';
@@ -26,7 +25,7 @@ import * as P from './poses';
 
 export type FrameList = Frame[];
 
-/** Render a list of poses for one part (`density` 2: the 2× frames). */
+/** Render a list of poses for one part (`density` 2 / 4: the UHD frames). */
 export function poseFrames(style: HumanStyle, poses: readonly Pose[], part: 'full' | 'upper' | 'lower' = 'full', density: Density = 1): FrameList {
   return poses.map((p) => renderHuman(style, p, part, density));
 }
@@ -43,8 +42,9 @@ export function withSwing(poses: readonly Pose[], k: number, elbow: number): Pos
 }
 
 /**
- * Burning death: two flaming frames, soot statue, two crumble frames, ash pile. `density` 2: the
- * figure at 2× under the same flames and crumbling (lifted from the 1× effect with `liftHi`).
+ * Burning death: two flaming frames, soot statue, two crumble frames, ash pile. `density` 2 / 4:
+ * the HD figure under the same flames and crumbling, drawn natively (`withFlamesDense`,
+ * `crumbleDense`; the effect placed from the 1× frames, so the geometry is the 1× one).
  */
 export function burnFrames(style: HumanStyle, base: Pose = {}, seed = 9, density: Density = 1): FrameList {
   const out: FrameList = [];
@@ -60,17 +60,16 @@ export function burnFrames(style: HumanStyle, base: Pose = {}, seed = 9, density
     return out;
   }
   // withFlames pads the frame by 2 px on the left and height + 2 on top; crumble by 4 on the left.
-  const flames = (f1: Frame, f2: Frame, phase: number, s: number, height = 7): Frame =>
-    liftHi(withFlames(f1, phase, s, height), f1.buf, f2.buf, 2, height + 2);
+  const d = density;
   P.BURN.forEach((p, i) => {
     const pose = { ...base, ...p };
-    out.push(flames(scorch(renderHuman(style, pose, 'full'), 1), scorch(renderHuman(style, pose, 'full', 2), 1), i * 2 + 1, seed));
+    out.push(withFlamesDense(scorch(renderHuman(style, pose, 'full'), 1), scorch(renderHuman(style, pose, 'full', d), 1), i * 2 + 1, seed));
   });
   const s1 = sootify(renderHuman(style, statuePose, 'full'), 1, true, seed);
-  const s2 = sootify(renderHuman(style, statuePose, 'full', 2), 1, true, seed);
-  out.push(flames(s1, s2, 5, seed + 3, 3));
-  out.push(s2);
-  for (const t of [0.35, 0.7, 1]) out.push(liftHi(crumble(s1, t, seed), s1.buf, s2.buf, 4, 0));
+  const sd = sootify(renderHuman(style, statuePose, 'full', d), 1, true, seed);
+  out.push(withFlamesDense(s1, sd, 5, seed + 3, 3));
+  out.push(sd);
+  for (const t of [0.35, 0.7, 1]) out.push(crumbleDense(s1, sd, t, seed));
   return out;
 }
 
@@ -86,9 +85,9 @@ function def(id: string, gen: () => FrameList, opts: SpriteOpts): void {
 /** A strip recipe at either density. */
 type DGen = (d: Density) => FrameList | Frame | PixelBuffer;
 
-/** Register a player strip with its 2× art: the same recipe at density 1 and 2. */
-function defHi(id: string, gen: DGen, opts: SpriteOpts): void {
-  defineSprite(id, () => gen(1), { ...opts, hi: () => gen(2) });
+/** Register a player strip with its UHD art: the same recipe at density 1, 2 and 4. */
+function defHd(id: string, gen: DGen, opts: SpriteOpts): void {
+  defineSprite(id, () => gen(1), { ...opts, hd: (d) => gen(d) });
 }
 
 // ------------------------------------------------------------------------------------ player
@@ -151,7 +150,7 @@ export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtO
   const lower = (poses: readonly Pose[]) => (d: Density): FrameList => poseFrames(style, poses, 'lower', d);
   const torsoOf = (poses: readonly Pose[]) => (d: Density): FrameList => poseFrames(style, poses, 'upper', d);
   const full = (poses: readonly Pose[]) => (d: Density): FrameList => poseFrames(style, poses, 'full', d);
-  /** Render poses, then let the character add its props to that strip (2× frames: logical px). */
+  /** Render poses, then let the character add its props to that strip (dense frames: logical px). */
   const deco = (name: DecoratedAnim, poses: readonly Pose[], part: RenderPart) => (d: Density): FrameList => {
     const frames = poseFrames(style, poses, part, d);
     const add = o.decorate?.[name];
@@ -165,15 +164,15 @@ export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtO
   };
 
   const run = runPoses(style, o.run ?? P.RUN);
-  defHi(pre + 'legs-idle', lower(P.IDLE_SHIFT), { ticksPerFrame: 16 });
-  defHi(pre + 'legs-run', lower(run), { ticksPerFrame: 3 });
-  defHi(pre + 'legs-jump', lower(P.JUMP4), { ticksPerFrame: 3, loop: false });
-  defHi(pre + 'legs-fall', lower(P.FALL2), { ticksPerFrame: 8 });
-  defHi(pre + 'legs-land', lower(P.LAND3), { durations: LAND_TIMING, loop: false });
-  defHi(pre + 'legs-crouch', lower([P.CROUCH]), { ticksPerFrame: 30 });
-  defHi(pre + 'legs-crouch-in', lower(crouchInPoses(style)), { durations: [2, 2, 2], loop: false });
-  defHi(pre + 'legs-crouch-out', lower(crouchOutPoses(style)), { durations: [2, 2], loop: false });
-  defHi(pre + 'legs-crouch-walk', lower(P.CROUCH_WALK), { ticksPerFrame: 6 });
+  defHd(pre + 'legs-idle', lower(P.IDLE_SHIFT), { ticksPerFrame: 16 });
+  defHd(pre + 'legs-run', lower(run), { ticksPerFrame: 3 });
+  defHd(pre + 'legs-jump', lower(P.JUMP4), { ticksPerFrame: 3, loop: false });
+  defHd(pre + 'legs-fall', lower(P.FALL2), { ticksPerFrame: 8 });
+  defHd(pre + 'legs-land', lower(P.LAND3), { durations: LAND_TIMING, loop: false });
+  defHd(pre + 'legs-crouch', lower([P.CROUCH]), { ticksPerFrame: 30 });
+  defHd(pre + 'legs-crouch-in', lower(crouchInPoses(style)), { durations: [2, 2, 2], loop: false });
+  defHd(pre + 'legs-crouch-out', lower(crouchOutPoses(style)), { durations: [2, 2], loop: false });
+  defHd(pre + 'legs-crouch-walk', lower(P.CROUCH_WALK), { ticksPerFrame: 6 });
   const knife = knifePoses(o.knife ?? P.KNIFE);
 
   // The torso set and the idle / victory strips, plain and for every status art variant.
@@ -186,24 +185,24 @@ export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtO
       const t = `${pre}${vx}torso-${w}-`;
       const base: Pose = { ...o.torso, weapon: w };
       const kick = w === 'pistol' ? 2 : 1;
-      defHi(t + 'idle', upper(P.seq(base, idlePoses(o.idle))), { ticksPerFrame: 12 });
-      defHi(t + 'shoot', upper(P.seq(base, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
-      defHi(t + 'up', upper([{ ...base, aim: 'up' }]), { ticksPerFrame: 30 });
-      defHi(t + 'shoot-up', upper(P.seq({ ...base, aim: 'up' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
-      defHi(t + 'down', upper([{ ...base, aim: 'down' }]), { ticksPerFrame: 30 });
-      defHi(t + 'shoot-down', upper(P.seq({ ...base, aim: 'down' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
+      defHd(t + 'idle', upper(P.seq(base, idlePoses(o.idle))), { ticksPerFrame: 12 });
+      defHd(t + 'shoot', upper(P.seq(base, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
+      defHd(t + 'up', upper([{ ...base, aim: 'up' }]), { ticksPerFrame: 30 });
+      defHd(t + 'shoot-up', upper(P.seq({ ...base, aim: 'up' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
+      defHd(t + 'down', upper([{ ...base, aim: 'down' }]), { ticksPerFrame: 30 });
+      defHd(t + 'shoot-down', upper(P.seq({ ...base, aim: 'down' }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
       // Diagonals (GDD §4.3): up + forward aims at 45° with every gun; the machine-gun sweep
       // also passes 45° down, so only the heavy pose has the down diagonal.
       for (const d of w === 'heavy' ? (['diag-up', 'diag-down'] as const) : (['diag-up'] as const)) {
-        defHi(t + d, upper([{ ...base, aim: d }]), { ticksPerFrame: 30 });
-        defHi(t + 'shoot-' + d, upper(P.seq({ ...base, aim: d }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
+        defHd(t + d, upper([{ ...base, aim: d }]), { ticksPerFrame: 30 });
+        defHd(t + 'shoot-' + d, upper(P.seq({ ...base, aim: d }, [{ recoil: kick }, { recoil: 0 }])), { ticksPerFrame: 3, loop: false });
       }
       const carry: Pose = { ...o.torso, weapon: w, gunHand: 'far' };
-      defHi(t + 'throw', upper(P.seq(carry, P.THROW6)), { durations: P.THROW6_TIMING, loop: false });
-      defHi(t + 'knife', deco('knife', P.seq(carry, knife).map(fx), 'upper'), timing('knife', { durations: knifeTiming(knife.length) }, false));
+      defHd(t + 'throw', upper(P.seq(carry, P.THROW6)), { durations: P.THROW6_TIMING, loop: false });
+      defHd(t + 'knife', deco('knife', P.seq(carry, knife).map(fx), 'upper'), timing('knife', { durations: knifeTiming(knife.length) }, false));
     }
-    defHi(pre + vx + 'victory', deco('victory', (o.victory ?? victory).map(fx), 'full'), timing('victory', { ticksPerFrame: o.victory ? 8 : 4 }));
-    defHi(pre + vx + 'bored', deco('bored', (o.bored ?? BORED_STRETCH).map(fx), 'full'), timing('bored', { durations: [12, 10, 24, 10, 10, 10] }));
+    defHd(pre + vx + 'victory', deco('victory', (o.victory ?? victory).map(fx), 'full'), timing('victory', { ticksPerFrame: o.victory ? 8 : 4 }));
+    defHd(pre + vx + 'bored', deco('bored', (o.bored ?? BORED_STRETCH).map(fx), 'full'), timing('bored', { durations: [12, 10, 24, 10, 10, 10] }));
   }
 
   // Anim wave p2 (plan Phase 2): torso actions outside the Helium loop (the player falls back to
@@ -214,32 +213,32 @@ export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtO
     const carry: Pose = { ...o.torso, weapon: w, gunHand: 'far' };
     const kick = w === 'pistol' ? 2 : 1;
     const crouched = (p: Pose): Pose => ({ ...p, lean: (p.lean ?? 0) + 4, hunch: (p.hunch ?? 0) + 1 });
-    defHi(t + 'run', torsoOf(P.seq(base, runTorsoPoses(run.length))), { ticksPerFrame: 3 });
-    defHi(t + 'crouch', torsoOf(P.seq(base, P.CROUCH_TORSO)), { ticksPerFrame: 12 });
+    defHd(t + 'run', torsoOf(P.seq(base, runTorsoPoses(run.length))), { ticksPerFrame: 3 });
+    defHd(t + 'crouch', torsoOf(P.seq(base, P.CROUCH_TORSO)), { ticksPerFrame: 12 });
     // Frame 0 is the standing shoot frame (same muzzle); the settle leans into the crouch.
-    defHi(t + 'crouch-shoot', torsoOf(P.seq(base, [{ recoil: kick, expr: 'shout' }, { recoil: 0, lean: 2 }])), { ticksPerFrame: 3, loop: false });
-    defHi(t + 'crouch-throw', torsoOf(P.seq(carry, P.THROW6).map(crouched)), { durations: P.THROW6_TIMING, loop: false });
-    defHi(t + 'crouch-knife', torsoOf(P.seq(carry, knife).map(crouched)), { durations: knifeTiming(knife.length), loop: false });
-    defHi(t + 'knife-b', torsoOf(P.seq(carry, o.knifeB ?? knifeBPoses(o.knife ?? P.KNIFE))), { durations: o.durations?.['knife-b'] ?? P.KNIFE6_TIMING, loop: false });
+    defHd(t + 'crouch-shoot', torsoOf(P.seq(base, [{ recoil: kick, expr: 'shout' }, { recoil: 0, lean: 2 }])), { ticksPerFrame: 3, loop: false });
+    defHd(t + 'crouch-throw', torsoOf(P.seq(carry, P.THROW6).map(crouched)), { durations: P.THROW6_TIMING, loop: false });
+    defHd(t + 'crouch-knife', torsoOf(P.seq(carry, knife).map(crouched)), { durations: knifeTiming(knife.length), loop: false });
+    defHd(t + 'knife-b', torsoOf(P.seq(carry, o.knifeB ?? knifeBPoses(o.knife ?? P.KNIFE))), { durations: o.durations?.['knife-b'] ?? P.KNIFE6_TIMING, loop: false });
   }
-  defHi(pre + 'die', deco('die', o.die ?? diePoses(style), 'full'), timing('die', { durations: o.die ? [6, 6, 6, 6, 8, 40] : P.DIE12_TIMING }, false));
-  defHi(pre + 'die-burn', (d) => burnFrames(style, {}, 9, d), { durations: [5, 5, 8, 12, 8, 8, 40], loop: false });
-  defHi(pre + 'die-blast', (d) => blastFrames(style, {}, d, blastPoses(style)), { durations: P.DIE_BLAST10_TIMING, loop: false });
-  defHi(pre + 'spawn', full(spawnPoses(style)), { durations: P.SPAWN6_TIMING, loop: false });
+  defHd(pre + 'die', deco('die', o.die ?? diePoses(style), 'full'), timing('die', { durations: o.die ? [6, 6, 6, 6, 8, 40] : P.DIE12_TIMING }, false));
+  defHd(pre + 'die-burn', (d) => burnFrames(style, {}, 9, d), { durations: [5, 5, 8, 12, 8, 8, 40], loop: false });
+  defHd(pre + 'die-blast', (d) => blastFrames(style, {}, d, blastPoses(style)), { durations: P.DIE_BLAST10_TIMING, loop: false });
+  defHd(pre + 'spawn', full(spawnPoses(style)), { durations: P.SPAWN6_TIMING, loop: false });
   // Idle fidgets (row 14): the hero's own tables, else the defaults; rare, so deferred.
   const fidgetA = o.fidgetA ?? tween(style, P.FIDGET_A_KEYS, { perKey: P.FIDGET_A_PER, ease: 'inOut' });
   const fidgetB = o.fidgetB ?? tween(style, P.FIDGET_B_KEYS, { perKey: P.FIDGET_B_PER, ease: 'inOut' });
-  defHi(pre + 'fidget-a', deco('fidget-a', fidgetA, 'full'), { ...timing('fidget-a', { durations: P.FIDGET_A_TIMING }, false), defer: true });
-  defHi(pre + 'fidget-b', deco('fidget-b', fidgetB, 'full'), { ...timing('fidget-b', { durations: P.FIDGET_B_TIMING }, false), defer: true });
-  defHi(pre + 'timeout-yawn', full(P.TIMEOUT_YAWN), { durations: P.TIMEOUT_YAWN_TIMING, loop: false, defer: true });
-  defHi(pre + 'timeout-sleep', full(P.TIMEOUT_SLEEP), { ticksPerFrame: 12, defer: true });
-  defHi(pre + 'mount', full(P.MOUNT), { ticksPerFrame: 6, loop: false });
+  defHd(pre + 'fidget-a', deco('fidget-a', fidgetA, 'full'), { ...timing('fidget-a', { durations: P.FIDGET_A_TIMING }, false), defer: true });
+  defHd(pre + 'fidget-b', deco('fidget-b', fidgetB, 'full'), { ...timing('fidget-b', { durations: P.FIDGET_B_TIMING }, false), defer: true });
+  defHd(pre + 'timeout-yawn', full(P.TIMEOUT_YAWN), { durations: P.TIMEOUT_YAWN_TIMING, loop: false, defer: true });
+  defHd(pre + 'timeout-sleep', full(P.TIMEOUT_SLEEP), { ticksPerFrame: 12, defer: true });
+  defHd(pre + 'mount', full(P.MOUNT), { ticksPerFrame: 6, loop: false });
   // Anim wave p1 (plan Phase 1): flip and legs-dangle play in normal play; the rare strips are deferred.
-  defHi(pre + 'flip', full(flipPoses(style)), { ticksPerFrame: 2, loop: false });
-  defHi(pre + 'mount-hop', full(P.MOUNT_HOP), { durations: MOUNT_HOP_TIMING, loop: false, defer: true });
-  defHi(pre + 'legs-dangle', lower(danglePoses(style)), { ticksPerFrame: 6 });
-  defHi(pre + 'die-drown', (d) => drownFrames(style, d), { durations: P.DROWN_TIMING, loop: false, defer: true });
-  defHi(pre + 'salute', deco('salute', o.salute ?? P.SALUTE, 'full'), timing('salute', { durations: [8, 60] }, false));
+  defHd(pre + 'flip', full(flipPoses(style)), { ticksPerFrame: 2, loop: false });
+  defHd(pre + 'mount-hop', full(P.MOUNT_HOP), { durations: MOUNT_HOP_TIMING, loop: false, defer: true });
+  defHd(pre + 'legs-dangle', lower(danglePoses(style)), { ticksPerFrame: 6 });
+  defHd(pre + 'die-drown', (d) => drownFrames(style, d), { durations: P.DROWN_TIMING, loop: false, defer: true });
+  defHd(pre + 'salute', deco('salute', o.salute ?? P.SALUTE, 'full'), timing('salute', { durations: [8, 60] }, false));
   defineSprite(pre + 'portrait', () => portrait(style), { anchor: 'top-left', hi: () => portrait(style, 2) });
   defineRiderSprites(id, style);
 }
@@ -408,7 +407,7 @@ export function defineRiderSprites(id: string, style: HumanStyle, base: Pose = {
   const pre = `char/${id}/`;
   for (const name of P.RIDE_POSES) {
     const r = P.RIDE[name];
-    defHi(pre + 'ride-' + name, (d) => poseFrames(style, P.seq({ ...base, weapon: 'none' }, r.frames), 'upper', d), { ticksPerFrame: r.ticks });
+    defHd(pre + 'ride-' + name, (d) => poseFrames(style, P.seq({ ...base, weapon: 'none' }, r.frames), 'upper', d), { ticksPerFrame: r.ticks });
   }
 }
 
@@ -416,8 +415,8 @@ export function defineRiderSprites(id: string, style: HumanStyle, base: Pose = {
 
 /**
  * Menu portrait (32×32): the head and shoulders rendered by the rig, enlarged with Scale2x
- * (rounded edges, no new colours) on a framed dark panel. `density` 2: the 64×64 2× twin (the 2×
- * bust under the same crop; frame and panel at the 1× weight).
+ * (rounded edges, no new colours) on a framed dark panel. `density` 2: the 64×64 2× twin (the HD
+ * bust under the same crop; frame and panel at the 1× weight). Registered at 2× only (menus).
  */
 export function portrait(style: HumanStyle, density: Density = 1): PixelBuffer {
   const bust = renderHuman(style, { armN: { sh: 4, el: 10 }, armF: { sh: -4, el: 10 }, expr: 'normal' }, 'upper', density);
@@ -439,7 +438,7 @@ export function portraitPanel(bust: PixelBuffer, sx: number, sy: number, bg: rea
   out.gradient(0, 0, 32 * d, 32 * d, bg, { dither: 0.5 });
   out.blit(crop, 0, d);
   out.strokeRect(0, 0, 32 * d, 32 * d, INK);
-  if (d === 2) out.strokeRect(1, 1, 62, 62, INK);
+  for (let k = 1; k < d; k++) out.strokeRect(k, k, 32 * d - 2 * k, 32 * d - 2 * k, INK);
   return out;
 }
 

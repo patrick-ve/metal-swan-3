@@ -11,6 +11,12 @@
  *
  * Template letters: k = ink, 0..4 = steel ramp, w/W = wood (brown 1/2), o/O = olive 1/2,
  * g = gold, t = brown 3 (light wood). '.' is transparent.
+ *
+ * UHD (2× and 4×, mission ams): src/game/art/hd/gear.ts draws every item and hand natively at d ∈
+ * {2, 4} from these 1× footprints and points (gunArtHd / gunHd, heldArtHd, knifeArtHd,
+ * propArtHd / propHd, drawHandHd / handArtHd; `handTemplate` below feeds it). The ASCII 2×
+ * twins here (gunArtHi, heldArtHi, knifeArtHi, propArtHi, HANDS_HI, hiRows) are RETIRED: delete
+ * them once humanoid.ts, tools/uhd-spike.ts and tests/art/humanoid-hi.test.ts no longer call them.
  */
 import type { Color } from '../../engine/color';
 import { ascii } from '../../engine/ascii';
@@ -191,6 +197,15 @@ const HANDS_HI: Readonly<Record<HandShape, readonly string[]>> = {
   point: ['..####........', '.#####........', '#############.', '##############', '########......', '######f#......', '..####........', '..###.........'],
   thumb: ['..##......', '..##......', '..##......', '..##......', '########..', '#######f..', '########..', '######f#..', '..####....', '..####....'],
 };
+
+/**
+ * The 1× hand template of a shape (pointing forward) and its wrist pixel: the UHD hand drawer
+ * (src/game/art/hd/gear.ts `drawHandHd`) draws d times this box with the wrist on the same
+ * logical pixel.
+ */
+export function handTemplate(shape: HandShape): { readonly rows: readonly string[]; readonly wrist: readonly [number, number] } {
+  return HANDS[shape];
+}
 
 /**
  * Draw a shaded hand (glove or skin) into `layer` with its wrist at (x, y), turned by

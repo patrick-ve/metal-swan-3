@@ -11,6 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { INK, PAL } from '../../src/engine/palette';
+import { inHdPalette } from '../../src/engine/palette-hd';
 import type { PixelBuffer } from '../../src/engine/pixel';
 import { getFrames, hasHiSprite, listSprites, spriteErrors } from '../../src/engine/sprites';
 import { Terrain } from '../../src/engine/terrain';
@@ -28,9 +29,9 @@ function paletteSet(): Set<number> {
   return s;
 }
 
-function offPalette(b: PixelBuffer, pal: Set<number>): number {
+function offPalette(b: PixelBuffer, pal: Set<number>, hd = false): number {
   let n = 0;
-  for (const c of b.data) if ((c & 255) !== 0 && !pal.has(c >>> 0)) n++;
+  for (const c of b.data) if ((c & 255) !== 0 && !pal.has(c >>> 0) && !(hd && inHdPalette(c))) n++;
   return n;
 }
 
@@ -57,7 +58,8 @@ describe('mission ams: 2× ambient life', () => {
         expect(f.density, `${id}[${i}]`).toBe(2);
         expect([f.buf.w, f.buf.h, f.ox, f.oy], `${id}[${i}]`).toEqual([lo[i].buf.w * 2, lo[i].buf.h * 2, lo[i].ox, lo[i].oy]);
         expect(f.pts ?? {}, `${id}[${i}]`).toEqual(lo[i].pts ?? {});
-        expect(offPalette(f.buf, pal), `${id}[${i}] palette`).toBe(0);
+        // 2× art is either the 64 palette or, once drawn by the UHD kit (rig figures), PAL_HD.
+        expect(offPalette(f.buf, pal, true), `${id}[${i}] palette`).toBe(0);
         const doubled = lo[i].buf.scaled(2).data;
         if (!f.buf.data.every((c, k) => c === doubled[k])) detailed = true;
       }

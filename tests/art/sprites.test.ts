@@ -129,6 +129,29 @@ describe('player sprite contract (char/recruit)', () => {
       for (const f of getFrames(id)) expect(bounds(f).bottom, id).toBe(0);
     }
   });
+
+  it('the UHD frames (2× and 4×, the HD body) keep the contract: frame counts, logical size, anchor, points', () => {
+    const logical = (f: Frame): string => {
+      const d = f.density ?? 1;
+      return `${f.buf.w / d}x${f.buf.h / d}@${f.ox},${f.oy}|${JSON.stringify(f.pts ?? {})}`;
+    };
+    for (const id of listSprites(C)) {
+      const lo = getFrames(id, 1);
+      for (const d of id.endsWith('/portrait') ? [2] : [2, 4]) {
+        const hi = getFrames(id, d);
+        expect(hi.length, `${id}@${d}x`).toBe(lo.length);
+        hi.forEach((f, i) => {
+          expect(f.density, `${id}@${d}x[${i}]`).toBe(d);
+          expect(logical(f), `${id}@${d}x[${i}]`).toBe(logical(lo[i]));
+        });
+      }
+    }
+    // Stacked at 4×, the standing figure keeps the 1× height and its feet on the ground line.
+    const stand = stackFrames(getFrames(C + 'legs-idle', 4)[0], getFrames(C + 'torso-pistol-idle', 4)[0]);
+    const lo = stackFrames(getFrames(C + 'legs-idle')[0], getFrames(C + 'torso-pistol-idle')[0]);
+    expect([stand.buf.w / 4, stand.buf.h / 4, stand.ox, stand.oy]).toEqual([lo.buf.w, lo.buf.h, lo.ox, lo.oy]);
+    expect(spriteErrors().filter((e) => e.id.startsWith(C))).toEqual([]);
+  }, 60_000);
 });
 
 describe('Swan rider strips (char/<id>/ride-*, look.md §6.4)', () => {

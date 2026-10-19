@@ -1,10 +1,10 @@
 export const meta = {
   name: 'uhd',
-  description: 'UHD art wave for one group (args.group: found | style | rig | cast | city | screens | polish): medium-effort builders, then a high-effort adversarial verifier that runs the gates',
+  description: 'UHD art wave for one group (args.group: found | style | rig | cast | city | screens | polish): xhigh-effort builders, then an xhigh-effort adversarial verifier that runs the gates',
   whenToUse: 'Run the groups of the approved UHD arcade-fidelity plan strictly in order: found, style (repeat with args.feedback until the user approves the look), rig, cast, city, screens, polish.',
   phases: [
-    { title: 'Build', detail: 'the group builders (medium effort)' },
-    { title: 'Verify', detail: 'adversarial review, fixes, gates (high effort)' },
+    { title: 'Build', detail: 'the group builders (xhigh effort)' },
+    { title: 'Verify', detail: 'adversarial review, fixes, gates (xhigh effort)' },
   ],
 }
 
@@ -110,7 +110,7 @@ const RIG_HEADS = {
   key: 'uhd-rig-heads',
   port: 5511,
   owns: 'src/game/art/hd/head.ts, src/game/art/humanoid-head.ts (exports and hooks only), src/game/art/portrait-kit.ts (exports only), src/game/content/characters/portrait.art.ts and select.art.ts (exports only), tests/art/hd-head.test.ts (new)',
-  task: `ROLE: RIG - HEADS (stage 1). renderHeadHd(s, expr, d) for EVERY HeadStyle the game uses (all hair styles, headgear, extras, all expressions; tilt and glint as the 2x path does), painted with the kit's height field and light: skull, ears, brows, eyes with iris / pupil / highlight at 4x, nose and mouth shading, hair as lit strand clusters, headgear with seams and shine. The five squad members keep the likeness cues of their select portraits (reuse the portrait-kit face definitions; export what you need). Exactly HEAD_W*d x HEAD_H*d, same layout. Test: sizes, layout points, determinism, every style x expression renders. LOOK at a contact sheet of all heads at 2x and 4x next to today's 2x heads.`,
+  task: `ROLE: RIG - HEADS (stage 1). renderHeadHd(s, expr, d) for EVERY HeadStyle the game uses (all hair styles, headgear, extras, all expressions; tilt and glint as the 2x path does), painted with the kit's height field and light: skull, ears, brows, eyes with iris / pupil / highlight at 4x, nose and mouth shading, hair as lit strand clusters, headgear with seams and shine. Start from the style-approved head in src/game/art/hd/head.ts (style round 1: locks with a fringe, visible ear, big eye) and fix its open notes: the light horizontal cheek band and the ear that reads like a blush spot. The five squad members keep the likeness cues of their select portraits (reuse the portrait-kit face definitions; export what you need). Exactly HEAD_W*d x HEAD_H*d, same layout. Test: sizes, layout points, determinism, every style x expression renders. LOOK at a contact sheet of all heads at 2x and 4x next to today's 2x heads.`,
 }
 
 const RIG_GEAR = {
@@ -130,8 +130,8 @@ const RIG_PIECES = {
 const RIG_BODY = {
   key: 'uhd-rig-body',
   port: 5514,
-  owns: 'src/game/art/humanoid.ts, src/game/art/hd/body.ts (new), src/game/art/human-sprites.ts, src/game/art/human-fx.ts, src/game/art/hi-strips.ts, src/game/art/humanoid-head-hi.ts (delete when unused), src/game/content/characters/art.ts, src/game/content/characters/helium.ts, tests/content/characters.test.ts, tests/art/sprites.test.ts, tests/art/hd-body.test.ts (new)',
-  task: `ROLE: RIG - BODY AND REGISTRATION (stage 2; heads, gear and pieces are done - read their reports above). In humanoid.ts: Density = 1 | 2 | 4; the HD path for d in {2, 4} draws limbs and torso with the kit (lit volumes, folds at elbows and knees, belts, straps, pouches, boots with soles and laces at 4x, collar and sleeve seams) using renderHeadHd, the HD gear and the HD pieces; joints at 1/d logical px (generalise HALF_PX_JOINTS; the 1x path keeps whole pixels and stays byte-identical); renderHuman keeps the 1x frame geometry (size, anchor, points). Retire the old 2x body and head drawers (delete humanoid-head-hi.ts and the 2x-only branches once nothing uses them; riders, handhaver, people and hostages call renderHuman too - they must keep working at 2x). Register d 2 and 4 for EVERY hero strip (all 10 heroes, Helium twins, deferred strips keep defer) via the new registry API. Tests: geometry at 1/2/4 equal, motion gate unchanged, no duplicate frames at 4x, 1x fixture unchanged. LOOK at char/recruit/, char/patrick/, char/vincent/ at 2x and 4x (sheets and an ams shot at --res 8 --art 4) next to ours-today.`,
+  owns: 'src/game/art/humanoid.ts, src/game/art/hd/body.ts (new), src/engine/art-pool.ts (familyOf only), src/game/art/human-sprites.ts, src/game/art/human-fx.ts, src/game/art/hi-strips.ts, src/game/art/humanoid-head-hi.ts (delete when unused), src/game/content/characters/art.ts, src/game/content/characters/helium.ts, tests/content/characters.test.ts, tests/art/sprites.test.ts, tests/art/hd-body.test.ts (new)',
+  task: `ROLE: RIG - BODY AND REGISTRATION (stage 2; heads, gear and pieces are done - read their reports above). THE APPROVED LOOK is the style spike's hero (tools/uhd-spike.ts drawHero / POSES, tmp/uhd-style/hero@4x.png and hero@2x.png; kit APIs blob, limb, along, rimLight in src/game/art/hd/): port that approach into the rig so EVERY pose of poses.ts renders that way (the spike only had 3 poses); fix its open note: the near sleeve in idle is a large tan shape - give it an elbow bend and a cuff at 2x too. BUDGET (tmp/uhd-budget.md, binding): average <= 4 ms per 4x hero frame on one thread (cache lit limb segments per style and angle if needed); split familyOf('char/<hero>/...') in src/engine/art-pool.ts by strip family (legs / torso-<w> / full) so one hero spreads over >= 4 workers; report the chosen-hero 4x pool wall time (npm run anim-bench -- hero:recruit --density 4 --pool 8 or a row you add). In humanoid.ts: Density = 1 | 2 | 4; the HD path for d in {2, 4} draws limbs and torso with the kit (lit volumes, folds at elbows and knees, belts, straps, pouches, boots with soles and laces at 4x, collar and sleeve seams) using renderHeadHd, the HD gear and the HD pieces; joints at 1/d logical px (generalise HALF_PX_JOINTS; the 1x path keeps whole pixels and stays byte-identical); renderHuman keeps the 1x frame geometry (size, anchor, points). Retire the old 2x body and head drawers (delete humanoid-head-hi.ts and the 2x-only branches once nothing uses them; riders, handhaver, people and hostages call renderHuman too - they must keep working at 2x). Register d 2 and 4 for EVERY hero strip (all 10 heroes, Helium twins, deferred strips keep defer) via the new registry API. Tests: geometry at 1/2/4 equal, motion gate unchanged, no duplicate frames at 4x, 1x fixture unchanged. LOOK at char/recruit/, char/patrick/, char/vincent/ at 2x and 4x (sheets and an ams shot at --res 8 --art 4) next to ours-today.`,
 }
 
 const CAST = [
@@ -234,13 +234,13 @@ async function buildAndVerify(stages, scope, extra) {
   const rsAll = []
   for (const stage of stages) {
     const earlier = all.length ? reportsOf(all, rsAll) : ''
-    const rs = await parallel(stage.map((a) => () => agent(builderPrompt(a, earlier), { label: `build:${a.key}`, phase: 'Build', effort: 'medium' })))
+    const rs = await parallel(stage.map((a) => () => agent(builderPrompt(a, earlier), { label: `build:${a.key}`, phase: 'Build', effort: 'xhigh' })))
     all.push(...stage)
     rsAll.push(...rs)
   }
   phase('Verify')
   const owns = `every file of this group: ${all.map((a) => a.owns).join('; ')}`
-  const v = await agent(verifierPrompt(`uhd-${GROUP}-verify`, scope, owns, reportsOf(all, rsAll), extra || ''), { label: `verify:${GROUP}`, phase: 'Verify', schema: VERIFY_SCHEMA, effort: 'high' })
+  const v = await agent(verifierPrompt(`uhd-${GROUP}-verify`, scope, owns, reportsOf(all, rsAll), extra || ''), { label: `verify:${GROUP}`, phase: 'Verify', schema: VERIFY_SCHEMA, effort: 'xhigh' })
   return { group: GROUP, builders: all.map((a, i) => ({ key: a.key, ok: Boolean(rsAll[i]) })), verify: v }
 }
 
@@ -260,13 +260,13 @@ if (GROUP === 'found') {
   result = await buildAndVerify([SCREENS], 'everything outside the mission: font, HUD, menus, ending flow, FPS mode at 2x and 4x', 'Extra checks: text layout numbers unchanged (measure / layoutText); the FPS frame budget; every screen of the ams route (boot -> title -> select -> intro -> gameplay -> glitch bridge -> fps -> tally -> ending -> name entry -> high scores) captured at --res 8 --art 4.')
 } else if (GROUP === 'polish') {
   phase('Build')
-  const found = await parallel(LENSES.map((l, i) => () => agent(`${PRE}\n\nYOUR LABEL: ${l.key} (tool output goes to tmp/${l.key}/). YOUR PORT: ${5516 + i}. You are a READ-ONLY reviewer: do not edit source files (writing into tmp/ is fine).\nROLE: ${l.ask}\nOPEN ITEMS: ${ROOT}/tmp/uhd-polish-todo.md (if it exists) lists known issues of the earlier groups; confirm or refute the ones in your lens (with evidence) and add new ones.\nReport only real, verified problems with evidence (file:line, a PNG path you looked at, a number). Max 15 findings, most severe first.`, { label: `review:${l.key}`, phase: 'Build', schema: FINDINGS_SCHEMA, effort: 'high' })))
+  const found = await parallel(LENSES.map((l, i) => () => agent(`${PRE}\n\nYOUR LABEL: ${l.key} (tool output goes to tmp/${l.key}/). YOUR PORT: ${5516 + i}. You are a READ-ONLY reviewer: do not edit source files (writing into tmp/ is fine).\nROLE: ${l.ask}\nOPEN ITEMS: ${ROOT}/tmp/uhd-polish-todo.md (if it exists) lists known issues of the earlier groups; confirm or refute the ones in your lens (with evidence) and add new ones.\nReport only real, verified problems with evidence (file:line, a PNG path you looked at, a number). Max 15 findings, most severe first.`, { label: `review:${l.key}`, phase: 'Build', schema: FINDINGS_SCHEMA, effort: 'xhigh' })))
   const all = found.filter(Boolean).flatMap((f) => f.findings || [])
   log(`${all.length} findings from ${found.filter(Boolean).length} lenses`)
   phase('Verify')
   const v = await agent(verifierPrompt('uhd-polish-fix', 'the final polish of the UHD wave', 'every file changed in this wave (src/**, tests/**, docs/**, tools/**) - keep changes minimal and safe', `FINDINGS FROM THE REVIEW PANEL (verify each before fixing; skip false ones and say why):\n${JSON.stringify(all, null, 1)}`,
     `OPEN ITEMS: also work through ${ROOT}/tmp/uhd-polish-todo.md if it exists (fix what is safe and inside tmp/uhd-budget.md; in the hand-off say fixed / skipped and why for every item).
-DOCS: docs/ART_GUIDE.md ("UHD art", retire the "2x art (mission ams)" rules that no longer apply), ARCHITECTURE sections 3, 5.4, 6.1, 10, docs/api/media.md - to what was actually built.`), { label: 'verify:polish', phase: 'Verify', schema: VERIFY_SCHEMA, effort: 'high' })
+DOCS: docs/ART_GUIDE.md ("UHD art", retire the "2x art (mission ams)" rules that no longer apply), ARCHITECTURE sections 3, 5.4, 6.1, 10, docs/api/media.md - to what was actually built.`), { label: 'verify:polish', phase: 'Verify', schema: VERIFY_SCHEMA, effort: 'xhigh' })
   result = { group: GROUP, findings: all.length, verify: v }
 } else {
   log(`Unknown group "${GROUP}". Use one of: ${ORDER.join(', ')}`)

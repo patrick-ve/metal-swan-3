@@ -25,13 +25,14 @@ export interface PortraitCfg {
   /** Shift of the 16×16 source crop (+ right / down). */
   dx?: number;
   dy?: number;
-  /** A hand-built portrait (32 × 32, 2×: 64 × 64) that replaces the rig render. */
+  /** A hand-built portrait (32 × 32, 2×: 64 × 64) that replaces the rig render (menu portraits
+   *  are registered at 1× and 2× only; the screens group owns a 4× portrait). */
   draw?: (density: Density) => PixelBuffer;
 }
 
 /** The squad's portraits: the select-portrait face, zoomed out, on the navy panel. */
 function squadPortrait(id: SquadId): PortraitCfg {
-  return { bg: [PAL.navy[0], PAL.navy[1], PAL.purple[0]], expr: 'normal', draw: (d) => smallPortrait(id, d) };
+  return { bg: [PAL.navy[0], PAL.navy[1], PAL.purple[0]], expr: 'normal', draw: (d) => smallPortrait(id, d === 1 ? 1 : 2) };
 }
 
 /** Each hero's panel colour is the complement of the outfit, so the head stands out. */

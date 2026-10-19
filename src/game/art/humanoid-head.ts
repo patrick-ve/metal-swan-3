@@ -24,7 +24,7 @@ import { EXPR_HI, EXTRAS_HI, GEAR_HI, HAIR_HI, SKULL_HI, TRAITS_HI, type HiTpl }
 export const HEAD_W = 18;
 export const HEAD_H = 19;
 /** Top-left of the 12×12 skull template inside the head buffer. */
-const BASE_AT: readonly [number, number] = [3, 7];
+export const BASE_AT: readonly [number, number] = [3, 7];
 /** Neck joint inside the head buffer (bottom of the neck). */
 export const NECK: readonly [number, number] = [BASE_AT[0] + 5, BASE_AT[1] + 11];
 /** Head centre inside the head buffer (for the 'head' point). */
@@ -114,14 +114,14 @@ export type FaceExtra =
   /** Blue eyes: the iris in sky blue on open-eyed expressions (Bob). */
   | 'blue-eyes';
 
-interface Tpl {
+export interface Tpl {
   /** Offset relative to the skull template's top-left. */
   at: readonly [number, number];
   rows: readonly string[];
 }
 
 /** Bald skull + face, hand-shaded (light from the top-left). Rows 0–10 head, 11 neck. */
-const SKULL = [
+export const SKULL: readonly string[] = [
   '...3333.....',
   '..33333332..',
   '.3333333322.',
@@ -137,7 +137,7 @@ const SKULL = [
 ];
 
 /** Hair overlays (skull coordinates). Pixels outside the skull add volume. */
-const HAIR: Readonly<Record<HairStyle, Tpl>> = {
+export const HAIR: Readonly<Record<HairStyle, Tpl>> = {
   short: {
     at: [0, -1],
     rows: [
@@ -336,14 +336,14 @@ const HAIR: Readonly<Record<HairStyle, Tpl>> = {
 };
 
 /** Headgear overlays. `hairBelow` = hair rows (skull coords) above it are hidden. */
-interface GearTpl extends Tpl {
+export interface GearTpl extends Tpl {
   /** Hair pixels with skull row < hairBelow are removed (the gear covers them). */
   hairBelow: number;
   /** Also remove hair left of this skull column at every row (hoods). */
   hairRightOf?: number;
 }
 
-const GEAR: Readonly<Record<Exclude<Headgear, 'none'>, GearTpl>> = {
+export const GEAR: Readonly<Record<Exclude<Headgear, 'none'>, GearTpl>> = {
   helmet: {
     at: [-1, -2],
     hairBelow: 3,
@@ -532,7 +532,7 @@ const EXPR: Readonly<Record<Expression, ExprTpl>> = {
   soot: { eye: ['w', 'w'], mouth: [], brow: [] },
 };
 
-const EXTRAS: Readonly<Record<FaceExtra, Tpl>> = {
+export const EXTRAS: Readonly<Record<FaceExtra, Tpl>> = {
   moustache: { at: [7, 7], rows: ['.hhhh', 'hh..h'] },
   beard: { at: [3, 7], rows: ['..h.....h', '.hHh..hHh', '.hHHhhHHh', '..hHHHHh.', '...hhhh..'] },
   glasses: { at: [6, 4], rows: ['kkkkk', '.kllk', '..kk.'] },
@@ -562,7 +562,7 @@ const UNDER_EXTRAS: ReadonlySet<FaceExtra> = new Set<FaceExtra>(['heavy-stubble'
  * Face traits that replace one part of an expression (a character's signature look) on the
  * expressions listed; any other expression keeps its own part (a shout still opens the mouth).
  */
-interface FaceTrait {
+export interface FaceTrait {
   part: 'eye' | 'mouth' | 'brow';
   on: ReadonlySet<Expression>;
   tpl: Tpl;
@@ -571,7 +571,7 @@ interface FaceTrait {
 const CALM: ReadonlySet<Expression> = new Set<Expression>(['normal', 'blink', 'happy', 'chew']);
 const OPEN: ReadonlySet<Expression> = new Set<Expression>(['normal', 'shout']);
 
-const FACE_TRAITS: Readonly<Partial<Record<FaceExtra, FaceTrait>>> = {
+export const FACE_TRAITS: Readonly<Partial<Record<FaceExtra, FaceTrait>>> = {
   'raised-brow': { part: 'brow', on: new Set<Expression>(['normal', 'blink', 'happy', 'chew', 'shout']), tpl: { at: [8, 2], rows: ['.hh', 'h..'] } },
   smirk: { part: 'mouth', on: new Set<Expression>(['normal', 'blink']), tpl: { at: [8, 7], rows: ['m..', '.mm'] } },
   grin: { part: 'mouth', on: CALM, tpl: { at: [7, 8], rows: ['mtttt', '.mmm'] } },
@@ -590,7 +590,7 @@ function facePart(extras: readonly FaceExtra[], expr: Expression, part: FaceTrai
 }
 
 /** Expressions whose eye is a plain open pupil: the ones `eyeshine` brightens. */
-const EYESHINE_EXPR: ReadonlySet<Expression> = new Set<Expression>(['normal', 'shout']);
+export const EYESHINE_EXPR: ReadonlySet<Expression> = new Set<Expression>(['normal', 'shout']);
 
 export interface HeadStyle {
   skin: Ramp;

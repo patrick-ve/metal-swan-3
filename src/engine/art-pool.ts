@@ -6,7 +6,7 @@
  * - A worker (src/game/art-worker.ts) loads the content registry, builds the ids it is given
  *   (`buildRawPack`) and answers with a RAW pack: one ArrayBuffer of pixels per sprite id,
  *   handed over as transferables (no copy, no SharedArrayBuffer, so no cross-origin isolation).
- * - Ids of one family (`familyOf`: char/<id>, enemy/<set>, boss/<id>, vehicle/<id> …) always go
+ * - Ids of one family (`familyOf`: a hero's strip family, enemy/<set>, boss/<id>, vehicle/<id> …) always go
  *   to the same worker, so the art parts memoised inside the art modules stay warm there.
  * - Backends (`ArtWorkerPort`): a browser module worker (`browserArtPool`), an in-process port
  *   for node tools and tests (`inProcessPort`), node worker_threads (`nodeArtPool`, wall time).
@@ -215,12 +215,32 @@ export function inProcessPort(handler: ReturnType<typeof createArtWorkerHandler>
   };
 }
 
-/** Family of a sprite id: its ids go to one worker (shared parts stay warm there). */
+/**
+ * Family of a sprite id: its ids go to one worker (shared parts stay warm there). A hero
+ * (`char/<id>/…`, about 120 ids and 450 frames, the tier-4 working set) is split by strip family
+ * so it spreads over the pool: `legs-*`, `torso-pistol-*`, `torso-heavy-*`, the Helium twins
+ * `helium-*` and `helium-wob-*`, the rider strips `ride-*`, and the full-body rest (`char/<id>`).
+ */
 export function familyOf(id: string): string {
   const parts = id.split('/');
   const head = parts[0];
+  if (head === 'char' && parts.length >= 3) {
+    const sub = heroStripFamily(parts[2]);
+    return sub ? `char/${parts[1]}/${sub}` : `char/${parts[1]}`;
+  }
   if (head === 'char' || head === 'boss' || head === 'enemy' || head === 'vehicle' || head === 'npc') return parts.slice(0, 2).join('/');
   return parts.slice(0, 3).join('/');
+}
+
+/** The strip family of a hero strip name (null: the full-body rest). */
+function heroStripFamily(strip: string): string | null {
+  if (strip.startsWith('helium-wob-')) return 'helium-wob';
+  if (strip.startsWith('helium-')) return 'helium';
+  if (strip.startsWith('legs-')) return 'legs';
+  if (strip.startsWith('torso-pistol-')) return 'torso-pistol';
+  if (strip.startsWith('torso-heavy-')) return 'torso-heavy';
+  if (strip.startsWith('ride-')) return 'ride';
+  return null;
 }
 
 /** Pool size for `cores` hardware threads: cores − 1, at most 8, at least 1. */

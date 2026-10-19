@@ -4,9 +4,10 @@
  * A figure = HumanStyle (what the person looks like) + Pose (what the body does). The rig
  * solves a small skeleton (pelvis, legs, torso, arms, head, gun), draws each body part as its
  * own shaded layer, stacks the layers back to front with dark internal lines between parts
- * (selective outline) and finishes with a 1-px INK silhouette outline. `renderHuman(…, 2)`
- * draws the same figure as 2× art (density 2: the 1× frame's logical geometry, finer edges and
- * details; docs/ART_GUIDE.md "2x art (mission ams)").
+ * (selective outline) and finishes with a 1-px INK silhouette outline. `renderHuman(…, d)` with
+ * d 2 or 4 draws the same figure as UHD art (src/game/art/hd/body.ts: lit volumes, the HD head,
+ * gear and pieces; joints at 1 / d px) with the 1× frame's logical geometry (docs/ART_GUIDE.md
+ * "UHD art").
  *
  * Body space: origin at the feet centre on the ground line, x points FORWARD (sprites face
  * right; the game flips them), y points down. Angles are in degrees:
@@ -29,24 +30,12 @@ import type { Ramp } from '../../engine/pixel';
 import { INK, PAL } from '../../engine/palette';
 import type { Frame } from '../../engine/render';
 import { at, Composer, despeckle, FLAT, R, shadeLayer } from './paint';
-import type { RampLike, ShadeOpts } from './paint';
-import {
-  drawHand,
-  giftArt,
-  grenadeArt,
-  gunArt,
-  gunArtHi,
-  heldArtHi,
-  isProp,
-  knifeArt,
-  knifeArtHi,
-  propArt,
-  propArtHi,
-  snackArt,
-} from './humanoid-gear';
+import type { RampLike } from './paint';
+import { drawHand, giftArt, grenadeArt, gunArt, isProp, knifeArt, propArt, snackArt } from './humanoid-gear';
 import type { HandShape, PropKind, WeaponPose } from './humanoid-gear';
-import * as HeadModule from './humanoid-head';
 import { HEAD_CENTER, HEAD_H, HEAD_W, NECK, renderHead } from './humanoid-head';
+import { drawBodyHd } from './hd/body';
+import { renderHeadHd } from './hd/head';
 import type { Expression, FaceExtra, HairStyle, Headgear, HeadStyle } from './humanoid-head';
 
 export type { Expression, FaceExtra, HairStyle, Headgear } from './humanoid-head';
@@ -423,7 +412,12 @@ function bootBottom(ankle: V, foot: number): number {
   return m;
 }
 
-function solve(st: Resolved, pose: Pose): Skeleton {
+/**
+ * Solve the skeleton. `d` 1: the 1× solve (the ground contact and the bob in whole px). `d` 2 / 4
+ * (the HD body): the lowest sole rests exactly on the ground line (unrounded) and the bob moves
+ * in 1 / d px, so the HD figure stands on the same ground as the 1× one at every pose.
+ */
+function solve(st: Resolved, pose: Pose, d1 = 1): Skeleton {
   const d = st.dims;
   const crouch = pose.crouch ?? 0;
   const legN = blendLeg(pose.legN ?? DEFAULT_POSE.legN, CROUCH_N, crouch);
@@ -444,11 +438,11 @@ function solve(st: Resolved, pose: Pose): Skeleton {
   if (pose.grounded !== false) {
     const knee = (k: V): number => k[1] + Math.floor(d.thighW[1] / 2);
     const bottom = Math.max(bootBottom(ln.ankle, legN.foot ?? 0), bootBottom(lf.ankle, legF.foot ?? 0), knee(ln.knee), knee(lf.knee));
-    sy = -2 - Math.round(bottom);
+    sy = d1 === 1 ? -2 - Math.round(bottom) : -2 - bottom;
   }
   const S = (p: V): V => [p[0], p[1] + sy];
   // Bob lowers the pelvis (and everything above it); the feet stay where the solve put them.
-  const bob = Math.round(pose.bob ?? 0);
+  const bob = d1 === 1 ? Math.round(pose.bob ?? 0) : Math.round((pose.bob ?? 0) * d1) / d1;
   const B = (p: V): V => [p[0], p[1] + sy + bob];
   const pelvis = B(pelvis0);
 
@@ -642,12 +636,10 @@ const OX = 56;
 const OY = 80;
 
 /**
- * Pixel density of a render: 1 = the 1× art, 2 = 2× art (mission ams; docs/ART_GUIDE.md "2x art
- * (mission ams)"). At 2 every part is placed from the SAME 1×-grid joint pixels as at 1× and drawn
- * on the 2× grid (limb and torso edges follow the true shape at half-pixel steps), with bands,
- * rings and the outline 2 px wide (the 1× weight) and the small details as 1-px lines.
+ * Pixel density of a render: 1 = the 1× art; 2 and 4 = the UHD art (docs/ART_GUIDE.md "UHD art"),
+ * drawn natively by the HD body (src/game/art/hd/body.ts) with the 1× frame's logical geometry.
  */
-export type Density = 1 | 2;
+export type Density = 1 | 2 | 4;
 
 interface Ctx {
   st: Resolved;
@@ -656,15 +648,13 @@ interface Ctx {
   /** Body space → canvas, 1× grid (rotation about the pelvis, offset, origin). */
   T: (p: V) => V;
   rot: number;
-  /** Buffer px per 1× canvas px. */
-  D: Density;
-  /** Canvas size on the 1× grid (the whole working canvas, or the region a 2× render needs). */
+  /** Canvas size (1× grid). */
   W: number;
   H: number;
 }
 
 function layer(c: Ctx): PixelBuffer {
-  return new PixelBuffer(c.W * c.D, c.H * c.D);
+  return new PixelBuffer(c.W, c.H);
 }
 
 function rp(v: V): V {
@@ -672,105 +662,52 @@ function rp(v: V): V {
 }
 
 /**
- * Spike (animation wave, plan Phase 4; user A/B, DEFAULT OFF): at density 2, joints round to half
- * a 1× pixel instead of a whole one, so a 2× limb can move by one 2× pixel between frames. The 2×
- * drawers already place by `v * 2`, so a half value lands on the 2× grid. Frame size, anchor and
- * points stay the 1× geometry (renderHuman takes them from the 1× render).
+ * The half-pixel joint spike of the animation wave is retired: the HD body (density 2 and 4)
+ * always places joints at 1 / d px (src/game/art/hd/body.ts), and the 1× art keeps whole pixels.
+ * Kept as a no-op switch for the tools and tests that still pass it.
  */
 let HALF_PX_JOINTS = false;
 
-/** Turn the half-pixel joint spike on or off (A/B only; clear the sprite cache after a change). */
+/** No-op (see above): returns the previous value of the flag, which changes nothing. */
 export function setHalfPxJoints(on: boolean): boolean {
   const prev = HALF_PX_JOINTS;
   HALF_PX_JOINTS = on;
   return prev;
 }
 
-/** Is the half-pixel joint spike on? */
+/** The (no-op) half-pixel joint flag. */
 export function halfPxJoints(): boolean {
   return HALF_PX_JOINTS;
 }
 
-/** Canvas pixel (1× grid) of a body-space point (half pixels at 2× under HALF_PX_JOINTS). */
+/** Canvas pixel (1× grid) of a body-space point. */
 function cp(c: Ctx, p: V): V {
-  if (c.D === 2 && HALF_PX_JOINTS) {
-    const v = c.T(p);
-    return [Math.round(v[0] * 2) / 2, Math.round(v[1] * 2) / 2];
-  }
   return rp(c.T(p));
 }
 
-/** Shading options for this render's density. */
-function sh(c: Ctx, o: ShadeOpts = {}): ShadeOpts {
-  return c.D === 1 ? o : { ...o, density: c.D };
-}
-
-/**
- * Filled polygon through canvas pixels (1× grid). At 2× each vertex moves to the far corner of
- * its 2 × 2 block on the side away from the centroid, so the shape covers the doubled 1× area.
- */
-function fillPoly(c: Ctx, L: PixelBuffer, px: readonly V[], col: Color = FLAT): void {
-  if (c.D === 1) {
-    L.poly(px, col);
-    return;
-  }
-  let mx = 0;
-  let my = 0;
-  for (const p of px) {
-    mx += p[0];
-    my += p[1];
-  }
-  mx /= px.length;
-  my /= px.length;
-  L.poly(px.map((p): V => [p[0] * 2 + (p[0] >= mx ? 1 : 0), p[1] * 2 + (p[1] >= my ? 1 : 0)]), col);
-}
-
+/** Filled polygon through canvas pixels (1× grid). */
 function poly(L: PixelBuffer, c: Ctx, pts: readonly V[], col: Color = FLAT): void {
-  fillPoly(c, L, pts.map((p) => cp(c, p)), col);
+  L.poly(pts.map((p) => cp(c, p)), col);
 }
 
-/** 2× buffer coordinate of a 1×-grid pixel for a capsule end of diameter d (logical px). */
-function capEnd(v: number, d: number): number {
-  return v * 2 + (d % 2 === 0 ? 1 : 0);
+/** Tapered limb between canvas pixels a and b, diameters w0 → w1 px. */
+function taper(L: PixelBuffer, a: V, b: V, w0: number, w1: number, col: Color = FLAT): void {
+  L.taper(a[0], a[1], b[0], b[1], w0, w1, col);
 }
 
-/** Tapered limb between canvas pixels a and b (1× grid), diameters w0 → w1 logical px. */
-function taper(c: Ctx, L: PixelBuffer, a: V, b: V, w0: number, w1: number, col: Color = FLAT): void {
-  if (c.D === 1) {
-    L.taper(a[0], a[1], b[0], b[1], w0, w1, col);
-    return;
-  }
-  const d0 = Math.max(1, Math.round(w0));
-  const d1 = Math.max(1, Math.round(w1));
-  L.taper(capEnd(a[0], d0), capEnd(a[1], d0), capEnd(b[0], d1), capEnd(b[1], d1), d0 * 2, d1 * 2, col);
+/** Capsule (thick line) between canvas pixels, `w` px wide. */
+function thick(L: PixelBuffer, a: V, b: V, w: number, col: Color): void {
+  L.thickLine(a[0], a[1], b[0], b[1], w, col);
 }
 
-/** Capsule (thick line) between canvas pixels, `w` logical px wide. */
-function thick(c: Ctx, L: PixelBuffer, a: V, b: V, w: number, col: Color): void {
-  if (c.D === 1) {
-    L.thickLine(a[0], a[1], b[0], b[1], w, col);
-    return;
-  }
-  const d = Math.max(1, Math.round(w));
-  L.thickLine(capEnd(a[0], d), capEnd(a[1], d), capEnd(b[0], d), capEnd(b[1], d), d * 2, col);
+/** A 1-px line between canvas pixels. */
+function line(L: PixelBuffer, a: V, b: V, col: Color): void {
+  L.line(a[0], a[1], b[0], b[1], col);
 }
 
-/** A 1-logical-px line between canvas pixels (2 px wide at 2×). */
-function line(c: Ctx, L: PixelBuffer, a: V, b: V, col: Color): void {
-  if (c.D === 1) L.line(a[0], a[1], b[0], b[1], col);
-  else L.thickLine(a[0] * 2, a[1] * 2, b[0] * 2, b[1] * 2, 2, col);
-}
-
-/** A fine line between canvas pixels: 1 px at either density (2× detail: seams, shafts). */
-function fineLine(c: Ctx, L: PixelBuffer, a: V, b: V, col: Color): void {
-  if (c.D === 1) L.line(a[0], a[1], b[0], b[1], col);
-  else L.line(a[0] * 2, a[1] * 2, b[0] * 2, b[1] * 2, col);
-}
-
-/** One logical pixel at canvas pixel (x, y) (a 2 × 2 block at 2×). */
-function dot(c: Ctx, L: PixelBuffer, x: number, y: number, col: Color): void {
-  if (c.D === 1) L.set(x, y, col);
-  else L.rect(x * 2, y * 2, 2, 2, col);
+/** One pixel at canvas pixel (x, y). */
+function dot(L: PixelBuffer, x: number, y: number, col: Color): void {
+  L.set(x, y, col);
 }
 
 /** Point in the torso frame: a forward, b up from the pelvis. */
@@ -784,8 +721,8 @@ function drawLeg(c: Ctx, hip: V, knee: V, ankle: V, far: boolean, withPelvis: bo
   const h = cp(c, hip);
   const k = cp(c, knee);
   const a = cp(c, ankle);
-  taper(c, L, h, k, d.thighW[0], d.thighW[1]);
-  taper(c, L, k, a, d.shinW[0], d.shinW[1]);
+  taper(L, h, k, d.thighW[0], d.thighW[1]);
+  taper(L, k, a, d.shinW[0], d.shinW[1]);
   if (withPelvis) {
     const sk = c.sk;
     poly(L, c, [
@@ -795,53 +732,32 @@ function drawLeg(c: Ctx, hip: V, knee: V, ankle: V, far: boolean, withPelvis: bo
       [sk.pelvis[0] - d.waistB, sk.pelvis[1] + 2],
     ]);
   }
-  shadeLayer(L, c.st.pants, sh(c, { shift: far ? -1 : 0 }));
-  // Knee crease: a dark pixel on the inside of a bent knee (at 2×: a short fold line).
+  shadeLayer(L, c.st.pants, { shift: far ? -1 : 0 });
+  // Knee crease: a dark pixel on the inside of a bent knee.
   const bend = angleTo(knee, ankle) - angleTo(hip, knee);
   if (Math.abs(bend) > 35) {
     const mid = (angleTo(hip, knee) + angleTo(knee, ankle)) / 2 + 90;
     const kk = cp(c, add(knee, dirOf(mid), 1));
     const col = at(c.st.pants, far ? 0 : 1);
-    if (c.D === 1) {
-      if ((L.get(kk[0], kk[1]) & 255) !== 0) L.set(kk[0], kk[1], col);
-    } else {
-      const p = c.T(add(knee, dirOf(mid), 1));
-      const q = c.T(add(knee, dirOf(mid + 180), 0.5));
-      const x0 = Math.round(p[0] * 2 + 1);
-      const y0 = Math.round(p[1] * 2 + 1);
-      const x1 = Math.round(q[0] * 2 + 1);
-      const y1 = Math.round(q[1] * 2 + 1);
-      const F = new PixelBuffer(L.w, L.h).line(x0, y0, x1, y1, col);
-      for (let i = 0; i < F.data.length; i++) if ((F.data[i] & 255) !== 0 && (L.data[i] & 255) !== 0) L.data[i] = F.data[i];
-      L.touch();
-    }
+    if ((L.get(kk[0], kk[1]) & 255) !== 0) L.set(kk[0], kk[1], col);
   }
-  return despeckle(L, undefined, c.D);
+  return despeckle(L);
 }
 
 function drawBoot(c: Ctx, ankle: V, foot: number, far: boolean): PixelBuffer {
   const L = layer(c);
   poly(L, c, BOOT.map((p) => rotateAbout([ankle[0] + p[0], ankle[1] + p[1]], ankle, -foot)));
   const b = c.st.boots;
-  shadeLayer(L, b, sh(c, { shift: far ? -1 : 0, glint: !far }));
-  // Sole: the bottom edge in the boot's darkest colour (2 px at 2×: the 1× weight).
+  shadeLayer(L, b, { shift: far ? -1 : 0, glint: !far });
+  // Sole: the bottom edge in the boot's darkest colour.
   const { w, h, data } = L;
-  const src = c.D === 1 ? data : data.slice();
+  const src = data;
   for (let y = h - 2; y >= 0; y--) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       if ((src[i] & 255) === 0) continue;
-      const below = (src[i + w] & 255) === 0;
-      const below2 = c.D === 2 && y + 2 < h && (src[i + 2 * w] & 255) === 0;
-      if (below || below2) data[i] = b[0];
+      if ((src[i + w] & 255) === 0) data[i] = b[0];
     }
-  }
-  if (c.D === 2 && !far) {
-    // Lace detail: a 1-px light line across the instep.
-    const t = cp(c, rotateAbout([ankle[0] + 1, ankle[1] - 1], ankle, -foot));
-    const p = cp(c, rotateAbout([ankle[0] + 2, ankle[1]], ankle, -foot));
-    const F = new PixelBuffer(w, h).line(t[0] * 2 + 1, t[1] * 2, p[0] * 2 + 1, p[1] * 2, at(b, 3));
-    for (let i = 0; i < F.data.length; i++) if ((F.data[i] & 255) !== 0 && (data[i] & 255) !== 0 && data[i] !== b[0]) data[i] = F.data[i];
   }
   return L.touch();
 }
@@ -874,34 +790,14 @@ function drawTorso(c: Ctx): PixelBuffer {
   const main = st.top;
   const L = layer(c);
   poly(L, c, torsoOutline(c));
-  shadeLayer(L, main, sh(c, { lo: 2 }));
+  shadeLayer(L, main, { lo: 2 });
   // Detail helpers in torso coordinates (only on existing torso pixels).
   const put = (a: number, b: number, col: Color): void => {
     const p = cp(c, tp(sk, a, b));
-    if (c.D === 1) {
-      if ((L.get(p[0], p[1]) & 255) !== 0) L.set(p[0], p[1], col);
-      return;
-    }
-    for (let k = 0; k < 4; k++) {
-      const x = p[0] * 2 + (k & 1);
-      const y = p[1] * 2 + (k >> 1);
-      if ((L.get(x, y) & 255) !== 0) L.set(x, y, col);
-    }
+    if ((L.get(p[0], p[1]) & 255) !== 0) L.set(p[0], p[1], col);
   };
-  /** 2× only: one fine pixel at torso point (a, b) (half steps reach single 2× pixels). */
-  const fine = (a: number, b: number, col: Color): void => {
-    if (c.D === 1 || col === 0) return;
-    const p = c.T(tp(sk, a, b));
-    const x = Math.floor(p[0] * 2 + 1);
-    const y = Math.floor(p[1] * 2 + 1);
-    if ((L.get(x, y) & 255) !== 0) L.set(x, y, col);
-  };
-  /** A seam: a dark logical px at 1×, a 1-px line on the left half of the block at 2×. */
-  const seam = (a: number, b: number, col: Color): void => {
-    if (c.D === 1) return put(a, b, col);
-    const p = cp(c, tp(sk, a, b));
-    for (const y of [p[1] * 2, p[1] * 2 + 1]) if ((L.get(p[0] * 2, y) & 255) !== 0) L.set(p[0] * 2, y, col);
-  };
+  /** A seam: a dark pixel. */
+  const seam = put;
   const fillTri = (pts: readonly V[], col: Color): void => {
     const T = layer(c);
     poly(T, c, pts.map((q) => tp(sk, q[0], q[1])), col);
@@ -917,59 +813,35 @@ function drawTorso(c: Ctx): PixelBuffer {
     for (const [a, b, k] of [[0, 5, 3], [1, 5, 3], [0, 4, 1], [1, 4, 1], [0, 3, 1], [1, 3, 1], [-3, 2, 1], [-2, 2, 1], [-3, 3, 3], [-2, 3, 3]] as const) {
       put(a, b, main[k]);
     }
-    // 2×: pocket flap edges and buttons.
-    fine(0, 4.5, main[0]);
-    fine(1, 4.5, main[0]);
-    fine(0.5, 4, at(main, 3));
-    fine(-2.5, 2.5, at(main, 3));
   } else if (type === 'jacket' || type === 'shirt') {
     fillTri([[front - 4, H], [front - 1, H], [front - 2, H - 2]], type === 'shirt' ? main[3] : st.shirt[2]);
     put(front - 4, H - 1, main[3]);
     put(front - 1, H - 1, main[3]);
     for (let b = -1; b <= H - 3; b++) seam(d.waistF, b, main[1]);
-    // 2×: small buttons beside the placket.
-    for (let b = 1; b <= H - 3; b += 2) fine(d.waistF - 0.5, b, at(main, 3));
     if (type === 'jacket') {
       put(-2, 3, main[1]);
       put(-1, 3, main[1]);
-      fine(-2, 2.5, at(main, 3));
-      fine(-1.5, 2.5, at(main, 3));
     }
   } else if (type === 'tunic') {
     // High collar in the accent colour, a row of brass buttons.
     for (let a = front - 4; a <= front - 1; a++) put(a, H, st.accent[2]);
     put(front - 3, H - 1, st.accent[1]);
     for (let b = 0; b <= H - 2; b += 2) put(d.waistF, b, PAL.gold[2]);
-    for (let b = 0; b <= H - 2; b += 2) fine(d.waistF, b, PAL.gold[3]);
   } else if (type === 'sweater') {
     for (let a = -d.waistB - 1; a <= d.waistF + 1; a++) put(a, -1, main[1]);
     for (let a = front - 4; a <= front - 1; a++) put(a, H, main[3]);
-    if (c.D === 1) {
-      for (let b = 1; b <= H - 2; b += 3) for (let a = -d.chestB; a <= front; a += 2) put(a, b, main[1]);
-    } else {
-      // Knit: rows of small 'v' stitches (1-px) instead of the 1× dots.
-      for (let b = 1; b <= H - 2; b += 2) {
-        for (let a = -d.chestB; a <= front; a += 1.5) {
-          fine(a, b, main[1]);
-          fine(a + 0.5, b + 0.5, main[1]);
-          fine(a + 1, b, main[1]);
-        }
-      }
-      // Ribbed hem.
-      for (let a = -d.waistB - 1; a <= d.waistF + 1; a += 1) fine(a + 0.5, -1, main[0]);
-    }
+    for (let b = 1; b <= H - 2; b += 3) for (let a = -d.chestB; a <= front; a += 2) put(a, b, main[1]);
   } else if (type === 'tank') {
     // Bare shoulders and a scoop neck above the tank top.
     const S2 = layer(c);
     poly(S2, c, [tp(sk, -d.chestB - 1, H - 2), tp(sk, -d.chestB + 1, H), tp(sk, front - 2, H), tp(sk, front, H - 1), tp(sk, front - 1, H - 3), tp(sk, -1, H - 3)]);
-    shadeLayer(S2, st.skin, sh(c));
+    shadeLayer(S2, st.skin, {});
     for (let i = 0; i < S2.data.length; i++) if ((S2.data[i] & 255) !== 0 && (L.data[i] & 255) !== 0) L.data[i] = S2.data[i];
     L.touch();
   } else if (type === 'tee') {
     // A round crew neck: a dark rib under the throat.
     for (let a = front - 4; a <= front - 1; a++) put(a, H, main[1]);
     put(front - 3, H - 1, main[1]);
-    fine(front - 2.5, H - 0.5, main[0]);
   } else if (type === 'polo') {
     // A light collar, a short button placket.
     for (let a = front - 4; a <= front - 1; a++) put(a, H, main[3]);
@@ -977,22 +849,18 @@ function drawTorso(c: Ctx): PixelBuffer {
     put(front - 1, H - 1, main[2]);
     put(front - 2, H - 2, main[0]);
     put(front - 2, H - 3, main[0]);
-    fine(front - 2, H - 2.5, at(main, 3));
-    fine(front - 2, H - 3.5, at(main, 3));
   } else if (type === 'coat') {
     fillTri([[front - 4, H], [front - 1, H], [front - 2, H - 2]], st.shirt[2]);
     for (let b = -1; b <= H - 3; b++) seam(d.waistF, b, main[1]);
     for (let b = 1; b <= H - 3; b += 3) put(d.waistF - 1, b, PAL.gold[2]);
-    for (let b = 1; b <= H - 3; b += 3) fine(d.waistF - 1, b, PAL.gold[3]);
   }
   if (st.acc.has('tweed')) {
-    // A fixed fleck pattern: light and dark threads, denser on the 2× grid.
+    // A fixed fleck pattern: light and dark threads.
     for (let b = 0; b <= H; b++) {
       for (let a = -d.chestB - 1; a <= front + 1; a++) {
         const k = (a * 5 + b * 3 + 64) % 7;
         if (k === 0) put(a, b, main[1]);
         else if (k === 3 && b % 2 === 0) put(a, b, at(main, 3));
-        fine(a + 0.5, b + 0.5, k === 5 ? main[1] : k === 1 ? at(main, 3) : 0);
       }
     }
   }
@@ -1001,11 +869,6 @@ function drawTorso(c: Ctx): PixelBuffer {
     for (let a = -d.chestB - 1; a <= front + 1; a++) {
       put(a, 1, PAL.snow[2]);
       put(a, H - 4, PAL.snow[3]);
-    }
-    // 2×: a bright top edge on each band.
-    for (let a = -d.chestB - 1; a <= front + 1; a += 0.5) {
-      fine(a, 1.5, PAL.snow[3]);
-      fine(a, H - 3.5, PAL.snow[3]);
     }
   }
   return L;
@@ -1024,7 +887,7 @@ function drawCoatTails(c: Ctx): PixelBuffer {
     tp(sk, d.waistF + 1, -8),
     tp(sk, -d.waistB - 2 - back, -8 + back),
   ]);
-  shadeLayer(L, c.st.top, sh(c, { lo: 1 }));
+  shadeLayer(L, c.st.top, { lo: 1 });
   return L;
 }
 
@@ -1033,20 +896,9 @@ function drawBelt(c: Ctx): PixelBuffer {
   const sk = c.sk;
   const L = layer(c);
   poly(L, c, [tp(sk, -d.waistB, 0), tp(sk, d.waistF, 0), tp(sk, d.waistF, -1), tp(sk, -d.waistB, -1)]);
-  shadeLayer(L, c.st.belt, sh(c, { hi: 0, lo: 0, base: 1 }));
+  shadeLayer(L, c.st.belt, { hi: 0, lo: 0, base: 1 });
   const p = cp(c, tp(sk, d.waistF - 1, 0));
-  if (c.D === 1) L.set(p[0], p[1], PAL.gold[2]);
-  else {
-    // A brass buckle: a light frame round a dark prong.
-    L.rect(p[0] * 2, p[1] * 2, 2, 2, PAL.gold[2]);
-    L.set(p[0] * 2, p[1] * 2, PAL.gold[3]);
-    L.set(p[0] * 2 + 1, p[1] * 2 + 1, PAL.gold[1]);
-    // Stitching: a 1-px lighter line along the top of the belt.
-    const a = c.T(tp(sk, -d.waistB, 0));
-    const b = c.T(tp(sk, d.waistF - 2, 0));
-    const F = new PixelBuffer(L.w, L.h).line(Math.round(a[0] * 2), Math.round(a[1] * 2), Math.round(b[0] * 2 + 1), Math.round(b[1] * 2), at(c.st.belt, 2));
-    for (let i = 0; i < F.data.length; i++) if ((F.data[i] & 255) !== 0 && (L.data[i] & 255) !== 0) L.data[i] = F.data[i];
-  }
+  L.set(p[0], p[1], PAL.gold[2]);
   return L.touch();
 }
 
@@ -1059,41 +911,22 @@ function drawArm(c: Ctx, shoulder: V, el: V, wr: V, far: boolean): PixelBuffer {
   const w = cp(c, wr);
   const shift = far ? -1 : 0;
   if (st.sleeveUpper === st.sleeveFore) {
-    taper(c, L, s, e, d.armW[0], d.armW[1]);
-    taper(c, L, e, w, d.foreW[0], d.foreW[1]);
-    shadeLayer(L, st.sleeveUpper, sh(c, { shift }));
-    if (c.D === 2) cuffLine(L, e, w, d.foreW[1], at(st.sleeveUpper, 1 + shift));
-    return despeckle(L, undefined, c.D);
+    taper(L, s, e, d.armW[0], d.armW[1]);
+    taper(L, e, w, d.foreW[0], d.foreW[1]);
+    shadeLayer(L, st.sleeveUpper, { shift });
+    return despeckle(L);
   }
   // Short sleeve: a bare arm, then a sleeve over the top half of the upper arm.
   const F = layer(c);
-  taper(c, F, s, e, d.armW[0], d.armW[1]);
-  taper(c, F, e, w, d.foreW[0], d.foreW[1]);
-  shadeLayer(F, st.sleeveFore, sh(c, { shift }));
+  taper(F, s, e, d.armW[0], d.armW[1]);
+  taper(F, e, w, d.foreW[0], d.foreW[1]);
+  shadeLayer(F, st.sleeveFore, { shift });
   const U = layer(c);
   const m = cp(c, add(shoulder, [el[0] - shoulder[0], el[1] - shoulder[1]], 0.5));
-  taper(c, U, s, m, d.armW[0] + 1, d.armW[0] + 1);
-  shadeLayer(U, st.sleeveUpper, sh(c, { shift }));
-  if (c.D === 2) cuffLine(U, s, m, d.armW[0] + 1, at(st.sleeveUpper, 1 + shift));
+  taper(U, s, m, d.armW[0] + 1, d.armW[0] + 1);
+  shadeLayer(U, st.sleeveUpper, { shift });
   L.blit(F, 0, 0).blit(U, 0, 0);
-  return despeckle(L, undefined, c.D);
-}
-
-/** 2×: a 1-px cuff fold across the end b of the segment a→b (sleeve hem). */
-function cuffLine(L: PixelBuffer, a: V, b: V, width: number, col: Color): void {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const len = Math.hypot(dx, dy);
-  if (len < 2) return;
-  const ux = dx / len;
-  const uy = dy / len;
-  // 1.2 logical px back from the end, across the limb.
-  const cx = (b[0] + 0.5 - ux * 1.2) * 2;
-  const cy = (b[1] + 0.5 - uy * 1.2) * 2;
-  const r = width;
-  const F = new PixelBuffer(L.w, L.h).line(Math.round(cx - uy * r), Math.round(cy + ux * r), Math.round(cx + uy * r), Math.round(cy - ux * r), col);
-  for (let i = 0; i < F.data.length; i++) if ((F.data[i] & 255) !== 0 && (L.data[i] & 255) !== 0) L.data[i] = F.data[i];
-  L.touch();
+  return despeckle(L);
 }
 
 /** Armband: two pixels of accent colour across the upper arm. */
@@ -1101,13 +934,7 @@ function drawArmband(c: Ctx, shoulder: V, el: V): PixelBuffer {
   const L = layer(c);
   const m1 = cp(c, add(shoulder, [el[0] - shoulder[0], el[1] - shoulder[1]], 0.45));
   const m2 = cp(c, add(shoulder, [el[0] - shoulder[0], el[1] - shoulder[1]], 0.6));
-  thick(c, L, m1, m2, 3, c.st.accent[2]);
-  if (c.D === 2) {
-    // A light stripe along the band.
-    const F = new PixelBuffer(L.w, L.h).line(m1[0] * 2 + 1, m1[1] * 2 + 1, m2[0] * 2 + 1, m2[1] * 2 + 1, at(c.st.accent, 3));
-    for (let i = 0; i < F.data.length; i++) if ((F.data[i] & 255) !== 0 && (L.data[i] & 255) !== 0) L.data[i] = F.data[i];
-    L.touch();
-  }
+  thick(L, m1, m2, 3, c.st.accent[2]);
   return L;
 }
 
@@ -1119,7 +946,7 @@ function drawHandLayer(c: Ctx, el: V, wr: V, shape: HandShape, far: boolean): Pi
   const q = Math.round((90 - fore) / 90);
   const w = cp(c, wr);
   const r = c.st.gloves;
-  drawHand(L, shape, w[0], w[1], far ? [r[0], r[0], r[1], r[2]] : r, q, false, c.D);
+  drawHand(L, shape, w[0], w[1], far ? [r[0], r[0], r[1], r[2]] : r, q, false, 1);
   return L;
 }
 
@@ -1139,22 +966,15 @@ function headStyleOf(c: Ctx): HeadStyle {
   };
 }
 
-/** A 2× head drawer: the head on the 2× grid, `HEAD_W·2 × HEAD_H·2`, NECK / HEAD_CENTER at 2× them. */
-export type HeadHiDrawer = (s: HeadStyle, expr: Expression, opts?: { glint?: boolean }) => PixelBuffer;
-
 /**
- * THE 2× HEAD HOOK. The 2× head buffer (density 2) for a style and an expression: exactly twice
- * the 1× head buffer (`HEAD_W × HEAD_H` → 36 × 38), the same logical layout, so the logical
- * pixels NECK and HEAD_CENTER are the 2 × 2 blocks at (2·NECK, 2·HEAD_CENTER). When
- * humanoid-head.ts exports `renderHeadHi(s: HeadStyle, expr: Expression): PixelBuffer`, that is
- * used; until then the 1× head is copied at 2× (nearest). Returns null for the fallback, so the
- * rig can tilt and enlarge the 1× head exactly as at 1× before doubling it.
+ * The rig's 2× head: the HD head (src/game/art/hd/head.ts `renderHeadHd` at d 2), exactly twice
+ * the 1× head buffer (`HEAD_W × HEAD_H` → 36 × 38) with the same logical layout. The HD body
+ * calls `renderHeadHd` itself (at d 2 and 4); this stays for the tests of the old 2× head hook
+ * (tests/art/humanoid-hi.test.ts, humanoid-head-hi.test.ts) until they are retired.
  */
-export function headLayerHi(s: HeadStyle, expr: Expression, opts?: { glint?: boolean }): PixelBuffer | null {
-  const hi = (HeadModule as unknown as { renderHeadHi?: HeadHiDrawer }).renderHeadHi;
-  if (typeof hi !== 'function') return null;
-  const b = hi(s, expr, opts);
-  if (b.w !== HEAD_W * 2 || b.h !== HEAD_H * 2) throw new Error(`renderHeadHi: ${b.w}×${b.h}, expected ${HEAD_W * 2}×${HEAD_H * 2}`);
+export function headLayerHi(s: HeadStyle, expr: Expression, opts?: { glint?: boolean }): PixelBuffer {
+  const b = renderHeadHd(s, expr, 2, opts);
+  if (b.w !== HEAD_W * 2 || b.h !== HEAD_H * 2) throw new Error(`renderHeadHd: ${b.w}×${b.h}, expected ${HEAD_W * 2}×${HEAD_H * 2}`);
   return b;
 }
 
@@ -1194,27 +1014,8 @@ function drawHead(c: Ctx): { buf: PixelBuffer; center: V } {
   }
   const ox = Math.round(neck[0] - nx);
   const oy = Math.round(neck[1] - ny);
-  if (c.D === 1) L.blit(buf, ox, oy);
-  else {
-    // A tilted head drops the 1-px eye highlight (it would drift off the pupil when rotated).
-    const hi = headLayerHi(hs, expr, tilted ? { glint: false } : undefined);
-    if (!hi) L.blit(buf.scaled(2), ox * 2, oy * 2);
-    else {
-      // The 2× head, tilted and enlarged on the 2× grid about the same logical centre as the 1×.
-      let hb = tilted ? hi.rotated(tilt * DEG, { align: 2 }) : hi;
-      if (pose.headScale === 2) hb = hb.scale2x();
-      L.blit(hb, ox * 2 + buf.w - hb.w / 2, oy * 2 + buf.h - hb.h / 2);
-    }
-  }
+  L.blit(buf, ox, oy);
   return { buf: L, center: [ox + cx, oy + cy] };
-}
-
-/**
- * Place a 2× copy `hi` of a 1× part `lo` whose top-left went to (ox, oy) on the 1× canvas: both
- * share the centre (rotations about the centre with `align: 2` keep it on the same logical point).
- */
-function blitHi(L: PixelBuffer, hi: PixelBuffer, lo: PixelBuffer, ox: number, oy: number): void {
-  L.blit(hi, ox * 2 + lo.w - hi.w / 2, oy * 2 + lo.h - hi.h / 2);
 }
 
 function drawGun(c: Ctx, g: GunPlacement): { buf: PixelBuffer; muzzle: V } {
@@ -1223,14 +1024,8 @@ function drawGun(c: Ctx, g: GunPlacement): { buf: PixelBuffer; muzzle: V } {
   const at0 = c.T(g.grip);
   const ox = Math.round(at0[0] - placed.grip[0]);
   const oy = Math.round(at0[1] - placed.grip[1]);
-  if (c.D === 1) L.blit(placed.buf, ox, oy);
-  else blitHi(L, turnedHi(gunArtHi(g.kind), g.angle + c.rot), placed.buf, ox, oy);
+  L.blit(placed.buf, ox, oy);
   return { buf: L, muzzle: [ox + placed.muzzle[0], oy + placed.muzzle[1]] };
-}
-
-/** A 2× part turned like its 1× twin: exact quarter turns, else a rotation on the logical grid. */
-function turnedHi(b: PixelBuffer, deg: number): PixelBuffer {
-  return b.rotated(deg * DEG, { align: 2 });
 }
 
 function drawHeld(c: Ctx, el: V, wr: V, item: HeldItem): { buf: PixelBuffer; at: V } | null {
@@ -1245,8 +1040,7 @@ function drawHeld(c: Ctx, el: V, wr: V, item: HeldItem): { buf: PixelBuffer; at:
     const cy = w[1] + dir[1] * 2 - 1;
     const ox = Math.round(cx - g.w / 2);
     const oy = Math.round(cy - g.h / 2);
-    if (c.D === 1) L.blit(g, ox, oy);
-    else L.blit(heldArtHi(item), ox * 2, oy * 2);
+    L.blit(g, ox, oy);
     return { buf: L, at: [cx, cy] };
   }
   if (isProp(item)) {
@@ -1263,8 +1057,7 @@ function drawHeld(c: Ctx, el: V, wr: V, item: HeldItem): { buf: PixelBuffer; at:
     const t = mapP(art.tip);
     const ox = Math.round(w[0] - g[0]);
     const oy = Math.round(w[1] - g[1]);
-    if (c.D === 1) L.blit(buf, ox, oy);
-    else blitHi(L, turnedHi(propArtHi(item), ang), buf, ox, oy);
+    L.blit(buf, ox, oy);
     return { buf: L, at: [ox + t[0], oy + t[1]] };
   }
   // Knife: the handle sits in the fist, the blade points along heldAngle (0 = forward).
@@ -1276,8 +1069,7 @@ function drawHeld(c: Ctx, el: V, wr: V, item: HeldItem): { buf: PixelBuffer; at:
   const cy = w[1] + dir[1] * 3;
   const ox = Math.round(cx - kb.w / 2);
   const oy = Math.round(cy - kb.h / 2);
-  if (c.D === 1) L.blit(kb, ox, oy);
-  else blitHi(L, turnedHi(knifeArtHi(), ang), kb, ox, oy);
+  L.blit(kb, ox, oy);
   return { buf: L, at: [w[0] + dir[0] * 7, w[1] + dir[1] * 7] };
 }
 
@@ -1286,18 +1078,12 @@ function drawBackpack(c: Ctx, radio: boolean): PixelBuffer {
   const sk = c.sk;
   const L = layer(c);
   poly(L, c, [tp(sk, -d.chestB - 3, 1), tp(sk, -d.chestB + 1, 1), tp(sk, -d.chestB + 1, 8), tp(sk, -d.chestB - 3, 7)]);
-  shadeLayer(L, c.st.gear, sh(c, { lo: 1 }));
-  if (c.D === 2) {
-    // A flap seam and a strap buckle.
-    fineLine(c, L, cp(c, tp(sk, -d.chestB - 3, 5)), cp(c, tp(sk, -d.chestB + 1, 5)), at(c.st.gear, 0));
-    const b = cp(c, tp(sk, -d.chestB - 1, 4));
-    L.set(b[0] * 2 + 1, b[1] * 2 + 1, PAL.gold[2]);
-  }
+  shadeLayer(L, c.st.gear, { lo: 1 });
   if (radio) {
     const a = cp(c, tp(sk, -d.chestB - 2, 8));
     const b = cp(c, tp(sk, -d.chestB - 4, 17));
-    line(c, L, a, b, PAL.steel[1]);
-    dot(c, L, b[0], b[1], c.st.accent[2]);
+    line(L, a, b, PAL.steel[1]);
+    dot(L, b[0], b[1], c.st.accent[2]);
   }
   return L;
 }
@@ -1323,18 +1109,10 @@ function drawScarf(c: Ctx): { back: PixelBuffer; front: PixelBuffer } {
       tp(sk, -d.chestB - 4, H - 4),
     ]);
   }
-  shadeLayer(back, c.st.accent, sh(c, { shift: -1 }));
-  if (c.D === 2 && fl !== undefined) {
-    const wave = [0, 1, 0, -1][Math.round(fl) & 3];
-    fineLine(c, back, cp(c, tp(sk, -3, H - 1)), cp(c, tp(sk, -d.chestB - 7, H - 4 - wave)), at(c.st.accent, 0));
-  }
+  shadeLayer(back, c.st.accent, { shift: -1 });
   const front = layer(c);
   poly(front, c, [tp(sk, -2, H + 1), tp(sk, d.chestF - 1, H + 1), tp(sk, d.chestF - 1, H - 1), tp(sk, -2, H - 1)]);
-  shadeLayer(front, c.st.accent, sh(c));
-  if (c.D === 2) {
-    // The wrap: a fold line across the scarf.
-    fineLine(c, front, cp(c, tp(sk, 0, H + 1)), cp(c, tp(sk, 1, H - 1)), at(c.st.accent, 1));
-  }
+  shadeLayer(front, c.st.accent, {});
   return { back, front };
 }
 
@@ -1345,17 +1123,7 @@ function pouchPair(c: Ctx, ramp: Ramp): PixelBuffer {
   const L = layer(c);
   poly(L, c, [tp(sk, d.waistF - 2, 1), tp(sk, d.waistF, 1), tp(sk, d.waistF, -2), tp(sk, d.waistF - 2, -2)]);
   poly(L, c, [tp(sk, -d.waistB - 1, 1), tp(sk, -d.waistB + 1, 1), tp(sk, -d.waistB + 1, -2), tp(sk, -d.waistB - 1, -2)]);
-  shadeLayer(L, ramp, sh(c, { lo: 1 }));
-  if (c.D === 2) {
-    for (const a of [d.waistF - 2, -d.waistB - 1]) {
-      const p = cp(c, tp(sk, a, 0));
-      const q = cp(c, tp(sk, a + 2, 0));
-      for (let x = p[0] * 2; x <= q[0] * 2 + 1; x++) if ((L.get(x, p[1] * 2 + 1) & 255) !== 0) L.set(x, p[1] * 2 + 1, ramp[0]);
-      const s = cp(c, tp(sk, a + 1, 0));
-      if ((L.get(s[0] * 2, s[1] * 2 + 2) & 255) !== 0) L.set(s[0] * 2, s[1] * 2 + 2, at(ramp, 3));
-    }
-    L.touch();
-  }
+  shadeLayer(L, ramp, { lo: 1 });
   return L;
 }
 
@@ -1370,9 +1138,8 @@ function drawToolbelt(c: Ctx): PixelBuffer {
   const L = pouchPair(c, c.st.belt);
   const h1 = cp(c, tp(sk, d.waistF - 1, 2));
   const h2 = cp(c, tp(sk, d.waistF - 1, 3));
-  dot(c, L, h1[0], h1[1], PAL.red[2]);
-  dot(c, L, h2[0], h2[1], PAL.red[3]);
-  if (c.D === 2) L.set(h2[0] * 2, h2[1] * 2, PAL.snow[3]);
+  dot(L, h1[0], h1[1], PAL.red[2]);
+  dot(L, h2[0], h2[1], PAL.red[3]);
   return L;
 }
 
@@ -1388,14 +1155,8 @@ function drawSatchelNeedles(c: Ctx): PixelBuffer {
   for (const [a, b] of pairs) {
     const p = cp(c, a);
     const q = cp(c, b);
-    line(c, L, p, q, PAL.steel[3]);
-    dot(c, L, q[0], q[1], PAL.red[2]);
-    if (c.D === 2) {
-      // A bright 1-px glint down the needle and on the bead.
-      L.line(p[0] * 2, p[1] * 2, q[0] * 2, q[1] * 2, PAL.steel[4]);
-      L.rect(q[0] * 2, q[1] * 2, 2, 2, PAL.red[2]);
-      L.set(q[0] * 2, q[1] * 2, PAL.red[3]);
-    }
+    line(L, p, q, PAL.steel[3]);
+    dot(L, q[0], q[1], PAL.red[2]);
   }
   return L;
 }
@@ -1407,19 +1168,14 @@ function drawBandolier(c: Ctx, color: Ramp, dots: boolean): PixelBuffer {
   const L = layer(c);
   const a = cp(c, tp(sk, -d.chestB + 1, H - 1));
   const b = cp(c, tp(sk, d.waistF - 1, 1));
-  thick(c, L, a, b, 2, color[1]);
+  thick(L, a, b, 2, color[1]);
   if (dots) {
     const n = 4;
     for (let i = 0; i < n; i++) {
       const t = (i + 0.5) / n;
       const x = Math.round(a[0] + (b[0] - a[0]) * t);
       const y = Math.round(a[1] + (b[1] - a[1]) * t);
-      if (c.D === 1) L.set(x, y, PAL.gold[2]);
-      else {
-        // A brass cartridge with a lit tip.
-        L.rect(x * 2, y * 2, 2, 2, PAL.gold[2]);
-        L.set(x * 2, y * 2, PAL.gold[3]);
-      }
+      L.set(x, y, PAL.gold[2]);
     }
   }
   return L;
@@ -1432,17 +1188,11 @@ function drawBowtie(c: Ctx): PixelBuffer {
   const L = layer(c);
   const p = cp(c, tp(sk, d.chestF - 2, H - 1));
   const a = c.st.accent;
-  dot(c, L, p[0] - 1, p[1], a[1]);
-  dot(c, L, p[0], p[1], a[2]);
-  dot(c, L, p[0] + 1, p[1], a[1]);
-  dot(c, L, p[0] - 1, p[1] - 1, a[1]);
-  dot(c, L, p[0] + 1, p[1] + 1, a[1]);
-  if (c.D === 2) {
-    // The knot gets a highlight; each wing a fold.
-    L.set(p[0] * 2, p[1] * 2, at(a, 3));
-    L.set(p[0] * 2 - 1, p[1] * 2 + 1, a[0]);
-    L.set(p[0] * 2 + 2, p[1] * 2, a[0]);
-  }
+  dot(L, p[0] - 1, p[1], a[1]);
+  dot(L, p[0], p[1], a[2]);
+  dot(L, p[0] + 1, p[1], a[1]);
+  dot(L, p[0] - 1, p[1] - 1, a[1]);
+  dot(L, p[0] + 1, p[1] + 1, a[1]);
   return L;
 }
 
@@ -1455,16 +1205,8 @@ function drawTie(c: Ctx): PixelBuffer {
   const a = c.st.accent;
   const top = cp(c, tp(sk, d.chestF - 2, H - 1));
   const bot = cp(c, tp(sk, d.chestF - 2, 2));
-  line(c, L, top, bot, a[1]);
-  dot(c, L, top[0], top[1], at(a, 2));
-  if (c.D === 2) {
-    // The blade widens to a point; the knot gets a fold.
-    L.set(bot[0] * 2 - 1, bot[1] * 2, a[1]);
-    L.set(bot[0] * 2, bot[1] * 2 + 2, a[0]);
-    L.set(top[0] * 2 + 1, top[1] * 2 + 1, a[0]);
-    fineLine(c, L, [top[0], top[1] + 1], [bot[0], bot[1]], a[0]);
-    L.line(top[0] * 2 + 1, top[1] * 2 + 2, bot[0] * 2 + 1, bot[1] * 2, a[1]);
-  }
+  line(L, top, bot, a[1]);
+  dot(L, top[0], top[1], at(a, 2));
   return L;
 }
 
@@ -1503,51 +1245,34 @@ function drawCape(c: Ctx): { back: PixelBuffer; clasp: PixelBuffer } {
     leaf = tp(sk, B - 4, H - 2);
     fold = [tp(sk, B - 1, H - 1), tp(sk, B - 6, 3)];
   }
-  shadeLayer(back, c.st.accent, sh(c, { shift: -1 }));
+  shadeLayer(back, c.st.accent, { shift: -1 });
   // A fold down the cloth (only on cape pixels).
   {
     const F = layer(c);
-    if (c.D === 1) line(c, F, cp(c, fold[0]), cp(c, fold[1]), at(c.st.accent, 0));
-    else fineLine(c, F, cp(c, fold[0]), cp(c, fold[1]), at(c.st.accent, 0));
+    line(F, cp(c, fold[0]), cp(c, fold[1]), at(c.st.accent, 0));
     for (let i = 0; i < F.data.length; i++) if ((F.data[i] & 255) !== 0 && (back.data[i] & 255) !== 0) back.data[i] = F.data[i];
     back.touch();
   }
   const p = cp(c, leaf);
-  const has = (x: number, y: number): boolean => c.D === 1 ? (back.get(x, y) & 255) !== 0 : (back.get(x * 2, y * 2) & 255) !== 0;
+  const has = (x: number, y: number): boolean => (back.get(x, y) & 255) !== 0;
   if (has(p[0], p[1]) && has(p[0] + 1, p[1] - 1)) {
-    dot(c, back, p[0], p[1], LEAF[1]);
-    dot(c, back, p[0] + 1, p[1] - 1, LEAF[1]);
-    if (c.D === 2) {
-      // A pointed leaf with a dark midrib.
-      back.set(p[0] * 2 + 1, p[1] * 2 + 1, LEAF[0]);
-      back.set(p[0] * 2 + 2, p[1] * 2, LEAF[0]);
-      back.set(p[0] * 2 - 1, p[1] * 2 + 1, LEAF[1]);
-      back.set(p[0] * 2 + 3, p[1] * 2 - 2, LEAF[1]);
-      back.touch();
-    }
+    dot(back, p[0], p[1], LEAF[1]);
+    dot(back, p[0] + 1, p[1] - 1, LEAF[1]);
   }
   // The cloth over the near shoulder and the clasp: a small gold stud at the collar.
   const clasp = layer(c);
   poly(clasp, c, [tp(sk, B, H + 1), tp(sk, 1, H + 1), tp(sk, 1, H), tp(sk, B + 1, H - 1)]);
-  shadeLayer(clasp, c.st.accent, sh(c));
+  shadeLayer(clasp, c.st.accent, {});
   const q = cp(c, tp(sk, 0, H));
-  dot(c, clasp, q[0], q[1], PAL.gold[2]);
-  if (c.D === 2) clasp.set(q[0] * 2, q[1] * 2, PAL.gold[3]);
+  dot(clasp, q[0], q[1], PAL.gold[2]);
   return { back, clasp };
 }
 
 function drawEpaulette(c: Ctx, shoulder: V): PixelBuffer {
   const L = layer(c);
   const p = cp(c, shoulder);
-  if (c.D === 1) {
-    L.hline(p[0] - 2, p[0] + 2, p[1] - 1, PAL.gold[2]);
-    L.hline(p[0] - 1, p[0] + 1, p[1] - 2, PAL.gold[3]);
-    return L;
-  }
-  L.rect((p[0] - 2) * 2, (p[1] - 1) * 2, 10, 2, PAL.gold[2]);
-  L.rect((p[0] - 1) * 2, (p[1] - 2) * 2, 6, 2, PAL.gold[3]);
-  // Fringe: 1-px threads along the lower edge.
-  for (let x = (p[0] - 2) * 2; x < (p[0] + 3) * 2; x += 2) L.set(x, p[1] * 2 - 1, PAL.gold[1]);
+  L.hline(p[0] - 2, p[0] + 2, p[1] - 1, PAL.gold[2]);
+  L.hline(p[0] - 1, p[0] + 1, p[1] - 2, PAL.gold[3]);
   return L;
 }
 
@@ -1558,18 +1283,10 @@ function drawSatchel(c: Ctx): { strap: PixelBuffer; bag: PixelBuffer } {
   const strap = layer(c);
   const a = cp(c, tp(sk, d.chestF - 2, H - 1));
   const b = cp(c, tp(sk, -d.waistB, 0));
-  line(c, strap, a, b, c.st.belt[1]);
-  if (c.D === 2) strap.line(a[0] * 2, a[1] * 2, b[0] * 2, b[1] * 2, at(c.st.belt, 2));
+  line(strap, a, b, c.st.belt[1]);
   const bag = layer(c);
   poly(bag, c, [tp(sk, -d.waistB - 3, 1), tp(sk, -d.waistB + 1, 1), tp(sk, -d.waistB + 1, -4), tp(sk, -d.waistB - 3, -4)]);
-  shadeLayer(bag, c.st.belt, sh(c));
-  if (c.D === 2) {
-    // The flap edge and its brass clasp.
-    fineLine(c, bag, cp(c, tp(sk, -d.waistB - 3, -1)), cp(c, tp(sk, -d.waistB + 1, -1)), c.st.belt[0]);
-    const k = cp(c, tp(sk, -d.waistB - 1, -1));
-    bag.rect(k[0] * 2, k[1] * 2, 2, 2, PAL.gold[2]);
-    bag.set(k[0] * 2, k[1] * 2, PAL.gold[3]);
-  }
+  shadeLayer(bag, c.st.belt, {});
   return { strap, bag };
 }
 
@@ -1582,34 +1299,99 @@ export interface HumanFrame extends Frame {
 /** An untrimmed render: the canvas, the anchor and the points (1× canvas px). */
 interface Canvas {
   buf: PixelBuffer;
+  /** Anchor and points in `buf` px; `origin` is the buffer's top-left on the full 1× canvas. */
   anchor: V;
   pts: Record<string, [number, number]>;
+  origin: V;
 }
 
 /**
  * Render a figure. `part` 'full' draws everything (anchored at the feet), 'lower' the legs and
  * pelvis (feet anchor, `hip` point), 'upper' the torso, arms, head and gun (pelvis anchor).
- * `density` 2 draws the same figure on the 2× grid: a density-2 frame with exactly the logical
- * geometry (size, anchor, points) of the 1× frame (docs/ART_GUIDE.md "2x art (mission ams)").
+ * `density` 2 or 4 draws the same figure as UHD art (the HD body, src/game/art/hd/body.ts): a
+ * frame of that density with exactly the logical geometry (size, anchor, points) of the 1× frame
+ * (docs/ART_GUIDE.md "UHD art").
  */
 export function renderHuman(style: HumanStyle, pose: Pose = {}, part: RenderPart = 'full', density: Density = 1): HumanFrame {
   const key = JSON.stringify([part, pose]);
   let g = geometryCache.get(style)?.get(key);
   if (density === 1 || !g) {
-    const lo = renderCanvas(style, pose, part, 1);
+    const lo = renderCanvas(style, pose, part);
     const f1 = trimFrame(lo.buf, lo.anchor, lo.pts);
-    g = { x: lo.anchor[0] - f1.ox, y: lo.anchor[1] - f1.oy, w: f1.buf.w, h: f1.buf.h, ox: f1.ox, oy: f1.oy, pts: f1.pts };
+    g = { x: lo.origin[0] + lo.anchor[0] - f1.ox, y: lo.origin[1] + lo.anchor[1] - f1.oy, w: f1.buf.w, h: f1.buf.h, ox: f1.ox, oy: f1.oy, pts: f1.pts };
     let m = geometryCache.get(style);
     if (!m) geometryCache.set(style, (m = new Map()));
     m.set(key, g);
     if (density === 1) return f1;
   }
-  // The 2× canvas covers the 1× frame's rectangle plus a margin (the finer 2× edges may reach a
-  // little past it); the result is that rectangle doubled, so the logical geometry is the 1× one.
+  // The HD canvas covers the 1× frame's rectangle plus a margin (sub-pixel joints and the HD
+  // shapes may reach a little past it); the result is that rectangle at density d (the HD body
+  // fits the drawing into it: hd/body.ts `fitFrame`).
+  const d = density === 4 ? 4 : 2;
+  // Strips repeat poses (a shoot strip's settle frame is often its idle frame, die and die-seat
+  // share frames): the same style, part, pose and density give the same pixels, so a recent HD
+  // render is copied instead of painted again (a small FIFO; same input, same pixels).
+  const memoKey = `${styleIdOf(style)}|${d}|${key}`;
+  const memo = hdMemo.get(memoKey);
+  if (memo) {
+    HD_MEMO.hits++;
+    return { buf: memo.clone(), ox: g.ox, oy: g.oy, pts: g.pts, density: d };
+  }
+  HD_MEMO.misses++;
   const M = 2;
-  const hi = renderCanvas(style, pose, part, 2, [g.x - M, g.y - M, g.w + 2 * M, g.h + 2 * M]);
-  const buf = hi.buf.crop(M * 2, M * 2, g.w * 2, g.h * 2);
-  return { buf, ox: g.ox, oy: g.oy, pts: g.pts, density: 2 };
+  const frame = { x: M, y: M, w: g.w, h: g.h };
+  const buf = renderHd(style, pose, part, d, [g.x - M, g.y - M, g.w + 2 * M, g.h + 2 * M], frame);
+  if (hdMemo.size >= HD_MEMO_MAX) hdMemo.delete(hdMemo.keys().next().value as string);
+  hdMemo.set(memoKey, buf.clone());
+  return { buf, ox: g.ox, oy: g.oy, pts: g.pts, density: d };
+}
+
+/** Recent HD renders (`renderHuman` at d 2 / 4), FIFO, keyed by style id, density and pose. */
+const hdMemo = new Map<string, PixelBuffer>();
+const HD_MEMO_MAX = 64;
+/** Hits and misses of the HD render memo (tools and tests). */
+export const HD_MEMO = { hits: 0, misses: 0 };
+const styleIds = new WeakMap<HumanStyle, number>();
+let nextStyleId = 1;
+
+/** A stable small id per style object (the memo key; styles are never mutated). */
+function styleIdOf(s: HumanStyle): number {
+  let id = styleIds.get(s);
+  if (id === undefined) styleIds.set(s, (id = nextStyleId++));
+  return id;
+}
+
+/** Drop the HD render memo (tools that time cold generation). */
+export function clearHumanHdMemo(): void {
+  hdMemo.clear();
+}
+
+/** Counters of the HD frame fit (src/game/art/hd/body.ts `fitFrame`): tools and tests. */
+export { HD_FIT } from './hd/body';
+
+/** The HD body (density 2 or 4) on the 1× canvas region (the same placement as the 1× render). */
+function renderHd(
+  style: HumanStyle,
+  pose: Pose,
+  part: RenderPart,
+  d: 2 | 4,
+  region: readonly [number, number, number, number],
+  frame: { x: number; y: number; w: number; h: number },
+): PixelBuffer {
+  const st = resolve(style);
+  // An upper-body frame hangs on the 1× pelvis pixel (the legs' hip point): the 1× ground solve
+  // places it. A grounded full or lower frame stands exactly on the ground line instead.
+  const sk = solve(st, pose, part === 'upper' ? 1 : d);
+  const rot = pose.rot ?? 0;
+  const dx = pose.dx ?? 0;
+  const dy = pose.dy ?? 0;
+  const pivot = sk.pelvis;
+  // Body space → the centre of the 1× canvas pixel (index + 0.5), unrounded.
+  const T = (p: V): V => {
+    const r = rotateAbout(p, pivot, rot);
+    return [r[0] + dx + OX - region[0] + 0.5, r[1] + dy + OY - region[1] + 0.5];
+  };
+  return drawBodyHd({ d, w: region[2], h: region[3], st, sk, pose, part, rot, T, frame });
 }
 
 /** Where a 1× render lies on the working canvas, and its frame geometry. */
@@ -1629,12 +1411,114 @@ interface Geometry {
  */
 const geometryCache = new WeakMap<HumanStyle, Map<string, Geometry>>();
 
+/** Draw the figure on the 1× working canvas. */
 /**
- * Draw the figure on a canvas: the whole working canvas, or only `region` [x, y, w, h] of it
- * (1× grid; the 2× render). Joint pixels are always found on the 1× grid, so both densities
- * place every part identically.
+ * The 1× render. Without `region` it paints on a tight working region around the figure (every
+ * layer of the 1× painter costs its canvas area, and a figure fills a small part of the 112 × 112
+ * canvas): the region's origin is a multiple of 8 (the painter's only coordinate pattern is the
+ * 4 × 4 Bayer table, unused by the rig) and every 1× pass is local, so the pixels are exactly the
+ * full canvas's. A figure that comes within EDGE px of the region's border (a long prop, a wide
+ * cape) is painted again on the full canvas, so nothing is ever cut differently.
  */
-function renderCanvas(style: HumanStyle, pose: Pose, part: RenderPart, D: Density, region: readonly [number, number, number, number] = [0, 0, CW, CH]): Canvas {
+function renderCanvas(style: HumanStyle, pose: Pose, part: RenderPart, region?: readonly [number, number, number, number]): Canvas {
+  if (region) return paintCanvas(style, pose, part, region);
+  const st = resolve(style);
+  const sk = solve(st, pose);
+  const rot = pose.rot ?? 0;
+  const dx = pose.dx ?? 0;
+  const dy = pose.dy ?? 0;
+  const pivot = sk.pelvis;
+  const tight = tightRegion(sk, pose, part, (p: V): V => {
+    const r = rotateAbout(p, pivot, rot);
+    return [r[0] + dx + OX, r[1] + dy + OY];
+  });
+  if (tight[2] < CW || tight[3] < CH) {
+    const out = paintCanvas(style, pose, part, tight);
+    if (!nearEdge(out.buf, EDGE)) {
+      TIGHT_1X.tight++;
+      return out;
+    }
+  }
+  TIGHT_1X.full++;
+  return paintCanvas(style, pose, part, [0, 0, CW, CH]);
+}
+
+/**
+ * The 1× render on the full 112 × 112 working canvas, never the tight region (tests: the tight
+ * region must give exactly these pixels, anchor and points).
+ */
+export function renderHumanFullCanvas(style: HumanStyle, pose: Pose = {}, part: RenderPart = 'full'): HumanFrame {
+  const lo = paintCanvas(style, pose, part, [0, 0, CW, CH]);
+  return trimFrame(lo.buf, lo.anchor, lo.pts);
+}
+
+/** A tight render must keep this many px clear of its region's border (else: the full canvas). */
+const EDGE = 4;
+/** Room around a joint (limb widths, boots, folds), 1× px. */
+const JOINT_PAD = 8;
+/** Counters of the tight 1× working region (tools and tests). */
+export const TIGHT_1X = { tight: 0, full: 0 };
+
+/** Any opaque px within `m` px of the buffer's border? */
+function nearEdge(b: PixelBuffer, m: number): boolean {
+  const { w, h, data } = b;
+  for (let y = 0; y < h; y++) {
+    const band = y < m || y >= h - m;
+    for (let x = 0; x < w; x++) {
+      if (!band && x === m) x = Math.max(m, w - m);
+      if ((data[y * w + x] & 255) !== 0) return true;
+    }
+  }
+  return false;
+}
+
+/** Largest distance from an art's grip px to its far corner, plus the turn's spill. */
+function reachOf(buf: PixelBuffer, grip: readonly [number, number]): number {
+  return Math.hypot(Math.max(grip[0] + 1, buf.w - grip[0]), Math.max(grip[1] + 1, buf.h - grip[1])) + 3;
+}
+
+/** The working region (canvas px, origin a multiple of 8, inside the canvas) around a figure. */
+function tightRegion(sk: Skeleton, pose: Pose, part: RenderPart, T: (p: V) => V): [number, number, number, number] {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  const take = (p: V, r: number): void => {
+    const q = T(p);
+    x0 = Math.min(x0, q[0] - r);
+    y0 = Math.min(y0, q[1] - r);
+    x1 = Math.max(x1, q[0] + r);
+    y1 = Math.max(y1, q[1] + r);
+  };
+  take(sk.pelvis, JOINT_PAD);
+  if (part !== 'upper') for (const p of [sk.hipN, sk.kneeN, sk.ankleN, sk.hipF, sk.kneeF, sk.ankleF]) take(p, JOINT_PAD);
+  if (part !== 'lower') {
+    for (const p of [sk.neck, sk.shN, sk.elN, sk.wrN, sk.shF, sk.elF, sk.wrF]) take(p, JOINT_PAD);
+    // The head buffer hangs on the neck (its far corner about 21 px away; twice that when big).
+    const k = pose.headScale === 2 ? 2 : 1;
+    take([sk.neck[0] + (pose.head?.dx ?? 0), sk.neck[1] + (pose.head?.dy ?? 0)], 22 * k + 2);
+    for (const g of [sk.gun, sk.offGun]) {
+      if (!g) continue;
+      const a = gunArt(g.kind);
+      take(g.grip, reachOf(a.buf, a.grip));
+    }
+    const held = pose.held;
+    if (held && held !== 'none') {
+      if (isProp(held)) {
+        const a = propArt(held);
+        take(sk.wrN, reachOf(a.buf, a.grip) + 2);
+      } else take(sk.wrN, 14);
+    }
+  }
+  const X0 = Math.max(0, Math.floor(x0 / 8) * 8);
+  const Y0 = Math.max(0, Math.floor(y0 / 8) * 8);
+  const X1 = Math.min(CW, Math.ceil(x1 / 8) * 8);
+  const Y1 = Math.min(CH, Math.ceil(y1 / 8) * 8);
+  if (!(X1 > X0 && Y1 > Y0)) return [0, 0, CW, CH];
+  return [X0, Y0, X1 - X0, Y1 - Y0];
+}
+
+function paintCanvas(style: HumanStyle, pose: Pose, part: RenderPart, region: readonly [number, number, number, number]): Canvas {
   const st = resolve(style);
   const sk = solve(st, pose);
   const rot = pose.rot ?? 0;
@@ -1645,8 +1529,8 @@ function renderCanvas(style: HumanStyle, pose: Pose, part: RenderPart, D: Densit
     const r = rotateAbout(p, pivot, rot);
     return [r[0] + dx + OX - region[0], r[1] + dy + OY - region[1]];
   };
-  const c: Ctx = { st, sk, pose, T, rot, D, W: region[2], H: region[3] };
-  const comp = new Composer(c.W * D, c.H * D, D);
+  const c: Ctx = { st, sk, pose, T, rot, W: region[2], H: region[3] };
+  const comp = new Composer(c.W, c.H, 1);
   const upper = part !== 'lower';
   const lower = part !== 'upper';
   const acc = st.acc;
@@ -1736,25 +1620,25 @@ function renderCanvas(style: HumanStyle, pose: Pose, part: RenderPart, D: Densit
   // Helium Head (GDD §4.13): the big head gets a pink rim (the outline's weight) instead of ink.
   const before = upper && pose.headScale === 2 && head ? opaqueMask(comp.buf) : null;
   const buf = comp.finish(INK);
-  if (before && head) pinkRim(buf, before, head.buf, D);
+  if (before && head) pinkRim(buf, before, head.buf);
 
   // Anchor: feet centre (full / lower) or the pelvis (upper).
   const pel = cp(c, sk.pelvis);
-  let anchor: V = part === 'upper' ? pel : [OX, OY];
+  let anchor: V = part === 'upper' ? pel : [OX - region[0], OY - region[1]];
   // A grounded pose turned by `rot` (falling, lying) was solved upright, so after the turn about
   // the pelvis it no longer touches the ground: rest its lowest pixel on the ground line again
-  // (then `dy` as asked), so corpses lie ON the floor instead of floating above it. (At 2× the
-  // 1× render decides: renderHuman takes the anchor from it.)
-  if (part !== 'upper' && pose.grounded !== false && rot !== 0 && D === 1) {
+  // (then `dy` as asked), so corpses lie ON the floor instead of floating above it. (The HD
+  // frames take the anchor from the 1× render.)
+  if (part !== 'upper' && pose.grounded !== false && rot !== 0) {
     const b = buf.trimBounds();
     if (b) {
       const lowest = b.y + b.h - 1;
-      const target = OY - 1 + dy;
-      anchor = [OX, OY - (target - lowest)];
+      const target = OY - region[1] - 1 + dy;
+      anchor = [OX - region[0], OY - region[1] - (target - lowest)];
     }
   }
   if (part !== 'upper') pts.hip = [pel[0], pel[1]];
-  return { buf, anchor, pts };
+  return { buf, anchor, pts, origin: [region[0], region[1]] };
 }
 
 /** Colour of the Helium Head's rim. */
@@ -1766,35 +1650,16 @@ function opaqueMask(b: PixelBuffer): Uint8Array {
   return m;
 }
 
-/**
- * Recolour the outline pixels (opaque now, empty `before`) that touch the head layer; at 2× also
- * the outline pixels behind those (the rim keeps the outline's 2-px weight).
- */
-function pinkRim(buf: PixelBuffer, before: Uint8Array, head: PixelBuffer, D: Density): void {
+/** Recolour the outline pixels (opaque now, empty `before`) that touch the head layer. */
+function pinkRim(buf: PixelBuffer, before: Uint8Array, head: PixelBuffer): void {
   const { w, h, data } = buf;
   const hd = head.data;
   const isHead = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < w && y < h && (hd[y * w + x] & 255) !== 0;
-  const rim = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       if (before[i] || (data[i] & 255) === 0) continue;
-      if (isHead(x - 1, y) || isHead(x + 1, y) || isHead(x, y - 1) || isHead(x, y + 1)) {
-        data[i] = HELIUM_RIM;
-        rim[i] = 1;
-      }
-    }
-  }
-  if (D === 2) {
-    const isRim = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < w && y < h && rim[y * w + x] === 1;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        if (before[i] || rim[i] || (data[i] & 255) === 0 || (hd[i] & 255) !== 0) continue;
-        if (isRim(x - 1, y) || isRim(x + 1, y) || isRim(x, y - 1) || isRim(x, y + 1) || isRim(x - 1, y - 1) || isRim(x + 1, y - 1) || isRim(x - 1, y + 1) || isRim(x + 1, y + 1)) {
-          data[i] = HELIUM_RIM;
-        }
-      }
+      if (isHead(x - 1, y) || isHead(x + 1, y) || isHead(x, y - 1) || isHead(x, y + 1)) data[i] = HELIUM_RIM;
     }
   }
   buf.touch();

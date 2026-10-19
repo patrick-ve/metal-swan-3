@@ -7,5 +7,5 @@ export { HdCanvas, inPoly, polyDist, type DrawOpts, type HdMaterial, type Outlin
 export { BOUNCE, HALF, KEY, LIGHT_DEFAULTS, diffuse, specular, type LightParams } from './light';
 export { brick, cobbles, folds, grime, leaves, plaster, ripples, strands, texAll, wood } from './texture';
 export { renderHeadHd, type HdDensity } from './head';
-export { gunArtHd, heldArtHd, knifeArtHd, propArtHd } from './gear';
+export { drawHandHd, gunArtHd, gunHd, handArtHd, heldArtHd, knifeArtHd, propArtHd, propHd } from './gear';
 export { along, lerpPt, limb, type Pt } from './shape';

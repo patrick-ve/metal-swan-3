@@ -314,6 +314,27 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     }
   });
 
+  it.each(ALL)('%s: UHD art at 2× and 4× (the HD body) with the 1× counts, sizes, anchors, points; feet on the ground line', (c) => {
+    const logical = (f: Frame): string => {
+      const d = f.density ?? 1;
+      return `${f.buf.w / d}x${f.buf.h / d}@${f.ox},${f.oy}|${JSON.stringify(f.pts ?? {})}`;
+    };
+    const P = `char/${c}/`;
+    for (const id of [`${P}legs-run`, `${P}legs-idle`, `${P}legs-crouch-walk`, `${P}torso-pistol-idle`, `${P}torso-heavy-shoot-diag-up`, `${P}die`, `${P}helium-torso-pistol-idle`, `${P}ride-hold`]) {
+      const lo = getFrames(id, 1);
+      for (const d of [2, 4]) {
+        const hi = getFrames(id, d);
+        expect(hi.length, `${id}@${d}x`).toBe(lo.length);
+        hi.forEach((f, i) => {
+          expect(f.density, `${id}@${d}x[${i}]`).toBe(d);
+          expect(logical(f), `${id}@${d}x[${i}]`).toBe(logical(lo[i]));
+          const b = f.buf.trimBounds();
+          if (id.includes('/legs-') && b) expect(b.y + b.h - f.oy * d, `${id}@${d}x[${i}] on the ground`).toBe(0);
+        });
+      }
+    }
+  });
+
   it('in play, up + forward shows the diagonal torso and shoots from its muzzle (GDD §4.3)', () => {
     const rig = new Rig();
     const shots: Array<{ x: number; y: number; vx: number; vy: number }> = [];

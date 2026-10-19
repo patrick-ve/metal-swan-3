@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import type { Renderer } from '../../src/engine/render';
 import { getFrames } from '../../src/engine/sprites';
 import { inPalette } from '../../src/engine/palette';
+import { inHdPalette } from '../../src/engine/palette-hd';
 import '../../src/game/content/characters/index';
 import '../../src/game/content/weapons/index';
 import '../../src/game/content/items/index';
@@ -51,7 +52,9 @@ describe('ambient motion: strips', () => {
       expect(lo.length).toBe(n);
       expect(hi.length).toBe(n);
       for (let i = 0; i < n; i++) {
-        for (const f of [lo[i], hi[i]]) for (const c of f.buf.data) if (c !== 0 && !inPalette(c)) expect.fail(`${id}[${i}] colour ${c.toString(16)}`);
+        for (const c of lo[i].buf.data) if (c !== 0 && !inPalette(c)) expect.fail(`${id}[${i}] colour ${c.toString(16)}`);
+        // 2×: the 64 palette, or PAL_HD where the UHD kit draws the figure.
+        for (const c of hi[i].buf.data) if (c !== 0 && !inPalette(c) && !inHdPalette(c)) expect.fail(`${id}[${i}] 2× colour ${c.toString(16)}`);
         expect(hi[i].buf.w).toBe(lo[i].buf.w * 2);
         expect(hi[i].buf.h).toBe(lo[i].buf.h * 2);
         expect([hi[i].ox, hi[i].oy]).toEqual([lo[i].ox, lo[i].oy]);
