@@ -83,6 +83,10 @@ function pitch(buf: AudioBuffer, from: number, n: number): number {
   return 0;
 }
 
+// Parity renderers have no time budgets: on a slow runner a spent upscale or upload budget draws
+// a frame from its 1× texture (by design in the game), which the software renderer never does.
+const PARITY = { scaleBudgetMs: Infinity, uploadBudgetMs: Infinity };
+
 const api = {
   opaque(): number[] {
     const r = new CanvasRenderer();
@@ -96,7 +100,7 @@ const api = {
   },
   /** A parity scene on a res-k backbuffer: canvas size and RGBA bytes (base64). */
   hires(k: number, mode: UpscaleMode, subpixel: SubpixelMode, blend: boolean): { w: number; h: number; rgba: string } {
-    const r = new CanvasRenderer(undefined, undefined, undefined, { res: k, mode, subpixel });
+    const r = new CanvasRenderer(undefined, undefined, undefined, { res: k, mode, subpixel, ...PARITY });
     (blend ? drawBlendScene : drawOpaqueScene)(r);
     const w = r.canvas.width;
     const h = r.canvas.height;
@@ -104,7 +108,7 @@ const api = {
   },
   /** The 2× art scene on a res-k backbuffer (pixel mode). */
   hiScene(k: number): { w: number; h: number; rgba: string } {
-    const r = new CanvasRenderer(undefined, undefined, undefined, { res: k, mode: 'smooth' });
+    const r = new CanvasRenderer(undefined, undefined, undefined, { res: k, mode: 'smooth', ...PARITY });
     drawHiScene(r);
     const w = r.canvas.width;
     const h = r.canvas.height;

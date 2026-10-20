@@ -187,7 +187,8 @@ describe('ams UHD background layers', () => {
         }
       });
     }
-    // Test workers share the CPU: allow 4× the budget before calling it a regression.
-    expect(worst, worstTag).toBeLessThan(64);
+    // Test workers share the CPU: allow 4× the budget before calling it a regression (16× on the
+    // shared CI runner, which is several times slower than the dev machine).
+    expect(worst, worstTag).toBeLessThan(process.env.CI ? 256 : 64);
   });
 });
