@@ -3,7 +3,8 @@
  * docs/api/scan-car.md): registration and parts, the intro, telegraphs ≥ 18 ticks (SCAN LOCK, RAM,
  * TOW CALL), phase 2 when the scanner breaks, the wheel clamp's status `clamped`, the lettering,
  * the death (bossDefeated, the drop: a weapon on foot, `pickup-repair` when a player rides) and
- * the 1× / 2× / 4× art. The bot beating it in section c: tests/content/ams-route.test.ts.
+ * the 1× / 2× / 4× art (the lettering never mirrored, the wreck per facing, the scanner hurtbox on
+ * the roof box). The bot beating it in section c: tests/content/ams-route.test.ts.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Entity } from '../../src/engine/entity';
@@ -12,6 +13,7 @@ import { inPalette } from '../../src/engine/palette';
 import { inHdPalette } from '../../src/engine/palette-hd';
 import { loadContent } from '../../src/game/content/index';
 import { AmsScanCar, CLAMPED, isClamped, SCAN, SCAN_ID } from '../../src/game/content/bosses/ams-scan/index';
+import { ID } from '../../src/game/content/bosses/ams-scan/geometry';
 import { getEntityMeta } from '../../src/game/registry';
 import { Vehicle } from '../../src/game/vehicle';
 import { TestWorld } from './helpers';
@@ -188,13 +190,64 @@ describe('scan car: art', () => {
     }
   });
 
-  it('the lettering is drawn on the doors and the scanner box (PARKEERCONTROLE, Gemeente Amsterdam, 24)', () => {
+  /** The sprite calls of one draw: id, frame, flipped. */
+  function drawCalls(car: AmsScanCar): Array<[string, number, boolean]> {
+    const drawn: Array<[string, number, boolean]> = [];
+    const r = {
+      sprite: (id: string, f: number, _x: number, _y: number, o?: { flipX?: boolean }) => drawn.push([id, f, o?.flipX === true]),
+    } as unknown as Parameters<AmsScanCar['draw']>[0];
+    car.draw(r);
+    return drawn;
+  }
+
+  it('the lettering is drawn on the doors and the scanner box (PARKEERCONTROLE, Gemeente Amsterdam, 24), never mirrored, for either facing', () => {
+    // Facing left (in from the right): the rear door's block is frame 3 (set against the mirrored crosses).
     const { tw, car } = arena();
     tw.until(() => car.state === 'fight', 600);
-    const drawn: Array<[string, number]> = [];
-    const r = { sprite: (id: string, f: number) => drawn.push([id, f]) } as unknown as Parameters<AmsScanCar['draw']>[0];
-    car.draw(r);
-    const text = drawn.filter(([id]) => id === 'boss/ams-scan/text').map(([, f]) => f);
-    expect(text.sort()).toEqual([0, 1, 2]);
+    const left = drawCalls(car).filter(([id]) => id === ID.text);
+    expect(left.map(([, f]) => f).sort()).toEqual([0, 2, 3]);
+    expect(left.every(([, , flip]) => !flip)).toBe(true);
+    // Facing right: frame 1.
+    const tw2 = new TestWorld({ width: 384, playerX: 300, god: true, seed: 4 });
+    const right = tw2.spawn(SCAN_ID, -40, { facing: 1, arenaLeft: 0, arenaW: 384 }) as AmsScanCar;
+    tw2.until(() => right.state === 'fight', 600);
+    const calls = drawCalls(right).filter(([id]) => id === ID.text);
+    expect(calls.map(([, f]) => f).sort()).toEqual([0, 1, 2]);
+    expect(calls.every(([, , flip]) => !flip)).toBe(true);
+    expect(getFrames(ID.text, 1)).toHaveLength(4);
+  });
+
+  it('the wreck has roll frames for each facing and is never drawn mirrored (its lettering reads left to right)', () => {
+    expect(getFrames(ID.wreck, 1)).toHaveLength(8);
+    const { tw, car } = arena({ hpScale: 0.05 });
+    tw.until(() => car.state === 'fight', 600);
+    for (let i = 0; i < 2; i++) tw.world.damage(car, { amount: 1e4, kind: 'explosion', dirX: -1 }, i);
+    tw.until(() => car.defeated, 900);
+    const wreck = drawCalls(car).filter(([id]) => id === ID.wreck);
+    expect(wreck).toHaveLength(1);
+    // The car faces left: frames 4–7, unflipped.
+    expect(wreck[0][1]).toBeGreaterThanOrEqual(4);
+    expect(wreck[0][2]).toBe(false);
+  });
+
+  it('the scanner hurtbox spans the roof box and its rack (every damage state and lift frame, 1×)', () => {
+    const B = SCAN.box.scanner;
+    for (const id of [...ID.scanner, ID.scannerGone]) {
+      getFrames(id, 1).forEach((f, k) => {
+        let x0 = Infinity;
+        let x1 = -Infinity;
+        for (let y = 0; y < f.buf.h; y++) {
+          for (let x = 0; x < f.buf.w; x++) {
+            if ((f.buf.get(x, y) & 255) === 0) continue;
+            x0 = Math.min(x0, x - f.ox);
+            x1 = Math.max(x1, x - f.ox + 1);
+          }
+        }
+        // The art (its ink outline included) lies inside the box, which keeps at most 3 px of slack per end.
+        expect(x0, `${id}[${k}]`).toBeGreaterThanOrEqual(B.x);
+        expect(x1, `${id}[${k}]`).toBeLessThanOrEqual(B.x + B.w);
+        if (id !== ID.scannerGone) expect(x0 - B.x + (B.x + B.w - x1), `${id}[${k}]`).toBeLessThanOrEqual(6);
+      });
+    }
   });
 });

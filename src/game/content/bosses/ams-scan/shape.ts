@@ -8,7 +8,7 @@ import { beltY, SCAN, type Pt } from './geometry';
 const S = SCAN;
 const K = S.scanner;
 
-/** Distance from (x, y) to the nearer wheel centre, and that wheel's index. */
+/** Distance from (x, y) to the nearer wheel centre. */
 export function wheelDist(x: number, y: number): number {
   let best = Infinity;
   for (const wx of S.wheelC) best = Math.min(best, Math.hypot(x - wx, y - S.wheelCY));
@@ -47,21 +47,23 @@ export function screenDist(x: number, y: number): number {
   const vx = bx - ax;
   const vy = by - ay;
   const l = Math.hypot(vx, vy);
-  // The normal pointing back into the cabin (towards −x, −y... the side of the band).
   return ((x - ax) * vy - (y - ay) * vx) / -l;
 }
 
 export type BandPart = 'screen' | 'apillar' | 'pillar' | 'glass' | null;
 
-/** What the band shows at (x, y): the windscreen sliver, the A-pillar, a black pillar or side glass. */
+/**
+ * What the band shows at (x, y): the windscreen sliver, the A-pillar, a black pillar (the quarter
+ * glass divider, B, C, the D-pillar at the tailgate) or side glass.
+ */
 export function bandPart(x: number, y: number): BandPart {
   if (!inBand(x, y)) return null;
   const sd = screenDist(x, y);
-  if (sd < 1.1) return 'screen';
-  if (sd < 2.1) return 'apillar';
+  if (sd < 0.8) return 'screen';
+  if (sd < 1.8) return 'apillar';
+  if (x >= S.quarter[0] && x < S.quarter[1]) return 'pillar';
   for (const [x0, x1] of S.pillars) if (x >= x0 && x < x1) return 'pillar';
-  // The D-pillar: the band's rear tip.
-  if (x < -40.2) return 'pillar';
+  if (x < S.dPillar) return 'pillar';
   return 'glass';
 }
 
@@ -71,22 +73,21 @@ export function inGlass(x: number, y: number): boolean {
   return p === 'glass' || p === 'screen';
 }
 
-/** Which side window (0 front, 1 rear door, 2 rear quarter) holds x. */
+/** Which side window (0 the front door and its quarter glass, 1 the rear door, 2 the rear quarter) holds x. */
 export function windowOf(x: number): 0 | 1 | 2 {
   if (x >= S.pillars[0][1]) return 0;
   if (x >= S.pillars[1][1]) return 1;
   return 2;
 }
 
-/** The black side sill and the lower bumper trims. */
+/** The black side sill and the lower bumpers (they wrap round both ends). */
 export function inSill(x: number, y: number): boolean {
   if (!inBody(x, y)) return false;
   if (y >= S.sill[0] && y < S.sill[1]) return true;
-  // The lower bumpers wrap the ends.
-  return y >= -7 && (x < -40.5 || x > 40.5);
+  return y >= S.lowBumper && Math.abs(x) > S.bumperX;
 }
 
-/** A red slanted bar on the lower doors (index or −1). */
+/** A red slanted bar (index: 0–2 the front door, 3 the wing stub) or −1. */
 export function barAt(x: number, y: number): number {
   const B = S.bars;
   if (y < B.top || y >= B.bottom) return -1;
@@ -98,13 +99,33 @@ export function barAt(x: number, y: number): number {
   return -1;
 }
 
-/** The red slanted stripes on the bonnet side. */
+/** The bonnet's top face (seen a little from above). */
+export function inHood(x: number, y: number): boolean {
+  return inPoly(x, y, S.hood) && inBody(x, y);
+}
+
+/** The wing crease under the bonnet face at x (a straight line, continuous y). */
+export function creaseY(x: number): number {
+  const H = S.hood;
+  return H[7][1] + ((x - H[7][0]) * (H[5][1] - H[7][1])) / (H[5][0] - H[7][0]);
+}
+
+/** How far across the bonnet face (x, y) lies: 0 at the wing crease, 1 at the bonnet's edge. */
+export function hoodAcross(x: number, y: number): number {
+  const H = S.hood;
+  // The edge (H[0] → H[4]) and the crease (H[7] → H[5]) as straight lines.
+  const ye = H[0][1] + ((x - H[0][0]) * (H[4][1] - H[0][1])) / (H[4][0] - H[0][0]);
+  const yc = creaseY(x);
+  return Math.max(0, Math.min(1, (yc - y) / Math.max(0.5, yc - ye)));
+}
+
+/** The red slanted stripes across the bonnet face. */
 export function inStripe(x: number, y: number): boolean {
+  if (!inHood(x, y)) return false;
   const T = S.stripes;
-  if (y < T.top || y >= T.bottom) return false;
-  const t = (T.bottom - y) / (T.bottom - T.top);
-  for (const [xb, xt] of T.x) {
-    const e = xb + (xt - xb) * t;
+  const t = hoodAcross(x, y);
+  for (const xb of T.x) {
+    const e = xb + T.lean * t;
     if (x >= e && x < e + T.w) return true;
   }
   return false;
@@ -123,7 +144,7 @@ export function inCross(x: number, y: number, w = 0.55): boolean {
   return false;
 }
 
-/** The livery colour at (x, y) on the paint: 'red' or null. */
+/** The livery colour at (x, y) on the paint: red or not. */
 export function liveryRed(x: number, y: number): boolean {
   return barAt(x, y) >= 0 || inStripe(x, y) || inCross(x, y);
 }
@@ -161,7 +182,7 @@ export function shellEdge(u: number, v: number): number {
   return polyDist(u, v, K.shell);
 }
 
-/** A side camera window (index) or the front window (2), else −1 (rest coordinates). */
+/** A side camera window (0, 1), the front window (2), the rear window (3), else −1 (rest coordinates). */
 export function camAt(u: number, v: number): number {
   for (let i = 0; i < K.windows.length; i++) {
     const [x0, x1, y0, y1] = K.windows[i];
@@ -174,17 +195,34 @@ export function camAt(u: number, v: number): number {
     }
   }
   if (inPoly(u, v, K.front)) return 2;
+  if (inPoly(u, v, K.rear)) return 3;
   return -1;
 }
 
-/** The rack: its bar and its two feet down to the roof. */
+/** The grey band (with the number) across the box's side (rest coordinates). */
+export function inGreyBand(u: number, v: number): boolean {
+  const [xt, xb, w] = K.band;
+  const [, y0] = K.shell[0];
+  const [, y1] = K.shell[6];
+  const t = (v - y0) / (y1 - y0);
+  const x0 = xt + (xb - xt) * t;
+  return u >= x0 && u < x0 + w;
+}
+
+/** The rack: its mounting bar and its two feet down to the roof. */
 export function inRack(x: number, y: number, bent = false): boolean {
   const [x0, x1, y0, y1] = K.bar;
   let yy = y;
   // Bent: the rear half of the bar droops towards the roof.
-  if (bent && x < -14) yy = y - Math.min(1.6, (-14 - x) * 0.11);
+  if (bent && x < -12) yy = y - Math.min(1.4, (-12 - x) * 0.1);
   if (x >= x0 && x < x1 && yy >= y0 && yy < y1) return true;
-  if (y >= y1 && y < -28.3) for (const [f0, f1] of K.feet) if (x >= f0 && x < f1) return true;
+  if (y >= y1 && y < K.feetTo) {
+    for (const [f0, f1] of K.feet) {
+      // The feet taper a little towards the bar.
+      const k = ((y - y1) / (K.feetTo - y1)) * 0.4;
+      if (x >= f0 + 0.4 - k && x < f1 - 0.4 + k) return true;
+    }
+  }
   return false;
 }
 

@@ -11,9 +11,11 @@
  * never mirrored (car.ts draws them at the mirrored spot).
  *
  * The car: a compact, tall white electric hatchback in the livery of the city (red slanted bars on
- * the lower doors, red stripes on the bonnet, `PARKEERCONTROLE`, `Gemeente Amsterdam` with the
- * three crosses), one band of dark tinted glass with black pillars, a big white scanner box on a
- * black roof rack, silver alloy wheels. 88 px long, the body 28 px tall, 38 px with the scanner.
+ * the lower front door and the front wing, red stripes across the bonnet, `PARKEERCONTROLE`,
+ * `Gemeente Amsterdam` with the three crosses), one band of dark tinted glass with black pillars
+ * under a floating white roof, a big thick white scanner box on a black roof rack, silver alloy
+ * wheels. 84 px long (the hurtboxes keep 88: a px of slack at each bumper), the body 27 px tall
+ * over the road, 39 px with the scanner box.
  */
 import type { Rect } from '../../../../engine/math';
 
@@ -43,7 +45,7 @@ export const ID = {
   wheel: `${SCAN_ART}/wheel`,
   /** An amber hazard / beacon glow (centre anchor). */
   blink: `${SCAN_ART}/blink`,
-  /** Death: three roll frames (45°, 90°, 135°) and the car on its roof. */
+  /** Death: three roll frames (45°, 90°, 135°) and the car on its roof; 0–3 facing right, 4–7 facing left (never flipped). */
   wreck: `${SCAN_ART}/wreck`,
   reticle: `${SCAN_ART}/reticle`,
   ticket: `${SCAN_ART}/ticket`,
@@ -55,9 +57,11 @@ export const ID = {
   /** The clamp locked on a boot (2 frames: still, rattling). */
   clampFoot: `${SCAN_ART}/clamp-foot`,
   /**
-   * The lettering, NEVER mirrored (3 frames, each anchored on its block's centre): 0
-   * `PARKEERCONTROLE` (front door), 1 `Gemeente Amsterdam` (rear door), 2 the scanner's `24`.
-   * At 1× a hint of small print; readable at 2× and 4×.
+   * The lettering, NEVER mirrored (4 frames, each anchored on its block's centre): 0
+   * `PARKEERCONTROLE` (front door), 1 `Gemeente Amsterdam` (rear door, set against the crosses on
+   * its right), 2 the scanner's `24`, 3 `Gemeente Amsterdam` for the car facing left (set against
+   * the mirrored crosses on its left; `SCAN.textFlip`). At 1× a hint of small print; readable at
+   * 2× and 4×.
    */
   text: `${SCAN_ART}/text`,
   /** The fleeing driver (the handhaver's strips). */
@@ -79,9 +83,13 @@ export const CLAMP_TAG = 'ams-scan-clamp';
 const WX = [-26.5, 26.5] as const;
 const WY = -6.5;
 
-/** The belt line (the lower edge of the window band) at x: it rises towards the rear. */
+/**
+ * The belt line (the lower edge of the window band) at x: it rises gently towards the rear, then
+ * kicks up under the rear quarter glass (from the C-pillar to the tailgate).
+ */
 export function beltY(x: number): number {
-  return -18.9 - (20.8 - x) * 0.04;
+  if (x >= -26) return -18.8 - (22.4 - x) * 0.036;
+  return -20.54 - (-26 - x) * 0.14;
 }
 
 export const SCAN = {
@@ -92,67 +100,95 @@ export const SCAN = {
   cabCanvas: { x0: -43, y0: -28, x1: 22, y1: -17 },
   /** The scanner strips' local box (rack and box, lifted). */
   scanCanvas: { x0: -36, y0: -43, x1: 9, y1: -28 },
-  /** The body's side profile (closed polygon, continuous; front at +x). */
+  /**
+   * The body's side profile (closed polygon, continuous; front at +x): a compact, tall electric
+   * hatchback 84 px long — a short sloping bonnet, a long raked windscreen, a high roof that
+   * curves down only at the very rear (a small spoiler lip), a near-vertical tailgate, bumpers
+   * that wrap round. Point 0 is the rear bumper's face (car.ts reads its x as the rear end).
+   */
   profile: [
-    [-42, -2], [-43.4, -3.2], [-44, -6], [-43.8, -10], [-43.3, -19.8], [-42.6, -23], [-40.8, -25.9],
-    [-38.2, -27.5], [-32, -28.1], [-12, -28.4], [2, -28.3], [6.4, -27.6], [9, -26.2], [21.6, -19.4],
-    [24.4, -18.9], [34.5, -17.3], [39.6, -15.8], [42.4, -13.6], [43.6, -10.6], [44, -6], [43.4, -3.2],
-    [42, -2],
+    [-42, -8], [-41.8, -5.2], [-41.0, -3.0], [-39.6, -2],
+    [39.6, -2], [41.0, -3.0], [41.8, -5.2], [42, -9.4], [41.7, -11.8], [41.0, -13.3], [40.0, -14.3],
+    [36.0, -15.5], [30.0, -16.9], [25.0, -18.1], [22.4, -18.8],
+    [12.0, -23.84], [5.6, -26.94], [3.0, -28.2], [0.6, -29.0], [-3, -29.3],
+    [-12, -29.4], [-24, -29.1], [-33, -28.6], [-37.4, -28.1], [-39.4, -27.7], [-40.5, -26.9], [-40.9, -25.6],
+    [-41.3, -21.0], [-41.7, -16.0], [-42, -12.0],
   ] as readonly Pt[],
-  /** The window band (dark tinted glass and the black pillars): the windscreen edge, the roof edge, the belt line. */
+  /**
+   * The window band (dark tinted glass and the black pillars), one band from the windscreen
+   * pillar to the tailgate: the windscreen edge, the roof edge (the white roof floats over it),
+   * the tailgate edge, the belt line (`beltY`: rising to the rear, the kick under the quarter glass).
+   */
   band: [
-    [20.8, -18.9], [8.0, -25.7], [6.0, -26.5], [-36.4, -26.5], [-39.0, -25.6], [-40.8, -23.6], [-41.6, -21.4],
+    [22.4, -18.8], [3.2, -28.1], [-6, -28.15], [-20, -28.0], [-32, -27.45], [-37, -26.85], [-39.6, -26.0],
+    [-40.75, -24.6], [-41.05, -22.64], [-26, -20.54],
   ] as readonly Pt[],
-  /** The windscreen line (the band's front edge): the windscreen sliver and the A-pillar lie along it. */
-  screen: [[6.0, -26.5], [20.8, -18.9]] as readonly Pt[],
+  /** The windscreen line (the band's front edge, top → base): the windscreen sliver and the A-pillar lie along it. */
+  screen: [[3.2, -28.1], [22.4, -18.8]] as readonly Pt[],
   /** Black pillars (continuous x ranges) between the side windows: B, C. */
-  pillars: [[-7.5, -5.5], [-26.5, -25]] as ReadonlyArray<readonly [number, number]>,
+  pillars: [[-6.6, -4.5], [-27.2, -25.4]] as ReadonlyArray<readonly [number, number]>,
+  /** The thin black divider (x range) between the small front quarter glass and the front door glass. */
+  quarter: [12.7, 13.6] as const,
+  /** The D-pillar: the band behind this x (the tailgate glass seen edge-on) is black. */
+  dPillar: -39.5,
   /** Wheel centres (continuous) and radius; the wheel strip's centre px (col = wheelX, row = wheelY). */
   wheelC: WX,
   wheelCY: WY,
   wheelX: [-27, 26] as const,
   wheelY: -7,
   wheelR: 6,
-  /** The wheel arch cut (radius about the wheel centre) and its black plastic trim (1 px). */
-  archR: 8.2,
-  trimR: 9.2,
+  /** The wheel arch cut (radius about the wheel centre) and its black plastic trim. */
+  archR: 7.4,
+  trimR: 8.6,
   /** Door shut lines (continuous x): the rear door's rear edge, the B seam, the front door's front edge. */
-  seams: [-25.5, -6.5, 16.5] as const,
+  seams: [-25.6, -5.5, 17.6] as const,
   /** The black side sill (rows) and the lower bumper trims. */
   sill: [-5, -2] as const,
-  /** Red slanted bars on the lower doors: bottom-left x, width, top / bottom y; the top leans forward `lean` px. */
-  bars: { x: [-3, 3.5, 10, 17.4] as const, w: 3, top: -13, bottom: -5, lean: 1 },
-  /** Red slanted stripes on the bonnet: [bottom x, top x] of each stripe's rear edge; width. */
-  stripes: { x: [[25.5, 28], [30.5, 33], [35.2, 37.4]] as ReadonlyArray<readonly [number, number]>, w: 2.6, top: -19, bottom: -15.2 },
+  /** Where the black lower bumpers start (|x| beyond this, rows below `lowBumper`). */
+  bumperX: 39.2,
+  lowBumper: -6.6,
+  /**
+   * Red slanted bars: three on the front door, one stub on the front wing behind the front wheel
+   * (the arch trim cuts it); bottom-left x, width, top / bottom y; the top leans forward `lean` px.
+   */
+  bars: { x: [-4.0, 2.9, 9.8, 18.4] as const, w: 3.7, top: -12.9, bottom: -5.2, lean: 0.8 },
+  /** The bonnet's top face (seen a little from above): the profile's bonnet edge and the wing crease under it. */
+  hood: [
+    [22.4, -18.8], [25.0, -18.1], [30.0, -16.9], [36.0, -15.5], [39.4, -14.5], [37.4, -13.6], [30.0, -14.5], [23.4, -16.1],
+  ] as readonly Pt[],
+  /** Red slanted stripes across the bonnet face: the rear edge's x on the crease, width, forward lean to the edge. */
+  stripes: { x: [24.0, 28.4, 32.8] as const, w: 2.6, lean: 1.4 },
   /** The three crosses (St Andrew's) stacked on the rear door: centres (continuous), half size. */
-  crosses: { x: -9.3, y: [-18.4, -14.6, -10.8] as const, r: 1.35 },
-  /** The small red city emblem near the rear wheel arch (continuous centre). */
-  emblem: [-37.5, -16] as Pt,
+  crosses: { x: -9.5, y: [-16.5, -12.5, -8.5] as const, r: 1.2 },
+  /** The small red city emblem on the rear wing over the rear arch (continuous centre). */
+  emblem: [-36.3, -16.4] as Pt,
   /** Door handles (continuous left x, y): front, rear. */
-  handles: [[-3.5, -18.4], [-25, -19.4]] as readonly Pt[],
-  /** The mirror (continuous centre) at the foot of the A-pillar. */
-  mirror: [16.6, -19.6] as Pt,
-  /** The parking permit behind the windscreen (continuous centre). */
-  permit: [17.6, -19.9] as Pt,
+  handles: [[-3.6, -17.6], [-24.4, -18.3]] as readonly Pt[],
+  /** The black mirror (continuous centre) at the base of the front quarter glass. */
+  mirror: [15.6, -19.4] as Pt,
+  /** The parking permit behind the windscreen, seen through the quarter glass (continuous centre). */
+  permit: [16.4, -19.9] as Pt,
   /** Lettering (frame of `ID.text`): the block's centre px (col, row), facing right. */
-  text: [[5, -15], [-20, -16], [-3, -36]] as readonly Pt[],
-  /** The lettering frames' logical sizes (odd: the anchor is the centre px). */
+  text: [[6, -15], [-21, -17], [-1, -36]] as readonly Pt[],
+  /** The `ID.text` frame of lettering block i on the car facing left (the rear door's block is set the other way). */
+  textFlip: [0, 3, 2] as const,
+  /** The lettering frames' logical sizes (odd: the anchor is the centre px); frame 3 has frame 1's. */
   textSize: [[31, 3], [19, 7], [5, 3]] as ReadonlyArray<readonly [number, number]>,
   /** Hazard lamps (the amber indicators, front and rear): the `blink` sprite's centre px. */
-  lamps: [[41, -14], [-43, -17]] as readonly Pt[],
+  lamps: [[40, -13], [-42, -19]] as readonly Pt[],
   /** Tyre smoke (the rear wheel, rev) and the bonnet (damage steam). */
   exhaust: [-27, -2] as Pt,
-  bonnet: [30, -19] as Pt,
+  bonnet: [30, -18] as Pt,
   /** Speech point (over the scanner box). */
   sayAt: [-8, -46] as Pt,
   /** The ticket printer's slot at the front end of the scanner box (rise 2). */
   printer: [7, -36] as Pt,
   /** The driver's head (1× cabin): the cap's top-left px. */
-  driverAt: [2, -26] as Pt,
+  driverAt: [-2, -26] as Pt,
   /** Hurtboxes (unflipped). */
   box: {
     /** The roof rack with the (lifted) scanner box. */
-    scanner: { x: -34, y: -41, w: 42, h: 12 } as Rect,
+    scanner: { x: -26, y: -41, w: 34, h: 12 } as Rect,
     /** The car itself (shots ping on nothing: every part has HP). */
     body: { x: -44, y: -29, w: 88, h: 27 } as Rect,
   },
@@ -166,29 +202,39 @@ export const SCAN = {
   // ------------------------------------------------------------------------------- the scanner box
   /**
    * Scanner strip frames: 0 down, 1 lifted 1 px, 2 lifted 2 px, 3 lifted and scanning (the camera
-   * windows glow). The box (`shell`, continuous, rise 0) sits on two struts on the rack bar; the
-   * rack's feet stand on the roof.
+   * windows glow faintly red). The big white box (`shell`, continuous, rise 0): a thick lid with
+   * rounded corners (its top face seen a little from above) over a lower body whose sides slope in
+   * towards the bottom, the ends slanted; it sits on a black mounting bar on two lift struts, and
+   * the rack's feet stand on the roof.
    */
   scanner: {
     rise: [0, 1, 2, 2] as const,
     shell: [
-      [-31, -38], [4, -38], [6.2, -37.1], [7.4, -35.4], [7.2, -33.4], [5.8, -32], [-31.6, -32], [-33, -33.2],
-      [-33.5, -35.4], [-32.7, -37.3],
+      [-21.6, -39.4], [4.2, -39.4], [5.6, -39.0], [6.4, -38.0], [6.5, -37.1], [5.3, -34.4], [4.1, -33.6],
+      [-20.2, -33.6], [-21.5, -34.4], [-23.0, -37.1], [-22.9, -38.0], [-22.3, -39.0],
     ] as readonly Pt[],
-    /** Side camera windows (continuous boxes: x0, x1, y0, y1 at rise 0) and the front one on the slanted end. */
-    windows: [[-29.5, -21.5, -36.6, -34], [-20.5, -12, -36.6, -34]] as ReadonlyArray<readonly [number, number, number, number]>,
-    front: [[4.8, -37.4], [6.8, -36.2], [7.2, -34.2], [5.8, -34.2]] as readonly Pt[],
-    /** The slanted seam behind the front end (top x, bottom x) and the shut line row. */
-    seam: [2.6, 3.6] as const,
-    shut: -33,
-    /** The rack: the bar (continuous box) and the feet (x ranges) down to the roof. */
-    bar: [-31, 3, -32, -30] as const,
-    feet: [[-28, -26], [-1.5, 0.5]] as ReadonlyArray<readonly [number, number]>,
+    /** The lid's top face (seen from above: v above this) and the lid's lower edge (the seam line). */
+    lidTop: -38.2,
+    shut: -37.1,
+    /** Side camera windows (continuous boxes: x0, x1, y0, y1 at rise 0) on the lower body. */
+    windows: [[-20.6, -12.8], [-11.6, -4.6]].map(([x0, x1]) => [x0, x1, -36.9, -34.0] as const) as ReadonlyArray<readonly [number, number, number, number]>,
+    /** The front camera window on the slanted front end, the rear one on the rear end. */
+    front: [[5.5, -36.8], [6.2, -36.8], [5.1, -34.3], [4.4, -34.3]] as readonly Pt[],
+    rear: [[-22.2, -36.8], [-21.5, -36.8], [-20.5, -34.3], [-21.2, -34.3]] as readonly Pt[],
+    /** The camera lens behind the middle window (continuous centre). */
+    lens: [-8.9, -35.5] as Pt,
+    /** The grey band with the number (x of its rear edge at the top and at the bottom; width). */
+    band: [-1.9, -2.5, 3.6] as const,
+    /** The rack: the mounting bar (continuous box x0, x1, y0, y1) and the feet (x ranges) down to the roof. */
+    bar: [-19.8, 2.6, -33.6, -32.6] as const,
+    feet: [[-19.4, -16.2], [-1.4, 1.8]] as ReadonlyArray<readonly [number, number]>,
+    /** The feet stand on the roof: their lower end (continuous y). */
+    feetTo: -29.0,
     /** The lift struts (x) between the bar and the box. */
-    struts: [-24, -6] as const,
-    /** Turn of the askew box (state 2) about its rear foot (radians, front up). */
-    askew: -0.07,
-    pivot: [-27, -31] as Pt,
+    struts: [-14, -4] as const,
+    /** Turn of the askew box (state 2) about its front foot (radians, clockwise on screen; − = the rear end drops). */
+    askew: -0.075,
+    pivot: [0.2, -33.6] as Pt,
   },
 
   // ------------------------------------------------------------------------------- numbers

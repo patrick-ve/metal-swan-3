@@ -10,14 +10,16 @@
  * index, and the shapes come from shape.ts (the same predicates as the 1× art), so each HD frame
  * has exactly its 1× frame's logical size and anchor.
  *
- * Look: glossy white paint over a lit body volume (rolled edges round the profile, the arches and
- * the glass, a sharp shoulder crease under the windows, the lower doors tucking under towards the
- * black sill), panel and bonnet shut lines, the red livery painted on the same volume, black
- * glossy pillars, textured black arch trims, a slim LED headlight in a chrome rim, a black grille
- * with a thin chrome bar and a plain emblem, yellow plates, the red tail light, mirror and handles;
- * dark tinted glass with sky reflections, the handhaver's silhouette with his cap; the big white
- * scanner box (a rounded slab, smoked camera windows that glow red while scanning, a slanted seam)
- * on a black rack; silver multi-spoke alloys in black tyres.
+ * Look: glossy white paint (the neutral `gable` whites) over a lit body volume (rolled edges round
+ * the profile, the arches and the glass, the shoulder under the windows, the bonnet's top face
+ * rising to the wing crease, the lower doors tucking under towards the black sill), door, bonnet
+ * and tailgate shut lines, the red livery painted on the same volume, glossy black pillars,
+ * textured black arch trims, the slim swept LED headlight in a black housing, a black grille with
+ * a thin chrome bar and a plain round emblem, the fog lamp, yellow plates, the red tail light, the
+ * black mirror, body-colour handles; near-black tinted glass with sky reflections and the
+ * handhaver's silhouette with his cap; the big thick white scanner box (a lid seen a little from
+ * above, sides sloping in, smoked camera windows with a lens, a grey band with the number; a faint
+ * red cast while scanning) on a black rack with feet; silver multi-spoke alloys in black tyres.
  */
 import type { Color } from '../../../../engine/color';
 import { getFont, type Glyph } from '../../../../engine/font';
@@ -28,7 +30,7 @@ import { getFrames } from '../../../../engine/sprites';
 import { HdCanvas, polyDist, type RenderOpts, type TexSample } from '../../../art/hd/canvas';
 import { hash2 } from '../../../art/paint';
 import { HdPiece, geomOf } from '../ams/canvas';
-import { crackAt, dents, DRIVER_EXPR, glintAt, scuffs, sootAt, SPOKES, SPOKE_TURN } from './art';
+import { BOX_DENT, crackAt, dents, DRIVER_EXPR, glintAt, HEADLIGHT, scuffs, sootAt, SPOKES, SPOKE_TURN, TAIL } from './art';
 import { ID, SCAN } from './geometry';
 import {
   bandPart,
@@ -36,10 +38,12 @@ import {
   beltY,
   boxLocal,
   camAt,
+  creaseY,
   inBand,
   inBody,
   inCross,
   inGlass,
+  inGreyBand,
   inRack,
   inShell,
   inSill,
@@ -72,32 +76,29 @@ function roll(e: number, r: number): number {
 // The car body
 // ---------------------------------------------------------------------------------------------
 
-/** Distance along x / y to the nearest seam line (continuous): door shut lines, bonnet, tailgate. */
+/** Distance to the nearest shut line (continuous): the doors, the bonnet's edge on the crease, the tailgate. */
 function seamDist(x: number, y: number): number {
   const S = SCAN;
   let e = 9;
   const belt = beltY(x);
   if (y > belt + 0.3) {
     // The rear door's rear edge stops at the arch trim; the B seam and the front door's front edge run to the sill.
-    if (y < S.wheelCY - 8.6) e = Math.min(e, Math.abs(x - S.seams[0]));
+    if (y < S.wheelCY - Math.sqrt(S.trimR ** 2 - (S.seams[0] - S.wheelC[0]) ** 2)) e = Math.min(e, Math.abs(x - S.seams[0]));
     if (y < S.sill[0]) e = Math.min(e, Math.abs(x - S.seams[1]), Math.abs(x - S.seams[2]));
   }
-  // The bonnet shut line: from the windscreen base along the wing to the headlight.
-  if (x > 22 && x < 35.6) {
-    const yb = -18.2 + (x - 22) * 0.16;
-    e = Math.min(e, Math.abs(y - yb) + (x < 22.6 ? 0.6 - (x - 22) : 0));
-  }
-  // The tailgate shut line near the rear end.
-  if (y > -22 && y < -8) e = Math.min(e, Math.abs(x - (-42.6 + (y + 22) * 0.02)));
+  // The bonnet's shut line along the wing crease, from the A-pillar's foot to the headlight.
+  if (x > 22.2 && x < 34.6) e = Math.min(e, Math.abs(y - creaseY(x)));
+  // The tailgate's shut line behind the tail light.
+  if (y > -17 && y < -8.5) e = Math.min(e, Math.abs(x - (-40.6 - (y + 17) * 0.03)));
   return e;
 }
 
 export function bodyHd(state: 0 | 1 | 2, d: number): Frame {
   const S = SCAN;
   const p = new HdPiece(geomOf(lo(ID.body[state])), d);
-  const paint = p.material({ ramp: R.snow, lo: 2, hi: 5, spec: 0.8, shine: 42, wrap: 0.06, rim: 0.3, bounce: 0.3 });
-  const red = p.material({ ramp: R.red, lo: 4, hi: 6, spec: 0.7, shine: 40, wrap: 0.06 });
-  const black = p.material({ ramp: R.black, lo: 1, hi: 5, spec: 0.55, shine: 30, wrap: 0.05 });
+  const paint = p.material({ ramp: R.gable, lo: 3, hi: 6, spec: 0.85, shine: 46, wrap: 0.06, rim: 0.3, bounce: 0.3 });
+  const red = p.material({ ramp: R.red, lo: 4, hi: 6, spec: 0.3, shine: 40, wrap: 0.06 });
+  const black = p.material({ ramp: R.black, lo: 1, hi: 5, spec: 0.6, shine: 34, wrap: 0.05 });
   const plastic = p.material({ ramp: R.black, lo: 0, hi: 4, spec: 0.2, shine: 12, wrap: 0.05 });
   const well = p.material({ ramp: R.black, lo: 0, hi: 2, spec: 0.05, amb: 0 });
   const tail = p.material({ ramp: R.red, lo: 3, hi: 7, spec: 1, shine: 60 });
@@ -114,12 +115,20 @@ export function bodyHd(state: 0 | 1 | 2, d: number): Frame {
     let h = roll(e, 2.4);
     // The glass edge: the panel folds in under the window seal.
     h -= Math.max(0, 0.9 - polyDist(x, y, S.band)) * 0.6;
-    // The shoulder crease just under the windows, and the waist below it.
+    // The shoulder just under the windows, and the waist below it.
     const sb = y - beltY(x);
-    if (x > -41.5 && x < 21) h += 0.75 * Math.exp(-(((sb - 1.6) / 0.75) ** 2)) - 0.25 * Math.exp(-(((sb - 3.2) / 1.2) ** 2));
-    // The lower doors tuck under towards the sill; the nose turns away.
+    if (x > -41 && x < 21) h += 0.75 * Math.exp(-(((sb - 1.4) / 0.75) ** 2)) - 0.25 * Math.exp(-(((sb - 3.0) / 1.2) ** 2));
+    // The bonnet's top face (seen from above: it rises to the wing crease) and the wing rolling
+    // down from the crease.
+    if (x > 21.5) {
+      const dc = y - creaseY(x);
+      const k = Math.min(1, (x - 21.5) / 1.5);
+      h += k * (dc < 0 ? Math.max(0, 1.3 + dc * 0.55) : 1.3 - Math.min(0.5, dc * 0.3));
+    }
+    // The lower doors tuck under towards the sill; the nose and the tailgate turn away.
     if (y > -9.5) h -= (y + 9.5) * 0.42;
-    if (x > 39) h -= (x - 39) * 0.35;
+    if (x > 39.5) h -= (x - 39.5) * 0.35;
+    if (x < -40.4) h -= (-40.4 - x) * 0.5;
     // Dents.
     for (const [dx, dy] of ds) {
       const q = ((x - dx) ** 2 + (y - dy) ** 2) / 1.6;
@@ -127,7 +136,7 @@ export function bodyHd(state: 0 | 1 | 2, d: number): Frame {
     }
     if (state === 2) {
       // The bonnet buckles up into a ridge.
-      const k = Math.exp(-(((x - 31) / 3.2) ** 2)) * Math.exp(-(((y + 16.8) / 0.9) ** 2));
+      const k = Math.exp(-(((x - 30) / 3.2) ** 2)) * Math.exp(-(((y + 17.2) / 0.9) ** 2));
       h += k * 1.4;
     }
     return h;
@@ -149,19 +158,19 @@ export function bodyHd(state: 0 | 1 | 2, d: number): Frame {
           const vy = y1 - y0;
           const t = Math.max(0, Math.min(1, ((x - x0) * vx + (y - y0) * vy) / (vx * vx + vy * vy)));
           const q = Math.hypot(x - x0 - vx * t, y - y0 - vy * t);
-          if (q < 0.22 && barAt(x, y) >= 0) s.fix = t * 7 % 2 < 1 ? R.snow[5] : R.red[6];
+          if (q < 0.22 && barAt(x, y) >= 0) s.fix = (t * 7) % 2 < 1 ? R.snow[5] : R.red[6];
         }
       }
       if (state === 2) {
         const q = sootAt(x, y) * (0.75 + 0.5 * hash2(Math.floor(x * 1.5), Math.floor(y * 1.5), 7));
         if (q > 0.15) s.tone -= q * 1.6;
         // The gap under the buckled ridge.
-        if (Math.abs(y - (-16.1 + (x - 28) * 0.05)) < 0.18 && x > 28 && x < 34.5) s.fix = R.ink[1];
+        if (Math.abs(y - (-16.4 + (x - 27) * 0.2)) < 0.18 && x > 27 && x < 33.5) s.fix = R.ink[1];
       }
     }),
   });
   // 2. The window band's black pillars (the glass is a hole: the cabin strip covers it).
-  p.field(-43, -28, 66, 12, (x, y) => {
+  p.field(-43, -29, 66, 12, (x, y) => {
     const part = bandPart(x, y);
     if (part !== 'pillar' && part !== 'apillar') return NaN;
     return roll(polyDist(x, y, S.band), 0.8) * 0.6 + 0.2;
@@ -171,7 +180,7 @@ export function bodyHd(state: 0 | 1 | 2, d: number): Frame {
   p.field(-37, -17, 74, 16, (x, y) => {
     if (!inTrim(x, y)) return NaN;
     const r = wheelDist(x, y);
-    return Math.sqrt(Math.max(0, 0.25 - (r - (S.archR + S.trimR) / 2) ** 2)) * 1.6 + 0.4;
+    return Math.sqrt(Math.max(0, 0.36 - (r - (S.archR + S.trimR) / 2) ** 2)) * 1.4 + 0.4;
   }, {
     mat: plastic,
     z: 0.6,
@@ -181,7 +190,7 @@ export function bodyHd(state: 0 | 1 | 2, d: number): Frame {
   });
   p.field(S.canvas.x0, -8, S.canvas.x1 - S.canvas.x0 + 1, 7, (x, y) => {
     if (!inSill(x, y)) return NaN;
-    return roll(Math.min(polyDist(x, y, S.profile), y - S.sill[0] + 0.5), 0.7) * 0.8;
+    return roll(Math.min(polyDist(x, y, S.profile), y - Math.min(S.sill[0], S.lowBumper) + 0.5), 0.7) * 0.8;
   }, {
     mat: plastic,
     z: 0.3,
@@ -189,52 +198,67 @@ export function bodyHd(state: 0 | 1 | 2, d: number): Frame {
       if (s.d >= 4 && hash2(s.X, s.Y, 13) > 0.82) s.tone -= 0.12;
     },
   });
-  // 4. Lamps: the tail light round the rear corner, the slim swept LED headlight in a chrome rim,
-  //    the grille with its chrome bar and a plain emblem, the fog lamp, the plates.
-  p.field(-45, -24, 4, 8, (x, y) => (x < -42 && y > -23 && y < -16.5 && inBody(x, y) ? roll(Math.min(-42 - x + 0.6, y + 23, -16.5 - y), 0.9) : NaN), { mat: tail, z: 1 });
-  p.poly([[35.2, -16.9], [40.4, -15.9], [42, -14.4], [41.4, -13.8], [37.6, -14.8]], { mat: chrome, z: 1 });
-  p.poly([[35.8, -16.4], [40.2, -15.5], [41.4, -14.4], [37.8, -15.1]], { mat: lamp, z: 1.3 });
-  p.paint(35.8, -16.6, 6, 2.4, (x, y) => (Math.abs(y - (-16 + (x - 36) * 0.24)) < 0.17 && x < 40.6 ? R.snow[6] : 0), 2);
-  p.box(41.7, -12.6, 2.4, 4.3, { mat: black, z: 0.8, r: 0.6, bevel: 0.7 });
-  p.box(41.8, -11.3, 2.3, 0.55, { mat: chrome, z: 1.2, r: 0.2 });
-  p.ell(43, -10.2, 0.55, 0.55, { mat: chrome, z: 1.4 });
-  p.ell(41.6, -5.4, 0.75, 0.55, { mat: lamp, z: 1 });
-  p.box(43.1, -8.3, 0.9, 2.6, { mat: plate, z: 1.2, r: 0.2, bevel: 0.3 });
-  p.box(-44.2, -12.4, 0.9, 2.8, { mat: plate, z: 1.2, r: 0.2, bevel: 0.3 });
-  p.paint(-44.2, -12.4, 0.9, 0.6, () => R.sky[1], 2);
-  // 5. The mirror on its arm, the door handles, the city emblem by the rear arch.
+  // 4. Lamps: the tail light under the band's rear end, the slim swept LED headlight (a black
+  //    housing, the lamp, the LED line), the black grille with its thin chrome bar and a plain
+  //    round emblem, the fog lamp in the bumper, the yellow plates (the rear one with the blue
+  //    EU strip at its near end and a made-up number's marks at 4×).
+  p.field(-43, -24, 4, 8, (x, y) => (x < TAIL.x && y > TAIL.y0 && y < TAIL.y1 && inBody(x, y) ? roll(Math.min(TAIL.x - x + 0.6, y - TAIL.y0, TAIL.y1 - y), 0.9) : NaN), {
+    mat: tail,
+    z: 1,
+    tex: (s) => {
+      // The light's inner bars.
+      if (s.d >= 4 && Math.abs(((s.y - TAIL.y0) % 1.4) - 0.7) < 0.12) s.tone -= 0.3;
+    },
+  });
+  p.poly(HEADLIGHT, { mat: black, z: 1 });
+  p.poly([[35.2, -13.4], [38.6, -13.5], [40.4, -13.1], [40.9, -12.5], [40.2, -12.3], [36.8, -12.9]], { mat: lamp, z: 1.3 });
+  p.paint(34.8, -14, 7, 2, (x, y) => (Math.abs(y - (-13.25 + (x - 35.4) * 0.05)) < 0.14 && x > 35.4 && x < 40.4 ? R.snow[6] : 0), 2);
+  p.box(40.5, -12.2, 1.9, 3.2, { mat: black, z: 0.8, r: 0.5, bevel: 0.6 });
+  p.box(40.6, -11.1, 1.8, 0.4, { mat: chrome, z: 1.2, r: 0.15 });
+  p.ell(41.6, -10.2, 0.45, 0.45, { mat: chrome, z: 1.4 });
+  p.ell(38.4, -7.6, 0.85, 0.5, { mat: black, z: 1 });
+  p.ell(38.4, -7.6, 0.6, 0.32, { mat: lamp, z: 1.2 });
+  p.box(41.2, -9.2, 0.9, 2.4, { mat: plate, z: 1.2, r: 0.2, bevel: 0.3 });
+  p.box(-42.2, -13.0, 0.9, 3.0, { mat: plate, z: 1.2, r: 0.2, bevel: 0.3 });
+  p.paint(-42.2, -13.0, 0.9, 3.0, (x, y) => (y < -12.3 ? R.sky[1] : d >= 4 && Math.abs(x + 41.75) < 0.12 && Math.floor((y + 12.3) * 2.5) % 2 === 0 ? R.ink[1] : 0), 2);
+  // 5. The black mirror on its arm, the door handles (body colour over a dark recess), the city
+  //    emblem by the rear arch.
   const [mx, my] = S.mirror;
   const md = state === 2 ? 1.1 : 0;
-  p.cap(mx - 1.6, my + 0.9, mx - 0.4, my + 0.4 + md * 0.5, 0.35, 0.3, { mat: black, z: 2 });
-  p.ell(mx + 0.3, my + md, 1.7, 1.15, { mat: black, z: 2.3 });
-  for (const [hx, hy] of S.handles) p.cap(hx + 0.4, hy + 0.5, hx + 1.7, hy + 0.5, 0.38, 0.38, { mat: black, z: 1.2 });
+  p.cap(mx + 0.6, my + 0.9, mx + 1.6, my + 0.4 + md * 0.5, 0.35, 0.3, { mat: black, z: 2 });
+  p.ell(mx - 0.2, my + md, 1.6, 1.05, { mat: black, z: 2.3 });
+  for (const [hx, hy] of S.handles) {
+    p.cap(hx + 0.4, hy + 0.75, hx + 1.7, hy + 0.75, 0.32, 0.32, { mat: plastic, z: 0.8 });
+    p.cap(hx + 0.4, hy + 0.45, hx + 1.7, hy + 0.45, 0.34, 0.34, { mat: paint, z: 1.2 });
+  }
   const [ex, ey] = S.emblem;
-  p.ell(ex, ey, 1.05, 0.95, { mat: red, z: 0.8 });
-  p.paint(ex - 1, ey - 1, 2, 2, (x, y) => (Math.abs(x - ex) < 0.22 && Math.abs(y - ey) < 0.55 ? R.snow[6] : 0), 2);
+  p.ell(ex, ey, 1.0, 0.85, { mat: red, z: 0.8 });
+  p.paint(ex - 1, ey - 1, 2, 2, (x, y) => (Math.abs(x - ex) < 0.22 && Math.abs(y - ey) < 0.5 ? R.snow[6] : 0), 2);
   if (state === 2) {
-    // The front bumper's tip hangs.
-    p.poly([[40.4, -7.2], [44.1, -6.2], [44.3, -1.6], [41, -2.4]], { mat: plastic, z: 1.6 });
+    // The front bumper's lower lip hangs.
+    p.poly([[38.6, -6.8], [42.0, -5.6], [42.2, -1.4], [39.0, -2.2]], { mat: plastic, z: 1.6 });
   }
   return p.frame(RENDER);
 }
 
 // ---------------------------------------------------------------------------------------------
-// The cabin (the tinted glass; drawn over the body's glass holes, no outline)
+// The cabin (the dark tinted glass; drawn behind the body's glass holes, no outline)
 // ---------------------------------------------------------------------------------------------
 
-/** The glass colour at (x, y) (no interior): sky reflection on the windscreen, tinted side glass. */
+/** The glass colour at (x, y) (no interior): near-black tint, the far windows a little lighter, sky along the top edge. */
 function glassAt(x: number, y: number): Color {
   if (bandPart(x, y) === 'screen') {
-    const t = (y + 26.5) / 7.6;
-    return t < 0.3 ? R.sky[6] : t < 0.65 ? R.sky[5] : R.glass[5];
+    const t = (y + 28) / 9;
+    return t < 0.25 ? R.steel[5] : t < 0.6 ? R.steel[4] : R.steel[3];
   }
   const g = glintAt(x, y, 0.8);
-  if (g === 0) return R.glass[4];
-  if (g === 1) return R.glass[3];
+  if (g === 0) return R.steel[4];
+  if (g === 1) return R.steel[3];
+  if (!inBand(x, y - 0.6)) return R.steel[4];
+  if (!inBand(x, y - 1.2)) return R.steel[3];
   const belt = beltY(x);
-  if (y < -25.6) return R.glass[3];
-  if (y > belt - 1) return R.glass[1];
-  return R.glass[2];
+  if (y > belt - 1) return R.steel[0];
+  return y > belt - 2.4 ? R.steel[1] : R.steel[2];
 }
 
 export function cabinHd(frame: number, d: number): Frame {
@@ -279,9 +303,9 @@ export function cabinHd(frame: number, d: number): Frame {
     }
     const g = glintAt(x, y, 0.8);
     // The rear headrests.
-    if (Math.hypot((x + 15.5) / 1.6, (y + 22.4) / 1.4) < 1 || (x > -17.1 && x < -13.9 && y > -22.4 && y < -20.6)) return g === 0 ? R.glass[2] : R.black[1];
+    if (Math.hypot((x + 15.5) / 1.6, (y + 22.4) / 1.4) < 1 || (x > -17.1 && x < -13.9 && y > -22.4 && y < -20.6)) return g === 0 ? R.steel[3] : R.black[1];
     const dv = driver(x, y);
-    if (dv !== 0) return g === 0 ? R.glass[3] : dv;
+    if (dv !== 0) return g === 0 ? R.steel[3] : dv;
     return glassAt(x, y);
   });
   if (look === 'airbag') {
@@ -302,11 +326,21 @@ export function cabinHd(frame: number, d: number): Frame {
 const pt: [number, number] = [0, 0];
 
 function rackHd(p: HdPiece, bent: boolean): void {
-  const black = p.material({ ramp: R.black, lo: 1, hi: 5, spec: 0.4, shine: 20 });
-  p.field(-34, -35, 40, 7, (x, y) => {
+  const black = p.material({ ramp: R.black, lo: 1, hi: 5, spec: 0.45, shine: 22 });
+  const K = SCAN.scanner;
+  // The mounting bar and the feet (rubber pads on the roof, a lit top edge).
+  p.field(-26, -35, 32, 7, (x, y) => {
     if (!inRack(x, y, bent)) return NaN;
-    return 0.5 + (y < SCAN.scanner.bar[2] + 0.6 ? 0.3 : 0);
-  }, { mat: black, z: 0 });
+    const top = y < K.bar[3] ? 0.35 : 0;
+    return 0.5 + top + (y > K.feetTo - 0.6 ? -0.2 : 0);
+  }, {
+    mat: black,
+    z: 0,
+    tex: (s) => {
+      // The foot's clamp seam at 4×.
+      if (s.d >= 4 && Math.abs(s.y - (K.bar[3] + 1.2)) < 0.1) s.tone -= 0.3;
+    },
+  });
 }
 
 export function scannerHd(state: 0 | 1 | 2, frame: number, d: number): Frame {
@@ -315,24 +349,28 @@ export function scannerHd(state: 0 | 1 | 2, frame: number, d: number): Frame {
   const rise = K.rise[frame];
   const scanning = frame === 3;
   const askew = state === 2;
-  const shell = p.material({ ramp: R.snow, lo: 2, hi: 5, spec: 0.6, shine: 34, wrap: 0.06, rim: 0.3 });
-  const smoke = p.material({ ramp: R.glass, lo: 0, hi: 3, spec: 1, shine: 70 });
-  const glow = p.material({ ramp: [R.red[3], R.red[5], R.red[6], R.red[7], R.pink[6]], flat: true, lo: 0, hi: 4 });
+  const shell = p.material({ ramp: R.gable, lo: 3, hi: 6, spec: 0.7, shine: 36, wrap: 0.06, rim: 0.3 });
+  const grey = p.material({ ramp: R.steel, lo: 3, hi: 6, spec: 0.5, shine: 30, wrap: 0.06 });
+  const smoke = p.material({ ramp: R.steel, lo: 0, hi: 2, spec: 1, shine: 70 });
+  const glow = p.material({ ramp: [R.red[0], R.red[1], R.red[2], R.red[3], R.red[5]], flat: true, lo: 0, hi: 4 });
   const steel = p.material({ ramp: R.steel, lo: 2, hi: 6, spec: 1, shine: 34, rim: 0.4 });
   rackHd(p, false);
   if (rise > 0) {
     for (const sx of K.struts) p.cyl(sx, K.bar[2] - rise - 0.4, 1.2, rise + 0.6, { mat: steel, z: -0.2, axis: 'v' });
   }
-  p.field(-36, -43, 46, 13, (x, y) => {
+  const top = K.shell[0][1];
+  p.field(-36, -44, 46, 13, (x, y) => {
     const [u, v] = boxLocal(x, y, rise, askew, pt);
     if (!inShell(u, v)) return NaN;
-    let h = roll(shellEdge(u, v), 1.5) + 0.3;
-    // The top face bows up; the slanted front end turns forward.
-    if (v < -36.6) h += (-36.6 - v) * 0.5;
-    if (u > 4) h -= (u - 4) * 0.25;
-    if (state >= 1 && Math.hypot(u + 7.5, v + 36.5) < 1.1) h -= 0.5 * (1.1 - Math.hypot(u + 7.5, v + 36.5));
+    let h = roll(shellEdge(u, v), 1.2) + 0.3;
+    // The lid's top face rises towards its rim (seen from above), the rim rolls over, the lower
+    // body's sides slope in towards the bottom (they face down, away from the light).
+    if (v < K.lidTop) h += 1.0 + (v - top) * 1.6;
+    else if (v < K.shut) h += 1.9 - ((v - K.lidTop) / (K.shut - K.lidTop)) * 0.2;
+    else h += 1.3 - (v - K.shut) * 0.32;
+    if (state >= 1 && Math.hypot(u - BOX_DENT[0], v - BOX_DENT[1]) < 1.1) h -= 0.5 * (1.1 - Math.hypot(u - BOX_DENT[0], v - BOX_DENT[1]));
     // The camera windows sit in shallow recesses.
-    if (camAt(u, v) >= 0) h -= 0.25;
+    if (camAt(u, v) >= 0) h -= 0.3;
     return h;
   }, {
     mat: shell,
@@ -342,30 +380,29 @@ export function scannerHd(state: 0 | 1 | 2, frame: number, d: number): Frame {
       const cam = camAt(u, v);
       if (cam >= 0) {
         if (crackAt(u, v, state)) {
-          s.fix = scanning ? R.gold[6] : R.snow[5];
+          s.fix = scanning ? R.red[4] : R.snow[5];
           return;
         }
+        const lens = cam === 1 ? Math.hypot((u - K.lens[0]) / 1.3, (v - K.lens[1]) / 0.8) : 9;
         if (scanning) {
+          // A faint red cast behind the smoked glass (never a light bar), the lens lit.
           s.mat = glow;
-          const [x0, x1, y0, y1] = cam < 2 ? K.windows[cam] : [4.8, 7.2, -37.4, -34.2];
-          const cx = (x0 + x1) / 2;
-          const cy = (y0 + y1) / 2;
-          // The glow is hottest in the middle of the window.
-          s.tone = 0.48 - Math.hypot((u - cx) / ((x1 - x0) / 2), (v - cy) / ((y1 - y0) / 2)) * 0.55;
+          const [x0, x1, y0, y1] = cam < 2 ? K.windows[cam] : [u - 0.6, u + 0.6, -36.8, -34.3];
+          const q = Math.hypot((u - (x0 + x1) / 2) / ((x1 - x0) / 2), (v - (y0 + y1) / 2) / ((y1 - y0) / 2));
+          s.tone = (q < 0.55 ? -0.2 : -0.4) + (lens < 1 ? (lens < 0.5 ? 0.6 : 0.36) : 0);
         } else {
           s.mat = smoke;
+          if (lens < 1) s.tone += lens < 0.45 ? 0.75 : 0.45;
           // A sky reflection along the top of the smoked glass.
-          if (cam < 2 && v < K.windows[cam][2] + 0.5) s.tone += 0.5;
+          else if (cam < 2 && v < K.windows[cam][2] + 0.45) s.tone += 0.5;
         }
         return;
       }
-      // The slanted seam behind the front end and the shut line low on the shell.
-      const [tx, bx] = K.seam;
-      const sx = tx + (bx - tx) * ((v + 38) / 6);
-      if (Math.abs(u - sx) < 0.2) s.tone -= 0.85;
-      if (Math.abs(v - (K.shut - 0.5)) < 0.15 && s.d >= 4) s.tone -= 0.5;
+      if (inGreyBand(u, v)) s.mat = grey;
+      // The seam line round the lid and the joint at the bottom.
+      if (Math.abs(v - K.shut) < 0.16) s.tone -= 0.9;
       if (state === 2) {
-        const q = Math.max(0, 1 - Math.hypot((u + 29) / 5, (v + 34) / 3));
+        const q = Math.max(0, 1 - Math.hypot((u + 18) / 5, (v + 35) / 3));
         if (q > 0.1) s.tone -= q * (1.1 + 0.4 * hash2(Math.floor(u * 2), Math.floor(v * 2), 3));
       }
     }),
@@ -378,13 +415,15 @@ export function scannerGoneHd(d: number): Frame {
   const steel = p.material({ ramp: R.steel, lo: 2, hi: 6, spec: 1, shine: 34, rim: 0.4 });
   const wire = p.material({ ramp: R.red, lo: 3, hi: 6, spec: 0.5 });
   const wire2 = p.material({ ramp: R.gold, lo: 3, hi: 6, spec: 0.5 });
-  const shell = p.material({ ramp: R.snow, lo: 2, hi: 5, spec: 0.6, shine: 34 });
+  const shell = p.material({ ramp: R.gable, lo: 3, hi: 6, spec: 0.6, shine: 34 });
+  const K = SCAN.scanner;
+  const y0 = K.bar[2];
   rackHd(p, true);
   // Sheared strut stubs with jagged tops, a dangling wire, a shard of the shell on the bar.
-  for (const sx of SCAN.scanner.struts) p.poly([[sx, -32], [sx, -33.4], [sx + 0.5, -34.2], [sx + 0.8, -33.2], [sx + 1.2, -33.8], [sx + 1.2, -32]], { mat: steel, z: 0.4 });
-  p.stroke([[-5.4, -33.4], [-4.6, -32.2], [-4.2, -30.8], [-3.4, -29.6]], 0.28, 0.24, { mat: wire, z: 1 });
-  p.stroke([[-5.8, -33.2], [-5.4, -31.6], [-5.6, -30.6]], 0.24, 0.2, { mat: wire2, z: 1.1 });
-  p.poly([[-12.6, -32.1], [-9.4, -32.1], [-9.8, -33.8], [-11.2, -33.3], [-12.3, -34.1]], { mat: shell, z: 0.8 });
+  for (const sx of K.struts) p.poly([[sx, y0], [sx, y0 - 1.4], [sx + 0.5, y0 - 2.2], [sx + 0.8, y0 - 1.2], [sx + 1.2, y0 - 1.8], [sx + 1.2, y0]], { mat: steel, z: 0.4 });
+  p.stroke([[-5.4, y0 - 1.4], [-4.6, y0 - 0.2], [-4.2, y0 + 1.2], [-3.4, y0 + 2.4]], 0.28, 0.24, { mat: wire, z: 1 });
+  p.stroke([[-5.8, y0 - 1.2], [-5.4, y0 + 0.4], [-5.6, y0 + 1.4]], 0.24, 0.2, { mat: wire2, z: 1.1 });
+  p.poly([[-12.6, y0 - 0.1], [-9.4, y0 - 0.1], [-9.8, y0 - 1.8], [-11.2, y0 - 1.3], [-12.3, y0 - 2.1]], { mat: shell, z: 0.8 });
   return p.frame(RENDER);
 }
 
@@ -392,15 +431,15 @@ export function scannerGoneHd(d: number): Frame {
 // The lettering (never mirrored): designed glyphs at the art-px grid
 // ---------------------------------------------------------------------------------------------
 
-/** 3 × 5 capitals and digits for the 2× lettering (rows top → bottom). */
+/** 3 × 5 capitals and digits for the 2× lettering (rows top → bottom; C, E and L are 2 wide so the door text fits). */
 const CAPS: Readonly<Record<string, readonly string[]>> = {
   A: ['.#.', '#.#', '###', '#.#', '#.#'],
-  C: ['.##', '#..', '#..', '#..', '.##'],
+  C: ['.#', '#.', '#.', '#.', '.#'],
   D: ['##.', '#.#', '#.#', '#.#', '##.'],
-  E: ['###', '#..', '##.', '#..', '###'],
+  E: ['##', '#.', '##', '#.', '##'],
   G: ['.##', '#..', '#.#', '#.#', '.##'],
   K: ['#.#', '#.#', '##.', '#.#', '#.#'],
-  L: ['#..', '#..', '#..', '#..', '###'],
+  L: ['#.', '#.', '#.', '#.', '##'],
   M: ['#.#', '###', '###', '#.#', '#.#'],
   N: ['##.', '#.#', '#.#', '#.#', '#.#'],
   O: ['.#.', '#.#', '#.#', '#.#', '.#.'],
@@ -412,27 +451,68 @@ const CAPS: Readonly<Record<string, readonly string[]>> = {
   '4': ['#.#', '#.#', '###', '..#', '..#'],
 };
 
-/** The lettering of text frame i: lines and colour. */
-const TEXTS: ReadonlyArray<{ lines: readonly string[]; col: Color }> = [
+/**
+ * 3 × 4 capitals for the 2× `GEMEENTE AMSTERDAM` (two lines must fit between the shoulder and the
+ * rear wheel arch, left of the crosses; E and S are 2 wide).
+ */
+const CAPS4: Readonly<Record<string, readonly string[]>> = {
+  A: ['.#.', '#.#', '###', '#.#'],
+  D: ['##.', '#.#', '#.#', '##.'],
+  E: ['##', '#.', '##', '##'],
+  G: ['.##', '#..', '#.#', '.##'],
+  M: ['#.#', '###', '#.#', '#.#'],
+  N: ['##.', '#.#', '#.#', '#.#'],
+  R: ['##.', '#.#', '##.', '#.#'],
+  S: ['.#', '#.', '.#', '#.'],
+  T: ['###', '.#.', '.#.', '.#.'],
+};
+
+type Line = (buf: PixelBuffer | null, s: string, x0: number, y0: number, col: Color) => number;
+
+interface TextSpec {
+  lines: readonly string[];
+  col: Color;
+  /** 3 × 4 capitals at 2× (else 3 × 5). */
+  caps4?: boolean;
+  /** The block's top (art px from the frame's top) per density; centred when absent. */
+  top?: Readonly<Record<number, number>>;
+  /** Set against the frame's right / left edge (the margin in art px per density); centred when absent. */
+  align?: { side: 'right' | 'left'; margin: Readonly<Record<number, number>> };
+}
+
+/**
+ * The lettering of text frame i (geometry.ts `ID.text`). `Gemeente Amsterdam` sits high, under the
+ * shoulder (its second line clears the rear wheel arch), set close to the crosses: frame 1 on
+ * their left (the car facing right), frame 3 on their right (facing left; the crosses mirror,
+ * the lettering never does).
+ */
+const GEMEENTE = { lines: ['Gemeente', 'Amsterdam'], col: R.red[4], caps4: true, top: { 2: 1, 4: 4 } } as const;
+const TEXTS: readonly TextSpec[] = [
   { lines: ['PARKEERCONTROLE'], col: R.black[1] },
-  { lines: ['Gemeente', 'Amsterdam'], col: R.red[4] },
+  { ...GEMEENTE, align: { side: 'right', margin: { 2: 2, 4: 3 } } },
   { lines: ['24'], col: R.black[2] },
+  { ...GEMEENTE, align: { side: 'left', margin: { 2: 2, 4: 3 } } },
 ];
 
-/** Draw one line in the 3 × 5 caps at (x0, y0) art px; returns its width. */
-function capsLine(buf: PixelBuffer | null, s: string, x0: number, y0: number, col: Color): number {
-  let x = x0;
-  for (const ch of s.toUpperCase()) {
-    const g = CAPS[ch];
-    if (!g) {
-      x += 2;
-      continue;
+/** Draw one line in a capitals table at (x0, y0) art px (1 art px between glyphs); returns its width. */
+function tableLine(table: Readonly<Record<string, readonly string[]>>): Line {
+  return (buf, s, x0, y0, col) => {
+    let x = x0;
+    for (const ch of s.toUpperCase()) {
+      const g = table[ch];
+      if (!g) {
+        x += 2;
+        continue;
+      }
+      if (buf) for (let r = 0; r < g.length; r++) for (let k = 0; k < g[r].length; k++) if (g[r][k] === '#') buf.set(x + k, y0 + r, col);
+      x += g[0].length + 1;
     }
-    if (buf) for (let r = 0; r < 5; r++) for (let k = 0; k < 3; k++) if (g[r][k] === '#') buf.set(x + k, y0 + r, col);
-    x += 4;
-  }
-  return x - x0 - 1;
+    return x - x0 - 1;
+  };
 }
+
+const capsLine = tableLine(CAPS);
+const caps4Line = tableLine(CAPS4);
 
 /** Draw one line in the 'small' font (1 art px per font px) at (x0, y0) art px; returns its width. */
 function smallLine(buf: PixelBuffer | null, s: string, x0: number, y0: number, col: Color): number {
@@ -461,14 +541,15 @@ export function textHd(i: number, d: number): Frame {
   const H = f1.buf.h * d;
   const buf = new PixelBuffer(W, H);
   const T = TEXTS[i];
-  const line = d >= 4 ? smallLine : capsLine;
-  const lh = d >= 4 ? 7 : 5;
-  const gap = d >= 4 ? 2 : 2;
+  const line: Line = d >= 4 ? smallLine : T.caps4 ? caps4Line : capsLine;
+  const lh = d >= 4 ? 7 : T.caps4 ? 4 : 5;
+  const gap = d >= 4 ? 2 : 1;
   const widths = T.lines.map((s) => line(null, s, 0, 0, T.col));
   const bw = Math.max(...widths);
   const bh = T.lines.length * lh + (T.lines.length - 1) * gap;
-  const x0 = Math.round((W - bw) / 2);
-  const y0 = Math.round((H - bh) / 2);
+  const al = T.align;
+  const x0 = !al ? Math.round((W - bw) / 2) : al.side === 'left' ? al.margin[d] : W - al.margin[d] - bw;
+  const y0 = T.top?.[d] ?? Math.round((H - bh) / 2);
   T.lines.forEach((s, k) => line(buf, s, x0, y0 + k * (lh + gap), T.col));
   return { buf, ox: f1.ox, oy: f1.oy, density: d };
 }

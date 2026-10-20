@@ -49,9 +49,48 @@ deaths on seeds 1–3).
 
 ## 3. Art (tier-4 working set: section `c`'s `art` holds `boss/ams-scan/`)
 
-`boss/ams-scan/body-<0|1|2>` (91 × 31, the damage states), `cabin` (5 frames: the driver's
-looks), `scanner-<0|1|2>` (4 frames: down, lifting, up, scanning), `scanner-gone`, `wheel`
-(4 turn frames), `text` (3: `PARKEERCONTROLE`, `Gemeente Amsterdam`, `24`; readable at 2× and 4×,
-1× print hints), `blink`, `reticle`, `ticket`, `tow` (2), `hook`, `clamp` (4), `clamp-foot` (2),
-`wreck` (4 flip frames, deferred). 1× in the 64-colour palette; 2× / 4× from one density-generic
-drawer per id (`art-hd.ts`, `art-hd-adds.ts`), outline A. About 4.7 MB at 4×.
+The look follows the user's photo of the real car (ams-extras §3; the photo stays outside the repo,
+all art is drawn by code). Every look number is in `geometry.ts` (`SCAN.profile`, `band`, `hood`,
+`bars`, `stripes`, `crosses`, `scanner.*`); `shape.ts` turns them into predicates that the 1× drawer
+(`art.ts`) and the one 2× / 4× drawer (`art-hd.ts`) share.
+
+- **Car:** a compact, tall white electric hatchback, 84 px long (bumper to bumper), the body 27 px
+  over the road, 39 px with the scanner box (40 with its ink): a short sloping bonnet, a long raked
+  windscreen, a high roof that curves down only at the very rear (a small spoiler lip), a
+  near-vertical tailgate, black arch trims, a black sill and lower bumpers that wrap round.
+- **Glass:** one band of near-black tinted glass from the windscreen pillar to the tailgate, black
+  pillars (A, the small front quarter glass's divider, B, C, D), so the white roof floats; the belt
+  line rises to the rear and kicks up under the rear quarter glass; the black mirror at the quarter
+  glass; the parking permit behind the windscreen; the handhaver's dark silhouette with his cap.
+- **Livery:** red slanted bars from just above the sill to mid-door (three on the front door, a
+  stub on the front wing that the arch cuts), red slanted stripes across the bonnet's top face
+  (seen a little from above), the three red crosses stacked on the rear door, a small red emblem
+  over the rear arch. At 1× these carry the read.
+- **Lettering** (`text`, never mirrored, each frame anchored on its block's centre): 0
+  `PARKEERCONTROLE` on the front door over the bars, 1 `Gemeente Amsterdam` on the rear door set
+  close to the crosses on its right, 2 the box's `24`, 3 `Gemeente Amsterdam` for the car facing
+  left (set against the mirrored crosses; car.ts picks it by `SCAN.textFlip`). 4×: the `small`
+  font; 2×: 3 × 5 capitals (3 × 4 for the rear door, so both lines clear the rear arch); 1×: print
+  hints.
+- **Front / rear:** the slim swept-back headlight in a black housing, a black grille with a thin
+  chrome bar and a plain round emblem (no maker's logo or badge), a fog lamp, yellow plates with no
+  real number (the rear one shows the blue EU strip at its near end), the red tail light under the
+  band's rear end; the amber hazard `blink` sits on the headlight and the tail light (`SCAN.lamps`).
+- **Scanner box:** a big, thick white box (29 px, about 2/3 of the roof, over the windscreen at the
+  front) with rounded corners on a black rack with two feet: the lid's top face, a seam round the
+  lid, smoked camera windows (two on the side with a lens behind the middle one, one on each end),
+  a grey band with the `24`; no coloured lights. Scanning (frame 3, the intro and SCAN LOCK): a
+  faint red cast behind the smoked glass and a lit lens. The scanner hurtbox (`SCAN.box.scanner`,
+  34 × 12) spans the box and its rack.
+- **Damage:** 1: dents, scuffed bars, a cracked rear camera window, a dented lid; 2: a buckled
+  bonnet, soot over the front, the lower bumper lip and the mirror hanging, both windows cracked,
+  the box askew (its rear end dropped onto the rack); `scanner-gone`: the bent rack, sheared
+  struts, a dangling wire, a shard; steam from the bonnet (car.ts, `SCAN.bonnet`).
+
+Ids: `boss/ams-scan/body-<0|1|2>` (91 × 31, the damage states), `cabin` (5 frames: the driver's
+looks), `scanner-<0|1|2>` (4 frames: down, lifting, up, scanning), `scanner-gone`, `wheel` (4 turn
+frames), `text` (4), `blink`, `reticle`, `ticket`, `tow` (2), `hook`, `clamp` (4), `clamp-foot`
+(2), `wreck` (8, deferred: rolled 45°, 90°, 135° and on its roof, 0–3 facing right and 4–7 facing
+left; composited from the car strips at each density and never drawn flipped, so the lettering
+reads left to right). 1× in the 64-colour palette; 2× / 4× from one density-generic drawer per
+id (`art-hd.ts`, `art-hd-adds.ts`), outline A. About 7.2 MB at 4× (the left-facing wreck frames add 2.4 MB).

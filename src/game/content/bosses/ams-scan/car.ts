@@ -638,7 +638,10 @@ export class AmsScanCar extends Boss {
     drawOpts.flipX = flip;
     drawOpts.flash = false;
     if (this.wreckFrame >= 0) {
-      r.sprite(ID.wreck, this.wreckFrame, Math.round(this.x), Math.round(this.y - this.lift), drawOpts);
+      // The wreck has frames for each facing (art.ts `wreckFrame`): never flipped, so its
+      // lettering reads left to right.
+      drawOpts.flipX = false;
+      r.sprite(ID.wreck, this.wreckFrame + (flip ? 4 : 0), Math.round(this.x), Math.round(this.y - this.lift), drawOpts);
       this.drawDriver(r);
       return;
     }
@@ -652,11 +655,12 @@ export class AmsScanCar extends Boss {
     drawOpts.flash = !dead && body.flash >= 3;
     r.sprite(ID.body[this.partState(body)], 0, x, yb, drawOpts);
     // The lettering on the doors (`PARKEERCONTROLE`, `Gemeente Amsterdam`): never mirrored, it
-    // reads left to right on either side (art.ts `wreckComposite` puts it at the same spots).
+    // reads left to right on either side (art.ts `wreckComposite` puts it at the same spots); the
+    // rear door's block has a frame for each facing, set against the (mirrored) crosses.
     drawOpts.flipX = false;
     for (let i = 0; i < 2; i++) {
       const [tx, ty] = SCAN.text[i];
-      r.sprite(ID.text, i, x + (flip ? -tx : tx), yb + ty, drawOpts);
+      r.sprite(ID.text, flip ? SCAN.textFlip[i] : i, x + (flip ? -tx : tx), yb + ty, drawOpts);
     }
     drawOpts.flipX = flip;
     drawOpts.flash = false;
