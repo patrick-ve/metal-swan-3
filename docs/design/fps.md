@@ -136,9 +136,12 @@ export class GlitchBridgeScene implements Scene { constructor(app: GameApp, o?: 
 - **Constructor:** first `void loadFpsContent(app)` (§1.5; idempotent, so starting it here, before
   anything else, gives the chunk download the most time). Then snapshot the last ams frame: draw
   `o.from` once into a private `new SoftRenderer(384, 216, undefined, { res: d })`
-  (`src/engine/render-soft.ts:95`), `d = o.runner?.artDensity ?? 1` (ams: 2, so the 2× art keeps
-  its detail), and keep its `target` buffer as the snapshot `Frame` `{ buf, ox: 0, oy: 0,
-  density: d }`. This must happen in the constructor, before `scenes.replace` calls the gameplay
+  (`src/engine/render-soft.ts:95`), `d = o.runner?.artDensity ?? 1` (ams: the art tier it drew,
+  2 or 4, so the dense art keeps its detail), and keep its `target` buffer as the snapshot `Frame`
+  `{ buf, ox: 0, oy: 0, density: d }`. UHD: the glitch and the fold work at the glitch density
+  g = min(d, 2) (a 4× snapshot is thinned to 2×, so the corrupted frame streamed every tick stays
+  cheap at 4K), with the same random choices in logical px; on enter the mission's 4× working set
+  is released (`releaseMissionDense()`, the fps art kept). This must happen in the constructor, before `scenes.replace` calls the gameplay
   scene's `exit`. The 384×216 work buffer of the glitch is `lowRes(snapshot, d)`
   (`src/engine/render-common.ts:106`; a copy when `d = 1`). Without `from` (`?mode=bridge`), draw a
   placeholder at density 1: `PAL.navy[0]` fill + `MISSION COMPLETE!` (big, gold, C, y 100).
@@ -561,7 +564,9 @@ Rules:
   `dir + plane × (x + 0.5 − 192) / RAY_FOCAL` (a per-column table). The horizontal field of view is
   2·atan(192 / 296) ≈ 66°. A wall of height 1 at distance `d` is `RAY_FOCAL / d` px tall, centred
   on the horizon `y = 88` (eye height 0.5); `eyeZ` moves the horizon (death fall).
-- **Ceiling and floor:** flat colours per floor (G), no texture.
+- **Ceiling and floor:** flat colours per floor (G), no texture. A dense view (density 2, UHD) steps
+  them down their HD ramp toward the horizon in four bands by logical row (ray/view.ts
+  `depthTones`: one tone lighter near the camera, two darker far away); the 1× view stays flat.
 - **Billboards:** sorted far → near; each column tests `zbuf[x]` and draws only the texels inside
   the frame's opaque span of that column. Size on screen = `RAY_FOCAL × worldW / d` wide,
   `RAY_FOCAL × worldH / d` tall, standing on the floor. `renderView` ends with `buf.touch()`.
@@ -583,7 +588,7 @@ Rules:
 ### 3.4 Render path and view size
 
 - The view is **384 × 176** at density 1, with the **40-px status bar** below (y 176–215).
-  `new RayView(384, 176, 2)` (768 × 352) stays a constructor option for later.
+  `new RayView(384, 176, 2)` (768 × 352) is the dense view of tiers 2 and 4 (UHD, below).
 - Presentation: `r.image(view.buf, 0, 0, { screen: true, stream: true })`. `DrawOpts.stream?:
   boolean` (group `media`, `src/engine/render.ts:63-86`): "contents change most frames; never
   cached as a texture". `SoftRenderer` may ignore it (identical pixels). The canvas renderer keeps
@@ -594,6 +599,29 @@ Rules:
   (`render-canvas.browser.ts:110`) for streamed buffers.
 - `image()` buffers are never filtered by the GRAPHICS mode (ART_GUIDE §1), so the view stays crisp
   at every backbuffer factor.
+- **UHD (2× and 4×, 2026-10-20).** A `RayView(w, h, D)` of density D (buffer w·D × h·D, the same
+  field of view) samples the highest texture and billboard LEVEL installed at a density ≤ D, so
+  dense art adds texels without changing any logical size; with only 1× levels it draws the 1×
+  texels, enlarged. Walls pick a level per column by its height on screen
+  (`rayTextureLevel(index, D, span)`: the smallest installed level magnified at most
+  `RAY_LEVEL_MAG` = 1.25, else the largest, so the 256² level shows only on near walls);
+  billboards take `billboardLevel(bb, D)`. The scene renders the view at
+  `fpsViewDensity(artTier(), res)`: 2 at tiers 2 and 4 (`FPS_VIEW_MAX_DENSITY` = 2; a 4× view
+  costs 2.9–4.2 ms mean in node and streams 4.3 MB per frame). The weapon view, the status bar,
+  the HUD icons and the face draw their own dense frames at the tier (`fps/hud.ts`).
+- Dense levels are sprites, so the art pool builds them: every wall / door texture and billboard
+  has a CARRIER sprite `fps/ray/<id without fps/>` (`content/fps/ray-art.ts`) whose 1× frames are
+  the texture (frame 1 its y-side variant) or the rendered billboard frames, and whose 2× / 4×
+  frames are the UHD art of the same design (`walls-hd.ts`: 128² at d 2, 256² at d 4, lit relief,
+  wear, seamless in x; `figure-hd.ts`: the `figure3d` rigs rasterised at d into an `HdCanvas`,
+  outline A). `content/fps/dense-load.ts` builds them in the background when the fps content has
+  loaded and when a floor starts, never in a frame (the carriers at 2; at tier 4 the walls and
+  doors also at 4, and the HUD pieces, the weapon views and the playing characters' faces at the
+  tier; its own pool of at most `FPS_POOL_MAX` = 4 workers; pack `hd4-fps`). `installFpsRayHd(d)`
+  hands only READY frames to the ray registry (`installRayTextureHd(id, d, src, dark?)`,
+  `installRayBillboardHd(id, d, frames)`; `releaseRayHd(d?)` drops them); a missing level draws
+  the next lower one. The 1× pixels and the registry's own y-side shading are unchanged; the 1×
+  recruit face keeps its old template head (byte-identical). Tests: `tests/engine/ray-hd.test.ts`.
 
 ### 3.5 Performance budget
 
@@ -601,6 +629,12 @@ Rules:
   worst pose of floor 1 with 40 visible sprites). `FpsGame.step` ≤ 0.3 ms with 60 live actors.
 - Browser: 60 fps at k = 6 (`npm run perf -- --query "mode=fps&floor=1&god=1"`), exactly one
   stream slot for the view.
+- UHD (measured 2026-10-20): `renderView` at density 2 0.8–1.1 ms mean in node (max 1.7), at
+  density 4 2.9–4.2 ms (max 6.1, over the 2.0 ms above, so the view stays at 2). Browser at 4K
+  (k 8, tier 4, `--gpu`): render + present 2.35–2.97 ms average, p95 3.7–3.8 ms (one full view
+  upload per frame) against the 2 ms of `docs/ARCHITECTURE.md` §10; 60 fps holds. Open (lead
+  decision): upload only the changed rows, cast at half rate at density 2, or a governor step to
+  view density 1; else accept it.
 - **Zero per-tick allocations** in `step`, `castRay`, `renderView`, `tryMove`, AI and hitscan:
   actor pool of 128, sprite list of 256 `RaySprite`s, reused event payloads.
 

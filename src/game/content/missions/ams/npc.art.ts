@@ -36,7 +36,7 @@ import type { Frame } from '../../../../engine/render';
 import { defineSprite, getFrames } from '../../../../engine/sprites';
 import { turnSquash } from '../../creatures/draw';
 import { inbetween, tween } from '../../../art/tween';
-import { HdCanvas, folds, texAll, wood, type DrawOpts, type HdMaterial, type RenderOpts, type Texture } from '../../../art/hd';
+import { BLACK_ONE_HUE, HdCanvas, folds, texAll, wood, type DrawOpts, type HdMaterial, type RenderOpts, type Texture } from '../../../art/hd';
 import { spanOf } from '../../../art/hd/body';
 import { withPieces, type Piece } from '../../../art/human-fx';
 import { withSwing } from '../../../art/human-sprites';
@@ -282,7 +282,7 @@ function stitches(x: number, y: number, w: number, h: number, inset = 0.5): Text
 function darkApronHd(d: HdD): PixelBuffer {
   return hdCached(`dark-apron@${d}`, () => {
     const c = new HdCanvas(10, 15, d);
-    const cloth = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, wrap: 0.05, spec: 0.35, shine: 10, rim: 0.12 });
+    const cloth = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, wrap: 0.05, spec: 0.35, shine: 10, rim: 0.12 });
     const gold = goldMat(c);
     const body = c.newPart();
     c.blob([[1, 1], [9, 1], [9, 14], [1, 14]], 1.1, { mat: cloth, part: body, bulge: 0.25, tex: folds({ angle: Math.PI / 2, spacing: 2, amp: 1, cover: 0.8, seed: 21 }) });
@@ -806,7 +806,7 @@ export function bikeHd(frame: Color, phase: number, d: HdD): PixelBuffer {
   // The crank arm and pedal at the phase, outlined on their own (in front of the chain case).
   const c = new HdCanvas(W, H, d);
   const steel = steelMat(c);
-  const rubber = c.material({ ramp: PAL_HD.black, lo: 0, hi: 3, spec: 0.3, shine: 12 });
+  const rubber = c.material({ ramp: BLACK_ONE_HUE, lo: 0, hi: 3, spec: 0.3, shine: 12 });
   const a = (phase / 4) * Math.PI * 2;
   const px = 14.5 + Math.cos(a) * 3;
   const py = 13.5 + Math.sin(a) * 3;
@@ -828,11 +828,11 @@ function bikeBaseHd(frame: Color, d: HdD): PixelBuffer {
     const fi = home?.i ?? 2;
     const c = new HdCanvas(34, 20, d);
     const paint = c.material({ ramp: fr, lo: Math.max(1, fi - 2), hi: Math.min(fr.length - 2, fi + 2), spec: 0.8, shine: 26 });
-    const rubber = c.material({ ramp: PAL_HD.black, lo: 0, hi: 3, spec: 0.3, shine: 12 });
+    const rubber = c.material({ ramp: BLACK_ONE_HUE, lo: 0, hi: 3, spec: 0.3, shine: 12 });
     const steel = steelMat(c);
     const leather = c.material({ ramp: PAL_HD.brown, lo: 1, hi: 5, spec: 0.5, shine: 18 });
     const wicker = c.material({ ramp: PAL_HD.wood, lo: 2, hi: 6, spec: 0.1 });
-    const grip = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.4, shine: 14 });
+    const grip = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.4, shine: 14 });
     for (const cx of BIKE_WHEELS) {
       ring(c, cx, BIKE_HUB_Y, 5.35, 6.45, { mat: rubber, z: 0 });
       ring(c, cx, BIKE_HUB_Y, 4.55, 5.35, { mat: steel, z: 0.2 });

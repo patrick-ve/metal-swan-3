@@ -132,7 +132,7 @@ function mats(p: HdPiece): Mats {
     knob: m({ ramp: R.brown, lo: 2, hi: 6, spec: 0.85, shine: 22 }),
     rubber: m({ ramp: R.red, lo: 1, hi: 4, spec: 0.2, shine: 10 }),
     label: m({ ramp: R.cloth, lo: 3, hi: 5, amb: 0.35, wrap: 0.3, rimPx: false }),
-    skin: m({ ramp: R.skinA, lo: 3, hi: 6, spec: p.d >= 4 ? 0.5 : 0.35, shine: 30, rim: 0.04, amb: 0.2, wrap: 0.2, bounce: 0.34 }),
+    skin: m({ ramp: R.skinA, lo: 2, hi: 6, spec: p.d >= 4 ? 0.55 : 0.35, shine: 24, rim: 0.04, amb: 0.08, wrap: 0.1, bounce: 0.38 }),
     hair: m({ ramp: HAIR, lo: 1, hi: 3, spec: 0.75, shine: 14, wrap: 0.04, amb: 0.06, rim: 0.12 }),
     lining: m({ ramp: HAIR, lo: 0, hi: 2, wrap: 0.2, amb: 0.1 }),
     paper: m({ ramp: R.snow, lo: 3, hi: 5, wrap: 0.25, amb: 0.25, spec: 0.1 }),
@@ -746,7 +746,8 @@ function stampArmPoseHd(p: HdPiece, f: number, state: number): void {
     for (const dx of [-24, -12, 0, 12, 24]) {
       const x = hand[0] + dx + 0.5;
       const len = 28 - (Math.abs(dx) >> 1);
-      p.cap(x, bottom - 58 + 0.5, x, bottom - 58 + len, 0.15, 0.5, { mat: dx % 24 === 0 ? M.wood : M.silver, z: -2, round: 0.3 });
+      // The thin tip stays at least half an art px wide, so it reaches the frame top at every d.
+      p.cap(x, bottom - 58 + 0.5, x, bottom - 58 + len, Math.max(0.15, 0.6 / p.d), 0.5, { mat: dx % 24 === 0 ? M.wood : M.silver, z: -2, round: 0.3 });
     }
   }
   // The arm first, so the block (and its GESLOTEN face) always sits in front of it.
@@ -1111,6 +1112,8 @@ function hairGridsOf(d: number): HairGrids {
   if (hit) return hit;
   // The back mass: lit lock domes (crown locks nearer), the shoulder flares, the S-wave ridges.
   const back = grid(-47, -178, 90, 88, d, NaN);
+  // How near each art px is to a lock's lit crown (1 at its centre, 0 at its rim and between locks).
+  const crown = grid(-47, -178, 90, 88, d, 0);
   for (const [lx, ly, r] of LOCKS) {
     const lift = ly < -140 ? 1.5 : ly < -120 ? 0.6 : 0;
     const i0 = Math.max(0, Math.floor((lx - r - back.x0) * d));
@@ -1126,6 +1129,8 @@ function hairGridsOf(d: number): HairGrids {
         const v = (lx > 18 ? 0.3 : 0.45) * Math.sqrt(r * r - q) + lift;
         const c = j * back.w + i;
         if (!(v <= back.v[c])) back.v[c] = v;
+        const cr = 1 - q / (r * r);
+        if (cr > crown.v[c]) crown.v[c] = cr;
       }
     }
   }
@@ -1153,6 +1158,18 @@ function hairGridsOf(d: number): HairGrids {
   }
   const groove = grid(-47, -178, 90, 88, d, 0);
   for (const s of RIDGE_STRANDS) splatRidge(back, groove, strandPts(s).map(([x, y]) => [x + 0.5, y + 0.5] as const), 1.8, 2.3, -0.5);
+  // The grooves beside the strands sink only in the gaps between the curls: they fade out over a
+  // lock's lit crown (no dark lines scribbled across the curls), and stay softer on the far side.
+  for (let j = 0; j < groove.h; j++) {
+    const far = groove.x0 + 0.5 / d;
+    for (let i = 0; i < groove.w; i++) {
+      const c = j * groove.w + i;
+      const g = groove.v[c];
+      if (g >= 0) continue;
+      const k = 1 - crown.v[c];
+      groove.v[c] = g * k * k * k * (far + i / d > 18 ? 0.6 : 1);
+    }
+  }
   // The sweep over the forehead: a soft volume with four lit waves from the part to the temple.
   const sweep = grid(-15, -164, 38, 32, d, NaN);
   for (let j = 0; j < sweep.h; j++) {
@@ -1230,15 +1247,18 @@ function faceH(x: number, y: number): number {
   let h = 3.5 * Math.sqrt(1 - (1 - t) * (1 - t));
   const e = ((x - 5) / 19) ** 2 + ((y + 131) / 27) ** 2;
   if (e < 1) h += 6 * Math.sqrt(1 - e);
-  h += 1.1 * gauss(x, y, 5, -139.6, 5, 1.1) + 0.8 * gauss(x, y, 17.8, -140.6, 2.8, 1.0);
-  h -= 1.0 * gauss(x, y, 4.6, -134.8, 3.2, 1.5) + 0.75 * gauss(x, y, 17.6, -135.4, 2.1, 1.4);
-  h += 0.75 * gauss(x, y, 0.2, -128.2, 4.6, 3.2) + 0.6 * gauss(x, y, 21.2, -130, 1.8, 3.2);
+  // Relief strong enough to turn the light (form, not a flat plate): brow ridge, deep sockets,
+  // cheekbones, the nose ridge and tip, the lips' mound and a firm chin.
+  h += 1.7 * gauss(x, y, 5, -139.6, 5, 1.1) + 1.2 * gauss(x, y, 17.8, -140.6, 2.8, 1.0);
+  h -= 1.7 * gauss(x, y, 4.6, -134.8, 3.2, 1.5) + 1.25 * gauss(x, y, 17.6, -135.4, 2.1, 1.4);
+  h += 1.4 * gauss(x, y, 0.2, -128.2, 4.6, 3.2) + 1.1 * gauss(x, y, 21.2, -130, 1.8, 3.2);
   const [nd, nt] = segDist(x, y, 13.8, -137.2, 16.3, -126.6);
-  h += 2.6 * Math.exp(-((nd / 1.0) ** 2)) * (0.5 + 0.5 * nt);
-  h += 1.8 * gauss(x, y, 16.3, -125.3, 1.5, 1.15);
-  h += 0.85 * gauss(x, y, 12.2, -124.9, 1.15, 0.85);
-  h += 0.8 * gauss(x, y, 14, -118.6, 5.4, 2.4);
-  h += 1.3 * gauss(x, y, 12.6, -110.2, 4, 2.2);
+  h += 4.4 * Math.exp(-((nd / 1.0) ** 2)) * (0.5 + 0.5 * nt);
+  h += 2.8 * gauss(x, y, 16.3, -125.3, 1.5, 1.15);
+  h += 1.3 * gauss(x, y, 12.2, -124.9, 1.15, 0.85);
+  h += 1.3 * gauss(x, y, 14, -118.6, 5.4, 2.4);
+  h -= 0.7 * gauss(x, y, 13.4, -114.4, 4.4, 0.9);
+  h += 2.3 * gauss(x, y, 12.6, -110.2, 4, 2.2);
   return h;
 }
 

@@ -748,8 +748,8 @@ const ZOOM = 1.12;
 /** Top of the view per friend (Thom's cap and Dirk's spikes need more room above). */
 const VIEW_TOP: Readonly<Record<SquadId, number>> = { vincent: 5, thom: 1, dirk: 3, bob: 3, patrick: 4 };
 
-/** The select bust of a friend (density 1: 64 × 120, density 2: 128 × 240). */
-export function selectPortrait(id: SquadId, density: 1 | 2 = 1): PixelBuffer {
+/** The select bust of a friend (density 1: 64 × 120, density 2: 128 × 240, density 4: 256 × 480). */
+export function selectPortrait(id: SquadId, density: 1 | 2 | 4 = 1): PixelBuffer {
   return cached(`${id}@${density}`, () => {
     const p = new Painter(SELECT_W, SELECT_H, density, { x0: 32 - 32 / ZOOM, y0: VIEW_TOP[id], scale: ZOOM });
     LOOKS[id](p);
@@ -758,12 +758,12 @@ export function selectPortrait(id: SquadId, density: 1 | 2 = 1): PixelBuffer {
 }
 
 /** The greyed select bust (unselected panel): the colour bust through the grey ramp. */
-export function selectPortraitGrey(id: SquadId, density: 1 | 2 = 1): PixelBuffer {
+export function selectPortraitGrey(id: SquadId, density: 1 | 2 | 4 = 1): PixelBuffer {
   return cached(`${id}-grey@${density}`, () => greyed(selectPortrait(id, density)));
 }
 
-/** The 32 × 32 menu portrait (64 × 64 at density 2): the same face, zoomed out, in an INK frame. */
-export function smallPortrait(id: SquadId, density: 1 | 2 = 1): PixelBuffer {
+/** The 32 × 32 menu portrait (64 × 64 at density 2, 128 × 128 at 4): the same face, zoomed out, in an INK frame. */
+export function smallPortrait(id: SquadId, density: 1 | 2 | 4 = 1): PixelBuffer {
   return cached(`${id}-small@${density}`, () => {
     const p = new Painter(SMALL, SMALL, density, SMALL_VIEW[id]);
     LOOKS[id](p);
@@ -779,8 +779,10 @@ export function isSquad(id: string): id is SquadId {
 
 const topLeft = { anchor: 'top-left' } as const;
 
+// The portrait kit paints natively at any density: 2× for 1080p / 1440p, 4× for 4K (the select
+// screen's portrait group switches to 4× once the pool has built all of it).
 for (const id of SQUAD) {
-  defineSprite(`char/${id}/select`, () => selectPortrait(id), { ...topLeft, hi: () => selectPortrait(id, 2) });
-  defineSprite(`char/${id}/select-grey`, () => selectPortraitGrey(id), { ...topLeft, hi: () => selectPortraitGrey(id, 2) });
-  defineSprite(`char/${id}/portrait`, () => smallPortrait(id), { ...topLeft, hi: () => smallPortrait(id, 2) });
+  defineSprite(`char/${id}/select`, () => selectPortrait(id), { ...topLeft, hi: () => selectPortrait(id, 2), hi4: () => selectPortrait(id, 4) });
+  defineSprite(`char/${id}/select-grey`, () => selectPortraitGrey(id), { ...topLeft, hi: () => selectPortraitGrey(id, 2), hi4: () => selectPortraitGrey(id, 4) });
+  defineSprite(`char/${id}/portrait`, () => smallPortrait(id), { ...topLeft, hi: () => smallPortrait(id, 2), hi4: () => smallPortrait(id, 4) });
 }

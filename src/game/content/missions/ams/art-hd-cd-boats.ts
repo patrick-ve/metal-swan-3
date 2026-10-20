@@ -172,7 +172,10 @@ function houseboat(c: HdCanvas, w: number, deck: number, cx: number, cw: number,
         if (s.y < hullTop + 11 + e) s.ny -= 0.6;
       } else if (s.y >= hullTop + 12) {
         s.tone -= 0.45 + (s.y - hullTop - 12) * 0.05;
-        if (s.y > water - 1.5 && s.y < water + 1 && noise2(s.x * 2, s.y, 1.5, colour + 3) > 0.45) s.mat = moss;
+        // Algae: one ragged fringe along the waterline with longer strands here and there (blobs
+        // of moss read like lettering at 4×).
+        const reach = 0.45 + 1.05 * noise2(s.x * 1.6, 0.5, 1.5, colour + 3) + (hash2(Math.floor(s.x * 2), 7, colour + 5) > 0.78 ? 0.45 : 0);
+        if (s.y > water - reach && s.y < water + 1) s.mat = moss;
       }
       // Toward the bow the hull turns away from the light.
       if (s.x > w - 6) s.nx += (s.x - w + 6) * 0.15;

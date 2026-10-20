@@ -48,6 +48,7 @@ import {
 import { hash2, noise2 } from '../paint';
 import { IRIS_BLUE, IRIS_BROWN, SKIN_FAIR, SKIN_PALE, SKIN_RUDDY } from '../portrait-kit';
 import { HdCanvas, type Texture } from './canvas';
+import { oneHue } from './light';
 
 export type HdDensity = 2 | 4;
 
@@ -495,10 +496,36 @@ function drawSkull(k: Ctx): void {
       if (earQ(p.x, p.y) < 1.3) p.mat = matte;
       if (k.stubble) {
         const zn = jawZone(p.x, p.y, k.heavy);
-        // Stubble is hairs on skin: an even checker of the two (sparser at the fringe; light stubble 1 px in 4).
-        const sparse = p.X % 2 === 0 && p.Y % 2 === 0;
-        if (k.heavy ? (zn === 2 && (p.X + p.Y) % 2 === 0) || (zn === 1 && sparse) : zn >= 1 && sparse && (zn === 2 || (p.X + p.Y) % 4 === 0)) p.mat = k.stubble;
-        else if (zn >= 1 && p.mat === k.skin) p.mat = between;
+        if (k.heavy) {
+          // Heavy stubble (a 5 o'clock shadow): a cool stubble shadow on the skin with clustered
+          // hair strokes on it (1 × 2 or 2 × 1 art px per 2 × 2 cell, from hashes), denser along
+          // the jaw line and the upper lip, sparser toward the cheek; never an even checker.
+          if (zn >= 1 && p.mat === k.skin) {
+            p.mat = between;
+            p.tone -= zn === 2 ? 0.3 : 0.14;
+            const cx = p.X >> 1;
+            const cy = p.Y >> 1;
+            const lip = Math.abs(p.y - (MOUTH_Y - 0.75)) < 0.6 && p.x > 11.4;
+            const jaw = p.y > 16.2;
+            const fill = zn === 1 ? 0.22 : lip || jaw ? 0.62 : p.y < 15.4 ? 0.3 : 0.45;
+            const h = hash2(cx, cy, 977);
+            if (h < fill) {
+              const o = hash2(cx, cy, 983);
+              const a = (p.X & 1) === (o < 0.5 ? 0 : 1);
+              const b = (p.Y & 1) === (o < 0.25 || o >= 0.75 ? 0 : 1);
+              // Mostly vertical hairs (they grow down the jaw); a few lie across.
+              if (h < fill * 0.75 ? a : b) {
+                p.mat = k.stubble;
+                p.tone += 0.22;
+              }
+            }
+          }
+        } else {
+          // Light stubble: hairs on skin, one px in four (sparser at the fringe).
+          const sparse = p.X % 2 === 0 && p.Y % 2 === 0;
+          if (zn >= 1 && sparse && (zn === 2 || (p.X + p.Y) % 4 === 0)) p.mat = k.stubble;
+          else if (zn >= 1 && p.mat === k.skin) p.mat = between;
+        }
       }
     },
   });
@@ -540,8 +567,8 @@ function drawSkull(k: Ctx): void {
 /**
  * Stubble over the jaw and the upper lip: hairs on skin, as an even pattern of a cool grey-beige
  * stubble tone in the skin (lit and shaded like the skin; see drawSkull). Heavy (Vincent's dark
- * stubble, a 5 o'clock shadow): a checker of the darker stubble ramp. Light: every fourth px,
- * the jaw a touch darker.
+ * stubble, a 5 o'clock shadow): clustered hair strokes of the darker stubble ramp on a cool
+ * stubble shadow (drawSkull). Light: every fourth px, the jaw a touch darker.
  */
 function drawStubble(k: Ctx, x: FaceExtra): void {
   if (x === 'heavy-stubble') return;
@@ -565,10 +592,14 @@ function drawSkinMarks(k: Ctx): void {
   const { c, look, s } = k;
   const blush = s.extras.includes('blush');
   if (look.rosy || blush) {
-    // Rosy cheeks: a warm cluster on the cheekbone (the accent's pink for a blush extra).
-    const pink = blush ? hdRampOf(s.accent) : PAL_HD.pink;
-    const a = pink[Math.min(pink.length - 1, blush ? 4 : 5)];
-    const b = pink[Math.min(pink.length - 1, blush ? 5 : 6)];
+    // Rosy cheeks: a warm cluster on the cheekbone (the accent's ramp for a blush extra when the
+    // accent is warm; a cool accent, e.g. a teal collar, blushes in PAL_HD.pink).
+    const acc = blush ? hdRampOf(s.accent) : PAL_HD.pink;
+    const warm = acc === PAL_HD.pink || acc === PAL_HD.red || acc === PAL_HD.orange || acc === PAL_HD.rust;
+    const own = blush && warm;
+    const pink = own ? acc : PAL_HD.pink;
+    const a = pink[Math.min(pink.length - 1, own ? 4 : 5)];
+    const b = pink[Math.min(pink.length - 1, own ? 5 : 6)];
     // The apple of the cheek, under and behind the eye (clear of a moustache).
     const cx = EYE_X - 1.15;
     const cy = EYE_Y + 1.1;
@@ -1271,10 +1302,11 @@ function clothSpan(r: Ramp): { ramp: Ramp; lo: number; hi: number } {
     a = Math.min(a, i);
     b = Math.max(b, i);
   }
-  if (b < 0) return { ramp, lo: 1, hi: n - 2 };
+  if (b < 0) return { ramp: oneHue(ramp), lo: 1, hi: n - 2 };
   const lo = Math.max(1, a - 1);
   const hi = Math.max(lo + 2, Math.min(n - 1, b));
-  return { ramp, lo: Math.min(lo, n - 3), hi: Math.min(hi, n - 1) };
+  // A black cap keeps one hue (no purple / blue patches).
+  return { ramp: oneHue(ramp), lo: Math.min(lo, n - 3), hi: Math.min(hi, n - 1) };
 }
 
 /** The headgear template's cells on the head grid (with the slip), filtered by letter and cell. */

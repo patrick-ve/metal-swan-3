@@ -342,6 +342,14 @@ tip in px (+ = up). The fin wags 1 px in `run` and `swim`. The tail never covers
   them: **the neck telescopes**. This is a machine trait that no bird has (§15).
 - The navy collar (9 × 5, two gold rivets) belongs to the body frame. Each neck frame starts with
   its first ring sitting in the collar.
+- **2× and 4× (UHD art, `vehicles/swan/hd-head.art.ts`):** the same six rings on the same Bézier
+  (`neckParts`: ring ends and widths), each drawn as a collar of stamped tin feathers: a lit
+  enamel cylinder whose base end breaks into pointed feather tips that lie over the ring before it
+  (alternate rings half a feather apart, like plumage), each feather with a lit and a shaded side,
+  a groove between feathers and, at 4×, a pressed quill. The hose is dark steel, corrugated at 4×,
+  and still shows between spread rings (the telescope). The collar is a padded navy band with two
+  gold studs. The Mute: black enamel with steel glints. Frames: `renderNeckFrameHd(spec, colour,
+  d, lo)`, exactly the 1× frame's size, anchor and points.
 
 ### 5.7 Head, beak and eye
 

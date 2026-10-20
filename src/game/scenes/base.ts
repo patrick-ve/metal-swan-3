@@ -24,8 +24,10 @@
  * proper starts (the tier-4 working set has the 256 MB to itself) and closes the pool once idle.
  */
 import { browserArtPool, poolSize, type ArtPool } from '../../engine/art-pool';
+import type { Color } from '../../engine/color';
 import { INK, PAL } from '../../engine/palette';
-import type { DrawOpts, Renderer } from '../../engine/render';
+import { PixelBuffer } from '../../engine/pixel';
+import type { DrawOpts, Frame, Renderer } from '../../engine/render';
 import {
   artTier,
   frameW,
@@ -80,15 +82,68 @@ const WALL_LAYER: readonly string[] = [BASE_ART.wall];
 // Drawing
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * The searchlight edges on a big backbuffer (UHD, docs/ART_GUIDE.md "UHD art"): at res k a rect
+ * snaps to whole logical px (k × k blocks), so the beam rows of res 1 show 8-16 px stair steps at
+ * 4K. At an even k the beam is drawn in 1-px rows whose edges sit on 1 / d logical px (d 4 when
+ * 4 | k, else 2): the whole pixels as a rect, each partial edge pixel as a tiny dense frame (one
+ * d × d cell with columns a..b filled; cached, a few dozen in all). Res 1 (and odd k) keep the
+ * 2-px rows, so their pixels never change.
+ */
+function beamDensity(k: number): number {
+  return k % 4 === 0 ? 4 : k % 2 === 0 ? 2 : 1;
+}
+
+const beamCells = new Map<string, Frame>();
+
+function beamCell(d: number, c: Color, a: number, b: number): Frame {
+  const key = `${d}:${c}:${a}:${b}`;
+  let f = beamCells.get(key);
+  if (!f) {
+    const buf = new PixelBuffer(d, d);
+    buf.rect(a, 0, b - a, d, c);
+    beamCells.set(key, (f = { buf, ox: 0, oy: 0, density: d }));
+  }
+  return f;
+}
+
+/** One 1-px row of a beam from logical x0 to x1 (edges on 1 / d px), screen space. */
+function beamRow(r: Renderer, d: number, x0: number, x1: number, y: number, c: Color, o: DrawOpts): void {
+  const L = Math.round(x0 * d);
+  const R = Math.max(L + 1, Math.round(x1 * d));
+  const li = Math.ceil(L / d);
+  const ri = Math.floor(R / d);
+  if (li > ri) {
+    // Inside one logical pixel.
+    const cell = Math.floor(L / d);
+    r.frame(beamCell(d, c, L - cell * d, R - cell * d), cell, y, o);
+    return;
+  }
+  if (ri > li) r.rect(li, y, ri - li, 1, c, o);
+  if (L < li * d) r.frame(beamCell(d, c, L - (li - 1) * d, d), li - 1, y, o);
+  if (R > ri * d) r.frame(beamCell(d, c, 0, R - ri * d), ri, y, o);
+}
+
 /** Draw the sky, the beams, the base and (by default) the wall. `t` = frames (any clock). */
 export function drawBase(r: Renderer, t: number, o: BaseOpts = DEFAULT): void {
   const parked = o.parked !== false;
   const prev = setArtDensity(screenArt(r, LAYERS));
   r.sprite(BASE_ART.sky, 0, 0, 0, plain);
-  // Searchlights: long thin wedges sweeping the sky (drawn in 2-px rows).
+  // Searchlights: long thin wedges sweeping the sky (drawn in 2-px rows; finer on a big backbuffer).
+  const fine = beamDensity(r.res);
   for (const [bx, by, phase, speed] of BEAMS) {
     const a = Math.sin(t * speed + phase) * 0.62;
     const tan = Math.tan(a);
+    if (fine > 1) {
+      for (let y = by - 1; y > -2; y--) {
+        const d = by - y;
+        const cx = bx + d * tan;
+        const hw = 1 + d * 0.085;
+        beamRow(r, fine, cx - hw, cx + hw, y, PAL.sky[3], beamOpts);
+        beamRow(r, fine, cx - Math.max(0.5, hw * 0.4), cx + Math.max(0.5, hw * 0.4), y, PAL.snow[3], coreOpts);
+      }
+      continue;
+    }
     for (let y = by - 2; y > -2; y -= 2) {
       const d = by - y;
       const cx = bx + d * tan;

@@ -6,7 +6,7 @@
  * - ids of one family go to one worker; a broken worker (or none) falls back to the main thread
  *   with one warning, and every build still resolves.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   ArtPool,
   buildRawPack,
@@ -187,6 +187,41 @@ describe('scheduling and fallback', () => {
     expect((await pool.build(['fx/e'], 2)).fallback).toBe(1);
   });
 
+  it('a normal build goes ahead of the queued low-priority batches', async () => {
+    const log: ArtBuildRequest[] = [];
+    const pool = new ArtPool([fakePort('ok', log)], { batch: 1 });
+    const low = pool.build(['fx/a', 'fx/b', 'fx/c'], 2, undefined, { low: true });
+    const high = pool.build(['fx/d'], 4);
+    await Promise.all([low, high]);
+    // fx/a was in flight already; fx/d jumps the rest of the low queue.
+    expect(log.map((q) => q.ids[0])).toEqual(['fx/a', 'fx/d', 'fx/b', 'fx/c']);
+  });
+
+  it('idle workers close after idleCloseMs (keepAwake stay) and start again for the next batch', async () => {
+    const logs: ArtBuildRequest[][] = [];
+    const ended: number[] = [];
+    let started = 0;
+    const spawn = (i: number): ArtWorkerPort => {
+      started++;
+      const log: ArtBuildRequest[] = [];
+      logs.push(log);
+      return { ...fakePort('ok', log), terminate: () => ended.push(i) };
+    };
+    const pool = new ArtPool([spawn(0), spawn(1), spawn(2)], { spawn, idleCloseMs: 0, keepAwake: 1 });
+    await pool.build(['char/a/1', 'char/b/1', 'char/c/1'], 2);
+    await vi.waitFor(() => expect(pool.awake).toBe(1));
+    expect(pool.workers).toBe(3);
+    expect(ended.sort()).toEqual([1, 2]);
+    // Every family still builds (its sleeping home starts again).
+    const r = await pool.build(['char/a/2', 'char/b/2', 'char/c/2'], 2);
+    expect(r.installed + r.fallback).toBe(0);
+    expect(r.failed).toEqual([]);
+    expect(started).toBeGreaterThanOrEqual(4);
+    expect(logs.flat().flatMap((q) => q.ids)).toEqual(expect.arrayContaining(['char/a/2', 'char/b/2', 'char/c/2']));
+    pool.close();
+    expect(pool.workers).toBe(0);
+  });
+
   it('no workers: the default fallback builds on the main thread', async () => {
     clearSpriteCache();
     const ids = sample.slice(0, 3);
@@ -197,7 +232,13 @@ describe('scheduling and fallback', () => {
 
   it('familyOf and poolSize', () => {
     expect(familyOf('char/recruit/run')).toBe('char/recruit');
-    expect(familyOf('enemy/fatbike-youth-pair-0a/ride')).toBe('enemy/fatbike-youth-pair-0a');
+    // A pair set builds with its solo set; the Swans' neck strips are a family of their own.
+    expect(familyOf('enemy/fatbike-youth-pair-0a/ride')).toBe('enemy/fatbike-youth');
+    expect(familyOf('enemy/fatbike-youth-pair-2c/bike')).toBe('enemy/fatbike-youth-2c');
+    expect(familyOf('enemy/fatbike-youth-2c/ride')).toBe('enemy/fatbike-youth-2c');
+    expect(familyOf('vehicle/swan/neck-fire')).toBe('vehicle/swan/neck');
+    expect(familyOf('vehicle/swan-mute/neck')).toBe('vehicle/swan-mute/neck');
+    expect(familyOf('vehicle/swan/run')).toBe('vehicle/swan');
     expect(familyOf('boss/ams-mayor/stamp')).toBe('boss/ams-mayor');
     expect(familyOf('decor/ams/lamp')).toBe('decor/ams/lamp');
     expect(familyOf('fx/explosion-m')).toBe('fx/explosion-m');

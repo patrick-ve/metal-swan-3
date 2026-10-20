@@ -7,7 +7,7 @@
  * the next lower one (ray `rayTextureLevel` / `billboardLevel`, fps/hud.ts `readyDensity`).
  */
 import { browserArtPool, poolSize, type ArtPool } from '../../../engine/art-pool';
-import { artTier, getFrames, hasFramesAt, hasSprite, hiArtOn, releaseDense, setDeferDense, type DenseDensity } from '../../../engine/sprites';
+import { artTier, generatedSprites, getFrames, hasFramesAt, hasSprite, hiArtOn, releaseDense, setDeferDense, type DenseDensity } from '../../../engine/sprites';
 import type { ArtCache } from '../../art-cache';
 import { installFpsRayHd, rayCarriersMissing } from './ray-art';
 
@@ -16,6 +16,8 @@ export const FPS_HUD_DENSE: readonly string[] = ['fps/hud/bar', 'fps/hud/weapon'
 
 /** The 4× pack of the fps art (the wall textures at 256², the HUD, the views, the faces). */
 export const FPS_PACK_4 = 'hd4-fps' as const;
+/** The 2× pack of the fps art (every ray carrier, the HUD, the views, the faces at 2×). */
+export const FPS_PACK_2 = 'hd2-fps' as const;
 
 /** Workers of the fps art pool (at most). */
 export const FPS_POOL_MAX = 4;
@@ -51,25 +53,27 @@ export function fpsDenseIds(d: DenseDensity, chars: readonly string[]): string[]
  * Build the fps dense art for art tier `tier` (idempotent; never rejects): at tier ≥ 2 every ray
  * carrier (walls, doors, billboards: the view draws at 2), the HUD, the weapon views and the faces
  * of `chars` at 2; at tier 4 also the walls and doors at 4 (256²: the view picks them on near
- * walls), the HUD, the views and the faces at 4 (the 4× ones restored from / saved to the
- * 'hd4-fps' pack). The ray levels are installed batch by batch as they arrive and the carriers'
- * dense frames are then released (the ray registry holds its own column copy).
+ * walls), the HUD, the views and the faces at 4. Each density is restored from / saved to its
+ * pack ('hd2-fps', 'hd4-fps'), so a later visit builds nothing. The ray levels are installed
+ * batch by batch as they arrive and the carriers' dense frames (built or restored) are then
+ * released (the ray registry holds its own column copy).
  */
 export function ensureFpsDenseArt(tier: number, chars: readonly string[], cache?: ArtCache | null): Promise<void> {
   if (!hiArtOn() || tier < 2) return denseRun;
   denseRun = denseRun.then(async () => {
     for (const d of tier >= 4 ? ([2, 4] as const) : ([2] as const)) {
+      const pack = d === 4 ? FPS_PACK_4 : FPS_PACK_2;
       try {
-        if (d === 4 && cache) {
-          await cache.restore(FPS_PACK_4, (id) => id.startsWith('fps/'));
-          installFpsRayHd(4);
+        if (cache) {
+          await cache.restore(pack, (id) => id.startsWith('fps/'));
+          installFpsRayHd(d);
         }
         const ids = fpsDenseIds(d, chars);
         if (ids.length > 0) await buildDense(ids, d);
         installFpsRayHd(d);
-        if (d === 4 && cache) await cache.save(FPS_PACK_4, (id) => id.startsWith('fps/'));
-        // The ray registry holds the levels now: drop the carriers' copies.
-        releaseDense(ids.filter((id) => id.startsWith('fps/ray/')), d);
+        if (cache) await cache.save(pack, (id) => id.startsWith('fps/'));
+        // The ray registry holds the levels now: drop the carriers' copies (built or restored).
+        releaseDense(generatedSprites(d, 'fps/ray/'), d);
       } catch (err) {
         console.error(`[fps] dense art at ${d}x failed:`, err);
       }

@@ -438,10 +438,30 @@ export function releaseDense(ids: Iterable<string>, d: DenseDensity = 4): number
     const h = reg.get(id);
     if (!h?.frames) continue;
     if (!h.error) bytes += newBytes(h.frames, seen);
+    for (const f of h.frames) releasedBufs.add(f.buf);
     h.frames = null;
     h.error = null;
   }
+  if (seen.size > 0) releaseEpoch++;
   return bytes;
+}
+
+/** Buffers of released dense frames (a renderer drops their textures: `isReleasedBuffer`). */
+const releasedBufs = new WeakSet<PixelBuffer>();
+let releaseEpoch = 0;
+
+/**
+ * Was `buf` a frame buffer `releaseDense` dropped? Renderers drop the textures they cached for it
+ * (else the texture cache would keep the released pixels alive). Frames installed later are new
+ * buffers, never these.
+ */
+export function isReleasedBuffer(buf: PixelBuffer): boolean {
+  return releasedBufs.has(buf);
+}
+
+/** Bumped by every `releaseDense` that dropped frames (a renderer sweeps its caches when it changes). */
+export function denseReleaseEpoch(): number {
+  return releaseEpoch;
 }
 
 /**

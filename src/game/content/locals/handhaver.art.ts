@@ -18,7 +18,7 @@ import { PAL_HD } from '../../../engine/palette-hd';
 import { PixelBuffer } from '../../../engine/pixel';
 import type { Frame } from '../../../engine/render';
 import { defineSprite, getFrames, type DenseDensity as HdD, type SpriteOpts } from '../../../engine/sprites';
-import { HdCanvas } from '../../art/hd';
+import { BLACK_ONE_HUE, HdCanvas } from '../../art/hd';
 import { withPieces, type Piece } from '../../art/human-fx';
 import { blastFrames, burnFrames, withSwing } from '../../art/human-sprites';
 import { renderHuman, type Density, type HumanStyle, type Pose } from '../../art/humanoid';
@@ -65,7 +65,7 @@ function bookHd(open: boolean, d: HdD): PixelBuffer {
   const c = new HdCanvas(w, 8, d);
   const cover = c.material({ ramp: PAL_HD.navy, lo: 1, hi: 4, spec: 0.35, shine: 16, wrap: 0.05 });
   const paper = c.material({ ramp: PAL_HD.snow, lo: 3, hi: 6, spec: 0.1, wrap: 0.15 });
-  const band = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.4, shine: 14 });
+  const band = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.4, shine: 14 });
   if (open) {
     c.box(1, 1, 9, 6, { mat: cover, z: 0, r: 0.4, bevel: 0.45 });
     for (const [x0, side] of [[1.55, -1], [5.45, 1]] as const) {

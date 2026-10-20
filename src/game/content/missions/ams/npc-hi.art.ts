@@ -28,7 +28,7 @@ import { PAL_HD } from '../../../../engine/palette-hd';
 import { PixelBuffer, type Ramp } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
 import { defineHdSprite, defineSprite, getFrames } from '../../../../engine/sprites';
-import { HdCanvas, inPoly, type Texture } from '../../../art/hd';
+import { BLACK_ONE_HUE, HdCanvas, inPoly, type Texture } from '../../../art/hd';
 import { renderHuman, type Density, type HumanStyle, type Pose } from '../../../art/humanoid';
 import { hash2, noise2 } from '../../../art/paint';
 import { turnSquash } from '../../creatures/draw';
@@ -214,7 +214,7 @@ function duckHd(f: number, drake: boolean, d: HdD, phase = -1): Frame {
     : c.material({ ramp: PAL_HD.brown, lo: 2, hi: 6, wrap: 0.1, spec: 0.1 });
   const wingM = drake ? c.material({ ramp: PAL_HD.stone, lo: 2, hi: 5, wrap: 0.1 }) : c.material({ ramp: PAL_HD.brown, lo: 1, hi: 5, wrap: 0.1 });
   const breast = c.material({ ramp: PAL_HD.rust, lo: 1, hi: 4, wrap: 0.1, spec: 0.2 });
-  const black = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.5, shine: 16 });
+  const black = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.5, shine: 16 });
   const head = drake ? c.material({ ramp: PAL_HD.green, lo: 1, hi: 4, spec: 1, shine: 22 }) : c.material({ ramp: PAL_HD.brown, lo: 2, hi: 6, wrap: 0.1 });
   const white = c.material({ ramp: PAL_HD.snow, lo: 3, hi: 6 });
   const blue = c.material({ ramp: PAL_HD.sky, lo: 0, hi: 4, spec: 0.8, shine: 20 });

@@ -17,7 +17,8 @@ import type { Color } from '../../../engine/color';
 import { hdHome, PAL_HD } from '../../../engine/palette-hd';
 import { PixelBuffer, type Ramp } from '../../../engine/pixel';
 import { mulMM, mulMV, norm3, renderFigure, transpose, IDENT, type Figure, type M3, type Mat, type Projector, type RenderOpts, type V3 } from '../../art/figure3d';
-import { HdCanvas, type HdMaterial } from '../../art/hd';
+import { HdCanvas, KEY, type HdMaterial } from '../../art/hd';
+import { hash2, noise2 } from '../../art/paint';
 
 let FD = 1;
 
@@ -116,9 +117,37 @@ function guessLook(ramp: Ramp): HdLook {
   return { wrap: 0.25 };
 }
 
+/**
+ * Surface detail of a material in the HD path (on top of its light): `ramp` / `lo` / `hi` replace
+ * the stretched 1× ramp (a wider gun-steel ramp, one-hue black leather), `sheen` grades every flat
+ * face along the light diagonal (metal reflects a gradient, not one flat tone), `wear` brightens
+ * box arrises to bare metal in clusters from hashes (the share of edge px), `grain` adds a fine
+ * lengthwise streak at 4×.
+ */
+export interface HdSurface {
+  ramp?: Ramp;
+  lo?: number;
+  hi?: number;
+  sheen?: number;
+  wear?: number;
+  grain?: number;
+}
+
+const surfaces = new WeakMap<Mat, HdSurface>();
+
+/** Give a 1× material HD surface detail (see HdSurface); returns the material. */
+export function hdSurface<M extends Mat>(m: M, sf: HdSurface): M {
+  surfaces.set(m, sf);
+  return m;
+}
+
 function hdMatOf(m: Mat): HdMaterial {
-  const ramp = hdRampFor(m.ramp);
-  return { ramp, ...(looks.get(m) ?? guessLook(ramp)) };
+  const sf = surfaces.get(m);
+  const ramp = sf?.ramp ?? hdRampFor(m.ramp);
+  const out: HdMaterial = { ramp, ...(looks.get(m) ?? guessLook(ramp)) };
+  if (sf?.lo !== undefined) out.lo = sf.lo;
+  if (sf?.hi !== undefined) out.hi = sf.hi;
+  return out;
 }
 
 // ----------------------------------------------------------------------------------- rasterise
@@ -183,13 +212,16 @@ export function renderFigureHd(fig: Figure, o: RenderOpts, d: number, ho: FigHdO
   const ny = new Float32Array(n);
   const nz = new Float32Array(n);
   const pid = new Int16Array(n).fill(-1);
-  const write = (i: number, depth: number, x: number, y: number, zz: number, id: number): void => {
+  // How far into a box's edge chamfer the px lies (0 = face, 1 = the arris): edge wear.
+  const edge = new Float32Array(n);
+  const write = (i: number, depth: number, x: number, y: number, zz: number, id: number, e = 0): void => {
     if (depth <= z[i]) return;
     z[i] = depth;
     nx[i] = x;
     ny[i] = y;
     nz[i] = zz;
     pid[i] = id;
+    edge[i] = e;
   };
 
   const Ob: [number, number, number] = [0, 0, 0];
@@ -345,11 +377,13 @@ export function renderFigureHd(fig: Figure, o: RenderOpts, d: number, ho: FigHdO
           const ha = axis === 0 ? ey : ex;
           const hb = axis === 2 ? ey : ez;
           const bw = Math.min(BEVEL * d, 0.34 * Math.min(ha, hb));
+          let ke = 0;
           if (bw > 0.6) {
             const pa = axis === 0 ? O[1] + D[1] * tmax : O[0] + D[0] * tmax;
             const pb = axis === 2 ? O[1] + D[1] * tmax : O[2] + D[2] * tmax;
             const ka = Math.max(0, 1 - (ha - Math.abs(pa)) / bw);
             const kb = Math.max(0, 1 - (hb - Math.abs(pb)) / bw);
+            ke = Math.max(ka, kb);
             if (ka > 0 || kb > 0) {
               const la = BEVEL_LEAN * ka * (pa < 0 ? -1 : 1);
               const lb = BEVEL_LEAN * kb * (pb < 0 ? -1 : 1);
@@ -366,7 +400,7 @@ export function renderFigureHd(fig: Figure, o: RenderOpts, d: number, ho: FigHdO
             }
           }
           const nv = norm3(mulMV(R, nl));
-          write(py * NW + px, tmax, nv[0], nv[1], nv[2], id);
+          write(py * NW + px, tmax, nv[0], nv[1], nv[2], id, ke);
         }
       }
     }
@@ -378,6 +412,7 @@ export function renderFigureHd(fig: Figure, o: RenderOpts, d: number, ho: FigHdO
   const toneOf = new Map<Mat, number>();
   const partMat: number[] = [];
   const partFix: Color[] = [];
+  const partSurf: Array<HdSurface | undefined> = [];
   fig.parts.forEach((part, id) => {
     const m = part.mat;
     let mid = matIds.get(m);
@@ -389,6 +424,7 @@ export function renderFigureHd(fig: Figure, o: RenderOpts, d: number, ho: FigHdO
     }
     partMat[id] = mid;
     partFix[id] = m.glow ? cv.getMaterial(mid).ramp[cv.getMaterial(mid).ramp.length - 1] : 0;
+    partSurf[id] = surfaces.get(m);
   });
   for (let i = 0; i < n; i++) {
     const id = pid[i];
@@ -403,6 +439,27 @@ export function renderFigureHd(fig: Figure, o: RenderOpts, d: number, ho: FigHdO
     cv.nz[i] = nz[i];
     cv.tone[i] = toneOf.get(fig.parts[id].mat) ?? 0;
     cv.fix[i] = partFix[id];
+    const sf = partSurf[id];
+    if (sf) {
+      const X = i % NW;
+      const Y = (i - X) / NW;
+      let t = cv.tone[i];
+      // A reflected gradient along the light diagonal, broken by a slow ripple.
+      if (sf.sheen) t += sf.sheen * (0.5 - (X / NW) * 0.55 - (Y / NH) * 0.45 + (noise2(X / d, Y / d, 9, id * 7 + 3) - 0.5) * 0.5);
+      // Bare metal on worn arrises that face the light (clusters of 2 × 2 art px from hashes):
+      // a fixed bright tone two steps above the material's top band, near white.
+      if (sf.wear && edge[i] > 0.4 && hash2(X >> 1, Y >> 1, id * 13 + 5) < sf.wear) {
+        const lam = cv.nx[i] * KEY[0] + cv.ny[i] * KEY[1] + cv.nz[i] * KEY[2];
+        if (lam > 0.45) {
+          const M = cv.getMaterial(partMat[id]);
+          const top = Math.min(M.ramp.length - 1, (M.hi ?? M.ramp.length - 2) + 2);
+          cv.fix[i] = M.ramp[top] >>> 0;
+        }
+      }
+      // A fine lengthwise grain (4× only).
+      if (sf.grain && d >= 4) t += (hash2(X + Y, 0, id * 17 + 11) - 0.5) * sf.grain;
+      cv.tone[i] = t;
+    }
   }
   // Dots (eyes, buttons, badges): fixed-colour discs of the dot's logical size, depth-tested.
   for (const dot of fig.dots) {

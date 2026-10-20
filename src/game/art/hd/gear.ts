@@ -31,6 +31,7 @@ import {
 import { hash2, noise2 } from '../paint';
 import { HdCanvas, type DrawOpts, type RenderOpts, type TexSample, type Texture } from './canvas';
 import type { HdDensity } from './head';
+import { BLACK_ONE_HUE, oneHue } from './light';
 import { wood } from './texture';
 
 type GunKind = 'pistol' | 'heavy' | 'rifle';
@@ -636,7 +637,7 @@ const PROP_DRAW: Readonly<Record<PropKind, (p: Pen) => void>> = {
   plunger: (p) => {
     const c = p.c;
     const wd = woodMat(c);
-    const rubber = c.material({ ramp: PAL_HD.black, spec: 0.8, shine: 26, gain: 1.1, rim: 0.5 });
+    const rubber = c.material({ ramp: BLACK_ONE_HUE, spec: 0.8, shine: 26, gain: 1.1, rim: 0.5 });
     p.capsule(0.4, 2.5, 8.6, 2.5, 0.5, 0.5, { mat: wd, z: 0, tex: wood({ seed: 61 }) });
     if (p.c.d >= 4) p.shade(0.3, 2, 1.2, 1, (x) => (Math.abs(x - 0.9) < 0.12 ? -0.4 : 0));
     p.ellipsoid(9.2, 2.5, 1.55, 2.45, { mat: rubber, z: 0.8 });
@@ -689,7 +690,7 @@ const PROP_DRAW: Readonly<Record<PropKind, (p: Pen) => void>> = {
   umbrella: (p) => {
     const c = p.c;
     const wd = woodMat(c);
-    const cloth = c.material({ ramp: PAL_HD.black, spec: 0.45, shine: 16, gain: 1.1, rim: 0.4 });
+    const cloth = c.material({ ramp: BLACK_ONE_HUE, spec: 0.45, shine: 16, gain: 1.1, rim: 0.4 });
     const steel = steelMat(c);
     p.stroke([[3.9, 2.5], [0.75, 2.5], [0.45, 3.4], [0.8, 4.4], [1.75, 4.45]], 0.5, 0.42, { mat: wd, z: 0.3, tex: wood({ seed: 64, dir: 'h' }) });
     p.capsule(3.2, 2.5, 14.2, 2.5, 0.3, 0.3, { mat: cloth, z: 0, tone: -0.1 });
@@ -728,7 +729,7 @@ const PROP_DRAW: Readonly<Record<PropKind, (p: Pen) => void>> = {
     const d = c.d;
     const steel = steelMat(c);
     const handle = polymerMat(c);
-    const dish = c.material({ ramp: PAL_HD.black, spec: 0.9, shine: 30, gain: 1.15, lo: 1 });
+    const dish = c.material({ ramp: BLACK_ONE_HUE, spec: 0.9, shine: 30, gain: 1.15, lo: 1 });
     p.capsule(0.4, 3.5, 5.6, 3.5, 0.5, 0.6, { mat: handle, z: 0, tex: (s) => { if (s.x < 4.2 && line(s.x, 0.7, s.d)) s.tone -= 0.35; } });
     if (d >= 4) p.erase(0.7, 3.2, 0.6, 0.6, (x, y) => Math.hypot(x - 1.0, y - 3.5) < 0.22);
     p.ellipsoid(8.75, 3.5, 3.95, 3.45, { mat: steel, z: 0.6, round: 0.8, tex: wear(66, 0.6) });
@@ -1010,7 +1011,9 @@ export function handArtHd(
   const q = ((quarter % 4) + 4) % 4;
   // Per HD ramp, then by the given ramp's colours (two 64-palette ramps can share their colours
   // but map to different HD ramps, e.g. brown and skinC).
-  const hd = hdRampOf(ramp);
+  const hdBase = hdRampOf(ramp);
+  // Black gloves keep one hue (no purple / blue patches).
+  const hd = oneHue(hdBase);
   let per = handCache.get(hd);
   if (!per) {
     per = new Map();
@@ -1037,7 +1040,7 @@ export function handArtHd(
   }
   const p = new Pen(tw, th, d, q, false, flipY);
   const skin = isSkin(hd);
-  const { lo, hi } = handTones(ramp, hd);
+  const { lo, hi } = handTones(ramp, hdBase);
   const m = p.c.material({
     ramp: hd,
     lo,

@@ -25,14 +25,16 @@ import {
   releaseRayHd,
 } from '../../src/engine/ray/textures';
 import { RayView, renderView, type RayScene } from '../../src/engine/ray/view';
-import { getFrames, hasFramesAt, setArtTier, setHiArt } from '../../src/engine/sprites';
+import { generatedSprites, getFrames, hasFramesAt, releaseDense, setArtTier, setHiArt } from '../../src/engine/sprites';
+import { MemoryByteStore } from '../../src/engine/byte-store';
+import { ArtCache } from '../../src/game/art-cache';
 import { loadContent } from '../../src/game/content/index';
 import { faceFramesHd } from '../../src/game/content/fps/faces';
 import { barArtHd, BAR_H, BAR_W } from '../../src/game/content/fps/hud-art';
 import { carrierOf, installFpsRayHd, listRayArt, rayCarrierIds, rayCarriersMissing } from '../../src/game/content/fps/ray-art';
 import { FPS_TEXTURE_IDS } from '../../src/game/content/fps/textures';
 import { paintWallHd } from '../../src/game/content/fps/walls-hd';
-import { fpsDenseIds, requestFpsDenseArt } from '../../src/game/content/fps/dense-load';
+import { ensureFpsDenseArt, fpsDenseIds, requestFpsDenseArt, setFpsArtPool } from '../../src/game/content/fps/dense-load';
 import { fpsViewDensity, FPS_VIEW_MAX_DENSITY } from '../../src/game/scenes/fps';
 import { densityAtRes, readyDensity } from '../../src/game/fps/hud';
 
@@ -267,4 +269,27 @@ describe('fps UHD art', () => {
     expect(readyDensity('fps/view/pistol', 4)).toBe(4);
     expect(readyDensity('fps/hud/nothing', 4)).toBe(1);
   });
+
+  it("the 2× fps art goes to pack 'hd2-fps'; a later visit restores it and builds nothing; carrier copies are released", async () => {
+    setFpsArtPool(() => null);
+    const store = new MemoryByteStore();
+    await ensureFpsDenseArt(2, ['recruit'], new ArtCache(store, 'b', () => {}));
+    expect(store.map.has('sprites:hd2-fps')).toBe(true);
+    expect(rayCarriersMissing(2)).toEqual([]);
+    expect(generatedSprites(2, 'fps/ray/')).toEqual([]);
+    // A later visit: no dense level, no 2× fps frame.
+    releaseRayHd(2);
+    releaseDense(generatedSprites(2, 'fps/'), 2);
+    expect(rayCarriersMissing(2).length).toBeGreaterThan(0);
+    setFpsArtPool(() => {
+      throw new Error('a restored visit must not build');
+    });
+    const cache = new ArtCache(store, 'b', () => {});
+    await ensureFpsDenseArt(2, ['recruit'], cache);
+    expect(cache.restored.get('hd2-fps')).toBeGreaterThan(0);
+    expect(rayCarriersMissing(2)).toEqual([]);
+    expect(hasFramesAt('fps/hud/bar', 2)).toBe(true);
+    expect(generatedSprites(2, 'fps/ray/')).toEqual([]);
+    setFpsArtPool(null);
+  }, 120_000);
 });

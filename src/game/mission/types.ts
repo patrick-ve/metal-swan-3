@@ -179,9 +179,10 @@ export interface MissionDef {
   /** The players' footsteps are audible (`player/step` while running on foot; default off). */
   footsteps?: boolean;
   /**
-   * Order of the background 2× preload (`preloadMissionArt`, only with `artDensity` 2): sprite id
-   * prefixes to generate first, in this order, right after the players' characters (what the
-   * first seconds of play draw), and prefixes to generate last (e.g. the boss).
+   * Order of the background dense preload (`preloadMissionArt`, with `artDensity` 2 or 4): sprite
+   * id prefixes to generate first, in this order, right after the players' characters (what the
+   * first seconds of play draw), and prefixes to generate last (e.g. the boss). At tier 4 they
+   * are also part of every section's 4× working set (gameplay.ts `denseWorkingSet`).
    */
   preloadFirst?: readonly string[];
   preloadLast?: readonly string[];

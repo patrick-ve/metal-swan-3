@@ -17,13 +17,14 @@ import {
   drawDensity,
   lowRes,
   reducedFor,
+  reductionSource,
   parallaxOrigin,
   placePart,
   solidColor,
   spriteFilter,
   toPx,
 } from './render-common';
-import { artTier, getFrame, hiArtOn, spriteIdOf } from './sprites';
+import { artTier, denseReleaseEpoch, getFrame, hiArtOn, isReleasedBuffer, spriteIdOf } from './sprites';
 import { upscale, upscaleFactor, type UpscaleMode } from './upscale';
 
 /**
@@ -104,8 +105,8 @@ interface StreamSlot {
   canvas: AnyCanvas;
   ctx: AnyContext;
   img: ImageData;
-  /** The bytes of `img`, viewed as 32-bit words in canvas byte order. */
-  words: Uint32Array;
+  /** The bytes of `img` (RGBA): a big-endian 32-bit write of a Color (0xRRGGBBAA) stores R, G, B, A. */
+  bytes: DataView;
   /** Buffer version last uploaded (-1: never). */
   version: number;
   /** Frame number of the last draw. */
@@ -254,6 +255,8 @@ export class CanvasRenderer implements Renderer {
   private readonly streamMap = new Map<PixelBuffer, StreamSlot>();
   private readonly streamList: StreamSlot[] = [];
   private streamUploads = 0;
+  /** `denseReleaseEpoch()` at the last sweep of released frames' textures. */
+  private releaseSeen = 0;
   /** Glyph atlases by font, glyph density, pass and atlas scale (a number: no string per draw), then colour. */
   private readonly atlases = new Map<number, Map<number, AnyCanvas>>();
   private readonly css = new Map<number, string>();
@@ -422,6 +425,7 @@ export class CanvasRenderer implements Renderer {
       if (e && m !== 'pixel' && !this.upToDate(e, m)) this.makeUp(buf, e, m);
     }
     this.pending.length = 0;
+    if (this.releaseSeen !== denseReleaseEpoch()) this.sweepReleased();
     this.evict();
     this.sweepStreams();
     this.lastStats = {
@@ -787,8 +791,8 @@ export class CanvasRenderer implements Renderer {
       const canvas = makeCanvas(buf.w, buf.h);
       const ctx = context(canvas);
       const img = ctx.createImageData(buf.w, buf.h);
-      const words = new Uint32Array(img.data.buffer, img.data.byteOffset, buf.w * buf.h);
-      s = { buf, canvas, ctx, img, words, version: -1, used: this.frameNo };
+      const bytes = new DataView(img.data.buffer, img.data.byteOffset, buf.w * buf.h * 4);
+      s = { buf, canvas, ctx, img, bytes, version: -1, used: this.frameNo };
       this.streamMap.set(buf, s);
       this.streamList.push(s);
     }
@@ -796,20 +800,14 @@ export class CanvasRenderer implements Renderer {
     if (s.version !== buf.version) {
       s.version = buf.version;
       const src = buf.data;
-      const out = s.words;
-      const n = out.length;
-      if (LITTLE_ENDIAN) {
-        // 0xRRGGBBAA → bytes R, G, B, A = the word 0xAABBGGRR. Transparent pixels become 0, as
-        // in upload().
-        for (let i = 0; i < n; i++) {
-          const p = src[i];
-          out[i] = (p & 255) === 0 ? 0 : (p >>> 24) | ((p >>> 8) & 0xff00) | ((p & 0xff00) << 8) | (p << 24);
-        }
-      } else {
-        for (let i = 0; i < n; i++) {
-          const p = src[i];
-          out[i] = (p & 255) === 0 ? 0 : p;
-        }
+      const out = s.bytes;
+      const n = src.length;
+      // 0xRRGGBBAA written big-endian = the bytes R, G, B, A on any machine (about twice as fast
+      // as a word swizzle per pixel: the FPS view streams 270k px per frame at density 2).
+      // Transparent pixels become 0, as in upload().
+      for (let i = 0; i < n; i++) {
+        const p = src[i];
+        out.setUint32(i << 2, (p & 255) === 0 ? 0 : p, false);
       }
       s.ctx.putImageData(s.img, 0, 0);
       this.streamUploads++;
@@ -833,6 +831,20 @@ export class CanvasRenderer implements Renderer {
     this.streamMap.delete(s.buf);
     list[i] = list[list.length - 1];
     list.pop();
+  }
+
+  /**
+   * Dense frames were released (sprites.ts `releaseDense`: the tier-4 working set moved on, or
+   * stopped): drop the textures of their buffers (and of their reductions) now, so the cache does
+   * not keep the released pixels alive until the LRU reaches them.
+   */
+  private sweepReleased(): void {
+    this.releaseSeen = denseReleaseEpoch();
+    for (const [buf, e] of this.cache) {
+      if (e.used === this.frameNo || !isReleasedBuffer(reductionSource(buf))) continue;
+      this.cachePx -= e.px;
+      this.cache.delete(buf);
+    }
   }
 
   /** Drop the least recently used entries until the cache fits its budget (never this frame's). */

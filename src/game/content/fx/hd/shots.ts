@@ -19,6 +19,7 @@ import type { PixelBuffer, Ramp } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
 import { getFrames } from '../../../../engine/sprites';
 import type { DrawOpts } from '../../../art/hd/index';
+import { BLACK_ONE_HUE } from '../../../art/hd/index';
 import { billow, FIRE, INK, fireMat, frayCut, gasMat, glowMat, hash, hdStrip, lambert, metalMat, paintMat, sat, turb, type HdCanvas } from './kit';
 import { drawGlows, Xf, type Glow } from './shapes';
 
@@ -229,14 +230,42 @@ export const FLASH_FAMILIES = Object.keys(FAMILY);
 
 // ------------------------------------------------------------------------------------ tracers
 
+/** The centre of a 1× frame's opaque box (logical px; the frame centre when it is empty). */
+function opaqueCentre(f: Frame): [number, number] {
+  const { w, h, data } = f.buf;
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if ((data[y * w + x] & 255) === 0) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  return x1 < 0 ? [w / 2, h / 2] : [(x0 + x1 + 1) / 2, (y0 + y1 + 1) / 2];
+}
+
 /** Tracer direction strip: a hot capsule `len` long, `width` thick at the head (MG: a redder tail). */
 export function tracerHd(id: string, d: number, len: number, width: number, redTail: boolean): Frame[] {
   return hdStrip(id, d, (c, i, f1) => {
     const a = (i / 16) * Math.PI * 2;
     const S = f1.buf.w;
     const xf = Xf.turn(a, S, S, S / 2, S / 2, S, S);
-    const [x0, y0] = xf.pt(-len / 2 + 0.3, 0);
-    const [x1, y1] = xf.pt(len / 2 - width / 2 + 0.2, 0);
+    // The capsule sits where the 1× tracer sits: its opaque box is centred off the frame centre
+    // (the 1× head is drawn forward), so the HD capsule moves by the same offset.
+    const [ox, oy] = opaqueCentre(f1);
+    const dx = ox - S / 2;
+    const dy = oy - f1.buf.h / 2;
+    const [ax, ay] = xf.pt(-len / 2 + 0.3, 0);
+    const [bx, by] = xf.pt(len / 2 - width / 2 + 0.2, 0);
+    const x0 = ax + dx;
+    const y0 = ay + dy;
+    const x1 = bx + dx;
+    const y1 = by + dy;
     const fire = fireMat(c);
     const tail = redTail ? 0.12 : 0.3;
     c.capsule(x0, y0, x1, y1, 0.45, width / 2, {
@@ -352,7 +381,7 @@ export function enemyBulletHd(id: string, d: number): Frame[] {
 /** The enemy bomb (15 × 15, 4 frames): a black ball, a brass cap, a curling fuse with a spark. */
 export function enemyGrenadeHd(id: string, d: number): Frame[] {
   return hdStrip(id, d, (c, i) => {
-    const black = c.material({ ramp: PAL_HD.black, spec: 0.9, shine: 30, rim: 0.45, gain: 1.1, lo: 1, hi: 5 });
+    const black = c.material({ ramp: BLACK_ONE_HUE, spec: 0.9, shine: 30, rim: 0.45, gain: 1.1, lo: 1, hi: 5 });
     const brass = metalMat(c, BRASS, 0.9, 2, 6);
     const rope = paintMat(c, PAL_HD.brown, 0.2, 2, 6);
     c.ellipsoid(7.5, 8.5, 4.4, 4.4, { mat: black, z: 0 });

@@ -1,5 +1,5 @@
 /**
- * npm run uhd-spike -- [--out tmp/uhd-style] [--palette] [--only hero|swan|street]
+ * npm run uhd-spike -- [--out tmp/uhd-style] [--palette] [--only hero|swan|street|gear]
  *
  * The UHD STYLE SPIKE (plan uhd-arcade-fidelity, groups found + style; docs/ART_GUIDE.md "UHD
  * art"): renders, at 2× AND 4×, with the HD kit (src/game/art/hd/) and nothing registered in the game:
@@ -9,9 +9,10 @@
  *   2. the Swan's head and neck (white plumage, the steel and orange parts, the navy collar);
  *   3. a 128 × 96 logical ams street crop (canal houses with varied façades and gables, the canal
  *      behind the street railing, a bench, a bike, a flower box, a bollard, a lamp, an elm);
- * each next to TODAY's 2× art of the same subject, in the decided outline (style decisions: A for
- * sprites, none for the painted background with C on its façade decor), plus ONE hero A vs B
- * sheet. Sheets: <out>/<subject>@<d>x.png (4 sheet px per logical px at 4×, 2 at 2×), frames at
+ * each next to the GAME's registered art of the same subject ("game 2x": since the UHD wave the
+ * registered 2× art is the HD art itself; the gear and head contracts next to their 1× art), in
+ * the decided outline (style decisions: A for sprites, none for the painted background with C on
+ * its façade decor), plus ONE hero A vs B sheet. Sheets: <out>/<subject>@<d>x.png (4 sheet px per logical px at 4×, 2 at 2×), frames at
  * real size, the HD palette sheet <out>/palette-hd.png (--palette, or always when nothing else is
  * asked), and <out>/index.md (what changed, every PNG, generation times).
  */
@@ -28,7 +29,7 @@ import { getFrames } from '../src/engine/sprites';
 import { HdCanvas, type Outline, along, brick, gunArtHd, lerpPt, limb, heldArtHd, knifeArtHd, leaves, plaster, propArtHd, renderHeadHd, wood, grime, texAll } from '../src/game/art/hd/index';
 import type { HeadStyle } from '../src/game/art/humanoid-head';
 import { HEAD_CENTER, HEAD_H, HEAD_W } from '../src/game/art/humanoid-head';
-import { gunArt, gunArtHi, heldArtHi, knifeArtHi, propArtHi, type PropKind } from '../src/game/art/humanoid-gear';
+import { giftArt, grenadeArt, gunArt, knifeArt, propArt, snackArt, type PropKind } from '../src/game/art/humanoid-gear';
 import { noise2 } from '../src/game/art/paint';
 import { loadContent } from '../src/game/content/index';
 import { SHEET, savePNG } from './lib/image';
@@ -923,32 +924,37 @@ function outlined(b: PixelBuffer, d: number): PixelBuffer {
   return c.render({ outline: 'A', ao: 0, sep: false });
 }
 
-/** Today's recruit (legs + pistol torso composed at the hip) at 2×, frame `fi` of the strips. */
-function todayHero(name: string): PixelBuffer {
+/**
+ * The game's registered recruit (legs + pistol torso composed at the hip) at density `dd`, for
+ * pose `name`. Since the UHD wave the registered 2× frames are the HD rig's (not the pre-wave 2×
+ * art), so the sheets label them "game 2x".
+ */
+function gameHero(name: string, dd: 1 | 2 = 2): PixelBuffer {
   const legsId = name === 'run' ? 'char/recruit/legs-run' : 'char/recruit/legs-idle';
   const torsoId = name === 'run' ? 'char/recruit/torso-pistol-run' : name === 'shoot' ? 'char/recruit/torso-pistol-shoot' : 'char/recruit/torso-pistol-idle';
-  const legs = getFrames(legsId, 2)[name === 'run' ? 3 : 0];
-  const torso = getFrames(torsoId, 2)[0];
-  const b = new PixelBuffer(HERO_W * 2, HERO_H * 2);
+  const legs = getFrames(legsId, dd)[name === 'run' ? 3 : 0];
+  const torso = getFrames(torsoId, dd)[0];
+  const b = new PixelBuffer(HERO_W * dd, HERO_H * dd);
   const hip = legs.pts?.hip ?? [0, -16];
   const ax = 16;
   const ay = HERO_H - 3;
-  b.blit(legs.buf, (ax - legs.ox) * 2, (ay - legs.oy) * 2);
-  b.blit(torso.buf, (ax + hip[0] - torso.ox) * 2, (ay + hip[1] - torso.oy) * 2);
+  b.blit(legs.buf, (ax - legs.ox) * dd, (ay - legs.oy) * dd);
+  b.blit(torso.buf, (ax + hip[0] - torso.ox) * dd, (ay + hip[1] - torso.oy) * dd);
   return b;
 }
 
-/** Today's 2× recruit head, cut from today's idle frame (its own colours), HEAD_W × HEAD_H logical px round the head point. */
-function todayHead(): PixelBuffer {
+/** The game's 1× recruit head, cut from its 1× idle frame (its own colours), HEAD_W × HEAD_H logical px round the head point. */
+function gameHead1x(): PixelBuffer {
   const hp = tp(POSES[0].hip, POSES[0].lean, 1, -14);
-  return todayHero('idle').crop(Math.round((hp[0] - HEAD_CENTER[0]) * 2), Math.round((hp[1] - HEAD_CENTER[1]) * 2), HEAD_W * 2, HEAD_H * 2);
+  return gameHero('idle', 1).crop(Math.round(hp[0] - HEAD_CENTER[0]), Math.round(hp[1] - HEAD_CENTER[1]), HEAD_W, HEAD_H);
 }
 
-function todaySwan(): PixelBuffer {
+/** The game's registered 2× Swan neck frame (since the UHD wave: the HD tin-feather neck). */
+function gameSwan(): PixelBuffer {
   return getFrames('vehicle/swan/neck', 2)[0].buf;
 }
 
-/** Minimal PNG reader (8-bit RGBA / RGB, non-interlaced) for today's street shot. */
+/** Minimal PNG reader (8-bit RGBA / RGB, non-interlaced) for the game's street shot. */
 function readPNG(file: string): PixelBuffer {
   const buf = readFileSync(file);
   let p = 8;
@@ -1001,8 +1007,9 @@ function readPNG(file: string): PixelBuffer {
 }
 
 /** Today's ams section a street at 2× (a shot at res 2, art 2), cropped to the same 128 × 96 logical window. */
-function todayStreet(out: string): PixelBuffer | null {
-  const file = join(out, 'today-ams-a-res2.png');
+/** The game's section a at res 2 and art 2 (the registered 2× art), cropped to the spike's street window. */
+function gameStreet(out: string): PixelBuffer | null {
+  const file = join(out, 'game-ams-a-res2.png');
   try {
     if (!existsSync(file)) {
       execFileSync('npx', ['tsx', 'tools/shot.ts', '--mission', 'ams', '--section', 'a', '--res', '2', '--art', '2', '--ticks', '240', '--out', file], { stdio: 'ignore' });
@@ -1011,7 +1018,7 @@ function todayStreet(out: string): PixelBuffer | null {
     // The frame sits at (4k, 14k) = (8, 28) in the shot sheet; window: logical x 150..278, y 96..192.
     return shot.crop(8 + 150 * 2, 28 + 96 * 2, ST_W * 2, ST_H * 2);
   } catch (e) {
-    console.warn(`today's street shot failed: ${String(e)}`);
+    console.warn(`the game's street shot failed: ${String(e)}`);
     return null;
   }
 }
@@ -1138,7 +1145,7 @@ async function main(): Promise<void> {
       for (const pose of POSES) {
         const buf = timed(`hero ${pose.name} ${d}x`, () => drawHero(pose, d, 'A'), times);
         rows.push([
-          { label: `today 2x ${pose.name}`, buf: todayHero(pose.name), dens: 2 },
+          { label: `game 2x ${pose.name}`, buf: gameHero(pose.name), dens: 2 },
           { label: `${d}x (outline A)`, buf, dens: d },
         ]);
         save(buf, `hero-${pose.name}@${d}x-real.png`);
@@ -1148,36 +1155,36 @@ async function main(): Promise<void> {
           { label: `${pose.name} ${d}x B`, buf: drawHero(pose, d, 'B'), dens: d },
         ]);
       }
-      save(sheet(`HERO (recruit) ${d}x vs today 2x - outline A`, rows, scale), `hero@${d}x.png`);
+      save(sheet(`HERO (recruit) ${d}x vs game 2x - outline A`, rows, scale), `hero@${d}x.png`);
     }
     if (want('gear')) {
       const PROPS: PropKind[] = ['umbrella', 'needles', 'pan', 'wrench', 'plan', 'pistol-butt', 'plunger', 'airliner', 'frikandel'];
       const pairs: Array<[string, PixelBuffer, PixelBuffer]> = [
-        ['pistol', gunArtHi('pistol'), gunArtHd('pistol', d)],
-        ['heavy', gunArtHi('heavy'), gunArtHd('heavy', d)],
-        ['rifle', gunArtHi('rifle'), gunArtHd('rifle', d)],
-        ['knife', knifeArtHi(), knifeArtHd(d)],
-        ['grenade', heldArtHi('grenade'), heldArtHd('grenade', d)],
-        ['gift', heldArtHi('gift'), heldArtHd('gift', d)],
-        ['snack', heldArtHi('snack'), heldArtHd('snack', d)],
-        ...PROPS.map((k): [string, PixelBuffer, PixelBuffer] => [k, propArtHi(k), propArtHd(k, d)]),
-        ['head', todayHead(), renderHeadHd(RECRUIT_HEAD, 'normal', d)],
+        ['pistol', gunArt('pistol').buf, gunArtHd('pistol', d)],
+        ['heavy', gunArt('heavy').buf, gunArtHd('heavy', d)],
+        ['rifle', gunArt('rifle').buf, gunArtHd('rifle', d)],
+        ['knife', knifeArt(), knifeArtHd(d)],
+        ['grenade', grenadeArt(), heldArtHd('grenade', d)],
+        ['gift', giftArt(), heldArtHd('gift', d)],
+        ['snack', snackArt(), heldArtHd('snack', d)],
+        ...PROPS.map((k): [string, PixelBuffer, PixelBuffer] => [k, propArt(k).buf, propArtHd(k, d)]),
+        ['head', gameHead1x(), renderHeadHd(RECRUIT_HEAD, 'normal', d)],
       ];
       const rows: Cell[][] = [];
       for (let i = 0; i < pairs.length; i += 4) {
-        rows.push(pairs.slice(i, i + 4).flatMap(([n, a, b]) => [{ label: `today ${n}`, buf: a, dens: 2 }, { label: `${d}x`, buf: outlined(b, d), dens: d }]));
+        rows.push(pairs.slice(i, i + 4).flatMap(([n, a, b]) => [{ label: `1x ${n}`, buf: a, dens: 1 }, { label: `${d}x`, buf: outlined(b, d), dens: d }]));
       }
-      save(sheet(`GEAR + HEAD contracts ${d}x vs today 2x (outline A added for the sheet; the rig outlines the figure)`, rows, scale), `gear@${d}x.png`);
+      save(sheet(`GEAR + HEAD contracts ${d}x vs 1x (outline A added for the sheet; the rig outlines the figure)`, rows, scale), `gear@${d}x.png`);
     }
     if (want('swan')) {
       const buf = timed(`swan neck ${d}x`, () => drawSwan(d, 'A'), times);
-      save(sheet(`SWAN head + neck ${d}x vs today 2x - outline A`, [[{ label: 'today 2x', buf: todaySwan(), dens: 2 }, { label: `${d}x A`, buf, dens: d }]], scale), `swan@${d}x.png`);
+      save(sheet(`SWAN head + neck ${d}x vs game 2x - outline A`, [[{ label: 'game 2x', buf: gameSwan(), dens: 2 }, { label: `${d}x A`, buf, dens: d }]], scale), `swan@${d}x.png`);
     }
     if (want('street')) {
-      const today = todayStreet(a.out);
+      const game = gameStreet(a.out);
       const buf = timed(`street ${d}x`, () => drawStreet(d), times);
-      const rows: Cell[][] = today ? [[{ label: 'today 2x (ams a)', buf: today, dens: 2 }], [{ label: `${d}x (no outline; decor C)`, buf, dens: d }]] : [[{ label: `${d}x`, buf, dens: d }]];
-      save(sheet(`STREET 128x96 ${d}x vs today 2x - backgrounds no outline, facade decor C`, rows, scale), `street@${d}x.png`);
+      const rows: Cell[][] = game ? [[{ label: 'game 2x (ams a)', buf: game, dens: 2 }], [{ label: `${d}x (no outline; decor C)`, buf, dens: d }]] : [[{ label: `${d}x`, buf, dens: d }]];
+      save(sheet(`STREET 128x96 ${d}x vs game 2x - backgrounds no outline, facade decor C`, rows, scale), `street@${d}x.png`);
       save(buf, `street@${d}x-real.png`);
     }
   }
@@ -1188,7 +1195,7 @@ async function main(): Promise<void> {
     ...CHANGES,
     '',
     'Plan: uhd-arcade-fidelity, group found (KIT). Kit: src/game/art/hd/, palette: src/engine/palette-hd.ts,',
-    'docs/ART_GUIDE.md "UHD art". Sheets show 4 sheet px per logical px at 4x (today\'s 2x art enlarged 2 x 2)',
+    'docs/ART_GUIDE.md "UHD art". Sheets show 4 sheet px per logical px at 4x (the game\'s 2x art enlarged 2 x 2, 1x gear 4 x 4)',
     'and 2 sheet px per logical px at 2x. `*-real.png` files are single frames at their real size.',
     '',
     '## Files',

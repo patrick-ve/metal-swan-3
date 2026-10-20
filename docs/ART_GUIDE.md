@@ -17,7 +17,7 @@ stacks (`demo/bg`), every background generator (`demo/bg-layers`) and every terr
 
 | Rule | Detail |
 |---|---|
-| Palette only | Every pixel is a colour of `PAL` (64 colours). Tests check this (`tests/art/sprites.test.ts`). No alpha-blended pixels inside sprites; translucency is a renderer effect. |
+| Palette only | Every pixel is a colour of `PAL` (64 colours; 2× and 4× art uses `PAL_HD`, "UHD art"). Tests check this (`tests/art/sprites.test.ts`). No alpha-blended pixels inside sprites; translucency is a renderer effect. |
 | Outline | 1-px `INK` outline around the silhouette (4-connected). Internal lines between overlapping parts use the **darkest shade of the part behind** (a cast-shadow edge), not black. The `Composer` in `paint.ts` does both. |
 | Light | From the **top-left**. Lit edges one shade lighter, bottom/right edges one shade darker, the ramp's darkest colour for creases and internal lines. Far limbs are one shade darker than near limbs. Flipped sprites keep the same pixels (the light then comes from the top-right — accepted). |
 | Tones | 3–4 tones per material: base, highlight, shadow, deepest. Glints (one extra-light pixel) only on metal, boots and helmets. |
@@ -27,12 +27,13 @@ stacks (`demo/bg`), every background generator (`demo/bg-layers`) and every terr
 | Originality | Our own designs only (see `docs/ORIGINALITY.md` §Art). No look-alikes of any existing game's characters, vehicles, crates or HUD. |
 
 **High-resolution displays** (`docs/ARCHITECTURE.md` §3): art is authored at 1× — every
-size, anchor, point and rule here is in logical pixels — plus optional 2× versions for mission
-ams (next section). On a large display the browser draws a k-times backbuffer: sprites are
+size, anchor, point and rule here is in logical pixels — plus 2× and 4× versions for the mission
+ams flow, drawn natively as new art (the next sections; the rules of this section are the 1×
+rules). On a large display the browser draws a k-times backbuffer: sprites are
 filtered once by the GRAPHICS mode (`pixel`, the default: none; `smooth`: a palette-exact
 scaler that rounds stairs and diagonals; `xbr`: smoother curves with blended edge colours),
-everything else is enlarged as crisp blocks. Never filtered: backgrounds and
-terrain chunks, `image()` buffers, the font, sprite ids under `UNFILTERED_PREFIXES` in
+everything else is enlarged as crisp blocks. Never filtered: every 2× and 4× frame, backgrounds
+and terrain chunks, `image()` buffers, the font, sprite ids under `UNFILTERED_PREFIXES` in
 `render-common.ts` (`ui/`, except the character art in `FILTERED_UI_PREFIXES`) and the exact ids
 in `UNFILTERED_IDS` (the large explosions' dithered fire, the `Fabel` script sign). In `xbr`
 mode, `decor/` sprites use `smooth` (xBR rounds bricks and windows and seams tiled strips). A
@@ -43,68 +44,75 @@ letters on a plain band do not (so the STADHUIS lettering on `decor/ams/stopera`
 plain dark plaque). Check the
 look headless: `npm run shot -- … --res 5 --gfx smooth`.
 
-### 2x art (mission ams)
+### 2x art (mission ams): the dense art contract
 
-Mission ams (`MissionDef.artDensity: 2`) can draw a 2× version of any sprite id, shared ones
-included (players, the Swan, fx, items …): register it with `defineHiSprite(id, gen2x)` (or
-`defineSprite(id, gen, { hi: gen2x })`). Only ams draws it; m0–m5, the title, the attract demo
-and all game logic keep the 1× frames. The engine contract is in `docs/ARCHITECTURE.md` §3 and
-`docs/api/media.md` §5. Rules:
+Mission ams (`MissionDef.artDensity: 4`) and the screens of its flow can draw a 2× or 4× version
+of any sprite id, shared ones included (players, the Swan, fx, items …). It is NEW art drawn
+natively by ONE density-generic generator per id: `defineHdSprite(id, (d) => frames)` (or
+`defineSprite(id, gen, { hd })`; d ∈ {2, 4}, `densities` default `[4, 2]`). A 2×-only id
+(`{ hi }` / `defineHiSprite(id, gen)`, e.g. the select portraits) shows its 2× frames at tier 4.
+Only the ams flow draws dense art; m0–m5, the attract demo and all game logic keep the 1× frames.
+The look is "UHD art" below; the engine contract is in `docs/ARCHITECTURE.md` §3 and
+`docs/api/media.md` §5. Rules at every density d:
 
 | Rule | Detail |
 |---|---|
-| Same logical geometry | The same number of frames as the 1× strip; each frame the same logical size, anchor and named points as its 1× frame. Points and anchors stay in LOGICAL px (the game reads them for muzzles, hands, seats, hitboxes). The registry enforces it: a 2× frame is re-framed to the 1× rectangle (pixels outside it are cut, with a warning); a wrong frame count, an odd buffer size or different points make the id fall back to its 1× frames (`npm run sprites` reports `id@2x`). |
-| Buffer = 2× | Each buffer is exactly twice the 1× buffer in both directions: one logical pixel = a 2 × 2 block. Draw on the 2× grid; a 1× part can be placed with `blitFrame(f, x, y, o, 2)` (doubled), a 2× part with `getFrames(part, 2)`. Rotations: `rotated(a, { align: 2 })`. |
-| Crisp | Hand-placed pixels at double density: no filter, no smoothing, no anti-aliasing or blended edge colours. The GRAPHICS filters never touch 2× frames. |
-| Palette only | Every pixel opaque and from `PAL` (as for 1× art); use the extra density for detail (rivets, seams, eyes, folds, highlights), not for new colours. |
-| Light top-left | The same light as the 1× art: highlights up-left, shadows down-right; the 2× frame must read as the 1× frame seen closer, never as a different design. |
-| Outline width | **DECIDED (user, 2026-10-13): 2 px at 2×** (= 1 logical px, the weight of the 1× art), for the silhouette and for the inner rings between parts, with the 2× grid used for the details inside (eyes, seams, grain, crescents) as 1-px lines. This is what the pilot (seagull, supply crate) registers. The pilot compared a 1-px outline (variant A, only a scratch render): it looked softer and weaker next to the 1× sprites and lost small gaps (the gull's legs merged). Compare `tmp/hires/g2-pilot/gull-poses-k5.png` and `crate-k5.png` (rows 1×, 2×-A, 2×-B). |
-| Helpers | `src/game/art/hi.ts`: `HiSketch` (the 2× `Sketch`: logical body space, `line` = outline width), `HiPen` (logical coordinates, half steps reach single 2× pixels: `dot`, `fine`), `asHi` / `fitHi` (match a 2× buffer to its 1× frame), `liftHi` (a 1× effect frame such as flames or crumbling, on 2× source art), `squashedHi`, `outlineHi`. Examples: `locals/seagull.art.ts` (`gullHi`, `gullStripHi`), `items/crate.art.ts` (`crateStripHi`). |
-| Human rig at 2× | `renderHuman(style, pose, part, 2)` draws the figure as 2× art: the joints are found on the 1× grid (so every part sits where the 1× frame has it), limbs, torso and gear are drawn on the 2× grid with the true shape at half-pixel steps, bands (`shadeLayer({ density: 2 })`), specks (`despeckle(l, keep, 2)`), rings and the outline (`new Composer(w, h, 2)`) at the 1× weight, and the result is the 1× frame's rectangle doubled (same logical size, anchor and points; 1× geometry is cached, so a 2× render of a figure already drawn at 1× draws only the 2× canvas). Gear has hand-drawn 2× twins (`gunArtHi`, `knifeArtHi`, `propArtHi`, `heldArtHi`, 2× hands in `drawHand(…, density)`). `poseFrames`, `burnFrames`, `blastFrames` and `portrait` take a density; `definePlayerSprites` registers 2× art for every `char/<id>/…` strip. Heads go through ONE hook, `headLayerHi(style, expr)` in `humanoid.ts`: it uses `renderHeadHi(s: HeadStyle, expr: Expression): PixelBuffer` from `humanoid-head.ts` (hand-drawn templates in `humanoid-head-hi.ts`; a 36 × 38 buffer, the 18 × 19 head on the 2× grid, NECK / HEAD_CENTER the same logical pixels; a tilted head is drawn with `{ glint: false }`, so the 1-px eye highlight `W` cannot drift off the pupil). Without that export the 1× head would be copied at 2×. The gun-grip fist (`'grip'`) is 1 logical px smaller at 2×, so the gun's grip shows round it. |
-| Amsterdam cast at 2× | Riders (`locals/rider.art.ts`: `drawBikeHi`, `fatWheelHi` / `cityWheelHi`, `cubePackHi`, `capFramesHi`; 2× bikes are cached per look, and a pair set reuses the 2× death strips of the solo set with the same rider via `RiderSetOpts.same`), the handhaver (`bookHi`, `ticketFramesHi`: no letters on the ticket or the vest, both are drawn mirrored when facing left), the tourist hostage's chair / sack flow (`items/hostage.art.ts` `HI_STRIPS` for `HI_KINDS`, `binds.art.ts` `chairPieceHi`, `sackPieceHi`, `ropeBitFramesHi`), the NPCs (`missions/ams/npc.art.ts`: aprons, scoop, salute forearm, counter, omafiets, window), the ambient life (`missions/ams/npc-hi.art.ts`: pigeons, ducks, the tour boat, the window cat). Crush strips at 2×: `art/hi-strips.ts` `crushStripHi` (with `fitBounds` for trimmed 1× frames). `tests/art/cast-hi.test.ts` lists the ids. |
-| Fx at 2× | `fx/explosion-*` (`explosionFramesHi`: the same puffs sampled on the 2× grid, dither and embers on whole geometry cells, `rimHi` keeps the 1× rim weight and pattern), `fx/impact`, `fx/hit`, `fx/dust`, `fx/splash`, `fx/debris-<dirt|metal|plant|wood>`, `fx/poof`, `fx/confetti(-bit)` and `fx/music-note` (`content/fx/hi.art.ts`). `tests/art/fx-hi.test.ts` lists the ids. |
-| Items at 2× | Weapon medallions (`weaponStripHi`, every alias id), bombs, food and treasure (`PICKUP_HI`) in `content/items/pickups-hi.art.ts`, registered from pickups.art.ts. `item/pickup-1up` and `item/pickup-repair` stay 1× (ams never drops them). `tests/art/items-hi.test.ts` lists the ids; `tests/art/hi-dither.test.ts` checks every 2× fx, weapon and pickup id for single-pixel checker dither. |
-| Density-blind helpers | Some shared 1× helpers mix buffer px and logical px and give wrong anchors on a 2× frame: the quarter turns in `weapons/shots.art.ts` (`ringStrip`, `turnFlash`) and `creatures/draw.ts` (`squashed`, `reground`). Use the `hi.ts` helpers (`squashedHi`, `turnFrame(f, q)` for exact quarter turns with the anchor in logical px, `turnHi(src2, angle, base1, { outline })` for any turn of a 2× source fitted to its turned 1× frame, `rotated(a, { align: 2 })` and `asHi` / `fitHi` for the anchor) on 2× frames; the weapons art (`weapons/art.ts`, `shots.art.ts`) uses them for every shot and flash, or compute anchors with `frameW` / `frameH`. `mirrored()` (characters/pieces.ts), `withPieces` / `decorateFrames` (pieces at logical offsets; a 1× piece is doubled unless a hand-drawn 2× twin is registered for it with `setHiTwin` (the characters/pieces.ts `piece(…, hiRows)` does this), a piece with `density: 2` is placed as it is), `sootify`, `scorch` and `speckle` handle 2× frames; `withFlames` and `crumble` are 1× recipes, lifted with `liftHi` (see `burnFrames`). The registry re-frames a misplaced result and only warns, so a mistake here shows as misplaced art, not as a logic change. |
-| Uneven pixels at odd k | A 2× pixel is k/2 screen px: exact at k = 2, 4, 6; at k = 3 and k = 5 (1080p) the columns alternate 2/1 and 3/2 px. The pattern is fixed to the sprite (no shimmer when it moves; a flip swaps which columns are wide). Do not rely on single 2× px lines having one even width. |
-| Res 1 | On a 1× backbuffer the game draws the 2× frame reduced to the top-left pixel of every 2 × 2 block; keep that reduction readable (or close to the 1× frame). |
+| Same logical geometry | The same number of frames as the 1× strip; each frame the same logical size, anchor and named points as its 1× frame. Points and anchors stay in LOGICAL px (the game reads them for muzzles, hands, seats, hitboxes). The registry enforces it: a dense frame is re-framed to the 1× rectangle (pixels outside it are cut, with a warning); a wrong frame count, a buffer size not divisible by d or different points make the id fall back to its next lower frames (`npm run sprites` reports `id@<d>x`). |
+| Buffer = d× | Each buffer is exactly d times the 1× buffer in both directions: one logical px = a d × d block of art px. A dense part is taken with `getFrames(part, d)` and placed with `blitFrame(f, x, y, o, d)`; rotations `rotated(a, { align: d })`. |
+| New art, crisp | Drawn natively with the HD kit (`src/game/art/hd/`), never the 1× or old 2× art scaled (no MMPX / xBR / nearest look). No filter, no anti-aliasing or blended edge colours; the GRAPHICS filters never touch dense frames. |
+| HD palette | Every px opaque and from `PAL_HD` (`inHdPalette`; `tests/art/palette-hd.test.ts`). The 1× art keeps `PAL` and stays byte-identical. |
+| Same design | The same key light (top-left), outline A (1 logical px = d art px) and identity as the 1× frame: the dense frame reads as the 1× frame seen closer, with more tones, form, texture and wear (the targets below). |
+| Identical art | A strip whose dense art would be the same picture as another id's (a pair set's rider-only strips, a bike per skin, a second name of a shot or pickup) registers `defineDenseAlias(id, target)`: it shows the target's frames, built and held once. |
+| Density-aware helpers | Helpers that mix buffer px and logical px give wrong anchors on a dense frame. Use the dense ones: `crushStripHi(f1, fd, lo)` (`art/hi-strips.ts`, crush strips at any d), `withFlamesDense`, `crumbleDense`, `liftDense` (`human-fx.ts`), `turnFrame(f, q)` and `turnHi(src, angle, base1, { outline })` (`art/hi.ts`), `rotated(a, { align: d })`; `mirrored()`, `withPieces` / `decorateFrames` (pieces at logical offsets; `pieceHd(lo, d)` draws each piece natively), `sootify`, `scorch` and `speckle` handle any density; else compute anchors with `frameW` / `frameH`. The registry re-frames a misplaced result and only warns, so a mistake shows as misplaced art, not as a logic change. |
+| Uneven pixels at odd k | A 2× art px is k/2 screen px: exact at k = 2, 4, 6, 8; at k = 3 and k = 5 (1080p) the columns alternate 2/1 and 3/2 px (fixed to the sprite: no shimmer when it moves; a flip swaps which columns are wide). Tier 4 needs 4 \| k (k 4 or 8: exact 1 × 1 or 2 × 2 blocks); else the tier is 2. Do not rely on single art px lines having one even width. |
+| Lower res | On a backbuffer below the density the renderers draw a reduction (`drawDensity`: a 4× frame at k 2 or 3 shows its 2× image, at k 1 its 1× image); keep it readable. |
 
-Check it: `npm run sprites -- <prefix> --density 2 --marks` (2× sheet, points where the game
-reads them), `npm run shot -- --mission ams --res 2` (or `--res 5`) for the game look, `--art 1`
-for the 1× look. `tests/engine/hires-density.test.ts` checks the geometry of every 2× sprite.
+**Retired in the UHD wave** (deleted; do not bring back): the hand-drawn 2× art and its helpers
+— `HiSketch`, `HiPen`, `liftHi`, `squashedHi` (`art/hi.ts` keeps only `outlineHi`, `asHi`,
+`fitHi`, `turnFrame` and `turnHi`), the 2× gear twins `gunArtHi` / `heldArtHi` / `knifeArtHi` /
+`propArtHi`, `HANDS_HI`, the pieces' `hiRows` / `setHiTwin`, `warmBlush` and the `*Hi` drawers of
+the riders, the handhaver, the hostages, the fx and the items. One exception: the 1×
+first-person recruit face keeps the template head `renderHeadHi` (`humanoid-head-hi.ts`), so its
+1× pixels stay byte-identical; `headLayerHi` (humanoid.ts) only serves its tests. The
+half-pixel joint spike (`setHalfPxJoints`) is a no-op: the HD body places joints at 1 / d px.
 
-**Spike: half-pixel joints (`HALF_PX_JOINTS`, default OFF; plan Phase 4, user A/B).** In
-`humanoid.ts`, `setHalfPxJoints(on)` makes `cp()` round joints to 0.5 on the 1× grid at density 2,
-so the 2× drawers (which place by `v * 2`) can move a limb by one 2× pixel. Frame size, anchor
-and points stay the 1× geometry (`tests/engine/hires.test.ts` checks the fixture with the flag on
-and off). Try it with `npm run sprites -- <prefix> --density 2 --half-px` and
-`npm run anim-bench -- --half-px`. The user decides whether it goes on.
+Check it: `npm run sprites -- <prefix> --density 4 --marks` (and `--density 2`; `--density 1`
+shows that 1× is unchanged), `npm run shot -- --mission ams --section <s> --res 8 --art 4` (4K),
+`--res 4 --art 2` (1440p), `--art 1` for the 1× look. `tests/engine/hires-density.test.ts` and
+`tests/engine/density4.test.ts` check the dense registry; the fixture
+`tests/engine/fixtures/sprite-geometry.json` pins the geometry of every 2× and 4× sprite.
 
-### 2x backgrounds and terrain (mission ams)
+### UHD backgrounds and terrain (mission ams)
 
-Parallax layers and terrain can have 2× art too; the rules of the table above apply (same
-design, crisp, palette only, light top-left, outlines 2 px at 2×). Only a section view of
-density 2 (ams) draws it, and only on a backbuffer of res ≥ 2 (at res 1 the 1× art is the exact
-image); layers and materials without 2× art stay 1× next to it.
+Parallax layers and terrain have dense art too, by the same rules (same design, `PAL_HD`, light
+top-left) and the style decisions below: **no ink outline**, painted, separated by tone, light
+and haze. Only a section view of density ≥ 2 (ams) draws it, at the highest density ≤ min(its
+density, the tier) that has art and that k can show; at res 1 the 1× art is the exact image.
+Layers and materials without dense art stay 1× next to it.
 
 | Part | How |
 |---|---|
-| Background layer | `defineHiBgGenerator(id, gen2x)` (or `defineBgGenerator(id, gen, { hi: gen2x })`, `art-registry.ts`). `gen2x(w, h, params, seed)` gets the SAME logical arguments as the 1× generator and returns exactly (2·w) × (2·h): same shapes at the same logical places (use the same hashes and loops, in logical px, and draw each shape on the 2× grid), seamless at 2·w. Offsets, factors, drift and tiling stay logical. A wrong size or a throw falls back to the 1× layer (`hiSceneryErrors()` lists `bg:<id>@2x`). Every ams layer has one: `missions/ams/art-hi-bg.ts` (`ams-skyline`), `backgrounds-hi.ts` (`ams-canal-houses`, `ams-elms`, `ams-plein`) and `art-hi-sky.ts` (the shared `sky-gradient` and `clouds`; only density-2 views draw them, so other missions keep their 1× skies). Far rows keep the 1× haze remap; trees use staggered 3 × 3 leaf clumps; reflections keep the 1× wobble in whole logical px (finer steps shear them). |
-| Terrain material | `defineHiTerrainMaterial(kind, id, paint)` (`terrain-art.ts`; kind `ground`, `edge`, `platform` or `solid`). `paint(p, sx, sy)` gets the same `Px` as the 1× material and the sub-pixel (sx, sy) ∈ {0, 1}² of the logical pixel; hi-res coordinates are `2·p.x + sx` and `2·p.up + sy` (or `2·p.y + sy`). The painter classifies every pixel as at 1× (cells, bands, cliff shading, the INK underside), so geometry and collision cannot change; only the material's colours get finer. Materials without 2× art are enlarged 2 × 2. The hangers under a platform band get 2× colours with `defineHiTerrainHang(platform, (x, k, seed, sx, sy) => Color)`, painted only where the 1× `hang` paints (else enlarged 2 × 2). Example: `missions/ams/art-hi-terrain.ts` (every ams material: ground `klinker`, edges `bikepath` and `kerb`, platforms `wood` and `whitewood` with the `whitewood` cross-beam hangers, solid `brick`). |
-| Files | New generators go in new files (`missions/ams/art-hi-*.ts`) imported from the ams module. |
-| Cost | A 2× layer is 4× the pixels of its layer (ams-skyline 768 × 216: 2.5 MB, about 1.4 ms in node; the ams layers of one section together about 13 MB; the near `ams-canal-houses` row is the slowest at about 7–11 ms warm, up to about 17 ms on a cold first call). A 2× chunk of 256 × 256 logical px is 512 × 512 (1 MB, cropped to its opaque part, about 6 ms, at most 14 ms in node); section a keeps about 19 MB of 2× chunks next to 7 MB of 1× chunks. Keep each 2× layer or chunk well under 16 ms: the browser builds them as art jobs within the 8 ms per frame 2× budget (docs/ARCHITECTURE.md §3), drawing the 1× art until they are ready. |
+| Background layer | `defineHdBgGenerator(id, (w, h, params, seed, d) => buf)` (or `defineBgGenerator(id, gen, { hd })`, `art-registry.ts`) gets the SAME logical arguments as the 1× generator plus d and returns exactly (d·w) × (d·h): the same shapes at the same logical places (the same hashes and loops in logical px), seamless at d·w. Offsets, factors, drift and tiling stay logical. A wrong size or a throw falls back to the next lower layer (`hiSceneryErrors()`: `bg:<id>@<d>x`). ams: `ams-skyline`, `ams-canal-houses`, `ams-elms`, `ams-plein` (`missions/ams/art-hd-bg-*.ts`) and the shared `sky-gradient` and `clouds` (`art-hd-sky.ts`; only dense views draw them, so other missions keep their 1× skies). |
+| Layer kit | A layer is up to 4096 × 864 art px at 4×, too big for the `HdCanvas` G-buffer, so the ams layers paint with `BgCanvas(w, h, d)` (`art-hd-bg-kit.ts`): palette INDICES with span fills that wrap in x, logical-px rects, scan-line polygons and shaded discs, `finish()` = one table look-up per px (so reflections and haze are look-ups too). `airOf(light, air)` applies the section's light and the atmospheric perspective (far layers lighter, cooler, lower contrast) to the colours once per layer. Ordered dither (`dq`, Bayer 8 × 8) only at band borders of sky, clouds, walls and water. Trees: `leafMass(c, bx, by, br, leaf, seed, crown, lift?, ry?)` paints each 1× leaf mass as a lit clump, `trunk(…)` the bark (`art-hd-bg-trees.ts`). |
+| Terrain material | `defineHdTerrainMaterial(kind, id, paint)` (`terrain-art.ts`; kind `ground`, `edge`, `platform` or `solid`): `paint(p, d, out, i, stride)` fills the d × d art px of logical px `p` (the same `Px` as the 1× material) with opaque `PAL_HD` colours, `out[i]` the block's top-left art px, `out[i + stride]` the next art row; world art coordinates `d·p.x + sx`, `d·p.y + sy` (or `d·p.up + sy`) join chunks without seams. `paintTerrainHd` (registered with `setHdTerrainPainter`) classifies every px as the 1× painter does (cells, bands, cliff faces, undersides, hangers), so geometry and collision cannot change. No ink outline: the lit left cliff face is one HD tone lighter, the right face and the underside three darker (`hdShift(c, n)`). A material without HD art fills its 1× colour. Hangers: `defineHdTerrainHang(platform, (x, k, seed, d, out, i, stride) => void)`, painted only where the 1× `hang` paints. ams (`art-hd-terrain.ts`): ground `klinker`, edges `bikepath` and `kerb`, platforms `wood` and `whitewood` (with its cross-beam hangers), solid `brick`. |
+| Canal water | Sprites, not terrain: `decor/ams/water-<w>x<h>` (surface line), `-back` (the canal body behind the actors), `-tint` (in front at alpha 0.45), one HD drawer each (`art-hd-terrain-water.ts`). |
+| Decor | Façade decor and props (`decor/ams/…`) are sprites: `art-hd-ab-*.ts` (sections a and b, registered by `art-hi-ab.ts`: houses in four lights with `lightHd(buf, light)`, `outlineC(buf, d)`) and `art-hd-cd*.ts` (c and d: `Facade(w, h, d)`, breakables with outline A and wrecks, stalls, bridges, the Stopera, boats). **Decor is section art, never `preloadFirst`**: each `SectionDef.art` lists the decor it draws (its decor list plus the breakables and boat platforms its script spawns), so the tier-4 working set holds only the current and next section's decor (`tests/art/ams-ab-hd.test.ts`). |
+| Cost | Measured in node: the layers of one section are 49–53 MB at 4× (12–13 MB at 2×), median 1.1–13.2 ms per 4× layer, a cold first build up to 18–21 ms (the near canal row, the plein); a 4× terrain chunk median 5.8–8.4 ms, at most 13.6 ms, 14–25 MB resident per section (chunks `EVICT_BEHIND_CHUNKS` = 2 or more behind the view are released). Keep each dense layer or chunk under 16 ms: the browser builds them as art jobs within the 8 ms per frame budget (docs/ARCHITECTURE.md §3) and draws the lower art until they are ready. Big 4× decor (the Rijksmuseum about 257 ms, the Stopera 48 ms) builds once in a worker. |
 
-Check it: `npm run shot -- --mission ams --section a --god --bot --ticks 120 --res 5` (2×) and
-the same with `--art 1` (1×). `tests/art/ams-bg-hi.test.ts` checks every ams layer (2× version present, size, footprint, palette,
-determinism, seam, 2× detail). `tests/art/scenery-hi.test.ts` checks size, footprint, palette and
-the 1× geometry of the 2× terrain, lists the 2× layers, and keeps the 1× scenery of every mission
-byte-identical (fixtures/scenery-1x.json).
+Check it: `npm run shot -- --mission ams --section a --god --bot --ticks 120 --res 8 --art 4`
+(4×), `--res 4 --art 2` (2×) and `--art 1` (1×). Tests: `tests/art/ams-bg-hd.test.ts` (every ams
+layer: 2× and 4× versions, size, footprint, palette, determinism, seam, painted tones, haze, one
+art job per 4× layer), `ams-terrain-hd.test.ts` (every material and chunk at 2× and 4×, seams, the
+water ids), `ams-ab-hd.test.ts` and `ams-cd-hd.test.ts` (decor geometry, palette, outlines, light),
+`scenery-hi.test.ts` (dense layers and terrain; the 1× scenery of every mission byte-identical,
+fixtures/scenery-1x.json).
 
 ### UHD art (2× and 4×, mission ams flow)
 
 The UHD wave replaces the ams 2× art with NEW art at arcade-level fidelity, drawn natively at
 2× (1080p / 1440p) and 4× (4K, backbuffer k = 8) by ONE density-generic drawer per id. It is
 never the 1× or old 2× art scaled (no MMPX / xBR / nearest look). The 1× art keeps `PAL` and stays
-byte-identical; the old 2× drawers are retired group by group. Fidelity of the arcade era, never
+byte-identical; the old 2× drawers are retired (the contract above). Fidelity of the arcade era, never
 its looks: our characters, Amsterdam, outfits, colour families and the squad's likenesses stay
 ours (docs/ORIGINALITY.md).
 
@@ -183,26 +191,41 @@ bottom).
   studs, D-rings, laces, finger rows) only at 4×; at 2× the big shapes must read as well as the old
   2× art.
 
-**Rig contracts** (working prototypes; the rig group replaces their bodies, the signatures,
-sizes and points stay):
+**The rig at 2× and 4×** (group rig; the 1× rig is section 3):
 
-| Contract | Rule |
+| Part | Rule |
 |---|---|
-| `renderHeadHd(s: HeadStyle, expr: Expression, d: 2 | 4, opts?: { glint?: boolean }): PixelBuffer` (`hd/head.ts`) | Exactly HEAD_W·d × HEAD_H·d, the logical layout of `renderHead` (facing right; NECK and HEAD_CENTER at d times them); no outline (the rig outlines the figure); `glint: false` for tilted heads. |
-| `gunArtHd(kind, d)`, `heldArtHd('grenade' | 'snack' | 'gift', d)`, `knifeArtHd(d)`, `propArtHd(kind, d)` (`hd/gear.ts`) | Exactly d × the 1× size of `gunArt(kind).buf` / `grenadeArt()` / `snackArt()` / `giftArt()` / `knifeArt()` / `propArt(kind).buf`; the logical points (grip, grip2, muzzle, tip) are the 1× ones; no outline. `propArtHd` is a stand-in (re-lit from the 1× silhouette) until the GEAR builder draws each prop. |
+| Body | `renderHuman(style, pose, part, d)` with d 2 or 4 solves the same skeleton as the 1× art (the ground contact unrounded) and hands it to `drawBodyHd(rig)` (`hd/body.ts`): every part on one `HdCanvas` — cloth and leather `blob`s over limb and panel outlines, folds at the bends, seams, pockets, belts, straps, boots with soles, laces at 4× — with joints at 1 / d px (motion in fine steps), the 1× pixel footprint of every part, outline A, a cool rim light and interior separations. The frame has exactly the 1× frame's logical size, anchor and points (the 1× geometry is cached, so a dense render of a figure already drawn at 1× paints only the HD canvas). A recent HD render of the same style, part, pose and density is copied (a small memo, `HD_MEMO`). |
+| `fitFrame` | The HD joints sit up to ½ logical px from the 1× ones, and the 1× rectangle is the tight box of the 1× px. `fitFrame` (`hd/body.ts`) trims what reaches past the room inside the outline (the rectangle less d art px on every side) BEFORE the render, so the outline wraps a clean edge instead of being cut by the frame; the crop never moves (that would undo the sub-pixel motion). It trims at most ½ logical px, in about 60 % of HD frames (`HD_FIT` counts); no feet frame floats above its anchor row. |
+| Head | `renderHeadHd(s: HeadStyle, expr, d: 2 \| 4 \| 8, opts?: { glint?: boolean })` (`hd/head.ts`): HEAD_W·d × HEAD_H·d, the logical layout of `renderHead` (facing right; NECK and HEAD_CENTER at d times them), no outline, `glint: false` for tilted heads. d 8 is the Helium Head (`headScale: 2`) at 4×, drawn natively twice as large instead of enlarging a 4× head. All hair styles, headgears, extras and expressions; the squad's cues come from their select portraits. |
+| Gear | `gunArtHd` / `gunHd(kind, d)`, `heldArtHd('grenade' \| 'snack' \| 'gift', d)`, `knifeArtHd(d)`, `propArtHd` / `propHd(kind, d)` (every prop drawn natively), `drawHandHd` / `handArtHd` (`hd/gear.ts`): exactly d × the 1× size, the 1× logical points (grip, grip2, muzzle, tip), no outline. Pieces: `pieceHd(lo, d)` (`characters/pieces.ts`); `decorateFrames` draws the 24 pieces natively. Burn and crumble: `withFlamesDense`, `crumbleDense` (`human-fx.ts`). |
+| Registration | Every `char/<hero>/…` strip (the Helium twins too) registers `hd: (d) => gen(d)` (`human-sprites.ts`). The art pool spreads a hero over 7 workers by strip family (`familyOf`: `legs`, `torso-pistol`, `torso-heavy`, `ride`, `helium`, `helium-wob` and the full-body rest), so a hero never builds serially on one worker. |
+| Tight 1× region | The 1× render paints each layer on a tight region round the figure (origin a multiple of 8) instead of the full 112 × 112 canvas, and paints again on the full canvas when the figure comes within 4 px of the region's border: the same bytes, 2.4× faster (`TIGHT_1X` counts; `renderHumanFullCanvas` for tests). |
+| Cost | About 1.9 ms per 4× hero frame (node, one thread), 22.5 MB per hero at 4×; one hero at 4× with 8 workers 0.3–0.4 s, ten heroes 2.2 s. |
+
+**What draws dense art** (groups cast, city, screens; one drawer per id, d 2 and 4, `PAL_HD`):
+
+| Part | Files and APIs |
+|---|---|
+| The Swan | `vehicles/swan/hd-*.art.ts`: `SwanCanvas(w, h, d, ox, oy)`, `renderBodyHd(style, pose, d, body, front)`, `renderNeckFrameHd(spec, colour, d, lo)` (the neck of stamped tin-feather plates, `docs/design/swan-mount/look.md` §5.6), extras `…Hd(d, lo)`. |
+| The boss | `bosses/ams/art-hd.ts` (`bodyHd(s, d)`, `headHd(s, d)`, `wigHd(d)`), `layout.ts`, `HdPiece(geom, d, opts)`. |
+| Locals and people | `locals/rider.hd.ts` (`wheelHd`, `bikeHd`; every rider and handhaver strip `hd: (d) => …`), the gull, the tickets; `npc/ams`, the tourist hostage (`HD4_KINDS = ['tourist']`: ams frees only tourists) and the binds. |
+| FX, shots, pickups | `fx/hd/` (`hdStrip(id, d, draw)`, `paintBillows` — explosion smoke erodes along smooth turbulence, never into ink balls — `explosionFramesHd`, flashes, tracers, shells, grenades), the pickups and the crate. Particles: while a dense mission draws, 'pixel' and 'rect' particles are small HD frames in art px (`particles.ts`: a hot core with a glowing rim and a motion streak for sparks and embers, a round lit puff for smoke, dust and steam, a lit chunk for debris, drops and casings; `PAL_HD` tones of the particle's colour, cached per look, size, colour and density). |
+| Amsterdam | decor, layers, terrain and water: "UHD backgrounds and terrain (mission ams)" above. |
+| Screens | Menus (`ui/base/*`, `ui/mil/*`, the logo, Gusto, `ui/radio`, the gags), the HUD (37 icon ids, the weapon icons as aliases; widgets `hudPanelHd`, `hudBarHd`, `hudGemHd`, `bubbleBoxHd` in `game/hud.ts` at `hudDensity(r)`), the ending flow (`ui/ending-*`, `ui/score-head/*`, `paintSky` / `paintWater`; the glitch bridge at g = min(d, 2)) and HD text (designed glyph tables, `docs/api/media.md` §6). Screens draw at `screenTier(r)` through the screen art API (`scenes/base.ts`, media.md §7). Still 2× only: the select portraits (`char/<id>/select`, `select-grey`, `portrait`) and the gag privates. |
+| First-person mode | Walls and doors at 128² and 256² (`fps/walls-hd.ts`), the figures, props and items through `fps/figure-hd.ts` (the `figure3d` rigs rasterised at d into an `HdCanvas`, outline A), weapon views, the HUD and the faces at the tier; the view itself at density 2 (`docs/design/fps.md` §3.4). |
 
 **Style spike**: `npm run uhd-spike -- [--out tmp/uhd-style] [--palette] [--only hero|swan|street|gear]`
-renders today's recruit as an HD hero (idle, run, shoot: `blob` cloth volumes over `limb` outlines,
-the vest over the tan shirt, cargo trousers, boots, black gloves, the head contract), the Swan's
-head and neck, a 128 × 96 ams street crop (varied façades and gables, white frames with glazing
-bars, the canal behind the railing with broken facade reflections, a bench, a bike, a flower box
-with tulips, an XXX bollard, a lamp, an elm; sky gradient with painted clouds) and the gear / head
-contracts at 2× and 4×, each next to today's 2× art, in the decided outline (plus one hero A vs B
-sheet, `hero-outline-ab.png`) and the PAL_HD sheet; `tmp/uhd-style/index.md` starts with what
-changed in the last style round and lists the PNGs and generation times (node, one thread, cold
-and warm median of 5: a 40 × 42 hero frame about 3 ms warm at 4× and 1–2 ms at 2×, the 128 × 96
-street about 80 ms at 4× and 18 ms at 2×). Nothing in it is registered in the game. Tests: `tests/art/palette-hd.test.ts`,
-`tests/art/hd-kit.test.ts`.
+renders the prototypes of the style gate: today's recruit as an HD hero (idle, run, shoot: `blob`
+cloth volumes over `limb` outlines), the Swan's head and neck, a 128 × 96 ams street crop and the
+gear / head contracts, at 2× and 4×, in the decided outline (plus one hero A vs B sheet,
+`hero-outline-ab.png`) and the PAL_HD sheet. Each sheet sets the spike next to the game's
+registered art: `game 2x` (since the wave, the UHD art itself; the street is a shot of section a)
+and, for the gear and head contracts, the 1× art. `tmp/uhd-style/index.md` lists the PNGs and
+generation times (node, one thread, cold and warm median of 5: a 40 × 42 hero frame about 3 ms
+warm at 4× and 1–2 ms at 2×, the 128 × 96 street about 80 ms at 4× and 18 ms at 2×). Nothing in
+the spike is registered in the game. Tests: `tests/art/palette-hd.test.ts`, `tests/art/hd-kit.test.ts`,
+`hd-body.test.ts`, `hd-head.test.ts`, `hd-gear.test.ts`.
 
 ### Palette ramps per material
 
@@ -301,7 +324,9 @@ Each sprite registers its own defaults (`ticksPerFrame`, `durations`, `loop`), s
 | `src/game/art/human-fx.ts` | `withPieces`, `sootify`, `scorch`, `withFlames`, `crumble`, `speckle` |
 | `src/game/art/machines.ts` | machines kit + `machine/demo-tank`, `machine/demo-heli` |
 | `src/game/art/bg.ts` | 11 background generators |
-| `src/game/art/terrain-art.ts` | the terrain painter |
+| `src/game/art/terrain-art.ts` | the terrain painter (1×) and the HD terrain painter (`paintTerrainHd`, `defineHdTerrainMaterial`) |
+| `src/engine/palette-hd.ts` | `PAL_HD` (the HD palette of all 2× and 4× art), `hdRampOf`, `hdHome`, `hdTone`, `inHdPalette` |
+| `src/game/art/hd/` | the UHD kit: `canvas.ts` (`HdCanvas`), `light.ts`, `texture.ts`, `shape.ts`, and the HD rig parts `head.ts`, `gear.ts`, `body.ts` ("UHD art") |
 | `src/game/art/demo-art.ts` | `demo/bg`, `demo/bg-layers`, `demo/terrain`; `renderBackground`, `paintTerrainArea`, `DEMO_BACKGROUNDS` |
 | `src/game/content/characters/art.ts` | `char/recruit/*` (`RECRUIT_STYLE`) |
 | `src/game/content/infantry/art.ts` | `enemy/rifleman/*` (`RIFLEMAN_STYLE`) |
@@ -499,6 +524,7 @@ const out = withPieces(f, pieces, { muzzle: [hx + 8, hy - 14] }); // the bell = 
 `explosionFrames({ radius, frames, seed, puffs, chunky })` — flash, billowing fireball of
 seeded puffs (each lit from the top-left), cooling to smoke that frays with ordered dither.
 `chunky: true` renders at half resolution and doubles the pixels (use for l / xl).
+The 2× / 4× fx are separate drawers in `content/fx/hd/` ("UHD art").
 `cloudFrames(radius, frames, ramp, outline)` — smoke, soot and dust puffs.
 All fx are centre-anchored. Debris: `fx/debris-<kind>` has 4 frames = the piece turned in
 quarter steps (random frame = random orientation; playing them = tumbling).
@@ -559,7 +585,7 @@ be `216 + (sectionHeight − 216) × factorY` px tall, or the view runs off its 
 colour shows). Either size it so, or make it vertically seamless and set `repeatY: true`.
 Keep `factorY` small for far layers (0–0.2) like `factorX`.
 
-2× layers (mission ams): `defineHiBgGenerator`, see "2x backgrounds and terrain (mission ams)".
+Dense layers (mission ams): `defineHdBgGenerator`, see "UHD backgrounds and terrain (mission ams)".
 
 ## 8. Terrain painter (`terrain-art.ts`)
 
@@ -583,8 +609,9 @@ Adding a material: add an entry to `GROUND`, `EDGE`, `PLATFORM` or `SOLID`. A ma
 function of `Px` (world x, y and the run lengths `up`, `down`, `left`, `right`). Use world
 coordinates for patterns (`hash2(p.x, p.y, seed)`, `noise2`), never chunk coordinates.
 
-Amsterdam materials: ground `klinker`, edges `bikepath` and `kerb`, platform `whitewood`. 2×
-materials (mission ams): `defineHiTerrainMaterial`, see "2x backgrounds and terrain (mission ams)".
+Amsterdam materials: ground `klinker`, edges `bikepath` and `kerb`, platform `whitewood`. HD
+materials (2× and 4×, mission ams): `defineHdTerrainMaterial`, see "UHD backgrounds and terrain
+(mission ams)".
 
 ---
 
@@ -602,9 +629,11 @@ materials (mission ams): `defineHiTerrainMaterial`, see "2x backgrounds and terr
    silhouette, readability against busy backgrounds, and motion between frames.
 9. Add tests in `tests/art/` (frame counts, points, palette, seams for tiling art).
 10. Keep generation fast (a whole character set builds in well under a second).
-11. 2× art (mission ams only): same frames, sizes, anchors and points as the 1× strip, buffer
-    twice the size, crisp, palette only, light top-left (section 1, "2x art (mission ams)");
-    check with `npm run sprites -- <prefix> --density 2 --marks`.
+11. 2× and 4× art (mission ams flow only): one density-generic drawer per id, same frames, sizes,
+    anchors and points as the 1× strip, buffer d times the size, crisp, `PAL_HD` only, the UHD
+    style decisions (section 1, "2x art (mission ams): the dense art contract", "UHD art");
+    check with `npm run sprites -- <prefix> --density 4 --marks` and `--density 2`, and in game
+    with `npm run shot -- --mission ams --res 8 --art 4`.
 
 ---
 
@@ -676,7 +705,13 @@ Rules learned while building it:
   stale).
 - **HUD faces** reduce each friend's own select portrait (`selectPortrait(id, 2)`, box filter →
   `nearest`) around the eye line; the per-friend eye / mouth table `GEO` in `faces.ts` places the
-  damage marks. The recruit uses the 2× head rig (`renderHeadHi`).
+  damage marks. The 1× recruit face keeps the old 2× template head (`renderHeadHi`), so its 1×
+  pixels stay byte-identical; its 2× / 4× faces use the HD head (`renderHeadHd(RECRUIT_HEAD,
+  expr, 2·d)`).
+- **UHD (2× / 4×)**: the same designs drawn natively — walls and doors at 128² / 256²
+  (`fps/walls-hd.ts`), figures, props and items through `fps/figure-hd.ts` (outline A), weapon
+  views, HUD and faces at the tier; each ray asset has a carrier sprite `fps/ray/<id>`
+  (`fps/ray-art.ts`) so the art pool builds it. Spec: `docs/design/fps.md` §3.4.
 - **Look:** `npm run sprites -- fps/ --ray` writes `ray-tex-*` (each texture twice side by side
   plus its dark side) and `ray-bb-*` (one row per yaw; one-frame items and props share rows).
 
@@ -746,6 +781,6 @@ ticks; `frame()` narrows, `facing` flips at the midpoint, then it widens; `snap(
 - `Animator.update(rate)` with `strideRate(speed, nominal)` (`math.ts`): a walk or run cycle that
   follows the speed (draw-side only). `easeOutBack` is the shared overshoot curve.
 - `SpriteOpts.defer`: rare cosmetic strips (fidgets, timeout, drown, get-up) leave the boot
-  preload and come last in the 2× preload; first use makes them.
+  preload and come last in the dense preload; first use makes them.
 - `npm run anim-bench` (baseline `tmp/anim-baseline.json`, budget `tmp/anim-budget.md`) and
   `npm run geometry-fixture -- <ids>` (verifiers only, for strips changed on purpose).

@@ -48,6 +48,12 @@ INK                     // PAL.ink[0], the standard outline colour
 
 Also: `SWATCHES` (`{name,color}[]`, 64 unique), `PALETTE` (flat), `RAMP_NAMES`, `nearest(c)`, `inPalette(c)`.
 
+**HD palette** — `palette-hd.ts` (every 2× and 4× px; `docs/ART_GUIDE.md` "UHD art"): `PAL_HD`, 209
+unique colours in 36 named ramps of 6–8 tones (dark → light, hue-shifted; every `PAL` swatch sits
+in the HD ramp of its material), `HD_PALETTE`, `HD_RAMP_NAMES`, `hdRampOf(PAL.olive | 'olive' |
+ramp)` → the HD ramp, `hdHome(c)` → `{ ramp, i }` (or null), `hdTone(ramp, t)`, `inHdPalette(c)`.
+Sheet: `npm run sprites -- --palette-hd`. The 1× art never uses it.
+
 ## 3. PixelBuffer toolkit — `pixel.ts`
 
 `new PixelBuffer(w, h)`; fields `w`, `h`, `data: Uint32Array` (0xRRGGBBAA, row-major), `version`.
@@ -161,20 +167,23 @@ readyFrames(id, d = 1) → frames | null / generatedSprites(d = 1, prefix?) → 
 installFrames(id, d, frames) → true when the id (registered, without frames) took them
 ```
 `sprite-pack.ts`: `await encodeSpritePack(tag, density, [[id, frames], …], yieldFn?)` → gzip bytes;
-`await decodeSpritePack(bytes)` → `{ tag, density, sprites }` (throws on a broken pack, another
-`SPRITE_PACK_VERSION` or byte order). `byte-store.ts`: `ByteStore { get, put, delete }`,
+`await decodeSpritePack(bytes, keep?)` → `{ tag, density, sprites, total }` (throws on a broken pack,
+another `SPRITE_PACK_VERSION` or byte order; it streams, every decoded buffer gets its own
+ArrayBuffer, and `keep(id)` limits the ids decoded, so a released id frees its pixels). `byte-store.ts`: `ByteStore { get, put, delete }`,
 `MemoryByteStore`; `byte-store.browser.ts`: `idbByteStore(name)` (IndexedDB, opened on first
 use; without IndexedDB an empty store). `new PixelBuffer(w, h, data?)` wraps `data` without a copy.
 
 **Art pool** (`art-pool.ts`, worker entry `src/game/art-worker.ts`): `browserArtPool(size =
 poolSize())` starts min(cores − 1, 8) module workers (at least 1). `pool.build(ids, d,
-onProgress?)` → `Promise<ArtPoolReport>` sends the ids of one family (`familyOf(id)`) to the same
-worker; the worker sends back raw packs (`buildRawPack(ids, d)`) as transferred ArrayBuffers (no
+onProgress?, { low? })` → `Promise<ArtPoolReport>` sends the ids of one family (`familyOf(id)`: a
+hero splits into 7 strip families) to the same worker (`low`: queued behind every normal batch); the worker sends back raw packs (`buildRawPack(ids, d)`) as transferred ArrayBuffers (no
 SharedArrayBuffer), and the main thread installs them with `installFrames`. The frames are
 byte-identical to `getFrames`. A dense alias is built, sent and installed as its target, once
 (`buildIds(ids, d)`). Without Worker, or after a worker fails, the pool warns once and
 builds on the main thread with the budgeted preload. Node tools and tests use `nodeArtPool(n)`
-(worker_threads through tsx) or `inProcessPort(createArtWorkerHandler(load))`. Also `reset()`,
+(worker_threads through tsx) or `inProcessPort(createArtWorkerHandler(load))`. `ArtPoolOpts`
+`idleCloseMs` / `keepAwake` / `spawn`: idle workers close and start again on demand (the browser
+pools: `POOL_IDLE_CLOSE_MS` = 5000, one stays). Also `reset()`,
 `close()`, `pending`, `workers`, `packFrames` / `unpackFrames` / `installRawPack`.
 - Generated lazily on first use, then cached. Unknown id or a throwing generator → magenta
   placeholder (12×12, feet anchor) and **one** `console.warn` per id.
@@ -188,7 +197,7 @@ builds on the main thread with the budgeted preload. Node tools and tests use `n
 - `trim: true` crops transparent margins per frame and keeps anchors/points correct (for a
   frame of density d the box widens to whole logical pixels).
 - **2× art (frame density, `docs/ARCHITECTURE.md` §3; rules in `docs/ART_GUIDE.md` "2x art
-  (mission ams)").** `Frame.density` d (default 1) = buffer px per logical px. A 2× frame has a
+  (mission ams): the dense art contract"; the same rules hold at 4×, below).** `Frame.density` d (default 1) = buffer px per logical px. A 2× frame has a
   (2w) × (2h) buffer for a logical w × h frame; `ox`, `oy`, `pts` stay logical. Outside art code
   read sizes with `frameW(f)` / `frameH(f)`, never `buf.w` / `buf.h`. `defineHiSprite(id, gen2x)`
   adds a 2× generator to an id: it returns as many frames as the 1× generator, each a
@@ -197,18 +206,19 @@ builds on the main thread with the budgeted preload. Node tools and tests use `n
   re-frames each 2× frame to the 1× frame's rectangle (pixels outside are cut, with one warning),
   copies the 1× points, and on a wrong count, an odd size, other points or an error falls back
   to the 1× frames (`spriteErrors()` lists `id@2x`). `getFrames(id)` uses the art density
-  (`setArtDensity`, 1 unless a mission with `MissionDef.artDensity: 2` is drawing — the runner
+  (`setArtDensity`, 1 unless a mission with `MissionDef.artDensity` ≥ 2 is drawing — the runner
   wraps `draw` and the HUD in `withArtDensity`); `getFrames(id, 2)` asks for the 2× frames
   explicitly (the 1× ones when the id has none). Generators always run at density 1: a 2×
   generator that composes 2× parts asks for them with `getFrames(part, 2)` and places them with
   `blitFrame(f, x, y, o, 2)`. `setHiArt(false)` turns 2× art off everywhere (tools, tests).
   `preloadSprites(…, { density: 2 })` generates only the 2× frames of the ids that have them
-  (`preloadMissionArt` in scenes/gameplay.ts at a 2× mission's start: `MISSION_ART_BUDGET_MS`
-  (8 ms) of generation per browser frame, the joined players' characters first, then the
-  mission's `preloadFirst` prefixes, its `preloadLast` prefixes last (`missionArtOrder`);
-  browser app only via `GameApp.preloadArt`; boot stays 1×).
-- **Art jobs.** 2× work that is not a sprite id (the 2× background layers and terrain chunks
-  of the section on screen) goes through a small queue: `queueArtJob(key, run)` (a key already
+  (`preloadMissionArt` in scenes/gameplay.ts at a dense mission's start hands them to the art
+  pool in `missionArtOrder`: the joined players' characters first, then the mission's
+  `preloadFirst` prefixes, its `preloadLast` prefixes last; without workers the budgeted
+  main-thread preload makes them, `MISSION_ART_BUDGET_MS` (8 ms) per browser frame; browser app
+  only via `GameApp.preloadArt`; boot stays 1×).
+- **Art jobs.** Dense work that is not a sprite id (the 2× and 4× background layers and terrain
+  chunks of the section on screen) goes through a small queue: `queueArtJob(key, run)` (a key already
   queued keeps its first job), `runArtJobs(budgetMs)` runs the oldest jobs until the budget is
   spent (at least one), `cancelArtJobs(prefix)` drops some. A budgeted 2× preload
   (`preloadSprites` with `density: 2` and `timeBudgetMs`) runs queued jobs before its next id
@@ -235,6 +245,16 @@ builds on the main thread with the budgeted preload. Node tools and tests use `n
   `hasHiSprite` include aliases, `denseTarget(id, d)` names the target. Geometry is law: on first
   use getFrames checks that the alias has its target's 1× geometry (frame count, logical size,
   anchor, points); one that does not fit draws its next lower frames (`spriteErrors()`: `id@<d>x`).
+- **The HD kit** (game layer, `src/game/art/hd/index.ts`; rules, style decisions and the full API:
+  `docs/ART_GUIDE.md` "UHD art"): `new HdCanvas(w, h, d)` (w × h LOGICAL px at d 2 or 4; lit
+  primitives `ellipsoid`, `capsule`, `stroke`, `box`, `cylinder`, `poly`, `plane`, `heightField`,
+  `blob` write a G-buffer with a depth test; `material({ ramp, … })`; `render({ outline: 'A' | 'B'
+  | 'C' | 'none', … })` → the (w·d) × (h·d) PixelBuffer), the light model (`KEY`, `BOUNCE`,
+  `diffuse`, `specular`), textures (`brick`, `plaster`, `wood`, `cobbles`, `folds`, `strands`,
+  `leaves`, `ripples`, `grime`), shapes (`limb`, `along`, `lerpPt`) and the HD rig parts
+  (`renderHeadHd(s, expr, d: 2 | 4 | 8)`, `gunHd` / `gunArtHd`, `heldArtHd`, `knifeArtHd`, `propHd`
+  / `propArtHd`, `drawHandHd` / `handArtHd`; the body `drawBodyHd` in `hd/body.ts`, reached through
+  `renderHuman(style, pose, part, d)`). Pure and deterministic: same input, same pixels.
 
 ```ts
 defineSprite('enemy/grunt/shoot', () => {
@@ -285,6 +305,19 @@ drawText(buf, 'MISSION 1', 192, 40, { font: 'big', color: PAL.gold[2], outline: 
 Layers: shadow (+1,+1; the outlined silhouette when an outline is set) → outline (8-neighbour) → fill.
 Internals shared by renderers: `getFont`, `layoutText`, `textPasses`, `drawGlyph`, `glyphAtlas`.
 
+**HD text** (UHD art): designed glyph tables at glyph density 2 and 4, made from the 1× glyphs
+(the 'small' font as pen strokes: square stems, round diagonals; the 'big' font and ♥ ★ as
+contours with 45° cuts) and lit from the top. Each HD glyph stays inside its 1× cell, so
+advances, `measure` and `layoutText` keep their numbers. Both renderers pick the table per draw:
+`glyphDensity(k, tier, scale)` → 1 | 2 | 4 (1 = the bitmap path, unchanged, at tier 1 or k 1;
+else the table of the tier that the backbuffer can show; big text at scale 2 takes the 4 table at
+tier 2 when 4 | scale·k). `drawTextPx(buf, text, bx, by, o, k, D)` draws into a buffer of 1/k
+logical px; `hdTextPasses(o, visit)` gives the passes back to front (shadow, outline ring
+`glyphRing`, lit fill `fillColors`); `glyphAtlas(font, color, d, kind, scale)` is the canvas
+renderer's atlas (HD: `GLYPH_ATLAS_COLS` columns of `hdAtlasCell(font, D)` cells); `glyphEdge(n,
+f)` places uneven art px (k 3 / 5) alike in both renderers; `glyphMask(font, g, D)` is the
+designed glyph. Tests: `tests/engine/font-hd.test.ts`.
+
 ## 7. Rendering — `render.ts`, `render-soft.ts`, `render-canvas.browser.ts`, `display.browser.ts`
 
 `Renderer` (see `render.ts`): `begin(clear = black | null)`, `end()`, `setCamera(x,y)` (rounded),
@@ -295,24 +328,31 @@ layers — `BgLayerDef` with `alpha`, `repeatY`, `driftX/Y`, `front` — are dra
 rules for tall sections: `docs/ART_GUIDE.md` §7.) `ParallaxOpts.density` d (default 1): the
 buffer has d px per logical px; the layer covers and tiles by its logical size (buf.w / d), so
 offsets, factors and drift stay logical and sub-pixel scrolling is the same; with d > res the
-renderers draw `lowRes(buf, d)`. A 2× terrain chunk is drawn with `frame()` as a density-2 frame.
+renderers draw `lowRes(buf, d)`. A dense terrain chunk is drawn with `frame()` as a frame of its density.
 
-2× scenery registry (`src/game/art/art-registry.ts`; rules: `docs/ART_GUIDE.md` "2x backgrounds
-and terrain (mission ams)", design: `docs/ARCHITECTURE.md` §3):
+Dense scenery registry (`src/game/art/art-registry.ts`; rules: `docs/ART_GUIDE.md` "UHD
+backgrounds and terrain (mission ams)", design: `docs/ARCHITECTURE.md` §3), d ∈ {2, 4}:
 ```ts
-defineBgGenerator(id, gen, { hi?: gen2x }) / defineHiBgGenerator(id, gen2x)   // gen2x(w, h, params, seed) → (2w)×(2h)
-hasHiBgGenerator(id) / listHiBgGenerators()
-makeHiBgLayer(id, w, h, params, seed) → PixelBuffer | null          // null: no 2× generator, or it failed
-setHiTerrainPainter(paint, supports) / hasHiTerrain(style)
-makeHiTerrain(sample, style, x0, y0, w, h) → PixelBuffer | null     // (2w)×(2h), null: nothing finer here
-hiSceneryErrors() → [{ id: 'bg:<id>@2x' | 'terrain@2x', error }]
-// terrain-art.ts
-defineHiTerrainMaterial(kind: 'ground'|'edge'|'platform'|'solid', id, (p: Px, sx, sy) => Color)
-defineHiTerrainHang(platform, (x, k, seed, sx, sy) => Color)   // 2× hangers under a platform band
-hasHiTerrainMaterial(kind, id) / styleHasHiTerrain(style) / paintTerrainHi
+defineHdBgGenerator(id, (w, h, params, seed, d) => buf, densities = [4, 2])   // (d·w)×(d·h); = defineBgGenerator(id, gen, { hd })
+defineHiBgGenerator(id, gen, d = 2) / defineBgGenerator(id, gen, { hi, hi4 })   // one generator per density
+hasHiBgGenerator(id, d = 2) / listHiBgGenerators(d = 2) / bgDensityFor(id, d) → 1 | 2 | 4
+makeHiBgLayer(id, w, h, params, seed, d = 2) → PixelBuffer | null    // null: no generator at d, or it failed
+setHdTerrainPainter(paint(sample, style, x0, y0, w, h, d), supports(style, d), densities = [4, 2])
+setHiTerrainPainter(paint, supports, d = 2) / hasHiTerrain(style, d = 2) / terrainDensityFor(style, d)
+makeHiTerrain(sample, style, x0, y0, w, h, d = 2) → PixelBuffer | null   // (d·w)×(d·h), null: nothing finer here
+hiSceneryErrors() → [{ id: 'bg:<id>@<d>x' | 'terrain@<d>x', error }]
+// terrain-art.ts: the HD terrain painter paintTerrainHd (registered for d 2 and 4)
+defineHdTerrainMaterial(kind: 'ground'|'edge'|'platform'|'solid', id, (p: Px, d, out: Uint32Array, i, stride) => void)
+defineHdTerrainHang(platform, (x, k, seed, d, out, i, stride) => void)   // hangers under a platform band
+hasHdTerrainMaterial(kind, id) / styleHasHdTerrain(style) / hdShift(c, n) / paintTerrainHd
 ```
-`SectionView(section, terrain, seed, density = 1)` (game/mission/view.ts) draws them for a view
-of density 2 at res ≥ 2; `view.dispose()` drops its queued jobs.
+An HD material fills the d × d art px of logical px `p` (`out[i]` the top-left art px, `out[i +
+stride]` the next art row) with opaque `PAL_HD` colours; the painter classifies every px as at 1×.
+The ams layers paint with `BgCanvas` (`missions/ams/art-hd-bg-kit.ts`: palette indices,
+`airOf(light, air)` for the light and the haze, `leafMass` for trees), a content kit, not an
+engine API. `SectionView(section, terrain, seed, density = 1)` (game/mission/view.ts) draws them
+for a view of density ≥ 2 at the highest density ≤ min(density, art tier) that k can show;
+`view.dispose()` drops its queued jobs.
 `DrawOpts`: `flipX`, `flipY`, `flash` (white silhouette), `tint` (silhouette in any colour;
 overrides `flash`), `alpha`, `screen`, `blend:'add'`, `src: {x,y,w,h}` (draw only that part of
 the unflipped image, exactly where it would land in the full drawing; in LOGICAL px of the
@@ -417,12 +457,34 @@ function draw() {
 }
 ```
 
+**Screen art** (`src/game/scenes/base.ts`, UHD art): the screens outside the mission (title,
+menus, select, intro card, pause, continue, ending) draw dense art at `screenTier(r)` (the art
+tier, at most the backbuffer res). `screenArt(r, ids)` → the density to draw a group at NOW: the
+highest ≤ the tier at which every id is built (missing frames go to the screen art pool; no
+allocation once built); `screenArtOf(r, id)` for one id; `drawScreenSprite(r, id, frame, x, y,
+o?)` (`r.sprite` at that density); `drawScreenCursor(r, x, y, t)` (the menu cursor);
+`prefetchScreenArt(r, ids)` asks the pool now for what the NEXT screen draws;
+`releaseScreenArt(keep?)` → bytes freed: when the game proper starts it drops the 4× frames the
+screens built, except `keep` (`keepForHeroes(heroes)`: the chosen heroes' strips and the
+vehicles). `MENU_ART` lists the menu prefixes, `screenArtBytes()` their 4× bytes,
+`setScreenArtPool(factory)` replaces the pool (tests, tools; at most `SCREEN_POOL_MAX` = 4
+workers). The HUD draws its widgets and icons at `hudDensity(r)` (game/hud.ts); the glitch bridge
+drops the mission's 4× set with `releaseMissionDense()` (scenes/glitch-bridge.ts).
+
+**HD particles** (`particles.ts`): while a dense mission draws (art density ≥ 2, `hiArtOn()`, res
+≥ 2), 'pixel' and 'rect' particles draw as small HD frames in art px at `drawDensity(artDensity(),
+r.res)` instead of flat squares — a hot core with a glowing rim and a motion streak for additive
+sparks and embers, a round lit puff with a soft rim for smoke, dust and steam, a lit chunk for
+debris, drops and casings — at positions snapped to art px, in `PAL_HD` tones of the particle's
+colour; sprite particles move in art-px steps. The frames are built once per (look, size, colour,
+density) and cached: no per-tick allocation. The 1× draw is unchanged.
+
 **Upscalers** — `upscale.ts`: `UpscaleMode`, `UPSCALE_MODES`, `upscaleFactor(mode)` (integer),
 `upscale(buf, mode)` (pure, deterministic, mirror-symmetric; `'pixel'` returns `buf`).
 
 ## 8. Tools
 
-`npm run sprites -- [prefix] [--marks] [--scale 3] [--palette] [--density 2|4 [--all]] [--out dir]`: loads the art
+`npm run sprites -- [prefix] [--marks] [--scale 3] [--palette] [--palette-hd] [--density 2|4 [--all]] [--ray] [--out dir]`: loads the art
 modules (`ART_MODULE_IDS`), generates every sprite (or those matching `prefix`), writes one
 contact sheet per top-level group to `tmp/sprites/<group>.png` (split into `-2`, `-3` … when
 tall). Frames of one sprite are aligned by anchor. `--marks`: anchors cyan, points magenta.
@@ -444,11 +506,14 @@ that needs a larger res steps down as in the browser, with a warning on stderr a
 drawn in the sheet title); the PNG scale then defaults to 1. `npm run smoke` takes `--viewport WxH` and `--dpr n`. `npm run perf` measures browser
 frame times of the production build per viewport and mode (`docs/ARCHITECTURE.md` §9).
 
-`npm run anim-bench -- [prefix] [--density 1|2] [--runs 3] [--json out]`: generation ms (median
-of `--runs`, each group from an empty sprite cache) and frame counts per hero (`hero:<id>@1x/2x`),
+`npm run anim-bench -- [prefix] [--density 1|2|4] [--pool N] [--runs 3] [--json out] [--baseline]`:
+generation ms (median of `--runs`, each group from an empty sprite cache; `--pool N`: wall time
+with N worker_threads, the art pool) and frame counts per hero (`hero:<id>@1x/2x`),
 per rider set (`enemy/fatbike-youth`, `enemy/delivery-rider`), for the boot list (`boot@1x`:
 `bootArt` of the default launch, deferred sprites left out) and the ams 2× set (`ams-hi@2x`: every
-id with 2× art). The baseline of the animation wave is `tmp/anim-baseline.json`.
+id with 2× art; `ams-hd@4x` with `--density 4`). The baseline of the animation wave is
+`tmp/anim-baseline.json`. `npm run uhd-spike -- [--out dir] [--palette] [--only hero|swan|street|gear]`:
+the UHD style spike (`docs/ART_GUIDE.md` "UHD art").
 
 `npm run geometry-fixture -- <ids…> [--dry-run]`: rewrites only the named ids in
 `tests/engine/fixtures/sprite-geometry.json` (the geometry test, `tests/engine/hires.test.ts`) with

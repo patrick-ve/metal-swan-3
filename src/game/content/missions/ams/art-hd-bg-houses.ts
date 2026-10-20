@@ -504,62 +504,71 @@ const amsCanalHousesHd: HdBgGenerator = (w, h, p, seed, d) => {
     }
   }
   if (!water) return c.finish();
-  // The canal: the 1× reflections (2× compressed, whole-px wobble) on an HD water ramp per light.
+  // The canal: the reflections of the houses on an HD water ramp per light. The water mirrors a
+  // SOFT copy of the row above the quay (lightness boxed over about 3 logical px and two source
+  // rows), so window frames, mullions and bars dissolve into colour blobs; runs of 4-12 logical px
+  // are smeared and shifted a logical px left or right; the depth steps break in ripple dashes.
   const wr = waterRamp(light);
   const wi = rampI(air, wr);
   const nW = wi.length;
-  // Index → water tone by lightness (the 1× luminance map, highlights compressed: reflections are
-  // darker and softer than what they mirror), darker in two steps toward the viewer.
-  // One flat table: (depth step << 8) | source index → water index; index 0 (the sky) → sky tones.
+  // Index → reflected lightness 0 … 250 (the 1× luminance map, highlights compressed: reflections
+  // are darker and softer than what they mirror); index 0 (the sky) → a light sky tone.
+  const lq = tableOf((col) => Math.round(Math.min(0.8, Math.max(0, (oklab(col)[0] - 0.18) / 0.72)) * 250));
+  lq[0] = Math.round(((nW - 1.5) / (nW - 1)) * 250);
+  // Lightness → water index per depth step (3 steps darker toward the viewer).
   const lut = new Uint8Array(3 * 256);
   for (let dk = 0; dk < 3; dk++) {
-    lut.set(
-      tableOf((col) => {
-        const L = Math.min(0.8, Math.max(0, (oklab(col)[0] - 0.18) / 0.72));
-        const k = Math.min(nW - 2, Math.floor(L * (nW - 1)));
-        return wi[Math.max(0, k - dk)];
-      }),
-      dk << 8,
-    );
-    lut[dk << 8] = wi[Math.max(0, nW - 2 - dk)];
+    for (let q = 0; q < 256; q++) {
+      const k = Math.min(nW - 2, Math.floor((q / 250) * (nW - 1)));
+      lut[(dk << 8) | q] = wi[Math.max(0, k - dk)];
+    }
   }
   const top = quay + 4;
   const half = Math.max(1, d >> 1);
+  // One prefix-sum row of the soft source (wraps in x).
+  const pre = new Float64Array(W + 1);
+  const box = Math.round(1.5 * d);
+  const inv = 1 / (2 * (2 * box + 1));
   for (let Y = top * d; Y < c.H; Y++) {
     const dd = (Y + 0.5) / d - top;
     const wob = Math.round(Math.sin((Math.floor(dd) * 2 * Math.PI) / 7) * 1.5) * d;
     const sY = quay * d - 1 - 2 * (Y - top * d);
-    const srow = sY >= 0 ? sY * W : -1;
     const row = Y * W;
     const dark = dd / 12;
-    const brow = (Y & 7) << 3;
-    // The depth step: constant away from its band borders, dithered near them.
-    const fr = dark - Math.floor(dark);
     const kc = Math.min(2, Math.floor(dark));
-    const flat = dark >= 2.4 || (fr > 0.4 && fr < 0.6);
-    const kco = kc << 8;
-    // Broken reflections: runs of 2–8 logical px, some shifted a logical px left or right.
+    if (sY >= 0) {
+      const ra = sY * W;
+      const rb = (sY > 0 ? sY - 1 : sY) * W;
+      for (let X = 0; X < W; X++) pre[X + 1] = pre[X] + lq[pxs[ra + X]] + lq[pxs[rb + X]];
+    }
+    // Broken reflections: runs of 4-12 logical px, some shifted a logical px left or right.
     const key = Math.floor(Y / half);
     let X = 0;
     let seg = 0;
     while (X < W) {
       const hv = hash2(seg, key, seed + 17);
-      const end = Math.min(W, X + Math.round((2 + hv * 6) * d));
+      const end = Math.min(W, X + Math.round((4 + hv * 8) * d));
       const off = wob + (hash2(seg, key, seed + 19) < 0.4 ? (hv < 0.5 ? -d : d) : 0) + W;
-      for (; X < end; X++) {
-        let ko = kco;
-        if (!flat) {
-          const k = Math.floor(dark + (BAYER8[brow | (X & 7)] - 0.5) * 0.8);
-          ko = (k < 0 ? 0 : k > 2 ? 2 : k) << 8;
+      // The depth step of this run: its border with the next step breaks in dashes.
+      const k = Math.floor(dark + (hash2(seg, key, seed + 23) - 0.5) * 0.7);
+      const ko = (k < kc - 1 ? kc - 1 : k < 0 ? 0 : k > 2 ? 2 : k) << 8;
+      const tint = Math.round((hash2(seg, key, seed + 29) - 0.5) * 14) + 0.5;
+      if (sY < 0) {
+        const v = lut[ko | lq[0]];
+        for (; X < end; X++) pxs[row + X] = v;
+      } else {
+        // The box [a, b) over the soft source row, wrapped in x (no modulo per px).
+        let a = (X + off - box) % W;
+        let b = (X + off + box + 1) % W;
+        for (; X < end; X++) {
+          const sum = a < b ? pre[b] - pre[a] : pre[W] - pre[a] + pre[b];
+          let q = (sum * inv + tint) | 0;
+          if (q < 0) q = 0;
+          else if (q > 255) q = 255;
+          pxs[row + X] = lut[ko | q];
+          if (++a === W) a = 0;
+          if (++b === W) b = 0;
         }
-        let v = 0;
-        if (srow >= 0) {
-          let sx = X + off;
-          if (sx >= W) sx -= W;
-          if (sx >= W) sx -= W;
-          v = pxs[srow + sx];
-        }
-        pxs[row + X] = lut[ko | v];
       }
       seg++;
     }

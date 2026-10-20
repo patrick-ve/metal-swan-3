@@ -17,8 +17,8 @@
  * (docs/ARCHITECTURE.md §3), with the sprite filter --gfx (default pixel, as in the browser; a filter
  * that needs a larger res steps down with a warning, tools/lib/gfx.ts); the PNG scale then
  * defaults to 1 and the labels grow with k.
- * A mission with `artDensity: 2` (ams) draws its 2× art (docs/ART_GUIDE.md "2x art (mission
- * ams)") as in the browser: at --res 2 or more it shows the full 2× detail, at --res 1 its
+ * A mission with `artDensity` 2 or 4 (ams: 4) draws its dense art (docs/ART_GUIDE.md "2x art
+ * (mission ams)") as in the browser: at --res 2 or more it shows the 2× detail, at --res 1 its
  * reduction. --art 1 draws the 1× art instead (to compare); the sheet title names the art.
  * --art 4 (with --res 8, the 4K backbuffer, or --res 4) draws the 4× art of a mission with
  * `artDensity: 4` (ids without 4× art draw their 2× art).
@@ -27,6 +27,8 @@
  * every --pose (tiles x, y and degrees: 0 east, 90 south) gives one frame after --ticks ticks
  * (default 0); with one pose (or none: the floor start) --every / --count make a timeline.
  * --hold keeps fps actions held (names from input-actions.ts, e.g. forward,turnRight,use).
+ * --res k / --art d as for a mission (e.g. --res 8 --art 4: the 4K backbuffer, the view at
+ * density 2, the HUD, the weapon view and the face at 4; the dense fps art is built first).
  * → tmp/shots/fps-<n>[-sheet].png.
  */
 import { pathToFileURL } from 'node:url';
@@ -43,6 +45,8 @@ import type { Difficulty } from '../src/game/session';
 import { createHeadlessGame, type BotRoute, type HeadlessGame } from '../src/sim/index';
 import { ACTION_BIT, FPS_ACTIONS, type FpsAction } from '../src/engine/input-actions';
 import { createHeadlessFps, type HeadlessFps } from '../src/sim/headless-fps';
+import { SoftRenderer } from '../src/engine/render-soft';
+import { ensureFpsDenseArt, setFpsArtPool } from '../src/game/content/fps/dense-load';
 import { resolveGfx } from './lib/gfx';
 import { savePNG, SHEET } from './lib/image';
 
@@ -273,14 +277,18 @@ interface FpsArgs {
   out?: string;
   scale: number;
   cols: number;
+  /** Backbuffer res (1: the classic 384×216 image; 8: the 4K backbuffer). */
+  res: number;
+  /** Art tier (as the mission shots: 2 default, 4 at res 4 / 8, 1 the 1× art). */
+  art: number;
 }
 
 const FPS_USAGE =
   'usage: npm run shot -- --fps 0 [--pose x,y,deg[;x,y,deg…]] [--ticks n] [--every n --count k] [--hold forward,use] ' +
-  '[--seed 1] [--difficulty normal] [--god] [--unfold] [--out file.png] [--scale 2] [--cols 3]';
+  '[--seed 1] [--difficulty normal] [--god] [--unfold] [--out file.png] [--scale 2] [--cols 3] [--res 1] [--art 1|2|4]';
 
 function parseFpsArgs(argv: readonly string[]): FpsArgs {
-  const a: FpsArgs = { floor: 0, poses: [], ticks: 0, every: 0, count: 1, seed: 1, difficulty: 'normal', god: false, unfold: false, hold: [], scale: 0, cols: 3 };
+  const a: FpsArgs = { floor: 0, poses: [], ticks: 0, every: 0, count: 1, seed: 1, difficulty: 'normal', god: false, unfold: false, hold: [], scale: 0, cols: 3, res: 1, art: 2 };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
     const next = (): string => {
@@ -343,6 +351,12 @@ function parseFpsArgs(argv: readonly string[]): FpsArgs {
       case '--cols':
         a.cols = Math.max(1, Math.min(8, Math.round(num())));
         break;
+      case '--res':
+        a.res = Math.max(1, Math.min(8, Math.round(num())));
+        break;
+      case '--art':
+        a.art = toArtDensity(num());
+        break;
       case '--help':
       case '-h':
         console.log(FPS_USAGE);
@@ -363,8 +377,25 @@ function fpsLabel(h: HeadlessFps): string {
   return `t=${h.ticks}  x=${p.x.toFixed(2)} y=${p.y.toFixed(2)} ${deg}deg  ${g.state}`;
 }
 
+/**
+ * One fps frame at the shot's res: the headless harness renders at res 1, so a dense shot draws
+ * the scene into its own software renderer (the view at density `fpsViewDensity`, the HUD, the
+ * weapon view and the face at the tier, as in the browser).
+ */
+function fpsFrame(h: HeadlessFps, r: SoftRenderer | null): PixelBuffer {
+  if (!r) return h.renderFrame();
+  r.begin();
+  h.app.scenes.draw(r);
+  r.end();
+  return r.target;
+}
+
 async function fpsMain(argv: readonly string[]): Promise<void> {
   const a = parseFpsArgs(argv);
+  const tier = a.art < 2 ? 1 : a.res >= 2 ? tierAtRes(a.art, a.res) : a.art;
+  if (tier < 2) setHiArt(false);
+  else setArtTier(tier);
+  const dense = a.res > 1 ? new SoftRenderer(undefined, undefined, undefined, { res: a.res, mode: 'pixel' }) : null;
   let mask = 0;
   for (const name of a.hold) mask |= ACTION_BIT[name];
   // `use` and `fire` are tapped (a press every other tick), the rest is held.
@@ -385,16 +416,22 @@ async function fpsMain(argv: readonly string[]): Promise<void> {
     });
     last?.dispose();
     last = h;
+    // The dense fps art in this thread first (the browser's pool builds it in the background).
+    if (dense && tier >= 2) {
+      setFpsArtPool(() => null);
+      await ensureFpsDenseArt(tier, ['recruit']);
+    }
     h.step(a.ticks);
     const n = poses.length === 1 ? a.count : 1;
     for (let i = 0; i < n; i++) {
       if (i > 0) h.step(a.every || 60);
-      frames.push({ buf: h.renderFrame().clone(), label: fpsLabel(h) });
+      frames.push({ buf: fpsFrame(h, dense).clone(), label: fpsLabel(h) });
     }
   }
-  const title = `FPS FLOOR ${a.floor}  seed ${a.seed}  ${a.difficulty}${a.god ? '  god' : ''}`;
+  const art = dense ? `  res ${a.res}${tier >= 2 ? `  ${tier}x art` : ''}` : '';
+  const title = `FPS FLOOR ${a.floor}  seed ${a.seed}  ${a.difficulty}${a.god ? '  god' : ''}${art}`;
   const file = a.out ?? join('tmp/shots', frames.length === 1 ? `fps-${a.floor}.png` : `fps-${a.floor}-sheet.png`);
-  savePNG(sheet(frames, frames.length === 1 ? 1 : a.cols, title), file, a.scale || (frames.length === 1 ? 2 : 1));
+  savePNG(sheet(frames, frames.length === 1 ? 1 : a.cols, title, a.res), file, a.scale || (frames.length === 1 && a.res === 1 ? 2 : 1));
   console.log(`${frames.length} frame(s) → ${file}`);
   if (last) {
     const report = last.report();

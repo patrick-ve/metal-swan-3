@@ -263,8 +263,8 @@ describe('UHD art of the menus', () => {
       s.draw(r);
       expect(r.densityOf('ui/mil/frame')).toEqual([4]);
       expect(r.densityOf('ui/mil/plate')).toEqual([4]);
-      // The select portraits have 2× art only.
-      expect(r.densityOf('char/vincent/select')).toEqual([2]);
+      // The select portraits have 4× art too (polish wave): at tier 4 they draw at 4×.
+      expect(r.densityOf('char/vincent/select')).toEqual([4]);
       // Tier 2: everything at 2×.
       setArtTier(2);
       const r2 = new DensityRecorder(8);

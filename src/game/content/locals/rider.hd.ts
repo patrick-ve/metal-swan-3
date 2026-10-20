@@ -24,7 +24,7 @@ import type { Color } from '../../../engine/color';
 import { PAL_HD, hdHome } from '../../../engine/palette-hd';
 import { PixelBuffer, type Ramp } from '../../../engine/pixel';
 import type { Frame } from '../../../engine/render';
-import { HdCanvas, type DrawOpts, type HdMaterial } from '../../art/hd';
+import { BLACK_ONE_HUE, HdCanvas, type DrawOpts, type HdMaterial } from '../../art/hd';
 import { spanOf } from '../../art/hd/body';
 import { R } from '../../art/paint';
 
@@ -149,7 +149,7 @@ function drawWheel(kind: BikeKind, phase: number, d: HdD): PixelBuffer {
   const rc = (Ro + Ri) / 2;
   const tr = (Ro - Ri) / 2;
   const c = new HdCanvas(S, S, d);
-  const rubber = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.45, shine: 12, wrap: 0.05 });
+  const rubber = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.45, shine: 12, wrap: 0.05 });
   // Tread knobs turn with the phase: one phase step = a quarter of the knob period (a 4-frame loop).
   const nK = fat ? (d === 4 ? 22 : 16) : 30;
   const kStep = TAU / nK;
@@ -332,11 +332,11 @@ function drawBikeHd(kind: BikeKind, o: BikeHdOpts, d: HdD, rect: Rect): Frame {
 
   // Glossy paint: three lit bands round the 1× frame colour (the deep tone only in crevices).
   const paint = onTone(c, R(o.color), 2, { spec: 0.85, shine: 30, wrap: 0.05 }, 1);
-  const black = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.55, shine: 22, wrap: 0.05 });
-  const matte = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.2, shine: 10, wrap: 0.1 });
+  const black = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.55, shine: 22, wrap: 0.05 });
+  const matte = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.2, shine: 10, wrap: 0.1 });
   const steel = c.material({ ramp: PAL_HD.steel, lo: 2, hi: 5, spec: 0.9, shine: 26, wrap: 0.05 });
   const chrome = c.material({ ramp: PAL_HD.steel, lo: 3, hi: 6, spec: 1, shine: 34 });
-  const leather = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.65, shine: 16, wrap: 0 });
+  const leather = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.65, shine: 16, wrap: 0 });
   const redLamp = c.material({ ramp: PAL_HD.red, lo: 3, hi: 6, spec: 0.8, shine: 24 });
 
   const rear = T(geo.rear);
@@ -548,9 +548,9 @@ function drawBikeHd(kind: BikeKind, o: BikeHdOpts, d: HdD, rect: Rect): Frame {
 export function cubePackHd(open: boolean, d: HdD): PixelBuffer {
   const c = new HdCanvas(16, 16, d);
   const fabric = c.material({ ramp: PAL_HD.green, lo: 2, hi: 6, spec: 0.2, shine: 10, wrap: 0.08 });
-  const band = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.15, wrap: 0.1 });
+  const band = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.15, wrap: 0.1 });
   const foil = c.material({ ramp: PAL_HD.steel, lo: 3, hi: 6, spec: 1, shine: 18 });
-  const strap = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.4, shine: 14 });
+  const strap = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.4, shine: 14 });
   const top = open ? 4 : 2;
   const body = c.newPart();
   c.blob([[1, top], [14, top], [14, 14], [1, 14]], 1.3, { mat: fabric, z: 0, part: body, bulge: 0.3 });
@@ -604,8 +604,8 @@ export function capFramesHd(d: HdD): Frame[] {
   const out: Frame[] = [];
   for (let i = 0; i < 4; i++) {
     const c = new HdCanvas(12, 10, d);
-    const cloth = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.15, shine: 8, wrap: 0.1 });
-    const peakM = c.material({ ramp: PAL_HD.black, lo: 2, hi: 5, spec: 0.35, shine: 14, wrap: 0.05 });
+    const cloth = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.15, shine: 8, wrap: 0.1 });
+    const peakM = c.material({ ramp: BLACK_ONE_HUE, lo: 2, hi: 5, spec: 0.35, shine: 14, wrap: 0.05 });
     const button = c.material({ ramp: PAL_HD.snow, lo: 3, hi: 6, spec: 0.5, shine: 14 });
     const crown = c.newPart();
     c.ellipsoid(5.5, 5.2, 3.5, 3.2, { mat: cloth, z: 0, part: crown });

@@ -9,8 +9,31 @@
  * quantises tones to the material's HD ramp. The bounce is "cool" because the low end of every HD
  * ramp leans blue / purple: lifting a shadow by a bounce keeps it in the cool tones.
  */
+import { PAL_HD } from '../../../engine/palette-hd';
+import type { Ramp } from '../../../engine/pixel';
 
 /** Unit vector towards the key light: upper left, in front. */
+/**
+ * Black leather, rubber and cloth (gloves, boots, belts, holsters, black caps): PAL_HD.black runs
+ * through a purple tone 2 and a steel-blue tone 3 at almost the same lightness, so a lit glove
+ * split into two hue patches. This one-hue path (all PAL_HD colours, same length and tone
+ * positions, monotonic lightness, cool like the bounce) replaces it for every body / gear / head
+ * material; `oneHue` maps any HD ramp (only black changes).
+ */
+export const BLACK_ONE_HUE: Ramp = [
+  PAL_HD.black[0],
+  PAL_HD.steel[0],
+  PAL_HD.steel[1],
+  PAL_HD.black[3],
+  PAL_HD.black[4],
+  PAL_HD.black[5],
+  PAL_HD.black[6],
+];
+
+export function oneHue(r: Ramp): Ramp {
+  return r === PAL_HD.black ? BLACK_ONE_HUE : r;
+}
+
 export const KEY: readonly [number, number, number] = norm3(-0.55, -0.6, 0.6);
 /** Unit vector towards the bounce light: lower right, slightly behind. */
 export const BOUNCE: readonly [number, number, number] = norm3(0.75, 0.55, 0.2);

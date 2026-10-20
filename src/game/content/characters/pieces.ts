@@ -9,8 +9,7 @@
  * its 2× and its 4× art. `pieceHd(lo, d)` returns that art for a cached 1× piece buffer: exactly
  * d times the 1× buffer's size, the same logical layout (the drawing sits in the same 1-logical-px
  * border, so `at` / `onGround` place it the same way). `decorateFrames` (the hero files' hook)
- * draws the HD art on every 2× and 4× frame. The old `hiRows` 2× twins stay registered with
- * `setHiTwin` (direct `withPieces` callers) until the rig's HD body path retires them.
+ * draws the HD art on every 2× and 4× frame (the old hand-drawn 2× twins are retired).
  */
 import { ascii } from '../../../engine/ascii';
 import type { Color } from '../../../engine/color';
@@ -18,9 +17,8 @@ import { PixelBuffer } from '../../../engine/pixel';
 import { INK, PAL } from '../../../engine/palette';
 import { PAL_HD } from '../../../engine/palette-hd';
 import { frameW, type Frame } from '../../../engine/render';
-import { HdCanvas, folds, type HdDensity, type Texture } from '../../art/hd';
-import { setHiTwin, withPieces, type Piece } from '../../art/human-fx';
-import { outlineHi } from '../../art/hi';
+import { BLACK_ONE_HUE, HdCanvas, folds, type HdDensity, type Texture } from '../../art/hd';
+import { withPieces, type Piece } from '../../art/human-fx';
 import { hash2 } from '../../art/paint';
 
 /** Draws a piece's HD art on a canvas of the 1× buffer's logical size (the 1-px border included). */
@@ -29,9 +27,6 @@ export type PieceHdDraw = (c: HdCanvas, d: HdDensity) => void;
 interface PieceOpts {
   /** Own INK outline (default true): outline A at HD. */
   outline?: boolean;
-  /** Hand-drawn 2× twin rows (retired once the rig's HD path uses `pieceHd`). */
-  hiRows?: readonly string[];
-  hiKey?: Readonly<Record<string, Color>>;
   /** The UHD drawer (2× and 4×). */
   hd?: PieceHdDraw;
 }
@@ -47,10 +42,7 @@ const HD_OF = new WeakMap<PixelBuffer, HdEntry>();
 const hdCache = new Map<string, PixelBuffer>();
 
 /**
- * Build (once) an outlined piece from ascii rows. `hiRows` (mission ams, docs/ART_GUIDE.md "2x
- * art (mission ams)"): a hand-drawn 2× twin, exactly twice the 1× rows, with the same key plus
- * any extra letters in `hiKey`; it gets the 2-px outline and is registered with `setHiTwin`, so
- * `withPieces` draws it on 2× frames. `hd`: the UHD drawer (see `pieceHd`).
+ * Build (once) an outlined piece from ascii rows. `hd`: the UHD drawer (see `pieceHd`).
  */
 function piece(name: string, rows: readonly string[], key: Readonly<Record<string, Color>>, o: PieceOpts = {}): PixelBuffer {
   let b = cache.get(name);
@@ -62,17 +54,6 @@ function piece(name: string, rows: readonly string[], key: Readonly<Record<strin
     b.blit(raw, 1, 1);
     if (outline) b.outline(INK);
     cache.set(name, b);
-    const hiRows = o.hiRows;
-    if (hiRows) {
-      if (hiRows.length !== raw.h * 2 || hiRows.some((r) => r.length !== raw.w * 2)) {
-        throw new Error(`2× piece ${name}: ${hiRows[0]?.length ?? 0}×${hiRows.length}, expected ${raw.w * 2}×${raw.h * 2}`);
-      }
-      const rawHi = ascii(hiRows as string[], { ...key, ...(o.hiKey ?? {}) });
-      const hb = new PixelBuffer(b.w * 2, b.h * 2);
-      hb.blit(rawHi, 2, 2);
-      if (outline) outlineHi(hb, 2);
-      setHiTwin(b, hb);
-    }
     if (o.hd) HD_OF.set(b, { name, outline, draw: o.hd });
   }
   return b;
@@ -228,8 +209,6 @@ export function pocketWatch(): PixelBuffer {
 export function yarnBall(): PixelBuffer {
   // 2×: wound strands (1-px dark lines) across a ball lit from the top-left.
   return piece('yarn', ['.rR.', 'rRrR', 'rrRr', '.rr.'], { r: PAL.red[1], R: PAL.red[3] }, {
-    hiRows: ['..RRRr..', '.RRrRRr.', 'RRrRRrrd', 'RrRRrrdr', 'rRRrrdrr', 'rrrrdrrd', '.rrdrrd.', '..rrdd..'],
-    hiKey: { d: PAL.red[0] },
     hd: (c, d) => {
       const wool = c.material({ ramp: PAL_HD.red, spec: 0.15, shine: 8, rim: 0.4 });
       // Two crossing layers of wound strands: grooves between the strands, the top layer at 35°.
@@ -367,8 +346,6 @@ export function helmet(): PixelBuffer {
 /** Bubble-gum bubbles for Pip's fidget: size 0 (small) … 2 (big). */
 export function bubble(size: 0 | 1 | 2): PixelBuffer {
   const key = { p: PAL.pink[1], P: PAL.pink[2], w: PAL.snow[3] };
-  // 2×: a round bubble with a 1-px glint at the top-left and a darker rim at the bottom-right.
-  const dk = { d: PAL.pink[0] };
   const hd = (cx: number, r: number): PieceHdDraw => (c, d) => {
     const gum = c.material({ ramp: PAL_HD.pink, spec: 1, shine: 40, rim: 0.5, wrap: 0.2 });
     c.ellipsoid(cx, cx, r, r, { mat: gum, z: 0, round: 0.85 });
@@ -376,32 +353,13 @@ export function bubble(size: 0 | 1 | 2): PixelBuffer {
     // A second, smaller window reflection at 4× on the bigger bubbles.
     if (d >= 4 && r > 1.5) c.dot(cx + r * 0.38, cx + r * 0.42, PAL_HD.pink[6]);
   };
-  if (size === 0) return piece('bubble0', ['Pp', 'pp'], key, { hiRows: ['.Pp.', 'PwPp', 'Pppp', '.pd.'], hiKey: dk, hd: hd(2, 1.05) });
+  if (size === 0) return piece('bubble0', ['Pp', 'pp'], key, { hd: hd(2, 1.05) });
   if (size === 1) {
     return piece('bubble1', ['.Pp.', 'Pwpp', 'pppp', '.pp.'], key, {
-      hiRows: ['..PPpp..', '.PwPPpp.', 'PwPPpppp', 'PPPppppp', 'Pppppppp', 'pppppppd', '.ppppdd.', '..pddd..'],
-      hiKey: dk,
       hd: hd(3, 2.05),
     });
   }
   return piece('bubble2', ['..PPp..', '.PwPppp.', 'PwPpppp', 'PPppppp', 'ppppppp', '.ppppp.', '..ppp..'], key, {
-    hiRows: [
-      '....PPPpp.......',
-      '..PPPPPPpppp....',
-      '..PwwPPPppppp...',
-      '.PwPPPPpppppp...',
-      'PwPPPPppppppp...',
-      'PPPPPppppppppp..',
-      'PPPPpppppppppp..',
-      'PPPppppppppppp..',
-      'Ppppppppppppp...',
-      'pppppppppppppd..',
-      '.pppppppppppdd..',
-      '.ppppppppppdd...',
-      '...ppppppddd....',
-      '....pppddd......',
-    ],
-    hiKey: dk,
     hd: hd(4.5, 3.5),
   });
 }
@@ -410,7 +368,6 @@ export function bubble(size: 0 | 1 | 2): PixelBuffer {
 export function gumSplat(): PixelBuffer {
   return piece('splat', ['.p.pp.', 'pPppPp', 'ppPppp', '.pp.p.'], { p: PAL.pink[1], P: PAL.pink[2] }, {
     outline: false,
-    hiRows: ['..p...pp....', '.ppp.pPPp...', '.pPpppPpppp.', 'ppPPppppPpp.', 'pppppPpppppp', '.ppPpppppPp.', '..pp..ppp...', '...p...p....'],
     hd: (c, d) => {
       // Gum squashed flat over the face: one low, wet mass with lobes and two drips (a soft sheen,
       // not a bumpy pile), a glint on the biggest lobe.
@@ -483,8 +440,6 @@ export function dentures(open: boolean): PixelBuffer {
 export function scarfEnd(): PixelBuffer {
   // 2×: the bunched cloth with 1-px fold lines and a frayed end.
   return piece('scarf-end', ['wW.', 'WwW', '.ww', '..w'], { w: PAL.snow[1], W: PAL.snow[3] }, {
-    hiRows: ['wWWW..', 'WWWw..', 'WWfWWW', 'WfWWww', '..wwWw', '..wfww', '....fw', '....w.'],
-    hiKey: { f: PAL.snow[0] },
     hd: (c, d) => {
       // Ivory wool (Grace's scarf: the snow ramp's light end, like her rig scarf).
       const wool = c.material({ ramp: PAL_HD.snow, spec: 0.1, shine: 10, rim: 0.35, lo: 3 });
@@ -551,12 +506,10 @@ export function sparkle(big: boolean): PixelBuffer {
   return big
     ? piece('sparkle-big', ['..y..', '..w..', 'ywwwy', '..w..', '..y..'], key, {
         outline: false,
-        hiRows: ['....y.....', '....w.....', '....ww....', '...wwww...', 'ywwwwwwww.', '.wwwwwwwwy', '...wwww...', '....ww....', '.....w....', '.....y....'],
         hd: hd(3.5, 2.5),
       })
     : piece('sparkle', ['.y.', 'ywy', '.y.'], key, {
         outline: false,
-        hiRows: ['...y..', '..ww..', '.wwwwy', 'ywwww.', '..ww..', '..y...'],
         hd: hd(2.5, 1.5),
       });
 }
@@ -564,30 +517,15 @@ export function sparkle(big: boolean): PixelBuffer {
 /** A dust puff (cartoon cloud) of size 0 (small) or 1 (big). */
 export function dustPuff(size: 0 | 1): PixelBuffer {
   const key = { s: PAL.stone[2], S: PAL.stone[3] };
-  // 2×: rounder puffs, lit on top, a 1-px shadow along the underside.
-  const dk = { d: PAL.stone[1] };
   // Soft cartoon dust: a few big lobes blended into one cloud (no rubble), lit on top, low contrast.
   const dust = (c: HdCanvas): number => c.material({ ramp: PAL_HD.stone, spec: 0, wrap: 0.6, amb: 0.2, rim: 0.2, lo: 3 });
   return size === 0
     ? piece('dust0', ['.SS.S.', 'SSsSSs', '.sssS.'], key, {
-        hiRows: ['..SSS...SS..', '.SSSSS.SSSs.', 'SSSSsSSSSSss', 'SSsssSSSssss', '.sssssssssd.', '..ddsssddd..'],
-        hiKey: dk,
         hd: (c) => {
           puffs(c, [[2.8, 2.3, 1.45, 1.2], [5.3, 2.25, 1.25, 1.1], [4, 3.2, 1.3, 0.85], [1.8, 3.2, 0.85, 0.7], [6.2, 3.1, 0.85, 0.7]], { mat: dust(c), smooth: true, relief: 0.8 });
         },
       })
     : piece('dust1', ['..SS..SS..', '.SSSsSSSs.', 'SSsssSSssS', '.ssssssss.'], key, {
-        hiRows: [
-          '....SSS.....SSS.....',
-          '...SSSSS...SSSSSs...',
-          '..SSSSSSssSSSSSSss..',
-          '.SSSSsssssSSSSssss..',
-          'SSSsssssSSSssssssSSs',
-          'SSssssssSsssssssssss',
-          '.sssssssssssssssssd.',
-          '..dddsssssddsssddd..',
-        ],
-        hiKey: dk,
         hd: (c) => {
           puffs(c, [
             [3.8, 2.55, 1.75, 1.45], [7.9, 2.55, 1.75, 1.45], [5.8, 3.7, 1.6, 1.05], [2.2, 3.8, 1.25, 0.95], [9.7, 3.7, 1.25, 0.95], [10.5, 4.1, 0.7, 0.55], [1.6, 4.3, 0.7, 0.5],
@@ -611,18 +549,6 @@ export function heliumPuff(): PixelBuffer {
 /** Vincent's battle plan, unrolled: cream paper, a blue route with arrows, red target crosses. */
 export function planSheet(): PixelBuffer {
   return piece('plan-sheet', ['PPPPPPP', 'PbPPRPP', 'PPbPPPP', 'PPPbbbR', 'ppppppp'], { P: PAL.sand[3], p: PAL.sand[2], b: PAL.sky[1], R: PAL.red[2] }, {
-    hiRows: [
-      'PPPPPPPPPPPPPP',
-      'PPPPPPPPPPPPPP',
-      'PPbPPPPPRPPRPP',
-      'PPbbPPPPPRRPPP',
-      'PPPbbPPPPRRPPP',
-      'PPPPbbPPRPPRPP',
-      'PPPPPbbPPPPPPP',
-      'PPPPPPbbbbbbRR',
-      'pppppppppppppp',
-      'pPpppppppppPpp',
-    ],
     hd: (c, d) => {
       const paper = c.material({ ramp: PAL_HD.sand, spec: 0.05, lo: 3, rim: 0.2 });
       // The sheet (a faint grid, a slight sag), the rolled bottom edge.
@@ -666,8 +592,6 @@ export function planSheet(): PixelBuffer {
 /** Bob's boarding pass: a blue stub and a white ticket with a barcode. */
 export function boardingPass(): PixelBuffer {
   return piece('boarding-pass', ['bbSSS', 'bbS1S', 'bbSSS'], { b: PAL.sky[1], S: PAL.snow[3], '1': PAL.steel[1] }, {
-    hiRows: ['bbbSSSSSSS', 'bBbSS1S1SS', 'bbbSSSSSSS', 'bBbS1S1S1S', 'bbbSSSSSSS', 'bbbSSSSSSS'],
-    hiKey: { B: PAL.sky[2] },
     hd: (c, d) => {
       const blue = c.material({ ramp: PAL_HD.sky, spec: 0.15, rim: 0.2 });
       const paper = c.material({ ramp: PAL_HD.snow, spec: 0.1, lo: 3, rim: 0.2 });
@@ -700,10 +624,8 @@ export function boardingPass(): PixelBuffer {
 /** Patrick's pocket device: a small glowing screen (the outline is its bezel). */
 export function pocketDevice(): PixelBuffer {
   return piece('pocket-device', ['cCc', 'ccc'], { c: PAL.teal[3], C: PAL.snow[3] }, {
-    hiRows: ['ccCCcc', 'cCCccc', 'cccccc', 'ccctcc'],
-    hiKey: { t: PAL.teal[2] },
     hd: (c, d) => {
-      const shell = c.material({ ramp: PAL_HD.black, spec: 0.9, shine: 30, rim: 0.4 });
+      const shell = c.material({ ramp: BLACK_ONE_HUE, spec: 0.9, shine: 30, rim: 0.4 });
       const e = 1 / d;
       // The dark glass bezel, the lit screen inside it (emissive), a diagonal glare and a status line.
       c.box(1, 1, 3, 2, { mat: shell, z: 0, bevel: 0.3, r: 0.3 });
@@ -721,7 +643,6 @@ export function pocketDevice(): PixelBuffer {
 export function deviceGlow(): PixelBuffer {
   return piece('device-glow', ['c.', '.c'], { c: PAL.teal[3] }, {
     outline: false,
-    hiRows: ['c...', '.c..', '..c.', '...c'],
     hd: (c, d) => {
       // The screen light caught on the jaw: a short diagonal glint (a long thin line reads as a
       // tear), one art px wide at 2×; at 4× two px wide, the bright core over a teal edge.

@@ -17,12 +17,13 @@ import {
   artTier,
   denseBytes,
   denseTarget,
+  generatedSprites,
   hasFramesAt,
   hasHiSprite,
   HI_ART_FRAME_BUDGET_MS,
-  isDeferredSprite,
   listHiSprites,
   preloadOrder,
+  readyFrames,
   releaseDense,
   setDeferDense,
   setDeferHiArt,
@@ -67,14 +68,18 @@ export const MISSION_ART_BUDGET_MS = HI_ART_FRAME_BUDGET_MS;
 
 /**
  * The order of a mission's 2× preload: the sprites of the joined players' characters first (the
- * first thing drawn), then the mission's `preloadFirst` prefixes; its `preloadLast` prefixes last.
+ * first thing drawn), then the mission's `preloadFirst` prefixes and the `art` of the section the
+ * play starts in (`section`, default the mission's `start`: its decor is on the first screen);
+ * its `preloadLast` prefixes last.
  */
 export function missionArtOrder(
-  mission: Pick<MissionDef, 'preloadFirst' | 'preloadLast'> | undefined,
+  mission: (Pick<MissionDef, 'preloadFirst' | 'preloadLast'> & Partial<Pick<MissionDef, 'start' | 'sections'>>) | undefined,
   session: Pick<GameSession, 'slots'> | null | undefined,
+  section: string | undefined = mission?.start,
 ): { first: string[]; last: string[] } {
   const chars = (session?.slots ?? []).filter((s) => s.joined).map((s) => `char/${s.character}/`);
-  return { first: [...new Set(chars), ...(mission?.preloadFirst ?? [])], last: [...(mission?.preloadLast ?? [])] };
+  const own = section ? (mission?.sections?.[section]?.art ?? []) : [];
+  return { first: [...new Set([...chars, ...(mission?.preloadFirst ?? []), ...own])], last: [...(mission?.preloadLast ?? [])] };
 }
 
 /** The mission art the preload needs: its order prefixes, sections and boss section. */
@@ -84,8 +89,8 @@ export type MissionArtDef = Pick<MissionDef, 'artDensity' | 'preloadFirst' | 'pr
 type ArtApp = Pick<GameApp, 'preloadArt' | 'session'> & { readonly artCache?: GameApp['artCache'] };
 
 /**
- * Bytes of 4× frames the tier-4 working set keeps resident (plan: 256 MB). Over it, the ids of
- * the sections behind are released, least recently used first (the chosen heroes never are).
+ * Bytes of 4× frames the tier-4 working set keeps resident (plan: 256 MB). Over it, the 4× ids
+ * outside the current set are released, least recently used first (the chosen heroes never are).
  */
 export const DENSE_BUDGET_BYTES = 256 * 1024 * 1024;
 /** How often (ms) the tier-4 pump hands the 4× ids drawn without frames to the pool. */
@@ -100,7 +105,7 @@ function missionPool(): ArtPool {
   return (pool ??= poolFactory());
 }
 
-/** The tier-4 working set of the running mission. */
+/** The tier-4 working set of the running mission (one per play: a new play starts a new run). */
 interface DenseRun {
   key: string;
   app: ArtApp;
@@ -109,9 +114,12 @@ interface DenseRun {
   order: string[];
   /** `char/<id>/` of the chosen heroes (pinned: never released, never another hero at 4×). */
   heroes: string[];
-  /** Joined players (the P2-only art joins the working set with two). */
+  /** Joined players (the P2-only art joins the working set with two; `twoPlayer2x` with two). */
   players: number;
+  /** Index (in `order`) of the section entered last. */
   index: number;
+  /** The working set of that section (its ids are never released). */
+  current: Set<string>;
   /** Section index of each 4× id's last use (built for, or drawn in, that section). */
   lastUse: Map<string, number>;
   inFlight: Set<string>;
@@ -121,7 +129,7 @@ interface DenseRun {
    * queued again this run (no rebuild loop every DENSE_PUMP_MS).
    */
   unbuilt: Set<string>;
-  /** Ids already in a section pack this session. */
+  /** Ids already in a section pack this run. */
   packed: Set<string>;
   timer: ReturnType<typeof setInterval> | null;
 }
@@ -153,27 +161,35 @@ function idsUnder(prefixes: readonly string[], all: readonly string[]): string[]
 const TWO_PLAYER_ART = ['vehicle/swan-mute'];
 
 /**
- * Rare strips (the budget's last cut, tmp/uhd-budget.md): two players' working set is over
- * DENSE_BUDGET_BYTES even with every identical strip shared, so with two players these keep
- * their 2× art at tier 4 (left out of the set, never built when drawn): the deferred strips
- * (SpriteOpts.defer) of everyone but the heroes, the photo poses and the Swans' migration.
- * One player builds them at 4×.
+ * The budget's cut for two players (tmp/uhd-budget.md, measured 2026-10-20): two different heroes
+ * and the Mute Swan put every ams section over DENSE_BUDGET_BYTES (262-282 MB with every identical
+ * strip shared), so with two players the fatbike youths (solo and pair sets, about 97 MB at 4×)
+ * keep their 2× art at tier 4: left out of the set and never built when drawn. One player builds
+ * them at 4×. (This replaces the earlier rare-strip cut, which kept no section under the budget.)
  */
-const RARE_ART = [/^enemy\/.+\/photo-pose$/, /^vehicle\/swan(-mute)?\/migrate/];
+const TWO_PLAYER_2X = ['enemy/fatbike-youth'];
 
-/** Is `id` a rare strip that stays 2× at tier 4 with `players` players (never a hero's)? */
-export function rareDenseArt(id: string, players: number): boolean {
-  return players > 1 && !id.startsWith('char/') && (isDeferredSprite(id) || RARE_ART.some((re) => re.test(id)));
+/**
+ * A hero's strips only the menus draw (the select portraits; the screens build them through the
+ * screen art pool): never in the tier-4 working set (about 1 MB of 4× frames per hero).
+ */
+const SCREEN_ONLY = /^char\/[^/]+\/(select|portrait)/;
+
+/** Does `id` keep its 2× art at tier 4 with `players` players (never a hero's)? */
+export function twoPlayer2x(id: string, players: number): boolean {
+  return players > 1 && TWO_PLAYER_2X.some((p) => id.startsWith(p));
 }
 
 /**
  * The tier-4 working set of section `index` in build order: the chosen heroes, the mission's
- * `preloadFirst`, the current and the next section's `art`, the boss (`preloadLast`) at the end.
- * Only ids with a 4× generator; the other heroes never. To stay inside DENSE_BUDGET_BYTES the
- * P2-only art joins only with two players, the rare strips only with one (`rareDenseArt`), and
- * the `boss/` prefixes only in the boss section (built on entry, long before the fight; a 4× id
- * drawn outside its set shows its 2× art and is queued). On entry the ids of the sections behind
- * are released first when over the budget.
+ * `preloadFirst`, the current and the next section's `art` (not its `fx/`), the boss
+ * (`preloadLast`) at the end.
+ * Only ids with a 4× generator; the other heroes never, nor the heroes' menu-only strips
+ * (`SCREEN_ONLY`). To stay inside DENSE_BUDGET_BYTES the
+ * P2-only art joins only with two players, `twoPlayer2x` ids only with one, and the `boss/`
+ * prefixes only in the boss section (built on entry, long before the fight; a 4× id drawn outside
+ * its set shows its 2× art and is queued). On entry the ids outside the new set are released
+ * first (oldest first) as far as the budget needs room for the ids still to build.
  * A 4× alias (sprites.ts `defineDenseAlias`) stands for its target: the set holds the target,
  * once, at the alias's place when that comes first.
  */
@@ -186,27 +202,53 @@ export function denseWorkingSet(
 ): string[] {
   const all = listHiSprites(4).filter(
     (id) =>
-      (!id.startsWith('char/') || heroes.some((h) => id.startsWith(h))) &&
+      (!id.startsWith('char/') || (heroes.some((h) => id.startsWith(h)) && !SCREEN_ONLY.test(id))) &&
       (players > 1 || !TWO_PLAYER_ART.some((p) => id.startsWith(p))) &&
-      !rareDenseArt(id, players),
+      !twoPlayer2x(id, players),
   );
   const boss = mission.bossSection;
   const last = (mission.preloadLast ?? []).filter((p) => !boss || section === boss || !p.startsWith('boss/'));
-  const ids = idsUnder([...heroes, ...(mission.preloadFirst ?? []), ...sectionArt(mission, section), ...sectionArt(mission, next), ...last], all);
+  // The next section's effects are not built ahead (they show in play, not on its first screen).
+  const ahead = sectionArt(mission, next).filter((p) => !p.startsWith('fx/'));
+  const ids = idsUnder([...heroes, ...(mission.preloadFirst ?? []), ...sectionArt(mission, section), ...ahead, ...last], all);
   return [...new Set(ids.map((id) => denseTarget(id, 4)))];
 }
 
 /**
- * Release 4× ids of the sections behind (least recently used first, never the heroes) until
- * the resident 4× frames fit `budget`. Returns the bytes freed.
+ * Bytes the 4× frames of `ids` will take, from their 1× frames (a dense frame has its 1× frame's
+ * logical size: 16 × the 1× pixels at 4×), else from their 2× frames (4 × their pixels); ids with
+ * 4× frames, or with neither yet, count 0. Never generates.
+ */
+export function denseEstimate(ids: Iterable<string>): number {
+  let px = 0;
+  const seen = new Set<object>();
+  for (const id of ids) {
+    if (hasFramesAt(id, 4)) continue;
+    const one = readyFrames(id, 1);
+    const frames = one ?? readyFrames(id, 2) ?? [];
+    const k = one ? 16 : 4;
+    for (const f of frames) {
+      if (seen.has(f.buf)) continue;
+      seen.add(f.buf);
+      px += f.buf.w * f.buf.h * k;
+    }
+  }
+  return px * 4;
+}
+
+const isHero = (run: DenseRun, id: string): boolean => run.heroes.some((h) => id.startsWith(h));
+
+/**
+ * Release 4× ids outside the current set (least recently used first, never the heroes) until the
+ * resident 4× frames fit `budget`. Returns the bytes freed.
  */
 function trimDense(run: DenseRun, budget = denseBudget): number {
   let over = denseBytes(4) - budget;
   if (over <= 0) return 0;
-  const behind = [...run.lastUse].filter(([id, at]) => at < run.index && !run.heroes.some((h) => id.startsWith(h)));
-  behind.sort((a, b) => a[1] - b[1]);
+  const out = [...run.lastUse].filter(([id]) => !run.current.has(id) && !isHero(run, id));
+  out.sort((a, b) => a[1] - b[1]);
   let freed = 0;
-  for (const [id] of behind) {
+  for (const [id] of out) {
     if (over <= 0) break;
     const n = releaseDense([id], 4);
     run.lastUse.delete(id);
@@ -216,53 +258,83 @@ function trimDense(run: DenseRun, budget = denseBudget): number {
   return freed;
 }
 
-/** Build `ids` at 4× through the pool (those not built or in flight), then trim to the budget. */
-async function buildDense(run: DenseRun, ids: readonly string[]): Promise<void> {
+/**
+ * Build `ids` at 4× through the pool (those not built or in flight; `at` is their section
+ * index), then trim to the budget (also when everything was built or restored already).
+ */
+async function buildDense(run: DenseRun, ids: readonly string[], at: number): Promise<void> {
   const todo = ids.filter((id) => !hasFramesAt(id, 4) && !run.inFlight.has(id) && !run.unbuilt.has(id));
-  for (const id of ids) run.lastUse.set(id, run.index);
-  if (todo.length === 0) return;
-  for (const id of todo) run.inFlight.add(id);
-  try {
-    await missionPool().build(todo, 4);
-  } catch (err) {
-    // A failed build leaves the 2× stand-ins; the ids may be queued and tried again.
-    console.warn('[art-pool] 4× build failed', err);
-  } finally {
-    for (const id of todo) {
-      run.inFlight.delete(id);
-      if (!hasFramesAt(id, 4)) run.unbuilt.add(id);
+  for (const id of ids) run.lastUse.set(id, Math.max(run.lastUse.get(id) ?? at, at));
+  if (todo.length > 0) {
+    for (const id of todo) run.inFlight.add(id);
+    try {
+      await missionPool().build(todo, 4);
+    } catch (err) {
+      // A failed build leaves the 2× stand-ins; the ids may be queued and tried again.
+      console.warn('[art-pool] 4× build failed', err);
+    } finally {
+      for (const id of todo) {
+        run.inFlight.delete(id);
+        if (!hasFramesAt(id, 4)) run.unbuilt.add(id);
+      }
     }
   }
-  if (dense === run) trimDense(run);
+  if (dense === run) {
+    trimDense(run);
+    return;
+  }
+  // A build that came back after the run stopped (the tier fell, the play ended): drop what the
+  // running set (if any) does not hold or build.
+  const cur = dense;
+  releaseDense(todo.filter((id) => !id.startsWith('fps/') && !(cur && (cur.current.has(id) || cur.inFlight.has(id) || isHero(cur, id)))), 4);
 }
 
-/** Hand the 4× ids drawn without frames (sprites.ts `takeDenseQueue`) to the pool (not the rare strips of two players). */
+/**
+ * Hand the 4× ids drawn without frames (sprites.ts `takeDenseQueue`) to the pool (not the
+ * `twoPlayer2x` ids of two players). Below tier 4 (the governor, ART DETAIL) the run stops.
+ */
 export function pumpDenseQueue(): number {
   const run = dense;
+  if (run && artTier() < 4) {
+    stopDense();
+    return 0;
+  }
   const ids = takeDenseQueue();
   if (!run) return 0;
-  const todo = ids.filter((id) => hasHiSprite(id, 4) && !rareDenseArt(id, run.players));
-  if (todo.length) void buildDense(run, todo);
+  const todo = ids.filter((id) => hasHiSprite(id, 4) && !twoPlayer2x(id, run.players));
+  // Drawn now: they belong to the current set until the next section.
+  for (const id of todo) run.current.add(id);
+  if (todo.length) void buildDense(run, todo, run.index);
   return todo.length;
 }
 
-/** Enter section `section` of the tier-4 run: restore its 4× packs, build its working set, save. */
+/**
+ * Enter section `section` of the tier-4 run: release the ids outside its working set as far as
+ * the budget needs room for the ids still to build, restore its 4× packs, build the rest, trim,
+ * save the packs.
+ */
 async function enterDenseSection(run: DenseRun, section: string): Promise<void> {
   const i = run.order.indexOf(section);
-  run.index = Math.max(run.index, i < 0 ? 0 : i);
-  const next = run.order[run.index + 1];
+  const at = i < 0 ? 0 : i;
+  run.index = at;
+  const next = run.order[at + 1];
   const set = denseWorkingSet(run.mission, run.heroes, section, next, run.players);
-  const inSet = new Set(set);
+  run.current = new Set(set);
+  for (const id of set) run.lastUse.set(id, at);
+  // Room first: the section behind goes before the new one is built (no peak over the budget).
+  trimDense(run, denseBudget - denseEstimate(set));
+  const inSet = run.current;
   const cache = run.app.artCache;
   if (cache) {
     for (const h of run.heroes) await cache.restore(`hd4-char-${h.split('/')[1]}`, (id) => id.startsWith(h));
     for (const s of [section, next]) if (s) await cache.restore(`hd4-${s}`, (id) => inSet.has(id));
   }
-  if (dense !== run) return;
-  await buildDense(run, set);
+  // A newer section (or run) took over while the packs loaded.
+  if (dense !== run || run.index !== at) return;
+  await buildDense(run, set, at);
   if (!cache || dense !== run) return;
   for (const h of run.heroes) void cache.save(`hd4-char-${h.split('/')[1]}`, (id) => id.startsWith(h));
-  const own = set.filter((id) => !run.packed.has(id) && !run.heroes.some((h) => id.startsWith(h)));
+  const own = set.filter((id) => !run.packed.has(id) && !isHero(run, id));
   for (const id of own) run.packed.add(id);
   const ownSet = new Set(own);
   void cache.save(`hd4-${section}`, (id) => ownSet.has(id));
@@ -270,7 +342,10 @@ async function enterDenseSection(run: DenseRun, section: string): Promise<void> 
 
 /**
  * Tier 4: start (or keep) the working set of this mission and these heroes, from `section`.
- * Turns on `setDeferDense`: the main thread never generates 4× art during play.
+ * The same play keeps its run (the intro card, then the gameplay start; a player who joins: the
+ * set follows the new heroes and players). A new play (another mission, or a section before the
+ * run's) stops the old run first, which releases its 4× frames. Turns on `setDeferDense`: the
+ * main thread never generates 4× art during play.
  */
 function startDense(app: ArtApp, mission: MissionArtDef, session: Pick<GameSession, 'slots'> | null, section: string | undefined): void {
   const joined = (session?.slots ?? []).filter((s) => s.joined);
@@ -278,22 +353,54 @@ function startDense(app: ArtApp, mission: MissionArtDef, session: Pick<GameSessi
   const players = joined.length;
   const key = `${mission.id ?? '?'}|${heroes.join(',')}|${players}`;
   setDeferDense(true);
-  if (dense?.key !== key) {
-    if (dense?.timer) clearInterval(dense.timer);
-    const order = Object.keys(mission.sections ?? {});
-    dense = { key, app, mission, order, heroes, players, index: 0, lastUse: new Map(), inFlight: new Set(), unbuilt: new Set(), packed: new Set(), timer: null };
-    if (app.preloadArt && typeof setInterval === 'function') dense.timer = setInterval(pumpDenseQueue, DENSE_PUMP_MS);
+  const order = Object.keys(mission.sections ?? {});
+  const sec = section ?? mission.start ?? order[0] ?? '';
+  const at = Math.max(0, order.indexOf(sec));
+  let run = dense;
+  if (run && (run.mission.id !== mission.id || at < run.index)) {
+    stopDense();
+    run = null;
   }
-  void enterDenseSection(dense, section ?? mission.start ?? dense.order[0] ?? '');
+  if (run) {
+    run.key = key;
+    run.app = app;
+    run.heroes = heroes;
+    run.players = players;
+  } else {
+    run = { key, app, mission, order, heroes, players, index: at, current: new Set(), lastUse: new Map(), inFlight: new Set(), unbuilt: new Set(), packed: new Set(), timer: null };
+    if (app.preloadArt && typeof setInterval === 'function') run.timer = setInterval(pumpDenseQueue, DENSE_PUMP_MS);
+    dense = run;
+  }
+  void enterDenseSection(run, sec);
+}
+
+/**
+ * Stop the tier-4 working set: the play ended (gameplay exits) or the art tier fell below 4 (the
+ * governor, ART DETAIL). No more 4× builds; the queue is dropped and every 4× frame but the fps
+ * art's is released (the bytes freed are returned; nothing draws them any more). `missionId`
+ * (optional): only when the run is that mission's.
+ */
+export function stopDense(missionId?: string): number {
+  const run = dense;
+  if (!run || (missionId !== undefined && run.mission.id !== missionId)) return 0;
+  if (run.timer) clearInterval(run.timer);
+  dense = null;
+  takeDenseQueue();
+  return releaseDense(generatedSprites(4).filter((id) => !id.startsWith('fps/')), 4);
+}
+
+/** Is a tier-4 working set running (tests, tools)? */
+export function denseRunning(): boolean {
+  return dense !== null;
 }
 
 /**
  * A section of the running mission loaded (gameplay's `sectionLoaded`): at tier 4 the working
- * set moves on (restore / build the new section's 4× ids; release the sections behind within
- * DENSE_BUDGET_BYTES). Nothing at tier 2.
+ * set moves on (restore / build the new section's 4× ids; release the ones outside it within
+ * DENSE_BUDGET_BYTES). Nothing below tier 4.
  */
 export function missionArtSection(section: string): void {
-  if (dense) void enterDenseSection(dense, section);
+  if (dense && artTier() >= 4) void enterDenseSection(dense, section);
 }
 
 /**
@@ -304,15 +411,19 @@ export function missionArtSection(section: string): void {
  * (the players' characters, then what the first section shows; the boss last), and this thread
  * only installs them; without workers the pool falls back to today's budgeted main-thread
  * preload (MISSION_ART_BUDGET_MS per frame). The mission intro card starts it; gameplay calls it
- * again for a direct start (`?mission=`). Only the browser app asks for it (`app.preloadArt`):
- * headless runs (sims, tests, shots) generate dense frames lazily, if they draw at all.
+ * again for a direct start (`?mission=`), when a player joins and when the art tier rises to 4.
+ * Only the browser app asks for it (`app.preloadArt`): headless runs (sims, tests, shots)
+ * generate dense frames lazily, if they draw at all.
  *
  * - Tier 2 (`artTier()` < 4): the whole 2× set, once; then the sprite cache saves pack 'hi'.
+ *   The first bucket of `missionArtOrder` goes to the pool first, the rest at low priority.
  * - Tier 4: the 2× set as above (the stand-in of every 4× frame not built yet), and the tier-4
  *   WORKING SET (`denseWorkingSet`) at 4× with `setDeferDense(true)`, so the main thread never
- *   generates 4× art; 4× ids drawn without frames are queued and pumped to the pool; a section
- *   change (`missionArtSection`) moves the set on and releases the sections behind within
- *   DENSE_BUDGET_BYTES. 4× packs ('hd4-<section>', 'hd4-char-<hero>') are restored and saved here.
+ *   generates 4× art; the working set goes ahead of the low-priority rest of the 2× set; 4× ids
+ *   drawn without frames are queued and pumped to the pool; a section change
+ *   (`missionArtSection`) moves the set on and releases the ids outside it within
+ *   DENSE_BUDGET_BYTES; the play's end (`stopDense`) releases the run. 4× packs ('hd4-<section>',
+ *   'hd4-char-<hero>') are restored and saved here.
  *
  * It also switches on `setDeferHiArt`: the 2× scenery (background layers, terrain chunks) of each
  * section becomes art jobs the section view runs within the same budget per frame (the pool's
@@ -331,11 +442,17 @@ export function preloadMissionArt(
   if (tier < 2 || !app.preloadArt) return hiPreload !== null;
   // The 2× scenery of the sections becomes art jobs in the same budget (never a stalled frame).
   setDeferHiArt(true);
-  const { first, last } = missionArtOrder(mission, session);
-  // Ids the boot installed from pack 'hi' are not built again.
-  hiPreload ??= missionPool()
-    .build(preloadOrder(listHiSprites(2).filter((id) => !hasFramesAt(id, 2)), first, last), 2)
-    .then(() => app.artCache?.save('hi', ['']));
+  if (!hiPreload) {
+    const { first, last } = missionArtOrder(mission, session, section ?? mission?.start);
+    // Ids the boot installed from pack 'hi' are not built again.
+    const ids = preloadOrder(listHiSprites(2).filter((id) => !hasFramesAt(id, 2)), first, last);
+    const head = ids.filter((id) => first.some((p) => id.startsWith(p)));
+    const headSet = new Set(head);
+    const p = missionPool();
+    hiPreload = Promise.all([p.build(head, 2), p.build(ids.filter((id) => !headSet.has(id)), 2, undefined, { low: true })]).then(() =>
+      app.artCache?.save('hi', ['']),
+    );
+  }
   if (tier >= 4 && mission) startDense(app, mission, session, section);
   return true;
 }
@@ -466,6 +583,8 @@ export class GameplayScene implements Scene, PauseHost {
   private demoEnded = false;
   /** A scene on top silenced the loops (pause / resume). */
   private loopsPaused = false;
+  /** The art tier this scene's preload last saw (a change to or from 4 starts or stops the tier-4 working set). */
+  private tierSeen = 0;
   private removeBot: (() => void) | null = null;
 
   constructor(app: GameApp, opts: GameplayOpts) {
@@ -505,6 +624,7 @@ export class GameplayScene implements Scene, PauseHost {
       artDensity: demo ? 1 : undefined,
     });
     this.runner = runner;
+    this.tierSeen = artTier();
     if (!demo) {
       preloadMissionArt(app, runner.mission, runner.artDensity, this.session, this.session.sectionId || undefined);
       // A direct start (?mission=, a continue, the next mission): the intro card did not run.
@@ -543,6 +663,8 @@ export class GameplayScene implements Scene, PauseHost {
   }
 
   exit(): void {
+    // The play is over (QUIT, game over, the mission's end): its tier-4 working set and 4× frames go.
+    if (!this.demo) stopDense(this.runner?.mission.id);
     this.app.debug.on('skip', () => {});
     this.app.debug.on('weapons', () => {});
     this.removeBot?.();
@@ -637,6 +759,8 @@ export class GameplayScene implements Scene, PauseHost {
         }
         this.runner.joinPlayer(i as SlotIndex, joinCharacter(s.slots[1 - i].character));
         this.app.audio.sfx('ui/coin');
+        // Tier 4: the working set follows the new hero and the second player.
+        this.preloadArtNow();
       } else if (slot.gameOver && this.runner.continueTicks[i] < 0) {
         if (this.runner.continuePlayer(i as SlotIndex)) this.app.audio.sfx('ui/confirm');
       }
@@ -654,8 +778,30 @@ export class GameplayScene implements Scene, PauseHost {
     }
   }
 
+  /** The mission preload for the section being played (after a join, or a rise to tier 4). */
+  private preloadArtNow(): void {
+    const runner = this.runner;
+    if (this.demo || !runner) return;
+    preloadMissionArt(this.app, runner.mission, runner.artDensity, this.session, runner.section?.id);
+  }
+
+  /**
+   * The art tier changed during the play (main.ts: the governor, ART DETAIL, a resize): a rise to
+   * 4 starts the tier-4 working set now (not at the next mission start), a fall below 4 stops it
+   * and releases its 4× frames (nothing draws them any more).
+   */
+  private syncArtTier(): void {
+    const t = artTier();
+    if (t === this.tierSeen || this.demo) return;
+    const was = this.tierSeen;
+    this.tierSeen = t;
+    if (t >= 4) this.preloadArtNow();
+    else if (was >= 4) stopDense(this.runner.mission.id);
+  }
+
   draw(r: Renderer): void {
     const runner = this.runner;
+    this.syncArtTier();
     r.begin(runner.sky);
     runner.draw(r);
     // The HUD draws with the mission's art density too (2× icons where they exist).

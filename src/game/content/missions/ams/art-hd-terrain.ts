@@ -8,8 +8,10 @@
  * edges, shaded bottom and right edges), ordered dither only at band borders, finer detail at 4×.
  *
  * - ground `klinker`: the grey brick street in perspective rows (each klinker a bevelled stone with
- *   a lit far edge and left edge, a shaded near edge, a gentle dome, per-stone tones, brown-red
- *   klinkers, polished wear, pits and chipped corners at 4×) set in sandy joints; under it the
+ *   a lit far edge and left edge, a shaded near edge, a low dome lit from the upper left, mottled
+ *   grain, per-stone tones, brown-red klinkers; at 4× wear from hashes: polished lighter centres,
+ *   pits, chipped corners and nicked arrises, sand and dirt in the lower corners, a few hairline
+ *   cracks) set in sandy joints; under it the
  *   quay wall: a granite coping (lit arris, rounded nose, speckle, joints every 24 px), its cast
  *   shadow, then dark brick in stretcher bond going darker and wetter downward, with wet stains
  *   running down from the coping, lime bloom under some coping joints and a belt of algae and
@@ -75,10 +77,13 @@ function street(p: Readonly<Px>, d: number, out: Uint32Array, i: number, stride:
   // The 1× brick kinds: a brown-red klinker (10 %), a dark one (25 %), the grey street.
   const h = hash2(bx, r, seed + 41);
   const ramp = h > 0.9 ? BROWN : S;
-  // Band centres, so a stone's body is one clean cluster: grey, a lighter grey, dark, brown-red.
-  const base = h > 0.9 ? 3.5 : h < 0.25 ? 2.5 : hash2(bx, r, seed + 59) > 0.78 ? 4.5 : 3.5;
-  // The lit upper face and the shaded lower band of a rounded stone (the far rows at 2× are too
-  // small: edges only).
+  const grey = ramp === S && h >= 0.25;
+  // Band centres, so a stone's body is one clean cluster: grey, a lighter grey, dark, brown-red;
+  // every stone is a little lighter or darker than its kind (±0.25 … 0.45 tone).
+  const base =
+    (h > 0.9 ? 3.5 : h < 0.25 ? 2.5 : hash2(bx, r, seed + 59) > 0.78 ? 4.5 : 3.5) +
+    (hash2(bx, r, seed + 71) - 0.5) * (d === 4 ? 0.9 : 0.5);
+  // The rounded face of a stone (the far rows at 2× are too small: edges only).
   const faces = d === 4 || r >= 3;
   const BW = bw * d;
   const RH = rh * d;
@@ -88,8 +93,19 @@ function street(p: Readonly<Px>, d: number, out: Uint32Array, i: number, stride:
   const E = d === 2 ? 1 : r < 4 ? 1 : 2;
   const BWb = BW - JX;
   const RHb = RH - JY;
-  const chipped = d === 4 && hash2(bx, r, seed + 61) > 0.78;
-  const grey = ramp === S && h >= 0.25;
+  // Wear at 4×, per stone from hashes: a chipped corner or a nick in an arris (2-4 art px), a
+  // polished lighter centre, sand and dirt in the lower corners, a crack across a few stones.
+  const near = d === 4 && r >= 2;
+  const hc = hash2(bx, r, seed + 61);
+  const chipK = d === 4 && hc > 0.7 ? Math.floor(hash2(bx, r, seed + 62) * 4) : -1;
+  const chipS = 2 + Math.floor(hash2(bx, r, seed + 63) * (r >= 4 ? 3 : 1.5));
+  const nickU = near && hash2(bx, r, seed + 64) > 0.6 ? Math.floor(hash2(bx, r, seed + 65) * (BWb - 6)) + 3 : -99;
+  const nickW = 1 + Math.floor(hash2(bx, r, seed + 66) * 2.5);
+  const worn = d === 4 && hash2(bx, r, seed + 73) > 0.55 ? 0.55 + hash2(bx, r, seed + 74) * 0.5 : 0;
+  const dirt = d === 4 ? hash2(bx, r, seed + 79) * (r >= 3 ? 5 : 3) - 0.8 : -1;
+  const crack = near && hash2(bx, r, seed + 83) > 0.94;
+  const ca = 0.2 + hash2(bx, r, seed + 84) * 0.6;
+  const cb = ca + (hash2(bx, r, seed + 85) - 0.5) * 0.7;
   const v0 = (depth - R0) * d;
   const u0 = xIn * d;
   const pitT = d === 4 ? 0.972 : 0.99;
@@ -101,8 +117,18 @@ function street(p: Readonly<Px>, d: number, out: Uint32Array, i: number, stride:
       const u = u0 + sx;
       const X = p.x * d + sx;
       const uu = u - JX;
+      // A chip or nick shows the sandy joint under the arris.
+      let chip = false;
+      if (uu >= 0 && v < RHb) {
+        if (chipK >= 0) {
+          const du = chipK & 1 ? BWb - 1 - uu : uu;
+          const dv = chipK & 2 ? RHb - 1 - v : v;
+          chip = du + dv < chipS && du + dv + (hash2(X, Y, seed + 67) > 0.5 ? 1 : 0) < chipS + 0.5;
+        }
+        if (v === 0 && uu >= nickU && uu < nickU + nickW) chip = true;
+      }
       // Sandy joints: the side away from the light in shadow, a few sand grains.
-      if (u < JX || v >= RHb || (chipped && uu >= 0 && uu + v < 2)) {
+      if (u < JX || v >= RHb || chip) {
         let c: Color = S[1];
         if (v === RHb && JY > 1) c = S[0];
         else if (u === 0 && JX > 1) c = S[0];
@@ -111,22 +137,50 @@ function street(p: Readonly<Px>, d: number, out: Uint32Array, i: number, stride:
         continue;
       }
       let t = base;
+      let spread = 0;
+      let lo = 2;
       if (v < E) t += uu < E ? 2.5 : 1.6;
       else if (uu < E) t += 1;
       else if (v >= RHb - E) t -= 1.2;
       else if (uu >= BWb - E) t -= 0.8;
-      else {
-        if (faces) {
-          // A slightly ragged border (one art px per column), never a ruler line.
-          const b = (v + 0.5) / RHb;
-          const a = (uu + 0.5) / BWb;
-          if (b < 0.4 - a * 0.16 - a * a * 0.06) t += 1;
-          else if (b > 0.84) t -= 1;
+      else if (faces) {
+        // A low dome lit from the upper left: one smooth fall from the lit far-left corner to the
+        // shaded near-right corner (no bands along the outline), mottled grain, a polished centre.
+        const a = (uu + 0.5) / BWb;
+        const b = (v + 0.5) / RHb;
+        t += (0.5 - a) * 0.75 + (0.5 - b) * 1.45;
+        if (d === 4) {
+          t += (noise2(X, Y, 3.5 + r * 0.6, seed + 91) - 0.5) * 0.7;
+          if (worn > 0) {
+            const qa = (a - 0.42) / 0.36;
+            const qb = (b - 0.4) / 0.42;
+            const w = 1 - qa * qa - qb * qb;
+            if (w > 0) t += worn * w;
+          }
+          spread = 0.12;
         }
         // Pits on the grey stones.
         if (grey && hash2(X, Y, seed + 43) > pitT) t -= 1.1;
-      }
-      out[row + sx] = tone(ramp, t, X, Y, 0, 2);
+        // Dirt and sand settle in the lower corners, against the joints.
+        if (dirt > 0) {
+          const cd = Math.min(uu, BWb - 1 - uu) * 0.7 + (RHb - 1 - v);
+          if (cd < dirt + (noise2(X, Y, 2, seed + 97) - 0.5) * 2.4) {
+            out[row + sx] = tone(SAND, 2.4 + hash2(X, Y, seed + 98) * 1.2, X, Y, 0) >>> 0;
+            continue;
+          }
+        }
+        // A hairline crack: a dark seam with a lit lower lip.
+        if (crack) {
+          const uc = (ca + (cb - ca) * b) * BWb + (noise2(X, v, 3, seed + 87) - 0.5) * 3;
+          const dc = uu - uc;
+          if (dc >= -0.5 && dc < 0.5) {
+            t = Math.min(t, base) - 1.7;
+            lo = 1;
+          }
+          else if (dc >= 0.5 && dc < 1.5) t += 0.6;
+        }
+      } else if (grey && hash2(X, Y, seed + 43) > pitT) t -= 1.1;
+      out[row + sx] = tone(ramp, t, X, Y, spread, lo);
     }
   }
 }

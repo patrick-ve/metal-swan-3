@@ -24,6 +24,7 @@ import { PixelBuffer } from '../../../engine/pixel';
 import type { Frame } from '../../../engine/render';
 import { defineDenseAlias, defineHdSprite, defineSprite, getFrames } from '../../../engine/sprites';
 import { HdCanvas, type Texture } from '../../art/hd';
+import { oneHue } from '../../art/hd/light';
 import { crushStripHi } from '../../art/hi-strips';
 import { crumbleDense, scorch, sootify, withFlamesDense } from '../../art/human-fx';
 import { BLAST_TIMING, BURN_TIMING, CRUSH_TIMING, FLAT, Sketch, blastStrip, burnStrip, crushStrip, reground, turnSquash, xEye } from '../creatures/draw';
@@ -240,6 +241,22 @@ function inkDisc(c: HdCanvas, cx: number, cy: number, r: number, col: Color): vo
   c.paint(cx - r - 0.5, cy - r - 0.5, 2 * r + 1, 2 * r + 1, (x, y) => (Math.hypot(x - cx, y - cy) <= r ? col : 0));
 }
 
+/**
+ * Feather scallops laid along a wing: rows parallel to the wing axis `a` (unit, shoulder → tip),
+ * the tips pointing along `n` (unit, toward the trailing edge), a soft dark arc under each tip, 4× only.
+ */
+function scallopsAlong(a: V, n: V, sx: number, sy: number, amp: number): Texture {
+  return (s) => {
+    if (s.d < 4) return;
+    const u = s.x * a[0] + s.y * a[1];
+    const v = s.x * n[0] + s.y * n[1];
+    const row = Math.floor(v / sy);
+    const fx = frac(u / sx + (row & 1) * 0.5) - 0.5;
+    const e = frac(v / sy) - (0.72 - fx * fx * 1.4);
+    if (e > 0 && e < 0.22) s.tone -= amp;
+  };
+}
+
 /** Overlapping rows of feather tips (scapulars, coverts): a soft dark arc under each tip, 4× only. */
 function scallops(sx: number, sy: number, amp: number): Texture {
   return (s) => {
@@ -298,20 +315,33 @@ function wingHd(c: HdCanvas, m: GullMats, L: (p: V) => P2, sh: V, tip: V, far: b
     const ap = L(lerp(tip, mid, 0.07));
     c.ellipsoid(ap[0], ap[1], 0.4, 0.4, { mat: m.white, z: z0 + n2 * 0.6 + 1 });
   }
-  // Secondaries: feather cards across the trailing half of the arm, proximal ones nearest.
+  // Secondaries: one feathered surface across the trailing half of the arm with a white trailing
+  // edge; at 4× fine feather separations run from the arm to the trailing edge (no lit slats).
   const n = d === 4 ? 4 : 3;
-  for (let i = n - 1; i >= 0; i--) {
-    const a0 = lerp(cA, cB, i / n);
-    const a1 = lerp(cA, cB, (i + 1) / n);
-    const b0 = lerp(trail, midT, i / n);
-    const b1 = lerp(trail, midT, (i + 1) / n);
-    const z = z0 + 4 + (n - i) * 0.6;
-    const part = c.newPart();
-    c.blob(q([a0, a1, b1, b0]), 0.5, { mat: m.grey, z, part, tone: tone + (i & 1 ? 0.03 : -0.03), bulge: 0.12 });
-    if (!far) c.blob(q([lerp(a0, b0, 0.8), lerp(a1, b1, 0.8), b1, b0]), 0.3, { mat: m.white, z: z + 0.05, part, bulge: 0.05 });
+  const sec = c.newPart();
+  c.blob(q([cA, cB, midT, trail]), 0.5, { mat: m.grey, z: z0 + 5, part: sec, tone, bulge: 0.12 });
+  if (!far) c.blob(q([lerp(cA, trail, 0.8), lerp(cB, midT, 0.8), midT, trail]), 0.3, { mat: m.white, z: z0 + 5.05, part: sec, bulge: 0.05 });
+  if (d === 4 && !far) {
+    for (let i = 1; i < n; i++) {
+      const a = L(lerp(cA, cB, i / n));
+      const b = L(lerp(trail, midT, i / n));
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const l2 = vx * vx + vy * vy || 1;
+      c.shade(Math.min(a[0], b[0]) - 1, Math.min(a[1], b[1]) - 1, Math.abs(vx) + 2, Math.abs(vy) + 2, (x, y) => {
+        const t = ((x - a[0]) * vx + (y - a[1]) * vy) / l2;
+        if (t < 0.05 || t > 0.97) return 0;
+        return Math.hypot(x - a[0] - vx * t, y - a[1] - vy * t) < 0.16 ? -0.3 : 0;
+      }, sec);
+    }
   }
-  // The covert panel along the leading edge (the nearest layer of the wing).
-  c.blob(q([lead, mid, cB, cA]), 0.9, { mat: m.grey, z: z0 + 9, tone: tone + 0.06, bulge: 0.25, tex: far ? null : scallops(1.3, 1.1, 0.14) });
+  // The covert panel along the leading edge (the nearest layer of the wing): its feather rows run
+  // along the wing's axis, the tips toward the trailing edge.
+  const al = Math.hypot(tip[0] - sh[0], tip[1] - sh[1]) || 1;
+  const ax: V = [(tip[0] - sh[0]) / al, (tip[1] - sh[1]) / al];
+  let nx: V = [-ax[1], ax[0]];
+  if ((trail[0] - lead[0]) * nx[0] + (trail[1] - lead[1]) * nx[1] < 0) nx = [-nx[0], -nx[1]];
+  c.blob(q([lead, mid, cB, cA]), 0.9, { mat: m.grey, z: z0 + 9, tone: tone + 0.06, bulge: 0.25, tex: far ? null : scallopsAlong(ax, nx, 1.3, 1.1, 0.14) });
 }
 
 /**
@@ -344,7 +374,8 @@ export function gullHd(p: GullPose, d: HdD): Frame {
     // Feather greys on the steel ramp from its slate tone up: the separations between feathers
     // (the ramp's first tone) are soft slate lines, not ink stripes.
     grey: c.material({ ramp: PAL_HD.steel.slice(2), lo: 1, hi: 4, spec: 0.2, shine: 10, wrap: 0.1 }),
-    tip: c.material({ ramp: PAL_HD.black, lo: 1, hi: 3, spec: 0.35, shine: 16, wrap: 0.05 }),
+    // The black wing tips stay black (the gull's main mark at 1×): one-hue black, a small cool rim.
+    tip: c.material({ ramp: oneHue(PAL_HD.black), lo: 0, hi: 2, spec: 0.35, shine: 16, wrap: 0.05, rim: 0.12 }),
     beak: c.material({ ramp: PAL_HD.gold, lo: 3, hi: 6, spec: 0.7, shine: 22, wrap: 0.05 }),
     leg: c.material({ ramp: PAL_HD.pink, lo: 2, hi: 5, spec: 0.3, shine: 12 }),
     mouth: c.material({ ramp: PAL_HD.red, lo: 2, hi: 4, wrap: 0.2 }),

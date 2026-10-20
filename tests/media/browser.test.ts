@@ -111,6 +111,7 @@ async function streamBundle(): Promise<string> {
   const entry = `
     import { CanvasRenderer } from ${src('../../src/engine/render-canvas.browser.ts')};
     import { PixelBuffer } from ${src('../../src/engine/pixel.ts')};
+    import { defineHiSprite, defineSprite, getFrame, releaseDense } from ${src('../../src/engine/sprites.ts')};
     function scene(r, buf, step) {${STREAM_SCENE}}
     function base64(bytes) {
       let s = '';
@@ -138,6 +139,23 @@ async function streamBundle(): Promise<string> {
         for (let i = 0; i < 121; i++) { r.begin(); r.end(); }
         const evicted = pick(r.textureStats());
         return { w: r.canvas.width, h: r.canvas.height, frames, stats, idle, evicted };
+      },
+      released() {
+        const r = new CanvasRenderer(undefined, undefined, undefined, { res: 4, mode: 'pixel' });
+        defineSprite('reltest/x', () => new PixelBuffer(8, 8).fill(0x336699ff));
+        defineHiSprite('reltest/x', () => new PixelBuffer(32, 32).fill(0x6699ccff), 4);
+        r.begin();
+        r.frame(getFrame('reltest/x', 0, 4), 10, 10);
+        r.end();
+        const drawn = r.textureStats().entries;
+        releaseDense(['reltest/x'], 4);
+        r.begin();
+        r.end();
+        const released = r.textureStats().entries;
+        r.begin();
+        r.frame(getFrame('reltest/x', 0, 4), 10, 10);
+        r.end();
+        return { drawn, released, again: r.textureStats().entries };
       },
     };
   `;
@@ -315,6 +333,19 @@ describe('browser media', () => {
       }
     });
   }
+
+  it('a released dense frame loses its texture at the next frame end (the cache keeps no released pixels)', async (ctx) => {
+    if (!browser) return ctx.skip();
+    const p = await browser.newPage();
+    try {
+      await p.setContent('<!doctype html><html><body></body></html>');
+      await p.addScriptTag({ content: await streamBundle() });
+      const r = await p.evaluate(() => (window as unknown as { StreamTest: { released(): { drawn: number; released: number; again: number } } }).StreamTest.released());
+      expect(r).toEqual({ drawn: 1, released: 0, again: 1 });
+    } finally {
+      await p.close();
+    }
+  });
 
   it('canvas renderer matches within rounding for alpha, additive and fades', async (ctx) => {
     if (!page) return ctx.skip();

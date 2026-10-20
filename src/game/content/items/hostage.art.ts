@@ -36,7 +36,7 @@ import { INK, PAL } from '../../../engine/palette';
 import type { Frame } from '../../../engine/render';
 import { PAL_HD } from '../../../engine/palette-hd';
 import { defineHdSprite, defineSprite, getFrames, type SpriteOpts } from '../../../engine/sprites';
-import { HdCanvas, folds, type TexSample, type Texture } from '../../art/hd';
+import { BLACK_ONE_HUE, HdCanvas, folds, type TexSample, type Texture } from '../../art/hd';
 import { spanOf } from '../../art/hd/body';
 import { withPieces, type Piece } from '../../art/human-fx';
 import { withSwing } from '../../art/human-sprites';
@@ -244,7 +244,7 @@ function prop(name: PropName): PixelBuffer {
 // ---- UHD props (one drawer per prop for d 2 and 4, each in its 1× prop's box) ----------------
 
 const porcelainMat = (c: HdCanvas): number => c.material({ ramp: PAL_HD.snow, lo: 1, hi: 5, spec: 1, shine: 30, wrap: 0.1 });
-const blackMat = (c: HdCanvas): number => c.material({ ramp: PAL_HD.black, lo: 1, hi: 5, spec: 0.5, shine: 16 });
+const blackMat = (c: HdCanvas): number => c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 5, spec: 0.5, shine: 16 });
 const steelMat = (c: HdCanvas): number => c.material({ ramp: PAL_HD.steel, lo: 2, hi: 6, spec: 1, shine: 26 });
 
 /** True on the one art-px row that holds logical y = `at` (a hairline rule at any density). */
@@ -598,34 +598,7 @@ function palmPrintHd(f: Frame): Frame {
   return { ...f, buf: b };
 }
 
-/**
- * A warm blush on an HD face: the rig paints a `blush` extra in the style's accent, and the tourist's
- * and Mrs. Dollop's accent is teal (their collar and trim colour) — so the teal px of the cheek
- * (near the head point, above the collar) become warm pink, tone for tone.
- */
-function warmBlush(f: Frame): Frame {
-  const head = f.pts?.head;
-  const d = f.density ?? 1;
-  if (!head || d === 1) return f;
-  const b = f.buf.clone();
-  const T = PAL_HD.teal;
-  const K = PAL_HD.pink;
-  const x0 = Math.floor((f.ox + head[0] - 2) * d);
-  const x1 = Math.ceil((f.ox + head[0] + 6) * d);
-  const y0 = Math.floor((f.oy + head[1]) * d);
-  const y1 = Math.ceil((f.oy + head[1] + 4.5) * d);
-  for (let y = Math.max(0, y0); y < Math.min(b.h, y1); y++) {
-    for (let x = Math.max(0, x0); x < Math.min(b.w, x1); x++) {
-      const i = T.indexOf(b.get(x, y));
-      if (i >= 0) b.set(x, y, K[Math.min(K.length - 1, i + 1)]);
-    }
-  }
-  return { ...f, buf: b };
-}
-
 const APRONS: Readonly<Partial<Record<HostageKindId, true>>> = { 'tea-lady': true, dollop: true };
-/** Kinds whose `blush` extra is in a teal accent (see `warmBlush`). */
-const TEAL_BLUSH: Readonly<Partial<Record<HostageKindId, true>>> = { tourist: true, dollop: true };
 
 /** The kind's figure in a pose: the rig, plus its apron, curlers or shirt print (`d` 2 / 4: the rig at d with the UHD pieces). */
 function figure(kind: HostageKindId, pose: Pose, d: Density = 1): Frame {
@@ -648,7 +621,6 @@ function figure(kind: HostageKindId, pose: Pose, d: Density = 1): Frame {
   }
   if (kind === 'tourist') f = palmPrintHd(f);
   if (kind === 'tea-lady') f = curlersHd(f);
-  if (TEAL_BLUSH[kind]) f = warmBlush(f);
   return f;
 }
 

@@ -25,16 +25,16 @@ Other fields per `HeroDef`: `fullName` = name (no surnames), `title`/`role` = ca
 
 ## 2. Art
 
-### 2.1 In-game sprites (per friend, 1× and 2×)
+### 2.1 In-game sprites (per friend, 1×, 2× and 4×)
 
-The full `definePlayerSprites` set (95 ids, all with 2× generators) via `content/characters/<id>.art.ts` + `defineHero` in `characters/art.ts`. Likeness at sprite size comes from the few traits in bold above (raised brow, backwards cap + grin, mustache + hi-vis, cape + blue eyes, slick black hair). Add the hair styles / headgear / face extras the rig lacks (backwards cap, slick-back, spiky-messy, swept-up, raised-brow smirk, big grin, thick mustache, stubble shading) to `humanoid-head.ts` with `*_HI` twins in `humanoid-head-hi.ts`, and a cape accessory to the rig. Palette only. The default title rider becomes `vincent`.
+The full `definePlayerSprites` set (95 ids, each with one HD generator for 2× and 4×, `hd: (d) => gen(d)`: the HD rig, `docs/ART_GUIDE.md` "UHD art") via `content/characters/<id>.art.ts` + `defineHero` in `characters/art.ts`. Likeness at sprite size comes from the few traits in bold above (raised brow, backwards cap + grin, mustache + hi-vis, cape + blue eyes, slick black hair). Add the hair styles / headgear / face extras the rig lacks (backwards cap, slick-back, spiky-messy, swept-up, raised-brow smirk, big grin, thick mustache, stubble shading) to `humanoid-head.ts` (1×) and `src/game/art/hd/head.ts` (`renderHeadHd`, 2× and 4×; the squad cues come from the select portraits), and a cape accessory to the rig. Palette only (`PAL` at 1×, `PAL_HD` at 2× and 4×). The default title rider becomes `vincent`.
 
 ### 2.2 Select portraits (new)
 
-- `char/<id>/select`: a large caricature bust, **64×120 at 1×, 128×240 at 2×** (`defineSprite` + `defineHiSprite`, anchor top-left), drawn with the shape-built face technique of `content/bosses/ams/art-hi.ts` (`DCanvas`, face pieces). Bold arcade caricature: big head, exaggerated signature trait, dramatic side light, dark background fading to black at the bottom, shoulders and collar at the bottom.
+- `char/<id>/select`: a large caricature bust, **64×120 at 1×, 128×240 at 2×** (`defineSprite` with `{ hi }`, anchor top-left; 2× only, so tier 4 shows the 2× art), drawn with the lit height-field painter `src/game/art/portrait-kit.ts` (face pieces). Bold arcade caricature: big head, exaggerated signature trait, dramatic side light, dark background fading to black at the bottom, shoulders and collar at the bottom.
 - `char/<id>/select-grey`: the same portrait mapped to a steel/stone grey ramp (`PixelBuffer.recolor` at generation time).
 - `char/<id>/portrait` (32×32 / 64×64) stays and is redrawn from the new face for the high-score heads and mission-complete photo.
-- The menus draw portraits with `withArtDensity(2, …)` so the 2× art shows at res ≥ 2.
+- The select screen draws the portraits at the screen art density (`scenes/base.ts` `screenArt`; the 2× art at every tier, also at res 1), so the 2× art shows at res ≥ 2.
 
 ### 2.3 Military UI art (`content/ui/military.art.ts`, ids `ui/mil/*`)
 

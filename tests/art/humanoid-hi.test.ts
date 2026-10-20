@@ -10,10 +10,8 @@ import { PixelBuffer } from '../../src/engine/pixel';
 import { frameH, frameW } from '../../src/engine/render';
 import { getFrames, hasHiSprite, listSprites, spriteErrors } from '../../src/engine/sprites';
 import { despeckle, shadeLayer } from '../../src/game/art/paint';
-import { drawHand, gunArt, gunArtHi, heldArtHi, knifeArt, knifeArtHi, propArt, propArtHi } from '../../src/game/art/humanoid-gear';
 import { headLayerHi, renderHuman, stackFrames } from '../../src/game/art/humanoid';
 import type { HumanStyle, Pose } from '../../src/game/art/humanoid';
-import { giftArt, grenadeArt } from '../../src/game/art/humanoid-gear';
 import { withPieces } from '../../src/game/art/human-fx';
 import { bubble, dustPuff, gumSplat, scarfEnd, sparkle, yarnBall } from '../../src/game/content/characters/pieces';
 import * as P from '../../src/game/art/poses';
@@ -113,33 +111,8 @@ describe('humanoid rig at density 2', () => {
   });
 });
 
-describe('2× gear', () => {
-  it('every 2× template is exactly twice its 1× twin', () => {
-    for (const k of ['pistol', 'heavy', 'rifle'] as const) expect([gunArtHi(k).w, gunArtHi(k).h]).toEqual([gunArt(k).buf.w * 2, gunArt(k).buf.h * 2]);
-    for (const k of ['umbrella', 'needles', 'pan', 'wrench'] as const) expect([propArtHi(k).w, propArtHi(k).h]).toEqual([propArt(k).buf.w * 2, propArt(k).buf.h * 2]);
-    expect([knifeArtHi().w, knifeArtHi().h]).toEqual([knifeArt().w * 2, knifeArt().h * 2]);
-    expect([heldArtHi('grenade').w, heldArtHi('grenade').h]).toEqual([grenadeArt().w * 2, grenadeArt().h * 2]);
-    expect([heldArtHi('gift').w, heldArtHi('gift').h]).toEqual([giftArt().w * 2, giftArt().h * 2]);
-  });
-
-  it('2× hands sit on the 1× wrist block in every quarter turn', () => {
-    const ramp = PAL.skinA;
-    for (const shape of ['fist', 'open', 'point', 'thumb', 'grip'] as const) {
-      for (let q = 0; q < 4; q++) {
-        const lo = new PixelBuffer(40, 40);
-        const hi = new PixelBuffer(80, 80);
-        drawHand(lo, shape, 20, 20, ramp, q);
-        drawHand(hi, shape, 20, 20, ramp, q, false, 2);
-        const a = lo.trimBounds();
-        const b = hi.trimBounds();
-        // The gun-grip fist is 1 logical px smaller at 2× (1 hi px in from each side), so the
-        // gun's grip shows round it; every other hand fills the doubled 1× box.
-        const k = shape === 'grip' ? 1 : 0;
-        expect([b?.x, b?.y, b?.w, b?.h], `${shape} ${q}`).toEqual([(a?.x ?? 0) * 2 + k, (a?.y ?? 0) * 2 + k, (a?.w ?? 0) * 2 - 2 * k, (a?.h ?? 0) * 2 - 2 * k]);
-      }
-    }
-  });
-
+// The hand-drawn 2× gear and hand twins are retired (the HD kit draws them: tests/art/hd-gear.test.ts).
+describe('2× shading helpers', () => {
   it('shading bands and despeckle scale with the density', () => {
     const lo = new PixelBuffer(10, 10).rect(1, 1, 8, 8, PAL.red[2]);
     const hi = new PixelBuffer(20, 20).rect(2, 2, 16, 16, PAL.red[2]);
@@ -174,14 +147,12 @@ describe('player characters: 2× art for every char/* sprite', () => {
   }, 120_000);
 });
 
-describe('2× pieces', () => {
-  it('withPieces draws the registered 2× twin of a 1× piece on a 2× frame', () => {
+describe('pieces on dense frames', () => {
+  it('withPieces scales a 1× piece onto a 2× frame (no hand-drawn twins any more); 1× frames keep it exactly', () => {
     for (const b of [yarnBall(), bubble(0), bubble(1), bubble(2), gumSplat(), scarfEnd(), sparkle(false), sparkle(true), dustPuff(0), dustPuff(1)]) {
       const f = withPieces({ buf: new PixelBuffer(2, 2), ox: 0, oy: 0, density: 2 }, [{ buf: b, x: 0, y: 0 }]);
       expect([f.buf.w, f.buf.h]).toEqual([b.w * 2, b.h * 2]);
-      const doubled = b.scaled(2);
-      expect(Array.from(f.buf.data).some((c, i) => c !== doubled.data[i])).toBe(true);
-      // 1× frames keep the 1× piece exactly.
+      expect(Array.from(f.buf.data)).toEqual(Array.from(b.scaled(2).data));
       const lo = withPieces({ buf: new PixelBuffer(1, 1), ox: 0, oy: 0 }, [{ buf: b, x: 0, y: 0 }]);
       expect(Array.from(lo.buf.data)).toEqual(Array.from(b.data));
     }

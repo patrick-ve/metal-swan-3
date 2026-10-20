@@ -82,6 +82,27 @@ describe('sprite packs', () => {
     expect(f.buf.data).toEqual(big.data);
   });
 
+  it('decode each buffer into its own ArrayBuffer; `keep` decodes only the kept ids', async () => {
+    const shared = noise(5, 3, 7);
+    const sprites: Array<[string, Frame[]]> = [
+      ['k/one', [{ buf: shared, ox: 0, oy: 0 }, { buf: noise(4, 4, 2), ox: 0, oy: 0 }]],
+      ['k/two', [{ buf: shared, ox: 1, oy: 1 }]],
+      ['k/three', [{ buf: noise(9, 9, 3), ox: 0, oy: 0 }]],
+    ];
+    const gz = await encodeSpritePack('b', 4, sprites, noYield);
+    const all = await decodeSpritePack(gz);
+    expect(all.total).toBe(3);
+    const bufs = new Set(all.sprites.flatMap(([, fs]) => fs.map((f) => f.buf)));
+    expect(bufs.size).toBe(3);
+    // No buffer is a view on a pack-wide ArrayBuffer: releasing an id frees its pixels.
+    for (const b of bufs) expect(b.data.buffer.byteLength).toBe(b.data.byteLength);
+    const kept = await decodeSpritePack(gz, (id) => id !== 'k/three');
+    expect(kept.total).toBe(3);
+    expect(kept.sprites.map(([id]) => id)).toEqual(['k/one', 'k/two']);
+    expect(kept.sprites[1][1][0].buf).toBe(kept.sprites[0][1][0].buf);
+    expect([...kept.sprites[0][1][1].buf.data]).toEqual([...noise(4, 4, 2).data]);
+  });
+
   it('reject what they cannot read', async () => {
     const good = await encodeSpritePack('b', 1, [['x', [{ buf: noise(3, 3, 1), ox: 0, oy: 0 }]]], noYield);
     await expect(decodeSpritePack(new Uint8Array([1, 2, 3, 4]))).rejects.toThrow();
@@ -153,6 +174,24 @@ describe('ArtCache', () => {
     expect(getFrames('art-test/a', 1)[0].pts).toEqual({ gun: [3, -1] });
     expect(runs).toBe(n);
     // The pack holds these ids already: nothing is written again.
+    expect(await cache.save('boot', ['art-test/'])).toBe(false);
+  });
+
+  it('restore with `keep` installs (and decodes) only the kept ids that have no frames yet', async () => {
+    const store = new MemoryByteStore();
+    getFrames('art-test/a', 1);
+    getFrames('art-test/b', 1);
+    expect(await new ArtCache(store, 'b3').save('boot', ['art-test/'])).toBe(true);
+    clearSpriteCache('art-test/a');
+    clearSpriteCache('art-test/b');
+    const cache = new ArtCache(store, 'b3');
+    expect(await cache.restore('boot', (id) => id === 'art-test/b')).toBe(1);
+    expect(readyFrames('art-test/a')).toBeNull();
+    const fb = readyFrames('art-test/b') ?? [];
+    expect(fb).toHaveLength(2);
+    for (const f of fb) expect(f.buf.data.buffer.byteLength).toBe(f.buf.data.byteLength);
+    // The stored pack still counts both ids: saving the same ids again writes nothing.
+    getFrames('art-test/a', 1);
     expect(await cache.save('boot', ['art-test/'])).toBe(false);
   });
 

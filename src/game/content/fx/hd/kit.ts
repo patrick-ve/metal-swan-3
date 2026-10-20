@@ -215,7 +215,7 @@ function lumpsOf(b: Billow): number[] {
  * explosions): pass 1 finds the nearest lump per art px (depth test against what is already
  * drawn; px frayed away by `fade` are skipped, so the billow behind shows through), pass 2 calls
  * `shade(s, k, q)` once per visible px to set its material, tone or fixed colour (s.mat must be
- * set; q = distance from billow k's centre / its r). `erode(q, x, y)` (optional) replaces the
+ * set; q = distance from billow k's centre / its r; it may also change the normal s.nx/ny/nz). `erode(q, x, y)` (optional) replaces the
  * ordered `frayCut` while `fade` > 0: true cuts the px at logical (x, y) — an outlined volume
  * (outline A) needs an erosion without small holes, or the outline fills every hole with ink.
  */
@@ -294,6 +294,10 @@ export function paintBillows(
       c.mat[i] = s.mat;
       c.tone[i] = s.tone;
       c.fix[i] = s.fix;
+      // `shade` may soften the normal (e.g. smoke blends the lump normal with its billow's).
+      c.nx[i] = s.nx;
+      c.ny[i] = s.ny;
+      c.nz[i] = s.nz;
     }
   }
 }

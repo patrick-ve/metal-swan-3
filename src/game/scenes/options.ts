@@ -16,14 +16,14 @@
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { applyAudioSettings, blinkOn, centerText, defaultHighScores, drawCursor, graphicsMode, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { applyAudioSettings, blinkOn, centerText, defaultHighScores, graphicsMode, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { modeAtRes } from '../../engine/render-common';
 import { UPSCALE_MODES, type UpscaleMode } from '../../engine/upscale';
 import { artTier } from '../../engine/sprites';
 import { ART_DETAILS, CREDIT_STEPS, saveSettings, type ArtDetail, type GameSettings, type ShakeLevel } from '../settings';
 import { ControlsScene } from './controls';
 import { DIFFICULTIES, DIFFICULTY_INFO } from './flow-data';
-import { drawBase, drawMilPanel, drawStencilTitle } from './base';
+import { drawBase, drawMilPanel, drawScreenCursor, drawStencilTitle } from './base';
 import { veil } from './lake';
 import { titleClock } from './title';
 
@@ -309,7 +309,8 @@ export class OptionsScene implements Scene {
       const sel = i === this.sel;
       const col = sel ? UI_GOLD : PAL.snow[1];
       uiText(r, row.label, LABEL_X, y, col);
-      if (sel) drawCursor(r, LABEL_X - 4, y + 3, this.t);
+      // The cursor at the screen tier (its HD art once the pool has it; 1× at res 1, as before).
+      if (sel) drawScreenCursor(r, LABEL_X - 4, y + 3, this.t);
       const v = row.id === 'graphics' ? graphicsMode(this.app).toUpperCase() : optionValue(s, row.id);
       if (v) {
         uiText(r, '>', VALUE_X, y, sel ? UI_GOLD : PAL.stone[2], 'right');

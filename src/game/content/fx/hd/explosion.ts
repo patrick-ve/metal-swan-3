@@ -6,20 +6,22 @@
  * - hot puffs: flat fire whose tone comes from the puff's heat, the key light on each lump (a
  *   white-hot cluster upper left) and soft turbulence (`NoiseGrid`), crimson in the crevices
  *   where a nearer billow overlaps it;
- * - cooled puffs: lit warm-grey smoke (6 tones, near-ink deep shade low right, ambient occlusion
- *   where billows meet), still glowing red underneath while young, with ember cells;
- * - the dying smoke erodes from the rim along smooth turbulence (ragged, solid wisps; an ordered
- *   fray would leave small holes that outline A fills with ink: black mesh balls at 4×), and its
- *   outline turns from ink to the smoke's own deepest tone as it thins out.
+ * - cooled puffs: lit warm-grey smoke (soft matte volumes: each lump's normal blended with its
+ *   billow's sphere normal, a wide wrap and a cool bounce, ambient occlusion where billows meet),
+ *   still glowing red underneath while young (a smooth radial glow round each billow's lower
+ *   centre), with ember cells;
+ * - the dying smoke darkens (as the 1× puffs do) and erodes from the rim along smooth turbulence
+ *   with a finer second octave (ragged, solid wisps; an ordered fray would leave small holes that
+ *   the outline fills: mesh balls at 4×).
  *
  * Frame 0 is the white flash: a disc with four long and four short spikes, white → gold → orange.
- * Outline A: deep ember while hot, ink once smoke.
+ * Outline A: deep ember while hot, the smoke's own deep tone once smoke (no ink rocks).
  */
 import { PAL_HD } from '../../../../engine/palette-hd';
 import type { Ramp } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
 import { livePuffs, makePuffs, type ExplosionSpec } from '../explosion.art';
-import { EMBER, FIRE, INK, NoiseGrid, fireMat, gasMat, hash, hdStrip, lambert, paintBillows, sat, type HdCanvas } from './kit';
+import { EMBER, FIRE, NoiseGrid, fireMat, hash, hdStrip, lambert, paintBillows, sat, type HdCanvas } from './kit';
 
 /** Dark explosion smoke (warm grey, near-ink deep shade). */
 const SMOKE: Ramp = PAL_HD.stone;
@@ -79,7 +81,9 @@ export function explosionFramesHd(id: string, spec: ExplosionSpec, d: number): F
       return c.render({ outline: 'A', ink: PAL_HD.fire[3], ao: 0, sep: false });
     }
     const fire = fireMat(c);
-    const smoke = gasMat(c, SMOKE, 0, 4);
+    // Smoke: a soft matte volume (wide wrap, a cool bounce), so a billow reads as one soft form
+    // with lumps on it, not as a pile of hard-banded rocks.
+    const smoke = c.material({ ramp: SMOKE, lo: 0, hi: 4, wrap: 0.34, bounce: 0.4, rim: 0.08, amb: 0.12 });
     const live = livePuffs(puffs, t, R, cx, cy);
     const fade = Math.max(0, (t - 0.66) / 0.34);
     const seed = spec.seed * 31 + i;
@@ -89,9 +93,12 @@ export function explosionFramesHd(id: string, spec: ExplosionSpec, d: number): F
     const n = new NoiseGrid(c.w, c.h, cell, spec.seed * 7 + i);
     // Erosion of the dying smoke: the rim recedes along a smooth turbulence (billowy, no small holes).
     const ero = fade > 0 ? new NoiseGrid(c.w, c.h, Math.max(1.6, R * scale * 0.34), spec.seed * 11 + i) : null;
+    // A finer octave frays that rim into wisps (smooth cells, so still no pin holes).
+    const ero2 = fade > 0 ? new NoiseGrid(c.w, c.h, Math.max(1.5, R * scale * 0.13), spec.seed * 13 + i) : null;
     paintBillows(
       c,
-      live.map((p, k) => ({ x: p.x * scale, y: p.y * scale, r: p.r * scale, seed: spec.seed * 7 + k * 13, z: k * 4, part: k + 1 })),
+      // Smoke billows share one part (no separation lines between them: one soft mass).
+      live.map((p, k) => ({ x: p.x * scale, y: p.y * scale, r: p.r * scale, seed: spec.seed * 7 + k * 13, z: k * 4, part: p.heat > 0.12 ? k + 1 : 255 })),
       fade,
       (s, k, q) => {
         const p = live[k];
@@ -103,23 +110,42 @@ export function explosionFramesHd(id: string, spec: ExplosionSpec, d: number): F
           s.tone = sat(p.heat * 0.36 + lam * 0.62 + tn * 0.28 - q * q * 0.12 - 0.1) * 0.999 - 0.5;
           return;
         }
-        // Smoke: lit by the canvas, darker as it ages; young smoke still glows red where it faces down.
-        const young = p.heat > -0.35;
+        // Smoke: the lump normal blended with its billow's sphere normal (soft, big forms), darker
+        // as it ages; young smoke still glows red underneath: a smooth radial glow round the
+        // billow's lower centre (one clean cluster per billow, no slivers between lumps).
+        const r = p.r * scale;
+        const bx = (s.x - p.x * scale) / r;
+        const by = (s.y - p.y * scale) / r;
+        const bz = Math.sqrt(Math.max(0, 1 - bx * bx - by * by));
+        // Thinning smoke flattens toward the viewer (less contrast, no pebbles).
+        const fl = fade * 0.9;
+        const mx = (s.nx * 0.55 + bx * 0.45) * (1 - fl);
+        const my = (s.ny * 0.55 + by * 0.45) * (1 - fl);
+        const mz = (s.nz * 0.55 + bz * 0.45) * (1 - fl) + fl;
+        const ml = Math.hypot(mx, my, mz) || 1;
+        s.nx = mx / ml;
+        s.ny = my / ml;
+        s.nz = mz / ml;
         s.mat = smoke;
-        s.tone = Math.max(-0.3, p.heat * 0.22) + tn * 0.15 - 0.04;
-        const glow = (p.heat + 0.35) * 1.5 + s.ny * 1.2 + tn * 0.4 - 0.95;
-        if (young && glow > 0) {
-          s.mat = fire;
-          s.tone = sat(glow * 0.9) * 0.42 - 0.5;
-          return;
+        // Dying smoke darkens and thins (as the 1× puffs do), never a pale pebble.
+        s.tone = Math.max(-0.3, p.heat * 0.22) + tn * 0.36 - 0.04 - fade * 0.3;
+        if (p.heat > -0.35) {
+          const gl = Math.hypot(bx, (by - 0.78) * 1.35);
+          const glow = (p.heat + 0.35) * 1.6 * (1 - gl) + tn * 0.25 - 0.18;
+          if (glow > 0) {
+            s.mat = fire;
+            s.tone = sat(glow * 1.4) * 0.3 - 0.5;
+            return;
+          }
+          if (tn > 0.05 && hash(s.X >> 1, s.Y >> 1, seed) > 0.975) s.fix = FIRE[(s.X >> 1) & 1 ? 3 : 2];
         }
-        if (young && tn > 0.05 && hash(s.X >> 1, s.Y >> 1, seed) > 0.975) s.fix = FIRE[(s.X >> 1) & 1 ? 3 : 2];
       },
-      ero ? (q, x, y) => q > 1.02 - fade * 0.86 + ero.at(x, y) * 0.42 : undefined,
+      ero && ero2 ? (q, x, y) => q > 1.08 - fade * 0.86 + ero.at(x, y) * 0.42 + ero2.at(x, y) * fade * 0.3 - fade * 0.15 : undefined,
     );
     // Ambient occlusion only on canvases up to ~100k art px (the 4× xl frames rely on their crevices).
-    // Outline A: ember while hot, ink for the smoke, the smoke's deepest tone once it thins out.
-    const ink = t < 0.5 ? EMBER : fade > 0.45 ? SMOKE[0] : INK;
+    // Outline A: ember while hot; the smoke takes the smoke's own deep tone (no ink rocks), the
+    // darkest one once it thins (never a rim lighter than the dark dying puff).
+    const ink = t < 0.5 ? EMBER : fade > 0.4 ? SMOKE[0] : SMOKE[1];
     return c.render({ outline: 'A', ink, ao: c.W * c.H > 100_000 ? 0 : 0.3, sep: true, sepZ: 1, clean: true });
   });
 }

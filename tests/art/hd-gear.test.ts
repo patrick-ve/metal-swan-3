@@ -9,6 +9,7 @@ import { PAL } from '../../src/engine/palette';
 import { PAL_HD, hdRampOf, inHdPalette } from '../../src/engine/palette-hd';
 import { PixelBuffer, type Ramp } from '../../src/engine/pixel';
 import * as gear from '../../src/game/art/hd/gear';
+import { oneHue } from '../../src/game/art/hd/light';
 import {
   drawHand,
   giftArt,
@@ -261,7 +262,8 @@ describe('UHD gear: hands', () => {
 
   it('keeps the glove / skin colour family: every px is a tone of the hand’s HD ramp; the far hand is darker', () => {
     for (const [name, ramp] of HAND_RAMPS) {
-      const hd = hdRampOf(ramp);
+      // A black glove runs on the one-hue black ramp (no purple / blue patches; polish wave).
+      const hd = oneHue(hdRampOf(ramp));
       for (const shape of SHAPES) {
         for (const d of DS) {
           const near = gear.handArtHd(shape, ramp, 1, false, d).buf;

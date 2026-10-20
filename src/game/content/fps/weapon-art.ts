@@ -11,7 +11,9 @@ import { PixelBuffer } from '../../../engine/pixel';
 import { defineSprite } from '../../../engine/sprites';
 import { add, Figure, lerp3, mulMM, rotX, rotZ, type Mat, type V3 } from '../../art/figure3d';
 import { muzzleFlash } from './billboards';
-import { figWin, hdLook, withFigDensity } from './figure-hd';
+import { figDensity, figWin, hdLook, hdSurface, withFigDensity } from './figure-hd';
+import { PAL_HD } from '../../../engine/palette-hd';
+import { BLACK_ONE_HUE } from '../../art/hd/light';
 
 export const VIEW_W = 112;
 export const VIEW_H = 80;
@@ -26,6 +28,8 @@ const BRASS = m(PAL.brass, 0.2, PAL.brown[0]);
 const GUN_LIT = m([PAL.steel[1], PAL.steel[2], PAL.steel[3], PAL.steel[4]], 0.2, PAL.ink[1]);
 const HOLE = m([PAL.ink[0], PAL.ink[0]], 0, INK);
 const HOUSING = m([PAL.ink[0], PAL.ink[1], PAL.steel[0], PAL.steel[1], PAL.steel[2]], -0.1, INK);
+/** The fingers' leather (UHD only): the glove's ramp, a touch lighter so the knuckles catch light. */
+const GLOVE_HD = m([PAL.ink[0], PAL.ink[1], PAL.hairA[2], PAL.steel[1]], 0.3, INK);
 
 /** Gun space: x right, y up, z forward (into the screen). The view tilts it so z points up. */
 interface ViewPose {
@@ -44,7 +48,31 @@ function arm(f: Figure, hand: V3, from: V3): void {
   f.cap(from, wrist, 5, 4.4, CUFF);
   f.cap(wrist, hand, 3.8, 4.0, GLOVE);
   f.ball(hand, 4.3, GLOVE);
+  if (figDensity() > 1) fingers(f, hand, from);
   f.dot(add(hand, [-1.5, 3.5, 0]), PAL.steel[1], 1, 2);
+}
+
+/**
+ * UHD only (the 1× fist stays a ball, byte-identical): the gloved fist's knuckle row across the
+ * front of the hand and four curled fingers below it, each a lit leather capsule, so the glove
+ * reads as a hand gripping the gun (knuckle highlights, the gaps between the fingers).
+ */
+function fingers(f: Figure, hand: V3, from: V3): void {
+  const unit = (v: V3): V3 => {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+  };
+  const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const fwd = unit([hand[0] - from[0], hand[1] - from[1], hand[2] - from[2]]);
+  const side = unit(cross(fwd, [0, 1, 0]));
+  const up = unit(cross(side, fwd));
+  const at = (a: number, b: number, c: number): V3 => [hand[0] + fwd[0] * a + side[0] * b + up[0] * c, hand[1] + fwd[1] * a + side[1] * b + up[1] * c, hand[2] + fwd[2] * a + side[2] * b + up[2] * c];
+  for (let k = 0; k < 4; k++) {
+    const sx = -2.4 + k * 1.6;
+    const kn = at(2.9 - Math.abs(sx) * 0.25, sx, 1.5);
+    f.ball(kn, 1.25, GLOVE_HD);
+    f.cap(kn, at(3.6 - Math.abs(sx) * 0.3, sx * 0.95, -1.6), 1.15, 1.0, GLOVE_HD);
+  }
 }
 
 /**
@@ -190,6 +218,15 @@ hdLook(CUFF, { wrap: 0.3 });
 hdLook(BLADE, { spec: 1, shine: 34, wrap: 0.05 });
 hdLook(WOOD, { spec: 0.2, shine: 14, wrap: 0.15 });
 hdLook(BRASS, { spec: 1, shine: 24, wrap: 0.05 });
+hdLook(GLOVE_HD, { spec: 0.35, shine: 14, wrap: 0.12 });
+// UHD surfaces: dark gun steel over the full steel ramp with a reflected gradient on every flat
+// face and bare steel on the worn arrises; the glove in one-hue black leather (no purple patches).
+hdSurface(GUN, { ramp: PAL_HD.steel, lo: 0, hi: 4, sheen: 0.34, wear: 0.5 });
+hdSurface(GUN_LIT, { ramp: PAL_HD.steel, lo: 1, hi: 5, sheen: 0.3, wear: 0.6 });
+hdSurface(HOUSING, { ramp: PAL_HD.steel, lo: 0, hi: 4, sheen: 0.3, wear: 0.35 });
+hdSurface(BLADE, { ramp: PAL_HD.steel, lo: 3, hi: 7, sheen: 0.4 });
+hdSurface(GLOVE, { ramp: BLACK_ONE_HUE, lo: 0, hi: 3 });
+hdSurface(GLOVE_HD, { ramp: BLACK_ONE_HUE, lo: 0, hi: 4 });
 
 for (const [id, gen] of Object.entries(VIEWS)) {
   defineSprite(`fps/view/${id}`, () => [0, 1, 2, 3].map((fr) => gen(fr)), { anchor: 'feet', hd: (d) => withFigDensity(d, () => [0, 1, 2, 3].map((fr) => gen(fr))) });

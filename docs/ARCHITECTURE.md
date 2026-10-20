@@ -99,53 +99,60 @@ multi-part bosses, and 2-player co-op.
     `FILTERED_UI_PREFIXES` (`ui/leader-`, `ui/ending-`, `ui/title-swan` …, so a scene does not
     mix two looks), the exact ids in `UNFILTERED_IDS` (`fx/explosion-l`, `fx/explosion-xl`,
     `decor/ams/fabel-sign`: dithered fire and script that the filters only speckle) and the
-    font. 2× art (below) is never filtered either.
-  - **2× art (frame density, mission ams only).** A `Frame` has an optional `density` d (buffer
-    px per logical px, default 1). A 2× frame (d = 2) has a buffer twice as wide and high; its
-    logical size (`frameW(f)` / `frameH(f)`), anchor `ox` / `oy` and points `pts` stay in
-    LOGICAL px, so game logic reads the same numbers at either density. `defineHiSprite(id,
-    gen2x)` (or `defineSprite(id, gen, { hi: gen2x })`) adds a 2× generator to an existing id;
-    `getFrames` / `getFrame` return its 2× frames only while the art density is 2 and such a
-    generator exists (both caches are separate). The registry re-frames every 2× frame to its 1×
-    frame's logical rectangle, copies the 1× points and falls back to the 1× frames (with a
-    warning and a `spriteErrors()` entry `id@2x`) on a wrong frame count, an odd buffer size, a
-    different point or a thrown error. The art density is 1 except inside
-    `MissionRunner.draw` and the gameplay HUD of a mission whose `MissionDef.artDensity` is 2
-    (only `ams`; the attract demo passes `artDensity: 1`); generators always run at density 1
-    (they ask for 2× parts with `getFrames(id, 2)`), and lazily built terrain chunks and
-    background layers too. Drawing: with d | k each 2× pixel is an exact (k / d)² block; with
-    k > d otherwise nearest neighbour (`blitScaled`; Canvas may pick the other pixel on ties);
-    at k = 1 the renderers draw `lowRes(buf, 2)` (the top-left pixel of each 2 × 2 block;
-    flips mirror that image), so res 1 stays deterministic. `DrawOpts.src` is in logical px for
-    any density. Boot generates only 1× frames; the mission intro card (and gameplay, for a
-    direct start) starts `preloadMissionArt` (`preloadSprites(…, { density: 2 })`, 8 ms of
-    generation per browser frame (`MISSION_ART_BUDGET_MS`), the players' characters first,
-    then `MissionDef.preloadFirst` (ams: the Swan and the section a locals), its
-    `preloadLast` (the boss) at the end; only in the browser app: `GameApp.preloadArt`, set by
-    main.ts; headless runs never preload); anything not ready is generated on first draw. Checks:
-    `tests/engine/hires-density.test.ts`, the geometry fixture at density 2
-    (`tests/engine/hires.test.ts`) and the Canvas / software parity at k 1–6
-    (`tests/media/browser.test.ts`). Rules for the art: `docs/ART_GUIDE.md` "2x art (mission
-    ams)".
-  - **2× scenery (ams only).** Background layers and terrain have the same density path:
-    `defineHiBgGenerator(id, gen2x)` (same logical w, h, params, seed; returns (2·w) × (2·h)) and
-    `setHiTerrainPainter` / `defineHiTerrainMaterial(kind, id, paint(p, sx, sy))` (terrain-art.ts:
-    the same cell classification as 1×, so geometry and collision cannot change; a rect with no
-    2× material gives null). `SectionView(section, terrain, seed, density)` (the runner passes
-    its art density) draws a layer's 2× buffer with `ParallaxOpts.density` 2 (it tiles by the
-    logical size; offsets, factors and drift stay logical, sub-pixel scrolling is unchanged) and
-    a terrain chunk's 2× buffer as a density-2 frame (cropped to its opaque part), both only at
-    res ≥ 2 — at res 1 the 1× buffer is the exact image. The 1× buffers are always built first;
+    font. Dense (2× and 4×) art (below) is never filtered either.
+  - **Dense art (frame density, the mission ams flow).** A `Frame` has an optional `density` d
+    (art px per logical px, default 1; dense art has d 2 or 4). A dense frame's buffer is d times
+    as wide and high; its logical size (`frameW(f)` / `frameH(f)`), anchor `ox` / `oy` and points
+    `pts` stay in LOGICAL px, so game logic reads the same numbers at every density.
+    `defineHdSprite(id, (d) => frames)` (or `defineSprite(id, gen, { hd })`) adds ONE
+    density-generic generator for d 2 and 4 to an existing id (per density: `defineHiSprite(id,
+    gen, d)` / `{ hi, hi4 }`); `defineDenseAlias(id, target)` makes an id show a target's identical
+    dense frames (built, held, counted, sent and packed once; the 1× frames stay its own; the alias
+    must have the target's 1× geometry). One cache per density; `getFrames(id, d)` returns the
+    highest density ≤ d the id has (4 → 2 → 1, never an upscale). The registry re-frames every
+    dense frame to its 1× frame's logical rectangle, copies the 1× points and falls back to the
+    next lower frames (a warning and a `spriteErrors()` entry `id@<d>x`) on a wrong frame count, a
+    buffer size not divisible by d, a different point or a thrown error. The art density is 1
+    except inside `MissionRunner.draw` and the gameplay HUD of a mission whose
+    `MissionDef.artDensity` is above 1 (only `ams`: 4; the attract demo passes `artDensity: 1`);
+    they draw at min(artDensity, the art tier) (`MissionRunner.artDensity`; `maxArtDensity` is the
+    cap). Generators always run at density 1 (they ask for dense parts with `getFrames(id, d)`),
+    and lazily built terrain chunks and background layers too. Drawing: with d | k each art px is
+    an exact (k / d)² block; with k > d otherwise nearest neighbour (`blitScaled`; Canvas may pick
+    the other pixel on ties); at k < d the renderers draw the reduction to the highest density ≤ k
+    that divides d (`drawDensity`, `reducedFor`: a 4× frame at k 2 or 3 shows its 2× image, at k 1
+    its 1× image, the top-left px of each block; flips mirror that image), so res 1 stays
+    deterministic. `DrawOpts.src` is in logical px for any density. Boot generates only 1× frames;
+    the mission intro card (and gameplay, for a direct start) starts `preloadMissionArt` (§5.4: the
+    art pool builds the 2× set and, at tier 4, the working set; only in the browser app,
+    `GameApp.preloadArt`; headless runs never preload); anything not ready is generated on first
+    draw, except 4× frames in the browser (below). Checks: `tests/engine/hires-density.test.ts`,
+    `tests/engine/density4.test.ts`, the geometry fixture (`tests/engine/hires.test.ts`) and the
+    Canvas / software parity at k 1–8 (`tests/media/browser.test.ts`). Rules for the art:
+    `docs/ART_GUIDE.md` "2x art (mission ams): the dense art contract" and "UHD art".
+  - **Dense scenery (ams only).** Background layers and terrain have the same density path:
+    `defineHdBgGenerator(id, (w, h, params, seed, d) => …)` (the 1× generator's logical
+    arguments plus d; returns (d·w) × (d·h)) and the HD terrain painter `paintTerrainHd`
+    (`setHdTerrainPainter`) with `defineHdTerrainMaterial(kind, id, paint(p, d, out, i, stride))`
+    (terrain-art.ts: the same cell classification as 1×, so geometry and collision cannot change; a
+    rect with no HD material gives null). `SectionView(section, terrain, seed, density)` (the
+    runner passes its art density) draws each layer and chunk at the highest density ≤ min(its
+    density, T) that has art and that k can show (4 needs 4 | k): a layer with
+    `ParallaxOpts.density` d (it tiles by the logical size; offsets, factors and drift stay
+    logical, sub-pixel scrolling is unchanged), a chunk as a density-d frame (cropped to its opaque
+    part); at res 1 the 1× buffer is the exact image. The 1× buffers are always built first;
     density 1, m0–m5 and every 1× pixel stay byte-identical (`tests/art/scenery-hi.test.ts`,
-    fixture `scenery-1x.json`). Fallbacks (wrong size, throw) draw 1× and are listed by
-    `hiSceneryErrors()`. Budget: `preloadMissionArt` also turns on `setDeferHiArt(true)`; the
-    view then queues each 2× layer / chunk as an art job (`queueArtJob`) and draws its 1× art
-    until the job ran. The budgeted 2× preload runs queued jobs first in each 8 ms slice; once
-    it is done the view runs them itself (`runArtJobs(HI_ART_FRAME_BUDGET_MS)` per frame), and a
-    replaced view drops its jobs (`dispose`). Without deferral (headless tools, tests) 2× scenery
-    is built when first drawn. Measured in node: a 2× ams-skyline layer 1.4 ms / 2.5 MB, a 2×
-    terrain chunk about 6 ms (at most 14) / at most 1 MB; ams section a keeps about 19 MB of 2×
-    chunks next to 7 MB of 1× chunks.
+    fixture `scenery-1x.json`). Fallbacks (wrong size, throw) draw the lower art and are listed by
+    `hiSceneryErrors()`. Budget: `preloadMissionArt` also turns on `setDeferHiArt(true)`; the view
+    then queues each dense layer / chunk as an art job (`queueArtJob`) and draws the lower art until
+    the job ran (`runArtJobs(HI_ART_FRAME_BUDGET_MS)`, 8 ms per frame; the pool's main-thread
+    fallback runs them first in its slices); it releases dense chunks `EVICT_BEHIND_CHUNKS` (2) or
+    more chunks left of the view (ams scrolls forward), and a replaced view drops its jobs
+    (`dispose`). Without deferral (headless tools, tests) dense scenery is built when first drawn.
+    Measured in node at 4×: a layer median 1.1–13.2 ms (a cold first build up to 21 ms), 49–53 MB
+    of layers per section (2×: 12–13 MB); a terrain chunk median 5.8–8.4 ms (at most 13.6),
+    14–25 MB per section. Rules for the art: `docs/ART_GUIDE.md` "UHD backgrounds and terrain
+    (mission ams)".
   - **Art tiers and 4× art (UHD art, mission ams flow).** The art tier T ∈ {1, 2, 4}
     (`artTier()` / `setArtTier(t)` in `sprites.ts`, default 2 for tools and tests) is the
     highest art density the display draws. main.ts picks T and the backbuffer res together
@@ -156,28 +163,16 @@ multi-part bosses, and 2-player co-op.
     forced 4× at s 5–7 gives k = 4) and AUTO keeps tier 2 under a `?kmax=` cap below 8. Option
     ART DETAIL (AUTO / 4X / 2X / 1X, `settings.artDetail`; the Options hint shows the tier in
     effect) and `?art=1|2|4` (wins until the option is changed). `MissionDef.artDensity` is the
-    mission's HIGHEST density (ams: 4); the runner and the HUD draw at min(artDensity, T)
-    (`MissionRunner.artDensity`; `maxArtDensity` is the cap). Frames: `defineHiSprite(id, gen,
-    d)` / `{ hi, hi4 }` or ONE density-generic `defineHdSprite(id, (d) => …)` / `{ hd }`
-    (called with d 2 and 4); one cache per density; `getFrames(id, d)` returns the highest
-    density ≤ d the id has (4 → 2 → 1, never an upscale); validation is generic (buffer size
-    divisible by d, the 1× frame count, the 1× points; failures `id@<d>x` fall back to the next
-    lower frames). At tier 4 the browser never generates 4× frames on the main thread
-    (`setDeferDense(true)`): a missing one draws its 2× frame and the id is queued
+    mission's HIGHEST density (ams: 4). At tier 4 the browser never generates 4× frames on the
+    main thread (`setDeferDense(true)`): a missing one draws its 2× frame and the id is queued
     (`takeDenseQueue()`) for the art pool, which installs the result (`installFrames(id, 4, …)`);
     `hasFramesAt` / `framesDensityAt` peek without generating, `releaseDense(ids, 4)` /
-    `denseBytes(4)` serve the working set. Identical dense art is shared: `defineDenseAlias(id,
-    target)` makes an id show its target's 2× / 4× frames (built, held, counted, sent and packed
-    once; the 1× frames stay its own; the alias must have the target's 1× geometry). Renderers: a frame of density d > k is drawn as its
-    reduction to the highest density ≤ k that divides d (`drawDensity`, `reducedFor`: a 4×
-    frame at k 2 or 3 shows its 2× image, at k 1 its 1× image; never filtered). Scenery:
-    `defineHiBgGenerator(id, gen, d)` / `defineHdBgGenerator(id, (w, h, params, seed, d) => …)`,
-    `setHiTerrainPainter(paint, supports, d)` / `setHdTerrainPainter`; `SectionView` draws each
-    layer and chunk at the highest density ≤ min(its density, T) that has art and that k can
-    show (4 needs 4 | k), draws the lower one while a 4× item is not built yet, and releases
-    dense chunks `EVICT_BEHIND_CHUNKS` (2) or more chunks left of the view (ams scrolls
-    forward). **Governor:** at tier 4 main.ts averages render + present over 2 s windows
-    (`FrameGovernor`); above 8 ms (software rendering of the k 8 backbuffer) it caps the tier
+    `denseBytes(4)` serve the working set (§5.4). Screens outside the mission (menus, select,
+    ending) draw their own dense art at `screenTier(r)` through the screen art API
+    (`scenes/base.ts`, docs/api/media.md §7), text uses the HD glyph tables at the same tier
+    (`glyphDensity`, media.md §6) and the first-person view draws at density 2 at tiers 2 and 4
+    (docs/design/fps.md §3.4). **Governor:** at tier 4 main.ts averages render + present over
+    2 s windows (`FrameGovernor`); above 8 ms (software rendering of the k 8 backbuffer) it caps the tier
     at 2 (k ≤ 6) for the rest of the session and logs it with `console.info`. Checks:
     `tests/engine/density4.test.ts` (tier table s 1–16, fallback, validation, peek, deferral,
     release, preload, renderers, scenery, runner, governor, options) and the Canvas / software
@@ -288,11 +283,12 @@ simulation side and the media side can be built in parallel: **extend them, do n
   — `(ox, oy)` is the anchor inside the buffer; drawing a frame at world `(x, y)` puts its
   anchor on `(x, y)`. `pts` are named attachment points **relative to the anchor** for the
   unflipped frame (flip negates x). Standard point names: `hip`, `muzzle`, `hand`, `head`, `seat`.
-  Optional `density` (2 for 2× art, §3): `ox`, `oy`, `pts` stay logical; read the logical size
+  Optional `density` (2 or 4 for dense art, §3): `ox`, `oy`, `pts` stay logical; read the logical size
   with `frameW(f)` / `frameH(f)`, never `buf.w` / `buf.h` outside art code.
-- `defineHiSprite(id, gen2x)` / `defineSprite(id, gen, { hi })`, `hasHiSprite`, `listHiSprites`,
-  `setArtDensity` / `withArtDensity` / `artDensity`, `setHiArt(false)` (tools, tests),
-  `getFrames(id, density?)`: 2× art (§3).
+- `defineHdSprite(id, (d) => frames)` / `defineSprite(id, gen, { hd })` (one generator for 2× and
+  4×), `defineHiSprite(id, gen, d)` / `{ hi, hi4 }`, `defineDenseAlias(id, target)`,
+  `hasHiSprite`, `listHiSprites`, `setArtDensity` / `withArtDensity` / `artDensity`, `artTier` /
+  `setArtTier`, `setHiArt(false)` (tools, tests), `getFrames(id, density?)`: dense art (§3).
 - `defineSprite(id, gen, opts?)` registers a lazily generated frame strip. IDs are slash paths
   (`char/<id>/legs-run`, `enemy/rifleman/run`, `fx/explosion-m`, `item/crate`, `ui/icon-bomb`).
 - `getFrames(id)` (generates on first use, then caches), `frameCount(id)`, `hasSprite(id)`,
@@ -307,8 +303,9 @@ simulation side and the media side can be built in parallel: **extend them, do n
   preload every sprite. `tests/game/boot-art.test.ts` checks that the list covers what the start
   screens, the attract loop and every part of ams draw. First visit: about 3 s instead of 12 s.
 - **Sprite cache** (2026-10-18): the generators are pure, so their frames can be kept. A pack
-  (`sprite-pack.ts`: JSON metadata + all pixels, gzip, shared buffers stay shared, decoded
-  buffers are views into one ArrayBuffer) holds the ready frames of many ids;
+  (`sprite-pack.ts`: JSON metadata + all pixels, gzip, shared buffers stay shared; the decoder
+  streams, each decoded buffer gets its own ArrayBuffer, and a restore decodes only the ids it
+  installs, so a released id frees its pixels) holds the ready frames of many ids;
   `readyFrames(id, d)`, `generatedSprites(d, prefix?)` and `installFrames(id, d, frames)` read and
   fill the registry without running a generator. `ArtCache` (src/game/art-cache.ts) keeps the
   packs 'boot' (1×, saved after the boot preload), 'hi' (2×, saved after the background 2×
@@ -319,12 +316,48 @@ simulation side and the media side can be built in parallel: **extend them, do n
   then skips the installed ids (repeat visit: about 1.4 s). Saves run in the background in
   256 KB chunks with a yield after each. Only the browser app in a production build has a cache
   (`app.artCache`); headless apps, the dev server and `?cache=0` run without one. UHD art
-  (2026-10-19): the packs are 'boot' (1×), 'hi' (2×), 'fps', 'hd4-<section>' and
-  'hd4-char-<hero>' (4×; `packDensity(name)`). Boot restores 'boot' and 'hi' only; the 4× packs
-  are restored at the mission start and on a section change (gameplay.ts `missionArtSection`),
+  (2026-10-19): the packs are 'boot' (1×), 'hi' (2×), 'fps', 'hd4-<section>', 'hd4-char-<hero>'
+  and 'hd4-fps' (4×; `packDensity(name)`: 'hi' and 'hd2-…' 2, 'hd4-…' 4). Boot restores 'boot'
+  and 'hi' only; the 4× packs are restored at the mission start and on a section change (gameplay.ts `missionArtSection`),
   installing only the working set's ids (`restore(name, keep?)`). The art pool (worker chunk
   `assets/art-worker-*.js`, precached by the service worker) builds the 2× set and the 4× working
   set off the main thread.
+- **Art pool** (UHD art, 2026-10-19; `src/engine/art-pool.ts`, worker entry
+  `src/game/art-worker.ts`, docs/api/media.md §5): min(cores − 1, 8) module workers (at least 1)
+  load the content registry and build the ids they are given at density d; they send raw packs
+  back as transferred ArrayBuffers (no SharedArrayBuffer, so no cross-origin isolation is
+  needed), and the main thread installs them (`installFrames`). The frames are byte-identical to
+  main-thread generation (tested). Ids of one family (`familyOf`: a hero's strip family — `legs`,
+  `torso-pistol`, `torso-heavy`, `ride`, `helium`, `helium-wob`, the full-body rest —
+  `enemy/<set>`, `boss/<id>`, `vehicle/<id>` …) go to the same worker, so shared parts stay warm
+  there and one hero spreads over 7 workers. A dense alias is built and sent once, as its target.
+  Without Worker, or after a worker fails, the ids are built by the budgeted main-thread preload
+  (`MISSION_ART_BUDGET_MS` = 8 ms per frame). A build may be low priority (the bulk 2× set queues
+  behind the tier-4 working set). Idle workers close after `POOL_IDLE_CLOSE_MS` = 5 s (one stays;
+  a worker holds the content registry and its memoised art parts) and start again on demand. The
+  screens and the first-person mode have small pools of their own (`SCREEN_POOL_MAX`,
+  `FPS_POOL_MAX`: 4 workers at most), closed when idle.
+- **Tier-4 working set** (`scenes/gameplay.ts`): at tier 4 only a working set is built at 4×
+  (`denseWorkingSet`): the chosen heroes (all their strips but the menu-only select portraits;
+  the other heroes never), the mission's
+  `preloadFirst`, the current and the next section's `SectionDef.art` (ams: the decor and the
+  fatbike pair sets are section art, never `preloadFirst`) and `boss/` only in the boss section.
+  The P2-only art (the Mute Swan) joins only with two players; with two players the fatbike
+  youths (solo and pair sets, about 97 MB at 4×) keep their 2× art (`twoPlayer2x`). A 4× id drawn
+  outside the set shows its 2× frame and is queued for the pool (`pumpDenseQueue`). On a section
+  change (`missionArtSection`) the set moves on: the ids outside the new set are released first,
+  as far as the budget needs room for the ids still to build, then the rest is restored from the
+  packs or built, and the resident 4× frames are trimmed to `DENSE_BUDGET_BYTES` = 256 MB (least
+  recently used first, never the heroes; also when everything was restored). One run per play: a
+  new play (another mission, or a section before the run's) stops the old run first, and
+  `stopDense()` (the play ends, or the tier falls below 4: the governor, ART DETAIL) drops the
+  queue and releases every 4× frame but the fps art's. When the game proper starts, the menus' 4×
+  art is released (`releaseScreenArt(keepForHeroes(…))`); the glitch bridge releases the
+  mission's 4× set before the first-person mode (`releaseMissionDense()`, the fps art kept).
+  Measured (node, 8 workers, 2026-10-20, after the polish group): the working set of section a
+  builds in 3.3–3.8 s on a loaded machine (limit 6 s); the working set of one player is 235–250 MB
+  in every ams section for each of the ten heroes, and the resident 4× frames peak at 255.7 MB
+  after the trims (two players, recruit and vincent: at most 251.3 MB).
 - **Offline cache** (2026-10-18): the production build writes a service worker `sw.js`
   (tools/sw/plugin.ts fills the template tools/sw/sw.js with every published file and a hash of
   its content). It installs the page, the scripts and the boot sample group, caches other files
@@ -522,7 +555,7 @@ Playable characters — `char/<id>/…`:
   Animation wave (players): `flip` (14f, the running jump), `mount-hop` (5f, last frame has
   `hip`), `die-drown` (12f, anchor = the water surface, cropped there), `die-flat` (7f, crush),
   `fidget-a` / `fidget-b` (9–14f), `timeout-yawn` (8f), `timeout-sleep` (4f loop). Deferred
-  (`SpriteOpts.defer`, made on first use / last in the 2× preload): the fidgets, the time-out
+  (`SpriteOpts.defer`, made on first use / last in the dense preload): the fidgets, the time-out
   strips, `die-drown`, `die-flat`, `mount-hop`. FX used by the player: `fx/chute` (6f loop),
   `fx/chute-collapse` (8f; anchor = rim centre, point `harness` [0, 16]), `fx/snore` (6f,
   deferred; drawn at the `head` point).
@@ -553,6 +586,11 @@ Enemy soldiers — `enemy/<id>/…` (full body): `idle` (≥2f), `gag` (optional
 
 Hostages — `item/hostage/…` (or `item/hostage/<kind>/…`): `tied` (≥2f), `freed` (≥3f), `walk`
 (≥6f), `give` (≥4f, `hand`), `run` (≥6f), optional `bow`.
+
+**Dense art** (UHD, the mission ams flow): a strip of this contract may also have 2× and 4×
+frames (every `char/<id>/…` strip does: `hd: (d) => gen(d)`). They have exactly the 1× frame's
+logical size, anchor and points (§3), so this contract and every number in it hold at every
+density; logic never reads art pixels.
 
 ### 6.2 Mission data format (contract for mission agents)
 ```ts
@@ -586,8 +624,9 @@ The real types live in `src/game/mission/types.ts` (folder `src/game/mission/`);
 `docs/api/game.md` §10 for `SectionContext` (spawning, `enter` that never lands over a pit,
 camera locks, `autoScroll(speed)`, `bossIntro(name, {subtitle})` which refills and pauses the
 timer, callouts, exits) and `MissionDef` (`hostages` per section for the tally, `startBanner`,
-`announce`, `clearLine`, `artDensity` — 2 draws the 2× art, ams only, §3; `preloadFirst` /
-`preloadLast` — the order of its 2× preload).
+`announce`, `clearLine`, `artDensity` — the highest dense art it draws, ams 4, §3; `preloadFirst` /
+`preloadLast` — the order of its dense preload; `SectionDef.art` — what a section draws, the
+tier-4 working set, §5.4).
 Builders keep terrain readable, e.g. `ground().at(0, 170).flat(400).slope(200, -40).gap(48)…`.
 
 `BackgroundDef` and `TerrainStyleDef` are defined in **`src/game/art/art-registry.ts`** (a
@@ -777,13 +816,31 @@ Art tier 4 (§3): the texture budget follows k (`textureBudgetFor(k)`: 48 M px u
 2× frames). Texture uploads are one 32-bit byte-order swizzle per pixel into a reused ImageData
 (no per-channel writes), and dense frames have an upload budget (`UPLOAD_BUDGET_MS` = 6 ms per
 frame): once spent, a dense frame whose texture is not uploaded yet draws its 1× reduction for
-that frame and is uploaded on a later one (`TextureStats.uploadMs` / `uploadDeferred`). Targets
-(proposal, fixed by the lead in tmp/uhd-budget.md): render + present ≤ 2 ms at k = 8 on the GPU
-(`npm run perf -- --viewport 3840x2160 --gpu`, `--art auto,2` to compare); on a software
-rasteriser the governor drops to tier 2 when the 2 s average passes 8 ms. 4× frames are never
-generated on the main thread during play (the art pool builds them; resident 4× frames ≤ 256 MB
-working set: identical strips are dense aliases, and with two players the rare strips — deferred,
-photo poses, the Swans' migration — stay 2×, gameplay.ts `rareDenseArt`).
+that frame and is uploaded on a later one (`TextureStats.uploadMs` / `uploadDeferred`). 4×
+frames are never generated on the main thread during play (the art pool builds them, §5.4).
+
+UHD budget (fixed by the lead after the first UHD group, 2026-10-19; measured 2026-10-20, node,
+10 cores, 8 workers, and Chromium on an Apple M5):
+
+| Measure | Limit | Measured |
+|---|---|---|
+| boot at 1× (first visit; HD art is never built at boot) | ≤ 4.0 s | 1.5 s |
+| tier 2: the whole ams 2× set, pool | ≤ 5.0 s (≤ 8.65 s on the main-thread fallback) | 1.7–2.3 s |
+| tier 4: the chosen hero + the section a working set, pool | ≤ 6.0 s | 2.7–3.8 s (3.3–3.8 s on a loaded machine, polish) |
+| tier 4: the whole ams 4× set in the background, pool | ≤ 25 s | 6.5–7.4 s |
+| one 4× sprite frame, one thread | ≤ 4 ms (hero, rider, NPC); ≤ 15 ms (boss parts, Swan body) | hero 1.9, rider 1.7, Swan 6.7, boss 8.1 ms |
+| one 4× terrain chunk or background layer (an art job) | ≤ 16 ms | medians 1.1–13.2 ms, cold up to 21 ms |
+| resident 4× frames (`denseBytes(4)`) | ≤ 256 MB (`DENSE_BUDGET_BYTES`) | working set of one player 235–250 MB in every ams section (all ten heroes); resident peak after the trims 255.7 MB; two players at most 251.3 MB |
+| render + present at k = 8 on the GPU (`npm run perf -- --viewport 3840x2160 --gpu`) | ≤ 2 ms | ams 0.2–0.33 ms (boss max 3.4); title 0.46 ms; first-person 0.75 ms quiet, 1.6 ms average / 2.9 ms p95 on a busy machine (accepted: 60 fps holds) |
+
+Over budget, the cut order is: (1) share parts and identical strips (dense aliases), (2) cheaper
+shading passes, (3) rare deferred strips stay 2× at tier 4 (the 4 → 2 fallback is automatic). Two
+players with two different heroes and the Mute Swan were over the budget in every section
+(262–282 MB with every identical strip shared), so with two players the fatbike youths keep their
+2× art (gameplay.ts `twoPlayer2x`). On a software rasteriser the governor drops to tier 2 when the
+2 s average passes 8 ms, and the tier-4 run stops (`stopDense`). The art workers' heaps are
+outside the frame budget (a 4K tier-4 run measured about 2.3–2.6 GB renderer RSS against 1.2 GB at
+tier 2, before idle workers closed): idle workers close after 5 s.
 
 First-person mode (`docs/design/fps.md` §3.5): `renderView` ≤ 2 ms per 384 × 176 frame headless
 at density 1, `FpsGame.step` ≤ 0.3 ms with 60 actors, zero per-tick allocations, one stream slot

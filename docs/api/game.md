@@ -482,9 +482,11 @@ interface MissionDef { id, name, subtitle?, music, bossMusic?, start, sections: 
   bossSections?: string[] }   // BOSS SPEED BONUS over several fights (m5): their times add up, the walk between does not
 interface MissionDef { …, startBanner?: { text?, sub? }, announce?, clearLine? ('Objective secured!'),
   hostages?: Record<sectionId, number>,   // hostages per section: STANDING OVATION in the tally
-  artDensity?: 1 | 2,                      // 2: draw the 2× sprites (defineHiSprite) — ams only; ARCHITECTURE §3
+  artDensity?: 1 | 2 | 4,                  // highest dense art drawn: min(artDensity, art tier) — ams: 4; ARCHITECTURE §3
   footsteps?: boolean,                      // player/step every 16 ticks while running on foot (ams)
-  preloadFirst?: string[], preloadLast?: string[] }  // 2× preload order: id prefixes after the players' characters / at the end
+  preloadFirst?: string[], preloadLast?: string[],   // dense preload order: id prefixes after the players' characters / at the end
+                                            // (at tier 4 also the working set; never decor: that is section `art`)
+  art?: string[] }                          // what the mission draws at 1× (the boot preloads only these)
 interface SectionDef { id, name?, width, height, scroll: 'right'|'up'|'down'|'free', background: BackgroundDef,
   terrain: TerrainDef, terrainStyle: TerrainStyleDef, decor?: DecorDef[], playerStart: {x, y}, checkpoints?: number[],
   timeLimit? (HUD counts; default 60; 0 = none), music?, script: (ctx: SectionContext) => ScriptGen, exits?: ExitDef[], bossStart?,
@@ -492,7 +494,8 @@ interface SectionDef { id, name?, width, height, scroll: 'right'|'up'|'down'|'fr
   startVehicle?: string,                        // every player starts (and respawns) in this vehicle
   vehicles?: string[],                          // vehicle ids that may be carried INTO this section
   iceRanges?: [x0, x1][],                       // icy ground: players and vehicles slide (iceAt)
-  ambience?: string }                           // sfx loop under the audio key 'ambience' (runner.setAmbience; same id = keeps playing)
+  ambience?: string,                            // sfx loop under the audio key 'ambience' (runner.setAmbience; same id = keeps playing)
+  art?: string[] }                              // sprite id prefixes this section draws: the tier-4 working set (this section and the one before)
 interface DecorDef { sprite, x, y, frame?, animate? (true | ticks per frame), flipX?, front?, parallax? (1), alpha? }
 interface ExitDef { id?, rect, to (section id | 'complete'), transition?: 'fade'|'cut', entry?: {x, y}, disabled? }
 // terrain builders re-exported: terrain(w, h).ground().at(0, 170).flat(400).slope(200, -40)…, platformPath, Terrain

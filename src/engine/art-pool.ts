@@ -231,6 +231,10 @@ export function inProcessPort(handler: ReturnType<typeof createArtWorkerHandler>
  * (`char/<id>/…`, about 120 ids and 450 frames, the tier-4 working set) is split by strip family
  * so it spreads over the pool: `legs-*`, `torso-pistol-*`, `torso-heavy-*`, the Helium twins
  * `helium-*` and `helium-wob-*`, the rider strips `ride-*`, and the full-body rest (`char/<id>`).
+ * A vehicle's neck strips (`vehicle/<id>/neck*`, the Swans: about 2.4 s of 4× art in one family
+ * otherwise) form their own family; a fatbike pair set (`enemy/fatbike-youth-pair-<x>`) joins
+ * its solo set (`enemy/fatbike-youth-<x>`, look 0a: `enemy/fatbike-youth`), whose rider and bike
+ * parts it reuses.
  */
 export function familyOf(id: string): string {
   const parts = id.split('/');
@@ -239,9 +243,17 @@ export function familyOf(id: string): string {
     const sub = heroStripFamily(parts[2]);
     return sub ? `char/${parts[1]}/${sub}` : `char/${parts[1]}`;
   }
+  if (head === 'vehicle' && parts.length >= 3 && parts[2].startsWith('neck')) return `vehicle/${parts[1]}/neck`;
+  if (head === 'enemy' && parts.length >= 2 && parts[1].startsWith(PAIR_SET)) {
+    const x = parts[1].slice(PAIR_SET.length);
+    return x === '0a' ? 'enemy/fatbike-youth' : `enemy/fatbike-youth-${x}`;
+  }
   if (head === 'char' || head === 'boss' || head === 'enemy' || head === 'vehicle' || head === 'npc') return parts.slice(0, 2).join('/');
   return parts.slice(0, 3).join('/');
 }
+
+/** The id prefix (after `enemy/`) of the fatbike pair sets. */
+const PAIR_SET = 'fatbike-youth-pair-';
 
 /** The strip family of a hero strip name (null: the full-body rest). */
 function heroStripFamily(strip: string): string | null {
@@ -287,6 +299,28 @@ export interface ArtPoolOpts {
   warn?: (msg: string) => void;
   /** Install each batch (default installFrames per id); returns the number installed. */
   install?: (pack: RawPack) => number;
+  /**
+   * Starts worker `i` again after an idle close (`idleCloseMs`). Without it workers are never
+   * closed for being idle.
+   */
+  spawn?: (i: number) => ArtWorkerPort;
+  /**
+   * Close the workers after this many ms without a batch (a worker keeps the content registry,
+   * its 1× frames and the memoised art parts: tens of MB each), except the first `keepAwake`.
+   * A closed worker starts again (`spawn`) when a batch needs it. Default: never.
+   */
+  idleCloseMs?: number;
+  /** Workers an idle close leaves running (default 1). */
+  keepAwake?: number;
+}
+
+/** Options of one `build`. */
+export interface ArtBuildOpts {
+  /**
+   * Low priority: the batches queue behind every batch of a normal build, also those that come
+   * later (the bulk 2× set behind the tier-4 working set).
+   */
+  low?: boolean;
 }
 
 interface Batch {
@@ -294,15 +328,20 @@ interface Batch {
   d: number;
   ids: string[];
   clear?: boolean;
+  low?: boolean;
   done: (pack: RawPack | null) => void;
 }
 
 interface Slot {
   port: ArtWorkerPort | null;
+  /** Closed for being idle (`idleCloseMs`); `spawn` starts it again when a batch needs it. */
+  asleep: boolean;
   queue: Batch[];
   busy: Batch | null;
   /** Queued + busy ids (weighted by d²), for the least-loaded choice. */
   load: number;
+  /** The same for the normal-priority batches only. */
+  urgent: number;
   /** Families homed on this worker (tie-break: builds that arrive one family at a time spread). */
   fams: number;
 }
@@ -334,6 +373,10 @@ export class ArtPool {
   private readonly fallbackFn: (ids: readonly string[], d: number) => Promise<void>;
   private readonly warnFn: (msg: string) => void;
   private readonly installFn: (pack: RawPack) => number;
+  private readonly spawnFn: ((i: number) => ArtWorkerPort) | null;
+  private readonly idleMs: number;
+  private readonly keepAwake: number;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private warned = false;
   private nextJob = 1;
   /** The fallback runs one batch list at a time, in order. */
@@ -349,17 +392,24 @@ export class ArtPool {
       });
     this.warnFn = opts.warn ?? ((m) => console.warn(m));
     this.installFn = opts.install ?? installRawPack;
+    this.spawnFn = opts.spawn ?? null;
+    this.idleMs = this.spawnFn && opts.idleCloseMs !== undefined && opts.idleCloseMs >= 0 ? opts.idleCloseMs : -1;
+    this.keepAwake = Math.max(0, opts.keepAwake ?? 1);
     this.slots = ports.map((port, i) => {
-      const slot: Slot = { port, queue: [], busy: null, load: 0, fams: 0 };
-      port.onReply((r) => this.reply(i, r));
-      port.onFail((m) => this.fail(i, m));
+      const slot: Slot = { port, asleep: false, queue: [], busy: null, load: 0, urgent: 0, fams: 0 };
+      this.attach(i, port);
       return slot;
     });
     this.size = this.slots.length;
   }
 
-  /** Live workers. */
+  /** Workers that can take batches (running, or closed for being idle). */
   get workers(): number {
+    return this.slots.filter((s) => s.port || s.asleep).length;
+  }
+
+  /** Workers running now (an idle close lowers it; the next batch raises it). */
+  get awake(): number {
     return this.slots.filter((s) => s.port).length;
   }
 
@@ -375,7 +425,7 @@ export class ArtPool {
    * after each batch. Never rejects: a broken worker's ids go to the main-thread fallback. A
    * dense alias is built as its target, once (`buildIds`): no worker builds or sends it twice.
    */
-  build(asked: readonly string[], d: number, onProgress?: (done: number, total: number) => void): Promise<ArtPoolReport> {
+  build(asked: readonly string[], d: number, onProgress?: (done: number, total: number) => void, opts: ArtBuildOpts = {}): Promise<ArtPoolReport> {
     const t0 = now();
     const ids = buildIds(asked, d);
     const report: ArtPoolReport = { total: ids.length, installed: 0, fallback: 0, failed: [], ms: 0 };
@@ -399,6 +449,7 @@ export class ArtPool {
               job: this.nextJob++,
               d,
               ids: part,
+              low: opts.low === true,
               done: (pack) => {
                 if (pack) {
                   try {
@@ -446,24 +497,46 @@ export class ArtPool {
 
   /** Stop every worker; queued batches go to the fallback. */
   close(): void {
+    this.cancelIdle();
     for (let i = 0; i < this.slots.length; i++) {
       const s = this.slots[i];
       s.port?.terminate();
       s.port = null;
+      s.asleep = false;
       this.drain(i);
     }
   }
 
+  private attach(i: number, port: ArtWorkerPort): void {
+    port.onReply((r) => this.reply(i, r));
+    port.onFail((m) => this.fail(i, m));
+  }
+
+  /** Can worker `i` take a batch (running, or asleep and able to start again)? */
+  private usable(i: number): boolean {
+    const s = this.slots[i];
+    return s.port !== null || s.asleep;
+  }
+
   private enqueue(fam: string, batch: Batch): void {
+    this.cancelIdle();
+    const cost = (s: Slot): number => (batch.low ? s.load : s.urgent);
     let w = this.family.get(fam);
-    if (w === undefined || !this.slots[w].port) {
+    if (w === undefined || !this.usable(w)) {
       w = -1;
       for (let i = 0; i < this.slots.length; i++) {
-        if (!this.slots[i].port) continue;
+        if (!this.usable(i)) continue;
         const s = this.slots[i];
-        // Least loaded; on a tie (idle workers) the one with the fewest families, so builds of
-        // one family at a time (the tier-4 pump, benches) do not all land on worker 0.
-        if (w < 0 || s.load < this.slots[w].load || (s.load === this.slots[w].load && s.fams < this.slots[w].fams)) w = i;
+        const b = w < 0 ? null : this.slots[w];
+        // Least loaded; on a tie a running worker before a sleeping one, then the one with the
+        // fewest families, so builds of one family at a time (the tier-4 pump, benches) do not
+        // all land on worker 0.
+        if (
+          !b ||
+          cost(s) < cost(b) ||
+          (cost(s) === cost(b) && ((!s.asleep && b.asleep) || (s.asleep === b.asleep && s.fams < b.fams)))
+        )
+          w = i;
       }
       if (w < 0) {
         this.runFallback([batch]);
@@ -473,16 +546,42 @@ export class ArtPool {
       this.slots[w].fams++;
     }
     const slot = this.slots[w];
-    slot.queue.push(batch);
-    slot.load += batch.ids.length * batch.d * batch.d;
+    const weight = batch.ids.length * batch.d * batch.d;
+    if (batch.low) slot.queue.push(batch);
+    else {
+      // A normal batch goes ahead of the queued low-priority ones.
+      const k = slot.queue.findIndex((b) => b.low);
+      if (k < 0) slot.queue.push(batch);
+      else slot.queue.splice(k, 0, batch);
+      slot.urgent += weight;
+    }
+    slot.load += weight;
     this.pump(w);
+  }
+
+  /** Start sleeping worker `i` again; false when it cannot start (its batches then fall back). */
+  private wake(i: number): boolean {
+    const s = this.slots[i];
+    if (s.port || !s.asleep || !this.spawnFn) return s.port !== null;
+    s.asleep = false;
+    try {
+      s.port = this.spawnFn(i);
+      this.attach(i, s.port);
+      return true;
+    } catch (err) {
+      this.warnOnce(`[art-pool] cannot restart a worker (building on the main thread instead): ${err instanceof Error ? err.message : String(err)}`);
+      s.port = null;
+      this.drain(i);
+      return false;
+    }
   }
 
   private pump(i: number): void {
     const s = this.slots[i];
-    if (!s.port || s.busy) return;
-    const b = s.queue.shift();
-    if (!b) return;
+    if (s.busy || s.queue.length === 0) return;
+    if (!s.port && !this.wake(i)) return;
+    if (!s.port) return;
+    const b = s.queue.shift() as Batch;
     s.busy = b;
     s.port.post({ t: 'build', job: b.job, d: b.d, ids: b.ids, ...(b.clear ? { clear: true } : {}) });
   }
@@ -496,9 +595,12 @@ export class ArtPool {
       return;
     }
     s.busy = null;
-    s.load -= b.ids.length * b.d * b.d;
+    const weight = b.ids.length * b.d * b.d;
+    s.load -= weight;
+    if (!b.low) s.urgent -= weight;
     b.done(r.pack);
     this.pump(i);
+    this.scheduleIdle();
   }
 
   private fail(i: number, message: string): void {
@@ -507,6 +609,7 @@ export class ArtPool {
     this.warnOnce(`[art-pool] a worker failed (building on the main thread instead): ${message}`);
     s.port.terminate();
     s.port = null;
+    s.asleep = false;
     this.drain(i);
   }
 
@@ -517,7 +620,40 @@ export class ArtPool {
     s.busy = null;
     s.queue = [];
     s.load = 0;
+    s.urgent = 0;
     if (list.length) this.runFallback(list);
+  }
+
+  private idle(): boolean {
+    return this.slots.every((s) => !s.busy && s.queue.length === 0);
+  }
+
+  /** Once every worker is idle: close the workers after `idleCloseMs` (but `keepAwake`). */
+  private scheduleIdle(): void {
+    if (this.idleMs < 0 || this.idleTimer !== null || !this.idle() || typeof setTimeout !== 'function') return;
+    const t = setTimeout(() => {
+      this.idleTimer = null;
+      if (!this.idle()) return;
+      let keep = this.keepAwake;
+      for (const s of this.slots) {
+        if (!s.port) continue;
+        if (keep > 0) {
+          keep--;
+          continue;
+        }
+        s.port.terminate();
+        s.port = null;
+        s.asleep = true;
+      }
+    }, this.idleMs);
+    (t as { unref?: () => void }).unref?.();
+    this.idleTimer = t;
+  }
+
+  private cancelIdle(): void {
+    if (this.idleTimer === null) return;
+    clearTimeout(this.idleTimer);
+    this.idleTimer = null;
   }
 
   private runFallback(list: Batch[]): void {
@@ -563,10 +699,19 @@ function messagePort(w: {
   };
 }
 
+/** Default `idleCloseMs` of the browser pools: close the idle workers 5 s after the last batch. */
+export const POOL_IDLE_CLOSE_MS = 5000;
+
+/** One art worker (a module worker; Vite bundles src/game/art-worker.ts as its own chunk). */
+function startBrowserWorker(i: number): ArtWorkerPort {
+  return messagePort(new Worker(new URL('../game/art-worker.ts', import.meta.url), { type: 'module', name: `art-${i}` }));
+}
+
 /**
  * The browser pool: `size` (default `poolSize()`) module workers running src/game/art-worker.ts.
  * Without Worker (or when one cannot start) it has no workers and every build runs on the main
- * thread (the budgeted fallback), after one console.warn.
+ * thread (the budgeted fallback), after one console.warn. Idle workers close after
+ * `POOL_IDLE_CLOSE_MS` (one stays) and start again on demand (`ArtPoolOpts.idleCloseMs`).
  */
 export function browserArtPool(size = poolSize(), opts: ArtPoolOpts = {}): ArtPool {
   const ports: ArtWorkerPort[] = [];
@@ -575,16 +720,14 @@ export function browserArtPool(size = poolSize(), opts: ArtPoolOpts = {}): ArtPo
     warn('[art-pool] no Worker: building art on the main thread');
   } else {
     try {
-      for (let i = 0; i < size; i++) {
-        ports.push(messagePort(new Worker(new URL('../game/art-worker.ts', import.meta.url), { type: 'module', name: `art-${i}` })));
-      }
+      for (let i = 0; i < size; i++) ports.push(startBrowserWorker(i));
     } catch (err) {
       warn(`[art-pool] cannot start a worker (building art on the main thread): ${err instanceof Error ? err.message : String(err)}`);
       for (const p of ports) p.terminate();
       ports.length = 0;
     }
   }
-  return new ArtPool(ports, { ...opts, warn });
+  return new ArtPool(ports, { idleCloseMs: POOL_IDLE_CLOSE_MS, spawn: startBrowserWorker, ...opts, warn });
 }
 
 /** Node only: the module id of worker_threads (not a static import, so browser builds skip it). */
@@ -612,8 +755,7 @@ export async function nodeArtPool(size: number, opts: ArtPoolOpts = {}): Promise
   const wt = (await import(/* @vite-ignore */ NODE_WORKER_THREADS)) as NodeWorkerThreads;
   // Not a literal: the bundler must not copy the worker source as an asset for this node path.
   const entry = new URL(WORKER_SOURCE, import.meta.url);
-  const ports: ArtWorkerPort[] = [];
-  for (let i = 0; i < size; i++) {
+  const start = (): ArtWorkerPort => {
     const w = new wt.Worker(entry, { execArgv: ['--import', 'tsx'] });
     let fail: (m: string) => void = () => {};
     let reply: (r: ArtBuildReply) => void = () => {};
@@ -622,7 +764,7 @@ export async function nodeArtPool(size: number, opts: ArtPoolOpts = {}): Promise
     w.on('exit', (code: number) => {
       if (code !== 0) fail(`exit ${code}`);
     });
-    ports.push({
+    return {
       post: (req) => w.postMessage(req),
       onReply: (cb) => {
         reply = cb;
@@ -634,7 +776,9 @@ export async function nodeArtPool(size: number, opts: ArtPoolOpts = {}): Promise
         fail = () => {};
         void w.terminate();
       },
-    });
-  }
-  return new ArtPool(ports, opts);
+    };
+  };
+  const ports: ArtWorkerPort[] = [];
+  for (let i = 0; i < size; i++) ports.push(start());
+  return new ArtPool(ports, { spawn: start, ...opts });
 }

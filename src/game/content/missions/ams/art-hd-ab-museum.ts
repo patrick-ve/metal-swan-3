@@ -28,6 +28,9 @@ export function rijksmuseumHd(d: D): Frame {
   const slate = face(c, PAL_HD.slate, { lo: 1, hi: 5 });
   const glass = glow(c, PAL_HD.glass);
   const ink = glow(c, PAL_HD.black, { lo: 0, hi: 3, dither: 0.25 });
+  // The passage vault: warm dark brick lit only by its lamps (6 tones, ordered dither at the band
+  // borders of the big gradient).
+  const vault = glow(c, PAL_HD.brickDark, { lo: 0, hi: 5, dither: 0.25 });
   const tile = face(c, PAL_HD.plaster, { lo: 3, hi: 6, spec: 0.3 });
   const blue = face(c, PAL_HD.sky, { lo: 0, hi: 3, spec: 0.3 });
   const lampM = glow(c, PAL_HD.gold, { lo: 3, hi: 7 });
@@ -109,14 +112,29 @@ export function rijksmuseumHd(d: D): Frame {
 
   // ---- The passage: the vault in deep shade, niches with lamps, the tiled dado. ----
   c.erase(p0, ceil, p1 - p0 + 1, base - ceil + 1, () => true);
+  // Lamp light: a warm pool round each hanging lamp (falling off over about 14 logical px), and
+  // daylight from both passage mouths.
+  const lampLight = (x: number, y: number): number => {
+    const j = Math.max(0, Math.min(Math.floor((p1 - p0 - 21) / 40), Math.round((x - p0 - 20) / 40)));
+    const lx = p0 + 20 + j * 40 + 0.5;
+    const q = 1 - Math.hypot(x - lx, (y - (ceil + 13.5)) * 0.85) / 14;
+    const mouth = 1 - Math.min(x - p0, p1 + 1 - x) / 28;
+    return (q > 0 ? q * q * 0.44 : 0) + (mouth > 0 ? mouth * mouth * 0.16 : 0);
+  };
   c.plane(p0, ceil, p1 - p0 + 1, base - ceil + 1, {
-    mat: ink,
+    mat: vault,
     z: -6,
     tex: (s) => {
+      passage(s);
+      s.tone += lampLight(s.x, s.y) * (s.mat === vault ? 1 : 0.7);
+    },
+  });
+  function passage(s: Parameters<Texture>[0]): void {
+    {
       const depth = s.y - ceil;
       const k = (s.x - p0) % 40;
       const archTop = ceil + 18 + ((k - 20) * (k - 20)) / 40;
-      s.tone = -0.35 + Math.min(1, depth / 30) * 0.35;
+      s.tone = -0.36 + Math.min(1, depth / 30) * 0.2;
       // The tiled dado below, the blue band.
       if (s.y > base - 24 && (k <= 4.5 || k >= 35.5)) {
         s.mat = tile;
@@ -146,8 +164,8 @@ export function rijksmuseumHd(d: D): Frame {
         const row = Math.floor(yy / 1.5);
         if (yy % 1.5 < 0.3 || ((s.x + (row & 1 ? 1.5 : 0)) % 3) < 0.3) s.tone -= 0.22;
       }
-    },
-  });
+    }
+  }
   c.shade(p0, ceil, p1 - p0 + 1, 8, (_x, y) => -(1 - (y - ceil) / 8) * 0.4);
   for (let x = p0; x <= p1; x += 20) c.box(x - 0.4, ceil, 0.9, 4.5, { mat: stone, z: -4, tone: -0.4 });
   for (let x = p0 + 20; x < p1; x += 40) {

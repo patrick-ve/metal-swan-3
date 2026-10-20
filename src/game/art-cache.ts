@@ -4,8 +4,11 @@
  * a later visit, so the generators run once per build instead of on every visit.
  *
  * Packs: 'boot' (the 1× frames the boot scene preloads), 'hi' (the 2× frames of the background
- * mission preload), 'fps' (the first-person sprites, lazy content) and the 4× packs of the tier-4
- * working set: 'hd4-<section>' (a section's 4× ids) and 'hd4-char-<hero>' (a hero's 4× ids).
+ * mission preload), 'fps' (the first-person sprites, lazy content), 'hd2-fps' / 'hd4-fps' (the
+ * dense fps art, content/fps/dense-load.ts) and the 4× packs of the tier-4 working set:
+ * 'hd4-<section>' (a section's 4× ids) and 'hd4-char-<hero>' (a hero's 4× ids). A restore
+ * decodes only the ids it installs, each buffer in its own ArrayBuffer (sprite-pack.ts), so a
+ * released id frees its memory.
  * The boot restores 'boot' and 'hi'; the 4× packs are restored at the mission start and on a
  * section change (scenes/gameplay.ts), never at boot. Every pack carries the
  * build tag; a pack of another build is a miss and is deleted, so a deploy never draws old art.
@@ -16,11 +19,11 @@ import type { ByteStore } from '../engine/byte-store';
 import { decodeSpritePack, encodeSpritePack } from '../engine/sprite-pack';
 import { generatedSprites, installFrames, readyFrames } from '../engine/sprites';
 
-export type ArtPack = 'boot' | 'hi' | 'fps' | `hd4-${string}`;
+export type ArtPack = 'boot' | 'hi' | 'fps' | `hd2-${string}` | `hd4-${string}`;
 
-/** Density of the frames in a pack: 'hi' 2, 'hd4-…' 4, else 1. */
+/** Density of the frames in a pack: 'hi' and 'hd2-…' 2, 'hd4-…' 4, else 1. */
 export function packDensity(name: ArtPack): number {
-  return name === 'hi' ? 2 : name.startsWith('hd4-') ? 4 : 1;
+  return name === 'hi' || name.startsWith('hd2-') ? 2 : name.startsWith('hd4-') ? 4 : 1;
 }
 
 const key = (name: ArtPack): string => `sprites:${name}`;
@@ -50,14 +53,17 @@ export class ArtCache {
     const bytes = await this.store.get(key(name));
     if (!bytes) return 0;
     try {
-      const pack = await decodeSpritePack(bytes);
-      if (pack.tag !== this.build || pack.density !== packDensity(name)) {
+      const d = packDensity(name);
+      // Only the ids to install are decoded (each buffer its own ArrayBuffer): the ids left out,
+      // and those that have frames already, cost no memory (sprite-pack.ts).
+      const pack = await decodeSpritePack(bytes, (id) => (!keep || keep(id)) && readyFrames(id, d) === null);
+      if (pack.tag !== this.build || pack.density !== d) {
         await this.store.delete(key(name));
         return 0;
       }
       let n = 0;
-      for (const [id, frames] of pack.sprites) if ((!keep || keep(id)) && installFrames(id, pack.density, frames)) n++;
-      this.stored.set(name, pack.sprites.length);
+      for (const [id, frames] of pack.sprites) if (installFrames(id, pack.density, frames)) n++;
+      this.stored.set(name, pack.total);
       this.restored.set(name, n);
       return n;
     } catch (err) {

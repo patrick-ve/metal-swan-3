@@ -13,6 +13,7 @@ import type { PixelBuffer } from '../../src/engine/pixel';
 import { frameH, frameW, type Frame } from '../../src/engine/render';
 import { getFrames, hasHiSprite, listSprites, spriteErrors } from '../../src/engine/sprites';
 import { spanOf } from '../../src/game/art/hd/body';
+import { BLACK_ONE_HUE } from '../../src/game/art/hd/light';
 import { HD_FIT, HD_MEMO, HELIUM_RIM, TIGHT_1X, clearHumanHdMemo, poseJoints, renderHuman, renderHumanFullCanvas, type HumanStyle, type Pose, type RenderPart } from '../../src/game/art/humanoid';
 import * as P from '../../src/game/art/poses';
 import { HERO_STYLES, RECRUIT_STYLE } from '../../src/game/content/characters/art';
@@ -230,7 +231,8 @@ describe('HD body: every pose at 2× and 4×', () => {
 
   it('style ramps keep their value span (black stays black, a dark custom ramp stays dark)', () => {
     const black = spanOf(PAL.black);
-    expect(black.ramp).toBe(PAL_HD.black);
+    // Black leather runs on the one-hue black ramp (no purple / blue patches; polish wave).
+    expect(black.ramp).toBe(BLACK_ONE_HUE);
     expect(black.hi).toBeLessThanOrEqual(4);
     const dark = spanOf([PAL.olive[0], PAL.olive[1], PAL.olive[2]]);
     expect(dark.ramp).toBe(hdRampOf(PAL.olive));
@@ -257,13 +259,16 @@ describe('HD hero strips (registry, pool families, duplicates)', () => {
     await import('../../src/game/content/characters/art');
   });
 
-  it('every strip of every hero has 2× and 4× art (menu portraits and select images: 2×)', () => {
+  it('every strip of every hero has 2× and 4× art (the squad\'s menu portraits and select images too)', () => {
     const ids = listSprites('char/');
     expect(ids.length).toBeGreaterThan(1000);
     for (const id of ids) {
       expect(hasHiSprite(id, 2), id).toBe(true);
+      // The squad's select busts and menu portraits have 4× art (polish wave); the retired
+      // heroes' menu art stays 2×.
       const menu = /\/(portrait|select(-grey)?)$/.test(id);
-      expect(hasHiSprite(id, 4), id).toBe(!menu);
+      const squad = /^char\/(vincent|thom|dirk|bob|patrick)\//.test(id);
+      expect(hasHiSprite(id, 4), id).toBe(!menu || squad);
     }
   });
 
@@ -298,7 +303,8 @@ describe('HD hero strips (registry, pool families, duplicates)', () => {
     expect(familyOf('char/recruit/torso-pistol-idle')).toBe('char/recruit/torso-pistol');
     expect(familyOf('char/recruit/helium-wob-torso-heavy-up')).toBe('char/recruit/helium-wob');
     expect(familyOf('char/recruit/die')).toBe('char/recruit');
-    expect(familyOf('enemy/fatbike-youth-pair-0a/ride')).toBe('enemy/fatbike-youth-pair-0a');
+    // A pair set builds with its solo set (shared rider and bike parts; the cast request).
+    expect(familyOf('enemy/fatbike-youth-pair-0a/ride')).toBe('enemy/fatbike-youth');
   });
 });
 

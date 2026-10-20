@@ -188,7 +188,16 @@ export function lowRes(buf: PixelBuffer, d: number): PixelBuffer {
   if (e && e.version === buf.version && e.d === d) return e.buf;
   const out = buf.downsampled(d);
   lowResCache.set(buf, { version: buf.version, d, buf: out });
+  lowResSource.set(out, buf);
   return out;
+}
+
+/** The buffer a `lowRes` reduction was made from (a renderer's texture of it goes with its source). */
+const lowResSource = new WeakMap<PixelBuffer, PixelBuffer>();
+
+/** The source of `buf` when it is a `lowRes` reduction, else `buf`. */
+export function reductionSource(buf: PixelBuffer): PixelBuffer {
+  return lowResSource.get(buf) ?? buf;
 }
 
 /** A coordinate in backbuffer px: whole logical px times k, or snapped to 1/k when `fine`. */

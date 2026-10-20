@@ -1,15 +1,20 @@
 /**
- * The first-person view: flat ceiling / floor colours, textured wall columns (perpendicular
+ * The first-person view: ceiling / floor colours, textured wall columns (perpendicular
  * distance, no fisheye) and billboards sorted far → near with a per-column z-buffer test.
  * Renders into a reused `PixelBuffer`; no allocations per frame (the sprite order arrays grow
- * only when a scene has more sprites than ever before).
+ * only when a scene has more sprites than ever before). Walls and billboards are drawn column by
+ * column, so they go to a column-major scratch first (sequential writes) and one cache-friendly
+ * tiled transpose writes the buffer (at density 2 about half the time of writing the buffer's
+ * columns directly, measured 2026-10-20; the pixels are the same).
  *
  * A view of density D (buffer w·D × h·D, the same 66° field) samples the highest texture and
  * billboard LEVEL installed at a density ≤ D (textures.ts `rayTextureLevel`, `billboardLevel`), so
  * the dense art (UHD) adds texels without changing any logical size; with only 1× levels it draws
- * the 1× texels, enlarged.
+ * the 1× texels, enlarged. The 1× view fills the ceiling and the floor flat; a dense view steps
+ * them down their HD ramp toward the horizon (`depthTones`), a depth cue from the same template.
  */
 import type { Color } from '../color';
+import { hdHome } from '../palette-hd';
 import { PixelBuffer } from '../pixel';
 import { castRay, newRayHit, type RayHit } from './cast';
 import { ANG_MASK, COS, SIN } from './fixed';
@@ -38,6 +43,11 @@ export class RayView {
   readonly colK: Float64Array;
   /** @internal reused cast result. */
   readonly hit: RayHit = newRayHit();
+  /**
+   * @internal The frame column-major (`cm[x × h + y]`, buffer px), then one template column
+   * (ceiling / floor / transparent rows) at `w × h`.
+   */
+  readonly cm: Uint32Array;
   /** @internal sprite order (indices) and depths, grown on demand. */
   order: Int32Array = new Int32Array(256);
   depth: Float64Array = new Float64Array(256);
@@ -49,6 +59,7 @@ export class RayView {
     const bw = this.w * this.density;
     const bh = this.h * this.density;
     this.buf = new PixelBuffer(bw, bh);
+    this.cm = new Uint32Array(bw * bh + bh);
     this.zbuf = new Float64Array(bw);
     this.focal = (RAY_FOCAL * bw) / RAY_VIEW_W;
     this.colK = new Float64Array(bw);
@@ -87,6 +98,29 @@ export interface RayScene {
   spriteCount: number;
 }
 
+/**
+ * Dense views only (density ≥ 2, UHD): the ceiling and the floor show four bands of their HD
+ * ramp by the row's distance from the horizon in LOGICAL rows (the same rows at every density):
+ * one tone lighter near the camera (more than DEPTH_ROWS[0] rows from the horizon), the scene
+ * colour, then one and two tones darker (and cooler: the ramps are hue-shifted) toward the
+ * horizon. About 3.4, 6.7 and 15 tiles away at eye height 0.5. A colour outside the 64 palette
+ * keeps its flat fill. Cached per colour; the 1× view never calls it.
+ */
+const DEPTH_ROWS = [44, 22, 10] as const;
+const depthCache = new Map<Color, Uint32Array>();
+
+export function depthTones(c: Color): Uint32Array {
+  let t = depthCache.get(c);
+  if (!t) {
+    const home = hdHome(c);
+    const at = (i: number): number => (home ? home.ramp[Math.max(0, Math.min(home.ramp.length - 1, i))] : c) >>> 0;
+    const i = home?.i ?? 0;
+    t = Uint32Array.of(at(i + 1), c >>> 0, at(i - 1), at(i - 2));
+    depthCache.set(c, t);
+  }
+  return t;
+}
+
 /** Render one frame of `scene` from `cam` into `view.buf` (and `view.zbuf`); ends with `buf.touch()`. */
 export function renderView(view: RayView, scene: RayScene, cam: RayCamera): void {
   const buf = view.buf;
@@ -119,11 +153,26 @@ export function renderView(view: RayView, scene: RayScene, cam: RayCamera): void
   if (bandBot <= bandTop) bandBot = bandTop + 1;
   const hzRow = Math.floor(hz);
 
-  // Ceiling and floor.
-  data.fill(0, 0, bandTop * W);
-  data.fill(scene.ceil >>> 0, bandTop * W, hzRow * W);
-  data.fill(scene.floor >>> 0, hzRow * W, bandBot * W);
-  data.fill(0, bandBot * W, H * W);
+  // Ceiling and floor: the template column, copied into every column (doubling copies).
+  const cm = view.cm;
+  const tpl = W * H;
+  cm.fill(0, tpl, tpl + bandTop);
+  if (D > 1) {
+    // Dense view: the bands of `depthTones` by the row's logical distance from the horizon.
+    const ct = depthTones(scene.ceil);
+    const ft = depthTones(scene.floor);
+    for (let y = bandTop; y < bandBot; y++) {
+      const o = Math.abs(y + 0.5 - hz) / D;
+      const b = o > DEPTH_ROWS[0] ? 0 : o > DEPTH_ROWS[1] ? 1 : o > DEPTH_ROWS[2] ? 2 : 3;
+      cm[tpl + y] = (y < hzRow ? ct : ft)[b];
+    }
+  } else {
+    cm.fill(scene.ceil >>> 0, tpl + bandTop, tpl + hzRow);
+    cm.fill(scene.floor >>> 0, tpl + hzRow, tpl + bandBot);
+  }
+  cm.fill(0, tpl + bandBot, tpl + H);
+  cm.copyWithin(0, tpl, tpl + H);
+  for (let done = H; done < tpl; done *= 2) cm.copyWithin(done, 0, Math.min(done, tpl - done));
 
   // Walls and doors.
   const g = scene.grid;
@@ -156,13 +205,12 @@ export function renderView(view: RayView, scene: RayScene, cam: RayCamera): void
     const base = tu * T;
     const step = T / (bottom - top);
     let vpos = (y0 + 0.5 - top) * step;
-    let o = y0 * W + x;
+    let o = x * H + y0;
     for (let y = y0; y < y1; y++) {
       let v = vpos | 0;
       if (v > T - 1) v = T - 1;
-      data[o] = cols[base + v];
+      cm[o++] = cols[base + v];
       vpos += step;
-      o += W;
     }
   }
 
@@ -233,17 +281,35 @@ export function renderView(view: RayView, scene: RayScene, cam: RayCamera): void
       if (ye <= ys) continue;
       const base = u * size;
       let vpos = (ys + 0.5 - top) * vStep;
-      let o = ys * W + x;
+      let o = x * H + ys;
       for (let y = ys; y < ye; y++) {
         let v = vpos | 0;
         if (v > last) v = last;
         const c = cols[base + v];
-        if ((c & 255) !== 0) data[o] = c;
+        if ((c & 255) !== 0) cm[o] = c;
         vpos += vStep;
-        o += W;
+        o++;
       }
     }
   }
 
+  // Column-major → the buffer, in TILE × TILE tiles (both sides stay in the cache).
+  for (let by = 0; by < H; by += TILE) {
+    const ye = by + TILE < H ? by + TILE : H;
+    for (let bx = 0; bx < W; bx += TILE) {
+      const xe = bx + TILE < W ? bx + TILE : W;
+      for (let y = by; y < ye; y++) {
+        let o = y * W + bx;
+        let i = bx * H + y;
+        for (let x = bx; x < xe; x++) {
+          data[o++] = cm[i];
+          i += H;
+        }
+      }
+    }
+  }
   buf.touch();
 }
+
+/** Tile side of the transpose (buffer px). */
+const TILE = 32;

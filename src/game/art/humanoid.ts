@@ -946,7 +946,7 @@ function drawHandLayer(c: Ctx, el: V, wr: V, shape: HandShape, far: boolean): Pi
   const q = Math.round((90 - fore) / 90);
   const w = cp(c, wr);
   const r = c.st.gloves;
-  drawHand(L, shape, w[0], w[1], far ? [r[0], r[0], r[1], r[2]] : r, q, false, 1);
+  drawHand(L, shape, w[0], w[1], far ? [r[0], r[0], r[1], r[2]] : r, q, false);
   return L;
 }
 

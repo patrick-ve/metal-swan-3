@@ -31,23 +31,10 @@ export interface Piece {
   density?: number;
 }
 
-/** 2× drawings registered for 1× piece buffers (see `setHiTwin`). */
-const HI_TWINS = new WeakMap<PixelBuffer, PixelBuffer>();
-
 /**
- * Register a hand-drawn 2× twin for a (cached) 1× piece buffer: exactly twice its size, the same
- * logical layout. `withPieces` on a 2× frame then draws the twin instead of the doubled 1× piece,
- * so recipes that pass 1× pieces get the 2× art without knowing the density.
- */
-export function setHiTwin(lo: PixelBuffer, hi: PixelBuffer): void {
-  if (hi.w !== lo.w * 2 || hi.h !== lo.h * 2) throw new Error(`2× twin is ${hi.w}×${hi.h}, expected ${lo.w * 2}×${lo.h * 2}`);
-  HI_TWINS.set(lo, hi);
-}
-
-/**
- * Stack pieces onto a frame. The result grows to fit; anchor and points stay correct. On a 2×
- * frame (density 2) positions stay logical: a 1× piece is drawn doubled (or as its registered 2×
- * twin, see `setHiTwin`), a 2× piece as it is.
+ * Stack pieces onto a frame. The result grows to fit; anchor and points stay correct. On a dense
+ * frame (density d) positions stay logical: a piece of a lower density is drawn scaled up, one of
+ * the frame's density as it is (the HD pieces come from their own drawers, characters/pieces.ts).
  */
 export function withPieces(f: Frame, pieces: readonly Piece[], extraPts?: Pts): Frame {
   const d = f.density ?? 1;
@@ -66,8 +53,7 @@ export function withPieces(f: Frame, pieces: readonly Piece[], extraPts?: Pts): 
   const out = new PixelBuffer((right - left) * d, (bottom - top) * d);
   const put = (p: Piece): void => {
     const pd = p.density ?? 1;
-    const twin = pd === 1 && d === 2 ? HI_TWINS.get(p.buf) : undefined;
-    const b = twin ?? (pd === d ? p.buf : pd < d ? p.buf.scaled(d / pd) : p.buf.downsampled(pd / d));
+    const b = pd === d ? p.buf : pd < d ? p.buf.scaled(d / pd) : p.buf.downsampled(pd / d);
     out.blit(b, (p.x - left) * d, (p.y - top) * d);
   };
   for (const p of pieces) if (p.behind) put(p);

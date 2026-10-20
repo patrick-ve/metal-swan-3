@@ -19,7 +19,7 @@
 import type { Color } from '../../../../engine/color';
 import { PixelBuffer, type Ramp } from '../../../../engine/pixel';
 import { PAL_HD } from '../../../../engine/palette-hd';
-import { HdCanvas, type DrawOpts, type HdMaterial, type RenderOpts, type TexSample } from '../../../art/hd/index';
+import { BLACK_ONE_HUE, HdCanvas, type DrawOpts, type HdMaterial, type RenderOpts, type TexSample } from '../../../art/hd/index';
 import type { Pt, V, Xf } from './kit.art';
 import { OWN } from './kit.art';
 
@@ -54,9 +54,9 @@ const KINDS: Readonly<Record<Kind, HdMaterial>> = {
   steel: { ramp: PAL_HD.steel, lo: 1, hi: 5, spec: 0.9, shine: 26, wrap: 0.04, rim: 0.25 },
   rod: { ramp: PAL_HD.steel, lo: 3, hi: 6, spec: 1, shine: 18, wrap: 0.1 },
   orange: { ramp: PAL_HD.orange, lo: 1, hi: 5, spec: 0.45, shine: 24, wrap: 0.05, rim: 0.15, amb: 0.12, gain: 1.2 },
-  black: { ramp: PAL_HD.black, lo: 1, hi: 5, spec: 0.9, shine: 30, wrap: 0.04, rim: 0.25 },
+  black: { ramp: BLACK_ONE_HUE, lo: 1, hi: 5, spec: 0.9, shine: 30, wrap: 0.04, rim: 0.25 },
   hose: { ramp: PAL_HD.steel, lo: 1, hi: 3, spec: 0.5, shine: 20 },
-  grip: { ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.35, shine: 16, wrap: 0.1 },
+  grip: { ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.35, shine: 16, wrap: 0.1 },
 };
 
 /** Water ramps (look.md §5.8): the ramp and the index span a material's tones map onto. */

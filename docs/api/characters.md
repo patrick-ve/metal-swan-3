@@ -76,7 +76,8 @@ and their tests use them by id.
   `muzzle`. Near hand on the grip at hip + (9, −5) (duck: folded (12, −3)); `ears` and `cheer`
   raise it. Head tops above the hip: sit 20 (Gramps) / 22 (Grace, Pip) / 24 (Mittens).
 - **Helium Head** variants (status art infix `helium`): `helium-torso-<w>-<anim>` (every torso
-  strip), `helium-bored`, `helium-victory` — the head and headgear at 2× with a pink rim. The
+  strip), `helium-bored`, `helium-victory` — the head and headgear at 2× with a pink rim (the HD
+  rig draws the big head natively: `renderHeadHd` at 2·d, d 8 at 4×). The
   infix `helium-wob` (same strips, head 1 px down and forward) is the wobble / bob frame. Legs and
   the other full-body strips have no variant (the player falls back to the normal strip).
 
@@ -124,12 +125,12 @@ if (st) player.status.add(st);
   props to a strip), `variants` (status art infixes → pose transforms).
 - `defineRiderSprites(id, style, base?)` registers the nine rider strips for a custom rider;
   `RIDE`, `RIDE_POSES`, `RIDE_GRIPS` and the `RIDE_*` tables live in `poses.ts`.
-- Squad additions (2026-10-16, docs/design/squad.md §2.1; all with hand-drawn 2× twins, old
-  styles render pixel-identically):
+- Squad additions (2026-10-16, docs/design/squad.md §2.1; 1× templates in `humanoid-head.ts`,
+  2× and 4× in the HD head `hd/head.ts` since the UHD wave; old styles render pixel-identically):
   - `HairStyle`: `short-crop` (high front hairline), `slick-back`, `spiky-messy`, `swept-up`.
   - `Headgear`: `cap-back` (a baseball cap worn backwards: the peak over the back of the head).
   - `FaceExtra` overlays: `thick-mustache`, `thin-mustache`, `heavy-stubble` (drawn under the
-    mouth). **Face traits** (`FACE_TRAITS` in `humanoid-head.ts`; 2× twins in `TRAITS_HI`) replace
+    mouth). **Face traits** (`FACE_TRAITS` in `humanoid-head.ts`; drawn natively by `renderHeadHd` at 2× / 4×) replace
     one part of an expression on the calm expressions only (a shout still opens the mouth):
     `raised-brow` (brow), `smirk`, `grin` (mouth), `beam` (squinted happy eyes), `blue-eyes` (eye).
   - `TopType`: `tee`, `polo` (short sleeves over bare forearms). `Build`: `stocky` (legs 2 px

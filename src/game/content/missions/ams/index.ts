@@ -10,7 +10,7 @@
  * ams-canal-houses, ams-elms, ams-plein), `terrain.ts` (terrain and layout numbers),
  * `section-*.ts` (each with its own `script` function).
  */
-import type { MissionDef } from '../../../mission/index';
+import type { MissionDef, SectionDef } from '../../../mission/index';
 import { defineMission } from '../../../registry';
 import './art';
 // HD (2× and 4×) decor of sections c and d, the boats and the breakables (art-hd-cd*.ts).
@@ -32,6 +32,15 @@ import { sectionD } from './section-d';
 // After the sections: the 2× decor twins also cover the sized ids the section files registered.
 import './art-hi-ab';
 
+/**
+ * A section with more tier-4 working-set `art` (gameplay.ts `denseWorkingSet`): the big
+ * explosions where the bot runs draw them (c: grenades and barrels; d: the boss), measured
+ * 2026-10-20 (tmp/uhd-polish-perf). Preload lists only: the section itself is unchanged.
+ */
+function withArt(def: SectionDef, art: readonly string[]): SectionDef {
+  return { ...def, art: [...(def.art ?? []), ...art] };
+}
+
 export const AMS: MissionDef = {
   id: 'ams',
   name: 'THE FRYING DUTCHMAN',
@@ -44,7 +53,7 @@ export const AMS: MissionDef = {
   // After the boss: the glitch bridge into the first-person mode (docs/design/fps.md §1.1).
   after: 'fps',
   announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
-  sections: { a: sectionA, b: sectionB, c: sectionC, d: sectionD },
+  sections: { a: sectionA, b: sectionB, c: withArt(sectionC, ['fx/explosion-l']), d: withArt(sectionD, ['fx/explosion-l', 'fx/explosion-xl']) },
   hostages: { a: 4, b: 3, c: 3 },
   // Dense art up to 4× (docs/ART_GUIDE.md "2x art (mission ams)", "UHD art"): only this mission
   // draws it; the runner draws at min(4, artTier()).
@@ -60,11 +69,20 @@ export const AMS: MissionDef = {
   // The solo fatbike sets only (`fatbike-youth`, `fatbike-youth-<look><skin>`): the pair sets
   // ride in sections b and c, which declare them as section `art` (the tier-4 working set).
   // The decor (`decor/ams/`) is section `art` too: each section lists what it draws.
+  // The small fx, the shots and the HUD icons are drawn in every section (tier 4: in the working
+  // set, else they show 2× until the pump builds them; about 4 MB at 4×). The big explosions
+  // (l, xl: 15 MB at 4×) are section art of c and d only.
   preloadFirst: [
     'vehicle/swan',
     'enemy/delivery-rider',
     'enemy/seagull/',
-    'item/',
+    // ams frees tourists only: other hostage kinds (the campaign ending's cast) stay out of the
+    // tier-4 working set even when they get 4× art.
+    'item/hostage/tourist/',
+    'item/hostage/flash',
+    'item/pickup-',
+    'item/bind',
+    'item/crate',
     'enemy/fatbike-youth/',
     'enemy/fatbike-youth-0',
     'enemy/fatbike-youth-1',
@@ -72,6 +90,22 @@ export const AMS: MissionDef = {
     'enemy/fatbike-youth-3',
     'npc/ams/',
     'fx/explosion-s',
+    'fx/explosion-m',
+    'fx/chute',
+    'fx/muzzle',
+    'fx/hit',
+    'fx/impact',
+    'fx/dust',
+    'fx/debris-',
+    'fx/poof',
+    'fx/splash',
+    'fx/tin-feather',
+    'fx/confetti',
+    'weapon/',
+    'ui/icon-',
+    'ui/onward',
+    'ui/swan-marker',
+    'ui/ride',
   ],
   preloadLast: ['boss/', 'enemy/handhaver', 'enemy/boete-ticket/'],
   // What this mission draws at 1× (the boot preloads only this; tests/game/boot-art.test.ts

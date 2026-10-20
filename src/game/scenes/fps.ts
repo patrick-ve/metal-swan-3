@@ -52,7 +52,11 @@ const view: DrawOpts = { screen: true, stream: true };
  * The view's highest density. Measured (node, `renderView`, every floor, many poses): density 1
  * 0.2–0.3 ms mean (max 1.1), density 2 0.8–1.1 ms mean (max 1.7), density 4 2.9–4.2 ms mean (max
  * 6.1) — 4 is over the 2.0 ms budget of §3.5 (and streams 4.3 MB per frame), so tier 4 draws the
- * view at 2; the weapon view and the bar still draw at 4.
+ * view at 2; the weapon view and the bar still draw at 4. Since the column-major render
+ * (ray/view.ts, 2026-10-20; floor 1, 160 billboards): density 1 0.11–0.14 ms, 2 0.38–0.40 ms,
+ * 4 1.4–1.5 ms; in Chromium at 4K (GPU, walking) the density-2 view costs about 0.7 ms of render +
+ * present (renderView 0.41, the stream upload 0.25) — the whole frame 0.75 ms on a quiet machine,
+ * 1.7–2.7 ms when the machine is busy (art 1 then 1.4–1.6 ms). 60 fps holds either way.
  */
 export const FPS_VIEW_MAX_DENSITY = 2;
 

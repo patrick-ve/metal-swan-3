@@ -7,12 +7,15 @@
  *   sections behind within the budget; drawn-but-missing 4× ids are pumped to the pool;
  *   'hd4-<section>' / 'hd4-char-<hero>' packs are saved, and a later visit restores them; the
  *   P2-only Mute Swan art joins only with two players, boss/ only in the boss section; a 4×
- *   alias stands for its target (once); two players leave the rare strips at 2× (set and pump);
+ *   alias stands for its target (once); two players leave the fatbike youths at 2× (set and
+ *   pump); a return visit (packs restored) still trims to the budget; a section change makes
+ *   room before it builds (no peak over the budget); a new play starts a new run (the next
+ *   section is built again); a fall below tier 4 stops the run and releases its 4× frames;
  * - fallback: without Worker the pool builds on the main thread after one warning; at tier 4
  *   it never generates 4× art there (2× stand-ins stay) and does not rebuild in a loop.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ArtPool, browserArtPool, createArtWorkerHandler, inProcessPort, type ArtBuildRequest, type ArtWorkerPort } from '../../src/engine/art-pool';
+import { ArtPool, browserArtPool, createArtWorkerHandler, inProcessPort, installRawPack, type ArtBuildRequest, type ArtWorkerPort } from '../../src/engine/art-pool';
 import { MemoryByteStore } from '../../src/engine/byte-store';
 import { PixelBuffer } from '../../src/engine/pixel';
 import {
@@ -31,7 +34,17 @@ import {
 } from '../../src/engine/sprites';
 import { ArtCache } from '../../src/game/art-cache';
 import type { GameSession } from '../../src/game/session';
-import { denseWorkingSet, missionArtSection, preloadMissionArt, pumpDenseQueue, resetMissionArt, type MissionArtDef } from '../../src/game/scenes/gameplay';
+import {
+  denseRunning,
+  denseWorkingSet,
+  missionArtSection,
+  preloadMissionArt,
+  pumpDenseQueue,
+  resetMissionArt,
+  stopDense,
+  twoPlayer2x,
+  type MissionArtDef,
+} from '../../src/game/scenes/gameplay';
 
 /** An 8×8 logical sprite with 2× and 4× frames. */
 function sprite(id: string, c: number): void {
@@ -220,23 +233,22 @@ describe('tier 4 working set size', () => {
     expect(set.filter((id) => id.startsWith('zalias'))).toEqual(['zalias-t/x']);
   });
 
-  it('two players leave the rare strips (deferred, photo pose, Swan migration) at 2×, never a hero strip', async () => {
-    sprite('enemy/zr/photo-pose', 0x40506000);
-    sprite('vehicle/swan/migrate', 0x40506100);
-    sprite('enemy/zr/ride', 0x40506200);
-    for (const id of ['enemy/zr/die-seat', 'char/zhero/fidget']) {
-      defineSprite(id, () => new PixelBuffer(8, 8).fill(0x40506300), { defer: true });
-      defineHiSprite(id, () => new PixelBuffer(16, 16).fill(0x40506301), 2);
-      defineHiSprite(id, () => new PixelBuffer(32, 32).fill(0x40506302), 4);
-    }
-    const rare = ['enemy/zr/photo-pose', 'vehicle/swan/migrate', 'enemy/zr/die-seat'];
-    const m = { ...MISSION, preloadFirst: ['enemy/zr/', 'vehicle/swan'] } as unknown as MissionArtDef;
+  it('two players keep the fatbike youths (solo and pair sets) at 2×; one player builds them; never a hero strip', async () => {
+    sprite('enemy/fatbike-youth-1b/ride', 0x40506000);
+    sprite('enemy/fatbike-youth-pair-2a/ride', 0x40506100);
+    sprite('enemy/zr/photo-pose', 0x40506200);
+    sprite('vehicle/swan/migrate', 0x40506300);
+    const cut = ['enemy/fatbike-youth-1b/ride', 'enemy/fatbike-youth-pair-2a/ride'];
+    const m = { ...MISSION, preloadFirst: ['enemy/', 'vehicle/swan'] } as unknown as MissionArtDef;
     const one = denseWorkingSet(m, ['char/zhero/'], 'a', 'b', 1);
-    expect(rare.every((id) => one.includes(id))).toBe(true);
+    expect(cut.every((id) => one.includes(id))).toBe(true);
     const two = denseWorkingSet(m, ['char/zhero/'], 'a', 'b', 2);
-    expect(rare.filter((id) => two.includes(id))).toEqual([]);
-    expect(two).toContain('enemy/zr/ride');
-    expect(two).toContain('char/zhero/fidget');
+    expect(cut.filter((id) => two.includes(id))).toEqual([]);
+    // The rare strips are 4× again with two players (the fatbike cut alone keeps every section in budget).
+    expect(two).toContain('enemy/zr/photo-pose');
+    expect(two).toContain('vehicle/swan/migrate');
+    expect(twoPlayer2x('char/fatbike-youth/x', 2)).toBe(false);
+    expect(twoPlayer2x('enemy/fatbike-youth-1b/ride', 1)).toBe(false);
     // Drawn with two players: the 2× frame, and the pump does not hand it to the pool.
     const log: ArtBuildRequest[] = [];
     resetMissionArt(loggingPool(log));
@@ -245,12 +257,122 @@ describe('tier 4 working set size', () => {
     preloadMissionArt({ preloadArt: true, session: both }, m, 4, both);
     await settle();
     takeDenseQueue();
-    expect(getFrames('enemy/zr/photo-pose', 4)[0].density).toBe(2);
-    expect(getFrames('enemy/zr/ride', 4)[0].density).toBe(4);
+    expect(getFrames('enemy/fatbike-youth-1b/ride', 4)[0].density).toBe(2);
+    expect(getFrames('enemy/zr/photo-pose', 4)[0].density).toBe(4);
     getFrames('zextra/x', 4);
     expect(pumpDenseQueue()).toBe(1);
     await settle();
-    expect(log.filter((r) => r.d === 4).flatMap((r) => r.ids)).not.toContain('enemy/zr/photo-pose');
-    expect(hasFramesAt('enemy/zr/photo-pose', 4)).toBe(false);
+    expect(log.filter((r) => r.d === 4).flatMap((r) => r.ids)).not.toContain('enemy/fatbike-youth-1b/ride');
+    expect(hasFramesAt('enemy/fatbike-youth-1b/ride', 4)).toBe(false);
+  });
+
+  it('a player who joins: the same run follows the new heroes and players', async () => {
+    const log: ArtBuildRequest[] = [];
+    resetMissionArt(loggingPool(log));
+    setArtTier(4);
+    preloadMissionArt({ preloadArt: true, session }, MISSION, 4, session);
+    await vi.waitFor(() => expect(hasFramesAt('zboss/x', 4)).toBe(true));
+    const both = { slots: [{ joined: true, character: 'zhero' }, { joined: true, character: 'zother' }] } as unknown as GameSession;
+    preloadMissionArt({ preloadArt: true, session: both }, MISSION, 4, both, 'a');
+    await vi.waitFor(() => expect(hasFramesAt('char/zother/idle', 4)).toBe(true));
+    // Nothing of the play was released or built twice.
+    expect(hasFramesAt('zsec-b/x', 4)).toBe(true);
+    expect(log.filter((r) => r.d === 4).flatMap((r) => r.ids).filter((id) => id === 'zsec-a/x')).toHaveLength(1);
+  });
+});
+
+describe('tier 4 working set lifecycle', () => {
+  const walk = async (sections: readonly string[], check: () => void): Promise<void> => {
+    for (const s of sections) {
+      missionArtSection(s);
+      await settle();
+      await settle();
+      check();
+    }
+  };
+
+  it('a return visit (every pack restored) still trims to the budget', async () => {
+    const store = new MemoryByteStore();
+    resetMissionArt(loggingPool([]), 64 * FRAME4);
+    setArtTier(4);
+    const cache = new ArtCache(store, 'build-1', () => {});
+    preloadMissionArt({ preloadArt: true, session, artCache: cache }, MISSION, 4, session);
+    await vi.waitFor(() => expect(store.map.has('sprites:hd4-a')).toBe(true));
+    await walk(['b', 'c'], () => {});
+    // c's ids are all in the earlier packs (zsec-c went into 'hd4-b' as b's next section).
+    await vi.waitFor(() => expect(store.map.has('sprites:hd4-b')).toBe(true));
+    // Play 2: 4× frames gone, the packs restored at every section.
+    resetMissionArt();
+    clearSpriteCache();
+    const log: ArtBuildRequest[] = [];
+    resetMissionArt(loggingPool(log), 5 * FRAME4);
+    setArtTier(4);
+    const cache2 = new ArtCache(store, 'build-1', () => {});
+    preloadMissionArt({ preloadArt: true, session, artCache: cache2 }, MISSION, 4, session);
+    await vi.waitFor(() => expect(cache2.restored.get('hd4-a')).toBeGreaterThan(0));
+    await settle();
+    expect(denseBytes(4)).toBeLessThanOrEqual(5 * FRAME4);
+    await walk(['b', 'c'], () => expect(denseBytes(4)).toBeLessThanOrEqual(5 * FRAME4));
+    expect(log.filter((r) => r.d === 4)).toEqual([]);
+  });
+
+  it('a section change makes room before it builds: never over the budget', async () => {
+    const peaks: number[] = [];
+    resetMissionArt(() => {
+      const inner = inProcessPort(createArtWorkerHandler(async () => {}));
+      const port: ArtWorkerPort = { ...inner, post: (req) => (req.d === 4 && peaks.push(denseBytes(4)), inner.post(req)) };
+      return new ArtPool([port], { install: (pack) => (installRawPack(pack), peaks.push(denseBytes(4)), pack.s.length) });
+    }, 5 * FRAME4);
+    setArtTier(4);
+    // The estimate of what is still to build comes from the 1× frames.
+    for (const id of IDS) getFrames(id, 1);
+    preloadMissionArt({ preloadArt: true, session }, MISSION, 4, session);
+    await vi.waitFor(() => expect(hasFramesAt('zboss/x', 4)).toBe(true));
+    await walk(['b', 'c'], () => {});
+    await vi.waitFor(() => expect(hasFramesAt('zsec-c/x', 4)).toBe(true));
+    expect(Math.max(...peaks)).toBeLessThanOrEqual(5 * FRAME4);
+  });
+
+  it('a new play starts a new run: the old 4× frames go, the next section is built again', async () => {
+    const log: ArtBuildRequest[] = [];
+    resetMissionArt(loggingPool(log), 64 * FRAME4);
+    setArtTier(4);
+    preloadMissionArt({ preloadArt: true, session }, MISSION, 4, session);
+    await vi.waitFor(() => expect(hasFramesAt('zboss/x', 4)).toBe(true));
+    await walk(['b', 'c'], () => {});
+    // Game over → title → new game: gameplay's exit stops the run.
+    expect(stopDense('other-mission')).toBe(0);
+    expect(denseRunning()).toBe(true);
+    expect(stopDense('zm')).toBeGreaterThan(0);
+    expect(denseRunning()).toBe(false);
+    expect(denseBytes(4)).toBe(0);
+    log.length = 0;
+    preloadMissionArt({ preloadArt: true, session }, MISSION, 4, session);
+    await vi.waitFor(() => expect(hasFramesAt('zsec-b/x', 4)).toBe(true));
+    expect(log.filter((r) => r.d === 4).flatMap((r) => r.ids)).toContain('zsec-b/x');
+    // Without the exit (a start before the run's section): also a new run.
+    await walk(['b', 'c'], () => {});
+    log.length = 0;
+    preloadMissionArt({ preloadArt: true, session }, MISSION, 4, session, 'a');
+    await vi.waitFor(() => expect(hasFramesAt('zsec-a/x', 4)).toBe(true));
+    await settle();
+    expect(hasFramesAt('zsec-c/x', 4)).toBe(false);
+  });
+
+  it('a fall below tier 4 stops the run: no more 4× builds, its 4× frames released', async () => {
+    const log: ArtBuildRequest[] = [];
+    resetMissionArt(loggingPool(log));
+    setArtTier(4);
+    preloadMissionArt({ preloadArt: true, session }, MISSION, 4, session);
+    await vi.waitFor(() => expect(hasFramesAt('zboss/x', 4)).toBe(true));
+    setArtTier(2);
+    getFrames('zextra/x', 4);
+    expect(pumpDenseQueue()).toBe(0);
+    expect(denseRunning()).toBe(false);
+    expect(denseBytes(4)).toBe(0);
+    log.length = 0;
+    missionArtSection('b');
+    await settle();
+    expect(log.filter((r) => r.d === 4)).toEqual([]);
   });
 });

@@ -13,8 +13,10 @@ import type { Frame } from './render';
  * - the metadata as UTF-8 JSON (`PackMeta`), zero-padded to a multiple of 4 bytes;
  * - the pixels of every buffer in `PackMeta.b` order, w × h packed Colors each (machine byte
  *   order; a pack from a machine with the other byte order is rejected).
- * Frames that share a buffer keep sharing it after decoding. Decoded buffers are views into one
- * ArrayBuffer (no copy per buffer).
+ * Frames that share a buffer keep sharing it after decoding. The decoder streams: each decoded
+ * buffer gets its own ArrayBuffer (filled straight from the decompressed chunks, never one big
+ * buffer for the pack), so releasing an id frees its pixels, and with `keep` the buffers of the
+ * ids left out are never allocated (a 4× pack restores only the working set).
  */
 
 const MAGIC = 0x5333534d; // 'MS3S' read as a little-endian u32
@@ -43,7 +45,10 @@ interface PackMeta {
 export interface SpritePack {
   tag: string;
   density: number;
+  /** The sprites decoded (with `keep`: only the kept ids). */
   sprites: Array<[string, Frame[]]>;
+  /** Ids in the pack (kept or not). */
+  total: number;
 }
 
 /** Bytes of all buffers, without the header (to estimate a pack before encoding it). */
@@ -119,42 +124,106 @@ export async function encodeSpritePack(
   return new Uint8Array(await result);
 }
 
+/** Reads exact byte counts from a stream of chunks (no copy of the whole stream). */
+class ChunkReader {
+  private cur: Uint8Array = new Uint8Array(0);
+  private at = 0;
+  private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
+
+  constructor(stream: ReadableStream<Uint8Array>) {
+    this.reader = stream.getReader();
+  }
+
+  /** Copy the next `n` bytes into `dst` (or skip them when null); false when the stream ends first. */
+  async read(dst: Uint8Array | null, n: number): Promise<boolean> {
+    let done = 0;
+    while (done < n) {
+      if (this.at >= this.cur.length) {
+        const r = await this.reader.read();
+        if (r.done) return false;
+        this.cur = r.value;
+        this.at = 0;
+        continue;
+      }
+      const take = Math.min(n - done, this.cur.length - this.at);
+      if (dst) dst.set(this.cur.subarray(this.at, this.at + take), done);
+      this.at += take;
+      done += take;
+    }
+    return true;
+  }
+
+  /** True when no byte is left. */
+  async atEnd(): Promise<boolean> {
+    while (this.at >= this.cur.length) {
+      const r = await this.reader.read();
+      if (r.done) return true;
+      this.cur = r.value;
+      this.at = 0;
+    }
+    return false;
+  }
+
+  cancel(): void {
+    void this.reader.cancel().catch(() => {});
+  }
+}
+
 /**
  * Decode a pack made by `encodeSpritePack`. Throws on anything unexpected (not gzip, another
  * format version or byte order, sizes that do not add up): the caller treats that as a miss.
+ * `keep` (optional) limits the ids decoded: the buffers only other ids use are skipped, not
+ * allocated. Every decoded buffer has its own ArrayBuffer (see the file comment).
  */
-export async function decodeSpritePack(gz: Uint8Array): Promise<SpritePack> {
-  const stream = new Blob([gz as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream('gzip'));
-  const raw = await new Response(stream).arrayBuffer();
-  if (raw.byteLength < HEADER_BYTES) throw new Error('sprite pack: too short');
-  const hv = new DataView(raw);
-  if (hv.getUint32(0, true) !== MAGIC) throw new Error('sprite pack: not a sprite pack');
-  const version = hv.getUint32(4, true);
-  if (version !== SPRITE_PACK_VERSION) throw new Error(`sprite pack: format ${version}, expected ${SPRITE_PACK_VERSION}`);
-  if (new Uint32Array(raw, 8, 1)[0] !== BOM) throw new Error('sprite pack: other byte order');
-  const jsonLen = hv.getUint32(12, true);
-  if (HEADER_BYTES + jsonLen > raw.byteLength) throw new Error('sprite pack: metadata cut off');
-  const meta = JSON.parse(new TextDecoder().decode(new Uint8Array(raw, HEADER_BYTES, jsonLen))) as PackMeta;
-  if (typeof meta.tag !== 'string' || !Array.isArray(meta.s) || !Array.isArray(meta.b)) throw new Error('sprite pack: bad metadata');
-  let at = HEADER_BYTES + jsonLen + ((4 - (jsonLen % 4)) % 4);
-  const bufs: PixelBuffer[] = [];
-  for (const [w, h] of meta.b) {
-    const n = w * h;
-    if (!(n >= 0) || at + n * 4 > raw.byteLength) throw new Error('sprite pack: pixels cut off');
-    bufs.push(new PixelBuffer(w, h, new Uint32Array(raw, at, n)));
-    at += n * 4;
+export async function decodeSpritePack(gz: Uint8Array, keep?: (id: string) => boolean): Promise<SpritePack> {
+  const src = new ChunkReader(new Blob([gz as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream('gzip')));
+  try {
+    const head = new Uint8Array(HEADER_BYTES);
+    if (!(await src.read(head, HEADER_BYTES))) throw new Error('sprite pack: too short');
+    const hv = new DataView(head.buffer);
+    if (hv.getUint32(0, true) !== MAGIC) throw new Error('sprite pack: not a sprite pack');
+    const version = hv.getUint32(4, true);
+    if (version !== SPRITE_PACK_VERSION) throw new Error(`sprite pack: format ${version}, expected ${SPRITE_PACK_VERSION}`);
+    if (new Uint32Array(head.buffer, 8, 1)[0] !== BOM) throw new Error('sprite pack: other byte order');
+    const jsonLen = hv.getUint32(12, true);
+    const json = new Uint8Array(jsonLen);
+    if (!(await src.read(json, jsonLen))) throw new Error('sprite pack: metadata cut off');
+    const meta = JSON.parse(new TextDecoder().decode(json)) as PackMeta;
+    if (typeof meta.tag !== 'string' || !Array.isArray(meta.s) || !Array.isArray(meta.b)) throw new Error('sprite pack: bad metadata');
+    if (!(await src.read(null, (4 - (jsonLen % 4)) % 4))) throw new Error('sprite pack: pixels cut off');
+    const kept = keep ? meta.s.filter(([id]) => keep(id)) : meta.s;
+    // The buffers the kept ids draw (all of them without `keep`).
+    const need = keep ? new Uint8Array(meta.b.length) : null;
+    if (need) for (const [, frames] of kept) for (const [bi] of frames) if (bi >= 0 && bi < need.length) need[bi] = 1;
+    const bufs: Array<PixelBuffer | null> = [];
+    for (let i = 0; i < meta.b.length; i++) {
+      const [w, h] = meta.b[i];
+      const n = w * h;
+      if (!(n >= 0)) throw new Error('sprite pack: pixels cut off');
+      if (need && !need[i]) {
+        if (!(await src.read(null, n * 4))) throw new Error('sprite pack: pixels cut off');
+        bufs.push(null);
+        continue;
+      }
+      const px = new Uint32Array(n);
+      if (!(await src.read(new Uint8Array(px.buffer), n * 4))) throw new Error('sprite pack: pixels cut off');
+      bufs.push(new PixelBuffer(w, h, px));
+    }
+    if (!(await src.atEnd())) throw new Error('sprite pack: extra bytes');
+    const sprites: Array<[string, Frame[]]> = kept.map(([id, frames]) => [
+      id,
+      frames.map(([bi, ox, oy, d, pts]) => {
+        const buf = bufs[bi];
+        if (!buf) throw new Error(`sprite pack: "${id}" names buffer ${bi}`);
+        const f: { buf: PixelBuffer; ox: number; oy: number; pts?: Pts; density?: number } = { buf, ox, oy };
+        if (pts) f.pts = pts;
+        if (d !== 1) f.density = d;
+        return f;
+      }),
+    ]);
+    return { tag: meta.tag, density: meta.d, sprites, total: meta.s.length };
+  } catch (err) {
+    src.cancel();
+    throw err;
   }
-  if (at !== raw.byteLength) throw new Error('sprite pack: extra bytes');
-  const sprites: Array<[string, Frame[]]> = meta.s.map(([id, frames]) => [
-    id,
-    frames.map(([bi, ox, oy, d, pts]) => {
-      const buf = bufs[bi];
-      if (!buf) throw new Error(`sprite pack: "${id}" names buffer ${bi}`);
-      const f: { buf: PixelBuffer; ox: number; oy: number; pts?: Pts; density?: number } = { buf, ox, oy };
-      if (pts) f.pts = pts;
-      if (d !== 1) f.density = d;
-      return f;
-    }),
-  ]);
-  return { tag: meta.tag, density: meta.d, sprites };
 }

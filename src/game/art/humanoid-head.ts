@@ -769,8 +769,9 @@ function facePartHi(extras: readonly FaceExtra[], expr: Expression, part: FaceTr
  * The 2× head (mission ams): HEAD_W·2 × HEAD_H·2, the same logical layout as `renderHead` (NECK
  * and HEAD_CENTER are the 2 × 2 blocks at twice them), drawn from the hand-drawn 2× templates in
  * humanoid-head-hi.ts, with the same layer order, hair cut-off and hat slip as at 1×. A part
- * without a 2× template is its 1× template doubled. No outline (the rig adds it). The rig reads
- * this through `headLayerHi` in humanoid.ts.
+ * without a 2× template is its 1× template doubled. No outline (the rig adds it). Retired for the
+ * rig (the HD head, hd/head.ts `renderHeadHd`, draws every dense head); it stays only for the 1×
+ * first-person recruit face (fps/faces.ts), whose 1× pixels must stay byte-identical.
  */
 export function renderHeadHi(s: HeadStyle, expr: Expression, opts: { glint?: boolean } = {}): PixelBuffer {
   const buf = new PixelBuffer(HEAD_W * 2, HEAD_H * 2);

@@ -25,6 +25,7 @@ import type { Accessory, HandShape, HumanStyle, Pose, PropKind, RenderPart } fro
 import { isProp } from '../humanoid-gear';
 import { HEAD_CENTER, HEAD_H, HEAD_W, NECK, type HeadStyle } from '../humanoid-head';
 import { HdCanvas, inPoly, type DrawOpts, type HdMaterial, type Texture } from './canvas';
+import { oneHue } from './light';
 import { gunHd, handArtHd, heldArtHd, knifeArtHd, propHd } from './gear';
 import { renderHeadHd, type HdDensity } from './head';
 import { limb, type Pt } from './shape';
@@ -169,7 +170,8 @@ export function spanOf(r: Ramp): Span {
   let hi = b < 0 ? n - 2 : Math.min(n - 1, b);
   hi = Math.max(hi, Math.min(n - 2, lo + 3));
   lo = Math.min(lo, Math.max(1, hi - 3));
-  const s: Span = { ramp, lo, hi: Math.max(lo + 1, hi) };
+  // Black leather keeps one hue (no purple / blue patches on a lit glove or boot).
+  const s: Span = { ramp: oneHue(ramp), lo, hi: Math.max(lo + 1, hi) };
   spanCache.set(r, s);
   return s;
 }
