@@ -78,6 +78,15 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   'ring/items/art': () => import('./ring/items/art'),
   'ring/scooter': () => import('./ring/scooter/index'),
   'ring/scooter/art': () => import('./ring/scooter/art'),
+  // wave B
+  'ring/gangs': () => import('./ring/gangs/index'),
+  'ring/gangs/art': () => import('./ring/gangs/art'),
+  'ring/convoy': () => import('./ring/convoy/index'),
+  'ring/convoy/art': () => import('./ring/convoy/art'),
+  'ring/crew': () => import('./ring/crew/index'),
+  'ring/crew/art': () => import('./ring/crew/art'),
+  'ring/boss': () => import('./ring/boss/index'),
+  'ring/boss/art': () => import('./ring/boss/art'),
   // The first-person mode (docs/design/fps.md §3.6): LAZY — the boot skips them (isLazyContent);
   // FpsIntroScene loads them behind its progress bar (loadFpsContent).
   fps: () => import('./fps/index'),

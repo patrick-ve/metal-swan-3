@@ -33,6 +33,10 @@ import { HOSTAGES, ITEMS, PLAYER } from './player';
 import { RING_ROAD } from './ring-road';
 import { RING_SCENERY } from './ring-scenery';
 import { RING_WAGON } from './ring-wagon';
+import { RING_GANGS } from './ring-gangs';
+import { RING_CONVOY } from './ring-convoy';
+import { RING_CREW } from './ring-crew';
+import { RING_BOSS } from './ring-boss';
 import { UI } from './ui';
 import { FLEET, SWAN, VEHICLES } from './vehicles';
 import { EXPLOSIONS, HITS, WEAPONS } from './weapons';
@@ -100,6 +104,10 @@ export const SFX: Readonly<Record<string, SfxRecipe>> = pinSeeds({
   ...RING_WAGON,
   ...RING_ROAD,
   ...RING_SCENERY,
+  ...RING_GANGS,
+  ...RING_CONVOY,
+  ...RING_CREW,
+  ...RING_BOSS,
 });
 
 /** Seamless loops: play them with `audio.sfxLoop(key, id)` and stop them with `stopSfx(key)`. */

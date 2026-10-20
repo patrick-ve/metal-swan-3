@@ -5,7 +5,11 @@
  * cheer their own passenger on, grumble at the road and at themselves.
  */
 
-export const DRIVER_EVENTS = ['board', 'bump', 'flash', 'hostage', 'low', 'tunnel', 'boss', 'exit', 'arrive'] as const;
+export const DRIVER_EVENTS = [
+  'board', 'bump', 'flash', 'hostage', 'low', 'tunnel', 'boss', 'exit', 'arrive',
+  // wave B (the enemies' moments; the lorry test boss uses 'boss')
+  'scan', 'tow', 'brake', 'caravan', 'roadworks', 'boarder', 'sticker',
+] as const;
 export type DriverEvent = (typeof DRIVER_EVENTS)[number];
 
 type Lines = Readonly<Record<DriverEvent, readonly string[]>>;
@@ -22,6 +26,13 @@ export const DRIVER_LINES: Readonly<Record<string, Lines>> = {
     boss: ['THAT LORRY IS NOT\nIN MY BUDGET.'],
     exit: ['AFSLAG! INVOICE SENT.'],
     arrive: ['BACK ON THE CLOCK!'],
+    scan: ['SCAN CAR! MY PERMIT\nIS IN THE GLOVEBOX.'],
+    tow: ['TOWED?! THIS IS A\nBILLABLE HOUR!'],
+    brake: ['BRAKE LIGHTS!\nHOU JE VAST!'],
+    caravan: ['CARAVAN LOOSE!\nNOT MY INVOICE!'],
+    roadworks: ['WEGWERKZAAMHEDEN.\nOVERTIME AGAIN.'],
+    boarder: ['GET OFF MY BONNET!'],
+    sticker: ['A FINE ON THE GLASS!\nSHAKE IT OFF!'],
   },
   thom: {
     board: ['STAP IN!\nI COMMAND THIS CAR!'],
@@ -33,6 +44,13 @@ export const DRIVER_LINES: Readonly<Record<string, Lines>> = {
     boss: ['A WORTHY FOE!\nFIRE AT WILL!'],
     exit: ['AFSLAG! VICTORY!'],
     arrive: ['THE EMPEROR RETURNS!'],
+    scan: ['THEY DARE SCAN\nTHE EMPEROR?!'],
+    tow: ['UNHOOK US, KNAVES!'],
+    brake: ['HE BRAKES! SWERVE!'],
+    caravan: ['A ROGUE CARAVAN!\nSTAND FAST!'],
+    roadworks: ['CONES! CLEAR\nTHE ROYAL ROAD!'],
+    boarder: ['A BOARDER! REPEL\nTHE BOARDERS!'],
+    sticker: ['A FINE? FOR ME?!\nOUTRAGEOUS!'],
   },
   dirk: {
     board: ['STAP IN!\nMIND THE TOOLBOX.'],
@@ -44,6 +62,13 @@ export const DRIVER_LINES: Readonly<Record<string, Lines>> = {
     boss: ['THAT THING NEEDS\nA BIG WRENCH.'],
     exit: ['AFSLAG! JOB DONE.'],
     arrive: ['FIXED. LET\'S GO!'],
+    scan: ['SCAN CAR! KEEP\nMOVING, MATE.'],
+    tow: ['THAT HOOK IS ON\nMY BUMPER! SWERVE!'],
+    brake: ['BRAKE CHECK! WATCH\nTHE RADIATOR!'],
+    caravan: ['LOOSE HITCH!\nBAD WELDING.'],
+    roadworks: ['ROAD WORKS. THEY\nNEVER FINISH.'],
+    boarder: ['BOOTS OFF MY BONNET!'],
+    sticker: ['STICKER ON THE GLASS!\nSCRAPE IT OFF!'],
   },
   bob: {
     board: ['STAP IN! WE CARPOOL\nFOR THE PLANET!'],
@@ -55,6 +80,13 @@ export const DRIVER_LINES: Readonly<Record<string, Lines>> = {
     boss: ['A DIESEL LORRY?!\nTAKE IT DOWN!'],
     exit: ['AFSLAG! I PLANT A TREE.'],
     arrive: ['RECYCLED A VOLVO!'],
+    scan: ['A SCAN CAR! WE PAID\nFOR PARKING, RIGHT?'],
+    tow: ['NOT THE TOW TRUCK!\nSHE STILL RUNS!'],
+    brake: ['HE BRAKES!\nSORRY! SORRY!'],
+    caravan: ['A CARAVAN ON THE A10?\nIN THIS ECONOMY?'],
+    roadworks: ['NEW CYCLE LANE,\nI HOPE!'],
+    boarder: ['PLEASE GET OFF\nTHE BONNET!'],
+    sticker: ['A FINE! IS IT\nAT LEAST RECYCLED?'],
   },
   patrick: {
     board: ['STAP IN!\nTHE AI SAYS: DRIVE.'],
@@ -66,6 +98,13 @@ export const DRIVER_LINES: Readonly<Record<string, Lines>> = {
     boss: ['BOSS FIGHT!\nI KNEW IT. SAVE FIRST.'],
     exit: ['AFSLAG! ROUTE DONE.'],
     arrive: ['REBOOTED. GO GO GO!'],
+    scan: ['SCAN DETECTED.\nCHANGE LANE.'],
+    tow: ['TOW HOOK ATTACHED.\nSWERVE TO DETACH.'],
+    brake: ['BRAKE CHECK INCOMING!'],
+    caravan: ['CARAVAN UNHITCHED.\nRECALCULATING.'],
+    roadworks: ['ROAD WORKS AHEAD.\nTHE APP LIED.'],
+    boarder: ['INTRUDER ON THE\nBONNET!'],
+    sticker: ['STICKER ON THE GLASS.\nSWERVE TO CLEAR.'],
   },
   default: {
     board: ['STAP IN!\nHOU JE VAST!'],
@@ -77,6 +116,13 @@ export const DRIVER_LINES: Readonly<Record<string, Lines>> = {
     boss: ['BIG TROUBLE AHEAD!'],
     exit: ['AFSLAG! WE ZIJN ER.'],
     arrive: ['WE ARE BACK!'],
+    scan: ['SCAN CAR!\nCHANGE LANE!'],
+    tow: ['TOW HOOK! SWERVE!'],
+    brake: ['HE BRAKES!\nHOU JE VAST!'],
+    caravan: ['LOOSE CARAVAN!'],
+    roadworks: ['WEGWERKZAAMHEDEN!'],
+    boarder: ['GET OFF THE BONNET!'],
+    sticker: ['A FINE ON THE GLASS!'],
   },
 };
 
