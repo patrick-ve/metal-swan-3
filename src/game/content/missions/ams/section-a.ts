@@ -419,6 +419,9 @@ export const sectionA: SectionDef = {
   terrain: terrainA(),
   terrainStyle: { ground: 'klinker', edge: 'bikepath', platform: 'wood', solid: 'brick' },
   decor,
+  // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
+  // its script spawns — joins the 4× working set only here and in the section before it.
+  art: [...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-bike-rack', 'decor/ams/ams-boat-platform', 'decor/ams/ams-herring-cart', 'decor/ams/ams-tulip-stall'],
   playerStart: { x: 48, y: G },
   checkpoints: [1300, 2500],
   timeLimit: 60,

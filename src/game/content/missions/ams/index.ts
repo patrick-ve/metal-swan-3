@@ -13,18 +13,17 @@
 import type { MissionDef } from '../../../mission/index';
 import { defineMission } from '../../../registry';
 import './art';
-// 2× decor of sections c and d and the breakables (art-hi-cd*.ts).
-import './art-hi-cd';
+// HD (2× and 4×) decor of sections c and d, the boats and the breakables (art-hd-cd*.ts).
+import './art-hd-cd';
 import './backgrounds';
-// 2× background layers and terrain materials (art-hi-bg.ts, art-hi-terrain.ts).
-import './art-hi-bg';
-// 2× canal houses, elms, Museumplein, sky and clouds (backgrounds-hi.ts, art-hi-sky.ts).
-import './backgrounds-hi';
-import './art-hi-sky';
-import './art-hi-terrain';
-// 2× ambient life: pigeons, ducks, the tour boat, the window cat (npc-hi.art.ts).
+// HD background layers: canal houses, elms, Museumplein, skyline (art-hd-bg*.ts); sky and clouds.
+import './art-hd-bg';
+import './art-hd-sky';
+// HD terrain materials and canal water (art-hd-terrain*.ts).
+import './art-hd-terrain';
+import './art-hd-terrain-water';
+// HD ambient life: pigeons, ducks, the tour boat, the window cat (npc-hi.art.ts).
 import './npc-hi.art';
-import './art-hi-boat';
 import './entities';
 import { sectionA } from './section-a';
 import { sectionB } from './section-b';
@@ -60,6 +59,7 @@ export const AMS: MissionDef = {
   // while l first costs about 16 ms instead of 8).
   // The solo fatbike sets only (`fatbike-youth`, `fatbike-youth-<look><skin>`): the pair sets
   // ride in sections b and c, which declare them as section `art` (the tier-4 working set).
+  // The decor (`decor/ams/`) is section `art` too: each section lists what it draws.
   preloadFirst: [
     'vehicle/swan',
     'enemy/delivery-rider',
@@ -71,7 +71,6 @@ export const AMS: MissionDef = {
     'enemy/fatbike-youth-2',
     'enemy/fatbike-youth-3',
     'npc/ams/',
-    'decor/ams/',
     'fx/explosion-s',
   ],
   preloadLast: ['boss/', 'enemy/handhaver', 'enemy/boete-ticket/'],

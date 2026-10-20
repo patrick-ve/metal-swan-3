@@ -17,21 +17,24 @@
  *   over a dark brick quay wall), edges `bikepath` (red bike path with a white kerb line) and
  *   `kerb` (grey granite kerb), platform `whitewood` (white painted drawbridge planks)
  *
- * 2× terrain (docs/ART_GUIDE.md "2x art (mission ams)"): `defineHiTerrainMaterial(kind, id, paint)`
- * adds a 2× version of one material: `paint(p, sx, sy)` gives the colour of the hi-res sub-pixel
- * (sx, sy) ∈ {0, 1}² of the logical pixel `p` (the same Px the 1× material gets). The 2× painter
- * (`paintTerrainHi`, registered with setHiTerrainPainter) classifies every logical pixel exactly
- * like the 1× painter — same cells, bands, cliff shading and outlines (2 hi-res px) — and only
- * asks the 2× material for the four sub-pixels; materials without one are enlarged 2 × 2. So the
- * geometry (and collision) never changes. A rect where no 2× material paints gives null (the view
- * keeps its 1× chunk).
+ * HD terrain (UHD art, docs/ART_GUIDE.md "UHD art"): `defineHdTerrainMaterial(kind, id, paint)`
+ * adds the density-generic version of one material for the 2× and the 4× tier:
+ * `paint(p, d, out, i, stride)` fills the d × d art px of the logical pixel `p` (the same Px the
+ * 1× material gets) with PAL_HD colours. The HD painter (`paintTerrainHd`, registered with
+ * setHdTerrainPainter for d 2 and 4) classifies every logical pixel exactly like the 1× painter —
+ * same cells, bands, cliff faces, undersides and hangers — and only asks the HD material for the
+ * colours of its d × d block; materials without one fill their 1× colour. So the geometry (and
+ * collision) never changes. Terrain has no ink outline: cliff faces and undersides are HD tone
+ * steps of the material (`hdShift`). A rect where no HD material paints gives null (the view keeps
+ * its 1× chunk). The ams materials: missions/ams/art-hd-terrain.ts.
  */
 import type { Color } from '../../engine/color';
 import { PixelBuffer } from '../../engine/pixel';
 import type { Ramp } from '../../engine/pixel';
 import { INK, PAL, stepShade } from '../../engine/palette';
-import { setHiTerrainPainter, setTerrainPainter } from './art-registry';
-import type { HiTerrainPainter, TerrainPainter, TerrainSampler, TerrainStyleDef } from './art-registry';
+import { hdHome } from '../../engine/palette-hd';
+import { setHdTerrainPainter, setTerrainPainter } from './art-registry';
+import type { HdTerrainPainter, TerrainPainter, TerrainSampler, TerrainStyleDef } from './art-registry';
 import { bayer, hash1, hash2, noise2 } from './paint';
 
 /** Margins sampled around the chunk; distances are clamped below them. */
@@ -404,41 +407,50 @@ function runs(cells: Uint8Array, out: Uint8Array, start: number, count: number, 
   }
 }
 
-// ------------------------------------------------------------------------------------ 2× materials
+// ------------------------------------------------------------------------------------ HD materials
 
-/** A 2× material: the colour of hi-res sub-pixel (sx, sy) ∈ {0, 1}² of logical pixel `p`. */
-export type HiPaint = (p: Readonly<Px>, sx: number, sy: number) => Color;
+/**
+ * An HD terrain material (UHD art, d ∈ {2, 4}): fill the d × d art px of logical pixel `p` (the
+ * same Px the 1× material gets: for ground and edge `p.up` = depth below the surface, 0 at the top
+ * pixel) with opaque PAL_HD colours. The block's top-left art px is `out[i]`, the next art row
+ * `out[i + stride]`. World art coordinates are `d·p.x + sx` and `d·p.y + sy` (or `d·p.up + sy`),
+ * so chunks join without seams.
+ */
+export type HdTerrainPaint = (p: Readonly<Px>, d: number, out: Uint32Array, i: number, stride: number) => void;
 export type TerrainMaterialKind = 'ground' | 'edge' | 'platform' | 'solid';
 
-const HI: Readonly<Record<TerrainMaterialKind, Map<string, HiPaint>>> = {
+const HD: Readonly<Record<TerrainMaterialKind, Map<string, HdTerrainPaint>>> = {
   ground: new Map(),
   edge: new Map(),
   platform: new Map(),
   solid: new Map(),
 };
 
-/** Add (or replace) the 2× version of a material (see the module comment). */
-export function defineHiTerrainMaterial(kind: TerrainMaterialKind, id: string, paint: HiPaint): void {
-  HI[kind].set(id, paint);
+/** Add (or replace) the HD (2× and 4×) version of a material (see the module comment). */
+export function defineHdTerrainMaterial(kind: TerrainMaterialKind, id: string, paint: HdTerrainPaint): void {
+  HD[kind].set(id, paint);
 }
 
 /**
- * A 2× hanger: the colour of sub-pixel (sx, sy) of the hanger pixel `k` rows (0-based) below a
- * platform band at world column x, or 0. Only painted where the 1× `hang` paints (the same
- * footprint), so geometry never changes.
+ * An HD hanger: fill the d × d art px of the hanger pixel `k` rows (0-based) below a platform band
+ * at world column x. Only called where the 1× `hang` paints (the same footprint).
  */
-export type HiHang = (x: number, k: number, seed: number, sx: number, sy: number) => Color;
+export type HdTerrainHang = (x: number, k: number, seed: number, d: number, out: Uint32Array, i: number, stride: number) => void;
 
-const HI_HANG = new Map<string, HiHang>();
+const HD_HANG = new Map<string, HdTerrainHang>();
 
-/** Add (or replace) the 2× hangers under a platform material. */
-export function defineHiTerrainHang(platform: string, hang: HiHang): void {
-  HI_HANG.set(platform, hang);
+/** Add (or replace) the HD hangers under a platform material. */
+export function defineHdTerrainHang(platform: string, hang: HdTerrainHang): void {
+  HD_HANG.set(platform, hang);
 }
 
-export function hasHiTerrainMaterial(kind: TerrainMaterialKind, id: string): boolean {
-  return HI[kind].has(id);
+/** Does material `id` of `kind` have an HD (2× and 4×) version? */
+export function hasHdTerrainMaterial(kind: TerrainMaterialKind, id: string): boolean {
+  return HD[kind].has(id);
 }
+
+/** The same as hasHdTerrainMaterial (the HD materials serve the 2× tier too). */
+export const hasHiTerrainMaterial = hasHdTerrainMaterial;
 
 /** Material ids a style resolves to (unknown ids fall back like the painter does). */
 function materialIds(style: TerrainStyleDef): Record<TerrainMaterialKind, string | undefined> {
@@ -450,47 +462,48 @@ function materialIds(style: TerrainStyleDef): Record<TerrainMaterialKind, string
   };
 }
 
-/** Does any material of `style` have a 2× version? */
-export function styleHasHiTerrain(style: TerrainStyleDef): boolean {
+/** Does any material of `style` have an HD version? */
+export function styleHasHdTerrain(style: TerrainStyleDef): boolean {
   const ids = materialIds(style);
-  return (Object.keys(HI) as TerrainMaterialKind[]).some((k) => ids[k] !== undefined && HI[k].has(ids[k] as string));
+  return (Object.keys(HD) as TerrainMaterialKind[]).some((k) => ids[k] !== undefined && HD[k].has(ids[k] as string));
 }
 
-// ------------------------------------------------------------------------------------ painter
+// ------------------------------------------------------------------------------------ HD tone steps
+
+const stepCache = new Map<number, Color>();
 
 /**
- * Paint terrain cells for the world rect (x0, y0, w, h). Colours depend only on world
- * coordinates, the sampled terrain and the style (seamless across chunks).
+ * `c` moved `n` tones along its PAL_HD ramp (clamped; + = lighter). Colours outside PAL_HD stay.
+ * Used for the cliff faces (lit left face, shaded right face and underside) of HD terrain.
  */
-export const paintTerrain: TerrainPainter = (sample: TerrainSampler, style: TerrainStyleDef, x0, y0, w, h) =>
-  paintRect(sample, style, x0, y0, w, h, false) as PixelBuffer;
+export function hdShift(c: Color, n: number): Color {
+  const key = (((c >>> 0) & 0xffffff00) >>> 0) * 16 + (n + 8);
+  const hit = stepCache.get(key);
+  if (hit !== undefined) return hit;
+  const home = hdHome(c);
+  let out = c;
+  if (home) {
+    const i = home.i + n;
+    out = home.ramp[i < 0 ? 0 : i >= home.ramp.length ? home.ramp.length - 1 : i];
+  }
+  stepCache.set(key, out);
+  return out;
+}
 
-/**
- * The 2× painter: a (2·w) × (2·h) buffer of the same rect with the 2× materials, or null when no
- * 2× material paints a pixel of it.
- */
-export const paintTerrainHi: HiTerrainPainter = (sample, style, x0, y0, w, h) => paintRect(sample, style, x0, y0, w, h, true);
+// ------------------------------------------------------------------------------------ classification
 
-/**
- * The painter. Every logical pixel gets a base colour from its material, then a cliff / underside
- * pass (`post`: 1 = one step lighter, 2 = a fixed dark colour). With `hi` every logical pixel
- * becomes 2 × 2 pixels: the 2× material's sub-pixels (if it has one) or the base colour, through
- * the same pass.
- */
-function paintRect(sample: TerrainSampler, style: TerrainStyleDef, x0: number, y0: number, w: number, h: number, hi: boolean): PixelBuffer | null {
-  const ground = GROUND[style.ground] ?? GROUND.dirt;
-  const edge = style.edge ? EDGE[style.edge] : undefined;
-  const plat = PLATFORM[style.platform ?? 'wood'] ?? PLATFORM.wood;
-  const solid = SOLID[style.solid ?? 'metal'] ?? SOLID.metal;
-  const seed = style.seed ?? 1;
-  const ids = materialIds(style);
-  const hiGround = hi ? HI.ground.get(ids.ground as string) : undefined;
-  const hiEdge = hi && ids.edge ? HI.edge.get(ids.edge) : undefined;
-  const hiPlat = hi ? HI.platform.get(ids.platform as string) : undefined;
-  const hiSolid = hi ? HI.solid.get(ids.solid as string) : undefined;
-  const hiHang = hi ? HI_HANG.get(ids.platform as string) : undefined;
-  if (hi && !hiGround && !hiEdge && !hiPlat && !hiSolid) return null;
+/** The sampled cells around a rect and their run lengths (shared by the 1× and the HD painter). */
+interface Grid {
+  GW: number;
+  GH: number;
+  cells: Uint8Array;
+  up: Uint8Array;
+  down: Uint8Array;
+  left: Uint8Array;
+  right: Uint8Array;
+}
 
+function classify(sample: TerrainSampler, x0: number, y0: number, w: number, h: number): Grid {
   // Sample the chunk plus margins.
   const GW = w + PAD_X * 2;
   const GH = h + PAD_UP + PAD_DOWN;
@@ -511,12 +524,31 @@ function paintRect(sample: TerrainSampler, style: TerrainStyleDef, x0: number, y
     runs(cells, left, y * GW, GW, 1, MAX_SIDE);
     runs(cells, right, y * GW + GW - 1, GW, -1, MAX_SIDE);
   }
+  return { GW, GH, cells, up, down, left, right };
+}
 
-  const d = hi ? 2 : 1;
-  const out = new PixelBuffer(w * d, h * d);
-  const ow = out.w;
+// ------------------------------------------------------------------------------------ painters
+
+/**
+ * Paint terrain cells for the world rect (x0, y0, w, h). Colours depend only on world
+ * coordinates, the sampled terrain and the style (seamless across chunks).
+ */
+export const paintTerrain: TerrainPainter = (sample: TerrainSampler, style: TerrainStyleDef, x0, y0, w, h) => paintRect(sample, style, x0, y0, w, h);
+
+/**
+ * The 1× painter. Every logical pixel gets a base colour from its material, then a cliff /
+ * underside pass (`post`: 1 = one step lighter, 2 = a fixed dark colour).
+ */
+function paintRect(sample: TerrainSampler, style: TerrainStyleDef, x0: number, y0: number, w: number, h: number): PixelBuffer {
+  const ground = GROUND[style.ground] ?? GROUND.dirt;
+  const edge = style.edge ? EDGE[style.edge] : undefined;
+  const plat = PLATFORM[style.platform ?? 'wood'] ?? PLATFORM.wood;
+  const solid = SOLID[style.solid ?? 'metal'] ?? SOLID.metal;
+  const seed = style.seed ?? 1;
+  const { GW, GH, cells, up, down, left, right } = classify(sample, x0, y0, w, h);
+
+  const out = new PixelBuffer(w, h);
   const data = out.data;
-  let usedHi = false;
   const p: Px = { x: 0, y: 0, up: 0, down: 0, left: 0, right: 0, seed };
   const cellAt = (gx: number, gy: number): number => (gx < 0 || gy < 0 || gx >= GW || gy >= GH ? 0 : cells[gy * GW + gx]);
   for (let y = 0; y < h; y++) {
@@ -532,8 +564,6 @@ function paintRect(sample: TerrainSampler, style: TerrainStyleDef, x0: number, y
       p.left = left[k];
       p.right = right[k];
       let col: Color = 0;
-      let arg: Px = p;
-      let hp: HiPaint | undefined;
       let post = 0;
       let postCol: Color = 0;
       if (c === 1) {
@@ -541,14 +571,8 @@ function paintRect(sample: TerrainSampler, style: TerrainStyleDef, x0: number, y
         const depth = p.up - 1;
         const band = edge ? edge.depth + Math.floor(hash1(p.x >> 1, seed + 17) * (edge.ragged + 1)) : 0;
         const q: Px = { ...p, up: depth };
-        arg = q;
-        if (edge && depth < band && cellAt(gx, gy - depth - 1) === 0) {
-          col = edge.paint(q, ground);
-          hp = hiEdge;
-        } else {
-          col = ground(q);
-          hp = hiGround;
-        }
+        if (edge && depth < band && cellAt(gx, gy - depth - 1) === 0) col = edge.paint(q, ground);
+        else col = ground(q);
         // Cliff walls (not slopes): lit left face, dark right face; dark underside.
         const inBand = edge !== undefined && depth < band;
         if (!inBand && cellAt(gx - 1, gy) === 0 && cellAt(gx - 1, gy + 1) === 0) post = 1;
@@ -562,53 +586,242 @@ function paintRect(sample: TerrainSampler, style: TerrainStyleDef, x0: number, y
         }
       } else if (c === 2) {
         col = plat.paint(p);
-        hp = hiPlat;
       } else if (c === 3) {
         col = solid(p);
-        hp = hiSolid;
       } else {
         col = decorate(cellAt, gx, gy, p, edge, plat, up, GW, seed);
-        if (hiHang && col !== 0) {
-          // A hanger under a platform band gets its 2× colours (tufts and lips stay 2 × 2).
-          const k = hangRow(cellAt, gx, gy);
-          if (k >= 0 && plat.hang(p.x, k, seed) === col) {
-            for (let sy = 0; sy < 2; sy++) {
-              for (let sx = 0; sx < 2; sx++) {
-                const sc = hiHang(p.x, k, seed, sx, sy) || col;
-                data[(y * 2 + sy) * ow + x * 2 + sx] = sc >>> 0;
-              }
-            }
-            usedHi = true;
-            continue;
-          }
-        }
       }
-      if (!hi) {
-        if (post === 1) col = stepShade(col, 1);
-        else if (post === 2) col = postCol;
-        if (col !== 0) data[y * w + x] = col >>> 0;
-        continue;
-      }
-      if (post === 2) {
-        hp = undefined;
-        col = postCol;
-      }
-      for (let sy = 0; sy < 2; sy++) {
-        for (let sx = 0; sx < 2; sx++) {
-          let sc = col;
-          if (hp) {
-            sc = hp(arg, sx, sy);
-            usedHi = true;
-          }
-          if (post === 1) sc = stepShade(sc, 1);
-          if (sc !== 0) data[(y * 2 + sy) * ow + x * 2 + sx] = sc >>> 0;
-        }
+      if (post === 1) col = stepShade(col, 1);
+      else if (post === 2) col = postCol;
+      if (col !== 0) data[y * w + x] = col >>> 0;
+    }
+  }
+  return out.touch();
+}
+
+/** Fill a d × d block with one colour. */
+function fillBlock(data: Uint32Array, i: number, stride: number, d: number, col: Color): void {
+  const c = col >>> 0;
+  for (let sy = 0; sy < d; sy++) data.fill(c, i + sy * stride, i + sy * stride + d);
+}
+
+/** Move every art px of a d × d block `n` tones along its PAL_HD ramp. */
+function shiftBlock(data: Uint32Array, i: number, stride: number, d: number, n: number): void {
+  for (let sy = 0; sy < d; sy++) {
+    const r = i + sy * stride;
+    for (let sx = 0; sx < d; sx++) data[r + sx] = hdShift(data[r + sx], n) >>> 0;
+  }
+}
+
+/**
+ * The HD painter (UHD art, d ∈ {2, 4}): a (d·w) × (d·h) buffer of the same rect, or null when no
+ * HD material paints a pixel of it. Every logical pixel is classified exactly like the 1× painter
+ * (cells, bands, cliff faces, undersides, hangers), so the opaque footprint, the geometry and the
+ * collision art are the 1× ones; an HD material fills the d × d art px of its logical pixel, a
+ * material without one fills its 1× colour. Terrain has no ink outline (style decisions): the lit
+ * left cliff face is one HD tone lighter, the right face and the underside three tones darker
+ * (the 1× art uses ink there).
+ */
+export const paintTerrainHd: HdTerrainPainter = (sample, style, x0, y0, w, h, d) => {
+  const ids = materialIds(style);
+  const hdGround = HD.ground.get(ids.ground as string);
+  const hdEdge = ids.edge ? HD.edge.get(ids.edge) : undefined;
+  const hdPlat = HD.platform.get(ids.platform as string);
+  const hdSolid = HD.solid.get(ids.solid as string);
+  const hdHang = HD_HANG.get(ids.platform as string);
+  if (!hdGround && !hdEdge && !hdPlat && !hdSolid) return null;
+  const ground = GROUND[style.ground] ?? GROUND.dirt;
+  const edge = style.edge ? EDGE[style.edge] : undefined;
+  const plat = PLATFORM[style.platform ?? 'wood'] ?? PLATFORM.wood;
+  const solid = SOLID[style.solid ?? 'metal'] ?? SOLID.metal;
+  const seed = style.seed ?? 1;
+  const { GW, GH, cells, up, down, left, right } = classify(sample, x0, y0, w, h);
+
+  const out = new PixelBuffer(w * d, h * d);
+  const ow = out.w;
+  const data = out.data;
+  let usedHd = false;
+  const p: Px = { x: 0, y: 0, up: 0, down: 0, left: 0, right: 0, seed };
+  const q: Px = { x: 0, y: 0, up: 0, down: 0, left: 0, right: 0, seed };
+  const cellAt = (gx: number, gy: number): number => (gx < 0 || gy < 0 || gx >= GW || gy >= GH ? 0 : cells[gy * GW + gx]);
+  // Rows with any cell: an empty pixel can only get a decoration (hanger, tuft, lip) when a row
+  // from 6 above to 4 below it has one (decorate looks no further), so all-empty bands are skipped.
+  const rowUsed = new Uint8Array(GH);
+  for (let gy = 0; gy < GH; gy++) {
+    const r0 = gy * GW;
+    for (let gx = 0; gx < GW; gx++) {
+      if (cells[r0 + gx] !== 0) {
+        rowUsed[gy] = 1;
+        break;
       }
     }
   }
-  if (hi && !usedHi) return null;
+  const bandAt = (x: number): number => (edge ? edge.depth + Math.floor(hash1(x >> 1, seed + 17) * (edge.ragged + 1)) : 0);
+  /** Paint the block of ground cell (gx, gy) — its edge band or ground material — at dst[di]. */
+  const groundBlock = (gx: number, gy: number, dst: Uint32Array, di: number, ds: number): void => {
+    const k = gy * GW + gx;
+    // up − 1 = depth below the surface (0 at the top pixel).
+    const depth = up[k] - 1;
+    q.x = x0 + gx - PAD_X;
+    q.y = y0 + gy - PAD_UP;
+    q.up = depth;
+    q.down = down[k];
+    q.left = left[k];
+    q.right = right[k];
+    if (edge && depth < bandAt(q.x) && cellAt(gx, gy - depth - 1) === 0) {
+      if (hdEdge) {
+        hdEdge(q, d, dst, di, ds);
+        usedHd = true;
+      } else fillBlock(dst, di, ds, d, edge.paint({ ...q }, ground));
+    } else if (hdGround) {
+      hdGround(q, d, dst, di, ds);
+      usedHd = true;
+    } else fillBlock(dst, di, ds, d, ground({ ...q }));
+  };
+  // Slopes: the 1× surface steps by whole px; the HD bands follow a smoothed surface line (the mean
+  // run top of the columns around, R each side), shifted at most ½ logical px per art column, so
+  // the opaque footprint stays the 1× one. runTop = the grid row where a ground cell's vertical
+  // run starts (−1: above the grid, unknown → no shift).
+  const runTop = new Int16Array(GW * GH);
+  for (let gx = 0; gx < GW; gx++) {
+    let start = -1;
+    for (let gy = 0; gy < GH; gy++) {
+      const k = gy * GW + gx;
+      if (cells[k] !== 1) {
+        runTop[k] = -1;
+        continue;
+      }
+      if (gy > 0 && cells[k - GW] !== 1) start = gy;
+      else if (gy === 0) start = -1;
+      runTop[k] = start;
+    }
+  }
+  const R = 2;
+  /** The run top of column gx near row rs (probed R + 1 rows down), or −1. */
+  const topNear = (gx: number, rs: number): number => {
+    if (gx < 0 || gx >= GW) return -1;
+    const gy = Math.min(GH - 1, rs + R + 1);
+    const r2 = runTop[gy * GW + gx];
+    return r2 >= 0 && Math.abs(r2 - rs) <= R + 1 ? r2 : -1;
+  };
+  const smoothRs = new Int16Array(GW).fill(-9);
+  const smoothVal = new Float64Array(GW);
+  /** The smoothed surface (grid rows) of column gx whose run starts at rs. */
+  const smooth = (gx: number, rs: number): number => {
+    if (smoothRs[gx] === rs) return smoothVal[gx];
+    let sum = 0;
+    let n = 0;
+    for (let dx = -R; dx <= R; dx++) {
+      const r2 = topNear(gx + dx, rs);
+      if (r2 < 0) continue;
+      sum += r2;
+      n++;
+    }
+    const v = n > 0 ? sum / n : rs;
+    smoothRs[gx] = rs;
+    smoothVal[gx] = v;
+    return v;
+  };
+  const shiftO = new Int8Array(d);
+  let shiftMin = 0;
+  let shiftMax = 0;
+  const scratch = new Uint32Array(3 * d * d);
+  /** Fill shiftO with the art-px shift of each sub-column of ground cell (gx, gy); false when all 0. */
+  const slopeShift = (gx: number, gy: number): boolean => {
+    const rs = runTop[gy * GW + gx];
+    if (rs < 0) return false;
+    const s = smooth(gx, rs);
+    const l = topNear(gx - 1, rs);
+    const r = topNear(gx + 1, rs);
+    const sl = l >= 0 ? smooth(gx - 1, l) : s;
+    const sr = r >= 0 ? smooth(gx + 1, r) : s;
+    shiftMin = 0;
+    shiftMax = 0;
+    for (let sx = 0; sx < d; sx++) {
+      const u = (sx + 0.5) / d - 0.5;
+      const v = (u < 0 ? s + (sl - s) * -u : s + (sr - s) * u) - rs;
+      const o = Math.round((v < -0.5 ? -0.5 : v > 0.5 ? 0.5 : v) * d) | 0;
+      shiftO[sx] = o;
+      if (o < shiftMin) shiftMin = o;
+      if (o > shiftMax) shiftMax = o;
+    }
+    return shiftMin !== 0 || shiftMax !== 0;
+  };
+  for (let y = 0; y < h; y++) {
+    const gy = y + PAD_UP;
+    let near = false;
+    for (let j = Math.max(0, gy - 6); j <= Math.min(GH - 1, gy + 4) && !near; j++) near = rowUsed[j] === 1;
+    if (!near) continue;
+    for (let x = 0; x < w; x++) {
+      const gx = x + PAD_X;
+      const k = gy * GW + gx;
+      const c = cells[k];
+      const i = y * d * ow + x * d;
+      p.x = x0 + x;
+      p.y = y0 + y;
+      p.up = up[k];
+      p.down = down[k];
+      p.left = left[k];
+      p.right = right[k];
+      if (c === 0) {
+        const col = decorate(cellAt, gx, gy, p, edge, plat, up, GW, seed);
+        if (col === 0) continue;
+        if (hdHang) {
+          // A hanger under a platform band gets its HD colours (tufts and lips keep their 1× colour).
+          const row = hangRow(cellAt, gx, gy);
+          if (row >= 0 && plat.hang(p.x, row, seed) === col) {
+            hdHang(p.x, row, seed, d, data, i, ow);
+            usedHd = true;
+            continue;
+          }
+        }
+        fillBlock(data, i, ow, d, col);
+        continue;
+      }
+      let post = 0;
+      if (c === 1) {
+        if (!slopeShift(gx, gy)) groundBlock(gx, gy, data, i, ow);
+        else {
+          // On a slope: the column's art px take the colours d·shift art px above or below, from the
+          // blocks above (ground only), here and below; the top art px keeps the surface row.
+          // Only the blocks a shift reaches are painted (up: a positive shift, down: a negative one).
+          const hasAbove = cells[k - GW] === 1;
+          const hasBelow = cells[k + GW] === 1;
+          groundBlock(gx, gy, scratch, d * d, d);
+          if (hasAbove && shiftMax > 0) groundBlock(gx, gy - 1, scratch, 0, d);
+          if (hasBelow && shiftMin < 0) groundBlock(gx, gy + 1, scratch, 2 * d * d, d);
+          for (let sx = 0; sx < d; sx++) {
+            const o = shiftO[sx];
+            for (let sy = 0; sy < d; sy++) {
+              let s = d + sy - o;
+              if ((!hasAbove && sy === 0) || (s < d && !hasAbove)) s = d;
+              else if (s >= 2 * d && !hasBelow) s = 2 * d - 1;
+              const b = s < d ? 0 : s < 2 * d ? 1 : 2;
+              data[i + sy * ow + sx] = scratch[b * d * d + (s - b * d) * d + sx];
+            }
+          }
+        }
+        const inBand = edge !== undefined && up[k] - 1 < bandAt(p.x);
+        // Cliff walls (not slopes): lit left face, shaded right face; shaded underside.
+        if (!inBand && cellAt(gx - 1, gy) === 0 && cellAt(gx - 1, gy + 1) === 0) post = 1;
+        if (!inBand && cellAt(gx + 1, gy) === 0 && cellAt(gx + 1, gy + 1) === 0) post = 2;
+        if (p.down === 1 && cellAt(gx, gy + 1) === 0) post = 2;
+      } else if (c === 2) {
+        if (hdPlat) {
+          hdPlat(p, d, data, i, ow);
+          usedHd = true;
+        } else fillBlock(data, i, ow, d, plat.paint(p));
+      } else if (hdSolid) {
+        hdSolid(p, d, data, i, ow);
+        usedHd = true;
+      } else fillBlock(data, i, ow, d, solid(p));
+      if (post === 1) shiftBlock(data, i, ow, d, 1);
+      else if (post === 2) shiftBlock(data, i, ow, d, -3);
+    }
+  }
+  if (!usedHd) return null;
   return out.touch();
-}
+};
 
 /** Rows (0-based) from an empty cell up to the platform band right above it, or −1. */
 function hangRow(cellAt: (gx: number, gy: number) => number, gx: number, gy: number): number {
@@ -665,4 +878,4 @@ function decorate(
 }
 
 setTerrainPainter(paintTerrain);
-setHiTerrainPainter(paintTerrainHi, styleHasHiTerrain);
+setHdTerrainPainter(paintTerrainHd, (style) => styleHasHdTerrain(style));

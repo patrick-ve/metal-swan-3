@@ -113,7 +113,8 @@ describe('mission ams: 2× terrain', () => {
               }
             }
           }
-          expect(offPalette(hi, pal), `ams/${sid} chunk ${cx},${cy} palette`).toBe(0);
+          // UHD wave: the HD terrain paints with PAL_HD (the 64 colours are inside it).
+          expect(offPalette(hi, pal, true), `ams/${sid} chunk ${cx},${cy} palette`).toBe(0);
         }
       }
       // Seams: two 40-px rects side by side give the pixels of one 80-px rect over both, at the

@@ -1,14 +1,15 @@
 /**
- * 2× scenery (docs/ARCHITECTURE.md §3, docs/ART_GUIDE.md "2x backgrounds and terrain"): background
- * layers with a 2× generator and terrain with 2× materials, drawn only by a view of density 2
- * (mission ams) at res ≥ 2.
+ * Dense scenery at 2× and 4× (docs/ARCHITECTURE.md §3, docs/ART_GUIDE.md "2x backgrounds and
+ * terrain", "UHD art"): background layers with a dense generator and terrain with HD materials,
+ * drawn only by a view of density ≥ 2 (mission ams) at a res that shows them.
  *
  * - The 1× scenery of every mission is byte-identical to before (hashes in
  *   fixtures/scenery-1x.json: every layer buffer, every terrain chunk, and drawn frames at res 1
  *   and res 2 — ams also at density 2 on res 1, where the 1× scenery is drawn). Regenerate only
  *   on purpose: UPDATE_SCENERY_FIXTURE=1 npx vitest run tests/art/scenery-hi.test.ts.
- * - The ams 2× layer and terrain material have the 1× geometry (size, opaque footprint), are
- *   palette-only and deterministic, and no 2× scenery falls back to 1× (hiSceneryErrors).
+ * - The ams dense layers (at every density they have) and the HD terrain at d 2 and 4 have the 1×
+ *   geometry (size, opaque footprint; terrain exactly), are palette-only (the 64 colours or PAL_HD)
+ *   and deterministic, and no dense scenery falls back to a lower density (hiSceneryErrors).
  * - Renderers: a density-2 parallax layer tiles by its logical size and at res 1 shows lowRes.
  */
 import { createHash } from 'node:crypto';
@@ -16,6 +17,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { INK, PAL } from '../../src/engine/palette';
+import { inHdPalette } from '../../src/engine/palette-hd';
 import { PixelBuffer } from '../../src/engine/pixel';
 import { lowRes } from '../../src/engine/render-common';
 import { SoftRenderer } from '../../src/engine/render-soft';
@@ -26,6 +28,7 @@ import {
   preloadSprites,
   queueArtJob,
   runArtJobs,
+  setArtTier,
   setDeferHiArt,
   setHiArt,
   withArtDensity,
@@ -50,6 +53,8 @@ const FIXTURE = join(__dirname, 'fixtures', 'scenery-1x.json');
 
 /** Background generators with 2× art (every one must build without a 1× fallback). */
 const HI_BG = ['ams-skyline'];
+/** The dense terrain densities. */
+const DENSITIES = [2, 4] as const;
 
 function hash(bufs: readonly (PixelBuffer | null)[]): string {
   const h = createHash('sha1');
@@ -69,6 +74,13 @@ function paletteSet(): Set<number> {
   const s = new Set<number>([INK >>> 0]);
   for (const r of Object.values(PAL)) if (Array.isArray(r)) for (const c of r) s.add((c as number) >>> 0);
   return s;
+}
+
+/** Opaque px that are neither a 64-palette colour nor an opaque PAL_HD colour. */
+function offPalette(b: PixelBuffer, pal: Set<number>): number {
+  let n = 0;
+  for (const c of b.data) if ((c & 255) !== 0 && !pal.has(c >>> 0) && !((c & 255) === 255 && inHdPalette(c))) n++;
+  return n;
 }
 
 /** Logical opaque mask of a buffer of density d: a logical pixel is opaque if any sub-pixel is. */
@@ -153,82 +165,86 @@ describe('2× scenery', () => {
     expect(listHiBgGenerators()).toEqual(expect.arrayContaining(HI_BG));
   });
 
-  it('2× layers: twice the size, the 1× footprint, palette only, deterministic, seamless', () => {
+  it('dense layers (2× and, where they exist, 4×): d times the size, the 1× footprint, palette only, deterministic, seamless', () => {
     const pal = paletteSet();
     for (const id of HI_BG) {
-      for (const light of ['morning', 'noon', 'golden', 'sunset']) {
-        const params = { light, y: 0.52 };
-        const one = getBgGenerator(id)(768, 216, params, 9);
-        const hi = makeHiBgLayer(id, 768, 216, params, 9);
-        expect(hi, id).not.toBeNull();
-        if (!hi) continue;
-        expect([hi.w, hi.h]).toEqual([1536, 432]);
-        expect(Array.from(hi.data)).toEqual(Array.from((makeHiBgLayer(id, 768, 216, params, 9) as PixelBuffer).data));
-        for (const c of hi.data) if ((c & 255) !== 0) expect(pal.has(c >>> 0), `${id} colour ${(c >>> 0).toString(16)}`).toBe(true);
-        // Same design: the logical opaque footprints agree almost everywhere.
-        const a = mask(one, 1);
-        const b = mask(hi, 2);
-        let same = 0;
-        for (let i = 0; i < a.length; i++) if (a[i] === b[i]) same++;
-        expect(same / a.length, `${id} ${light} footprint`).toBeGreaterThan(0.99);
-        // Real 2× detail: some 2 × 2 blocks are not flat.
-        const flat = hi.downsampled(2).scaled(2);
-        let diff = 0;
-        for (let i = 0; i < hi.data.length; i++) if (hi.data[i] !== flat.data[i]) diff++;
-        expect(diff, `${id} has 2× detail`).toBeGreaterThan(500);
-        // Seamless: the wrap seam differs no more than the busiest column pair inside.
-        const col = (x: number, x2: number): number => {
-          let n = 0;
-          for (let y = 0; y < hi.h; y++) if (hi.get(x, y) !== hi.get(x2, y)) n++;
-          return n;
-        };
-        let worst = 0;
-        for (let x = 0; x + 1 < hi.w; x++) worst = Math.max(worst, col(x, x + 1));
-        expect(col(hi.w - 1, 0)).toBeLessThanOrEqual(worst);
+      for (const d of DENSITIES) {
+        if (!hasHiBgGenerator(id, d)) continue;
+        for (const light of d === 2 ? ['morning', 'noon', 'golden', 'sunset'] : ['noon', 'sunset']) {
+          const params = { light, y: 0.52 };
+          const one = getBgGenerator(id)(768, 216, params, 9);
+          const hi = makeHiBgLayer(id, 768, 216, params, 9, d);
+          expect(hi, `${id}@${d}x`).not.toBeNull();
+          if (!hi) continue;
+          expect([hi.w, hi.h]).toEqual([768 * d, 216 * d]);
+          expect(Array.from(hi.data)).toEqual(Array.from((makeHiBgLayer(id, 768, 216, params, 9, d) as PixelBuffer).data));
+          expect(offPalette(hi, pal), `${id}@${d}x ${light} palette`).toBe(0);
+          // Same design: the logical opaque footprints agree almost everywhere.
+          const a = mask(one, 1);
+          const b = mask(hi, d);
+          let same = 0;
+          for (let i = 0; i < a.length; i++) if (a[i] === b[i]) same++;
+          expect(same / a.length, `${id}@${d}x ${light} footprint`).toBeGreaterThan(0.99);
+          // Real dense detail: some d × d blocks are not flat.
+          const flat = hi.downsampled(d).scaled(d);
+          let diff = 0;
+          for (let i = 0; i < hi.data.length; i++) if (hi.data[i] !== flat.data[i]) diff++;
+          expect(diff, `${id}@${d}x has dense detail`).toBeGreaterThan(500);
+          // Seamless: the wrap seam differs no more than the busiest column pair inside.
+          const col = (x: number, x2: number): number => {
+            let n = 0;
+            for (let y = 0; y < hi.h; y++) if (hi.get(x, y) !== hi.get(x2, y)) n++;
+            return n;
+          };
+          let worst = 0;
+          for (let x = 0; x + 1 < hi.w; x++) worst = Math.max(worst, col(x, x + 1));
+          expect(col(hi.w - 1, 0)).toBeLessThanOrEqual(worst);
+        }
       }
     }
   });
 
-  it('2× terrain (ams klinker): the exact 1× geometry, palette only, finer detail', () => {
-    const pal = paletteSet();
+  it('HD terrain (ams) at 2× and 4×: the exact 1× geometry, PAL_HD only, finer detail', () => {
     const ams = getMission('ams');
     let built = 0;
     for (const [sid, def] of Object.entries(ams?.sections ?? {})) {
       const style = def.terrainStyle;
-      expect(style && hasHiTerrain(style), `ams/${sid} has 2× terrain`).toBe(true);
+      for (const d of DENSITIES) expect(style && hasHiTerrain(style, d), `ams/${sid} has terrain at ${d}×`).toBe(true);
       if (!style) continue;
       const t = new Terrain(def.terrain);
       const sample = (x: number, y: number) => t.cellAt(x, y);
       // Two chunks around the ground line of the section start.
       for (const [cx, cy] of [[0, Math.floor((def.height - 40) / CHUNK)], [1, Math.floor((def.height - 40) / CHUNK)]]) {
         const one = getTerrainPainter()(sample, style, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK);
-        const hi = makeHiTerrain(sample, style, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK);
         if (one.countOpaque() === 0) continue;
-        expect(hi, `ams/${sid} chunk ${cx},${cy}`).not.toBeNull();
-        if (!hi) continue;
-        built++;
-        expect([hi.w, hi.h]).toEqual([CHUNK * 2, CHUNK * 2]);
-        // Geometry (and so collision art) is exactly the 1× one: every 2 × 2 block is fully
-        // opaque where the 1× pixel is opaque and fully clear where it is clear.
-        for (let y = 0; y < CHUNK; y++) {
-          for (let x = 0; x < CHUNK; x++) {
-            const o = (one.data[y * CHUNK + x] & 255) !== 0;
-            for (let s = 0; s < 4; s++) {
-              const c = hi.data[(y * 2 + (s >> 1)) * hi.w + x * 2 + (s & 1)];
-              if (((c & 255) !== 0) !== o) throw new Error(`ams/${sid} ${x},${y}: 2× opacity differs from 1×`);
+        for (const d of DENSITIES) {
+          const hi = makeHiTerrain(sample, style, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK, d);
+          expect(hi, `ams/${sid} chunk ${cx},${cy} at ${d}×`).not.toBeNull();
+          if (!hi) continue;
+          built++;
+          expect([hi.w, hi.h]).toEqual([CHUNK * d, CHUNK * d]);
+          // Geometry (and so collision art) is exactly the 1× one: every d × d block is fully
+          // opaque where the 1× pixel is opaque and fully clear where it is clear.
+          for (let y = 0; y < CHUNK; y++) {
+            for (let x = 0; x < CHUNK; x++) {
+              const o = (one.data[y * CHUNK + x] & 255) !== 0;
+              for (let s = 0; s < d * d; s++) {
+                const c = hi.data[(y * d + Math.floor(s / d)) * hi.w + x * d + (s % d)];
+                if (((c & 255) !== 0) !== o) throw new Error(`ams/${sid} ${x},${y}: ${d}× opacity differs from 1×`);
+              }
             }
           }
+          for (const c of hi.data) if ((c & 255) !== 0) expect(inHdPalette(c) && (c & 255) === 255, `${(c >>> 0).toString(16)} in PAL_HD`).toBe(true);
+          const flat = hi.downsampled(d).scaled(d);
+          let diff = 0;
+          for (let i = 0; i < hi.data.length; i++) if (hi.data[i] !== flat.data[i]) diff++;
+          expect(diff, `has ${d}× detail`).toBeGreaterThan(1000 * d);
         }
-        for (const c of hi.data) if ((c & 255) !== 0) expect(pal.has(c >>> 0)).toBe(true);
-        const flat = hi.downsampled(2).scaled(2);
-        let diff = 0;
-        for (let i = 0; i < hi.data.length; i++) if (hi.data[i] !== flat.data[i]) diff++;
-        expect(diff, 'has 2× detail').toBeGreaterThan(1000);
       }
     }
-    expect(built).toBeGreaterThan(3);
-    // Styles without 2× materials get no 2× painter work at all.
-    expect(hasHiTerrain({ ground: 'dirt', edge: 'grass', platform: 'metal', solid: 'crate' })).toBe(false);
+    expect(built).toBeGreaterThan(7);
+    // Styles without HD materials get no dense painter work at all.
+    for (const d of DENSITIES) expect(hasHiTerrain({ ground: 'dirt', edge: 'grass', platform: 'metal', solid: 'crate' }, d)).toBe(false);
   });
 
   it('a density-2 view draws the 2× scenery at res 2, with no 1× fallback', () => {
@@ -247,6 +263,27 @@ describe('2× scenery', () => {
       expect(drawHash(off, 2, 2, 300.5, 0)).toBe(a);
     } finally {
       setHiArt(prev);
+    }
+    expect(hiSceneryErrors()).toEqual([]);
+  });
+
+  it('a density-4 view draws the 4× terrain at res 4 (no lower fallback); at res 2 the 2× terrain', () => {
+    const def = bare(getMission('ams')?.sections.a as SectionDef);
+    const prev = setArtTier(4);
+    try {
+      const four = new SectionView(def, new Terrain(def.terrain), 7, 4);
+      const two = new SectionView(def, new Terrain(def.terrain), 7, 2);
+      const a4 = drawHash(four, 4, 4, 300.5, 0);
+      const b4 = drawHash(two, 4, 4, 300.5, 0);
+      expect(a4).not.toBe(b4);
+      expect(four.hiChunkCount(4)).toBeGreaterThan(0);
+      expect(two.hiChunkCount(4)).toBe(0);
+      // At res 2 a density-4 view shows its 2× scenery, the same image as a density-2 view.
+      const four2 = new SectionView(def, new Terrain(def.terrain), 7, 4);
+      const two2 = new SectionView(def, new Terrain(def.terrain), 7, 2);
+      expect(drawHash(four2, 2, 4, 300.5, 0)).toBe(drawHash(two2, 2, 2, 300.5, 0));
+    } finally {
+      setArtTier(prev);
     }
     expect(hiSceneryErrors()).toEqual([]);
   });

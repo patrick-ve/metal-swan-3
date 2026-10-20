@@ -185,7 +185,9 @@ export const sectionC: SectionDef = {
   terrainStyle: { ground: 'klinker', edge: 'bikepath', platform: 'whitewood', solid: 'brick' },
   decor,
   // Tier 4: the fatbike pairs ride in b and c only (the solo sets are in the mission's preloadFirst).
-  art: ['enemy/fatbike-youth-pair'],
+  // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
+  // its script spawns — joins the 4× working set only here and in the section before it.
+  art: ['enemy/fatbike-youth-pair', ...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-boat-platform', 'decor/ams/ams-herring-cart', 'decor/ams/ams-market-stall'],
   playerStart: { x: 48, y: G },
   checkpoints: [1200, 2400, 3100],
   timeLimit: 60,

@@ -1,104 +1,120 @@
 /**
- * Mission `ams` 2× decor of sections a (GRACHTENGORDEL) and b (MUSEUMPLEIN) and the decor they
- * share with c and d (docs/ART_GUIDE.md "2x art (mission ams)"): registers the 2× twins of the
- * art.ts / npc.art.ts decor ids. The mission module imports it after the section files, so the
- * sized ids the sections registered (bridges, awnings, houseboats, water, lawn, pool) exist and get
- * their twins too (`SIZED`). Ids only sections c and d use (art-hi-cd.ts) are filled in here only
- * when that file did not register them.
+ * Mission `ams` UHD decor of sections a (GRACHTENGORDEL) and b (MUSEUMPLEIN) and the street decor
+ * they share with c and d (docs/ART_GUIDE.md "UHD art"): registers ONE density-generic generator
+ * per id for its 2× and 4× art (`defineHdSprite`; drawers in art-hd-ab-*.ts). The mission module
+ * imports it after the section files, so the sized ids the sections registered (bridges, awnings,
+ * lawn, pool, balustrade) exist and get their HD art too (`SIZED`). Ids another file
+ * already draws (sections c / d, the breakables, the boats: art-hd-cd*.ts; the canal water pieces:
+ * art-hd-terrain-water.ts) are left to it; the
+ * canal houses of the golden and sunset lights (sections c, d) are filled in here when no other
+ * file registered them.
  */
-import { applyLight, HOUSE_VARIANTS, LIGHTS, type Light } from './art';
-import { defineHiSprite, hasHiSprite, listSprites } from '../../../../engine/sprites';
-import { PAL } from '../../../../engine/palette';
-import type { PixelBuffer } from '../../../../engine/pixel';
+import { listSprites, defineHdSprite, hasHiSprite, type DenseDensity } from '../../../../engine/sprites';
+import { PAL_HD } from '../../../../engine/palette-hd';
 import type { Frame } from '../../../../engine/render';
-import { bridgeFaceHi, bridgeRailHi, drawbridgeHi, houseboatHi, lawnHi, poolHi, rijksmuseumHi, waterBackHi, waterSurfaceHi, waterTintHi } from './art-hi-ab-canal';
-import { fabelCounterHi, fabelFrietHi, fabelSignHi, neighbourHi } from './art-hi-ab-fabel';
-import { paintHouseHi } from './art-hi-ab-houses';
+import { HOUSE_VARIANTS, LIGHTS, type Light } from './art';
+import { fr, lightHd } from './art-hd-ab-kit';
+import { fabelCounterHd, fabelFrietHd, fabelSignHd, houseHd, neighbourHd } from './art-hd-ab-houses';
+import { bridgeFaceHd, bridgeRailHd, drawbridgeHd, lawnHd, poolHd } from './art-hd-ab-canal';
+import { rijksmuseumHd } from './art-hd-ab-museum';
 import {
-  awningHi,
-  balustradeHi,
-  benchHi,
-  bikeFramesHi,
-  bikeRackBreakHi,
-  bikeRackHi,
-  bollardHi,
-  cabinetHi,
-  elmHi,
-  flagHi,
-  flagRedHi,
-  herringCartHi,
-  hotdogFrontHi,
-  hotdogStandHi,
-  lampGreyHi,
-  lampHi,
-  smokeHi,
-  tulipStallHi,
-  tulipsHi,
-} from './art-hi-ab-street';
+  awningHd,
+  balustradeHd,
+  benchHd,
+  bikeFramesHd,
+  bikeRackHd,
+  bollardHd,
+  cabinetHd,
+  elmHd,
+  flagHd,
+  flagRedHd,
+  hotdogStandHd,
+  lampGreyHd,
+  lampHd,
+  smokeHd,
+  tulipsHd,
+} from './art-hd-ab-street';
 
 const D = 'decor/ams/';
 
-/** The 2× houses before the light (painted once, recoloured per light). */
-let houses: readonly Frame[] | null = null;
-function housesHi(): readonly Frame[] {
-  houses ??= HOUSE_VARIANTS.map((s) => paintHouseHi(s));
-  return houses;
+type Gen = (d: DenseDensity) => Frame | Frame[];
+
+/** A light-independent render per density, recoloured per light (the 1× `applyLight` scheme). */
+function perLight(paint: (d: DenseDensity) => readonly Frame[]): (light: Light, d: DenseDensity) => Frame[] {
+  const cache = new Map<DenseDensity, readonly Frame[]>();
+  return (light, d) => {
+    let base = cache.get(d);
+    if (!base) {
+      base = paint(d);
+      cache.set(d, base);
+    }
+    return base.map((f) => fr(lightHd(f.buf.clone(), light), f.ox, f.oy, d));
+  };
 }
 
-/** Lights of the house rows in sections a and b; golden (c) and sunset (d) only as a fallback. */
+const houses = perLight((d) => HOUSE_VARIANTS.map((s) => houseHd(s, d)));
+const fabel = perLight((d) => [fabelFrietHd('morning', d)]);
+const neighbours = perLight((d) => [neighbourHd('morning', d)]);
+
+/** Lights of the house rows in sections a and b; golden (c) and sunset (d) only when no other file draws them. */
 const OWN_LIGHTS: readonly Light[] = ['morning', 'noon'];
+const free = (id: string): boolean => !hasHiSprite(id, 2) && !hasHiSprite(id, 4);
+
+/** Every fixed a / b decor id with UHD art → its generator (tests, tools). */
+export const AB_HD = new Map<string, Gen>();
 for (const light of LIGHTS) {
   const id = `${D}house-${light}`;
-  if (OWN_LIGHTS.includes(light) || !hasHiSprite(id)) {
-    defineHiSprite(id, () => housesHi().map((f) => ({ ...f, buf: applyLight(f.buf.clone(), light) })));
-  }
+  if (OWN_LIGHTS.includes(light) || free(id)) AB_HD.set(id, (d) => houses(light, d));
+  AB_HD.set(`${D}fabel-friet-${light}`, (d) => fabel(light, d));
+  AB_HD.set(`${D}neighbour-${light}`, (d) => neighbours(light, d));
 }
+const FIXED: readonly (readonly [string, Gen])[] = [
+  ['fabel-sign', fabelSignHd],
+  ['fabel-counter', fabelCounterHd],
+  ['drawbridge', drawbridgeHd],
+  ['rijksmuseum', rijksmuseumHd],
+  ['lamp', lampHd],
+  ['bollard', bollardHd],
+  ['bike', bikeFramesHd],
+  ['bike-rack', bikeRackHd],
+  ['bench', benchHd],
+  ['elm', elmHd],
+  ['tulips', tulipsHd],
+  ['flag-ams', (d) => flagHd(d, [PAL_HD.red, PAL_HD.black, PAL_HD.red], true)],
+  ['flag-nl', (d) => flagHd(d, [PAL_HD.red, PAL_HD.snow, PAL_HD.sky], false)],
+  ['smoke', smokeHd],
+  ['hotdog-stand', (d) => hotdogStandHd(d)],
+  ['hotdog-front', (d) => hotdogStandHd(d, true)],
+  ['flag-red', flagRedHd],
+  ['cabinet', cabinetHd],
+  ['lamp-grey', lampGreyHd],
+];
+for (const [id, gen] of FIXED) AB_HD.set(`${D}${id}`, gen);
 
-for (const light of LIGHTS) {
-  defineHiSprite(`${D}fabel-friet-${light}`, () => fabelFrietHi(light));
-  defineHiSprite(`${D}neighbour-${light}`, () => neighbourHi(light));
-}
-defineHiSprite(`${D}fabel-sign`, fabelSignHi);
-defineHiSprite(`${D}fabel-counter`, fabelCounterHi);
-defineHiSprite(`${D}drawbridge`, drawbridgeHi);
-defineHiSprite(`${D}rijksmuseum`, rijksmuseumHi);
-defineHiSprite(`${D}lamp`, lampHi);
-defineHiSprite(`${D}bollard`, bollardHi);
-defineHiSprite(`${D}bike`, bikeFramesHi);
-defineHiSprite(`${D}bike-rack`, bikeRackHi);
-defineHiSprite(`${D}bench`, benchHi);
-defineHiSprite(`${D}elm`, elmHi);
-defineHiSprite(`${D}tulips`, tulipsHi);
-defineHiSprite(`${D}flag-ams`, () => flagHi([PAL.red[2], PAL.ink[1], PAL.red[2]], true));
-defineHiSprite(`${D}flag-nl`, () => flagHi([PAL.red[2], PAL.snow[3], PAL.sky[0]], false));
-defineHiSprite(`${D}smoke`, smokeHi);
-defineHiSprite(`${D}hotdog-stand`, hotdogStandHi);
-defineHiSprite(`${D}hotdog-front`, hotdogFrontHi);
-defineHiSprite(`${D}flag-red`, flagRedHi);
-defineHiSprite(`${D}cabinet`, cabinetHi);
-defineHiSprite(`${D}lamp-grey`, lampGreyHi);
-defineHiSprite(`${D}ams-herring-cart`, herringCartHi);
-defineHiSprite(`${D}ams-tulip-stall`, tulipStallHi);
-defineHiSprite(`${D}ams-bike-rack`, bikeRackBreakHi);
-
-/** Sized decor ids (registered by the art.ts helpers) → their 2× generator. */
-const SIZED: readonly (readonly [RegExp, (m: RegExpMatchArray) => () => Frame | Frame[] | PixelBuffer | PixelBuffer[]])[] = [
-  [/^bridge-rail-(\d+)x(\d+)$/, (m) => () => bridgeRailHi(Number(m[1]), Number(m[2]))],
-  [/^bridge-face-(\d+)x(\d+)$/, (m) => () => bridgeFaceHi(Number(m[1]), Number(m[2]))],
-  [/^houseboat-(\d+)x(\d+)-(\d+)-(\d+)-(\d+)$/, (m) => () => houseboatHi(Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5]))],
-  [/^water-(\d+)x(\d+)$/, (m) => () => waterSurfaceHi(Number(m[1]))],
-  [/^water-(\d+)x(\d+)-back$/, (m) => () => waterBackHi(Number(m[1]), Number(m[2]))],
-  [/^water-(\d+)x(\d+)-tint$/, (m) => () => waterTintHi(Number(m[1]), Number(m[2]))],
-  [/^lawn-(\d+)$/, (m) => () => lawnHi(Number(m[1]))],
-  [/^pool-(\d+)$/, (m) => () => poolHi(Number(m[1]))],
-  [/^awning-(\d+)$/, (m) => () => awningHi(Number(m[1]))],
-  [/^balustrade-(\d+)$/, (m) => () => balustradeHi(Number(m[1]))],
+/** Sized decor ids (registered by the art.ts helpers) → their UHD generator. */
+export const SIZED: readonly (readonly [RegExp, (m: RegExpMatchArray) => Gen])[] = [
+  [/^bridge-rail-(\d+)x(\d+)$/, (m) => (d) => bridgeRailHd(Number(m[1]), Number(m[2]), d)],
+  [/^bridge-face-(\d+)x(\d+)$/, (m) => (d) => bridgeFaceHd(Number(m[1]), Number(m[2]), d)],
+  [/^lawn-(\d+)$/, (m) => (d) => lawnHd(Number(m[1]), d)],
+  [/^pool-(\d+)$/, (m) => (d) => poolHd(Number(m[1]), d)],
+  [/^awning-(\d+)$/, (m) => (d) => awningHd(Number(m[1]), d)],
+  [/^balustrade-(\d+)$/, (m) => (d) => balustradeHd(Number(m[1]), d)],
 ];
 
-for (const id of listSprites(D)) {
-  if (hasHiSprite(id)) continue;
+/** The UHD generator of a sized decor id (`decor/ams/bridge-rail-160x14` …), or null. */
+export function sizedHd(id: string): Gen | null {
+  if (!id.startsWith(D)) return null;
   for (const [re, gen] of SIZED) {
     const m = id.slice(D.length).match(re);
-    if (m) defineHiSprite(id, gen(m));
+    if (m) return gen(m);
   }
+  return null;
 }
+
+for (const id of listSprites(D)) {
+  if (AB_HD.has(id) || !free(id)) continue;
+  const gen = sizedHd(id);
+  if (gen) AB_HD.set(id, gen);
+}
+
+for (const [id, gen] of AB_HD) defineHdSprite(id, gen);
