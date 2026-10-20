@@ -366,6 +366,8 @@ describe('loops', () => {
         'machine/tank-move', 'swan/glide', 'weapon/laser',
         // 2026-10-14 (ams and the start screens): ambience beds, the tour boat and the Swan's engine.
         'env/ams-canal', 'env/ams-street', 'ams/tour-boat', 'swan/engine', 'env/title-lake', 'ams/mayor-babble',
+        // 2026-10-20 (mission ring): the wagon's engine, the tunnel echo bed and the bridge rumble.
+        'ring/wagon-engine', 'ring/tunnel-bed', 'ring/bridge-rumble',
       ].sort(),
     );
     for (const id of SFX_LOOPS) expect(sfxIsLoop(id), id).toBe(true);

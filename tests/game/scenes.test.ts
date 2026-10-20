@@ -437,5 +437,8 @@ describe('campaign numbering (docs/design/amsterdam.md §8)', () => {
     expect(['ams', 'm1', 'm4', 'm5', 'all'].map(col)).toEqual(['M1', 'M2', 'M5', 'M6', 'ALL']);
     // The first-person floors (docs/design/fps.md §1.9).
     expect(['fps-1', 'fps-2'].map(col)).toEqual(['F1', 'F2']);
+    // The ring road is level 2 on the route (docs/design/ring.md §1): MISSION 2, column M2.
+    expect(missionLabel('ring')).toBe('MISSION 2');
+    expect(col('ring')).toBe('M2');
   });
 });

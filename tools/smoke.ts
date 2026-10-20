@@ -15,10 +15,16 @@
  * like `mission=` and expects FpsScene (then walks, turns, fires, opens, pauses and resumes);
  * `--query "mode=bridge"` expects GlitchBridgeScene, skips the story card and goes on into
  * FpsScene. `--route` (on by default for `mission=ams` with `boss=1&debug=1`) plays the normal
- * script, then presses F4 (the boss dies), expects the bridge and follows it into FpsScene, then
+ * script, then presses F4 (the boss dies), expects the ams tally (the newspaper), the ring's
+ * intro card and the RingScene (docs/design/ring.md §1), drives a little, skips the ring with F4
+ * (stretch by stretch to the exit), expects the bridge and follows it into FpsScene, then
  * plays the rest of the route with F4: floor-1 tally → floor 2 → the suit breaks → the boss dies →
  * floor-2 tally → the fps ending → the final tally → the name entry. The route adds `god=1` to
  * the query when it is missing (the scripted 2D part would lose its lives before F4).
+ *
+ * The ring (`--query "mission=ring&god=1"`): the same script in the RingScene (FIRE / JUMP = swerve
+ * / BOMB = lob, pause and resume), plus lane changes (up / down), the steer lock (FIRE held + up:
+ * the far aim) and player 2's join with the key 2 (a second wagon drives in).
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -157,6 +163,9 @@ async function gameState(page: Page): Promise<GameState> {
   });
 }
 
+/** The scenes that host a play (the side-scrolling missions and the ring). */
+const PLAY_SCENES: readonly string[] = ['GameplayScene', 'RingScene'];
+
 async function waitForScene(page: Page, names: readonly string[], timeout: number): Promise<boolean> {
   try {
     await page.waitForFunction(
@@ -293,6 +302,53 @@ async function main(): Promise<void> {
       await shot('fps-intro');
     };
 
+    /** The ring's own steps: lane changes, the steer lock, player 2's join (key 2). */
+    const playRing = async (): Promise<void> => {
+      await page.keyboard.press('ArrowUp', { delay: 40 });
+      await wait(500);
+      await shot('ring-lane-up');
+      await page.keyboard.press('ArrowDown', { delay: 40 });
+      await wait(300);
+      await page.keyboard.press('ArrowDown', { delay: 40 });
+      await wait(500);
+      await shot('ring-lane-down');
+      // The steer lock: FIRE held, up = the far aim (the car keeps its lane).
+      await page.keyboard.down('KeyZ');
+      await holdAndTap(['ArrowUp'], 700);
+      await page.keyboard.up('KeyZ');
+      await shot('ring-aim-far');
+      // Player 2 joins with the key 2: a second wagon drives in from the left.
+      await page.keyboard.press('Digit2', { delay: 40 });
+      await wait(1200);
+      await shot('ring-p2-join');
+      const players = await page.evaluate(() => {
+        const app = (window as unknown as { __ms3?: { app: { scenes: { top: { runner?: { players: unknown[] } } | null } } } }).__ms3?.app;
+        return app?.scenes.top?.runner?.players.length ?? 0;
+      });
+      if (players < 2) throw new Error('player 2 did not join the ring (key 2)');
+    };
+    /**
+     * --route after the ams boss: its tally (the newspaper) → the ring's intro card → the RingScene;
+     * a little driving, then F4 stretch by stretch to the exit; the victory drive; the bridge.
+     */
+    const followRing = async (): Promise<void> => {
+      if (!(await waitForScene(page, ['MissionCompleteScene'], args.timeout))) throw new Error('the ams boss did not reach its tally');
+      await wait(2500);
+      await shot('ams-tally');
+      if (!(await pressUntil(['MissionIntroScene'], 30000, 1500))) throw new Error('the ams tally did not move on to the ring card');
+      await wait(1200);
+      await shot('ring-card');
+      if (!(await pressUntil(['RingScene'], 15000))) throw new Error('the ring never started');
+      await wait(1500);
+      await shot('ring-start');
+      await holdAndTap(['ArrowRight'], 900, 'KeyZ');
+      await shot('ring-play');
+      for (let i = 0; i < 40; i++) {
+        if (await waitForScene(page, ['GlitchBridgeScene'], 700)) return;
+        await page.keyboard.press('F4', { delay: 40 });
+      }
+    };
+
     /** The title flow (unless `mission=`), then the side-scrolling script; with --route on into the fps mode. */
     const playSideScroller = async (): Promise<void> => {
       const direct = /(^|&)mission=/.test(args.query);
@@ -305,22 +361,24 @@ async function main(): Promise<void> {
         await shot('menu');
         await page.keyboard.press('Enter', { delay: 40 });
         // Mode select → character select → mission intro card (GDD §13.1); confirm and skip each.
-        if (await waitForScene(page, ['CharacterSelectScene', 'GameplayScene'], 10000)) {
+        if (await waitForScene(page, ['CharacterSelectScene', ...PLAY_SCENES], 10000)) {
           await wait(1000);
           await page.keyboard.press('Enter', { delay: 40 });
         }
-        if (await waitForScene(page, ['MissionIntroScene', 'GameplayScene'], 10000)) {
+        if (await waitForScene(page, ['MissionIntroScene', ...PLAY_SCENES], 10000)) {
           await wait(1500);
           await page.keyboard.press('Enter', { delay: 40 });
         }
       }
-      summary.reachedGameplay = await waitForScene(page, ['GameplayScene'], args.timeout);
+      summary.reachedGameplay = await waitForScene(page, PLAY_SCENES, args.timeout);
       if (!summary.reachedGameplay) throw new Error('gameplay never started');
+      const ring = await waitForScene(page, ['RingScene'], 100);
       await wait(1200);
       await shot('mission-start');
       // Run and shoot.
       await holdAndTap(['ArrowRight'], 1600, 'KeyZ');
       await shot('run-shoot');
+      if (ring) await playRing();
       // Jump while running.
       await page.keyboard.down('ArrowRight');
       await page.keyboard.press('KeyX', { delay: 40 });
@@ -349,10 +407,11 @@ async function main(): Promise<void> {
       await holdAndTap(['ArrowRight'], 900, 'KeyZ');
       await shot('play');
       if (args.route) {
-        // F4 (debug skip) kills the boss; the victory poses play, then the game breaks.
+        // F4 (debug skip) kills the boss; the victory poses play, then the tally and the ring.
         await page.keyboard.press('F4', { delay: 40 });
         await wait(500);
         await shot('boss-skip');
+        await followRing();
         await followBridge();
         await playFps();
         await finishRoute();

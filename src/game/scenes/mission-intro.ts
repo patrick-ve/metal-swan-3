@@ -7,6 +7,10 @@
  * word-wrapped to x 64–360 (max 4 lines); each line is voiced by its sample (`say`) when its typing
  * starts, the next one once he has finished the one before. Music `briefing`. `PRESS START TO SKIP` (small, C,
  * y 206). Then a fade to the mission, which opens with its `MISSION 1` / `START!` banner.
+ *
+ * The ring (docs/design/ring.md §1, not a registered mission): the card makes the play's seed and
+ * plan (`prepareRing`), preloads its art and the reused ams samples (`preloadRing`) and starts the
+ * `RingScene` with them.
  */
 import type { Color } from '../../engine/color';
 import { measure } from '../../engine/font';
@@ -20,6 +24,8 @@ import { getMission } from '../registry';
 import { GameplayScene, preloadMissionArt, preloadMissionAudio } from './gameplay';
 import { RADIO_BOX } from '../content/ui/screens.art';
 import { keepForHeroes, releaseScreenArt, screenArt } from './base';
+import { RingScene } from './ring';
+import { isRing, prepareRing, preloadRing, type RingStart } from './ring-route';
 
 /** The radio box and the portrait (one screen-art group: HD at the art tier once built). */
 const RADIO_ART: readonly string[] = ['ui/radio', 'ui/portrait-gusto'];
@@ -93,6 +99,8 @@ export class MissionIntroScene implements Scene {
   private leaving = false;
   /** The radio static loop is playing. */
   private radio = false;
+  /** The ring's seed and plan (made on enter; null for a registered mission). */
+  private ring: RingStart | null = null;
 
   constructor(app: GameApp, mission: string) {
     this.app = app;
@@ -116,6 +124,12 @@ export class MissionIntroScene implements Scene {
     // The game proper starts: the menus' 4× art makes room for the mission's working set (the
     // chosen heroes' strips stay), then a 2× / 4× mission (ams) builds its art while the card shows.
     releaseScreenArt(this.keep());
+    if (isRing(this.mission)) {
+      // The ring: a new seed per play (`?seed=` wins), its plan, its art and the reused samples.
+      this.ring = prepareRing(this.app);
+      preloadRing(this.app, this.ring);
+      return;
+    }
     preloadMissionArt(this.app, getMission(this.mission));
     // Its sampled music, sounds and dialogue load while the card is shown.
     preloadMissionAudio(this.app, getMission(this.mission));
@@ -160,7 +174,8 @@ export class MissionIntroScene implements Scene {
     this.leaving = true;
     if (this.radio) this.app.audio.stopSfx?.('radio');
     this.radio = false;
-    this.app.scenes.replace(new GameplayScene(this.app, { mission: this.mission }), { fade: 40 });
+    if (isRing(this.mission)) this.app.scenes.replace(new RingScene(this.app, { start: this.ring ?? undefined }), { fade: 40 });
+    else this.app.scenes.replace(new GameplayScene(this.app, { mission: this.mission }), { fade: 40 });
   }
 
   draw(r: Renderer): void {

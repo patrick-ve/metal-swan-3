@@ -35,9 +35,10 @@ export const ATTRACT_SCORES_TICKS = 300;
 const AFTER_GAME_TICKS = 600;
 
 /**
- * The mission column: 'ALL' for a finished game, else the mission number by its place in the
- * campaign ('ams' → 'M1', 'm1' → 'M2' … 'm5' → 'M6'); the fps floors 'fps-N' → 'FN'; other `mN`
- * ids → 'MN'.
+ * The mission column: 'ALL' for a finished game, else the mission number (`missionNumber`): on
+ * the route 'ams' → 'M1', 'ring' → 'M2' (docs/design/ring.md §1); the passive campaign missions
+ * by their old place ('m1' → 'M2' … 'm5' → 'M6'); the fps floors 'fps-N' → 'FN'; other `mN` ids →
+ * 'MN'.
  */
 export function missionColumn(e: HighScoreEntry): string {
   if (e.mission === 'all') return 'ALL';

@@ -30,6 +30,9 @@ import { st } from './kit';
 import { ENEMIES } from './legion';
 import { CREATURES, MACHINES } from './machines';
 import { HOSTAGES, ITEMS, PLAYER } from './player';
+import { RING_ROAD } from './ring-road';
+import { RING_SCENERY } from './ring-scenery';
+import { RING_WAGON } from './ring-wagon';
 import { UI } from './ui';
 import { FLEET, SWAN, VEHICLES } from './vehicles';
 import { EXPLOSIONS, HITS, WEAPONS } from './weapons';
@@ -94,6 +97,9 @@ export const SFX: Readonly<Record<string, SfxRecipe>> = pinSeeds({
   ...AMS_STAG,
   ...AMS_SCAN,
   ...AMS_ROUTE,
+  ...RING_WAGON,
+  ...RING_ROAD,
+  ...RING_SCENERY,
 });
 
 /** Seamless loops: play them with `audio.sfxLoop(key, id)` and stop them with `stopSfx(key)`. */

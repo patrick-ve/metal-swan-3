@@ -168,6 +168,10 @@ export class GlitchBridgeScene implements Scene { constructor(app: GameApp, o?: 
 
 ### 1.4 Story card text (DRAFT — `src/game/content/fps/story.ts`, pure data)
 
+Since 2026-10-20 the bridge comes after the ring road (docs/design/ring.md §1): its card shows
+`BRIDGE_OPENING` (`'SOMEWHERE ON THE RING, SOMEONE HIT THE WRONG BUTTON.'`, scenes/glitch-bridge.ts)
+in place of the first line below until the ring's story exists; the other lines stay.
+
 ```ts
 export const BRIDGE_LINES: readonly string[] = [
   "ROBO-HALSEMA'S LAST STAMP HIT THE WRONG BUTTON.",
@@ -368,7 +372,7 @@ of `parseLaunchParams` in `tests/game/core.test.ts:126-141` stays green without 
 |---|---|
 | `?mode=fps&floor=0\|1\|2` | Boot → new session (`players`, `char`, `difficulty`, `seed` apply) + new campaign → `startFpsRun(app, { floor })` (fresh loadout, no ams bonus line). |
 | `?mode=bridge` | Boot → new session → `GlitchBridgeScene` with the placeholder snapshot and no runner. |
-| `?mission=ams&boss=1&debug=1` | The full route: F4 kills ROBO-HALSEMA → victory → bridge → floor 1. |
+| `?mission=ams&boss=1&debug=1` | The full route: F4 kills ROBO-HALSEMA → victory → the ams tally → the ring card → the ring (F4 skips stretch by stretch to the exit) → bridge → floor 1. |
 | `?debug=1` in the fps mode | F1 toggles the map overlay (on at start; top-right, 2 px per tile: walls, doors by state, push walls, pickups, actors coloured by state, the player arrow). F2 stats, F3 god (as today, `src/engine/debug.ts:4-5`). F4 ends the floor (floors 0/1: as the elevator; floor 2: phase 1 → the suit breaks, phase 2 → the boss dies). F5 gives all weapons, 99 ammo and both keys. |
 | `?god=1` | The fps player takes no damage. |
 

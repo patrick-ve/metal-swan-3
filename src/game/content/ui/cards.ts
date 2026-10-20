@@ -1,8 +1,10 @@
 /**
- * Mission cards (GDD §2.4, §12.3, §13.6, §13.11): for m0–m5 and ams the intro card label, name, place
- * and time, Gusto's two briefing lines, the announcer line of the start banner and the newspaper
- * headline of the tally. m0–m5 share one line map of Lowmere and Crescendia; each card puts its
- * blinking dot on its own region; ams has its own map of the Amsterdam canal ring.
+ * Mission cards (GDD §2.4, §12.3, §13.6, §13.11): for m0–m5, ams and the ring the intro card label,
+ * name, place and time, Gusto's two briefing lines, the announcer line of the start banner and the
+ * newspaper headline of the tally. m0–m5 share one line map of Lowmere and Crescendia; each card
+ * puts its blinking dot on its own region; ams has its own map of the Amsterdam canal ring; the
+ * ring (MISSION 2, docs/design/ring.md §1) a map of the A10 ring road with its dot on the on-ramp
+ * at A10 Oost.
  *
  * Mission modules may replace a card with their own `defineMissionCard` (the last one wins).
  */
@@ -103,6 +105,31 @@ const AMS_LABELS: readonly (readonly [string, number, number])[] = [
 ];
 
 // ---------------------------------------------------------------------------------------------
+// The ring map: the A10 ring road round Amsterdam (mission ring, docs/design/ring.md §1, §4)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The A10 clockwise from A10 Oost (the on-ramp, the dot): Amstel, Zuid, De Nieuwe Meer, West,
+ * Sloterdijk, Westpoort and the Coentunnel under the water, Noord, the Zeeburgertunnel, back to
+ * Oost. A closed polyline, drawn in segment by segment.
+ */
+const RING_ROAD: MapLine = [258, 92, 250, 104, 232, 110, 196, 113, 160, 110, 136, 102, 126, 89, 130, 78, 146, 69, 170, 64, 200, 63, 228, 65, 250, 72, 258, 82, 258, 92];
+/** The water (the IJ and the Noordzeekanaal) that the two tunnels pass under. */
+const RING_WATER: MapLine = [96, 79, 128, 78, 160, 77, 196, 78, 232, 76, 266, 78, 292, 80];
+/** The motorways that meet the ring: A2 (Amstel), A4 (De Nieuwe Meer), A8 (Coenplein), A1 (Oost). */
+const RING_SPURS: readonly MapLine[] = [
+  [232, 110, 238, 119],
+  [160, 110, 150, 119],
+  [146, 69, 139, 62],
+  [258, 92, 272, 98],
+];
+const RING_LINES: readonly MapLine[] = [RING_ROAD, RING_WATER, ...RING_SPURS];
+const RING_LABELS: readonly (readonly [string, number, number])[] = [
+  ['A10', 192, 92],
+  ['IJ', 106, 82],
+];
+
+// ---------------------------------------------------------------------------------------------
 // The cards
 // ---------------------------------------------------------------------------------------------
 
@@ -120,6 +147,17 @@ export const MISSION_CARDS: readonly MissionCard[] = [
     announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
     startSub: 'START!',
     map: { lines: AMS_LINES, dot: [AMS_CX - 30, 90], labels: AMS_LABELS },
+  },
+  {
+    id: 'ring',
+    label: 'MISSION 2',
+    name: 'DE RING',
+    place: 'A10 RING ROAD, AMSTERDAM - 1400 HOURS',
+    briefing: ['THE FRIES ARE SAFE. NOW THE A10: ONE LAP, CLOCKWISE, FULL THROTTLE.', 'A FRIEND DRIVES. YOU HANG OUT OF THE WINDOW. MIND THE SPEED CAMERAS.'],
+    headline: 'WAGON LAPS THE RING! TRAFFIC MOVES AGAIN!',
+    announce: 'MISSION TWO. HOU JE VAST!',
+    startSub: 'START!',
+    map: { lines: RING_LINES, dot: [258, 92], labels: RING_LABELS },
   },
   {
     id: 'm0',
@@ -189,7 +227,7 @@ export const MISSION_CARDS: readonly MissionCard[] = [
   },
 ];
 
-/** Register the seven cards. */
+/** Register the eight cards. */
 export function defineMissionCards(): void {
   for (const card of MISSION_CARDS) defineMissionCard(card);
 }

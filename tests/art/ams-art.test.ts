@@ -133,7 +133,7 @@ describe('ams terrain materials', () => {
 
 describe('ams mission', () => {
   it('is registered with the brief fields (§8) and six sections (the route c → c1 | c2)', () => {
-    expect(mission).toMatchObject({ id: 'ams', name: 'THE FRYING DUTCHMAN', subtitle: 'MISSION 1', music: 'ams', bossMusic: 'ams-boss', start: 'a', bossSection: 'd', next: 'm1', hostages: { a: 5, b: 4, c: 2, c1: 1, c2: 1 } });
+    expect(mission).toMatchObject({ id: 'ams', name: 'THE FRYING DUTCHMAN', subtitle: 'MISSION 1', music: 'ams', bossMusic: 'ams-boss', start: 'a', bossSection: 'd', next: 'ring', hostages: { a: 5, b: 4, c: 2, c1: 1, c2: 1 } });
     expect(Object.keys(mission.sections).sort()).toEqual(['a', 'b', 'c', 'c1', 'c2', 'd']);
     expect(mission.sections.d.bossStart).toBeDefined();
     expect(mission.sections.c.vehicles).toContain('swan');

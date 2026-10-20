@@ -29,16 +29,16 @@ import { createHeadlessGame } from '../../src/sim/index';
 await loadContent();
 
 describe('mission ams', () => {
-  it('is registered, comes first in the campaign and leads to m1', () => {
+  it('is registered, comes first in the campaign and leads to the ring', () => {
     expect(getMission('ams')).toBe(AMS);
     expect(firstMission()).toBe('ams');
     expect(CAMPAIGN_MISSIONS[0]).toBe('ams');
     expect(Object.keys(AMS.sections).sort()).toEqual(['a', 'b', 'c', 'c1', 'c2', 'd']);
     expect(AMS.start).toBe('a');
     expect(AMS.bossSection).toBe('d');
-    expect(AMS.next).toBe('m1');
-    // After the boss: the glitch bridge into the first-person mode (docs/design/fps.md §1.1).
-    expect(AMS.after).toBe('fps');
+    // After its tally: the ring road, level 2 (docs/design/ring.md §1); the bridge follows the ring.
+    expect(AMS.next).toBe('ring');
+    expect(AMS.after).toBeUndefined();
     expect(AMS.music).toBe('ams');
     expect(AMS.bossMusic).toBe('ams-boss');
     // The hidden tourists of the secrets count (a's houseboat hatch, b's museum crate); c1 and c2

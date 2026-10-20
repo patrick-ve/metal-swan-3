@@ -64,24 +64,37 @@ export function hasMissionCard(id: string): boolean {
 export const CAMPAIGN_MISSIONS: readonly string[] = ['ams', 'm1', 'm2', 'm3', 'm4', 'm5'];
 
 /**
- * The first-person route (docs/design/fps.md §1.9): ams, then the two fps floors. ALL GOLDEN
- * RECORDS on this route needs the record of each of them.
+ * The normal route (docs/design/fps.md §1.9, docs/design/ring.md §1): ams (MISSION 1), the ring
+ * road (MISSION 2), then the two fps floors (level 3). ALL GOLDEN RECORDS on this route needs the
+ * record of each of them.
  */
-export const FPS_ROUTE: readonly string[] = ['ams', 'fps-1', 'fps-2'];
+export const FPS_ROUTE: readonly string[] = ['ams', 'ring', 'fps-1', 'fps-2'];
 
-/** The missions ALL GOLDEN RECORDS needs: FPS_ROUTE once the campaign played `fps-1`, else CAMPAIGN_MISSIONS. */
+/**
+ * The missions ALL GOLDEN RECORDS needs: FPS_ROUTE once the campaign played the ring or `fps-1`,
+ * else CAMPAIGN_MISSIONS.
+ */
 export function goldenRecordRoute(c: CampaignRecord | null): readonly string[] {
-  return c?.missions.includes('fps-1') ? FPS_ROUTE : CAMPAIGN_MISSIONS;
+  return c?.missions.includes('ring') || c?.missions.includes('fps-1') ? FPS_ROUTE : CAMPAIGN_MISSIONS;
 }
 
-/** The number of a campaign mission (1-based place in CAMPAIGN_MISSIONS), 0 when it is not one. */
+/**
+ * The number of a mission: its place on the route (FPS_ROUTE; the 2D missions ams = 1, ring = 2),
+ * else its place in CAMPAIGN_MISSIONS (the passive m1–m5 keep their old numbers); 0 when it is
+ * neither. The fps floors are numbered by the high-score column (F1, F2), not here.
+ */
 export function missionNumber(id: string): number {
+  if (!id.startsWith('fps-')) {
+    const r = FPS_ROUTE.indexOf(id);
+    if (r >= 0) return r + 1;
+  }
   return CAMPAIGN_MISSIONS.indexOf(id) + 1;
 }
 
 /**
- * 'ams' → 'MISSION 1', 'm1' → 'MISSION 2' … 'm4' → 'MISSION 5'; the last campaign mission (m5)
- * → 'FINAL MISSION'; other ids `mN` → 'MISSION N' (m0), else their upper-case name.
+ * 'ams' → 'MISSION 1', 'ring' → 'MISSION 2' (the route); 'm1' → 'MISSION 2' … 'm4' → 'MISSION 5'
+ * (passive, their campaign place); the last campaign mission (m5) → 'FINAL MISSION'; other ids
+ * `mN` → 'MISSION N' (m0), else their upper-case name.
  */
 export function missionLabel(id: string): string {
   const n = missionNumber(id);

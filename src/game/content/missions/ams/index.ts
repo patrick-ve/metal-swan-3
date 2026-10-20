@@ -62,9 +62,9 @@ export const AMS: MissionDef = {
   bossMusic: 'ams-boss',
   start: 'a',
   bossSection: 'd',
-  next: 'm1',
-  // After the boss: the glitch bridge into the first-person mode (docs/design/fps.md §1.1).
-  after: 'fps',
+  // After its tally: the ring road, level 2 (docs/design/ring.md §1; not a registered mission:
+  // flow.ts `missionDone` sends it to its intro card). The glitch bridge follows the ring now.
+  next: 'ring',
   announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
   sections: {
     a: sectionA,

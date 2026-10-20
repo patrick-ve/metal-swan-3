@@ -4,9 +4,10 @@
  * the fps slot's lines (its `1P` / `2P` tag top right):
  *
  * KILLS n% (10,000 at 100 %), SECRETS a/b (10,000 when all found), TREASURE n% (10,000 at 100 %),
- * TIME m:ss PAR m:ss ((par − seconds) × 500 under par), the MISSION 1 BONUS info lines on floor 1
- * (paid at the bridge; not in TOTAL), DIFFICULTY (× 0.5 / 1.0 / 1.5), TOTAL (counted into the
- * score; extends apply).
+ * TIME m:ss PAR m:ss ((par − seconds) × 500 under par), the bonus info lines of the mission before
+ * the bridge on floor 1 (`MISSION 2 BONUS`: the ring, docs/design/ring.md §1; paid at the bridge;
+ * not in TOTAL; the ring's seed in the footer), DIFFICULTY (× 0.5 / 1.0 / 1.5), TOTAL (counted
+ * into the score; extends apply).
  *
  * A line every 30 ticks with `ui/tally-tick`, TOTAL with `ui/tally-end`, `fps/tally-100` under a
  * 100 % ratio. PRESS START: the first press shows the page and pays out; it moves on by itself
@@ -18,9 +19,10 @@ import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { blinkOn, centerText, drawPanel, PLAYER_COLORS, uiText, type GameApp } from '../app';
 import { fpsFloorByNumber, fpsFloorId } from '../fps/registry';
-import { AMS_BONUS_KEY } from '../fps/run';
+import { AMS_BONUS_KEY, missionBonusOf } from '../fps/run';
 import type { FloorResult, FpsRun } from '../fps/types';
 import type { PlayerSlot } from '../session';
+import { missionLabel } from './flow-data';
 import { fpsTallyDone } from './fps-route';
 
 /** Points of the 100 % lines and the time bonus per second under par (§4.12). */
@@ -79,9 +81,11 @@ export interface TallyOpts {
   mul: number;
   /** The fps slot's index (0 / 1). */
   slot: number;
-  /** The MISSION 1 BONUS amounts [p1, p2] (floor 1 only; undefined = no line). */
+  /** The bonus amounts [p1, p2] of the mission before the bridge (floor 1 only; undefined = no line). */
   amsBonus?: readonly [number, number];
-  /** The waiting slot is joined (its MISSION 1 BONUS info line follows). */
+  /** The bonus line's label (default `MISSION 1 BONUS`; the ring's: `MISSION 2 BONUS`). */
+  bonusLabel?: string;
+  /** The waiting slot is joined (its bonus info line follows). */
   otherJoined?: boolean;
 }
 
@@ -104,10 +108,11 @@ export function fpsTally(r: FloorResult, o: TallyOpts): FpsTally {
   ];
   if (o.amsBonus) {
     const own = o.slot === 1 ? 1 : 0;
-    lines.push({ label: 'MISSION 1 BONUS', value: '', points: o.amsBonus[own] ?? 0, counts: false });
+    const label = o.bonusLabel ?? 'MISSION 1 BONUS';
+    lines.push({ label, value: '', points: o.amsBonus[own] ?? 0, counts: false });
     if (o.otherJoined) {
       const other = 1 - own;
-      lines.push({ label: `${other === 0 ? '1P' : '2P'} MISSION 1 BONUS`, value: '', points: o.amsBonus[other] ?? 0, counts: false, color: PLAYER_COLORS[other] });
+      lines.push({ label: `${other === 0 ? '1P' : '2P'} ${label}`, value: '', points: o.amsBonus[other] ?? 0, counts: false, color: PLAYER_COLORS[other] });
     }
   }
   let raw = 0;
@@ -136,6 +141,8 @@ export class FpsTallyScene implements Scene {
   readonly result: FloorResult;
   readonly tally: FpsTally;
   readonly slot: PlayerSlot;
+  /** The ring's seed in the footer (floor 1 after the ring; null = none). */
+  readonly seed: number | null;
   private readonly name: string;
   private t = 0;
   private paid = 0;
@@ -154,12 +161,14 @@ export class FpsTallyScene implements Scene {
     this.name = def?.name ?? `FLOOR ${result.floor}`;
     const slotIndex = run.slot;
     this.slot = session ? session.slots[slotIndex] : (null as unknown as PlayerSlot);
-    const bonus = result.floor === 1 ? session?.records.get<readonly [number, number]>(AMS_BONUS_KEY) : undefined;
+    const bonus = result.floor === 1 ? missionBonusOf(session?.records.get<unknown>(AMS_BONUS_KEY)) : undefined;
+    this.seed = bonus?.seed ?? null;
     this.tally = fpsTally(result, {
       par: def?.par ?? 0,
       mul: session?.mods.tallyScore ?? 1,
       slot: slotIndex,
-      amsBonus: bonus,
+      amsBonus: bonus?.totals,
+      bonusLabel: bonus ? `${missionLabel(bonus.mission)} BONUS` : undefined,
       otherJoined: session ? session.slots[1 - slotIndex].joined : false,
     });
   }
@@ -278,6 +287,8 @@ export class FpsTallyScene implements Scene {
       const pts = total ? this.paid : l.points;
       if (pts !== null) uiText(r, pts > 0 || total || info ? fmt(pts) : '---', POINTS_X, y, total ? PAL.gold[3] : PAL.snow[2], 'right');
     }
+    // The ring's seed (bug reports and replays; docs/design/ring.md §13).
+    if (this.seed !== null) uiText(r, `RING SEED ${this.seed}`, PANEL_X + PANEL_W - 14, PANEL_Y + PANEL_H - 14, PAL.stone[2], 'right');
     if (this.finished && blinkOn(this.t)) centerText(r, 'PRESS START', 206, PAL.snow[3]);
   }
 }

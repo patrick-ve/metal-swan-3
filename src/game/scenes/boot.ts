@@ -6,7 +6,9 @@
  * for a click or key (the gesture unlocks audio; one made while loading counts), then goes to
  * the title — or straight into a mission with `?mission=`, or into the first-person mode with
  * `?mode=fps&floor=n` (docs/design/fps.md §1.11; its lazy content loads in FpsIntroScene), or
- * into the glitch bridge with `?mode=bridge`.
+ * into the glitch bridge with `?mode=bridge`. `?mission=ring` (docs/design/ring.md §1; not a registered
+ * mission) starts the RingScene (`startRing`; `section` = a landmark id, `seed` its ring), with
+ * the ring's 1× art and the reused ams sample group.
  */
 import { listSfx } from '../../engine/audio';
 import { PAL } from '../../engine/palette';
@@ -21,6 +23,7 @@ import { selectRoster } from './character-select';
 import { firstMission, newSession, startNewGame } from './gameplay';
 import { startFpsRun } from './fps-route';
 import { GlitchBridgeScene } from './glitch-bridge';
+import { isRing, RING_ART, RING_AUDIO_GROUP, startRing } from './ring-route';
 import { TitleScene } from './title';
 
 type Phase = 'content' | 'sprites' | 'sounds' | 'samples' | 'done';
@@ -38,9 +41,14 @@ export const START_ART: readonly string[] = ['ui/'];
  * characters a player can pick (the select roster; for a direct start only `?char=`, default
  * recruit) and the `art` of the mission played first (the first mission, or `?mission=`).
  * Undefined (every sprite) when that mission has no `art` list. Everything else is generated
- * on first use.
+ * on first use. `?mission=ring`: the ring's art (`RING_ART`) and, besides `?char=`, the select
+ * roster (the drivers are heroes nobody plays).
  */
 export function bootArt(params: Pick<LaunchParams, 'mission' | 'char' | 'mode'>): readonly string[] | undefined {
+  if (isRing(params.mission)) {
+    const chars = [params.char ?? 'recruit', ...selectRoster()].filter((c, i, a) => a.indexOf(c) === i && hasCharacter(c));
+    return [...START_ART, ...chars.map((c) => `${getCharacter(c).art}/`), ...RING_ART];
+  }
   const mission = getMission(params.mission ?? firstMission());
   if (!mission?.art) return undefined;
   const direct = params.mission !== null || params.mode !== undefined;
@@ -118,7 +126,9 @@ export class BootScene implements Scene {
     const audio = this.app.audio;
     if (!audio.loadSamples) return;
     const groups = ['boot'];
-    const direct = this.app.params.mission ? getMission(this.app.params.mission)?.audioGroup : undefined;
+    const id = this.app.params.mission;
+    // The ring reuses the ams group (its songs fall back to the ams ones until its theme exists).
+    const direct = id ? (isRing(id) ? RING_AUDIO_GROUP : getMission(id)?.audioGroup) : undefined;
     if (direct) groups.push(direct);
     this.phase = 'samples';
     this.done = 0;
@@ -181,7 +191,8 @@ export class BootScene implements Scene {
       // ?mode=bridge: the glitch bridge with its placeholder snapshot and no runner (fps.md §1.11).
       if (p.mode === 'bridge') app.scenes.replace(new GlitchBridgeScene(app), { fade: 0 });
       else startFpsRun(app, { floor: p.floor ?? 1 });
-    } else if (p.mission) startNewGame(app, { mission: p.mission, section: p.section ?? undefined, players: p.players, bossRush: p.boss });
+    } else if (isRing(p.mission)) startRing(app, { section: p.section ?? undefined, players: p.players });
+    else if (p.mission) startNewGame(app, { mission: p.mission, section: p.section ?? undefined, players: p.players, bossRush: p.boss });
     else app.scenes.replace(new TitleScene(app), { fade: 30 });
   }
 

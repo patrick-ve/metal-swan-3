@@ -6,10 +6,27 @@ import type { GameSession, PlayerSlot, SlotIndex } from '../session';
 import type { FpsInput, FpsRun } from './types';
 
 /**
- * The session record of the silent ams tally, `[p1, p2]` (spec §1.2): the glitch bridge writes it,
- * the floor-1 tally reads it (the MISSION 1 BONUS line). One key for both.
+ * The session record of the silent tally at the glitch bridge (spec §1.2; docs/design/ring.md §1):
+ * the bridge writes a `MissionBonus` for the mission before it (the ring on the normal route), the
+ * floor-1 tally reads it (the `MISSION 2 BONUS` line, named after that mission). An older
+ * `[p1, p2]` value still reads as the ams bonus (MISSION 1). One key for both.
  */
 export const AMS_BONUS_KEY = 'fps/ams-bonus';
+
+/** The silent tally of the mission before the bridge: its id, the totals [p1, p2] and the ring's seed. */
+export interface MissionBonus {
+  readonly mission: string;
+  readonly totals: readonly [number, number];
+  /** The ring's seed (the floor-1 tally's footer: bug reports and replays). */
+  readonly seed?: number;
+}
+
+/** The bonus record of a session value (`MissionBonus`, or the older `[p1, p2]` of ams); undefined when none. */
+export function missionBonusOf(v: unknown): MissionBonus | undefined {
+  if (Array.isArray(v) && v.length >= 2) return { mission: 'ams', totals: [Number(v[0]) || 0, Number(v[1]) || 0] };
+  if (v && typeof v === 'object' && 'mission' in v && 'totals' in v) return v as MissionBonus;
+  return undefined;
+}
 
 /** The fps slot: `slots[0]` when it is active, else `slots[1]` (P1 may be out after the ams boss). */
 export function fpsSlotIndex(session: GameSession): SlotIndex {

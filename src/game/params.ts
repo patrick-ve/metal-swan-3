@@ -8,7 +8,9 @@
  * `art=1|2|4` (the art tier for this session, docs/ARCHITECTURE.md §3; not saved), and
  * `cache=0` (no sprite cache and no offline cache for this visit; docs/ARCHITECTURE.md §5.4).
  * Pure parsing (main.ts passes `location.search`).
- * With `mission` set the game skips the title and starts that mission at once.
+ * With `mission` set the game skips the title and starts that mission at once. `mission=ring`
+ * starts the ring road (docs/design/ring.md §1): `section` is then a landmark id (`oost` …
+ * `exit`) and `seed` fixes the ring (without it every play gets a fresh one).
  */
 import type { UpscaleMode } from '../engine/upscale';
 import { isDifficulty, type Difficulty } from './session';
@@ -16,9 +18,11 @@ import { isGraphicsMode } from './settings';
 
 export interface LaunchParams {
   mission: string | null;
+  /** A section id; for `mission=ring` a landmark id. */
   section: string | null;
   god: boolean;
   debug: boolean;
+  /** The play's seed (`?seed=`); the ring's plan too (null: a fresh ring each play). */
   seed: number | null;
   players: 1 | 2;
   char: string | null;

@@ -2844,6 +2844,20 @@ the floor-1 tally). The fps ending plays captions → credits → poses. Pause a
 fps floors (shared credits); the last life there goes to `Continue` → `GameOver` as in a mission.
 Debug: `?mode=bridge` starts at the bridge, `?mode=fps&floor=0|1|2` at a floor.
 
+**Since 2026-10-20 (user decision; `docs/design/ring.md` §1, §13.1): the ring road is level 2.**
+`Gameplay` (ams, MISSION 1) → `MissionComplete` (the ams tally, the newspaper) → `MissionIntro`
+(the ring's card: `MISSION 2`, `DE RING`, a line map of the A10 with its dot on the on-ramp at
+A10 Oost) → `Ring` (`RingScene`: the A10 in a station wagon; ⇄ `Pause`; player 2 joins at any
+time with START on a free pad or the key 2 and gets a wagon of their own; the in-world continue
+as in 13.9) → `GlitchBridge` (its first story line is a neutral one until the ring's story
+exists) → `FpsIntro` → `Fps` floor 1 (level 3) … → `Ending`. The bridge records the ring's clear
+and pays the ring's tally silently: the floor-1 tally shows it as `MISSION 2 BONUS`, with the
+ring's seed in the footer. Every play gets a fresh ring seed (`?seed=` fixes it; the debug
+overlay shows it). High scores: the ring is column `M2` (the passive m1 keeps its old `M2`).
+ALL GOLDEN RECORDS on this route needs ams, the ring, fps-1 and fps-2. Debug: `?mission=ring`
+(+ `section=<landmark>`, `seed`, `players`, `char`, `god`, `debug`, `art`, `res`, `difficulty`)
+starts the ring directly; F4 skips to the next stretch (or kills the boss on screen).
+
 ### 13.2 Boot
 
 - Black screen; a row of 8 small swan icons (C, y 100) fills in as sprites and sounds pre-render.
@@ -3335,6 +3349,15 @@ the stag party and the beer bike `ams/cork-shake`, `ams/cork-pop`, `ams/cork-can
 `ams/ticket-print`, `ams/airbag`; the canal cruise `ams/route-horn`, `ams/route-bell`,
 `ams/route-creak`, `ams/route-bump`.
 
+Mission `ring` (2026-10-20, docs/design/ring.md §11; synth tables `sfx/ring-<area>.ts`, details in
+`docs/api/sfx.md` §2.2): the wagon `ring/wagon-engine` (loop), `ring/wagon-swerve`,
+`ring/wagon-screech`, `ring/wagon-horn`, `ring/wagon-hit`, `ring/wagon-crunch`, `ring/wagon-glass`,
+`ring/wagon-bump`, `ring/wagon-wreck`; the road `ring/matrix-click`, `ring/flash`,
+`ring/cam-beep`, `ring/horns`, `ring/cone`, `ring/crash`, `ring/dent`, `ring/crate`,
+`ring/cage-hit`, `ring/hop`, `ring/scooter-whine`, `ring/scooter-honk`, `ring/pistol-cock`,
+`ring/bottle-tell`, `ring/throw`, `ring/bottle`, `ring/scooter-crash`, `ring/scooter-down`; the
+ambience loops `ring/tunnel-bed` and `ring/bridge-rumble`.
+
 Added 2026-10-14 with the sampled audio of ams and the start screens (each id has a quiet synth
 recipe as the fallback of its ElevenLabs take): `player/step` (footsteps in missions with
 `footsteps`, every 16 ticks at a run), `player/splash` (wading into or dropping into water),
@@ -3617,4 +3640,35 @@ final boss MechaHitler (a mech suit, then on foot), then the ending. Only one pl
 controls, numbers, maps, boss, art, audio, tests). Its originality rules and dated exceptions
 (historical symbols, red blood in this mode only, a designed voice) are in `docs/ORIGINALITY.md`
 and `docs/ART_GUIDE.md` §10.
+
+Since 2026-10-20 the ring road (chapter 18) comes between `ams` and this mode: the first-person
+floors are level 3 (ams → ring → glitch bridge → floors → ending).
+
+## 18. Mission `ring` (level 2, the A10 ring road) — see `docs/design/ring.md`
+
+By the user's decision (2026-10-20), level 2 picks up from the end of `ams`: the players leave the
+city centre and drive the A10 ring road ("de Ring") clockwise from A10 Oost in a 1990s station
+wagon (a likeness of the Volvo 850 estate, no badge) that a squad hero nobody plays drives. The
+playing hero sits in the passenger window and shoots.
+
+- **Side view, 4 lanes as depth bands.** Up / down changes lanes, left / right moves the wagon on
+  screen; hold FIRE = steer lock (the D-pad aims 8 ways in the plane), JUMP = swerve (a side ram
+  into small vehicles), BOMB = a lob into the aimed lane. Hits need overlap in x and in depth.
+- **The wagon has armour** (10 cells, the vehicle rule): at 0 it wrecks and a life is lost; a
+  fresh wagon with the same driver drives in. 1P and P1 drive the WHITE "rozzers" wagon, P2 the
+  GREEN "safari" wagon; each player has a driver of their own.
+- **A seeded ring:** fixed landmarks in the real order (`oost` … `exit`) and generated chunks
+  between them; about 9 minutes; a fresh seed each play (`?seed=` fixes it). Pacing (§1.5: no
+  4 s without an enemy outside rests and scenes) and fairness (§4.11) hold on the bot's runs.
+- **Wave A (the mechanism, 2026-10-20):** the boarding scene, the scooter gang, civilian traffic
+  (cover, never destroyed), matrix gantries and lane closures, speed cameras and the
+  average-speed zone (fines), the traffic jam (a scooter gang filters in between the stopped
+  cars), tunnels, crates, hostage vans, 2P, the in-world continue, the exit. The parcel vans,
+  the enforcement convoy, the caravan car, the road-works crew, the jam's foot boarders and the
+  test mid-boss (the lorry) are wave B; their plan slots are skipped safely until then.
+
+**`docs/design/ring.md` is the spec of this mission and wins over this document for it**
+(numbers, landmarks, enemies, hazards, art, sound, tests). The runtime, the generator, the
+content and the tools are in `docs/api/ring.md`; the flow is §13 above; the originality
+exception (real A10 names, the wagon likeness) is in `docs/ORIGINALITY.md`.
 

@@ -7,16 +7,21 @@
  * qualifies) → `HighScores` → `Title`. Every player out of continues: `GameOver` → `NameEntry`
  * → `HighScores` → `Title`.
  *
+ * The normal route (docs/design/ring.md §1): `ams` (MISSION 1) → its tally → the ring's intro
+ * card (MISSION 2, `RingScene`, ring-route.ts) → the glitch bridge (the ring's silent tally) →
+ * the first-person floors → the ending. `ring` is not a registered mission: `missionDone` sends
+ * its id to the intro card, which starts the RingScene.
+ *
  * Scenes call these helpers instead of building each other directly where a step is shared.
  */
 import { newCampaign, type GameApp } from '../app';
-import type { MissionRunner } from '../mission/runner';
 import { hasMission } from '../registry';
+import { RING_ID } from '../ring/ids';
 import type { Difficulty, HighScoreEntry, PlayerSlot } from '../session';
 import { EndingScene } from './ending';
 import { firstMission, newSession } from './gameplay';
 import { HighScoresScene } from './high-scores';
-import { tallyLines } from './mission-complete';
+import { tallyLines, type NextRunner, type TallyRunner } from './mission-complete';
 import { MissionIntroScene } from './mission-intro';
 import { NameEntryScene } from './name-entry';
 import { TitleScene } from './title';
@@ -38,10 +43,13 @@ export function startCampaign(app: GameApp, o: CampaignOpts): void {
   app.scenes.reset(new MissionIntroScene(app, o.mission ?? firstMission()), { fade: 40 });
 }
 
-/** After a mission's tally: the next mission's intro card, or the ending after the last one. */
-export function missionDone(app: GameApp, runner: MissionRunner): void {
+/**
+ * After a mission's tally: the next mission's intro card (the ring's too: it is not a registered
+ * mission, its card starts the RingScene), or the ending after the last one.
+ */
+export function missionDone(app: GameApp, runner: NextRunner): void {
   const next = runner.nextMission();
-  if (next && hasMission(next)) app.scenes.replace(new MissionIntroScene(app, next), { fade: 40 });
+  if (next && (hasMission(next) || next === RING_ID)) app.scenes.replace(new MissionIntroScene(app, next), { fade: 40 });
   else app.scenes.reset(new EndingScene(app), { fade: 60 });
 }
 
@@ -50,7 +58,7 @@ export function missionDone(app: GameApp, runner: MissionRunner): void {
  * §14.6). Both routes call it: the newspaper tally (MissionCompleteScene) and the glitch bridge
  * (docs/design/fps.md §1.2). Idempotent for the mission list; `session.completed` is the runner's.
  */
-export function recordMissionClear(app: GameApp, runner: MissionRunner): void {
+export function recordMissionClear(app: GameApp, runner: TallyRunner): void {
   const camp = app.campaign;
   if (!camp) return;
   const id = runner.mission.id;
@@ -63,7 +71,7 @@ export function recordMissionClear(app: GameApp, runner: MissionRunner): void {
  * (tallyLines × tallyScore), pays it with slot.addScore (extends apply, no sound), zeroes
  * slot.rescued and returns the totals [p1, p2] (0 for a slot that is not joined).
  */
-export function silentTally(_app: GameApp, runner: MissionRunner): [number, number] {
+export function silentTally(_app: GameApp, runner: TallyRunner): [number, number] {
   const session = runner.session;
   const mul = session.mods.tallyScore;
   const totals: [number, number] = [0, 0];

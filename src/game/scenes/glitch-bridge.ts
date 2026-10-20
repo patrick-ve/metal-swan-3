@@ -1,15 +1,19 @@
 /**
- * GlitchBridgeScene (docs/design/fps.md §1.3): the game "breaks" after the ams boss. The last ams
- * frame freezes, corrupts (row bands shift, 8×8 blocks copy, bands of rows change shade), a story
+ * GlitchBridgeScene (docs/design/fps.md §1.3): the game "breaks" at the end of the ring (level 2;
+ * before the ring existed: after the ams boss). The last frame freezes, corrupts (row bands shift, 8×8 blocks copy, bands of rows change shade), a story
  * card types in on black, the card folds into a 1-px line like an old TV, and the first-person
  * mode starts at floor 1 (`startFpsRun`).
  *
  * Phases: `freeze` (≥ 30 ticks, until the lazy fps content is registered, at most 120) → `glitch`
  * (120 ticks; the last 4 black) → `card` (typing, PRESS START, a 150-tick hold) → `fold` (60).
  *
- * With a runner (the real route) `enter` records the ams clear (`recordMissionClear`) and pays the
- * ams tally silently (`silentTally`); the totals go to `session.records['fps/ams-bonus']` for the
- * floor-1 tally's `MISSION 1 BONUS` line. Without one (`?mode=bridge`) it shows a placeholder.
+ * The bridge follows the ring (docs/design/ring.md §1: ams → its tally → the ring → the bridge).
+ * With a runner (the real route: the ring's RingRunner; any MissionRunner works the same) `enter`
+ * records the clear (`recordMissionClear`) and pays the tally silently (`silentTally`); a
+ * `MissionBonus` `{ mission, totals, seed }` goes to `session.records['fps/ams-bonus']` for the
+ * floor-1 tally's `MISSION 2 BONUS` line (named after that mission; the ring's seed in its
+ * footer). Without one (`?mode=bridge`) it shows a placeholder. The story card's first line is a
+ * neutral one (`BRIDGE_OPENING`) until the ring's story exists.
  *
  * All corruption works on palette colours (copies, shifts, `stepShade`): it stays palette-only.
  * Cosmetic randomness only (`fxRng`); no per-tick allocations.
@@ -37,23 +41,48 @@ import { Rng } from '../../engine/rng';
 import type { Scene } from '../../engine/scene';
 import { blinkOn, centerText, textWidth, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { BRIDGE_LINES, withCallsign } from '../content/fps/story';
-import { AMS_BONUS_KEY, fpsSlotIndex } from '../fps/run';
-import type { MissionRunner } from '../mission/runner';
+import type { HudState } from '../context';
+import { AMS_BONUS_KEY, fpsSlotIndex, type MissionBonus } from '../fps/run';
 import { getCharacter, hasCharacter } from '../registry';
+import { RING_ID } from '../ring/ids';
 import { recordMissionClear, silentTally } from './flow';
+import type { TallyRunner } from './mission-complete';
 import { fpsLoadState, loadFpsContent } from './fps-intro';
 import { startFpsRun } from './fps-route';
 
+/**
+ * What the bridge reads from the finished play: the ring's RingRunner (or a MissionRunner;
+ * docs/design/ring.md §13: a type-only widening).
+ */
+export interface BridgeRunner extends TallyRunner {
+  /** The art density of the snapshot. */
+  readonly artDensity: number;
+  readonly hud: Pick<HudState, 'banner'>;
+  /** The play's seed (the ring's goes into the bonus record). */
+  readonly seed?: number;
+}
+
 export interface BridgeOpts {
-  /** The scene whose last frame freezes (the ams GameplayScene). */
+  /** The scene whose last frame freezes (the RingScene). */
   from?: Scene;
   /** The finished mission's runner: its clear is recorded and its tally paid silently. */
-  runner?: MissionRunner;
+  runner?: BridgeRunner;
+}
+
+/**
+ * The story card's first line (docs/design/ring.md §1): the bridge follows the ring now, so the
+ * line that named the ams boss gives way to one neutral line until the ring's story exists.
+ */
+export const BRIDGE_OPENING = 'SOMEWHERE ON THE RING, SOMEONE HIT THE WRONG BUTTON.';
+
+/** The story lines of the card (before the callsign is filled in): the opening, then the fps story. */
+export function bridgeStory(): readonly string[] {
+  return [BRIDGE_OPENING, ...BRIDGE_LINES.slice(1)];
 }
 
 export type BridgePhase = 'freeze' | 'glitch' | 'card' | 'fold';
 
-/** The session record of the silent ams tally: `[p1, p2]` (spec §1.2; defined in fps/run.ts). */
+/** The session record of the silent tally: a `MissionBonus` (spec §1.2; defined in fps/run.ts). */
 export { AMS_BONUS_KEY };
 
 /** Phase timing (spec §1.3). */
@@ -92,7 +121,7 @@ const PLACEHOLDER_BANNER_Y = 100;
  * runner's banner ends on the very tick of 'complete', so the bridge puts `MISSION COMPLETE!`
  * back where the HUD showed it (the picture of the frames before).
  */
-function snapshot(scene: Scene | undefined, d: number, runner: MissionRunner | null): Frame {
+function snapshot(scene: Scene | undefined, d: number, runner: BridgeRunner | null): Frame {
   const r = new SoftRenderer(W, H, undefined, { res: scene ? d : 1 });
   if (scene) {
     try {
@@ -117,7 +146,7 @@ export function releaseMissionDense(): number {
 
 export class GlitchBridgeScene implements Scene {
   private readonly app: GameApp;
-  private readonly runner: MissionRunner | null;
+  private readonly runner: BridgeRunner | null;
   /** The last frame of the previous scene (density d). */
   readonly snap: Frame;
   /** The 1× image the damage accumulates in (blocks), and the frame shown (+ shifts, shades). */
@@ -178,7 +207,7 @@ export class GlitchBridgeScene implements Scene {
     const session = app.session;
     const charId = session ? session.slots[fpsSlotIndex(session)].character : 'recruit';
     const callsign = hasCharacter(charId) ? getCharacter(charId).name : 'RECRUIT';
-    this.lines = BRIDGE_LINES.map((l) => withCallsign(l, callsign));
+    this.lines = bridgeStory().map((l) => withCallsign(l, callsign));
     let at = 0;
     for (const l of this.lines) {
       this.lineStart.push(at);
@@ -203,7 +232,9 @@ export class GlitchBridgeScene implements Scene {
     if (runner && app.session) {
       recordMissionClear(app, runner);
       const totals = silentTally(app, runner);
-      app.session.records.set(AMS_BONUS_KEY, totals);
+      const mission = runner.mission.id;
+      const bonus: MissionBonus = mission === RING_ID && runner.seed !== undefined ? { mission, totals, seed: runner.seed } : { mission, totals };
+      app.session.records.set(AMS_BONUS_KEY, bonus);
     }
     app.input.suppress();
     app.pointerPressed = false;

@@ -65,6 +65,19 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   'bosses/m3': () => import('./bosses/m3/index'),
   'bosses/m4': () => import('./bosses/m4/index'),
   'bosses/m5': () => import('./bosses/m5/index'),
+  // Mission `ring` (docs/design/ring.md §13.1; not lazy): one entry per area and builder.
+  'ring/wagon': () => import('./ring/wagon/index'),
+  'ring/wagon/art': () => import('./ring/wagon/art'),
+  'ring/scenery': () => import('./ring/scenery/index'),
+  'ring/scenery/art': () => import('./ring/scenery/art'),
+  'ring/traffic': () => import('./ring/traffic/index'),
+  'ring/traffic/art': () => import('./ring/traffic/art'),
+  'ring/hazards': () => import('./ring/hazards/index'),
+  'ring/hazards/art': () => import('./ring/hazards/art'),
+  'ring/items': () => import('./ring/items/index'),
+  'ring/items/art': () => import('./ring/items/art'),
+  'ring/scooter': () => import('./ring/scooter/index'),
+  'ring/scooter/art': () => import('./ring/scooter/art'),
   // The first-person mode (docs/design/fps.md §3.6): LAZY — the boot skips them (isLazyContent);
   // FpsIntroScene loads them behind its progress bar (loadFpsContent).
   fps: () => import('./fps/index'),

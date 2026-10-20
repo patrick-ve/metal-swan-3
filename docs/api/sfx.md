@@ -74,6 +74,23 @@ Levels (2026-10-20, integrator): `ams/scan-up` vol 0.75, `ams/route-bell` 0.6 an
 `ams/route-creak` 0.8 (they were under the RMS / peak floor), `ams/rev` 0.5 (over −9 LUFS),
 `ams/airbag` 0.6 and `ams/clamp-clunk` 0.5 (their peaks went over 0.9).
 
+### 2.2 Mission `ring` (docs/design/ring.md §11, 2026-10-20)
+
+Synth recipes only, one table per area (`src/game/content/sfx/ring-<area>.ts`, spread into `SFX`
+by `sfx/index.ts`). Telegraphs (§2): `ring/bottle-tell` and `ring/pistol-cock` (a scooter
+pillion's tell, 26 ticks scaled by difficulty, never below 18), `ring/cam-beep` (a speed camera
+warns a wagon in the front third).
+
+| Table | Ids |
+|---|---|
+| `RING_WAGON` (`ring-wagon.ts`: the squad wagon, §3) | `ring/wagon-engine` (loop, 0.5 s: the five-cylinder burble; `sfxLoop` pitch 0.6 … 1.4 follows the speed), `ring/wagon-swerve` (JUMP: a tyre chirp and a whoosh), `ring/wagon-screech` (the boarding's handbrake turn, the wreck spin), `ring/wagon-horn`, `ring/wagon-hit` (½ / 1 cell), `ring/wagon-crunch` (a ram or a closure: 2 cells), `ring/wagon-glass` (damage state 2), `ring/wagon-bump` (traffic), `ring/wagon-wreck` |
+| `RING_ROAD` (`ring-road.ts`: traffic, hazards, items, the scooter gang, §5.1, §7, §8) | `ring/matrix-click` (a matrix sign switches), `ring/flash` (the speed camera), `ring/cam-beep` (above), `ring/horns` (the jam), `ring/cone`, `ring/crash` (the crash-absorber truck), `ring/dent` (a shot dents a car), `ring/crate` (a crate driven over), `ring/cage-hit` (a hostage door), `ring/hop` (a hostage's leap), `ring/scooter-whine`, `ring/scooter-honk`, `ring/pistol-cock` / `ring/bottle-tell` (above), `ring/throw`, `ring/bottle` (it smashes), `ring/scooter-crash` (knocked off), `ring/scooter-down` |
+| `RING_SCENERY` (`ring-scenery.ts`: the ambience, §7.3) | `ring/tunnel-bed` (loop, 2.4 s: the tunnels and the covered stretch at Bos en Lommer), `ring/bridge-rumble` (loop, 1.6 s: a bridge deck); the view picks one (`RingView.ambience`) and the runner plays it under the audio key `'ambience'` (`RingRunner.setAmbience`) |
+
+The loops (`ring/wagon-engine`, `ring/tunnel-bed`, `ring/bridge-rumble`) are in the loop list of
+`tests/content/sfx.test.ts`. The ring stage theme (`ring`, `ring-boss`) is wave B; until then
+`ringSong` (ring/mission.ts) plays the ams songs.
+
 ## 3. Aliases (`SFX_ALIASES`)
 
 Older or game-layer names that play the very same samples as their target (never delete one):
@@ -119,8 +136,9 @@ exactly as before (`tests/content/sfx.test.ts` keeps fingerprints of the engine 
 
 Recipes live per family: `weapons.ts`, `player.ts` (player, items, hostages), `vehicles.ts`
 (vehicles, Swan, fleet), `legion.ts`, `machines.ts` (machines, creatures), `bosses.ts`,
-`world.ts` (`env/*`), `ui.ts`, `ams.ts` (mission `ams`: `ams/*`) and the `ams` extras tables
-`ams-gloat.ts`, `ams-stag.ts`, `ams-scan.ts`, `ams-route.ts` (§2.1). `kit.ts` has the builders: `tone`, `noise`, `click`, `clack`,
+`world.ts` (`env/*`), `ui.ts`, `ams.ts` (mission `ams`: `ams/*`), the `ams` extras tables
+`ams-gloat.ts`, `ams-stag.ts`, `ams-scan.ts`, `ams-route.ts` (§2.1) and the ring tables
+`ring-wagon.ts`, `ring-road.ts`, `ring-scenery.ts` (§2.2). `kit.ts` has the builders: `tone`, `noise`, `click`, `clack`,
 `bell`, `fmBell`, `note`, `seq`, `hits`, `scatter` (fixed pseudo-random times), `loopRecipe`
 (seamless loops: pick tones and LFO rates that make whole cycles in the loop length) and
 `honk` (the SWAN-3 horn: `swan/honk`, `swan/migrate`, `boss/goose-honk`, `trumpeter/bail`,

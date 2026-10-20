@@ -586,6 +586,14 @@ Each section gets a fresh World (`gameEntityFactory`, seed from the mission seed
 (lazy layer buffers from `getBgGenerator`) and terrain in lazily built 256×256 chunks (`getTerrainPainter()`
 sampling `terrain.cellAt`, one chunk prefetched per frame). Unknown missions / sections → a placeholder stretch.
 
+**Mission `ring` (level 2, the A10 ring road; docs/design/ring.md, docs/api/ring.md).** It is NOT a
+`MissionDef` and is not registered with `defineMission` (`listMissions` sorts ids). It runs on a
+`RingRunner` (`src/game/ring/runner.ts`) on the unchanged World, hosted by `RingScene`. The flow knows
+its id (`RING_ID`): `AMS.next = 'ring'`, so `missionDone` sends it to its intro card. Code that reads a
+runner takes the narrow types a RingRunner also meets (type-only widening, no run-time change):
+`HudRunner` (hud.ts), `TallyRunner` / `NextRunner` (mission-complete.ts: `tallyLines`, `silentTally`,
+`recordMissionClear`, `missionDone`), `BridgeRunner` (glitch-bridge.ts) and `RumbleRunner` (rumble.ts).
+
 ## 11. HUD, scenes, URL parameters, debug
 
 `drawHud(r, { session, hud, runner, inputPlayers, ticks, settings? })` (GDD §13.7): per player (1P left, 2P right)
@@ -617,7 +625,40 @@ PARADE with the credits, CAPTIONS, the heroes' ending lines) → `FinalTallyScen
 `startNewGame(app, { players?, difficulty?, mission?, section?, bossRush?, characters? })` skips the menus and
 the card (tools, tests, `?mission=`); `firstMission()`.
 
-URL parameters (`params.ts`): `mission section god debug seed players char weapon boss mute difficulty`.
+**The normal route since 2026-10-20** (GDD §13.1, docs/design/ring.md §1): ams → `MissionCompleteScene` →
+`MissionIntroScene('ring')` → `RingScene` → `GlitchBridgeScene` → the fps floors → the ending.
+- `scenes/ring-route.ts`: `prepareRing(app, { seed?, section? }) → RingStart { seed, plan, section? }` (the seed:
+  the given one, else `?seed=`, else `freshSeed()`; `planRing(seed, difficulty)`), `expectedDrivers(plan,
+  session)`, `startStretch(start)`, `ringArtFor(start, session)` (`ringArtDef` with the expected drivers),
+  `preloadRing(app, start)` (the intro card: 2× / 4× via `preloadMissionArt`, the 1× `RING_ART` in 4 ms slices,
+  the reused sample group `RING_AUDIO_GROUP` = `mission:ams`), `startRing(app, { section?, players?,
+  characters?, difficulty?, seed? }) → RingScene` (`?mission=ring`, tools, tests), `ringDone(app, from,
+  runner)` (→ the bridge), `isRing(id)`.
+- `scenes/ring.ts`: `RingScene(app, { start?, section?, seed?, session? })` — the HUD (the wagon's armour in
+  the vehicle panel), the play controls, the in-world continue (`allOut` → the announcer; `gameOver` →
+  `GameOverScene`), tier-4 art (`preloadMissionArt(app, ringArtDef(plan, drivers), …)` at the start, after a
+  join and on a rise to tier 4; `missionArtSection(id)` on the runner's `stretch`; `stopDense('ring')` on exit;
+  `runner.dispose()`), rumble, F4 = `runner.skip()`, F5 weapons, the seed in the debug overlay (`SEED n
+  <STRETCH>`, y 2; y 11 under the F2 stats line); `complete` → `ringDone`.
+- `scenes/play-host.ts` (extracted from GameplayScene, shared by both play scenes): `PlayControls(host)` with
+  `trackDevice()`, `interrupt()` (the lost-pad pause, joins and pad claims, the pause; true = a scene was
+  pushed), `watchKeySplit()`, `joinOpen()`; `JOIN_KEY`, `joinCharacter(other)`, `keySetLine(b, set, who)` (also
+  re-exported by gameplay.ts). A `PlayHost` gives `app`, `session`, `demo`, `runner` (`PlayHostRunner`) and
+  `preloadArtNow()`.
+- The bridge stores a `MissionBonus { mission, totals, seed? }` under `AMS_BONUS_KEY` (fps/run.ts;
+  `missionBonusOf(v)` also reads the older `[p1, p2]` as ams); the floor-1 tally labels it `<missionLabel>
+  BONUS` (`MISSION 2 BONUS`; `fpsTally(r, { …, amsBonus, bonusLabel })`) and shows `RING SEED n` in its footer.
+  The bridge's story opens with `BRIDGE_OPENING` (`bridgeStory()`): one neutral line.
+- Numbering (`flow-data.ts`): `FPS_ROUTE = ['ams', 'ring', 'fps-1', 'fps-2']`; `missionNumber(id)` = the place
+  on that route for ams / ring, else the place in `CAMPAIGN_MISSIONS` (m1 stays `MISSION 2`, passive);
+  `missionLabel('ring')` = `MISSION 2`, the high-score column `M2`; `goldenRecordRoute` = FPS_ROUTE once the
+  campaign played the ring or fps-1. The ring's card (`content/ui/cards.ts`): `MISSION 2`, `DE RING`, the A10
+  line map.
+- Boot: `?mission=ring` → `startRing`; `bootArt` = the start screens, `?char=` + the select roster (the
+  drivers) and `RING_ART`; the boot also loads the `mission:ams` sample group.
+
+URL parameters (`params.ts`): `mission section god debug seed players char weapon boss mute difficulty`
+(`mission=ring`: `section` is a landmark id, `seed` fixes the ring).
 Debug keys (with `?debug=1`): F1 hitboxes, F2 stats, F3 god mode, F4 skip (next exit / kill the boss / complete),
 F5 weapons. Key M: mute.
 

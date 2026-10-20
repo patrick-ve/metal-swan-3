@@ -241,6 +241,10 @@ export function definePlayerSprites(id: string, style: HumanStyle, o: PlayerArtO
   defHd(pre + 'salute', deco('salute', o.salute ?? P.SALUTE, 'full'), timing('salute', { durations: [8, 60] }, false));
   defineSprite(pre + 'portrait', () => portrait(style), { anchor: 'top-left', hi: () => portrait(style, 2) });
   defineRiderSprites(id, style);
+  // Mission ring (docs/design/ring.md §0 row 24): the near-lane aim from the wagon's window with
+  // the default gun, the pistol's down diagonal (the heavy pose has its own above). Registered
+  // after every older strip, so their order and pixels stay as they were.
+  defHd(pre + 'torso-pistol-diag-down', torsoOf([{ ...o.torso, weapon: 'pistol', aim: 'diag-down', gunAngle: 40 }]), { ticksPerFrame: 30 });
 }
 
 /** Ticks per `mount-hop` frame: crouch, spring, tuck rise, over the seat, settle. */

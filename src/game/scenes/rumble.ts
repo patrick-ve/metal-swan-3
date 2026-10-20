@@ -14,7 +14,7 @@
 import type { InputManager } from '../../engine/input';
 import type { World } from '../../engine/world';
 import { Boss } from '../boss';
-import type { MissionRunner } from '../mission/runner';
+import type { Player } from '../player/player';
 import type { GameSettings } from '../settings';
 import { Vehicle } from '../vehicle';
 
@@ -28,6 +28,15 @@ export const RUMBLES = Object.freeze({
 
 type Kind = keyof typeof RUMBLES;
 
+/**
+ * What the rumble reads from the running play: a MissionRunner or the ring's RingRunner
+ * (docs/design/ring.md §13: a type-only widening).
+ */
+export interface RumbleRunner {
+  readonly players: readonly Player[];
+  player(slot: number): Player | undefined;
+}
+
 /** How far (px, beyond the blast radius) a big explosion still rumbles a player. */
 const BLAST_REACH = 40;
 
@@ -37,7 +46,7 @@ export class RumbleWatch {
   private readonly cells = [-1, -1];
   private readonly vehicles: (Vehicle | null)[] = [null, null];
   private broken = 0;
-  private runner: MissionRunner | null = null;
+  private runner: RumbleRunner | null = null;
 
   constructor(input: InputManager, settings: () => GameSettings) {
     this.input = input;
@@ -45,7 +54,7 @@ export class RumbleWatch {
   }
 
   /** Listen to a section's world (call on every 'sectionLoaded'). */
-  attach(world: World, runner: MissionRunner): void {
+  attach(world: World, runner: RumbleRunner): void {
     this.runner = runner;
     this.broken = 0;
     world.events.on('playerDied', ({ slot }) => this.play(slot, 'death'));

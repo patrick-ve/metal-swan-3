@@ -1,6 +1,7 @@
 /**
- * The route of the first-person mode (docs/design/fps.md §1, §10, group flow): ams complete →
- * bridge (silent tally, records) → intro → floor 1; tally → floor 2 → fps ending → final tally;
+ * The route of the first-person mode (docs/design/fps.md §1, §10, group flow; docs/design/ring.md
+ * §1): ams complete → its tally → the ring → bridge (the ring's silent tally, records) → intro →
+ * floor 1; tally → floor 2 → fps ending → final tally;
  * pause / continue / game over from the mode; P2's slot waits; the golden-record route; the story
  * lines fit; the bridge waits in `freeze` while the lazy content is not registered.
  */
@@ -32,6 +33,9 @@ import { GameplayScene, startNewGame } from '../../../src/game/scenes/gameplay';
 import { AMS_BONUS_KEY, CARD_STEP, CARD_Y, FREEZE_MAX, FREEZE_MIN, GlitchBridgeScene, GLITCH_TICKS } from '../../../src/game/scenes/glitch-bridge';
 import { missionColumn } from '../../../src/game/scenes/high-scores';
 import { MissionCompleteScene } from '../../../src/game/scenes/mission-complete';
+import { MissionIntroScene } from '../../../src/game/scenes/mission-intro';
+import { RingScene } from '../../../src/game/scenes/ring';
+import { missionBonusOf } from '../../../src/game/fps/run';
 import { PauseScene } from '../../../src/game/scenes/pause';
 import { TitleScene } from '../../../src/game/scenes/title';
 import { GameSession } from '../../../src/game/session';
@@ -159,7 +163,7 @@ describe('GlitchBridgeScene before the lazy content', () => {
 });
 
 describe('the route (headless)', () => {
-  it('ams complete → bridge (silent tally, records, no newspaper) → intro → floor 1', async () => {
+  it('ams complete → its tally → the ring → bridge (the ring\'s silent tally, records) → intro → floor 1', async () => {
     await loadContent();
     await loadFpsContent(createApp({ input: new InputManager(), audio: new SimAudio(), store: new MemoryStore() }));
     ensureFloors();
@@ -169,29 +173,45 @@ describe('the route (headless)', () => {
     h.step(5);
     const game = h.app.scenes.top as GameplayScene;
     const slot = h.app.session!.slots[0];
-    slot.rescued = 3;
     slot.mission.goldenRecord = true;
-    const before = slot.score;
-    // F4: the boss dies (or the mission completes); victory poses for 210 ticks, then the bridge.
+    // F4: the boss dies (or the mission completes); victory poses for 210 ticks, then the newspaper.
     let ok = false;
     for (let i = 0; i < 4000 && !ok; i++) {
       if (i % 120 === 0 && game.runner.state === 'playing') game.runner.skip();
       h.step(1);
+      ok = h.app.scenes.top instanceof MissionCompleteScene;
+    }
+    expect(ok).toBe(true);
+    expect(h.seen).not.toContain(GlitchBridgeScene.name);
+    // The newspaper → the ring's card → the ring (docs/design/ring.md §1).
+    expect(h.until(MissionIntroScene, 900)).toBe(true);
+    expect((h.app.scenes.top as MissionIntroScene).mission).toBe('ring');
+    expect(h.until(RingScene, 500)).toBe(true);
+    const ring = h.app.scenes.top as RingScene;
+    slot.rescued = 3;
+    slot.mission.goldenRecord = true;
+    const before = slot.score;
+    // F4 on the ring: stretch by stretch to the exit; the victory drive, then the bridge.
+    ok = false;
+    for (let i = 0; i < 8000 && !ok; i++) {
+      if (i % 60 === 0 && ring.runner.state === 'playing') ring.runner.skip();
+      h.step(1);
       ok = h.app.scenes.top instanceof GlitchBridgeScene;
     }
     expect(ok).toBe(true);
-    expect(h.seen).not.toContain(MissionCompleteScene.name);
     const bridge = h.app.scenes.top as GlitchBridgeScene;
     expect(bridge.snap.density).toBe(2);
-    // The silent tally: HOSTAGES 3 × 10,000 (+ whatever else the ams kill earned) paid into the score.
-    const bonus = h.app.session!.records.get<[number, number]>(AMS_BONUS_KEY);
-    expect(bonus).toBeDefined();
-    expect(bonus![0]).toBeGreaterThanOrEqual(30000);
-    expect(bonus![1]).toBe(0);
-    expect(slot.score - before).toBeGreaterThanOrEqual(bonus![0]);
+    // The silent tally of the ring: HOSTAGES 3 × 10,000 (+ whatever else) paid into the score.
+    const bonus = missionBonusOf(h.app.session!.records.get<unknown>(AMS_BONUS_KEY));
+    expect(bonus?.mission).toBe('ring');
+    expect(bonus?.seed).toBe(ring.runner.seed);
+    expect(bonus!.totals[0]).toBeGreaterThanOrEqual(30000);
+    expect(bonus!.totals[1]).toBe(0);
+    expect(slot.score - before).toBeGreaterThanOrEqual(bonus!.totals[0]);
     expect(slot.rescued).toBe(0);
-    expect(h.app.campaign!.missions).toEqual(['ams']);
+    expect(h.app.campaign!.missions).toEqual(['ams', 'ring']);
     expect(h.app.campaign!.goldenRecords[0].has('ams')).toBe(true);
+    expect(h.app.campaign!.goldenRecords[0].has('ring')).toBe(true);
     // The phases, then a press finishes the typing and a second press folds the card.
     expect(h.until(GlitchBridgeScene, 1)).toBe(true);
     for (let i = 0; i < 200 && bridge.phase !== 'card'; i++) h.step(1);
@@ -367,13 +387,14 @@ describe('pause, continue and game over in the fps mode', () => {
 });
 
 describe('records, route lists and text', () => {
-  it('the golden-record route: ams + fps-1 + fps-2 on the fps route, the six missions otherwise', () => {
+  it('the golden-record route: ams + ring + fps-1 + fps-2 on the route, the six missions otherwise', () => {
     const c = newCampaign();
     expect(goldenRecordRoute(c)).toBe(CAMPAIGN_MISSIONS);
     expect(goldenRecordRoute(null)).toBe(CAMPAIGN_MISSIONS);
     c.missions.push('ams', 'fps-1');
     expect(goldenRecordRoute(c)).toBe(FPS_ROUTE);
-    expect(FPS_ROUTE).toEqual(['ams', 'fps-1', 'fps-2']);
+    // The ring is level 2 (docs/design/ring.md §1): it is on the route too.
+    expect(FPS_ROUTE).toEqual(['ams', 'ring', 'fps-1', 'fps-2']);
     expect(CAMPAIGN_MISSIONS).toEqual(['ams', 'm1', 'm2', 'm3', 'm4', 'm5']);
     const s = new GameSession({ characters: ['vincent', 'thom'] });
     for (const id of FPS_ROUTE) c.goldenRecords[0].add(id);

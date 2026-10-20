@@ -537,6 +537,25 @@ particles + shake + sound, via a game-level helper; explosion damage goes throug
   (wheels, treads, plates, rivets, barrels, rotors), `bg.ts` (skies, mountains, clouds, tree
   lines, skylines, parallax layer builders), `terrain-art.ts` (fills for ground polygons with
   top edges: dirt, sand, snow, rock, metal, wood…).
+- **Mission `ring`** (level 2, the A10 ring road; `docs/design/ring.md`, `docs/api/ring.md`):
+  `ring/` holds its runtime — a `RingRunner` on the UNCHANGED engine World (a top-down plane:
+  world x = road distance, world y = the depth line; 4 lanes; depth slabs for hits), the
+  generator `planRing(seed, difficulty)`, `RingHero extends Player`, `Wagon extends Vehicle`, the
+  in-world continue, the view and the tier-4 art definition (`ringArtDef`: sections = stretches).
+  It is not a `MissionDef` and is not registered (`listMissions` sorts ids); `ams.next = 'ring'`
+  and the flow knows its id. `scenes/ring.ts` (`RingScene`) hosts it like `GameplayScene` hosts
+  a MissionRunner, with the shared play controls (`scenes/play-host.ts`: joins, pause, lost
+  pad); `scenes/ring-route.ts` makes each play's seed and plan (a fresh seed per play, `?seed=`
+  wins), preloads its art on the intro card and hands the end to the glitch bridge. The HUD,
+  the tally, the bridge and the rumble read narrow runner types (`HudRunner`, `TallyRunner`,
+  `BridgeRunner`, `RumbleRunner`) that both runners meet: ams and m0–m5 run byte-identical.
+  Tools: `src/sim/headless-ring.ts` + `src/sim/bot-ring.ts` behind `npm run sim -- --mission
+  ring`, `npm run shot -- --mission ring [--spawn "<id>@+<dx>:<lane>"]` and `npm run smoke --
+  --query "mission=ring&god=1"` (docs/api/sim.md §12). The ring streams its scenery while it
+  plays, so its dense chunks (a 4× road chunk takes about 5 ms, up to 14 ms) are built in its own
+  module worker (`ring/scenery-worker.ts` via `ring/scenery-job.ts`; a second Vite worker chunk,
+  precached like the art pool's) and never inside a frame; without Worker they fall back to the
+  art-job queue above.
 
 ### 6.1 Human sprite contract (shared by art and logic agents)
 
@@ -805,7 +824,8 @@ from now on (the game layer only adds new `HudState` request types). UI art live
   smoke tool finds scenes by `constructor.name`.
 - **Deploy gate** (`.github/workflows/pages.yml`): every push to `main` runs `npm test`,
   `npm run build` (typecheck + vite build) and the route smoke
-  (`--query "mission=ams&boss=1&debug=1"`, ams boss → bridge → first-person mode → name entry)
+  (`--query "mission=ams&boss=1&debug=1"`, ams boss → the ams tally → the ring card → the ring
+  (F4 to the exit) → bridge → first-person mode → name entry)
   and the cache check against `vite preview` of that build. GitHub Pages deploys only when all of them pass; a
   failed run keeps the smoke screenshots as the `smoke-screenshots` artifact.
 - `npm run cache-check -- --url http://host:port/` → checks the caches of a production build

@@ -295,3 +295,49 @@ CASING DUST EMBER`. Drawn by `world.draw` at `particleZ` (55). `count`, `clear()
 dropThroughTicks 12), `TUNING.player` (run 1.5, crawl 0.75, jump −3.5 → apex ≈ 47 px / 54 ticks, air
 control, coyote 4, buffer 6, body sizes), `TUNING.life`, `TUNING.camera` — from mechanics.md §22.
 `applyTuning()` copies `TUNING.physics` into the Body defaults; call once at boot (browser and headless).
+
+## 12. The ring in the tools — src/sim/headless-ring.ts, src/sim/bot-ring.ts
+
+Mission `ring` (docs/design/ring.md §15, docs/api/ring.md) runs in its own harness: the real app with a
+`RingScene` (not a GameplayScene), the software renderer, `SimAudio`, a `MemoryStore`.
+
+- `createHeadlessRing({ seed = 1, players, god, bot, characterId, difficulty, section, weapon, plan, input,
+  clock, loadContent, autoContinue, captureConsole, echoConsole, res, gfx, subpixel })` → `HeadlessRing`:
+  `app input session renderer audio bots stats scene runner world ticks complete done`, `step(n)`,
+  `runUntil(pred, max)`, `renderFrame()`, `player(slot)`, `spawn(id, dx, lane, params?)` (a registered entity
+  `dx` px right of the view's centre in lane 1 … 4, or at plane y when `lane` > 4; null for an unknown id),
+  `report()` → `RingSimReport` = the runner's `RingReport` (ticks, plan distance, landmarks, kills, deaths,
+  wrecks, fines, hostages, continues, score, spawned, skipped plan ids, bosses, max entities) + `god`,
+  `seconds`, `gameOvers`, `errors` (scenes and world, deduplicated), `warnings`, `missingSfx`, `missingSongs`,
+  `timing` and `watch` (`RingWatchReport`: pacing — `longestGap`, `gaps` over `RING_GAP_TICKS` = 240 with
+  their landmark and chunk, `paceTicks`, `enemyShare`, outside rests, scenes, the boarding, holds and the
+  victory drive; fairness — `outsideShots` (enemy shots and bottles that appear off screen), `offscreenHits`
+  (wagon hits whose attacker is off screen), `attacks`, `minTell` / `minTellInView` (the shortest
+  `tell-x` → `x`), `minOpenLanes`; armour — `cellsLost` per source). `runRing(o)` runs it to the end. The
+  seed is the ring's (`params.seed`).
+- `RingBot(host, slot, { swerve, bombs, pickups, screenX = 120 })` (`InputSource`): a lane safety map
+  (closed / missing lanes and the plan's closures up to 384 px ahead, enemy shots coming at the wagon, the
+  landing lane of a bottle in flight, civilian cars — beside = blocked, ahead / behind by time to contact
+  — a pull toward crates and pickups and toward the lane of a target far ahead); lane changes with FIRE
+  released that count every lane on the way; a bottle that lands on it with no lane free → forward / back
+  on screen away from it, too late for a lane change → a swerve (JUMP); FIRE held + the aim from
+  `planeAim(dx, dy, rv, hw)` (where the straight-across and the ±20° shot meet the target's lane, with its
+  speed; when neither hits it lines up forward / back on screen, never into the front third or a car);
+  hostage doors first; BOMB at a boss; the rear third at rest; START while its continue countdown runs.
+  `aimMask(dx, dy)` stays the plain 8-way pick. `goal`, `targetLane`, `target` for traces and labels.
+- `npm run sim -- --mission ring [--god] [--seed n] [--players 2] [--section <landmark>] [--difficulty]
+  [--char id] [--weapon id] [--no-bot] [--max-ticks 43200] [--expect-complete] [--expect-ticks min-max]
+  [--out file] [--trace N] [--quiet]` → the JSON report and a one-line summary (`sim ring seed n god
+  normal: COMPLETE in T ticks (…), landmarks oost→…, distance d/len, kills, deaths, wrecks, fines,
+  hostages, continues, spawned (skipped id×n), max entities, errors`); exit 1 on errors, a failed
+  `--expect-complete` or ticks outside `--expect-ticks` (the full ring's gate: 28800-39600). Wave A
+  (2026-10-20): seeds 1–5 god 32,777–33,562 ticks, 0.4 s wall; normal 6–8 wrecks a run.
+- `npm run shot -- --mission ring [--seed n] [--section <landmark>] [--bot] [--god] [--players 2] [--ticks n]
+  [--every N --count M] [--res 8 --art 4] [--spawn "<id>@+<dx>:<lane>[?k=v&k=v]"] [--hold up,fire]` →
+  `tmp/shots/ring-<stretch>-t<tick>.png` / `ring-sheet.png`, frames labelled with the tick, the stretch, the
+  plan distance, the wagon's lane / screen x / cells and the bot's goal. `--spawn` (repeatable, or joined
+  with `;`) puts entities on the road after the first tick, e.g. `--spawn "ring-car@+60:2?model=van"`.
+- `npm run smoke -- --port <port> --query "mission=ring&god=1"`: the side-scrolling script in the RingScene
+  plus lane changes, the steer lock (FIRE + up) and player 2's join (key 2). The ams route (`--query
+  "mission=ams&boss=1&debug=1"`) now runs ams → its tally → the ring card → the ring (F4 to the exit) → the
+  bridge → the fps floors → the name entry.

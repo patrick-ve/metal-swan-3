@@ -297,7 +297,8 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     }
     for (const [a, n] of HEAVY_DIAG) strip(`char/${c}/torso-heavy-${a}`, n, false, ['muzzle']);
     for (const [a, n] of PISTOL_DIAG) strip(`char/${c}/torso-pistol-${a}`, n, false, ['muzzle']);
-    expect(listSprites(`char/${c}/torso-pistol-diag-down`)).toEqual([]);
+    // Mission ring (docs/design/ring.md §0 row 24): the pistol's down diagonal, the near-lane aim.
+    strip(`char/${c}/torso-pistol-diag-down`, 1, false, ['muzzle']);
     // The diagonal muzzle sits between the forward and the up muzzle: ahead of the up one and
     // above the forward one.
     for (const w of ['pistol', 'heavy']) {
@@ -506,8 +507,8 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     // mount, salute, portrait and the 9 rider strips; + 5 of anim wave p1 (flip, mount-hop,
     // legs-dangle, die-drown, die-flat); + 16 of anim wave p2 (legs-crouch-in / -out,
     // timeout-yawn / -sleep, and per weapon torso run, crouch, crouch-shoot, -throw, -knife, knife-b)
-    // + 2 idle fidgets (fidget-a / -b).
-    for (const c of ALL) expect(listSprites(`char/${c}/`).filter((id) => !SELECT_ART.test(id)).length, c).toBe(7 + 66 + 6 + 7 + 9 + 5 + 16 + 2);
+    // + 2 idle fidgets (fidget-a / -b) + 1 of mission ring (torso-pistol-diag-down).
+    for (const c of ALL) expect(listSprites(`char/${c}/`).filter((id) => !SELECT_ART.test(id)).length, c).toBe(7 + 66 + 6 + 7 + 9 + 5 + 16 + 2 + 1);
     expect(ids.length).toBeGreaterThanOrEqual(ALL.length * 95);
     for (const id of ids) {
       for (const f of getFrames(id)) {

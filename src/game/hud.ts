@@ -26,8 +26,8 @@ import { PixelBuffer, type Ramp } from '../engine/pixel';
 import type { DrawOpts, Frame, Renderer, TextOpts } from '../engine/render';
 import { artDensity, frameH, frameW, getFrame, hasSprite, hiArtOn } from '../engine/sprites';
 import { Boss } from './boss';
+import type { World } from '../engine/world';
 import type { Bubble, HudState, Pointer } from './context';
-import type { MissionRunner } from './mission/runner';
 import type { Player } from './player/player';
 import { getWeapon } from './registry';
 import type { GameSession, PlayerSlot } from './session';
@@ -35,10 +35,26 @@ import { DEFAULT_SETTINGS, type GameSettings } from './settings';
 import { TUNING } from './tuning';
 import { Vehicle } from './vehicle';
 
+/**
+ * What the HUD reads from the running play: a MissionRunner or the ring's RingRunner
+ * (docs/design/ring.md §13: a type-only widening; nothing changes at run time).
+ */
+export interface HudRunner {
+  readonly world: World;
+  readonly players: readonly Player[];
+  /** Continue countdowns per slot (−1 = none). */
+  readonly continueTicks: readonly number[];
+  /** The countdown number on show while every player is out (−1 = none). */
+  readonly countdownNumber: number;
+  /** Timer counts left (Infinity = no timer). */
+  readonly timeLeft: number;
+  player(slot: number): Player | undefined;
+}
+
 export interface HudInput {
   session: GameSession;
   hud: HudState;
-  runner: MissionRunner | null;
+  runner: HudRunner | null;
   /** 2 = two-player controls (an empty slot shows PRESS START). */
   inputPlayers: 1 | 2;
   /**
@@ -387,7 +403,7 @@ function drawStatus(r: Renderer, p: Player, left: boolean): void {
 const frameOpts: DrawOpts = { screen: true, alpha: 0.8 };
 
 /** Frame 28×18 at (178, 2); big 2-digit counts centred at (192, 6); red blink under 10. */
-function drawTimer(r: Renderer, runner: MissionRunner, ticks: number): void {
+function drawTimer(r: Renderer, runner: HudRunner, ticks: number): void {
   const t = runner.timeLeft;
   if (t === Infinity) return;
   const low = t <= TUNING.timer.alarmAt;
@@ -406,7 +422,7 @@ function drawTimer(r: Renderer, runner: MissionRunner, ticks: number): void {
 const brokenSeen = new WeakMap<Boss, { parts: number; flash: number }>();
 
 /** Name (small, C, y 198); bar 192×4 at (96, 207): crimson = remaining HP; white flash on a part break. */
-function drawBossBar(r: Renderer, runner: MissionRunner, ticks: number): void {
+function drawBossBar(r: Renderer, runner: HudRunner, ticks: number): void {
   const list = runner.world.byTag('boss');
   let boss: Boss | null = null;
   for (let i = 0; i < list.length; i++) {
@@ -448,7 +464,7 @@ function drawBossBar(r: Renderer, runner: MissionRunner, ticks: number): void {
  * GDD §13.7: while a ridden Swan's hull or rider is above the view, a 6×6 swan head with a 1 px
  * outline in the rider's colour at the top edge (y 1), at her x, kept 4 px inside the sides.
  */
-function drawSwanMarkers(r: Renderer, runner: MissionRunner): void {
+function drawSwanMarkers(r: Renderer, runner: HudRunner): void {
   const cam = runner.world.camera;
   const players = runner.players;
   for (let i = 0; i < players.length; i++) {

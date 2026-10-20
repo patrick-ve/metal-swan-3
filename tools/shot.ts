@@ -30,6 +30,16 @@
  * --res k / --art d as for a mission (e.g. --res 8 --art 4: the 4K backbuffer, the view at
  * density 2, the HUD, the weapon view and the face at 4; the dense fps art is built first).
  * → tmp/shots/fps-<n>[-sheet].png.
+ *
+ * --mission ring shoots the A10 ring road (docs/design/ring.md, src/sim/headless-ring.ts): a
+ * RingScene on the ring of --seed (default 1; `--section <landmark>` starts there), with --bot the
+ * ring bot (bot-ring.ts), --god, --players 2, --every / --count, --res / --art as above (the ring
+ * draws up to 4× art). `--spawn "<id>@+<dx>:<lane>[?k=v&k=v]"` (repeatable, or several joined
+ * with ';') puts registered entities on the road after the first tick, `dx` px right of the
+ * view's centre (negative: left), in lane 1 (far) … 4 (near), with optional spawn params:
+ * `--spawn "ring-car@+60:2?model=van&colour=3" --ticks 10` LOOKs at one entity. Every frame is
+ * labelled with its tick, stretch, plan distance, the wagon's lane and screen x and the bot's goal.
+ * → tmp/shots/ring-<stretch>-t<tick>.png / ring-sheet.png.
  */
 import { pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
@@ -45,6 +55,7 @@ import type { Difficulty } from '../src/game/session';
 import { createHeadlessGame, type BotRoute, type HeadlessGame } from '../src/sim/index';
 import { ACTION_BIT, FPS_ACTIONS, type FpsAction } from '../src/engine/input-actions';
 import { createHeadlessFps, type HeadlessFps } from '../src/sim/headless-fps';
+import { createHeadlessRing, type HeadlessRing } from '../src/sim/headless-ring';
 import { SoftRenderer } from '../src/engine/render-soft';
 import { ensureFpsDenseArt, setFpsArtPool } from '../src/game/content/fps/dense-load';
 import { resolveGfx } from './lib/gfx';
@@ -80,11 +91,41 @@ interface Args {
    * --res 4 or 8; a lower res draws the next lower tier, like the browser), 1 the 1× art everywhere.
    */
   art: number;
+  /** --mission ring: entities to put on the road after the first tick. */
+  spawns: RingSpawnArg[];
+}
+
+/** One `--spawn "<id>@+<dx>:<lane>[?k=v&k=v]"`. */
+interface RingSpawnArg {
+  id: string;
+  dx: number;
+  lane: number;
+  params?: Record<string, string | number | boolean>;
+}
+
+/** Parse `--spawn` values: `id@+dx:lane[?k=v&k=v]`, several joined with ';'. */
+function parseSpawns(v: string): RingSpawnArg[] {
+  const out: RingSpawnArg[] = [];
+  for (const part of v.split(';')) {
+    const t = part.trim();
+    if (!t) continue;
+    const m = /^([a-z0-9/_-]+)@([+-]?\d+(?:\.\d+)?):(\d+(?:\.\d+)?)(?:\?(.*))?$/i.exec(t);
+    if (!m) throw new Error(`--spawn needs "<id>@+<dx>:<lane>[?k=v&k=v]", got "${t}"\n${USAGE}`);
+    const spawn: RingSpawnArg = { id: m[1], dx: Number(m[2]), lane: Number(m[3]) };
+    if (m[4]) {
+      const params: Record<string, string | number | boolean> = {};
+      for (const [k, raw] of new URLSearchParams(m[4])) params[k] = raw === 'true' ? true : raw === 'false' ? false : raw !== '' && Number.isFinite(Number(raw)) ? Number(raw) : raw;
+      spawn.params = params;
+    }
+    out.push(spawn);
+  }
+  return out;
 }
 
 const USAGE =
   'usage: npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6] [--seed 1] ' +
-  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4]';
+  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4]\n' +
+  '       npm run shot -- --mission ring [--seed 1] [--section <landmark>] [--bot] [--god] [--players 1|2] [--ticks 60] [--every 60 --count 6] [--res 8 --art 4] [--spawn "<id>@+<dx>:<lane>[?k=v]"] [--hold up,fire] [--out file.png]';
 
 const BUTTONS: readonly Button[] = ['left', 'right', 'up', 'down', 'fire', 'jump', 'bomb', 'start'];
 
@@ -108,6 +149,7 @@ function parseArgs(argv: readonly string[]): Args {
     res: 1,
     gfx: null,
     art: 2,
+    spawns: [],
   };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
@@ -199,6 +241,9 @@ function parseArgs(argv: readonly string[]): Args {
       }
       case '--art':
         a.art = toArtDensity(num());
+        break;
+      case '--spawn':
+        a.spawns.push(...parseSpawns(next()));
         break;
       case '--help':
       case '-h':
@@ -442,6 +487,78 @@ async function fpsMain(argv: readonly string[]): Promise<void> {
   }
 }
 
+// ------------------------------------------------------------------------------------ ring
+
+/** Label for one ring frame: tick, stretch, plan distance, the wagon's lane and screen x, the bot's goal. */
+function ringLabel(h: HeadlessRing): string {
+  const r = h.runner;
+  if (!r) return `t=${h.ticks}  (no ring)`;
+  const p = h.player(0);
+  const w = p?.wagon ?? null;
+  const b = h.bots[0];
+  const parts = [`t=${h.ticks}`, `ring/${r.section.id}`, `d=${Math.round(r.planDist)}`];
+  if (p) parts.push(w ? `${p.state} L${w.laneTarget} x${Math.round(w.screenX)} ${w.cells}c` : p.state);
+  if (r.planLocked) parts.push('LOCK');
+  if (r.held) parts.push('HELD');
+  if (b) parts.push(`bot ${b.goal}`);
+  return parts.join('  ');
+}
+
+/** `--mission ring`: frames of the ring road (and of entities put on it with --spawn). */
+async function ringMain(args: Args): Promise<void> {
+  for (const m of args.imports) await import(pathToFileURL(resolve(m)).href);
+  const gfx = resolveGfx(args.res, args.gfx);
+  if (gfx.warning) console.warn(`[shot] ${gfx.warning}`);
+  const holdMask = buttonMask(...args.hold.filter((b) => b !== 'fire'));
+  const tapFire = args.hold.includes('fire');
+  const h = await createHeadlessRing({
+    seed: args.seed,
+    players: args.players,
+    god: args.god,
+    bot: args.bot,
+    weapon: args.weapon,
+    difficulty: args.difficulty,
+    section: args.section,
+    res: args.res,
+    gfx: gfx.mode,
+    input: args.hold.length ? (tick) => holdMask | (tapFire && tick % 2 === 0 ? buttonMask('fire') : 0) : undefined,
+  });
+  try {
+    if (args.spawns.length) {
+      h.step(1);
+      for (const sp of args.spawns) {
+        const e = h.spawn(sp.id, sp.dx, sp.lane, sp.params);
+        // (stderr: the harness captures the console.)
+        if (!e) process.stderr.write(`[shot] --spawn: "${sp.id}" is not a registered entity id (skipped)\n`);
+      }
+    }
+    h.step(args.ticks);
+    const frames: Array<{ buf: PixelBuffer; label: string }> = [];
+    for (let i = 0; i < args.count; i++) {
+      if (i > 0) h.step(args.every || 60);
+      frames.push({ buf: h.renderFrame().clone(), label: ringLabel(h) });
+    }
+    const d = shotTier(args);
+    const note = `${resolveGfx(args.res, args.gfx).note}${d >= 2 ? `  ${d}x art` : ''}`;
+    const head = `RING  seed ${args.seed}${args.section ? `  from ${args.section}` : ''}${args.bot ? '  bot' : ''}${args.god ? '  god' : ''}${args.players > 1 ? '  2P' : ''}`;
+    const sec = h.runner?.section.id ?? args.section ?? 'x';
+    let file: string;
+    if (frames.length === 1) {
+      file = args.out ?? join('tmp/shots', `ring-${sec}-t${h.ticks}.png`);
+      savePNG(sheet(frames, 1, `${head}${note}`, args.res), file, args.scale || (args.res > 1 ? 1 : 2));
+    } else {
+      file = args.out ?? join('tmp/shots', 'ring-sheet.png');
+      savePNG(sheet(frames, args.cols, `${head}  every ${args.every || 60} ticks${note}`, args.res), file, args.scale || 1);
+    }
+    const report = h.report();
+    console.log(`${frames.length} frame(s) → ${file}`);
+    for (const e of report.errors) console.error(`error: ${e.where}: ${e.message}${e.count > 1 ? ` (×${e.count})` : ''}`);
+    if (report.errors.length) process.exitCode = 1;
+  } finally {
+    h.dispose();
+  }
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes('--fps')) {
     await fpsMain(process.argv.slice(2));
@@ -450,6 +567,10 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.art < 2) setHiArt(false);
   else setArtTier(shotTier(args));
+  if (args.mission === 'ring') {
+    await ringMain(args);
+    return;
+  }
   for (const m of args.imports) await import(pathToFileURL(resolve(m)).href);
   const gfx = resolveGfx(args.res, args.gfx);
   if (gfx.warning) console.warn(`[shot] ${gfx.warning}`);

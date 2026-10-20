@@ -23,12 +23,25 @@ import type { Scene } from '../../engine/scene';
 import { frameW, getFrame, hasSprite } from '../../engine/sprites';
 import { blinkOn, uiText, type GameApp } from '../app';
 import { wrapText } from '../context';
-import type { MissionRunner } from '../mission/runner';
 import { getCharacter } from '../registry';
 import type { GameSession, PlayerSlot } from '../session';
 import { TUNING } from '../tuning';
 import { CALLOUTS, CRITIC_QUOTES, missionCard, VOICE } from './flow-data';
 import { missionDone, recordMissionClear } from './flow';
+
+/**
+ * What the tally reads from a finished play: a MissionRunner or the ring's RingRunner
+ * (docs/design/ring.md §13: a type-only widening; nothing changes at run time).
+ */
+export interface TallyRunner {
+  readonly session: GameSession;
+  readonly mission: { readonly id: string; readonly hostages?: Readonly<Record<string, number>> };
+}
+
+/** A tally runner that knows what comes next (the newspaper's `missionDone`). */
+export interface NextRunner extends TallyRunner {
+  nextMission(): string | null;
+}
 
 /** One tally line: points, or null for a missed bonus (`---`); `note` replaces the points (HATS). */
 export interface TallyLine {
@@ -56,7 +69,7 @@ export function hatsCollected(kills: Readonly<Record<string, number>>): number {
 }
 
 /** Hostages on the route a slot took (MissionDef.hostages per section id; 0 when unknown). */
-function routeHostages(runner: MissionRunner, slot: PlayerSlot): number {
+function routeHostages(runner: TallyRunner, slot: PlayerSlot): number {
   const per = runner.mission.hostages;
   if (!per) return 0;
   let n = 0;
@@ -78,7 +91,7 @@ export function bossSpeedBonus(missionId: string, startTick: number, endTick: nu
 }
 
 /** The tally lines of one slot (GDD §14.4), before the difficulty line. */
-export function tallyLines(runner: MissionRunner, session: GameSession, slot: PlayerSlot): SlotTally {
+export function tallyLines(runner: TallyRunner, session: GameSession, slot: PlayerSlot): SlotTally {
   const S = TUNING.score;
   const m = slot.mission;
   const lines: TallyLine[] = [];
@@ -140,7 +153,7 @@ const pageOpts: DrawOpts = { screen: true };
 
 export class MissionCompleteScene implements Scene {
   private readonly app: GameApp;
-  readonly runner: MissionRunner;
+  readonly runner: NextRunner;
   private cols: Column[] = [];
   private t = 0;
   private leaving = false;
@@ -149,7 +162,7 @@ export class MissionCompleteScene implements Scene {
   private doneAt = -1;
   private headline = '';
 
-  constructor(app: GameApp, runner: MissionRunner) {
+  constructor(app: GameApp, runner: NextRunner) {
     this.app = app;
     this.runner = runner;
   }

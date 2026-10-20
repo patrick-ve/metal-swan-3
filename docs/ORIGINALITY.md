@@ -123,6 +123,28 @@ five real friends of the user: VINCENT, THOM, DIRK, BOB and PATRICK. Rules for t
   `HALL OF FAME`, `LOADING AMMUNITION`) are our own; `tests/game/character-select.test.ts` checks
   them against the banned names above.
 
+## Exception: mission `ring` (the A10 ring road, 2026-10-20)
+
+By the user's explicit decision (2026-10-20, `docs/design/ring.md` §12), the `ams` exception
+above is extended to mission `ring` (level 2). Rules for this exception:
+
+- The ring uses real names of the A10 ring road of Amsterdam and its places: A10, de Ring, the
+  S-exits (S101 … S118), the Coentunnel, the Zeeburgertunnel, RAI, Zuidas, Sloterdijk, Westpoort,
+  Noord, Zeeburg, and the other districts, bridges and interchanges on the route.
+- The player's car is a likeness of the Volvo 850 estate (a boxy 1990s Swedish station wagon),
+  without the maker's badge, logo or name on the car. The heroes may say "de Volvo" in a line;
+  code ids say `wagon`. The two liveries are the squad's own rally estates (likeness only, from
+  the user's photos, which never enter the repository): no rally plaque, no rally numbers, no
+  rally logo, and made-up yellow Dutch plates only (never a real plate).
+- All art is drawn by this project's code. No photo is traced, sampled or pixel-copied; road
+  signs, matrix signs, hectometre boards and the wagons' lettering use our own pixel lettering.
+- Civilian cars carry no maker badges or real plates; the scooter gang and every other road
+  enemy are our own designs.
+- The rules above about other games (names, designs, music, text) still apply in full, and so do
+  `docs/research/mechanics.md` §23 (no laughing or pointing at a player's death, no mass scream,
+  no cheering idle gag) and the hostage rule (a freed hostage bows; it never salutes).
+- The self-check question 2 below does not apply to these listed real names.
+
 ## Exception: the first-person mode (2026-10-14)
 
 By the user's decision (2026-10-14), the game turns into a first-person raycaster shooter after
