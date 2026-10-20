@@ -242,7 +242,7 @@ Spec: `docs/design/fps.md` §1.5–1.7, §3.7, §4.1, §4.6–4.8, §5. All pure
   `FLOOR n / LIVES n` card; the last life → `ContinueScene(app, this)`. FpsScene is the
   `PauseHost` (`applySettings`) and the `Continuable` (`continuePlayer`, `resumeMusic`,
   `startPressed`: any start key for the fps slot, `acceptsSlot(i)`: only the fps slot acts on the
-  continue screen, `continueGag = false`).
+  continue screen).
 - **Route** (`scenes/fps-route.ts`): `startFpsRun(app, {floor, fromBridge?})` (no session → the
   title), `fpsFloorDone(app, run, result)` (→ `FpsTallyScene`), `fpsTallyDone(app, run)` (floor 0 →
   the title; the next registered floor's intro; after the last floor →
@@ -541,7 +541,8 @@ fight on NORMAL / HARD is still open.
   `startFpsRun(app, { floor: 1, fromBridge: true })`.
 - `PauseHost` (`scenes/pause.ts`: `applySettings?(s)`) and `Continuable` (`scenes/continue.ts`:
   `continuePlayer(slot)`, `resumeMusic()`, `clearOverlays?()`, `startPressed?(slot, input)`,
-  `acceptsSlot?(slot)`, `continueGag?`): GameplayScene and FpsScene implement both.
+  `acceptsSlot?(slot)`): FpsScene implements both; GameplayScene is a `PauseHost` (the 2D missions
+  have the in-world continue, GDD §4.6, and no continue screen).
 - `EndingScene(app, { variant: 'fps' })` (after the last floor; `'campaign'` after m5),
   `goldenRecordRoute(campaign)` (`FPS_ROUTE` = ams, fps-1, fps-2 once the campaign played fps-1,
   else the six missions), `missionColumn(entry)` (`fps-1` → `F1`, `fps-2` → `F2`).

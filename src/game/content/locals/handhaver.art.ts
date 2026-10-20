@@ -7,7 +7,9 @@
  * idle frame squeezed by turnSquash; the Turner in handhaver.ts plays it narrowing, flips, then
  * widening), alert (1), tell (3: opens the book, licks the pencil, writes),
  * throw (5: the flick at frame 1, then a 2-frame recover that eases the arm down), photo-pose (1), die (6: swoons), die-knife, die-blast, die-burn,
- * die-crush. `enemy/boete-ticket/fly` (4: the fluttering ticket, centre anchor).
+ * die-crush, and the continue reactions (deferred): laugh (2: head back, pointing, the book kept)
+ * and cower (2: knees bent, an arm over the cap, trembling). `enemy/boete-ticket/fly` (4: the
+ * fluttering ticket, centre anchor).
  *
  * UHD art (mission ams; docs/ART_GUIDE.md "UHD art"): every strip has one density-generic
  * generator for 2× and 4× (`hd`): the officer is the HD rig (`renderHuman(…, d)`: navy uniform,
@@ -141,6 +143,38 @@ export const HANDHAVER_THROW_TIMING: readonly number[] = [3, 5, 4, 4, 4];
 /** Ticks per walk frame at the nominal walk speed (Animator rate = strideRate). */
 export const HANDHAVER_WALK_TPF = 6;
 
+/**
+ * Continue reactions. Laugh: standing, the head tilted back, the near arm pointing forward at the
+ * empty spot, the far hand keeps the book; the eyes stay shut while the mouth opens wide (frame 1)
+ * and closes in a grin as the shoulders bob 1 px down (frame 2).
+ */
+const LAUGH: readonly Pose[] = [0, 1].map((k): Pose => ({
+  ...P.STAND,
+  armN: A(96, 8, 'point'),
+  armF: { to: [9, 6 - k], hand: 'fist' },
+  lean: -6,
+  hunch: k,
+  head: { tilt: -20 },
+  expr: (['yawn', 'happy'] as const)[k],
+}));
+/**
+ * Cower: knees bent low, both hands clamped over the cap, panicking; frame 2 trembles (the upper
+ * body sways 1 px forward). The book goes into a pocket: both hands are busy.
+ */
+const COWER: readonly Pose[] = [0, 1].map((k): Pose => ({
+  legN: { hip: 72, knee: 104 },
+  legF: { hip: 30, knee: 108 },
+  lean: 8 + k * 8,
+  hunch: 1,
+  armN: { to: [1, -9], hand: 'open' },
+  armF: { to: [2, -8], hand: 'open' },
+  head: { dy: 1, tilt: 10 },
+  expr: 'panic',
+}));
+/** Ticks per frame of the reactions (both loop). */
+export const HANDHAVER_LAUGH_TPF = 8;
+export const HANDHAVER_COWER_TPF = 3;
+
 /** Walk with the free (near) arm swinging against the legs; the far hand keeps the book. */
 export const WALK_SWING: readonly Pose[] = withSwing(P.WALK, 0.6, 24);
 
@@ -161,6 +195,9 @@ function defineOfficer(set: string, style: HumanStyle): void {
   defHi(pre + 'tell', (d) => TELL.map((p) => officer(style, p, 'open', d)), { ...o, durations: [8, 8, 9999] });
   defHi(pre + 'throw', (d) => THROW_ALL(style).map((p, i) => officer(style, p, i < 3 ? 'open' : 'shut', d)), { ...o, durations: HANDHAVER_THROW_TIMING, loop: false });
   defHi(pre + 'photo-pose', (d) => [officer(style, { ...P.STAND, armN: A(160, 30, 'open'), armF: HOLD, expr: 'happy' }, 'shut', d)], o);
+  // Continue reactions (rare: deferred; they show only around a continue).
+  defHi(pre + 'laugh', (d) => LAUGH.map((p) => officer(style, p, 'shut', d)), { ...o, ticksPerFrame: HANDHAVER_LAUGH_TPF, defer: true });
+  defHi(pre + 'cower', (d) => COWER.map((p) => officer(style, p, 'none', d)), { ...o, ticksPerFrame: HANDHAVER_COWER_TPF, defer: true });
   const swoon: readonly Pose[] = [
     { ...P.STAND, armN: A(170, 30, 'open'), armF: A(-20, 40, 'open'), head: { tilt: -10 }, expr: 'dazed' },
     { ...P.STAND, armN: A(160, 50, 'open'), armF: A(30, 20, 'open'), lean: -10, expr: 'dazed' },

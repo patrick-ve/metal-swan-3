@@ -8,7 +8,7 @@ import { createApp, GameAudio, graphicsMode, loadHighScores, newCampaign, type G
 import type { MissionDef } from '../../src/game/mission/index';
 import { DEFAULT_PARAMS } from '../../src/game/params';
 import { defineMission, getMission } from '../../src/game/registry';
-import { BootScene, ContinueScene, GameplayScene, MissionCompleteScene, PauseScene, TitleScene, startNewGame } from '../../src/game/scenes/index';
+import { BootScene, GameplayScene, MissionCompleteScene, PauseScene, TitleScene, startNewGame } from '../../src/game/scenes/index';
 import { CharacterSelectScene } from '../../src/game/scenes/character-select';
 import { EndingScene, LAST_NOTE_TICKS } from '../../src/game/scenes/ending';
 import { FinalTallyScene } from '../../src/game/scenes/final-tally';
@@ -42,6 +42,8 @@ const MISSION: MissionDef = {
       playerStart: { x: 40, y: FLOOR },
       script: function* scenes(ctx) {
         yield 60;
+        // Only with a hero on the ground: the game-over test's countdown holds this script.
+        yield () => ctx.players.some((p) => p.state === 'play');
         yield ctx.missionComplete();
       },
     },
@@ -202,7 +204,7 @@ describe('scenes (headless)', () => {
     expect(a.scenes.top).toBeInstanceOf(PauseScene);
   });
 
-  it('game over: the continue screen; time runs out → GAME OVER → high scores → title', () => {
+  it('game over: the countdown runs over the live world (no continue screen); time runs out → GAME OVER → high scores → title', () => {
     const { app: a, step, until } = app(timeline().idle(1));
     startNewGame(a, { mission: 'm1' });
     step(20);
@@ -210,7 +212,9 @@ describe('scenes (headless)', () => {
     a.session!.slots[0].lives = 1;
     game.runner.players[0].kill('impact');
     step(80);
-    expect(a.scenes.top).toBeInstanceOf(ContinueScene);
+    expect(a.scenes.top).toBe(game);
+    expect(game.runner.countdownHeld).toBe(true);
+    expect(game.runner.countdownNumber).toBeGreaterThanOrEqual(8);
     expect(until(GameOverScene, 11 * 60 + 200)).toBe(true);
     // A score of 0 does not make the table: straight to the high scores, then the title.
     expect(until(HighScoresScene, 300)).toBe(true);

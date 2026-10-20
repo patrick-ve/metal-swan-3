@@ -758,7 +758,8 @@ play-testing**; each line gives the reason. Names are suggestions for `src/game/
 |---|---|---|
 | `LIVES_PER_CREDIT` | **3**; no extra lives | SOURCED. |
 | `CONTINUE_COUNT` | **9 → 0**, **60** ticks per count, fire/jump ×4 faster | MS nine counts (SOURCED); seconds per count ESTIMATED. |
-| `CONTINUE_GIFT` | machine-gun crate drops on the player | SOURCED. |
+| `CONTINUE_GIFT` | machine-gun crate drops on the player | SOURCED (ours: the machine gun is given at once). |
+| In-world continue | no pause: the countdown runs over the live world; every player out → the enemies on screen laugh; a continued hero lands → they cower **90** ticks, the boss staggers **60** | User decision 2026-10-20 (GDD §4.6). |
 | `TIMER_COUNTS` | **60**, shown as a 2-digit counter | SOURCED. |
 | `TIMER_TICKS_PER_COUNT` | **256** (≈ 4.3 s) | MS 128 MS ticks per count (MEASURED); full counter ≈ 4.3 min. |
 | `TIMER_ALARM_AT` | **10** | SOURCED. |

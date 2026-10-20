@@ -289,6 +289,8 @@ export class Player extends Entity {
   aimVis = 0;
   private aimVisT = 0;
   private spawnFloor = Infinity;
+  /** The running drop-in is a continue (`continueGame`): its landing emits `continueLanded`. */
+  private continued = false;
   /** Ticks left of the running-jump somersault (`<art>/flip`, draw-only; any action cancels it). */
   private flipT = 0;
   /** checkMount armed the Swan mount-hop; enterVehicle stores its start point and tick. */
@@ -1256,9 +1258,10 @@ export class Player extends Entity {
     this.world.events.emit('playerSpawned', { player: this, slot: this.index, respawn: true });
   }
 
-  /** A continue was used: full lives, drop in, optional gift weapon. */
+  /** A continue was used: full lives, drop in, optional gift weapon; the landing emits `continueLanded`. */
   continueGame(giftWeapon: string | null = TUNING.continues.giftWeapon): void {
     this.respawn();
+    this.continued = true;
     if (giftWeapon && hasWeapon(giftWeapon)) this.giveWeapon(giftWeapon);
   }
 
@@ -1367,6 +1370,11 @@ export class Player extends Entity {
     poofCircle.x = this.x;
     poofCircle.y = this.y - 15;
     eraseEnemyShots(this.world, poofCircle);
+    // The in-world continue: the hero is back (the runner makes the enemies on screen cower).
+    if (this.continued) {
+      this.continued = false;
+      this.world.events.emit('continueLanded', { player: this, slot: this.index });
+    }
   }
 
   // ------------------------------------------------------------------------------- intro drop

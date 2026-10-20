@@ -1,7 +1,8 @@
 /**
  * Gameplay scene: a MissionRunner (world + section + players) with the HUD, the pause overlay,
  * 2-player join / continue (a credit each when credits are limited), debug hooks (F4 skip, F5
- * weapons) and the hand-offs to the continue screen and the mission-complete tally. It also
+ * weapons) and the hand-offs to GAME OVER (after the in-world continue countdown, GDD §4.6: no
+ * continue menu) and the mission-complete tally. It also
  * plays the attract-mode demo (GDD §13.3): a bot on ams-a (m1-a without it) with `DEMO PLAY`, ended by any key.
  *
  * Missions that have a mission card (flow-data.ts) start with the card's banner (`MISSION 1` /
@@ -39,7 +40,7 @@ import { getMission, getWeapon, hasCharacter, hasMission, listMissions, listWeap
 import { GameSession, type Difficulty, type SlotIndex } from '../session';
 import { creditsOf, type GameSettings } from '../settings';
 import { TUNING } from '../tuning';
-import { ContinueScene, type Continuable } from './continue';
+import { GameOverScene } from './game-over';
 import { hasMissionCard, missionCard, ROSTER, VOICE } from './flow-data';
 import { GlitchBridgeScene } from './glitch-bridge';
 import { MissionCompleteScene } from './mission-complete';
@@ -175,6 +176,14 @@ const TWO_PLAYER_2X = ['enemy/fatbike-youth'];
  */
 const SCREEN_ONLY = /^char\/[^/]+\/(select|portrait)/;
 
+/**
+ * The in-world continue's reaction strips (GDD §4.6: `laugh` while every player is out, `cower`
+ * when the hero is back): they show only around a continue, so they never join the tier-4
+ * working set (the budget has no room for every set's pair). Drawn at tier 4 they show their 2×
+ * art for a moment and are queued (`pumpDenseQueue`): the pool builds the ones on screen.
+ */
+const ON_DEMAND_4X = /\/(laugh|cower)$/;
+
 /** Does `id` keep its 2× art at tier 4 with `players` players (never a hero's)? */
 export function twoPlayer2x(id: string, players: number): boolean {
   return players > 1 && TWO_PLAYER_2X.some((p) => id.startsWith(p));
@@ -185,7 +194,8 @@ export function twoPlayer2x(id: string, players: number): boolean {
  * `preloadFirst`, the current and the next section's `art` (not its `fx/`), the boss
  * (`preloadLast`) at the end.
  * Only ids with a 4× generator; the other heroes never, nor the heroes' menu-only strips
- * (`SCREEN_ONLY`). To stay inside DENSE_BUDGET_BYTES the
+ * (`SCREEN_ONLY`), nor the continue's reaction strips (`ON_DEMAND_4X`: built when drawn). To stay
+ * inside DENSE_BUDGET_BYTES the
  * P2-only art joins only with two players, `twoPlayer2x` ids only with one, and the `boss/`
  * prefixes only in the boss section (built on entry, long before the fight; a 4× id drawn outside
  * its set shows its 2× art and is queued). On entry the ids outside the new set are released
@@ -204,7 +214,8 @@ export function denseWorkingSet(
     (id) =>
       (!id.startsWith('char/') || (heroes.some((h) => id.startsWith(h)) && !SCREEN_ONLY.test(id))) &&
       (players > 1 || !TWO_PLAYER_ART.some((p) => id.startsWith(p))) &&
-      !twoPlayer2x(id, players),
+      !twoPlayer2x(id, players) &&
+      !ON_DEMAND_4X.test(id),
   );
   const boss = mission.bossSection;
   const last = (mission.preloadLast ?? []).filter((p) => !boss || section === boss || !p.startsWith('boss/'));
@@ -562,18 +573,6 @@ function withCard(id: string): MissionDef | string {
   };
 }
 
-/** The continue screen's view of a MissionRunner (docs/design/fps.md §1.10). */
-function continuableRunner(runner: MissionRunner): Continuable {
-  return {
-    continuePlayer: (slot) => runner.continuePlayer(slot),
-    resumeMusic: () => runner.resumeMusic(),
-    clearOverlays: () => {
-      runner.hud.clearBanner();
-      runner.hud.hideGo();
-    },
-  };
-}
-
 export class GameplayScene implements Scene, PauseHost {
   readonly app: GameApp;
   readonly opts: GameplayOpts;
@@ -636,9 +635,17 @@ export class GameplayScene implements Scene, PauseHost {
       else if (runner.mission.after === 'fps') app.scenes.replace(new GlitchBridgeScene(app, { from: this, runner }), { fade: 0 });
       else app.scenes.replace(new MissionCompleteScene(app, runner), { fade: 40 });
     });
+    // The in-world continue (GDD §4.6): the countdown runs over the live world (runner + HUD);
+    // no menu opens. Every player out: the announcer asks, stale banners and the GO arrow go.
+    runner.events.on('allOut', () => {
+      if (this.demo) return;
+      app.audio.voice(VOICE.continue);
+      runner.hud.clearBanner();
+      runner.hud.hideGo();
+    });
     runner.events.on('gameOver', () => {
       if (this.demo) this.endDemo(false);
-      else app.scenes.push(new ContinueScene(app, continuableRunner(runner)));
+      else app.scenes.push(new GameOverScene(app));
     });
     // TIME UP! is an announcer line too (GDD §12.3).
     runner.events.on('sectionLoaded', ({ id }) => {
@@ -678,7 +685,7 @@ export class GameplayScene implements Scene, PauseHost {
   }
 
   /**
-   * A scene opened on top (pause menu, continue screen): the music plays on at half level
+   * A scene opened on top (pause menu, GAME OVER): the music plays on at half level
    * (GDD §13.8) and the looping sounds (ambience, engines) fall silent until the game resumes.
    */
   pause(): void {

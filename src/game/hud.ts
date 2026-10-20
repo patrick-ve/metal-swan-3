@@ -59,10 +59,11 @@ const worldOpts: DrawOpts = {};
 const text: TextOpts = { font: 'small', color: WHITE, outline: INK, screen: true };
 const worldText: TextOpts = { font: 'small', color: INK, screen: false, align: 'center' };
 
-function txt(r: Renderer, s: string, x: number, y: number, color: Color = WHITE, align: 'left' | 'center' | 'right' = 'left', font: 'small' | 'big' = 'small'): void {
+function txt(r: Renderer, s: string, x: number, y: number, color: Color = WHITE, align: 'left' | 'center' | 'right' = 'left', font: 'small' | 'big' = 'small', scale = 1): void {
   text.color = color;
   text.align = align;
   text.font = font;
+  text.scale = scale;
   r.text(s, x, y, text);
 }
 
@@ -180,6 +181,28 @@ export function drawHud(r: Renderer, h: HudInput): void {
   drawOnward(r, h.hud, h.ticks);
   drawCallouts(r, h.hud);
   drawBanner(r, h.hud, h.ticks);
+  drawCountdown(r, h);
+}
+
+/** One player in the game (the continue countdown shows in the centre, not in the corner). */
+function solo(session: GameSession): boolean {
+  return session.slots.filter((s) => s.joined).length <= 1;
+}
+
+/**
+ * The in-world continue with one player (GDD §4.6, §13.9): `CONTINUE?` (big, C, y 60) and the
+ * countdown (big ×2, C, y 90) over the live world, `PRESS START` (blinking, y 130) and the
+ * credits (y 140). Two players see their countdown in their own corner (drawPanel).
+ */
+function drawCountdown(r: Renderer, h: HudInput): void {
+  const n = h.runner?.countdownNumber ?? -1;
+  if (n < 0 || !solo(h.session)) return;
+  const c = VIEW_W >> 1;
+  txt(r, 'CONTINUE?', c, 60, GOLD, 'center', 'big');
+  txt(r, String(n), c, 90, n <= 3 ? RED : WHITE, 'center', 'big', 2);
+  const credits = h.session.credits;
+  if (credits > 0 && blink(h.ticks)) txt(r, 'PRESS START', c, 130, WHITE, 'center');
+  txt(r, credits === Infinity ? 'FREE PLAY' : credits <= 0 ? 'NO CREDITS' : `CREDITS ${String(credits).padStart(2, '0')}`, c, 140, PAL.stone[3], 'center');
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -209,9 +232,10 @@ function drawPanel(r: Renderer, h: HudInput, s: PlayerSlot): void {
   txt(r, score, left ? 16 : VIEW_W - 16, 3, GOLD, align);
 
   if (s.gameOver) {
-    // 2 players: the continue countdown runs in the dead player's corner (GDD §13.9).
+    // 2 players: the continue countdown runs in the dead player's corner (GDD §13.9); one player
+    // sees it in the centre (drawCountdown).
     const cont = h.runner?.continueTicks[s.index] ?? -1;
-    if (cont >= 0) {
+    if (cont >= 0 && !solo(h.session)) {
       const n = Math.max(0, Math.ceil(cont / TUNING.continues.ticksPerCount) - 1);
       txt(r, 'CONTINUE?', edge, 13, GOLD, align);
       txt(r, String(n), edge, 23, n <= 3 ? RED : WHITE, align, 'big');

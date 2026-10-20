@@ -11,7 +11,9 @@
  * attack (2: the dive, wings folded back), die (3), die-blast, die-burn, die-crush, photo-pose,
  * feather (4: a falling feather, centre anchor), takeoff (3: crouch, push off, first down-stroke;
  * perched art lifted, anchored at the body centre like the flying frames), pull-up (2: out of the
- * dive, wings flared), turn (2: `turnSquash` of the gliding gull, for the Turner).
+ * dive, wings flared), turn (2: `turnSquash` of the gliding gull, for the Turner), and the
+ * continue reactions (deferred, flying anchor): laugh (2: head back, the beak gaping, wings up /
+ * down) and cower (2: a startled hover, feathers puffed, wings flared high).
  *
  * UHD art (mission ams; docs/ART_GUIDE.md "UHD art"): `gullHd(pose, d)` draws every pose natively
  * at 2× and 4× (lit volumes, layered feathers, outline A) on the 1× logical canvas, and
@@ -40,7 +42,12 @@ const TIP = PAL.black;
 const BEAK = PAL.gold;
 
 export type GullWings = 'up' | 'mid' | 'down' | 'wide' | 'folded' | 'rest';
-export type GullFace = 'open' | 'shut' | 'kaw' | 'x' | 'happy' | 'dive';
+/**
+ * Faces. `laugh` (the continue laugh): the head thrown back and up, the beak gaping wide toward
+ * the sky, the eyes squeezed shut. `alarm` (the startled cower): a wide eye, the brow up, the
+ * beak open.
+ */
+export type GullFace = 'open' | 'shut' | 'kaw' | 'x' | 'happy' | 'dive' | 'laugh' | 'alarm';
 
 export interface GullPose {
   wings?: GullWings;
@@ -55,7 +62,26 @@ export interface GullPose {
   fries?: number;
   /** Wing-tip override (shoulder space): the flap in-betweens between the named `wings`. */
   tip?: readonly [number, number];
+  /** Feathers puffed out (startled): a bigger body with ruffled tufts on the belly and the crown. */
+  puff?: boolean;
 }
+
+/** The head position of a pose (body space; `by` = the body's y offset). */
+function headAt(p: GullPose, by: number): [number, number] {
+  if (p.face === 'laugh') return [5, by - 7 + (p.peck ?? 0)];
+  if (p.face === 'alarm') return [6, by - 7 + (p.peck ?? 0)];
+  const hx = p.tucked ? 2 : p.face === 'dive' ? 8 : 6;
+  const hy = by + (p.tucked ? -3 : p.face === 'dive' ? 1 : -6) + (p.peck ?? 0);
+  return [hx, hy];
+}
+
+/** Puffed body (1 px bigger all round than the 18 × 10 body): the ruffled feather tips under the belly. */
+const PUFF_TUFTS: readonly (readonly [number, number, number])[] = [
+  // belly feather tips, swept back: x, y below the body centre, length (down)
+  [-7, 6, 1],
+  [-3, 6, 1],
+  [1, 6, 1],
+];
 
 type V = readonly [number, number];
 const lerp = (a: V, b: V, t: number): [number, number] => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
@@ -105,21 +131,40 @@ export function gull(p: GullPose = {}): Frame {
   // Tail (white, a little dark edge under it).
   s.add(WHITE, (b, X, Y) => b.poly([X(-8), Y(by - 2), X(-15), Y(by - 1 + (perched ? 3 : 0)), X(-14), Y(by + 2 + (perched ? 3 : 0)), X(-7), Y(by + 3)], FLAT), { base: 2 });
   // Body: a big white teardrop, grey on the back.
-  s.add(WHITE, (b, X, Y) => b.ellipse(X(-9), Y(by - 5), 18, 10, FLAT), { base: 3, glint: true });
+  if (p.puff) {
+    // Puffed out: a rounder body, ruffled tufts under the belly.
+    s.add(WHITE, (b, X, Y) => {
+      b.ellipse(X(-10), Y(by - 6), 20, 12, FLAT);
+      for (const [x, y, l] of PUFF_TUFTS) b.poly([X(x), Y(by + y - 1), X(x + 2), Y(by + y - 1), X(x - 1), Y(by + y + l)], FLAT);
+    }, { base: 3, glint: true });
+  } else s.add(WHITE, (b, X, Y) => b.ellipse(X(-9), Y(by - 5), 18, 10, FLAT), { base: 3, glint: true });
   s.add(GREY, (b, X, Y) => b.ellipse(X(-8), Y(by - 5), 13, 4, FLAT), { base: 3, lo: 0 });
   // Head and neck.
-  const hx = p.tucked ? 2 : p.face === 'dive' ? 8 : 6;
-  const hy = by + (p.tucked ? -3 : p.face === 'dive' ? 1 : -6) + (p.peck ?? 0);
+  const [hx, hy] = headAt(p, by);
   s.add(WHITE, (b, X, Y) => {
     b.circle(X(hx), Y(hy), 4, FLAT);
     if (!p.tucked) b.thickLine(X(3), Y(by - 2), X(hx), Y(hy), 4, FLAT);
+    // Ruffled crown feathers (puffed).
+    if (p.puff) b.poly([X(hx - 3), Y(hy - 2), X(hx - 1), Y(hy - 4), X(hx - 4), Y(hy - 5)], FLAT);
   }, { base: 3, glint: true });
   // Beak: yellow, hooked, a red spot near the tip.
   const face = p.face ?? 'open';
-  if (!p.tucked) {
+  if (!p.tucked && face === 'laugh') {
+    // The laughing gape: the red mouth between the mandibles, the upper one tossed up at the sky.
+    s.add(PAL.red, (b, X, Y) => b.poly([X(hx + 3), Y(hy), X(hx + 8), Y(hy - 5), X(hx + 9), Y(hy + 1)], FLAT), { hi: 0, lo: 0, base: 1 });
+    s.add(BEAK, (b, X, Y) => {
+      b.poly([X(hx + 3), Y(hy - 1), X(hx + 8), Y(hy - 7), X(hx + 9), Y(hy - 6), X(hx + 4), Y(hy)], FLAT);
+      b.poly([X(hx + 3), Y(hy + 1), X(hx + 10), Y(hy + 1), X(hx + 9), Y(hy + 2), X(hx + 4), Y(hy + 2)], FLAT);
+    }, { hi: 0, lo: 0, base: 2 });
+    s.detail((b, X, Y) => {
+      b.set(X(hx + 6), Y(hy - 1), PAL.pink[2]);
+      b.set(X(hx + 9), Y(hy + 2), PAL.red[2]);
+      b.set(X(hx + 9), Y(hy - 6), BEAK[0]);
+    });
+  } else if (!p.tucked) {
     const down = face === 'dive' ? 2 : 0;
     s.add(BEAK, (b, X, Y) => {
-      if (face === 'kaw') {
+      if (face === 'kaw' || face === 'alarm') {
         b.poly([X(hx + 3), Y(hy - 1), X(hx + 10), Y(hy - 4), X(hx + 9), Y(hy - 2), X(hx + 4), Y(hy)], FLAT);
         b.poly([X(hx + 3), Y(hy + 1), X(hx + 9), Y(hy + 3), X(hx + 4), Y(hy + 2)], FLAT);
       } else {
@@ -127,7 +172,7 @@ export function gull(p: GullPose = {}): Frame {
       }
     }, { hi: 0, lo: 0, base: 2 });
     s.detail((b, X, Y) => {
-      if (face === 'kaw') {
+      if (face === 'kaw' || face === 'alarm') {
         b.set(X(hx + 6), Y(hy + 2), PAL.red[2]);
         b.set(X(hx + 5), Y(hy), PAL.red[0]);
       } else b.set(X(hx + 8), Y(hy + 1 + down), PAL.red[2]);
@@ -142,7 +187,15 @@ export function gull(p: GullPose = {}): Frame {
     }
     if (face === 'x') xEye(b, X(hx + 1), Y(hy - 1));
     else if (face === 'shut') b.hline(X(hx), X(hx + 2), Y(hy - 1), INK);
-    else if (face === 'happy') {
+    else if (face === 'alarm') {
+      // A wide eye, a pinpoint pupil, the brow raised flat.
+      b.set(X(hx + 1), Y(hy - 2), PAL.gold[3]);
+      b.set(X(hx + 2), Y(hy - 2), PAL.gold[3]);
+      b.set(X(hx + 1), Y(hy - 1), PAL.gold[3]);
+      b.set(X(hx + 2), Y(hy - 1), INK);
+      b.set(X(hx), Y(hy - 3), INK);
+      b.set(X(hx + 1), Y(hy - 3), INK);
+    } else if (face === 'happy' || face === 'laugh') {
       b.set(X(hx), Y(hy - 1), INK);
       b.set(X(hx + 1), Y(hy - 2), INK);
       b.set(X(hx + 2), Y(hy - 1), INK);
@@ -410,20 +463,40 @@ export function gullHd(p: GullPose, d: HdD): Frame {
   const bc = [OX, oy + by] as const;
   // One part: the mantle meets the white body in a clean colour edge, not a separation line.
   const body = c.newPart();
-  c.ellipsoid(bc[0], bc[1], 9, 5, { mat: m.white, z: 0, part: body });
+  if (p.puff) {
+    // Puffed out: the rounder 1× body (1 px bigger all round) and the ruffled belly tufts.
+    c.ellipsoid(bc[0], bc[1], 10, 6, { mat: m.white, z: 0, part: body });
+    for (const [x, y, l] of PUFF_TUFTS) {
+      c.blob(grow([L([x, by + y - 1]), L([x + 2, by + y - 1]), L([x - 1, by + y + l])], 0.35), 0.35, { mat: m.white, z: 0.5, tone: -0.12, bulge: 0.1 });
+    }
+  } else c.ellipsoid(bc[0], bc[1], 9, 5, { mat: m.white, z: 0, part: body });
   c.ellipsoid(bc[0] - 1.5, bc[1] - 3, 6.5, 2.05, { mat: m.grey, z: 3.2, part: body, tex: scallops(1.4, 1.0, 0.12) });
   // Head and neck (one part).
-  const hx = p.tucked ? 2 : p.face === 'dive' ? 8 : 6;
-  const hy = by + (p.tucked ? -3 : p.face === 'dive' ? 1 : -6) + (p.peck ?? 0);
+  const [hx, hy] = headAt(p, by);
   const head = c.newPart();
   const hc = L([hx, hy]);
   c.ellipsoid(hc[0], hc[1], 4.5, 4.5, { mat: m.white, z: 2, part: head });
   if (!p.tucked) c.capsule(OX + 4, oy + by - 1, OX + hx + 1, oy + hy + 1, 2, 2, { mat: m.white, z: 2, part: head });
+  // Ruffled crown feathers (puffed): a raised tuft at the back of the head.
+  if (p.puff) c.blob(grow([L([hx - 3, hy - 2]), L([hx - 1, hy - 4]), L([hx - 4, hy - 5])], 0.4), 0.35, { mat: m.white, z: 1.8, tone: -0.08, bulge: 0.1 });
   const face = p.face ?? 'open';
-  if (!p.tucked) {
+  if (!p.tucked && face === 'laugh') {
+    // The laughing gape toward the sky: a red mouth and a pink tongue between the mandibles, the
+    // upper one tossed up, the darker hook at its tip.
+    const B = (x: number, y: number): P2 => L([hx + x, hy + y]);
+    c.poly(grow([B(3, 0), B(8, -5), B(9, 1)], 0.3), { mat: m.mouth, z: 6 });
+    c.blob(grow([B(3, -1), B(8, -7), B(9, -6), B(4, 0)], 0.35), 0.4, { mat: m.beak, z: 7, bulge: 0.1 });
+    c.blob(grow([B(3, 1), B(10, 1), B(9, 2), B(4, 2)], 0.35), 0.4, { mat: m.beak, z: 7, tone: -0.1, bulge: 0.1 });
+    const tg = B(6.2, -0.6);
+    inkDisc(c, tg[0], tg[1], d === 4 ? 0.55 : 0.5, PAL_HD.pink[5]);
+    const gs = B(9.1, 2.1);
+    inkDisc(c, gs[0], gs[1], 0.45, PAL_HD.red[5]);
+    const hk = B(8.6, -6.4);
+    inkDisc(c, hk[0], hk[1], d === 4 ? 0.4 : 0.45, PAL_HD.gold[2]);
+  } else if (!p.tucked) {
     const down = face === 'dive' ? 2 : 0;
     const B = (x: number, y: number): P2 => L([hx + x, hy + y]);
-    if (face === 'kaw') {
+    if (face === 'kaw' || face === 'alarm') {
       // Open beak: a red gape and a pink tongue between the mandibles.
       c.poly([B(3, -0.4), B(8.5, -2.6), B(8.5, 2.6), B(3, 1.6)], { mat: m.mouth, z: 6 });
       c.blob(grow([B(3, -1), B(10, -4), B(9, -2), B(4, 0)], 0.35), 0.4, { mat: m.beak, z: 7, bulge: 0.1 });
@@ -450,7 +523,15 @@ export function gullHd(p: GullPose, d: HdD): Frame {
     inkLine(c, E(0, -2), E(2, 0), brow, INK);
     inkLine(c, E(0, 0), E(2, -2), brow, INK);
   } else if (face === 'shut') inkLine(c, E(-0.1, -1), E(2.4, -0.8), 0.42, INK);
-  else if (face === 'happy') {
+  else if (face === 'alarm') {
+    // A wide pale eye with a pinpoint pupil (a red orbital ring at 4×), the brow raised flat.
+    const ec = E(1.5, -1.4);
+    if (d === 4) inkDisc(c, ec[0], ec[1], 1.2, PAL_HD.red[4]);
+    inkDisc(c, ec[0], ec[1], d === 4 ? 1.0 : 1.05, PAL_HD.gold[6]);
+    inkDisc(c, ec[0] + 0.3, ec[1] + 0.1, d === 4 ? 0.3 : 0.4, INK);
+    if (d === 4) c.dot(ec[0] - 0.2, ec[1] - 0.45, PAL_HD.snow[6]);
+    inkLine(c, E(-0.4, -3.1), E(1.9, -3.2), brow, INK);
+  } else if (face === 'happy' || face === 'laugh') {
     inkLine(c, E(0, -0.8), E(1, -1.9), brow, INK);
     inkLine(c, E(1, -1.9), E(2, -0.8), brow, INK);
   } else {
@@ -579,6 +660,11 @@ const POSES: Record<string, Pose[]> = {
   die: [{ wings: 'up', face: 'x' }, { wings: 'down', face: 'x' }, { wings: 'rest', face: 'x' }],
   'photo-pose': [{ wings: 'wide', face: 'happy' }],
   'pull-up': [{ wings: 'down', face: 'dive', tip: [-15, 9] }, { wings: 'mid', tip: [-20, 1] }],
+  // Continue reactions (rare: deferred). Laugh: hovering, the head thrown back, the beak gaping, the
+  // wings beating up / down (frame 2 bobs the head 1 px). Cower: a startled hover, the feathers
+  // puffed out, the wings flared high (frame 2 a little lower), a wide eye, the beak open in alarm.
+  laugh: [{ wings: 'up', face: 'laugh' }, { wings: 'down', face: 'laugh', peck: 1 }],
+  cower: [{ wings: 'up', face: 'alarm', puff: true, tip: [-6, -19] }, { wings: 'up', face: 'alarm', puff: true, tip: [-11, -14] }],
 };
 
 /** The 6-frame flap: up, two down-stroke in-betweens, down, a swept-back up-stroke. */
@@ -661,6 +747,11 @@ defineSprite(A + 'die-burn', () => burnStrip(grounded(gull({ wings: 'rest', face
 defineSprite(A + 'die-crush', () => crushStrip(grounded(gull({ wings: 'wide', face: 'x' }))), { durations: [...CRUSH_TIMING], loop: false });
 defineSprite(A + 'photo-pose', () => gull({ wings: 'wide', face: 'happy' }));
 defineSprite(A + 'feather', featherFrames, { ticksPerFrame: 6 });
+/** Ticks per frame of the continue reactions (both loop). */
+export const GULL_LAUGH_TPF = 6;
+export const GULL_COWER_TPF = 3;
+defineSprite(A + 'laugh', () => POSES.laugh.map((p) => gull(p)), { ticksPerFrame: GULL_LAUGH_TPF, defer: true });
+defineSprite(A + 'cower', () => POSES.cower.map((p) => gull(p)), { ticksPerFrame: GULL_COWER_TPF, defer: true });
 
 // UHD art (mission ams): one density-generic generator per strip for 2× and 4×. `idle` is the
 // `walk` flap (the same frames, slower): a dense alias of it, built and held once.

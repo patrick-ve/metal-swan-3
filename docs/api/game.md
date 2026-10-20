@@ -37,7 +37,7 @@ src/game/
   hud.ts           drawHud() (screen HUD + world-space speech bubbles and score pop-ups)
   params.ts        URL launch parameters
   app.ts           GameApp services + menu text helpers
-  scenes/          Boot, Title, Gameplay (+ Pause, Continue / Game Over), MissionComplete (newspaper tally)
+  scenes/          Boot, Title, Gameplay (+ Pause, Game Over; Continue for the fps mode), MissionComplete (newspaper tally)
 ```
 
 ## 1. Boot and the frame
@@ -145,7 +145,7 @@ options apply everywhere:
 |---|---|---|
 | `score` | `{ player, points, x?, y? }` | `awardScore(world, slot, points, x?, y?)` — use it for every score |
 | `enemyKilled` | `{ enemy, damage, points, player }` | Enemy.die |
-| `playerDied` / `playerSpawned` / `playerOut` | `{ player, slot, cause }` / `{ player, slot, respawn }` / `{ player, slot }` | Player |
+| `playerDied` / `playerSpawned` / `playerOut` / `continueLanded` | `{ player, slot, cause }` / `{ player, slot, respawn }` / `{ player, slot }` / `{ player, slot }` | Player (`continueLanded`: a continued hero's drop-in landed) |
 | `weaponChanged` · `pickup` | `{ player, slot, weapon }` · `{ player, slot, item }` | Player · Pickup |
 | `hostageFreed` · `hostageRescued` | `{ hostage, slot }` | Hostage |
 | `bossPhase` · `bossDefeated` | `{ boss, phase }` · `{ boss, player }` | Boss |
@@ -330,7 +330,8 @@ Death (one hit unless invulnerable / god mode; crush and pits kill anyway) → d
 for explosions when drawn) → drop in: first the section rule (`respawnRule`, from `SectionDef.respawn`), else
 the nearest spot in view with floor and no hazard, else `respawnAt` (the runner's last checkpoint); 132 ticks
 blinking invulnerability, start weapon, 10 bombs (EASY 15). A **POOF** (r 64) erases the enemy shots around
-the drop point. The weapon is lost; hostages by `hostageLoss`. Last life → `out` + 'playerOut'. View edges
+the drop point. The weapon is lost; hostages by `hostageLoss`. Last life → `out` + 'playerOut'; a continue's
+landing emits 'continueLanded'. View edges
 are walls; in 'up' sections falling below the view kills. Ice (`iceAt`): low friction, slides on.
 Crouch fire uses the crouch muzzle (the shot leaves at crouch height).
 
@@ -364,10 +365,13 @@ Tags `enemy shootable` (+ `soft`; Legion soldiers add `legion`). Params: `hp`, `
 accepted?, or `reactInArea(world, circle | rect, kind, ticks, { tags?, onScreen?, source?, exclude? })` →
 count. Kinds: `salute` (anthem), `dance` (windup-bots), `panic` (grenade / moving vehicle: run away),
 `confused` (baton-major dies), `freeze` (sundae-mortar), `queue` (the JINGLE), `ears` (HONK), `photo` (SAY
-CHEESE), `stumble` (the drummer dies), `buff` (IN STEP!). While a reaction runs the enemy does not attack
+CHEESE), `stumble` (the drummer dies), `buff` (IN STEP!), `laugh` (the in-world continue: every player out)
+and `cower` (a continued hero landed; a `!` bubble). While a reaction runs the enemy does not attack
 (`thinkReaction(kind)` replaces `think()`; default: stand and play `<art>/<anim>` — `salute`, `dance`,
-`confused`, `frozen`, `queue`, `ears`, `photo-pose`, `stumble`, else `idle`; `panic` runs). Default
-acceptance: everyone takes `photo`; soft `legion` enemies take the rest except `dance` / `buff`; override
+`confused`, `frozen`, `queue`, `ears`, `photo-pose`, `stumble`, `laugh`, `cower` (else `panic`), else `idle`;
+`panic` runs; `laugh` and `cower` face the source). Default acceptance: everyone takes `photo`, `laugh` and
+`cower` (`everyEnemyReacts(kind)`, machines and creatures too); soft `legion` enemies take the rest except
+`dance` / `buff`; override
 `acceptsReaction(kind)` to opt in or out; hooks `onReact`, `onReactionEnd`; `reacting`, `endReaction()`.
 
 *Shared rules* (GDD §4.11): `takeAttackToken(world, e)` before a telegraph (false = keep moving, try later)
@@ -399,7 +403,10 @@ an off-world box. **Two HP models**: *pool* (no `required` part: hits go to the 
 (GDD §10.0: the fight ends when every `required` part is destroyed; the bar and the phase thresholds follow
 their remaining HP; hook `onRequiredPartsGone(d)`). `knifeable` parts are the only ones the automatic knife
 hits; `contact` parts are the only boxes that hurt on touch (`contactBoxes()`). `phaseIntermission` (ticks)
-or `intermission(ticks)` (yield it): boss and players invulnerable, enemy shots on screen erased. `phases = [{ at: 1, name?, pattern?: (b) => ScriptGen, onEnter? }, { at: 0.4, … }, { when: (b) => b.brokenCount(['horn', 'pipes']) >= 2 }]`
+or `intermission(ticks)` (yield it): boss and players invulnerable, enemy shots on screen erased.
+`stagger(ticks)` (the runner calls it when a continued hero lands): the attack pattern holds (only while
+`canStagger()`: a boss in mid-air finishes the jump first), hook `onStagger(ticks)`, `staggering`;
+`addsHeld` (every player out) and `holdAdds` (held or staggering) tell a boss's adds code to wait. `phases = [{ at: 1, name?, pattern?: (b) => ScriptGen, onEnter? }, { at: 0.4, … }, { when: (b) => b.brokenCount(['horn', 'pipes']) >= 2 }]`
 (`at` = HP fraction threshold, `when` = a condition; either one starts the phase; the latest phase met wins;
 checked after every hit and broken part, call `checkPhases()` when a condition changes otherwise); patterns run as world scripts owned by the boss and are cancelled on the next phase / death.
 `*intro()` runs first (invulnerable; shots are absorbed). Helpers: `*cycle(patterns, gap)` (random, no repeat),
@@ -542,8 +549,11 @@ next tick.
 
 **MissionRunner** (`new MissionRunner({ session, mission (id | def), section?, pads, audio?, seed?, bossRush?, settings? })`):
 `start()`, `update()`, `draw(r)` (scenery + world + fade; the HUD is separate), `sky`, `events`
-('sectionLoaded' | 'complete' | 'gameOver' | 'playerOut'), `state` ('playing' | 'exiting' | 'entering' |
+('sectionLoaded' | 'complete' | 'gameOver' | 'playerOut' | 'allOut'), `state` ('playing' | 'exiting' | 'entering' |
 'victory' | 'complete' | 'gameover'), `world section view players hud checkpoint timeLeft continueTicks`,
+`countdownHeld` / `countdownNumber` (the in-world continue, GDD §4.6: a player out of lives gets a countdown
+over the live world; every player out → the section script, timer, auto-scroll and boss adds hold, the enemies
+on screen `laugh`; a continued hero's landing → they `cower`, the boss staggers; every countdown out → 'gameOver'),
 `loadSection(id, entry?)`, `exitTo`, `enableExit(id, on)`, `isExitOpen(exit | id)`, `completeMission()` (MISSION
 COMPLETE! + `mission-complete` jingle), `skip()` (debug F4), `continuePlayer(slot)` (creates the Player when it is
 missing), `joinPlayer(slot, char)`, `nextMission()`, `playMusic(id, fade?, { from?, restart? })`, `currentMusic`, `resumeMusic()` (keeps `from`),
@@ -562,7 +572,8 @@ sampling `terrain.cellAt`, one chunk prefetched per frame). Unknown missions / s
 the score (always), the weapon icon (`ui/icon-<id>` or `def.icon`) with ammo digits only when finite, bombs
 `x<n>` (in a vehicle: the shell icon + the bare count), life icons (swan heads) and hostage icons (bow ties; max 5 / 10, then `xN`), `CONT n`, the vehicle
 name + cells (half cells, red blink at ≤ 1), a status icon + 24×2 timer bar, pop-up messages; CONTINUE? / PRESS
-START when out or not joined; the timer frame (red under 10), the boss bar (192×4 at y 207; the BOSS BAR option),
+START when out (2 players; one player: `CONTINUE?`, the countdown, PRESS START and the credits big in the
+centre over the live world) or not joined; the timer frame (red under 10), the boss bar (192×4 at y 207; the BOSS BAR option),
 the blinking ONWARD prompt (`ui/onward`), callouts, banners (warning / mission / info, with a detail line),
 the screen flash; world-space score pop-ups and speech bubbles (gag bubbles obey SPEECH BUBBLES; radio lines
 in navy).
@@ -576,8 +587,8 @@ attract loop: demo → `HowToPlayScene` → `HighScoresScene`) → `ModeSelectSc
 DIFFICULTY, OPTIONS, HIGH SCORES) → `CharacterSelectScene` (the registry's heroes: `portrait`, `fullName`,
 `role`, `quote`, `quoteSub`) → `startCampaign` → `MissionIntroScene` (the mission card: `defineMissionCard` in
 `flow-data.ts`, cards for m0–m5 in `content/ui/cards.ts`; a mission without a card gets one from its
-MissionDef `name` / `subtitle`) → `GameplayScene` (⇄ `PauseScene` RESUME / OPTIONS / QUIT TO TITLE,
-`ContinueScene` → `GameOverScene`) → `MissionCompleteScene` (THE LOWMERE LISTENER; `tallyLines`,
+MissionDef `name` / `subtitle`) → `GameplayScene` (⇄ `PauseScene` RESUME / OPTIONS / QUIT TO TITLE; the
+continue countdown runs in the world, then `GameOverScene`; `ContinueScene` is the fps mode's) → `MissionCompleteScene` (THE LOWMERE LISTENER; `tallyLines`,
 `bossSpeedBonus`, `hatsCollected` exported) → `missionDone`: the next mission's card (`MissionDef.next`, else
 the next registered mission after m0) or, after the last one, `EndingScene` (THE LAST NOTE, SPLASHDOWN, THE
 PARADE with the credits, CAPTIONS, the heroes' ending lines) → `FinalTallyScene` (§14.6) → `NameEntryScene`

@@ -215,68 +215,6 @@ function paradeFrames(): Frame[] {
   });
 }
 
-// ---------------------------------------------------------------------------------------------
-// Continue gag props (GDD §13.9)
-// ---------------------------------------------------------------------------------------------
-
-/** A folding chair with a coil of rope on its back (feet anchor). */
-function chairFrames(): Frame[] {
-  const b = new PixelBuffer(18, 26);
-  b.rect(3, 13, 12, 3, PAL.brown[2]); // seat
-  b.rect(12, 1, 3, 15, PAL.brown[2]); // back post
-  b.rect(11, 2, 5, 6, PAL.brown[2]); // back rest
-  b.line(4, 16, 13, 25, PAL.steel[2]);
-  b.line(13, 16, 4, 25, PAL.steel[2]);
-  b.bevel(PAL.brown, { light: 'tl', depth: 1, only: PAL.brown[2] });
-  return [{ buf: b.padded(1).outline(INK), ox: 9, oy: 27 }];
-}
-
-/** Ropes wound round the sitter (drawn over the figure): two bands of sand rope. */
-function ropeFrames(): Frame[] {
-  const b = new PixelBuffer(16, 12);
-  for (const y of [1, 7]) {
-    b.rect(0, y, 16, 3, PAL.sand[2]);
-    for (let x = 0; x < 16; x += 3) b.set(x, y + 1, PAL.sand[1]);
-    b.rect(0, y, 16, 1, PAL.sand[3]);
-  }
-  return [{ buf: b.padded(1).outline(INK), ox: 9, oy: 13 }];
-}
-
-/**
- * The giant Legion loudspeaker on a cart (feet anchor): a crimson-and-gold horn on a brass
- * stand, wheels, a big switch. Frame 0 off, 1 on (a wobbling cone and sound rings).
- */
-function loudspeakerFrames(): Frame[] {
-  const out: Frame[] = [];
-  for (let f = 0; f < 3; f++) {
-    const w = 44;
-    const h = 46;
-    const b = new PixelBuffer(w, h);
-    const on = f > 0;
-    // Cart, wheels, stand.
-    b.rect(8, 34, 30, 5, PAL.red[1]);
-    b.circle(13, 40, 4, PAL.steel[2]);
-    b.circle(33, 40, 4, PAL.steel[2]);
-    b.rect(21, 22, 4, 12, PAL.gold[2]);
-    // The horn: a cone opening to the left (toward the chair), crimson with gold rims.
-    b.poly([24, 14, 38, 8, 38, 30, 24, 24], PAL.red[2]);
-    b.poly([4, 2 - (on ? f - 1 : 0), 24, 12, 24, 26, 4, 36 + (on ? f - 1 : 0)], PAL.red[2]);
-    b.bevel(PAL.red, { light: 'tl', depth: 1, only: PAL.red[2] });
-    b.rect(3, 1, 3, 37, PAL.gold[2]);
-    b.rect(3, 1, 1, 37, PAL.gold[3]);
-    b.ellipse(1, 12, 6, 14, on ? PAL.snow[2] : PAL.ink[1]);
-    // The switch box on the cart.
-    b.rect(30, 26, 8, 8, PAL.steel[2]);
-    b.rect(33, on ? 27 : 30, 2, 3, on ? PAL.gold[3] : PAL.red[3]);
-    b.bevel(PAL.steel, { light: 'tl', depth: 1, only: PAL.steel[2] });
-    out.push({ buf: b.padded(1).outline(INK), ox: 23, oy: h + 1 });
-  }
-  // Frame 3: knocked over onto its back (the continue gag's punch), the horn pointing up.
-  const fallen = out[0].buf.rotated(Math.PI / 2, { quality: 'fast' });
-  out.push({ buf: fallen, ox: fallen.w >> 1, oy: fallen.h });
-  return out;
-}
-
 // --- HD (2× and 4×): Gusto painted natively with the portrait kit -----------------------------
 
 /** Painting units of the HD radio portrait: 96 × 96 units = the 32 × 32 logical px panel. */
@@ -524,97 +462,6 @@ function radioHd(d: HdD): PixelBuffer {
     [25, 75],
   ] as const) c.ellipsoid(x, y, 1.1, 1.1, { mat: screw, z: 1, round: 0.8 });
   return c.render({ outline: 'none', ao: 0.3, sep: false, shadow: 0.3, shadowMax: 1.5 });
-}
-
-// --- HD continue-gag props --------------------------------------------------------------------
-
-/** The folding chair at density d (the 1× frame: 20 × 28, feet anchor): wooden seat and back, steel X legs, rope coil. */
-function chairHd(d: HdD): Frame {
-  const c = new HdCanvas(20, 28, d);
-  const wd = c.material({ ramp: PAL_HD.wood, lo: 1, hi: 6, spec: 0.15, shine: 10 });
-  const steel = c.material({ ramp: CHROME, lo: 1, hi: 6, spec: 0.6, shine: 26 });
-  const rope = c.material({ ramp: PAL_HD.sand, lo: 1, hi: 6, wrap: 0.2 });
-  // The 1× art sits 1 px in (padded): seat (4, 14, 12, 3), back post (13, 2, 3, 15), back rest (12, 3, 5, 6).
-  c.capsule(5, 17, 14, 26, 0.6, 0.6, { mat: steel, z: 0 });
-  c.capsule(14, 17, 5, 26, 0.6, 0.6, { mat: steel, z: 0.5, tone: -0.15 });
-  c.box(13, 2, 3, 15, { mat: wd, z: 1, bevel: 0.6, tex: wood({ seed: 9, dir: 'v' }) });
-  c.box(12, 3, 5, 6, { mat: wd, z: 1.4, bevel: 0.7, tex: wood({ seed: 10, dir: 'h' }) });
-  c.box(4, 14, 12, 3, { mat: wd, z: 2, bevel: 0.7, tex: wood({ seed: 11, dir: 'h' }) });
-  // A coil of rope hung on the back post.
-  for (let k = 0; k < 3; k++) c.ellipsoid(14.5, 10.5 + k * 0.6, 2.4 - k * 0.3, 1.4, { mat: rope, z: 2 + k * 0.2, round: 0.7, tone: -k * 0.08 });
-  return { buf: c.render({ outline: 'A', ao: 0.3, sep: true, rimLight: 1 }), ox: 9, oy: 27, density: d };
-}
-
-/** The ropes round the sitter at density d (18 × 14, feet anchor): two twisted bands of sand rope. */
-function ropeHd(d: HdD): Frame {
-  const c = new HdCanvas(18, 14, d);
-  const rope = c.material({ ramp: PAL_HD.sand, lo: 1, hi: 6, wrap: 0.2, spec: 0.1 });
-  for (const y of [2, 8]) {
-    const p = c.newPart();
-    c.capsule(1.2, y + 1.5, 16.8, y + 1.5, 1.5, 1.5, {
-      mat: rope,
-      part: p,
-      z: 0,
-      tex: (s) => {
-        // The twist: diagonal strands.
-        const k = ((s.x - s.y * 0.9) % 1.6 + 1.6) % 1.6;
-        if (k < 0.35) s.tone -= 0.35;
-        else if (k < 0.7) s.tone += 0.08;
-      },
-    });
-  }
-  return { buf: c.render({ outline: 'A', ao: 0.25, sep: true }), ox: 9, oy: 13, density: d };
-}
-
-/**
- * The giant Legion loudspeaker at density d (the 1× frames: 46 × 48, feet anchor; 0 off, 1-2 on
- * with the cone wobbling, 3 knocked over): a crimson horn with gold rims on a brass stand, a red
- * cart on steel wheels, the switch box.
- */
-function loudspeakerHd(d: HdD): Frame[] {
-  const out: Frame[] = [];
-  const W = 46;
-  const H = 48;
-  for (let f = 0; f < 3; f++) {
-    const c = new HdCanvas(W, H, d);
-    const on = f > 0;
-    const red = c.material({ ramp: PAL_HD.red, lo: 1, hi: 6, spec: 0.55, shine: 22 });
-    const gold = c.material({ ramp: PAL_HD.gold, lo: 1, hi: 6, spec: 0.8, shine: 28 });
-    const steel = c.material({ ramp: CHROME, lo: 1, hi: 6, spec: 0.6, shine: 26 });
-    const tyre = c.material({ ramp: GLOSS, lo: 1, hi: 4, spec: 0.3 });
-    const cone = c.material({ ramp: on ? [PAL_HD.steel[3], PAL_HD.snow[3], PAL_HD.snow[4], PAL_HD.snow[5], PAL_HD.snow[6]] : [PAL_HD.ink[0], PAL_HD.ink[1], PAL_HD.black[2], PAL_HD.black[3], PAL_HD.black[4]], lo: 0, hi: 4 });
-    const w = on ? f - 1 : 0;
-    // 1× art is padded by 1 px: cart (9, 35, 30, 5), wheels at (14, 41) and (34, 41) r 4, stand (22, 23, 4, 12).
-    c.box(9, 35, 30, 5, { mat: red, z: 1, bevel: 0.8, tone: -0.1 });
-    for (const x of [14, 34]) {
-      c.ellipsoid(x + 0.5, 41.5, 4.5, 4.5, { mat: tyre, z: 1.5, round: 0.6 });
-      c.ellipsoid(x + 0.5, 41.5, 2, 2, { mat: steel, z: 2, round: 0.7 });
-    }
-    c.cylinder(22, 23, 4, 12, { mat: gold, z: 0.5 });
-    // The horn: the back drum, the flared bell opening left, gold rims.
-    c.poly([[25, 15], [39, 9], [39, 31], [25, 25]], { mat: red, z: 1 });
-    c.ellipsoid(39, 20, 2.5, 11, { mat: red, z: 1.2, round: 0.8, tone: -0.1 });
-    c.heightField(4, 2 - w, 21, 35 + 2 * w, (x, y) => {
-      const t = (x - 5) / 20;
-      const top = 3 - w + t * (13 - (3 - w));
-      const bot = 37 + w + t * (27 - (37 + w));
-      if (y < top || y > bot) return NaN;
-      const m = (top + bot) / 2;
-      const r = (bot - top) / 2;
-      const v = (y - m) / r;
-      return r * 0.5 * Math.sqrt(Math.max(0, 1 - v * v));
-    }, { mat: red, z: 1.5 });
-    c.ellipsoid(4.5, 20, 2.2, 18 + w, { mat: gold, z: 3, round: 0.7 });
-    c.ellipsoid(5, 20, 3, 7 + w * 0.5, { mat: cone, z: 3.5, round: on ? 0.4 : 0.6 });
-    // The switch box with its lever (down: off, up: on).
-    c.box(31, 27, 8, 8, { mat: steel, z: 2, bevel: 0.6 });
-    c.box(34, on ? 28 : 31, 2, 3, { mat: on ? gold : red, z: 2.6, bevel: 0.4 });
-    out.push({ buf: c.render({ outline: 'A', ao: 0.3, sep: true, rimLight: 1 }), ox: 23, oy: H - 1, density: d });
-  }
-  // Frame 3: knocked over onto its back (as the 1×: frame 0 turned a quarter, exactly).
-  const fallen = out[0].buf.rotated(Math.PI / 2, { quality: 'fast' });
-  out.push({ buf: fallen, ox: fallen.w / d >> 1, oy: fallen.h / d, density: d });
-  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1438,7 +1285,4 @@ export function defineScreenArt(): void {
   defineSprite('ui/radio', () => [radio1x()], { ...topLeft, hd: (d) => [radioHd(d)] });
   defineSprite('ui/title-swan', titleSwanFrames, { ticksPerFrame: 30 });
   defineSprite('ui/parade', paradeFrames, { ticksPerFrame: 10 });
-  defineSprite('ui/chair', chairFrames, { hd: (d) => [chairHd(d)] });
-  defineSprite('ui/rope', ropeFrames, { hd: (d) => [ropeHd(d)] });
-  defineSprite('ui/loudspeaker', loudspeakerFrames, { ticksPerFrame: 4, hd: (d) => loudspeakerHd(d) });
 }

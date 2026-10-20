@@ -257,12 +257,21 @@ export const TUNING = {
     alarmAt: 10,
   },
 
-  /** Continue screen (mechanics.md §22.7). */
+  /** The continue countdown (mechanics.md §22.7; in the 2D missions it runs over the live world, GDD §4.6). */
   continues: {
     seconds: 10,
     ticksPerCount: 60,
     /** Fire / jump presses skip this many ticks of the countdown. */
     skipTicks: 15,
+    /** No credits left: the countdown ends after this many ticks (nothing to wait for). */
+    noCreditTicks: 60,
+    /** Every player out: on-screen enemies get a 'laugh' of `laughTicks`, renewed every `laughEvery` ticks. */
+    laughEvery: 15,
+    laughTicks: 24,
+    /** A continued hero lands: on-screen enemies cower this long (no attacks). */
+    cowerTicks: 90,
+    /** A continued hero lands: the boss stops its attack this long (shocked look). */
+    bossStaggerTicks: 60,
     /** The continuing player gets this weapon (the reference drops a machine-gun crate). */
     giftWeapon: 'machine-gun',
   },

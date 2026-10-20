@@ -324,9 +324,9 @@ slot colour at the top right. The waiting slot gets no tally of its own; only it
   ```
 
   `ContinueScene` asks `host.startPressed?.(i, input) ?? input.pad(i).pressed('start')` for slot
-  `i` (today `input.pad(i).pressed('start')`, `continue.ts:93-94`). `GameplayScene` passes an
-  adapter over its runner (`continuePlayer`, `resumeMusic`, `clearOverlays` =
-  `hud.clearBanner()` + `hud.hideGo()`; no `startPressed`). `FpsScene.startPressed(i)`: for the fps
+  `i` (today `input.pad(i).pressed('start')`, `continue.ts:93-94`). Since 2026-10-20 only the fps
+  mode uses `ContinueScene`: the 2D missions run their countdown in the world (GDD §4.6; no
+  adapter, and the 1-player chair gag is retired). `FpsScene.startPressed(i)`: for the fps
   slot `input.pad(0).pressed('start') || input.pad(1).pressed('start')` (any start key or pad
   Start), for the waiting slot `false`. `FpsScene.continuePlayer(i)`: only the
   fps slot, only when `slot.gameOver`:

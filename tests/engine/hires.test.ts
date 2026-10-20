@@ -246,7 +246,7 @@ describe('sprite footprint at every res and mode', () => {
     expect(filtersId('fx/explosion-s')).toBe(true);
     expect(filtersId('decor/ams/stopera')).toBe(true);
     // The ending parade: leaders and townsfolk get one look.
-    for (const id of ['ui/leader-blare', 'ui/horse', 'ui/fanfaroni', 'ui/ending-organ', 'ui/title-swan', 'ui/portrait-gusto', 'ui/loudspeaker']) {
+    for (const id of ['ui/leader-blare', 'ui/horse', 'ui/fanfaroni', 'ui/ending-organ', 'ui/title-swan', 'ui/portrait-gusto']) {
       expect(filtersId(id), id).toBe(true);
     }
     expect(spriteFilter('fx/explosion-xl', 'smooth', 5)).toBe('pixel');

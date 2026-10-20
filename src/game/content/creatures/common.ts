@@ -23,6 +23,7 @@ import type { World } from '../../../engine/world';
 import { hudOf } from '../../context';
 import {
   Enemy,
+  everyEnemyReacts,
   caughtNapping,
   doubleTakeTicks,
   listenForBlasts,
@@ -388,9 +389,9 @@ export abstract class Creature extends Enemy {
 
   // ------------------------------------------------------------------------------- reactions
 
-  /** Every creature poses for SAY CHEESE; other reactions are opted in per type. */
+  /** Every creature poses for SAY CHEESE and laughs / cowers around a continue; other reactions are opted in per type. */
   protected override acceptsReaction(kind: ReactionKind): boolean {
-    return kind === 'photo';
+    return everyEnemyReacts(kind);
   }
 
   /** A reaction stops any telegraph or attack and frees the token (no attacks while it lasts). */

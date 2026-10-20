@@ -16,7 +16,9 @@
  * retract), photo-pose (2), die / die-knife / die-blast / die-burn / die-crush (the rider alone,
  * the bike leaves as an fx), fatbike only: die-seat (6) and get-up (5) (deferred; falls off the
  * seat, gets up, then flee), flee (4: runs off), bike (6: the riderless bike skids and fades),
- * cap (4: the flying cap), food-cube (4: the popped cube backpack).
+ * cap (4: the flying cap), food-cube (4: the popped cube backpack), and the continue reactions
+ * (deferred): laugh (2: on the stopped bike, head back, pointing at the empty spot) and cower (2:
+ * forearms up before the face, the bike rocking).
  *
  * UHD art (mission ams; docs/ART_GUIDE.md "UHD art"): every strip has ONE density-generic
  * generator for 2× and 4× (`hd`): the rider is the HD rig (`renderHuman(…, d)`); the bike, its
@@ -388,6 +390,56 @@ function A_(sh: number, el: number): ArmPose {
 
 const PASSENGER_SIT: Pose = { lean: 2, armN: { sh: 30, el: 60, hand: 'grip' }, armF: { sh: 20, el: 70, hand: 'grip' }, legN: { hip: 70, knee: 80 }, legF: { hip: 60, knee: 90 } };
 
+/**
+ * Continue reactions (every hero is out, then one drops back in), on the stopped bike (crank 0).
+ * Laugh: seated, the head thrown back, the near arm off the bar pointing at the empty spot in
+ * front, the far hand on the bar; frame 2 bobs the shoulders and head 1 px down. The eyes stay
+ * shut while the mouth opens wide ("HA", frame 1) and closes in a grin (the bob, frame 2): an open
+ * mouth with open eyes reads as a shout, not a laugh.
+ */
+export const LAUGH_EXPR = ['yawn', 'happy'] as const;
+const LAUGH_UP: readonly Pose[] = [0, 1].map((k): Pose => ({
+  lean: -8,
+  hunch: k,
+  armN: { sh: 84, el: 6, hand: 'point' },
+  armF: grip(10.2, 2.1 - k),
+  head: { tilt: -20 },
+  expr: LAUGH_EXPR[k],
+}));
+/** The passenger laughs too (head back, mouth open) and slaps the rider's shoulder (raised, then down). */
+const LAUGH_PASSENGER: readonly Pose[] = [
+  { ...PASSENGER_SIT, lean: -8, armN: { sh: 175, el: 20, hand: 'open' }, head: { tilt: -20 }, expr: LAUGH_EXPR[0] },
+  { ...PASSENGER_SIT, lean: -8, hunch: 1, armN: { to: [8, -1], hand: 'open' }, head: { tilt: -20 }, expr: LAUGH_EXPR[1] },
+];
+/**
+ * Cower: the rider leans back, both forearms up in front of the face, panicking; the bike wobbles
+ * (it rocks front up / rear up: `COWER_TILT` about the rear wheel's contact, the rear-up frame
+ * lifted `COWER_LIFT` px so the front wheel stays on the ground line).
+ */
+const COWER_UP: readonly Pose[] = [0, 1].map((k): Pose => ({
+  lean: -12,
+  hunch: 1,
+  armN: { to: [7, -7 + k], hand: 'open' },
+  armF: { to: [8, -10 + k], hand: 'open' },
+  head: { tilt: -6 },
+  expr: 'panic',
+}));
+/** The passenger ducks behind the rider, hands over his head. */
+const COWER_PASSENGER: readonly Pose[] = [0, 1].map((k): Pose => ({
+  ...PASSENGER_SIT,
+  lean: 30,
+  hunch: 2,
+  armN: { to: [2, -10 + k], hand: 'open' },
+  armF: { to: [3, -10 + k], hand: 'open' },
+  head: { dy: 1, tilt: 10 },
+  expr: 'panic',
+}));
+const COWER_TILT: readonly number[] = [-3, 3];
+const COWER_LIFT: readonly number[] = [0, 1];
+/** Ticks per frame of the reactions (both loop). */
+export const LAUGH_TPF = 8;
+export const COWER_TPF = 3;
+
 // ------------------------------------------------------------------------------------ sets
 
 export interface RiderSetOpts {
@@ -469,6 +521,13 @@ export function defineRiderSet(set: string, o: RiderSetOpts): void {
   const kickP = pass ? kick4(pass, PASSENGER_KICK, { ...PASSENGER_SIT, expr: 'shout' }) : null;
   def(pre + 'kick', (d) => [0, 1, 2, 3].map((i) => combo(kind, color, i, 0, i / 4, kickP ? crew(lean[0], i / 4, kickP[i]) : crew(kickR[i], i / 4), cube, d)), { durations: KICK_DURATIONS, loop: false });
   def(pre + 'photo-pose', (d) => [0, 1].map((i) => combo(kind, color, 0, 0, 0, crew({ ...P.RIDE_CHEER[i], expr: 'happy' }, 0), cube, d)), { ticksPerFrame: 10 });
+  // Continue reactions (rare: deferred; they show only around a continue). The bike and both
+  // riders are in every frame, so no other set has the same picture (no dense alias).
+  def(pre + 'laugh', (d) => [0, 1].map((k) => combo(kind, color, 0, 0, 0, crew(LAUGH_UP[k], 0, LAUGH_PASSENGER[k]), cube, d)), { ticksPerFrame: LAUGH_TPF, defer: true });
+  def(pre + 'cower', (d) => [0, 1].map((k) => {
+    const f = combo(kind, color, 0, COWER_TILT[k], 0, crew(COWER_UP[k], 0, COWER_PASSENGER[k]), cube, d);
+    return { ...f, oy: f.oy + COWER_LIFT[k] };
+  }), { ticksPerFrame: COWER_TPF, defer: true });
   // Deaths: the rider alone (the bike goes its own way as an fx).
   const bareStyle = style;
   // A twin's strip is the same picture: 2× / 4× an alias of it. `all`: share the twin at 1× as

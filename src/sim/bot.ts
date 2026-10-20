@@ -195,6 +195,9 @@ export class Bot implements InputSource {
     if (!runner || runner.state !== 'playing') return 0;
     const p = runner.player(this.slot);
     if (!p) return 0;
+    // Out of lives: the in-world continue countdown (start uses a continue; never while playing:
+    // start pauses then).
+    if (p.state === 'out') return runner.continueTicks[this.slot] >= 0 && this.t % 20 === 0 ? START : 0;
     const world = runner.world;
     if (world !== this.lastWorld) {
       this.lastWorld = world;

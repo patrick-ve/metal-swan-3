@@ -19,7 +19,7 @@ import type { Damage } from '../../../../engine/entity';
 import type { Rect } from '../../../../engine/math';
 import { rectAt } from '../../../../engine/math';
 import type { World } from '../../../../engine/world';
-import { Enemy, releaseAttackToken, takeAttackToken, telegraphTicks, type EnemyOpts, type ReactionKind } from '../../../enemy';
+import { Enemy, everyEnemyReacts, releaseAttackToken, takeAttackToken, telegraphTicks, type EnemyOpts, type ReactionKind } from '../../../enemy';
 import { explosion, FX_FLAME, FX_SMOKE, FX_SPARK, type DebrisKind, type ExplosionSize, debris } from '../../../fx';
 import type { SpawnParams } from '../../../registry';
 import type { RelRect } from './geom';
@@ -186,9 +186,9 @@ export abstract class Machine extends Enemy {
 
   // ------------------------------------------------------------------------------- reactions
 
-  /** Machines only pose for SAY CHEESE (every enemy takes 'photo'). */
+  /** Machines only hold still for SAY CHEESE and the in-world continue (`everyEnemyReacts`). */
   protected override acceptsReaction(kind: ReactionKind): boolean {
-    return kind === 'photo';
+    return everyEnemyReacts(kind);
   }
 
   /** A reaction stops any telegraph (no attacks while it runs). */

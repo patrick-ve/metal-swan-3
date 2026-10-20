@@ -105,10 +105,22 @@ export type Side = 'left' | 'right';
  * - 'photo'    SAY CHEESE (the tourist hostage, items) → every non-boss enemy on screen, 45 ticks
  * - 'stumble'  a parade column's drummer dies (infantry) → the column stumbles, 60 ticks
  * - 'buff'     IN STEP! (baton-major) → riflemen within 120 px fire 30 % faster, 240 ticks
+ * - 'laugh'    the in-world continue (mission runner): every player is out → every non-boss enemy
+ *              on screen points at the empty spot and laughs while the countdown runs
+ * - 'cower'    the in-world continue: a continued hero lands → every non-boss enemy on screen
+ *              cowers in place (TUNING.continues.cowerTicks)
  * While a reaction runs the enemy does not attack (its `think()` is replaced by
  * `thinkReaction()`); it still takes damage.
  */
-export type ReactionKind = 'salute' | 'dance' | 'panic' | 'confused' | 'freeze' | 'queue' | 'ears' | 'photo' | 'stumble' | 'buff';
+export type ReactionKind = 'salute' | 'dance' | 'panic' | 'confused' | 'freeze' | 'queue' | 'ears' | 'photo' | 'stumble' | 'buff' | 'laugh' | 'cower';
+
+/** Reactions every enemy answers (SAY CHEESE and the in-world continue), machines included. */
+const EVERY_ENEMY_REACTIONS: ReadonlySet<ReactionKind> = new Set(['photo', 'laugh', 'cower']);
+
+/** Does every enemy answer this reaction ('photo', 'laugh', 'cower')? For `acceptsReaction` overrides. */
+export function everyEnemyReacts(kind: ReactionKind): boolean {
+  return EVERY_ENEMY_REACTIONS.has(kind);
+}
 
 /** Reactions every Legion soldier (tag 'legion', soft) accepts by default. */
 const LEGION_REACTIONS: ReadonlySet<ReactionKind> = new Set(['salute', 'panic', 'confused', 'freeze', 'queue', 'ears', 'photo', 'stumble']);
@@ -125,7 +137,12 @@ const REACTION_ANIMS: Readonly<Record<ReactionKind, string>> = {
   photo: 'photo-pose',
   stumble: 'stumble',
   buff: 'idle',
+  laugh: 'laugh',
+  cower: 'cower',
 };
+
+/** The animation a reaction plays when `<art>/<anim>` is missing (before 'idle'): Legion soldiers cower in their panic strip. */
+const REACTION_FALLBACK: Partial<Record<ReactionKind, string>> = { cower: 'panic' };
 
 const drawOpts: DrawOpts = {};
 const tintOpts: DrawOpts = {};
@@ -216,6 +233,8 @@ export class Enemy extends Entity {
       if (this.reaction) this.endReaction();
       this.reaction = kind;
       this.reactionTicks = ticks;
+      // The hero is back: a startled '!' over every enemy that starts to cower.
+      if (kind === 'cower') hudOf(this.world).bubble(this, '!', { ticks: 30, kind: 'gag' });
     }
     this.reactionSource = source;
     this.onReact(kind, ticks, source);
@@ -237,12 +256,13 @@ export class Enemy extends Entity {
   }
 
   /**
-   * Which reactions this enemy answers. Default: 'photo' for everyone; Legion soldiers (tags
-   * 'legion' + 'soft') also salute, panic, get confused, freeze, queue, cover their ears and
-   * stumble. Override to opt in or out (windup-bots: 'dance'; riflemen: 'buff').
+   * Which reactions this enemy answers. Default: 'photo', 'laugh' and 'cower' for everyone
+   * (`everyEnemyReacts`); Legion soldiers (tags 'legion' + 'soft') also salute, panic, get
+   * confused, freeze, queue, cover their ears and stumble. Override to opt in or out
+   * (windup-bots: 'dance'; riflemen: 'buff').
    */
   protected acceptsReaction(kind: ReactionKind): boolean {
-    if (kind === 'photo') return true;
+    if (everyEnemyReacts(kind)) return true;
     return this.hasTag('legion') && this.soft && LEGION_REACTIONS.has(kind);
   }
 
@@ -254,8 +274,10 @@ export class Enemy extends Entity {
 
   /**
    * Behaviour during a reaction (instead of `think()`). Default: stand still and play
-   * `<art>/<anim>` for the reaction (salute, photo-pose, ears …), else 'idle'; 'panic' runs away
-   * from the source. Override for walking reactions (the JINGLE queue, a stumble).
+   * `<art>/<anim>` for the reaction (salute, photo-pose, ears …), else its fallback, else 'idle';
+   * 'panic' runs away from the source; 'laugh' and 'cower' face it (the spot where the hero went
+   * down, the hero who came back). Override for walking reactions (the JINGLE queue, a stumble)
+   * and for bodies that must hold their place another way (a flyer).
    */
   protected thinkReaction(kind: ReactionKind): void {
     if (kind === 'panic') {
@@ -263,9 +285,21 @@ export class Enemy extends Entity {
       const dir = src ? (src.x > this.x ? -1 : 1) : -this.facing;
       this.facing = dir as 1 | -1;
       this.vx = dir * 1.6;
-    } else this.vx = 0;
+    } else {
+      this.vx = 0;
+      const src = this.reactionSource;
+      if ((kind === 'laugh' || kind === 'cower') && src && Math.abs(src.x - this.x) >= 2) this.facing = src.x > this.x ? 1 : -1;
+    }
+    this.play(this.reactionAnim(kind));
+  }
+
+  /** The animation `thinkReaction` plays for `kind`: its own strip, its fallback, else 'idle'. */
+  protected reactionAnim(kind: ReactionKind): string {
     const name = REACTION_ANIMS[kind];
-    this.play(this.hasAnim(name) ? name : this.hasAnim('idle') ? 'idle' : name);
+    if (this.hasAnim(name)) return name;
+    const alt = REACTION_FALLBACK[kind];
+    if (alt && this.hasAnim(alt)) return alt;
+    return this.hasAnim('idle') ? 'idle' : name;
   }
 
   /** The AI. Called once per tick while alive (before physics and the animator). */

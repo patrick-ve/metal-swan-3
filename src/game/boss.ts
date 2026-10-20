@@ -198,6 +198,13 @@ export class Boss extends Entity {
   protected killer = -1;
   protected deathT = 0;
   private patternHandle: ScriptHandle | null = null;
+  /**
+   * The in-world continue (mission runner): every player is out, so no adds come in (a boss's
+   * `think()` checks `holdAdds`); the attack pattern runs on.
+   */
+  addsHeld = false;
+  /** Ticks left of the stagger (`stagger`): the attack pattern holds, no adds. */
+  staggerTicks = 0;
   private deathScripted = false;
   private speaker: BossSpeaker | null = null;
   private readonly boxes: Rect[] = [];
@@ -528,6 +535,42 @@ export class Boss extends Entity {
     return ticks;
   }
 
+  /**
+   * A continued hero landed (the in-world continue): for `ticks` the attack pattern holds and no
+   * adds come in, with the shocked look of `onStagger`. The pattern is held only while
+   * `canStagger()` (a boss in the middle of a jump finishes it first). Only in the fight.
+   */
+  stagger(ticks: number): void {
+    if (this.state !== 'fight' || this.dead || ticks <= 0) return;
+    this.staggerTicks = Math.max(this.staggerTicks, ticks);
+    this.onStagger(ticks);
+  }
+
+  /** Is a stagger running? */
+  get staggering(): boolean {
+    return this.staggerTicks > 0;
+  }
+
+  /** No adds now: every player is out (`addsHeld`) or a stagger runs. */
+  get holdAdds(): boolean {
+    return this.addsHeld || this.staggerTicks > 0;
+  }
+
+  /** Hook: a stagger started (the shocked look; draw reads `staggering`). */
+  protected onStagger(_ticks: number): void {}
+
+  /** May the attack pattern hold now? Default true; a boss in mid-air answers false until it lands. */
+  protected canStagger(): boolean {
+    return true;
+  }
+
+  private updateStagger(): void {
+    const h = this.patternHandle;
+    if (this.state !== 'fight' || this.dead) this.staggerTicks = 0;
+    else this.staggerTicks--;
+    if (h && !h.done) h.paused = this.staggerTicks > 0 && this.canStagger();
+  }
+
   /** HP fraction 0..1. */
   get healthFrac(): number {
     return this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
@@ -615,6 +658,7 @@ export class Boss extends Entity {
       return;
     }
     if (this.state === 'done') return;
+    if (this.staggerTicks > 0) this.updateStagger();
     this.think();
     this.anim.update();
     // Damaged bosses smoke.

@@ -51,6 +51,28 @@ function setup(): { rig: Rig; boss: TestBoss } {
 }
 
 describe('bosses', () => {
+  it('a stagger (a continued hero landed) holds the attack pattern for its ticks, then it runs on; only in the fight', () => {
+    const { rig, boss } = setup();
+    rig.run(1);
+    boss.stagger(30);
+    expect(boss.staggering).toBe(false); // not in the intro
+    rig.run(11);
+    expect(boss.state).toBe('fight');
+    const n = boss.log.length;
+    boss.stagger(50);
+    expect(boss.staggering).toBe(true);
+    expect(boss.holdAdds).toBe(true);
+    rig.run(45);
+    expect(boss.log.length).toBe(n); // held: two 20-tick beats would have logged
+    expect(boss.log).not.toContain('calm:end'); // held, never cancelled
+    rig.run(30);
+    expect(boss.staggering).toBe(false);
+    expect(boss.holdAdds).toBe(false);
+    expect(boss.log.length).toBeGreaterThan(n);
+    boss.addsHeld = true;
+    expect(boss.holdAdds).toBe(true);
+  });
+
   it('is invulnerable during the intro, then fights in phase 0', () => {
     const { rig, boss } = setup();
     rig.run(1);

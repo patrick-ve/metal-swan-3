@@ -27,7 +27,7 @@ import { frameH, frameW, type DrawOpts, type Renderer } from '../../../../engine
 import { getFrame, hasSprite } from '../../../../engine/sprites';
 import type { World } from '../../../../engine/world';
 import { sessionOf } from '../../../context';
-import { Enemy, releaseAttackToken, takeAttackToken, telegraphTicks, type ReactionKind } from '../../../enemy';
+import { Enemy, everyEnemyReacts, releaseAttackToken, takeAttackToken, telegraphTicks, type ReactionKind } from '../../../enemy';
 import { awardScore } from '../../../events';
 import { debris, FX_FLAME, FX_SMOKE, FX_SPARK } from '../../../fx';
 import { paramFacing, type SpawnParams, type SpawnSpec } from '../../../registry';
@@ -186,9 +186,9 @@ export class TransportMachine extends Enemy {
 
   // ------------------------------------------------------------------------------- reactions
 
-  /** SAY CHEESE: the machine holds still for the photo (no attacks). Nothing else. */
+  /** SAY CHEESE and the in-world continue (laugh, cower): the machine holds still (no attacks). Nothing else. */
   protected override acceptsReaction(kind: ReactionKind): boolean {
-    return kind === 'photo';
+    return everyEnemyReacts(kind);
   }
 
   protected override onReact(): void {

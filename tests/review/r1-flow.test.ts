@@ -6,7 +6,6 @@ import { NullAudio } from '../../src/engine/audio';
 import { VirtualPad, buttonMask, type Button } from '../../src/engine/input';
 import { terrain } from '../../src/engine/terrain';
 import { MissionRunner, type MissionDef, type SectionDef } from '../../src/game/mission/index';
-import { ContinueScene } from '../../src/game/scenes/continue';
 import { GameSession } from '../../src/game/session';
 import { createHeadlessGame } from '../../src/sim/index';
 import { FLOOR } from '../game/helpers';
@@ -33,7 +32,7 @@ describe('review r1: mission flow', () => {
   // A slot that is out (game over, 2P) gets no Player in the next section, so
   // continuePlayer() (needs a Player in state 'out') returns false forever, and
   // GameplayScene.handleJoin() only re-joins slots that never joined. Player 2 is locked out for
-  // the rest of the game — also from the ContinueScene.
+  // the rest of the game.
   it('R1-09: 2P — a player who is out can continue after the partner changes section', () => {
     const idle: SectionDef['script'] = function* idle() {
       yield () => false;
@@ -73,10 +72,9 @@ describe('review r1: mission flow', () => {
     expect(runner.continuePlayer(1)).toBe(true); // today: false, no player 2 exists any more
   });
 
-  // R1-11: ContinueScene resumes `section.music ?? mission.music` with app.audio.music(), which
-  // bypasses MissionRunner.playMusic(). In a boss fight the stage song comes back and the runner
-  // still caches 'boss', so playMusic('boss') can no longer restore it.
-  it('R1-11: continuing during a boss fight resumes the boss music', async () => {
+  // R1-11: the old continue screen resumed `section.music ?? mission.music`, so in a boss fight the
+  // stage song came back. The in-world continue never stops the song: the boss song plays on.
+  it('R1-11: continuing during a boss fight keeps the boss music', async () => {
     let press: Button | null = null;
     const g = await createHeadlessGame({ missionId: 'm0', bossRush: true, seed: 1, bot: false, autoContinue: false, input: () => press });
     try {
@@ -86,7 +84,7 @@ describe('review r1: mission flow', () => {
       const p = g.player(0)!;
       p.invulnTicks = 0;
       p.kill('bullet');
-      expect(g.runUntil((x) => x.app.scenes.top instanceof ContinueScene, 400)).toBe(true);
+      expect(g.runUntil((x) => x.runner?.countdownHeld === true, 400)).toBe(true);
       press = 'start';
       g.step(2);
       press = null;

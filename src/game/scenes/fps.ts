@@ -226,9 +226,6 @@ export class FpsScene implements Scene, PauseHost, Continuable {
     return true;
   }
 
-  /** No chair gag on the continue screen: its stage would stand on the status bar. */
-  readonly continueGag = false;
-
   /** Back to the floor's song after the continue screen. */
   resumeMusic(): void {
     this.app.audio.music(this.def.music, { fadeTicks: 20 });

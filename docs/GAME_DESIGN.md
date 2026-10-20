@@ -464,14 +464,25 @@ fire is always a plain jump: her squat starts and fire is a shot (8.2).
 - **Extends:** +1 life at **500,000** and **1,500,000** points; one hidden `pickup-1up` per
   mission (the `composer` hostage, 7.2). Max 9 lives in reserve.
 - **Credits option:** `FREE PLAY` (default) / `9` / `5` / `3`. Joining as P2 uses a credit.
-- **Continue screen:** when a player loses the last life: `CONTINUE?` with a countdown
-  **9 → 0**, 60 ticks per number; each fire or jump press removes 15 ticks of the current
-  number. **start** continues: full lives, score kept, the score's last digit +1 (continue
-  marker, max 9), respawn at once where the player died (no checkpoint rewind), and a `crate`
-  with `M` (machine gun) drops from the top of the view onto that spot (a partner may take it).
-- 1 player: the world freezes and dims to 50 % during the countdown. 2 players: the world keeps
-  running and the countdown shows in the dead player's HUD corner.
-- Countdown at 0 with no living player → `GAME OVER` (13.10).
+- **Continue in the world (since 2026-10-20, user decision):** when a player loses the last
+  life the game never pauses and no menu opens: `CONTINUE?` with a countdown **9 → 0**, 60
+  ticks per number, runs over the live world (13.9); each fire or jump press removes 15 ticks
+  of the current number. **start** continues: full lives, score kept, the score's last digit +1
+  (continue marker, max 9), the normal drop-in where the player died (4.5: blinking, POOF; no
+  checkpoint rewind), and the machine gun (`TUNING.continues.giftWeapon`).
+- **Every player out:** the world keeps running, but the section script (no new waves), the
+  section timer, auto-scroll and the boss's adds hold, so the camera holds too. The enemies on
+  screen stop, point at the spot where the last player went down and laugh (reaction `laugh`,
+  renewed every 15 ticks). The boss's attacks run on.
+- **The hero is back:** when a continued hero lands, every non-boss enemy on screen cowers in
+  place for 90 ticks (reaction `cower`: a `!`, no attacks, still takes damage) and the boss
+  staggers for 60 ticks (its attack holds, no adds; ROBO-HALSEMA shows her shout face and
+  shakes). The hold ends.
+- 2 players: while a partner plays, the countdown shows in the out player's HUD corner and the
+  world runs as normal.
+- Countdown at 0 with no living player → `GAME OVER` (13.10). No credits left: the countdown
+  ends after 60 ticks. The last player out during the victory poses → `GAME OVER` at once.
+- The first-person mode keeps its continue screen (`docs/design/fps.md` §1.10).
 
 ### 4.7 Time limit
 
@@ -2715,7 +2726,7 @@ text is centred on x = 192 ("C"). P1 colour `sky`, P2 colour `gold`; warnings `r
 ### 13.1 Scene flow
 
 `Boot` → `Title` (attract loop) → `ModeSelect` → `CharacterSelect` → `MissionIntro` →
-`Gameplay` (⇄ `Pause`, `Continue` overlay) → `MissionComplete` (tally) → next `MissionIntro` … →
+`Gameplay` (⇄ `Pause`; the continue countdown runs in the world, 13.9) → `MissionComplete` (tally) → next `MissionIntro` … →
 after m5: `Ending` → `Credits` → final tally → `NameEntry` (if the score qualifies) → `HighScores`
 → `Title`. All players out of continues: `GameOver` → `NameEntry` → `HighScores` → `Title`.
 
@@ -2845,16 +2856,19 @@ bubble); he leaves when the game resumes.
 
 ### 13.9 Continue
 
-- 1 player: the world freezes and dims to 50 %. 2 players: the world runs; the texts are drawn
-  small inside the dead player's HUD corner.
-- `CONTINUE?` (big, C, y 60), the countdown digit (big ×2, C, y 90) `9` … `0` (60 ticks each,
-  each fire/jump press removes 15 ticks), `PRESS START` (small, C, y 130, blinking), `FREE PLAY`
-  or `CREDITS 04` (small, C, y 140), `SCORE 0123400` (small, C, y 152). Music `continue`;
-  `ui/countdown` per digit.
-- **Gag scene** (1 player): the character sits tied to a chair while two Legion privates push a
-  giant loudspeaker one step closer for every number. At 0 they switch it on, the `game-over`
-  jingle plays (with the wrong note) and the character salutes against their will. Continued in
-  time: the ropes snap, the character punches the speaker over and drops back into the game.
+- **In the world (since 2026-10-20, user decision; 4.6):** no overlay, no dimming, no menu.
+  1 player: the HUD draws `CONTINUE?` (big, C, y 60), the countdown digit (big ×2, C, y 90)
+  `9` … `0` (60 ticks each, each fire/jump press removes 15 ticks), `PRESS START` (small, C,
+  y 130, blinking) and `FREE PLAY` or `CREDITS 04` (small, C, y 140) over the live world; the
+  score stays in the HUD corner. 2 players: the texts are drawn small inside the out player's
+  HUD corner. The stage (or boss) music plays on; the announcer says `CONTINUE?` when every
+  player is out; `ui/countdown` per digit.
+- The enemies on screen laugh at the empty spot (strips `<art>/laugh`); when the hero is back
+  they cower (`<art>/cower`; Legion soldiers without one use `panic`) — 4.6.
+- The first-person mode keeps the overlay (`ContinueScene`): the view freezes and dims to 50 %,
+  the score lines (small, C, y 152), music `continue`, at 0 the `game-over` jingle for 100 ticks,
+  then 13.10.
+- The 1-player chair-and-loudspeaker gag of the old continue screen is retired (2026-10-20).
 
 ### 13.10 Game over
 

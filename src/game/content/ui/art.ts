@@ -9,8 +9,7 @@
  *                   `ui/mil/hazard`, `ui/mil/badge-<off|p1|p2>`, `ui/mil/plate`, `ui/mil/preview`,
  *                   `ui/mil/emblem`, `ui/mil/stencil-<slug>`
  * - screens.art.ts  `ui/newspaper`, `ui/stamp`, `ui/portrait-gusto`, the title lake scene
- *                   (`ui/title-swan`, `ui/parade`), the pause and continue gags
- *                   (`ui/chair`, `ui/loudspeaker`, `ui/private`)
+ *                   (`ui/title-swan`, `ui/parade`), the radio (`ui/radio`)
  * - ending.art.ts   the ending and parade cast: `ui/ending-organ`, `ui/ending-pipe`,
  *                   `ui/fanfaroni`, `ui/ending-mk1`, `ui/ending-flyer`, `ui/placard`, `ui/pigeon`,
  *                   `ui/horse`, `ui/leader-<blare|rimshot|puffington|pizzicata>`

@@ -5,7 +5,7 @@
  * Who emits what:
  * - score            awardScore() (enemies, bosses, items, hostages, tally)
  * - enemyKilled      Enemy.die
- * - playerDied / playerSpawned / playerOut / weaponChanged   Player
+ * - playerDied / playerSpawned / playerOut / continueLanded / weaponChanged   Player
  * - pickup           Pickup.collect
  * - hostageFreed / hostageRescued                            Hostage
  * - bossPhase / bossDefeated                                 Boss
@@ -38,8 +38,10 @@ declare module '../engine/world' {
     enemyKilled: { enemy: Entity; damage: Damage; points: number; player: number };
     playerDied: { player: Player; slot: number; cause: DeathCause };
     playerSpawned: { player: Player; slot: number; respawn: boolean };
-    /** A player lost the last life (the continue screen takes over). */
+    /** A player lost the last life (the continue countdown starts). */
     playerOut: { player: Player; slot: number };
+    /** A hero who used a continue landed (the enemies on screen cower, the boss staggers). */
+    continueLanded: { player: Player; slot: number };
     weaponChanged: { player: Player; slot: number; weapon: string };
     pickup: { player: Player; slot: number; item: Entity };
     /** Ropes cut (by a shot, a blast, the knife or a touch). */

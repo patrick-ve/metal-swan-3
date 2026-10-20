@@ -55,7 +55,7 @@ export interface HeadlessOptions {
   clock?: () => number;
   /** Import the content manifest first (default true). */
   loadContent?: boolean;
-  /** On game over, continue automatically (the bot presses start; default true). */
+  /** On game over (every player out), continue automatically (the bot presses start; default true). */
   autoContinue?: boolean;
   /** Collect console warnings / errors into the report (default true) and echo them (default false). */
   captureConsole?: boolean;
@@ -117,6 +117,8 @@ class Headless implements HeadlessGame {
   private lastTop: Scene | null = null;
   private lastWorld: World | null = null;
   private gameOver = false;
+  /** The runner's countdown hold last tick (its start is a game-over moment). */
+  private lastHeld = false;
 
   constructor(o: HeadlessOptions, capture: ConsoleCapture | null) {
     this.o = o;
@@ -220,6 +222,7 @@ class Headless implements HeadlessGame {
     const top = this.app.scenes.top;
     if (top !== this.lastTop) {
       if (top instanceof GameplayScene) this.scene = top;
+      // The fps mode's continue screen.
       if (top instanceof ContinueScene) {
         this.stats.gameOvers++;
         this.gameOver = true;
@@ -228,6 +231,13 @@ class Headless implements HeadlessGame {
     }
     const runner = this.runner;
     if (!runner) return;
+    // The 2D missions: every player out starts the in-world continue countdown (no screen).
+    const held = runner.countdownHeld;
+    if (held && !this.lastHeld) {
+      this.stats.gameOvers++;
+      this.gameOver = true;
+    }
+    this.lastHeld = held;
     const world = runner.world;
     if (world && world !== this.lastWorld) {
       this.lastWorld = world;

@@ -213,7 +213,7 @@ export function toPx(v: number, k: number, fine: boolean): number {
 export const UNFILTERED_PREFIXES: readonly string[] = ['ui/'];
 
 /**
- * Character and object art that lives under 'ui/' (title, intro, continue and ending scenes):
+ * Character and object art that lives under 'ui/' (title, intro and ending scenes):
  * filtered like the game sprites next to it, so one scene does not mix two looks.
  */
 export const FILTERED_UI_PREFIXES: readonly string[] = [
@@ -223,7 +223,6 @@ export const FILTERED_UI_PREFIXES: readonly string[] = [
   'ui/ending-',
   'ui/title-swan',
   'ui/portrait-',
-  'ui/loudspeaker',
 ];
 
 /**

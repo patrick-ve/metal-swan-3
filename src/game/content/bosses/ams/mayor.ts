@@ -73,6 +73,8 @@ export class AmsMayor extends Boss {
   backArm: 0 | 1 | 2 = 0;
   /** Head: 0 smile, 1 hatch open, 2 shout, 3 off, 4 bald off, 5 bald dizzy. */
   headFrame = 0;
+  /** Draw-only x offset of the stagger shake (px). */
+  private shakeX = 0;
   /** Medallion: 0 closed, 1 open, 2 firing glow. */
   medFrame: 0 | 1 | 2 = 0;
   legsFrame = 0;
@@ -542,7 +544,8 @@ export class AmsMayor extends Boss {
       this.recheck = false;
       this.checkPhases();
     }
-    if (this.state === 'fight' && this.invulnTicks <= 0) this.adds();
+    // No adds while every player is out (the continue countdown) or while she staggers.
+    if (this.state === 'fight' && this.invulnTicks <= 0 && !this.holdAdds) this.adds();
     // Part damage looks: smoke at ≤ 50 %, sparks at ≤ 25 %, a smoking stump when gone.
     if (w.tick % 8 === 0) {
       for (let i = 0; i < 4; i++) {
@@ -556,6 +559,17 @@ export class AmsMayor extends Boss {
         if (st === 2) hitSpark(w, cx, cy, -this.facing);
       }
     }
+  }
+
+  /** A continued hero landed: a '!' where her lines show (draw: the shout face and a 1-px shake). */
+  protected override onStagger(): void {
+    this.say('!', { at: MAYOR.sayAt, ticks: 30, voice: false });
+    this.world.audio.sfx('enemy/double-take');
+  }
+
+  /** Never hold the attack in the air: a stomp in flight lands first. */
+  protected override canStagger(): boolean {
+    return this.lift === 0;
   }
 
   /** Adds by phase, capped by tags (GDD §10.0 adds). */
@@ -777,11 +791,11 @@ export class AmsMayor extends Boss {
     drawOpts.tint = undefined;
     drawOpts.alpha = undefined;
     drawOpts.src = undefined;
-    r.sprite(id, frame, this.x, this.y + dy, drawOpts);
+    r.sprite(id, frame, this.x + this.shakeX, this.y + dy, drawOpts);
     if (this.dim > 0) {
       drawOpts.tint = PAL.ink[0];
       drawOpts.alpha = Math.min(0.85, this.dim);
-      r.sprite(id, frame, this.x, this.y + dy, drawOpts);
+      r.sprite(id, frame, this.x + this.shakeX, this.y + dy, drawOpts);
       drawOpts.tint = undefined;
       drawOpts.alpha = undefined;
     }
@@ -792,7 +806,7 @@ export class AmsMayor extends Boss {
     drawOpts.flash = false;
     drawOpts.tint = color;
     drawOpts.alpha = 0.5;
-    r.sprite(id, frame, this.x, this.y + dy, drawOpts);
+    r.sprite(id, frame, this.x + this.shakeX, this.y + dy, drawOpts);
     drawOpts.tint = undefined;
     drawOpts.alpha = undefined;
   }
@@ -842,8 +856,10 @@ export class AmsMayor extends Boss {
     // Idle life while standing: a 1-px hydraulic breath on the upper body every 32 ticks.
     const idle = this.state === 'fight' && !this.dead && this.legsFrame === 0 && this.sitDrop === 0 && this.lift === 0;
     const dy = this.sitDrop - this.lift + (idle ? (w.tick >> 5) & 1 : 0);
-    // Blink (the powered-off eyes) for 6 ticks every 150 ticks while the face rests.
-    const headFrame = idle && this.headFrame === 0 && w.tick % 150 < 6 ? 3 : this.headFrame;
+    // Blink (the powered-off eyes) for 6 ticks every 150 ticks while the face rests; a stagger
+    // shows the shout face and shakes her 1 px (draw only).
+    const headFrame = this.staggering ? 2 : idle && this.headFrame === 0 && w.tick % 150 < 6 ? 3 : this.headFrame;
+    this.shakeX = this.staggering ? ((w.tick >> 1) & 1 ? 1 : -1) : 0;
     const telegraphOn = this.glowT > 0 && this.glowT % 8 < 5;
     const glowCol = this.glowT % 16 < 8 ? PAL.gold[3] : PAL.snow[3];
     // Far arm at rest sits behind the body.

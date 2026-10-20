@@ -47,6 +47,11 @@ export interface ScriptHandle {
   readonly cancelled: boolean;
   /** Stopped because it threw. */
   readonly failed: boolean;
+  /**
+   * Held: not stepped while true (a wait in progress keeps its remaining ticks). The mission runner
+   * holds the section script while every player is out (the in-world continue countdown).
+   */
+  paused: boolean;
   /** Stop the script (runs its `finally` blocks). */
   cancel(): void;
 }
@@ -64,6 +69,7 @@ export class Coroutine implements ScriptHandle {
   done = false;
   cancelled = false;
   failed = false;
+  paused = false;
   error: unknown = null;
   /** @internal last runner frame this coroutine was stepped in. */
   lastFrame = -1;
@@ -79,7 +85,7 @@ export class Coroutine implements ScriptHandle {
 
   /** Advance by one tick. Exceptions from the script propagate to the caller. */
   step(): void {
-    if (this.done) return;
+    if (this.done || this.paused) return;
     if (this.waitTicks > 0) {
       if (--this.waitTicks > 0) return;
     } else if (this.waitPred) {

@@ -6,6 +6,7 @@ import { terrain } from '../../src/engine/terrain';
 import { drawHud } from '../../src/game/hud';
 import { MissionRunner, type MissionDef, type SectionDef } from '../../src/game/mission/index';
 import { defineMission } from '../../src/game/registry';
+import type { Enemy } from '../../src/game/enemy';
 import { GameSession } from '../../src/game/session';
 import { TUNING } from '../../src/game/tuning';
 import { FLOOR } from './helpers';
@@ -214,9 +215,73 @@ describe('mission runner', () => {
     expect(runner.checkpoint.x).toBe(600);
   });
 
-  it('game over when every player is out; a continue brings the player back', () => {
+  it('the last life starts the countdown over the live world (waves and timer hold, enemies laugh); a continue drops the hero in and the enemies cower; run out: GAME OVER', async () => {
+    await import('./helpers'); // registers 'test-dummy'
+    let beats = 0;
     const mission: MissionDef = {
       id: 'go-test',
+      name: 'GO',
+      music: '',
+      start: 'a',
+      sections: {
+        a: flatSection('a', 800, function* waves() {
+          for (;;) {
+            beats++;
+            yield;
+          }
+        }, { timeLimit: 60 }),
+      },
+    };
+    const session = new GameSession();
+    const { runner, drv, audio } = setup(mission, session);
+    let allOut = 0;
+    let over = false;
+    runner.events.on('allOut', () => allOut++);
+    runner.events.on('gameOver', () => (over = true));
+    runner.start();
+    const p = runner.players[0];
+    const foe = runner.world.spawn('test-dummy', p.x + 80, FLOOR) as Enemy;
+    drv.run(1);
+    session.slots[0].lives = 1;
+    p.kill('impact');
+    drv.until(() => runner.countdownHeld, 200);
+    // No game over, no pause: the world runs on under the countdown.
+    expect(allOut).toBe(1);
+    expect(runner.state).toBe('playing');
+    expect(runner.countdownNumber).toBe(9);
+    const beats0 = beats;
+    const tick0 = runner.world.tick;
+    const time0 = runner.timeLeft;
+    drv.run(70);
+    expect(runner.world.tick).toBe(tick0 + 70);
+    expect(beats).toBe(beats0); // the section script (its waves) holds
+    expect(runner.timeLeft).toBe(time0);
+    expect(runner.countdownNumber).toBe(8);
+    expect(audio.log).toContain('sfx:ui/countdown');
+    expect(foe.reaction).toBe('laugh');
+    expect(foe.reactionSource).toBe(p);
+    // START (free play): the hero drops in; the landing makes the enemy cower and ends the hold.
+    drv.hold('start').run(1).hold();
+    expect(p.state).toBe('spawn');
+    expect(audio.log).toContain('sfx:ui/confirm');
+    drv.until(() => p.state === 'play', 200);
+    expect(foe.reaction).toBe('cower');
+    expect(foe.reactionTicks).toBeGreaterThan(TUNING.continues.cowerTicks - 3);
+    drv.run(1);
+    expect(runner.countdownHeld).toBe(false);
+    expect(beats).toBeGreaterThan(beats0);
+    // Out again, and nobody presses start: the countdown runs out → GAME OVER.
+    session.slots[0].lives = 1;
+    p.invulnTicks = 0;
+    p.kill('impact');
+    drv.until(() => over, 200 + TUNING.continues.seconds * TUNING.continues.ticksPerCount + 10);
+    expect(runner.state).toBe('gameover');
+    expect(allOut).toBe(2);
+  });
+
+  it('no credits left: the countdown ends after a moment (nothing to wait for)', () => {
+    const mission: MissionDef = {
+      id: 'go-credits',
       name: 'GO',
       music: '',
       start: 'a',
@@ -227,17 +292,17 @@ describe('mission runner', () => {
       },
     };
     const session = new GameSession();
+    session.credits = 0;
     const { runner, drv } = setup(mission, session);
     let over = false;
     runner.events.on('gameOver', () => (over = true));
     runner.start();
     session.slots[0].lives = 1;
     runner.players[0].kill('impact');
-    drv.until(() => over, 200);
-    expect(runner.state).toBe('gameover');
-    expect(runner.continuePlayer(0)).toBe(true);
-    expect(runner.state).toBe('playing');
-    drv.until(() => runner.players[0].state === 'play', 100);
+    drv.until(() => runner.countdownHeld, 200);
+    drv.hold('start').run(1).hold();
+    expect(runner.players[0].state).toBe('out');
+    expect(drv.until(() => over, TUNING.continues.noCreditTicks + 5)).toBeLessThanOrEqual(TUNING.continues.noCreditTicks);
   });
 
   it('carries a mounted vehicle into the next section', async () => {

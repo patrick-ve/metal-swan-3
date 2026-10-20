@@ -31,7 +31,7 @@ import { RecordingRenderer } from '../engine/helpers';
 const BASE = ['ui/base/sky', 'ui/base/land', 'ui/base/net', 'ui/base/puff', 'ui/base/wall'];
 const MIL = ['ui/mil/bolt', 'ui/mil/frame', 'ui/mil/shutter', 'ui/mil/hazard', 'ui/mil/badge-off', 'ui/mil/badge-p1', 'ui/mil/badge-p2', 'ui/mil/plate', 'ui/mil/preview', 'ui/mil/emblem'];
 const STENCILS = [...STENCIL_TITLES, ...STENCIL_GOLD].map(stencilId);
-const SCREENS = ['ui/logo', 'ui/portrait-gusto', 'ui/radio', 'ui/chair', 'ui/rope', 'ui/loudspeaker'];
+const SCREENS = ['ui/logo', 'ui/portrait-gusto', 'ui/radio'];
 const IDS = [...BASE, ...MIL, ...STENCILS, ...SCREENS];
 
 /** FNV-1a of a sprite's 1× frames (size, anchor, pixels). */
@@ -74,9 +74,6 @@ const ONE_X: Readonly<Record<string, string>> = {
   'ui/mil/stencil-select-operation': '070ad83d',
   'ui/logo': '441cf07e',
   'ui/portrait-gusto': '8ff3d4d5',
-  'ui/chair': '2b2ea4cc',
-  'ui/rope': 'd5b05003',
-  'ui/loudspeaker': 'a82c7c26',
 };
 
 /** Is `hi` just `lo` scaled by an integer factor? */
@@ -162,7 +159,7 @@ describe('UHD art of the menus', () => {
   }, 60_000);
 
   it('is deterministic', () => {
-    for (const id of ['ui/logo', 'ui/mil/frame', 'ui/mil/shutter', 'ui/portrait-gusto', 'ui/radio', 'ui/loudspeaker', stencilId('PRESS START')]) {
+    for (const id of ['ui/logo', 'ui/mil/frame', 'ui/mil/shutter', 'ui/portrait-gusto', 'ui/radio', stencilId('PRESS START')]) {
       const a = getFrames(id, 4).map((f) => f.buf.data.slice());
       clearSpriteCache(id);
       const b = getFrames(id, 4).map((f) => f.buf.data);

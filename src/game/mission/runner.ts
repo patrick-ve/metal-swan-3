@@ -4,13 +4,16 @@
  * fades, checkpoints (x, or y in vertical sections), the section timer, auto-scroll, vehicles
  * carried between sections (only into sections that allow them), section respawn rules and start
  * vehicles, the default vertical respawn rule, invisible body walls, campaign records (via the
- * session), mission stats for the tally, mission complete and game-over hooks. Pure (no DOM): the
- * Gameplay scene, tests and headless tools drive it.
+ * session), mission stats for the tally, the in-world continue (GDD §4.6: a player out of lives gets
+ * a countdown over the live world; with every player out the section script, the timer,
+ * auto-scroll and boss adds hold, the enemies on screen laugh, and a continued hero's landing
+ * makes them cower and the boss stagger), mission complete and game-over hooks. Pure (no DOM):
+ * the Gameplay scene, tests and headless tools drive it.
  *
  * ```ts
  * const runner = new MissionRunner({ session, mission: 'm1', pads: [input.pad(0), input.pad(1)], audio });
  * runner.events.on('complete', () => …);   // after the victory poses → tally
- * runner.events.on('gameOver', () => …);   // every player is out → continue screen
+ * runner.events.on('gameOver', () => …);   // every countdown ran out, nobody back → GAME OVER
  * runner.start();
  * // every tick:  runner.update();     every frame:  r.begin(runner.sky); runner.draw(r);
  * ```
@@ -23,13 +26,13 @@ import { contains, overlaps } from '../../engine/math';
 import { pushX } from '../../engine/physics';
 import type { Renderer } from '../../engine/render';
 import { hashString } from '../../engine/rng';
-import type { ScriptGen, Wait } from '../../engine/script';
+import type { ScriptGen, ScriptHandle, Wait } from '../../engine/script';
 import { Terrain, terrain as terrainBuilder } from '../../engine/terrain';
 import { artTier, toArtDensity, withArtDensity, type ArtDensity } from '../../engine/sprites';
 import { World } from '../../engine/world';
 import { Boss } from '../boss';
 import { attachGame, HudState, type BannerOpts, type CalloutOpts, type GameContext, type GoDir } from '../context';
-import { floorY, offscreenX, findFloor } from '../enemy';
+import { floorY, offscreenX, findFloor, reactInArea } from '../enemy';
 import { Player } from '../player/player';
 import { gameEntityFactory, getMission, listMissions, type SpawnParams } from '../registry';
 import type { CampaignRecords, GameSession, PlayerSlot, SlotIndex } from '../session';
@@ -61,10 +64,12 @@ export interface RunnerEvents {
   sectionLoaded: { id: string };
   /** Victory poses are over: show the tally. */
   complete: { mission: string };
-  /** Every joined player is out of lives. */
+  /** Every continue countdown ran out with every joined player out of lives: GAME OVER. */
   gameOver: { mission: string };
-  /** One player is out while another still plays (inline continue countdown starts). */
+  /** A player is out of lives: their continue countdown starts (`continueTicks`). */
   playerOut: { slot: SlotIndex };
+  /** Every joined player is out: the countdown runs over the live world (`countdownNumber`). */
+  allOut: { slot: SlotIndex };
 }
 
 export interface RunnerOptions {
@@ -115,12 +120,21 @@ export class MissionRunner {
   checkpoint = { x: 0, y: 0 };
   /** Ticks since start (for HUD blinking, tally timings: 60 per second). */
   ticks = 0;
-  /** Inline continue countdowns (ticks) per slot while another player keeps playing; -1 = none. */
+  /** Continue countdowns (ticks) per slot that is out of lives; -1 = none (or run out). */
   readonly continueTicks: [number, number] = [-1, -1];
   /** Invisible body walls of the current section (`ctx.bodyWall`); cleared on every section load. */
   readonly bodyWalls: BodyWall[] = [];
 
   private readonly startSection: string | undefined;
+  /** The running section script (held while every player is out). */
+  private sectionScript: ScriptHandle | null = null;
+  /** Every joined player is out: the section script, the timer, auto-scroll and boss adds hold. */
+  private held = false;
+  /** Ticks since the hold started; the countdown number last heard (its sound per number). */
+  private heldT = 0;
+  private countShown = -1;
+  /** Who the enemies laugh at: the last player out (it stays in the world, unseen, where it fell). */
+  private laughAt: Entity | null = null;
   /** The next loadSection is the fresh mission start of an introDrop mission (parachute drop). */
   private introDropPending = false;
   /** The highest art density of the drawing (option or mission); `artDensity` caps it by the tier. */
@@ -249,7 +263,9 @@ export class MissionRunner {
     this.setAmbience(def.ambience ?? null);
     this.session.sectionId = def.id;
     const ctx = this.ctx;
-    world.scripts.run(() => def.script(ctx), { name: `section ${this.mission.id}/${def.id}` });
+    this.held = false;
+    this.laughAt = null;
+    this.sectionScript = world.scripts.run(() => def.script(ctx), { name: `section ${this.mission.id}/${def.id}` });
     this.events.emit('sectionLoaded', { id: def.id });
   }
 
@@ -357,7 +373,8 @@ export class MissionRunner {
 
   private wire(world: World): void {
     world.events.on('playerDied', () => this.resetTimer());
-    world.events.on('playerOut', (e) => this.onPlayerOut(e.slot as SlotIndex));
+    world.events.on('playerOut', (e) => this.onPlayerOut(e.slot as SlotIndex, e.player));
+    world.events.on('continueLanded', (e) => this.onContinueLanded(e.player));
     world.events.on('playerSpawned', (e) => {
       if (e.respawn) this.giveStartVehicle(e.player);
     });
@@ -432,13 +449,14 @@ export class MissionRunner {
     this.goShown = go;
     switch (this.state) {
       case 'playing':
-        if (this.autoSpeed !== 0) this.advanceAutoScroll();
+        if (this.autoSpeed !== 0 && !this.held) this.advanceAutoScroll();
         this.world.update();
         this.applyBodyWalls();
-        this.updateTimer();
+        if (!this.held) this.updateTimer();
         this.updateCheckpoints();
         this.checkExits();
         this.updateContinues();
+        if (this.held) this.updateHeld();
         break;
       case 'entering':
         this.world.update();
@@ -818,30 +836,113 @@ export class MissionRunner {
 
   // ------------------------------------------------------------------------------- players
 
-  private onPlayerOut(slot: SlotIndex): void {
-    if (this.session.allOut) {
+  /**
+   * A player lost the last life: their countdown starts (the game never pauses for it). With every
+   * joined player out the world holds (`hold`) and the enemies on screen laugh at `p`'s spot.
+   */
+  private onPlayerOut(slot: SlotIndex, p: Entity): void {
+    // The last player went out during the victory poses (a death just before the win): no
+    // countdown can run there and the next mission would start without a player: GAME OVER.
+    if (this.state === 'victory' && this.session.allOut) {
       this.state = 'gameover';
       this.events.emit('gameOver', { mission: this.mission.id });
-    } else {
-      this.continueTicks[slot] = TUNING.continues.seconds * TUNING.continues.ticksPerCount;
-      this.events.emit('playerOut', { slot });
+      return;
+    }
+    this.continueTicks[slot] = TUNING.continues.seconds * TUNING.continues.ticksPerCount;
+    this.events.emit('playerOut', { slot });
+    if (this.session.allOut) {
+      this.laughAt = p;
+      if (!this.held) {
+        this.hold(true);
+        this.events.emit('allOut', { slot });
+      }
     }
   }
 
-  /** Inline (2-player) continue countdowns: start continues, fire / jump speed it up. */
+  /**
+   * Every player out (`on`): the section script holds (no new waves), so do the timer and
+   * auto-scroll (`update`) and the boss adds (`Boss.addsHeld`); the boss attacks run on.
+   */
+  private hold(on: boolean): void {
+    if (this.held === on) return;
+    this.held = on;
+    this.heldT = 0;
+    this.countShown = -1;
+    if (this.sectionScript) this.sectionScript.paused = on;
+    const bosses = this.world.byTag('boss');
+    for (let i = 0; i < bosses.length; i++) {
+      const b = bosses[i];
+      if (b instanceof Boss) b.addsHeld = on;
+    }
+  }
+
+  /** Is the world held for the continue countdown (every player out, nobody back on the ground yet)? */
+  get countdownHeld(): boolean {
+    return this.held;
+  }
+
+  /** The countdown number on show (9 … 0) while the world is held; −1 when none runs. */
+  get countdownNumber(): number {
+    if (!this.held) return -1;
+    const t = Math.max(this.continueTicks[0], this.continueTicks[1]);
+    return t < 0 ? -1 : Math.max(0, Math.ceil(t / TUNING.continues.ticksPerCount) - 1);
+  }
+
+  /**
+   * The continue countdowns: start continues (a credit), fire / jump speed it up. With every player
+   * out and no credits left it ends after `noCreditTicks`; when every countdown has run out and
+   * nobody came back: GAME OVER.
+   */
   private updateContinues(): void {
+    const C = TUNING.continues;
+    if (this.held) this.heldT++;
     for (let i = 0; i < 2; i++) {
       const t = this.continueTicks[i];
       if (t < 0) continue;
       const pad = this.pads[i];
-      if (pad.pressed('start')) {
-        this.continuePlayer(i as SlotIndex);
+      if (pad.pressed('start') && this.continuePlayer(i as SlotIndex)) {
+        this.audio.sfx('ui/confirm');
         continue;
       }
-      const skip = pad.pressed('fire') || pad.pressed('jump') ? TUNING.continues.skipTicks : 0;
-      this.continueTicks[i] = t - 1 - skip;
-      if (this.continueTicks[i] < 0) this.continueTicks[i] = -1;
+      let left = t - 1 - (pad.pressed('fire') || pad.pressed('jump') ? C.skipTicks : 0);
+      // No credits left: nothing to wait for.
+      if (this.held && this.session.credits <= 0 && this.heldT >= C.noCreditTicks) left = -1;
+      this.continueTicks[i] = left < 0 ? -1 : left;
     }
+    if (!this.held) return;
+    const n = this.countdownNumber;
+    if (n >= 0 && n !== this.countShown) {
+      if (this.countShown >= 0) this.audio.sfx('ui/countdown');
+      this.countShown = n;
+    }
+    if (this.continueTicks[0] < 0 && this.continueTicks[1] < 0 && this.players.every((p) => p.state === 'out')) {
+      this.state = 'gameover';
+      this.events.emit('gameOver', { mission: this.mission.id });
+    }
+  }
+
+  /**
+   * While held: a hero on the ground again (or in a vehicle) ends the hold; until then the enemies
+   * on screen laugh at the spot where the last player went down.
+   */
+  private updateHeld(): void {
+    const C = TUNING.continues;
+    if (this.players.some((p) => p.state === 'play' || p.state === 'mounted' || p.state === 'victory')) this.hold(false);
+    else if (this.state === 'playing' && this.heldT % C.laughEvery === 1) {
+      reactInArea(this.world, this.world.camera.view(), 'laugh', C.laughTicks, { onScreen: true, source: this.laughAt });
+    }
+  }
+
+  /** A continued hero landed: the enemies on screen cower, the boss staggers, the world runs on. */
+  private onContinueLanded(p: Player): void {
+    const C = TUNING.continues;
+    reactInArea(this.world, this.world.camera.view(), 'cower', C.cowerTicks, { onScreen: true, source: p });
+    const bosses = this.world.byTag('boss');
+    for (let i = 0; i < bosses.length; i++) {
+      const b = bosses[i];
+      if (b instanceof Boss) b.stagger(C.bossStaggerTicks);
+    }
+    this.hold(false);
   }
 
   /**

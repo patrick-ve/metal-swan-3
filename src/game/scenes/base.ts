@@ -275,7 +275,7 @@ const BOLT = 'ui/mil/bolt';
  * The menu art the screens own (`releaseScreenArt` drops its 4× frames when the game proper
  * starts): the backdrop, the military frame and its parts, the logo, the radio card, the gags.
  */
-export const MENU_ART: readonly string[] = ['ui/base/', 'ui/mil/', 'ui/logo', 'ui/portrait-gusto', 'ui/radio', 'ui/loudspeaker', 'ui/chair', 'ui/rope'];
+export const MENU_ART: readonly string[] = ['ui/base/', 'ui/mil/', 'ui/logo', 'ui/portrait-gusto', 'ui/radio'];
 
 /** Workers of the screen art pool (at most; never more than the machine's pool size). */
 export const SCREEN_POOL_MAX = 4;
