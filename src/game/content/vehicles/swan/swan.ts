@@ -1027,6 +1027,15 @@ export class Swan extends Vehicle {
     return false;
   }
 
+  /**
+   * Is HONK ready (the HUD's special-ready gem, GDD §13.7)? Driven, no wind-up running, the
+   * cooldown done and at least `HK.cost` shells. (The HUD's fallback reads `specialGun`, which
+   * the Swan does not use, so the gem never lit for her.)
+   */
+  get specialReady(): boolean {
+    return this.state === 'driven' && this.honkT < 0 && this.honkCool <= 0 && this.shells >= HK.cost;
+  }
+
   /** The end of the wind-up: the ring leaves her hull centre (it does not move with her). */
   private fireHonk(): void {
     const h = this.bodyPoint('hull', pt);

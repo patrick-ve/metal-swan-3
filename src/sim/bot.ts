@@ -10,7 +10,10 @@
  *   its predicted landing is safe; moving platforms are waited for), climbs platform staircases
  *   toward goals above (air steering predicts the drift: no air drag), drops through platforms
  *   and walks off solid floors toward goals below; rides cable cars and moving platforms to the
- *   far side and steps off; throws bombs; dodges shots; stuck detector.
+ *   far side and steps off; throws bombs; dodges shots; stuck detector. On a canal cruise
+ *   (mission ams c2: a `cruise-boat` that holds the camera) it boards and keeps to the middle
+ *   of the DECK (never the glass roof: it drops through when it lands there), picks up only what
+ *   lies on the deck and never jumps near a low bridge.
  * - FLIGHT (the Trumpeter, m5-a): bot-flight.ts — dodges shots and bodies, lines up with targets,
  *   collects pickups, dive-bombs targets below; never bails out.
  * - SWAN (a ridden Swan, m1-c / m3-a): bot-swan.ts — runs, jumps walls and enemies (stomps),
@@ -32,6 +35,7 @@ import { GameplayScene } from '../game/scenes/gameplay';
 import { MissionCompleteScene } from '../game/scenes/mission-complete';
 import { PauseScene } from '../game/scenes/pause';
 import { TitleScene } from '../game/scenes/title';
+import { TUNING } from '../game/tuning';
 import { Vehicle } from '../game/vehicle';
 import {
   deadlyAt,
@@ -63,6 +67,33 @@ export interface BotOptions {
   /** Dodge enemy shots (default true). */
   dodge?: boolean;
 }
+
+/**
+ * The canal cruise's boat as the bot sees it (duck-typed: content/missions/ams/cruise.ts
+ * `AmsCruiseBoat`): the stern x, the deck and the glass roof boxes, and whether it holds the
+ * camera (it sails; after docking it lets go).
+ */
+interface CruiseLike {
+  readonly fx: number;
+  readonly deck: { readonly x: number; readonly y: number; readonly w: number };
+  readonly roofBox: { readonly x: number; readonly y: number; readonly w: number };
+  readonly leads: boolean;
+}
+
+/** Where the bot stands on the cruise boat (boat-local x from the stern): the deck under the cabin front. */
+export const CRUISE_SPOT = 132;
+/** No jumps while a low bridge (or the closed Magere Brug) is this close (px beyond its half width). */
+const BRIDGE_CLEAR = 28;
+const BRIDGE_TAGS: readonly string[] = ['low-bridge', 'magere-brug'];
+/**
+ * Ground vehicles the bot drives with care (hop only over real gaps, never fire into a hop: the
+ * RAM combo). The older vehicles keep the old drive (their missions' sims stay byte-identical).
+ */
+const CAREFUL_DRIVE: readonly string[] = ['beer-bike'];
+/** The spot behind a ramming boss (px from its x): the ams scan car's rear bumper, under its scanner's rear end. */
+const RAM_REAR = 36;
+/** Enemy carriers whose body bullets ping off while riders are aboard (shoot the riders). */
+const ARMOURED_CARRIERS: readonly string[] = ['stag-beer-bike'];
 
 /** What the bot needs from the game: the current top scene and the running mission. */
 export interface BotHost {
@@ -152,6 +183,10 @@ export class Bot implements InputSource {
   goalX = 0;
   goalY = 0;
   goalKind = '';
+  /** The on-foot target of this tick (the arena goal reads it). */
+  private footTarget: Entity | null = null;
+  /** Ticks the arena's targets have stayed well below a ledge we stand on. */
+  private lowT = 0;
   /** Debug: why the bot last wanted a jump, and the mode of the tick. */
   jumpWhy = '';
   mode: 'menu' | 'foot' | 'flight' | 'swan' | 'drive' | 'idle' = 'idle';
@@ -240,13 +275,26 @@ export class Bot implements InputSource {
     const world = runner.world;
     this.dynCount = dynamicLedges(world, this.dyn);
     let mask = 0;
-    const target = this.pickTarget(world, p);
+    let target = this.pickTarget(world, p);
     this.findBossPart(world);
+    this.footTarget = target;
     const goal = this.goal(runner, p);
     this.goalX = goal.x;
     this.goalY = goal.y;
     this.goalKind = goal.kind;
     const scroll = runner.section.scroll;
+    // The canal cruise: off the glass roof (drop through onto the deck), no jumps near a bridge.
+    const boat = goal.kind === 'cruise' || goal.kind === 'cruise-item' ? this.cruiseOf(world) : null;
+    const noJump = boat !== null && this.bridgeNear(world, p.x);
+    // On board the boat is the floor: the river under the hull is no gap to jump.
+    const aboard = boat !== null && p.onGround && (p.body.supportSolid === boat.deck || p.body.supportSolid === boat.roofBox);
+    // Out of reach on a quay or a moored boat: a tied hostage in view is shot free (a chair's
+    // ropes give to any shot) when nothing hostile is about.
+    if (!target && boat) target = this.tiedInView(world);
+    if (boat && p.onGround && p.body.supportSolid === boat.roofBox) {
+      const fire = p.weapon.auto || this.t % 2 === 0 ? FIRE : 0;
+      return (this.t % 4 === 0 ? DOWN | JUMP : DOWN) | fire;
+    }
 
     // ---- where to go
     let dir = Math.abs(goal.x - p.x) > 6 ? Math.sign(goal.x - p.x) : 0;
@@ -312,7 +360,7 @@ export class Bot implements InputSource {
     }
 
     // ---- terrain probes in the move direction
-    if (dir !== 0 && p.onGround && !riding && !jump) {
+    if (dir !== 0 && p.onGround && !riding && !jump && !aboard) {
       const need = this.obstacle(world, p, dir);
       if (need === 'wall') {
         jump = true;
@@ -356,6 +404,14 @@ export class Bot implements InputSource {
       // under a target nearly overhead (a while, then walk on); up + toward fires at 45°.
       const dy = p.y - 22 - a.y;
       const adx = Math.abs(tdx);
+      // A rider seated a little above the gun (the beer bike's stools): a level shot passes under
+      // him into the armoured body, so hop and fire at the top of the jump.
+      const seat = (target as Entity & { seat?: unknown }).seat;
+      const seated = typeof seat === 'object' && seat !== null && 'aboard' in seat;
+      if (seated && dy > 4 && dy <= 30 && adx < 220 && p.onGround && !riding && this.airDir === null && this.t % 36 === 0 && this.edgeOk(world, p, s || p.facing)) {
+        jump = true;
+        this.jumpWhy = 'hop-shot';
+      }
       if (dy > 16 && adx < 24) {
         // Already holding still (an arena spot, a reached goal, a goal close by): no cap.
         if (free && (dir === 0 || Math.abs(goal.x - p.x) < 24 || this.overheadT < 60)) {
@@ -402,6 +458,15 @@ export class Bot implements InputSource {
         }
       }
     }
+    // ---- a boss ramming along the floor at us (the ams scan car's RAM: its low body hurts only
+    // while it drives): jump it straight up, in time.
+    if (p.onGround && !jump && !riding && this.ramComing(world, p)) {
+      jump = true;
+      this.jumpWhy = 'ram';
+      this.airDir = 0;
+      press = 0;
+      mask &= ~UP;
+    }
     if (press < 0) mask |= L;
     else if (press > 0) mask |= R;
 
@@ -416,6 +481,8 @@ export class Bot implements InputSource {
 
     // Jump presses need an edge: press, then release on the next tick if still airborne.
     if (jump && (p.onGround || p.body.ticksSinceGrounded <= 3)) mask |= JUMP;
+    // Under a low bridge a jump bonks (or, at its face, kills): keep the feet on the deck.
+    if (noJump) mask &= ~JUMP;
 
     // ---- fire constantly: taps for tap weapons, a held trigger for automatic ones
     if (p.weapon.auto) mask |= FIRE;
@@ -427,6 +494,26 @@ export class Bot implements InputSource {
       mask |= BOMB;
     }
     return mask;
+  }
+
+  /**
+   * A boss drives a low contact box (≤ 30 px tall, at our height) at us (`ramming`) and its front
+   * is 38–70 px from our body: the moment to jump it (measured on the ams scan car at 3 px/tick).
+   */
+  private ramComing(world: World, p: Player): boolean {
+    const list = world.byTag('boss');
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!(e instanceof Boss) || !e.alive || (e as Boss & { ramming?: unknown }).ramming !== true) continue;
+      const boxes = e.contactBoxes();
+      if (boxes.length === 0) continue;
+      const b = boxes[0];
+      const r = p.hitRect();
+      if (b.h > 30 || b.y + b.h <= r.y || b.y >= r.y + r.h) continue;
+      const gap = e.facing < 0 ? b.x - (r.x + r.w) : r.x - (b.x + b.w);
+      if (gap >= 38 && gap <= 70) return true;
+    }
+    return false;
   }
 
   /** Plan the airborne steering of the jump started now. */
@@ -600,10 +687,14 @@ export class Bot implements InputSource {
     let bestScore = Infinity;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
-      if (!e.alive || e.team !== 'enemy' || !world.onScreen(e, -4)) continue;
+      // Secrets (ams: shoot-to-reveal decor) are no targets: the bot does not look for them.
+      if (!e.alive || e.team !== 'enemy' || !world.onScreen(e, -4) || e.hasTag('secret')) continue;
       const dx = e.x - p.x;
       const dy = Math.abs(e.y - p.y);
-      const score = Math.abs(dx) + dy * 0.7 + (Math.sign(dx) === p.facing ? 0 : 40);
+      // An armoured carrier with riders aboard (the stag party's beer bike: bullets ping off its
+      // body): shoot the riders first.
+      const carrier = ARMOURED_CARRIERS.includes(e.type) ? (((e as Entity & { aboard?: unknown }).aboard as number | undefined) ?? 0) : 0;
+      const score = Math.abs(dx) + dy * 0.7 + (Math.sign(dx) === p.facing ? 0 : 40) + (carrier > 0 ? 400 : 0);
       if (score < bestScore) {
         bestScore = score;
         best = e;
@@ -629,6 +720,17 @@ export class Bot implements InputSource {
     const cam = world.camera;
     const sec = runner.section;
     if (onFoot) {
+      // On a canal cruise: the deck spot (or a pickup lying on the deck).
+      const boat = this.cruiseOf(world);
+      if (boat) {
+        const items = world.byTag('item');
+        const d = boat.deck;
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          if (it.alive && Math.abs(it.y - d.y) <= 6 && it.x > d.x + 8 && it.x < d.x + d.w - 8 && Math.abs(it.x - p.x) < 120) return this.setGoal(it.x, d.y, 'cruise-item');
+        }
+        return this.setGoal(boat.fx + CRUISE_SPOT, d.y, 'cruise');
+      }
       // Empty vehicles nearby.
       if (this.opts.vehicles) {
         const vs = world.byTag('vehicle');
@@ -688,6 +790,22 @@ export class Bot implements InputSource {
         }
         return this.setGoal(x, p.y, 'arena');
       }
+      // A boss that rams along the floor (the ams scan car): stand at its rear bumper, out of the
+      // drive's path, where level fire hits its body and the 45° up-shot its roof scanner. In front
+      // of it while it revs or drives: back away (ramComing jumps the drive in time).
+      const rb = this.bossRef as (Boss & { ramming?: boolean; revving?: boolean }) | null;
+      if (b.ok && rb && 'ramming' in rb) {
+        const f = rb.facing;
+        const rear = (p.x - rb.x) * f < 0;
+        if (rb.ramming || rb.revving) return this.setGoal(rear ? p.x : p.x + f * 40, p.y, 'arena');
+        return this.setGoal(Math.max(cam.left + 10, Math.min(cam.right - 10, rb.x - f * RAM_REAR)), p.y, 'arena');
+      }
+      // On a ledge (an awning) high over an arena floor whose targets stay down there for 4 s: a
+      // level shot passes over them and theirs under us, so go down to their floor (drop through).
+      const ft = onFoot ? this.footTarget : null;
+      if (ft && !b.ok && ft.y - p.y >= 40 && ft.y - p.y <= 120) {
+        if (++this.lowT > 240) return this.setGoal(cam.left + 120, ft.y, 'arena');
+      } else if (onFoot) this.lowT = 0;
       return this.setGoal(cam.left + 120, p.y, 'arena');
     }
     // An open exit: the chosen route.
@@ -699,7 +817,8 @@ export class Bot implements InputSource {
         this.exitKinds.set(ex, kind);
       }
       // Aim at the exit's floor, or at the player's own height when the rect spans it (tall exits).
-      const ey = Math.min(ex.rect.y + ex.rect.h - 2, Math.max(ex.rect.y + 8, p.y));
+      // From above the rect (a bridge deck over the ams jetty), its floor: drop down to it.
+      const ey = p.y < ex.rect.y - 8 && onFoot ? ex.rect.y + ex.rect.h - 2 : Math.min(ex.rect.y + ex.rect.h - 2, Math.max(ex.rect.y + 8, p.y));
       return this.setGoal(ex.rect.x + ex.rect.w / 2, ey, kind);
     }
     // A cable car that carries us along the way.
@@ -751,6 +870,38 @@ export class Bot implements InputSource {
       }
     }
     return null;
+  }
+
+  /** The canal cruise's boat while it holds the camera (sailing, stopped or moored), else null. */
+  private cruiseOf(world: World): CruiseLike | null {
+    const list = world.byTag('cruise-boat');
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i] as Entity & Partial<CruiseLike>;
+      if (!e.removed && e.leads === true && e.deck && e.roofBox) return e as unknown as CruiseLike;
+    }
+    return null;
+  }
+
+  /** A tied hostage in view (the canal cruise: shot free from the deck), or null. */
+  private tiedInView(world: World): Entity | null {
+    const list = world.byTag('hostage');
+    for (let i = 0; i < list.length; i++) {
+      const h = list[i] as Entity & { state?: string };
+      if (h.alive && h.state === 'tied' && world.onScreen(h, -8)) return h;
+    }
+    return null;
+  }
+
+  /** Is a low bridge (or the Magere Brug) over or just ahead of / behind x? */
+  private bridgeNear(world: World, x: number): boolean {
+    for (let k = 0; k < BRIDGE_TAGS.length; k++) {
+      const list = world.byTag(BRIDGE_TAGS[k]);
+      for (let i = 0; i < list.length; i++) {
+        const b = list[i];
+        if (Math.abs(b.x - x) < b.hitbox.w / 2 + BRIDGE_CLEAR) return true;
+      }
+    }
+    return false;
   }
 
   /** The enabled exit matching the route (upper = highest rect, lower = lowest). */
@@ -1126,17 +1277,34 @@ export class Bot implements InputSource {
 
   // ------------------------------------------------------------------------------- vehicles
 
-  /** Driving: forward, fire, cannon at bosses, jump gaps; never eject. */
+  /** The tick of the last fire press while driving (no jump inside its combo window). */
+  private driveFireT = -100;
+
+  /** Driving: forward, fire, cannon at bosses, jump gaps; never eject (never the RAM combo). */
   private drive(runner: MissionRunner, p: Player): number {
     const world = runner.world;
     const v = p.vehicle;
     // 0 cells: it stops and blows up — get out (eject = down, then jump with down held).
     if (v instanceof Vehicle && (v.state === 'doomed' || v.cells <= 0)) return this.t % 6 < 3 ? DOWN : DOWN | JUMP;
     let mask = runner.world.camera.locked ? 0 : R;
-    if (p.weapon && this.t % 2 === 0) mask |= FIRE;
-    if (v instanceof Vehicle) {
+    if (v instanceof Vehicle && CAREFUL_DRIVE.includes(v.type)) {
+      // A gap ahead: hop (a floor a little higher, an uphill slope or a bridge, is no gap). Fire
+      // and jump within the combo window are the RAM (the pilot bails out): no fire around a hop.
       const ahead = v.x + v.facing * (v.hitbox.w / 2 + 6);
-      if (!Number.isFinite(floorAt(world, ahead, v.y - 2, v.y + 64, v)) && this.t % 3 === 0) mask |= JUMP;
+      const hop = !Number.isFinite(floorAt(world, ahead, v.y - 20, v.y + 64, v)) && this.t % 3 === 0;
+      if (hop && this.t - this.driveFireT > TUNING.vehicle.comboWindow) mask |= JUMP;
+      if (!hop && p.weapon && this.t % 2 === 0) {
+        mask |= FIRE;
+        this.driveFireT = this.t;
+      }
+    } else {
+      if (p.weapon && this.t % 2 === 0) mask |= FIRE;
+      if (v instanceof Vehicle) {
+        const ahead = v.x + v.facing * (v.hitbox.w / 2 + 6);
+        if (!Number.isFinite(floorAt(world, ahead, v.y - 2, v.y + 64, v)) && this.t % 3 === 0) mask |= JUMP;
+      }
+    }
+    if (v instanceof Vehicle) {
       const target = this.pickTarget(world, p);
       if (target && target.y + target.hitbox.y + target.hitbox.h / 2 < v.y - 60) mask |= UP;
       if (this.opts.bombs && v.shells > 0 && this.t - this.lastBomb > 45 && this.wantsBomb(world, p)) {

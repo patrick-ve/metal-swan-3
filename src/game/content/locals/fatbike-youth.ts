@@ -11,14 +11,17 @@
  *   within 120 px (or a shot nearby), double-takes, then rides at him.
  * - Death: tumbles off, the cap flies, he gets up and runs off yelling `MAMA!`; the bike skids
  *   away and fades (burnt / crushed youths stay down).
+ * - The gloat (every player out, docs/design/ams-extras.md §1): in view (rides in from a view
+ *   edge), a slow wheelie in place facing the spot, the speaker thumping (`ams/bass-thump` and a
+ *   music note every 36 ticks, one rock of the `gloat` strip). No attacks.
  *
  * Params: `pair` (true: a passenger on the rack does the kick), `gag` (`circles` / true / false),
  * `enter` / `entry` (`left` / `right`), `facing`, `look` (0–3), `skin` (`a` / `b` / `c`),
  * `turn` (true / false: force the second pass), + the Enemy params `hp`, `drop`, `tag`.
  */
-import type { Damage } from '../../../engine/entity';
+import type { Damage, Entity } from '../../../engine/entity';
 import type { World } from '../../../engine/world';
-import { tumble } from '../../fx';
+import { musicNotes, tumble } from '../../fx';
 import { defineEntity, paramBool, paramNum, paramStr, type SpawnParams } from '../../registry';
 import { gagParam } from '../creatures/common';
 import { gagBubble, Rider } from './rider';
@@ -170,6 +173,20 @@ export class FatbikeYouth extends Rider {
       this.willTurn = false;
       this.facePlayer();
       this.setMode('ride');
+    }
+  }
+
+  // ------------------------------------------------------------------------------- the gloat
+
+  /** A slow wheelie in place, facing the spot; the speaker thumps (one beat per rock of the strip). */
+  protected override thinkGloat(spot: Entity | null, t: number): void {
+    if (this.gloatRideIn()) return;
+    this.vx = 0;
+    this.faceSpot(spot);
+    this.play('gloat');
+    if (t % FATBIKE.thump === 0 && this.onScreen(0)) {
+      this.world.audio.sfx('ams/bass-thump', { vol: 0.45 });
+      musicNotes(this.world, this.x - this.facing * 16, this.y - 20);
     }
   }
 

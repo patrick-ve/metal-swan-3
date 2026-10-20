@@ -1,13 +1,14 @@
 /**
  * The HOW TO PLAY card of the attract loop (GDD §13.3, §15.9 item 5): nine small lines,
- * left-aligned at x 40 from y 40, 12 px apart (the last at y 136): the keys in gold, what they
- * do in white. 300 ticks, then the high scores; any key goes back to the title.
+ * left-aligned at x 40 from y 40, 12 px apart (the last at y 148): the keys in gold, what they
+ * do in white; with a pad in use, the pad card (`HOW_TO_PLAY_PAD`) with that pad's own labels. 300 ticks, then the high scores; any key goes back to the title.
  */
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
-import { HOW_TO_PLAY } from './flow-data';
+import { HOW_TO_PLAY, HOW_TO_PLAY_PAD } from './flow-data';
+import { drawPadLine, promptPad, slotPadMap } from './pad-prompt';
 import { toTitle } from './flow';
 import { HighScoresScene } from './high-scores';
 import { drawBase, drawStencilTitle } from './base';
@@ -54,6 +55,19 @@ export class HowToPlayScene implements Scene {
     drawBase(r, this.clock + this.t);
     veil(r, 0.7);
     drawStencilTitle(r, 'HOW TO PLAY', 12);
+    // A pad in use: the same card with that pad's own labels (docs/design/ams-extras.md §10).
+    const input = this.app.input;
+    const pad = promptPad(input);
+    if (pad) {
+      const map = slotPadMap(input);
+      for (let i = 0; i < HOW_TO_PLAY_PAD.length; i++) {
+        const [keys, action] = HOW_TO_PLAY_PAD[i];
+        const y = 40 + i * 12;
+        drawPadLine(r, keys, 40, y, pad, map, UI_GOLD, 'left', input.bindings.padPause);
+        uiText(r, action, ACTION_X, y, UI_WHITE);
+      }
+      return;
+    }
     for (let i = 0; i < HOW_TO_PLAY.length; i++) {
       const [keys, action] = HOW_TO_PLAY[i];
       const y = 40 + i * 12;

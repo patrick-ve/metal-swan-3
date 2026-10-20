@@ -12,28 +12,14 @@
  * First-person mode (`input.fpsMode`, docs/design/fps.md §2): the keyboard also reports actions
  * through the fixed `FpsKeyMap`, and every gamepad feeds slot 0's actions and analog (left stick
  * move / strafe, right stick X turn). The pointer-lock mouse lives in pointer.browser.ts.
+ *
+ * Gamepads (docs/api/input.md): `GamepadSource` is the pure `PadSource` (pads.ts: identity,
+ * profiles, sticky player slots, rumble) polling `navigator.getGamepads()`; register it with
+ * `input.useGamepads(new GamepadSource())`.
  */
-import {
-  actionsFromKeys,
-  actionsFromPadButtons,
-  type AnalogState,
-  defaultFpsKeyMap,
-  defaultFpsPadMap,
-  FPS_KEY_CODES,
-  type FpsKeyMap,
-  stickMove as stickMoveInto,
-  stickTurn,
-} from './input-actions';
-import {
-  BUTTON_BIT,
-  type InputContext,
-  type InputSource,
-  keySetFor,
-  maskFromKeys,
-  maskFromPad,
-  padButtonCode,
-  type PlayerSlot,
-} from './input';
+import { actionsFromKeys, defaultFpsKeyMap, FPS_KEY_CODES, type FpsKeyMap } from './input-actions';
+import { BUTTON_BIT, type InputContext, type InputSource, keySetFor, maskFromKeys, type PlayerSlot } from './input';
+import { type GamepadLike, PadSource } from './pads';
 
 export interface KeyboardOptions {
   /** Keys for which the browser default is prevented (bound keys, reserved debug keys). */
@@ -101,7 +87,7 @@ export class KeyboardSource implements InputSource {
   }
 
   read(slot: PlayerSlot, ctx: InputContext): number {
-    const set = keySetFor(slot, ctx.players);
+    const set = keySetFor(slot, ctx.players, ctx.keySplit ?? ctx.players === 2);
     return set ? maskFromKeys(ctx.bindings[set], this.isDown) : 0;
   }
 
@@ -134,125 +120,36 @@ export class KeyboardSource implements InputSource {
   }
 }
 
-/** sin(22.5°): splits the stick circle into 8 equal direction sectors. */
+/** sin(22.5°): splits the stick circle into 8 equal direction sectors (the touch stick). */
 const SECTOR = 0.3827;
 
+/** `navigator.getGamepads()`, or nothing where the browser has no Gamepad API (never throws). */
+function browserPads(): ArrayLike<GamepadLike | null> {
+  try {
+    return typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function' ? (navigator.getGamepads() as ArrayLike<GamepadLike | null>) : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
- * Gamepads with the standard mapping (other mappings are read with the same indices).
- * 1-player mode: every pad drives player 1. 2-player mode: the first connected pad drives
- * player 1, the second player 2. D-pad buttons and the left stick (with a radial dead zone)
- * both move. Hot-plug works because pads are polled every tick.
- *
- * In `fpsMode` every connected pad also feeds slot 0's first-person channel: buttons through the
- * fixed `FpsPadMap` (OR-ed over the pads), the left stick → `moveX` / `moveY` and the right stick
- * X → `turn` (0.2 dead zone, integers). Per stick axis the pad with the largest value wins.
+ * The browser's gamepads: a `PadSource` (pads.ts) polling `navigator.getGamepads()` every tick
+ * (hot-plug works because pads are polled), with a console line per connect / disconnect.
  */
-export class GamepadSource implements InputSource {
-  /** Radial dead zone of the left stick (0..1). */
-  deadZone = 0.3;
-  /** Dead zone of both sticks in the first-person mode (spec §2.2). */
-  fpsDeadZone = 0.2;
-  private readonly fpsPad = defaultFpsPadMap();
-  private fpsActions = 0;
-  private readonly fpsAnalog: AnalogState = { turn: 0, moveX: 0, moveY: 0 };
-  private readonly stick: AnalogState = { turn: 0, moveX: 0, moveY: 0 };
-  private readonly masks = [0, 0];
-  private readonly prevRaw = new Map<number, number>();
-  private readonly queue: string[] = [];
-  private cur: Gamepad | null = null;
-  private readonly isPadDown = (i: number): boolean => {
-    const b = this.cur?.buttons[i];
-    return !!b && (b.pressed || b.value > 0.5);
-  };
+export class GamepadSource extends PadSource {
   private readonly onConnect = (ev: Event): void => {
     const gp = (ev as GamepadEvent).gamepad;
     console.info(`[input] gamepad ${gp.index} connected: ${gp.id} (${gp.mapping || 'non-standard'} mapping)`);
   };
   private readonly onDisconnect = (ev: Event): void => {
     const gp = (ev as GamepadEvent).gamepad;
-    this.prevRaw.delete(gp.index);
     console.info(`[input] gamepad ${gp.index} disconnected`);
   };
 
   constructor() {
+    super(browserPads);
     window.addEventListener('gamepadconnected', this.onConnect);
     window.addEventListener('gamepaddisconnected', this.onDisconnect);
-  }
-
-  update(ctx: InputContext): void {
-    this.masks[0] = 0;
-    this.masks[1] = 0;
-    const fps = ctx.fpsMode === true;
-    const fa = this.fpsAnalog;
-    this.fpsActions = 0;
-    fa.turn = fa.moveX = fa.moveY = 0;
-    let pads: readonly (Gamepad | null)[] = [];
-    try {
-      pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    } catch {
-      pads = [];
-    }
-    let order = 0;
-    for (const gp of pads) {
-      if (!gp || !gp.connected) continue;
-      const slot = ctx.players === 1 ? 0 : order < 2 ? order : -1;
-      order++;
-      this.cur = gp;
-      let m = maskFromPad(ctx.bindings.pad, this.isPadDown);
-      const ax = gp.axes[0] ?? 0;
-      const ay = gp.axes[1] ?? 0;
-      const mag = Math.hypot(ax, ay);
-      if (mag >= this.deadZone) {
-        const nx = ax / mag;
-        const ny = ay / mag;
-        if (nx < -SECTOR) m |= BUTTON_BIT.left;
-        if (nx > SECTOR) m |= BUTTON_BIT.right;
-        if (ny < -SECTOR) m |= BUTTON_BIT.up;
-        if (ny > SECTOR) m |= BUTTON_BIT.down;
-      }
-      if (slot >= 0) this.masks[slot] |= m;
-      if (fps) this.readFps(gp);
-      // Raw button presses (menus, rebinding, pause).
-      let now = 0;
-      const nb = Math.min(gp.buttons.length, 31);
-      for (let i = 0; i < nb; i++) if (this.isPadDown(i)) now |= 1 << i;
-      const edges = now & ~(this.prevRaw.get(gp.index) ?? 0);
-      if (edges) for (let i = 0; i < nb; i++) if (edges & (1 << i) && this.queue.length < 32) this.queue.push(padButtonCode(i));
-      this.prevRaw.set(gp.index, now);
-    }
-    this.cur = null;
-  }
-
-  /** One pad's first-person buttons and sticks, merged into the slot-0 channel. */
-  private readFps(gp: Gamepad): void {
-    this.fpsActions |= actionsFromPadButtons(this.fpsPad, this.isPadDown);
-    const st = this.stick;
-    stickMoveInto(gp.axes[0] ?? 0, gp.axes[1] ?? 0, st, this.fpsDeadZone);
-    const turn = stickTurn(gp.axes[2] ?? 0, this.fpsDeadZone);
-    const fa = this.fpsAnalog;
-    if (Math.abs(st.moveX) > Math.abs(fa.moveX)) fa.moveX = st.moveX;
-    if (Math.abs(st.moveY) > Math.abs(fa.moveY)) fa.moveY = st.moveY;
-    if (Math.abs(turn) > Math.abs(fa.turn)) fa.turn = turn;
-  }
-
-  read(slot: PlayerSlot): number {
-    return this.masks[slot];
-  }
-
-  readActions(slot: PlayerSlot): number {
-    return slot === 0 ? this.fpsActions : 0;
-  }
-
-  readAnalog(slot: PlayerSlot, out: AnalogState): void {
-    if (slot !== 0) return;
-    out.turn += this.fpsAnalog.turn;
-    out.moveX += this.fpsAnalog.moveX;
-    out.moveY += this.fpsAnalog.moveY;
-  }
-
-  drainPressed(out: string[]): void {
-    for (let i = 0; i < this.queue.length; i++) out.push(this.queue[i]);
-    this.queue.length = 0;
   }
 
   dispose(): void {

@@ -339,12 +339,15 @@ describe('2× art preload (docs/ARCHITECTURE.md §3)', () => {
     expect(missionArtPreloadStarted()).toBe(false);
   });
 
-  it('preloads the joined players\' characters first, then the mission\'s first prefixes; the boss last', () => {
+  it('preloads the joined players\' characters first, then the mission\'s first prefixes; the boss last', async () => {
+    // The ams module registers the mission (a boot's content load elsewhere may still be running).
+    await import('../../src/game/content/missions/ams/index');
     const session = newSession(app().app, ['pip', 'grace'], 'normal');
     const ams = getMission('ams');
     const order = missionArtOrder(ams, session);
     expect(order.first.slice(0, 3)).toEqual(['char/pip/', 'char/grace/', 'vehicle/swan']);
-    expect(order.last[0]).toBe('boss/');
+    // ROBO-HALSEMA last (the scan car, the mid-boss of c, is section art of c).
+    expect(order.last[0]).toBe('boss/ams-mayor/');
     expect(missionArtOrder(undefined, newSession(app().app, ['recruit']))).toEqual({ first: ['char/recruit/'], last: [] });
     expect(MISSION_ART_BUDGET_MS).toBeGreaterThan(0);
     expect(MISSION_ART_BUDGET_MS).toBeLessThanOrEqual(8);

@@ -195,10 +195,10 @@ frame time low (static buffers for layers; few live entities).
 | 720–880 | bridge 1: an arched brick bridge (ground hill, +14 px), bikes on the railing |
 | 900–1500 | the raised drawbridge: a side canal (water hazard 1060–1340, surface y 180) crossed by hopping on two houseboat roofs (platforms ~y 150) and one `ams-boat-platform`; hostage on a houseboat deck |
 | 1520–1904 | camera lock "PLEINTJE": a small square with a tree and a bench; fatbike gang waves from both sides + a gull; hostage after |
-| 1904–2600 | a narrow shopping street (Nine-Streets feel): delivery riders both ways, a gull flock, breakable tulip stall and herring cart; awnings as platforms; the golden record on a gable ledge ~x 2300, y 70 |
+| 1904–2600 | a narrow shopping street (Nine-Streets feel): delivery riders both ways, a gull flock, breakable tulip stall and herring cart; awnings as platforms; the golden record on a gable ledge ~x 2300, y 70; a stag party on foot (two clink bottles, one takes a selfie, the groom walks in; docs/design/ams-extras.md §2.4); camera lock 2120–2504 BIERFIETS: the beer bike rolls in from the right (the first hijack) |
 | 2600–2760 | bridge 2 |
-| 2760–3584 | arrival at FABEL FRIET: facade 3260–3356 (door/counter at ~3330); camera lock 3200–3584; the last wave (youths + riders + gulls); then the BRIEFING; then `exitTo('b')` |
-Checkpoints: 0, 1300, 2500. Hostages 4.
+| 2760–3584 | arrival at FABEL FRIET: facade 3260–3356 (door/counter at ~3330); camera lock 3200–3584; the last wave (youths + riders + gulls); a beer-bike rider gets off (`GEEN BIERFIETSEN!`: the bike stays in `a`); then the BRIEFING; then `exitTo('b')` |
+Checkpoints: 0, 1300, 2500. Hostages 5 (one hidden under the houseboat hatch; secrets §5 of the extras: the bike in the elm, the hatch, the hoist crate).
 
 ### `b` MUSEUMPLEIN — width 3072, noon
 | x | Content |
@@ -206,19 +206,34 @@ Checkpoints: 0, 1300, 2500. Hostages 4.
 | 0–380 | street to the museum |
 | 400–720 | THE PASSAGE: the cycle tunnel through the Rijksmuseum (solid ceiling ~y 96, vaulted decor); delivery riders rush through both ways (bell echoes) |
 | 720–1800 | Museumplein: grass, the long pool (shallow, wadeable decor), the Rijksmuseum back facade in the parallax; HOT-DOG STAND at 960–1024 with the vendor in the hatch at ~990; THE SWAN parked at ~1080 (`ctx.spawn('swan', 1080, 'ground', {facing:1})`, 2P `'mute'` swan like m1-c); Gramps radio `I BROUGHT HER ALONG.` / `DON'T TELL ACCOUNTING.`; the swan lesson (copy of m1-c, new text); sets `'m1/swan-lesson'` and `'ams/swan-met'` |
-| 1300–2200 | gull flock set piece over the square (gulls steal tourists' fries, then dive); youths doing circles on the grass (gag); tram in the background; hostages |
-| 2200–3072 | a canal-side road toward the Amstel; hostage; exit at ~3000 → `c` |
-Checkpoints: 0, 1100, 2300. Hostages 3.
+| 1300–2200 | gull flock set piece over the square (gulls steal tourists' fries, then dive); a stag party (two clink bottles, one takes a selfie, one more walks in); youths doing circles on the grass (gag); tram in the background; hostages |
+| 2200–3072 | a canal-side road toward the Amstel; one more beer bike (no lock); hostage; exit at ~3000 → `c` |
+Checkpoints: 0, 1200, 2300. Hostages 4 (one hidden in the museum crate `NIET OPENEN`; the hot-dog stand's roof flag hides the 1UP).
 
-### `c` AMSTEL — width 3328, golden afternoon, `vehicles: ['swan']`
+### `c` AMSTEL — width 2608, golden afternoon, `vehicles: ['swan']` (docs/design/ams-extras.md §3, §4)
 | x | Content |
 |---|---|
-| 0–600 | quay street; handhavers first appear |
+| 0–600 | quay street; handhavers first appear; the canal-bike secret at the lamp (534) |
 | 600–1400 | a long canal stretch (water hazard, surface y 180): the Swan swims; on foot hop on tour-boat platforms (`ams-boat-platform`) and houseboats; gulls dive |
-| 1400–2000 | a quay street with riders, youths and handhavers; breakables |
-| 2000–2800 | the Amstel stretch: water with boats and a white wooden drawbridge (Magere-Brug feel) as a high path |
-| 2800–3328 | the Blauwbrug to Waterlooplein; exit → `d` |
-Checkpoints: 0, 1200, 2400, 3100. Hostages 3.
+| 1400–1984 | a quay street with riders, youths and handhavers; breakables; a last squad |
+| 1984–2368 | camera lock: THE PARKING SCAN CAR (`ams-scan-car`, GDD 10.0b); a repair crate at 2384 after it |
+| 2400–2608 | the fork: `BRUG ↑` (the white bridge's ramp 2400–2460 up to its deck y 152; exit `brug` → `c1`) and `RONDVAART ↓` (two jetty steps at 2448 down to the pontoon y 188 where the tour boat waits; exit `rondvaart` → `c2`) |
+Checkpoints: 0, 1200, 2176. Hostages 2.
+
+### `c1` BRUG — width 1388, golden afternoon, `vehicles: ['swan']` (the old `c` from x 1940, re-based)
+| x | Content |
+|---|---|
+| 0–860 | the Amstel stretch: the white wooden bridge (deck y 152, portals at 300 and 520; the hoist crate secret on the first) over the water; officers on the deck; the sack tourist |
+| 860–1388 | the ramp down to the quay and the Blauwbrug (1020–1220) to Waterlooplein; the last squad; exit → `d` |
+Checkpoints: 0, 460, 1160. Hostages 1.
+
+### `c2` RONDVAART — width 2632, golden afternoon, `vehicles: ['swan']` (the canal cruise)
+| x | Content |
+|---|---|
+| 0–60 | the boarding quay: `ALLE AAN BOORD!` (the boat leaves when every player on foot is aboard, at most 7 s) |
+| 60–2492 | the Amstel (deep water: on foot it drowns; the Swan swims alongside). The tour boat (`ams-cruise-boat`, 192 px, deck and glass roof one-way platforms) holds the camera at 5/8 px/tick and stops for each wave (until it is cleared or 15 s): gulls; the first low bridge (700, an officer on it); the moored houseboat (1110, a tied tourist on its roof, its hatch secret); the stag party alongside on a small party boat; the second low bridge (1660, an officer and a gull); the Magere Brug (2060, handhavers on the bascule, gulls on the portals; it opens for the boat) with Carré on the far bank. A low bridge kills a standing roof rider only after 2 s in view (the skipper calls `BUKKEN!`): crouch or get down |
+| 2492–2632 | the Waterlooplein jetty: the boat docks, the last wave; exit → `d` |
+Checkpoints: 0, 640, 1320, 2040. Hostages 1.
 
 ### `d` STOPERA — width 1280, sunset, `vehicles: ['swan']`, `bossStart` ~900
 | x | Content |

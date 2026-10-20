@@ -178,7 +178,8 @@ describe('ams audio: sounds of the locals and the life', () => {
 
 describe('ams audio: ambience, carillon and footsteps', () => {
   it('every section has its ambience loop and the mission has audible footsteps', () => {
-    expect(Object.values(AMS.sections).map((s) => s.ambience)).toEqual(['env/ams-canal', 'env/ams-street', 'env/ams-canal', 'env/ams-street']);
+    // a, b, c, then the route (c1 the bridge or c2 the cruise: both on the water), d.
+    expect(Object.values(AMS.sections).map((s) => s.ambience)).toEqual(['env/ams-canal', 'env/ams-street', 'env/ams-canal', 'env/ams-canal', 'env/ams-canal', 'env/ams-street']);
     expect(AMS.footsteps).toBe(true);
   });
 

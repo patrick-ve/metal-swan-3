@@ -106,9 +106,14 @@ timing and console lines (determinism checks).
 Each tick it picks a **mode** from the player's state (debug field `bot.mode`): `foot`, `flight`
 (mounted on a `trumpeter`), `swan` (riding a `swan`), `drive` (any other vehicle), `menu` / `idle`.
 Goals in order: empty vehicle nearby (never one that threw this player out) → wandering freed
-hostage → pickup → locked arena (hold 120 px from the left edge; not in 'up' / 'down') → the open
-exit of the chosen route (upper = highest rect; aimed at the player's own height inside a tall
-rect) → a cable car that goes our way → the scroll direction. Presses start on CONTINUE, fire on
+hostage → pickup → locked arena (hold 120 px from the left edge; not in 'up' / 'down'; against a
+boss that rams along the floor — it has a `ramming` field, the ams scan car — stand at its rear
+bumper, `RAM_REAR` 36 px behind its x, and back away while it revs or drives in front of us; on a
+ledge 40–120 px over targets that stay below for 240 ticks with no boss: their floor, dropping
+through) → the open exit of the chosen route (upper = highest rect; aimed at the player's own
+height inside a tall rect; from above the rect, its floor) → a cable car that goes our way → the
+scroll direction. A boss driving a low contact box (≤ 30 px) at us is jumped straight up when its
+front is 38–70 px away (`jumpWhy` `ram`). Presses start on CONTINUE, fire on
 the tally. Debug fields: `mode goalX goalY goalKind jumpWhy`; `bot.swan.why / air`,
 `bot.flight.safe / wishX / wishY`.
 

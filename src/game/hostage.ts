@@ -9,7 +9,8 @@
  * it gives where it stands; a dead / gone rescuer → the nearest living player) → 'gag' (the
  * kind's comedy beat, if any) → 'give' (24 ticks; the gift pops from the 'hand' point, vy −2.0)
  * → 'bow' (12 ticks, a curtain-call bow — hostages never salute) → 'run' off to the left
- * (2 px/tick; turns back at a wall or gap) → gone. A touch while walking ends the walk.
+ * (2 px/tick; turns back at a wall or gap) → gone. A touch while walking ends the walk. A touch
+ * is a player on foot, or (tied only) a mounted player's vehicle body (`touchingRider`).
  * Hostages are neutral: never hurt, never a target, never walk into pits.
  *
  * Content plugs in a **bind** (how it is held: chair, cage, sack, float, balloon) and a
@@ -142,6 +143,8 @@ export interface HostageOpts {
 
 const drawOpts: DrawOpts = {};
 const hand: [number, number] = [0, 0];
+/** Scratch box of a rider's vehicle (`touchingRider`). */
+const riderRect: Rect = { x: 0, y: 0, w: 0, h: 0 };
 /** Wriggle period and shake length (GDD §7.2 step 1). */
 const WRIGGLE_EVERY = 120;
 const WRIGGLE_TICKS = 4;
@@ -372,7 +375,7 @@ export class Hostage extends Entity {
     if (this.shakeT > 0) this.shakeT--;
     const f = this.bind.frees;
     if (f.touch) {
-      const p = this.touchingPlayer();
+      const p = this.touchingPlayer() ?? this.touchingRider();
       if (p) {
         this.facing = p.x < this.x ? -1 : 1;
         this.free(p.index, true);
@@ -400,6 +403,22 @@ export class Hostage extends Entity {
     for (let i = 0; i < list.length; i++) {
       const p = list[i];
       if (isPlayer(p) && p.state === 'play' && overlaps(box, p.hitRect())) return p;
+    }
+    return null;
+  }
+
+  /**
+   * A mounted player whose vehicle body (its hit box) touches it: frees a bind that a touch frees
+   * (chair, sack; user decision 2026-10-12: the Swan's body counts as a touch). Only the tied
+   * state asks; on foot the rules of `touchingPlayer` stay.
+   */
+  touchingRider(): Player | null {
+    const box = this.hitRect();
+    const list = this.world.byTag('player');
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      if (!isPlayer(p) || p.state !== 'mounted' || !p.vehicle || !p.vehicle.alive) continue;
+      if (overlaps(box, p.vehicle.hitRect(riderRect))) return p;
     }
     return null;
   }

@@ -1001,6 +1001,24 @@ describe('swan: aim and weapons (feel §7)', () => {
     expect(rig.audio.log).toContain('sfx:swan/squeak');
   });
 
+  it('specialReady (the HUD gem, bug 7.3): lit when driven, HONK cooled down and shells ≥ cost; dark otherwise', () => {
+    const parked = new SwanRig({ mount: false });
+    expect(parked.swan.specialReady).toBe(false); // not driven
+    const rig = new SwanRig();
+    const s = rig.swan;
+    expect(s.specialReady).toBe(true);
+    rig.hold(['fire', 'bomb']).run(1).hold([]);
+    expect(s.specialReady).toBe(false); // wind-up, then the 240-tick cooldown
+    rig.run(SWAN.honk.windup + 2);
+    expect(s.specialReady).toBe(false);
+    rig.until(() => s.specialReady, SWAN.honk.cooldown + 5);
+    expect(s.specialReady).toBe(true);
+    s.shells = SWAN.honk.cost - 1;
+    expect(s.specialReady).toBe(false);
+    s.shells = SWAN.honk.cost;
+    expect(s.specialReady).toBe(true);
+  });
+
   it('HONK in the air: she hangs (vy 0) for the 10-tick wind-up', () => {
     const rig = new SwanRig();
     const s = rig.swan;

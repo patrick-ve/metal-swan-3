@@ -365,14 +365,27 @@ Tags `enemy shootable` (+ `soft`; Legion soldiers add `legion`). Params: `hp`, `
 accepted?, or `reactInArea(world, circle | rect, kind, ticks, { tags?, onScreen?, source?, exclude? })` →
 count. Kinds: `salute` (anthem), `dance` (windup-bots), `panic` (grenade / moving vehicle: run away),
 `confused` (baton-major dies), `freeze` (sundae-mortar), `queue` (the JINGLE), `ears` (HONK), `photo` (SAY
-CHEESE), `stumble` (the drummer dies), `buff` (IN STEP!), `laugh` (the in-world continue: every player out)
-and `cower` (a continued hero landed; a `!` bubble). While a reaction runs the enemy does not attack
-(`thinkReaction(kind)` replaces `think()`; default: stand and play `<art>/<anim>` — `salute`, `dance`,
-`confused`, `frozen`, `queue`, `ears`, `photo-pose`, `stumble`, `laugh`, `cower` (else `panic`), else `idle`;
-`panic` runs; `laugh` and `cower` face the source). Default acceptance: everyone takes `photo`, `laugh` and
-`cower` (`everyEnemyReacts(kind)`, machines and creatures too); soft `legion` enemies take the rest except
-`dance` / `buff`; override
+CHEESE), `stumble` (the drummer dies), `buff` (IN STEP!), `gloat` (the in-world continue: every player out;
+the source is the spot, the last player out) and `cower` (a continued hero landed; a `!` bubble). While a
+reaction runs the enemy does not attack (`thinkReaction(kind)` replaces `think()`; default: stand and play
+`<art>/<anim>` — `salute`, `dance`, `confused`, `frozen`, `queue`, `ears`, `photo-pose`, `stumble`, `cower`
+(else `panic`), else `idle`; `panic` runs; `cower` faces the source; `gloat` runs `thinkGloat`). Default
+acceptance: everyone takes `photo`, `gloat` and `cower` (`everyEnemyReacts(kind)`, machines and creatures
+too); soft `legion` enemies take the rest except `dance` / `buff`; override
 `acceptsReaction(kind)` to opt in or out; hooks `onReact`, `onReactionEnd`; `reacting`, `endReaction()`.
+
+*The gloat* (`docs/design/ams-extras.md` §1, GDD §4.6): while every player is out the runner starts a
+gloat hold (`startGloatHold(world)` → its number; `gloatHoldOf(world)`) and renews `gloat` (24 ticks every
+15, `TUNING.continues.gloatTicks` / `gloatEvery`) on every enemy on screen, source = the spot. Each enemy
+goes about its own business there — never a laugh, a point or a cheer:
+`protected thinkGloat(spot: Entity | null, t: number)` (`t` = ticks of this hold's gloat, 0 first; a gloat that
+lapses and comes back in the same hold goes on; default: stand, `faceSpot(spot)`, play `<art>/gloat` else
+`idle`); `protected onGloatStart(spot)` (once per hold: pick a place, ring a bell …); `protected
+sayGloat(text, ticks, speaker?)` (the gloat line: a gag bubble, at most one per enemy per hold, never over
+another gag bubble; `gloatSaid`); the gloat ends when the hero is back (the `cower` replaces it:
+`onReactionEnd('gloat')` puts the enemy back in its own mode). A gloat may move the enemy a little (stay
+on its own floor and in view) and must not attack; the enemy still takes damage. `gagBubble(world, e,
+text, ticks, speaker?)` (enemy.ts) is the shared no-overlap gag bubble.
 
 *Shared rules* (GDD §4.11): `takeAttackToken(world, e)` before a telegraph (false = keep moving, try later)
 and `releaseAttackToken(world, e)` after the recovery (limit `attackTokenLimit` = 3 / 4 / 6; bosses do not use
@@ -405,7 +418,12 @@ their remaining HP; hook `onRequiredPartsGone(d)`). `knifeable` parts are the on
 hits; `contact` parts are the only boxes that hurt on touch (`contactBoxes()`). `phaseIntermission` (ticks)
 or `intermission(ticks)` (yield it): boss and players invulnerable, enemy shots on screen erased.
 `stagger(ticks)` (the runner calls it when a continued hero lands): the attack pattern holds (only while
-`canStagger()`: a boss in mid-air finishes the jump first), hook `onStagger(ticks)`, `staggering`;
+`canStagger()`: a boss in mid-air finishes the jump first), hook `onStagger(ticks)`, `staggering`.
+A boss whose running attack must not freeze half-done (a hot lash or slam box, a baked-in sound)
+overrides `protected cutAttack(): boolean` (default false: the old hold) to cancel it cleanly (no hit
+box, no late sound, the glow reset; return true); the stagger then cancels the pattern and, when it ends,
+runs the phase's `resume?: (b) => ScriptGen` (else `pattern`) — e.g. ROBO-HALSEMA's 12 calm ticks
+without the opening taunt. A phase that starts during a stagger is only held;
 `addsHeld` (every player out) and `holdAdds` (held or staggering) tell a boss's adds code to wait. `phases = [{ at: 1, name?, pattern?: (b) => ScriptGen, onEnter? }, { at: 0.4, … }, { when: (b) => b.brokenCount(['horn', 'pipes']) >= 2 }]`
 (`at` = HP fraction threshold, `when` = a condition; either one starts the phase; the latest phase met wins;
 checked after every hit and broken part, call `checkPhases()` when a condition changes otherwise); patterns run as world scripts owned by the boss and are cancelled on the next phase / death.
@@ -502,7 +520,8 @@ interface SectionDef { id, name?, width, height, scroll: 'right'|'up'|'down'|'fr
   vehicles?: string[],                          // vehicle ids that may be carried INTO this section
   iceRanges?: [x0, x1][],                       // icy ground: players and vehicles slide (iceAt)
   ambience?: string,                            // sfx loop under the audio key 'ambience' (runner.setAmbience; same id = keeps playing)
-  art?: string[] }                              // sprite id prefixes this section draws: the tier-4 working set (this section and the one before)
+  art?: string[],                               // sprite id prefixes this section draws: the tier-4 working set (this section and the one before)
+  artLate?: string[] }                          // prefixes of `art` shown only well into it: the section before never builds them ahead
 interface DecorDef { sprite, x, y, frame?, animate? (true | ticks per frame), flipX?, front?, parallax? (1), alpha? }
 interface ExitDef { id?, rect, to (section id | 'complete'), transition?: 'fade'|'cut', entry?: {x, y}, disabled? }
 // terrain builders re-exported: terrain(w, h).ground().at(0, 170).flat(400).slope(200, -40)…, platformPath, Terrain
@@ -553,7 +572,8 @@ next tick.
 'victory' | 'complete' | 'gameover'), `world section view players hud checkpoint timeLeft continueTicks`,
 `countdownHeld` / `countdownNumber` (the in-world continue, GDD §4.6: a player out of lives gets a countdown
 over the live world; every player out → the section script, timer, auto-scroll and boss adds hold, the enemies
-on screen `laugh`; a continued hero's landing → they `cower`, the boss staggers; every countdown out → 'gameOver'),
+on screen `gloat` at the spot (a new gloat hold each time); a continued hero's landing → they `cower`, the boss
+staggers; every countdown out → 'gameOver'),
 `loadSection(id, entry?)`, `exitTo`, `enableExit(id, on)`, `isExitOpen(exit | id)`, `completeMission()` (MISSION
 COMPLETE! + `mission-complete` jingle), `skip()` (debug F4), `continuePlayer(slot)` (creates the Player when it is
 missing), `joinPlayer(slot, char)`, `nextMission()`, `playMusic(id, fade?, { from?, restart? })`, `currentMusic`, `resumeMusic()` (keeps `from`),

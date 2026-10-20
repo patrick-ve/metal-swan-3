@@ -16,20 +16,26 @@
  *   pull-up out of the dive, and a 2-frame squash turn (Turner hysteresis) instead of an instant
  *   mid-air flip. A tell or a dive cancels them on the same tick; the tell timing is unchanged.
  * - Death: a feather puff; it falls (into the canal over water: a splash, gone).
+ * - The gloat (every player out, docs/design/ams-extras.md §1): off its perch if it sat on one,
+ *   it flies to a place beside the spot (flock members a little apart, inside the view), lands
+ *   and pecks at the hero's lost fries (`gloat` strip, `ams/gloat-peck`). With no dry floor there
+ *   it hovers over the spot. When the gloat ends it takes off again (the cower is a hover).
+ *   A perched gull answers the other reactions (SAY CHEESE, the cower) on its perch (`alert`).
  *
  * Params: `perch`, `gag` (`sleep` / `fries` / true / false), `flock`, `enter` / `entry`
  * (`left` / `right` / `top`: flies in), `facing`, + the Enemy params `hp`, `drop`, `tag`.
  */
-import type { Damage } from '../../../engine/entity';
+import type { Damage, Entity } from '../../../engine/entity';
 import type { DrawOpts, Renderer } from '../../../engine/render';
 import type { World } from '../../../engine/world';
 import { PAL } from '../../../engine/palette';
 import { hudOf } from '../../context';
-import { doubleTakeTicks } from '../../enemy';
+import { doubleTakeTicks, type ReactionKind } from '../../enemy';
 import { FxEntity, splash } from '../../fx';
 import { defineEntity, paramBool, paramFacing, paramNum, paramStr, type SpawnParams } from '../../registry';
 import { Creature, Turner, contactHit, entryParam } from '../creatures/common';
 import { PULLUP_TIMING, TAKEOFF_TIMING, TURN_TICKS } from './seagull.art';
+import { waterSurfaceAt } from '../../water';
 
 /** Seagull numbers (NORMAL). */
 export const SEAGULL = {
@@ -56,7 +62,15 @@ export const SEAGULL = {
   box: { x: -10, y: -7, w: 20, h: 13 },
   /** Perched hurtbox above the feet. */
   perchBox: { x: -9, y: -19, w: 18, h: 18 },
+  /** The gloat: the landing place this far beside the spot (+ `gloatSpread` per gull), inside the view by `gloatEdge`; hover height without a floor. */
+  gloatNear: 10,
+  gloatSpread: 14,
+  gloatEdge: 16,
+  gloatHover: 40,
 } as const;
+
+/** Feet → body centre of a perched / flying gull (px). */
+const PERCH_LIFT = 11;
 
 const A = 'enemy/seagull';
 const TAU = Math.PI * 2;
@@ -107,6 +121,14 @@ export class Seagull extends Creature {
   private pullupT = 0;
   /** Mid-air turns: squash frames, the facing flips half-way (hysteresis 12 px / 8 ticks). */
   private readonly turner = new Turner(1, 2, TURN_TICKS);
+  /** The gloat: 'fly' to the landing place, 'peck' there, or 'hover' over it (no dry floor). */
+  private gloatMode: 'fly' | 'peck' | 'hover' = 'fly';
+  /** The landing place (x, the floor y) or the hover point (x, body centre y). */
+  private gloatX = 0;
+  private gloatY = 0;
+  /** Landed by the gloat (it takes off again when the gloat ends); ticks without progress. */
+  private gloatLanded = false;
+  private gloatStuck = 0;
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     super(world, x, y, p, { art: A, hp: SEAGULL.hp, w: 20, h: 13, body: false });
@@ -362,6 +384,138 @@ export class Seagull extends Creature {
       this.diveCool = 30;
       this.setMode('fly');
     }
+  }
+
+  // ------------------------------------------------------------------------------- reactions
+
+  /**
+   * Reactions: the draw-only take-off / pull-up keep running (else a reaction would freeze the
+   * gull in them); a perched gull answers SAY CHEESE and the cower on its perch (`alert`, the
+   * perched strip: the hovering strips would hang 11 px low on the feet anchor).
+   */
+  protected override thinkReaction(kind: ReactionKind): void {
+    if (this.takeoffT > 0) this.takeoffT--;
+    if (this.pullupT > 0) this.pullupT--;
+    if (this.perched && kind !== 'gloat') {
+      this.vx = 0;
+      this.vy = 0;
+      this.play('alert');
+      return;
+    }
+    super.thinkReaction(kind);
+  }
+
+  /** Off the perch (if it sat on one), then pick the landing place beside the spot. */
+  protected override onGloatStart(spot: Entity | null): void {
+    if (this.perched) {
+      this.perched = false;
+      this.y -= PERCH_LIFT;
+      this.takeoffT = TAKEOFF_TICKS;
+      this.setBox(SEAGULL.box);
+    }
+    this.alerted = true;
+    this.gloatLanded = false;
+    this.gloatStuck = 0;
+    const cam = this.world.camera;
+    const sx = spot ? spot.x : this.x;
+    const sy = spot ? Math.min(spot.y, cam.bottom) : this.y + SEAGULL.gloatHover;
+    // The free side of the spot: away from the nearest handhaver near it (he walks up to the spot
+    // and writes there), else the side the gull comes from.
+    const busy = this.busySide(sx);
+    const side = busy !== 0 ? -busy : this.x < sx ? -1 : 1;
+    const e = SEAGULL.gloatEdge;
+    this.gloatX = Math.max(cam.left + e, Math.min(cam.right - e, sx + side * (SEAGULL.gloatNear + (this.id % 3) * SEAGULL.gloatSpread)));
+    const t = this.world.terrain;
+    const floor = t.surfaceY(this.gloatX, sy - 48, sy + 24);
+    // A dry floor inside the view (water over it: no landing; it would land on the canal bed).
+    const dry = Number.isFinite(floor) && !(waterSurfaceAt(this, this.gloatX, sy - 48) <= floor) && floor > cam.top + 24 && floor <= cam.bottom;
+    if (dry && !t.isSolid(this.gloatX, floor - PERCH_LIFT)) {
+      this.gloatMode = 'fly';
+      this.gloatY = floor;
+    } else {
+      this.gloatMode = 'hover';
+      this.gloatY = Math.max(cam.top + 24, sy - SEAGULL.gloatHover);
+    }
+  }
+
+  /** The side (±1) of x where the nearest handhaver within 64 px stands; 0 when none. */
+  private busySide(x: number): number {
+    const list = this.world.byTag('enemy');
+    let best = 64;
+    let side = 0;
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (o.type !== 'handhaver' || !o.alive || !o.onScreen(0)) continue;
+      const dx = o.x - x;
+      if (Math.abs(dx) < best) {
+        best = Math.abs(dx);
+        side = dx < 0 ? -1 : 1;
+      }
+    }
+    return side;
+  }
+
+  /** Fly to the landing place (the body over the feet point), land and peck; or hover over it. */
+  protected override thinkGloat(spot: Entity | null, _t: number): void {
+    this.vx = 0;
+    this.vy = 0;
+    if (this.gloatMode === 'peck') {
+      this.play('gloat');
+      if (this.anim.changed && this.anim.index === 1 && this.onScreen(0)) this.world.audio.sfx('ams/gloat-peck', { vol: 0.6 });
+      return;
+    }
+    const gy = this.gloatMode === 'fly' ? this.gloatY - PERCH_LIFT : this.gloatY;
+    const dx = this.gloatX - this.x;
+    const dy = gy - this.y;
+    const d = Math.hypot(dx, dy);
+    if (d <= SEAGULL.fly || this.gloatStuck > 30) {
+      if (this.gloatMode === 'fly' && this.gloatStuck <= 30) return this.land(spot);
+      this.gloatMode = 'hover';
+      this.faceSpot(spot);
+      this.turner.snap(this.facing);
+      this.play('idle');
+      return;
+    }
+    const ox = this.x;
+    const oy = this.y;
+    this.placeAt(this.x + (dx / d) * SEAGULL.fly, this.y + (dy / d) * SEAGULL.fly);
+    if (this.x === ox && this.y === oy) this.gloatStuck++;
+    if (Math.abs(dx) > 2) this.facing = dx > 0 ? 1 : -1;
+    this.turner.snap(this.facing);
+    this.play('walk');
+  }
+
+  /** Touch down on the landing place: the feet anchor, the perched box, the pecking strip. */
+  private land(spot: Entity | null): void {
+    this.perched = true;
+    this.gloatLanded = true;
+    this.gloatMode = 'peck';
+    this.x = this.gloatX;
+    this.y = this.gloatY;
+    this.vx = 0;
+    this.vy = 0;
+    this.takeoffT = 0;
+    this.setBox(SEAGULL.perchBox);
+    this.faceSpot(spot);
+    this.turner.snap(this.facing);
+    this.play('gloat', { restart: true });
+  }
+
+  /** The gloat is over: a landed gull takes off again, every gull flies on from where it is. */
+  protected override onReactionEnd(kind: ReactionKind): void {
+    if (kind !== 'gloat' || !this.alive) return;
+    if (this.gloatLanded) {
+      this.gloatLanded = false;
+      this.perched = false;
+      this.y -= PERCH_LIFT;
+      this.takeoffT = TAKEOFF_TICKS;
+      this.setBox(SEAGULL.box);
+    }
+    this.bx = this.x;
+    this.by = this.y;
+    this.phase = 0;
+    this.prevY = this.y;
+    this.setMode('fly');
   }
 
   // ------------------------------------------------------------------------------- death

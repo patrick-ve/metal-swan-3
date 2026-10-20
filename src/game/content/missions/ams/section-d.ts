@@ -16,6 +16,7 @@ import type { BackgroundDef, DecorDef, SectionContext, SectionDef } from '../../
 import { HOUSE, houseRow } from './art';
 import { AmsPerson } from './entities';
 import { at, crate, fromRight, normalUp, prewarm, waitBoss } from './helpers';
+import { placeSecrets, secretArt } from './secrets';
 import { D_ARENA, D_W, G, terrainD } from './terrain';
 
 export const BG_SUNSET: BackgroundDef = {
@@ -55,6 +56,9 @@ const decor: DecorDef[] = [
   { sprite: 'decor/ams/bollard', x: 600, y: G, front: true },
   { sprite: 'decor/ams/bollard', x: 616, y: G, front: true },
 ];
+
+/** The flea market's repair crate (a fixed `pickup-repair` source for a ridden Swan). */
+export const D_REPAIR_X = 700;
 
 /** The city life of section d (cosmetic): pigeons at the flea market. */
 export function life(ctx: SectionContext): void {
@@ -133,6 +137,9 @@ export function* script(ctx: SectionContext): ScriptGen {
     ctx.spawn('ams-market-stall', 200, 'ground', {});
     ctx.spawn('ams-market-stall', 560, 'ground', { contains: 'bombs' });
     ctx.spawn('ams-bike-rack', 336, 'ground', {});
+    // The flea market's repair crate (docs/design/ams-extras.md §6) and its secret chest (§5).
+    crate(ctx, D_REPAIR_X, 'repair');
+    placeSecrets(ctx, 'd');
     at(ctx, 'handhaver', 420, { facing: -1 });
     yield ctx.waitCamera(80);
     fromRight(ctx, 'delivery-rider');
@@ -164,7 +171,7 @@ export const sectionD: SectionDef = {
   decor,
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.
-  art: [...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-bike-rack', 'decor/ams/ams-market-stall'],
+  art: [...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-bike-rack', 'decor/ams/ams-market-stall', ...secretArt('d')],
   playerStart: { x: 48, y: G },
   bossStart: { x: 900, y: G },
   checkpoints: [D_ARENA[0]],

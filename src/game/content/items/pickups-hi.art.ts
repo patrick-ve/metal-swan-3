@@ -12,7 +12,9 @@
  *   case with a glossy cherry, a fluted glossy jelly on a plate, a two-tier birthday cake with
  *   striped candles and flickering flames;
  * - treasure: a polished golden note, a faceted crimson gem with a twinkle, a medal with an
- *   embossed star on a striped ribbon, a grooved golden record with a turning shine.
+ *   embossed star on a striped ribbon, a grooved golden record with a turning shine;
+ * - the 1UP tin cygnet (a glossy wind-up toy, the gold key turning) and the repair kit (a green
+ *   enamel pump oiler and a polished open-end wrench).
  *
  * `weaponStripHd(letter, accent, id, d)` and `PICKUP_HD[id](id, d)` return the frames.
  */
@@ -501,6 +503,148 @@ function recordHd(id: string, d: number): Frame[] {
   });
 }
 
+// ------------------------------------------------------------------------------------ 1UP and repair
+
+/** Body-shift of the waddle per frame (the head and neck rock; pickups.art.ts `cygnetFrames`). */
+const CYGNET_TILT = [0, -1, 0, 1] as const;
+/** Left x of the two feet per frame (each foot 2 px wide, on the bottom row). */
+const CYGNET_FEET: readonly (readonly [number, number])[] = [
+  [3, 7],
+  [4, 7],
+  [3, 8],
+  [3, 7],
+];
+
+/**
+ * The tin cygnet 1UP (16 × 13, 4 frames; the 1× geometry of `cygnetFrames`): a glossy ivory tin
+ * wind-up toy — a seamed hull with a rivet, an S neck, a round head with an orange beak and a
+ * black eye — a gold key bow on a steel shaft in its back that turns (wide / edge-on), the head
+ * rocking and the orange feet stepping with the waddle.
+ */
+function cygnetHd(id: string, d: number): Frame[] {
+  return hdStrip(id, d, (c, f) => {
+    const t = CYGNET_TILT[f];
+    const tin = c.material({ ramp: PAL_HD.snow, spec: 0.9, shine: 26, lo: 1, hi: 5, wrap: 0.06, rim: 0.2 });
+    const beak = paintMat(c, PAL_HD.orange, 0.5, 2, 5);
+    const feet = paintMat(c, PAL_HD.orange, 0.3, 1, 4);
+    const gold = metalMat(c, PAL_HD.gold, 1, 2, 6);
+    const steel = metalMat(c, PAL_HD.steel, 1, 2, 6);
+    const body = c.newPart();
+    // The hull: a round tin body, the tail tip up at the back, the seam, a darker base plate.
+    const hullTex = (s: TexSample): void => {
+      if (Math.abs(s.y - 9.95) < 0.5 / s.d + 0.02 && s.x > 1.6 && s.x < 11.6) s.tone -= 0.3;
+      if (s.y > 11.05) s.tone -= 0.3;
+      // A folded wing line over the back (4×).
+      const w = (s.x - 4.6) * 0.32 + (s.y - 8.7);
+      if (s.d >= 4 && s.x > 4.6 && s.x < 9.4 && Math.abs(w) < 0.13) s.tone -= 0.2;
+    };
+    c.ellipsoid(6.7, 9.45, 5.2, 2.5, { mat: tin, part: body, z: 2, tex: hullTex });
+    c.capsule(3.6, 9.2, 1.55, 8.15, 1.25, 0.6, { mat: tin, part: body, z: 2, tex: hullTex });
+    c.box(2.2, 10.6, 8.9, 1.35, { mat: tin, part: body, z: 2, r: 0.6, tex: hullTex });
+    // A rivet on the seam (4×: a domed head with a glint).
+    c.ellipsoid(6.5, 9.95, 0.55, 0.5, { mat: steel, z: 3.2 });
+    // The neck (an S) and the head, rocking with the step.
+    c.stroke(
+      [
+        [9.9, 8.0],
+        [9.7 + t * 0.5, 6.4],
+        [10.6 + t, 5.0],
+        [11 + t, 3.8],
+      ],
+      0.9,
+      0.85,
+      { mat: tin, part: body, z: 2.5 },
+    );
+    c.ellipsoid(11.05 + t, 2.85, 1.95, 1.75, { mat: tin, part: body, z: 3 });
+    c.capsule(12.7 + t, 3.35, 14.55 + t, 3.65, 0.8, 0.42, { mat: beak, z: 3.4 });
+    c.dot(11.25 + t, 3.0, PAL_HD.ink[0]);
+    if (d >= 4) c.dot(11.4 + t, 2.8, PAL_HD.snow[6]);
+    // The key: a steel shaft into the back and the gold bow, wide or edge-on as it turns.
+    const ky = 4.4 + (f % 2);
+    c.capsule(2.3, ky + 1.3, 3.2, 7.7, 0.45, 0.45, { mat: steel, z: 1 });
+    // A wind-up key bow: two round lobes with holes (wide), or one narrow blade (edge-on).
+    if (f % 2 === 0) {
+      const hole = (cx: number) => (s: TexSample): void => {
+        if (s.d >= 4 && Math.hypot(s.x - cx, s.y - ky) < 0.32) s.tone -= 0.7;
+      };
+      c.ellipsoid(1.25, ky, 0.95, 1.2, { mat: gold, z: 1.5, tex: hole(1.2) });
+      c.ellipsoid(2.75, ky, 0.95, 1.2, { mat: gold, z: 1.5, tex: hole(2.8) });
+    } else c.ellipsoid(2.0, ky, 0.7, 1.35, { mat: gold, z: 1.5 });
+    // The feet, stepping.
+    const [a, b] = CYGNET_FEET[f];
+    for (const fx of [a, b]) c.ellipsoid(fx + 1, 12.5, 1.05, 0.55, { mat: feet, z: 1, round: 0.5 });
+    return render(c);
+  });
+}
+
+/** Lying open-end wrench head (logical px): the C of the jaw, open to the right. */
+const WRENCH_HEAD: readonly (readonly [number, number])[] = [
+  [9.7, 13.05],
+  [12.3, 13.05],
+  [12.95, 13.6],
+  [12.95, 14.0],
+  [11.3, 14.0],
+  [11.3, 16.0],
+  [12.95, 16.0],
+  [12.95, 16.4],
+  [12.3, 16.95],
+  [9.7, 16.95],
+];
+
+/**
+ * Repair kit (14 × 18, 2 frames; the 1× geometry of `repairFrames`): a green enamel pump oiler —
+ * domed shoulder, filler cap, a white label band, a steel handle loop at the back and a long thin
+ * spout up to the right — with a polished open-end wrench lying in front. Frame 1 glints.
+ */
+function repairHd(id: string, d: number): Frame[] {
+  return hdStrip(id, d, (c, i) => {
+    const green = paintMat(c, PAL_HD.green, 0.6, 2, 7);
+    const cap = paintMat(c, PAL_HD.green, 0.6, 3, 7);
+    const label = paintMat(c, PAL_HD.snow, 0.25, 3, 6);
+    const steel = metalMat(c, PAL_HD.steel, 1, 2, 7);
+    const can = c.newPart();
+    // The handle loop behind the can's left side.
+    c.stroke(
+      [
+        [3.6, 7.7],
+        [2.05, 8.3],
+        [1.95, 10.3],
+        [3.6, 11.2],
+      ],
+      0.55,
+      0.55,
+      { mat: steel, z: 0.5 },
+    );
+    // The body: an upright cylinder, the domed shoulder, the base ring.
+    c.cylinder(3.05, 7.4, 7.9, 5.1, {
+      mat: green,
+      part: can,
+      z: 2,
+      tex: (s) => {
+        if (s.y > 8.05 && s.y < 9.25 && s.x < 9.6) {
+          s.mat = label;
+          // The label's print: a short dark line at 4×.
+          if (s.d >= 4 && s.y > 8.45 && s.y < 8.75 && s.x > 4.6 && s.x < 7.8) s.tone -= 0.55;
+        }
+      },
+    });
+    c.ellipsoid(6.6, 7.45, 3.95, 2.2, { mat: green, part: can, z: 2, tex: (s) => (s.y > 7.45 ? (s.cut = true) : undefined) });
+    c.box(3.2, 12.0, 7.6, 1.0, { mat: green, z: 2.4, bevel: 0.3, tone: -0.45 });
+    // The filler cap on the shoulder.
+    c.cylinder(5.1, 3.9, 2.6, 1.5, { mat: cap, z: 3, cap: 0.8 });
+    // The spout: from the shoulder up to the right, a thin steel tube with a lit tip.
+    c.capsule(8.6, 6.6, 12.55, 1.55, 0.72, 0.42, { mat: steel, z: 3.5 });
+    // The wrench: a bevelled shaft and the open jaw at the right.
+    c.box(1.05, 14.0, 9.4, 2.0, { mat: steel, z: 4, bevel: 0.5, r: 0.6 });
+    c.poly(WRENCH_HEAD, { mat: steel, z: 4.1 });
+    if (i === 1) {
+      glint(c, 4.6, 8.5);
+      glint(c, 3.5, 14.5);
+    }
+    return render(c);
+  });
+}
+
 // ------------------------------------------------------------------------------------ register
 
 /** HD builders by pickup id (all but the weapon medallions). */
@@ -517,4 +661,6 @@ export const PICKUP_HD: Readonly<Record<string, (id: string, d: number) => Frame
   'item/pickup-gem/gem': gemHd,
   'item/pickup-gem/medal': medalHd,
   'item/pickup-gem/golden-record': recordHd,
+  'item/pickup-1up': cygnetHd,
+  'item/pickup-repair': repairHd,
 };

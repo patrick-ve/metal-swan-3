@@ -213,10 +213,18 @@ describe('2× scenery', () => {
       if (!style) continue;
       const t = new Terrain(def.terrain);
       const sample = (x: number, y: number) => t.cellAt(x, y);
-      // Two chunks around the ground line of the section start.
-      for (const [cx, cy] of [[0, Math.floor((def.height - 40) / CHUNK)], [1, Math.floor((def.height - 40) / CHUNK)]]) {
+      // Two chunks around the ground line of the section start and the last one (a river section
+      // like c1 / c2 starts on a bridge or a quay end: its ground is at the exit).
+      const gy = Math.floor((def.height - 40) / CHUNK);
+      const last = Math.ceil(def.width / CHUNK) - 1;
+      let detailed = 0;
+      for (const [cx, cy] of [[0, gy], [1, gy], [last, gy]]) {
         const one = getTerrainPainter()(sample, style, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK);
         if (one.countOpaque() === 0) continue;
+        // The detail check needs real ground (≥ 2048 px: a quay end), not a thin bridge deck; it
+        // grows with the ground (a full street chunk: 1000 × d).
+        const ground = one.countOpaque() >= 2048;
+        if (ground) detailed++;
         for (const d of DENSITIES) {
           const hi = makeHiTerrain(sample, style, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK, d);
           expect(hi, `ams/${sid} chunk ${cx},${cy} at ${d}×`).not.toBeNull();
@@ -238,9 +246,10 @@ describe('2× scenery', () => {
           const flat = hi.downsampled(d).scaled(d);
           let diff = 0;
           for (let i = 0; i < hi.data.length; i++) if (hi.data[i] !== flat.data[i]) diff++;
-          expect(diff, `has ${d}× detail`).toBeGreaterThan(1000 * d);
+          if (ground) expect(diff, `ams/${sid} chunk ${cx} has ${d}× detail`).toBeGreaterThan(Math.min(1000, 0.05 * one.countOpaque()) * d);
         }
       }
+      expect(detailed, `ams/${sid}: a ground chunk gets the detail check`).toBeGreaterThan(0);
     }
     expect(built).toBeGreaterThan(7);
     // Styles without HD materials get no dense painter work at all.

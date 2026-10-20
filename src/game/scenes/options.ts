@@ -1,5 +1,5 @@
 /**
- * Options (GDD §13.13): the night base (base.ts) under a veil, `OPTIONS` in stencil (C, y 12); rows (small) from y 40, 10 px apart, labels
+ * Options (GDD §13.13): the night base (base.ts) under a veil, `OPTIONS` in stencil (C, y 12); rows (small) from y 38, 9 px apart, labels
  * left-aligned at x 64, values right-aligned at x 320 between `<` and `>`; left / right change,
  * fire confirms. DIFFICULTY · CREDITS · MUSIC VOLUME · SFX VOLUME · VOICE VOLUME (announcer and
  * voiced speech bubbles; added 2026-10-14) · ANNOUNCER · SPEECH BUBBLES ·
@@ -9,7 +9,8 @@
  * ART DETAIL (AUTO / 4X / 2X / 1X: the art tier of the dense art, main.ts applies it; added
  * 2026-10-19; rows 9 px apart since) ·
  * MOUSE LOOK (ON / OFF) · SENSITIVITY (1–10) (the first-person mode's pointer-lock mouse,
- * docs/design/fps.md §2.3; added 2026-10-16) · CONTROLS (the rebind screen) · RESET HIGH
+ * docs/design/fps.md §2.3; added 2026-10-16) · RUMBLE (ON / OFF: gamepad rumble, added
+ * 2026-10-20; rows from y 38 since) · CONTROLS (the rebind screen) · RESET HIGH
  * SCORES (`ARE YOU SURE?` → `YES` / `NO`) · BACK. Changes apply at once and are saved on the way
  * out; difficulty and credits apply to the next game.
  */
@@ -42,6 +43,7 @@ export type OptionId =
   | 'artDetail'
   | 'mouseLook'
   | 'sensitivity'
+  | 'rumble'
   | 'controls'
   | 'reset'
   | 'back';
@@ -66,6 +68,7 @@ export const OPTION_ROWS: readonly Row[] = [
   { id: 'artDetail', label: 'ART DETAIL' },
   { id: 'mouseLook', label: 'MOUSE LOOK' },
   { id: 'sensitivity', label: 'SENSITIVITY' },
+  { id: 'rumble', label: 'RUMBLE' },
   { id: 'controls', label: 'CONTROLS' },
   { id: 'reset', label: 'RESET HIGH SCORES' },
   { id: 'back', label: 'BACK' },
@@ -73,7 +76,7 @@ export const OPTION_ROWS: readonly Row[] = [
 
 const SHAKES: readonly ShakeLevel[] = ['full', 'low', 'off'];
 /** First row y and row spacing (px); the last row ends above the hint line at y 200. */
-export const OPTION_TOP = 40;
+export const OPTION_TOP = 38;
 export const OPTION_STEP = 9;
 const TOP = OPTION_TOP;
 const STEP = OPTION_STEP;
@@ -111,6 +114,8 @@ export function optionValue(s: GameSettings, id: OptionId): string {
       return s.mouseLook ? 'ON' : 'OFF';
     case 'sensitivity':
       return String(s.mouseSensitivity);
+    case 'rumble':
+      return s.rumble ? 'ON' : 'OFF';
     default:
       return '';
   }
@@ -183,6 +188,9 @@ export function stepOption(s: GameSettings, id: OptionId, d: number): boolean {
       s.mouseSensitivity = v;
       return true;
     }
+    case 'rumble':
+      s.rumble = !s.rumble;
+      return true;
     default:
       return false;
   }
@@ -283,6 +291,8 @@ export class OptionsScene implements Scene {
     }
     if (!stepOption(s, id, d)) return;
     if (id === 'music' || id === 'sfx' || id === 'voice') applyAudioSettings(this.app.audio, s);
+    // RUMBLE on: a short buzz on the pad that changed it (or the pad used last).
+    if (id === 'rumble' && s.rumble) this.app.input.rumbleLastPad(0.5, 0.5, 160);
     this.app.audio.sfx('ui/move');
     this.opts.onChange?.(s);
   }

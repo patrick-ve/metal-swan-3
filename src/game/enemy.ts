@@ -105,19 +105,20 @@ export type Side = 'left' | 'right';
  * - 'photo'    SAY CHEESE (the tourist hostage, items) → every non-boss enemy on screen, 45 ticks
  * - 'stumble'  a parade column's drummer dies (infantry) → the column stumbles, 60 ticks
  * - 'buff'     IN STEP! (baton-major) → riflemen within 120 px fire 30 % faster, 240 ticks
- * - 'laugh'    the in-world continue (mission runner): every player is out → every non-boss enemy
- *              on screen points at the empty spot and laughs while the countdown runs
+ * - 'gloat'    the in-world continue (mission runner): every player is out → every non-boss enemy
+ *              on screen goes about its own business at the spot where the last player went down
+ *              (`thinkGloat`; never a laugh, a point or a cheer) while the countdown runs
  * - 'cower'    the in-world continue: a continued hero lands → every non-boss enemy on screen
  *              cowers in place (TUNING.continues.cowerTicks)
  * While a reaction runs the enemy does not attack (its `think()` is replaced by
  * `thinkReaction()`); it still takes damage.
  */
-export type ReactionKind = 'salute' | 'dance' | 'panic' | 'confused' | 'freeze' | 'queue' | 'ears' | 'photo' | 'stumble' | 'buff' | 'laugh' | 'cower';
+export type ReactionKind = 'salute' | 'dance' | 'panic' | 'confused' | 'freeze' | 'queue' | 'ears' | 'photo' | 'stumble' | 'buff' | 'gloat' | 'cower';
 
 /** Reactions every enemy answers (SAY CHEESE and the in-world continue), machines included. */
-const EVERY_ENEMY_REACTIONS: ReadonlySet<ReactionKind> = new Set(['photo', 'laugh', 'cower']);
+const EVERY_ENEMY_REACTIONS: ReadonlySet<ReactionKind> = new Set(['photo', 'gloat', 'cower']);
 
-/** Does every enemy answer this reaction ('photo', 'laugh', 'cower')? For `acceptsReaction` overrides. */
+/** Does every enemy answer this reaction ('photo', 'gloat', 'cower')? For `acceptsReaction` overrides. */
 export function everyEnemyReacts(kind: ReactionKind): boolean {
   return EVERY_ENEMY_REACTIONS.has(kind);
 }
@@ -137,7 +138,7 @@ const REACTION_ANIMS: Readonly<Record<ReactionKind, string>> = {
   photo: 'photo-pose',
   stumble: 'stumble',
   buff: 'idle',
-  laugh: 'laugh',
+  gloat: 'gloat',
   cower: 'cower',
 };
 
@@ -256,7 +257,7 @@ export class Enemy extends Entity {
   }
 
   /**
-   * Which reactions this enemy answers. Default: 'photo', 'laugh' and 'cower' for everyone
+   * Which reactions this enemy answers. Default: 'photo', 'gloat' and 'cower' for everyone
    * (`everyEnemyReacts`); Legion soldiers (tags 'legion' + 'soft') also salute, panic, get
    * confused, freeze, queue, cover their ears and stumble. Override to opt in or out
    * (windup-bots: 'dance'; riflemen: 'buff').
@@ -275,11 +276,15 @@ export class Enemy extends Entity {
   /**
    * Behaviour during a reaction (instead of `think()`). Default: stand still and play
    * `<art>/<anim>` for the reaction (salute, photo-pose, ears …), else its fallback, else 'idle';
-   * 'panic' runs away from the source; 'laugh' and 'cower' face it (the spot where the hero went
-   * down, the hero who came back). Override for walking reactions (the JINGLE queue, a stumble)
-   * and for bodies that must hold their place another way (a flyer).
+   * 'panic' runs away from the source; 'cower' faces it (the hero who came back); 'gloat' runs
+   * `thinkGloat` (the spot where the last player went down). Override for walking reactions (the
+   * JINGLE queue, a stumble) and for bodies that must hold their place another way (a flyer).
    */
   protected thinkReaction(kind: ReactionKind): void {
+    if (kind === 'gloat') {
+      this.stepGloat();
+      return;
+    }
     if (kind === 'panic') {
       const src = this.reactionSource ?? this.target();
       const dir = src ? (src.x > this.x ? -1 : 1) : -this.facing;
@@ -287,10 +292,67 @@ export class Enemy extends Entity {
       this.vx = dir * 1.6;
     } else {
       this.vx = 0;
-      const src = this.reactionSource;
-      if ((kind === 'laugh' || kind === 'cower') && src && Math.abs(src.x - this.x) >= 2) this.facing = src.x > this.x ? 1 : -1;
+      if (kind === 'cower') this.faceSpot(this.reactionSource);
     }
     this.play(this.reactionAnim(kind));
+  }
+
+  // ------------------------------------------------------------------------------- the gloat
+
+  /**
+   * Ticks of this hold's gloat so far (the clock of `thinkGloat`). A hold (`startGloatHold`, every
+   * player out) starts it at 0 once; a gloat that lapses (off screen) and comes back in the same
+   * hold goes on where it was.
+   */
+  protected gloatT = 0;
+  /** This hold's gloat line was shown (`sayGloat`: at most one bubble per enemy per hold). */
+  protected gloatSaid = false;
+  /** The hold (`gloatHoldOf`) the gloat clock belongs to; −1 = never gloated. */
+  private gloatHold = -1;
+
+  /** One gloat tick: a new hold resets the clock and the line (`onGloatStart`), then `thinkGloat`. */
+  private stepGloat(): void {
+    const hold = gloatHoldOf(this.world);
+    if (hold !== this.gloatHold) {
+      this.gloatHold = hold;
+      this.gloatT = 0;
+      this.gloatSaid = false;
+      this.onGloatStart(this.reactionSource);
+    }
+    this.thinkGloat(this.reactionSource, this.gloatT++);
+  }
+
+  /** Hook: the first gloat tick of a hold (pick a spot, ring a bell …). */
+  protected onGloatStart(_spot: Entity | null): void {}
+
+  /**
+   * The gloat (docs/design/ams-extras.md §1, GDD §4.6): every player is out and this enemy goes
+   * about its own business at the spot where the last player went down (`spot`: the out player,
+   * it stays where it fell; `t`: ticks of this hold's gloat, 0 first). Never a laugh, a point or a
+   * cheer. Default: stand still, face the spot, play `<art>/gloat` (else 'idle'). Overrides may
+   * move a little (stay on the own floor and in view) and must not attack; the enemy still takes
+   * damage. It ends when a hero drops back in (the cower replaces it): `onReactionEnd('gloat')`.
+   */
+  protected thinkGloat(spot: Entity | null, _t: number): void {
+    this.vx = 0;
+    this.faceSpot(spot);
+    this.play(this.reactionAnim('gloat'));
+  }
+
+  /** Face `spot` (when it is 2+ px away). */
+  protected faceSpot(spot: Entity | null): void {
+    if (spot && Math.abs(spot.x - this.x) >= 2) this.facing = spot.x > this.x ? 1 : -1;
+  }
+
+  /**
+   * Show this hold's gloat line over the enemy (a gag bubble, `gagBubble`): at most once per enemy
+   * per hold, never over another gag bubble (then it tries again on a later tick). Returns true
+   * when it shows now.
+   */
+  protected sayGloat(text: string, ticks: number, speaker = ''): boolean {
+    if (this.gloatSaid || !gagBubble(this.world, this, text, ticks, speaker)) return false;
+    this.gloatSaid = true;
+    return true;
   }
 
   /** The animation `thinkReaction` plays for `kind`: its own strip, its fallback, else 'idle'. */
@@ -826,6 +888,41 @@ export function caughtNapping(e: Entity, d: Damage): void {
   if (d.owner !== 0 && d.owner !== 1) return;
   awardScore(e.world, d.owner, 100, e.x, e.y - 48);
   hudOf(e.world).callout('CAUGHT NAPPING +100');
+}
+
+/** The gloat hold of each world: bumped once per hold (`startGloatHold`). */
+const gloatHolds = new WeakMap<World, number>();
+
+/**
+ * A new gloat hold (the mission runner, when every player is out): every enemy that gloats in it
+ * starts its gloat afresh (clock 0, its one line). Returns the hold's number (1, 2, …).
+ */
+export function startGloatHold(world: World): number {
+  const n = (gloatHolds.get(world) ?? 0) + 1;
+  gloatHolds.set(world, n);
+  return n;
+}
+
+/** The world's current gloat hold (0 before the first). */
+export function gloatHoldOf(world: World): number {
+  return gloatHolds.get(world) ?? 0;
+}
+
+/**
+ * A gag bubble over `e`, unless another live gag bubble already hangs within 56 × 32 px (two
+ * enemies side by side would print their lines on top of each other). Returns false when skipped.
+ * A shown line is voiced by its `speaker`'s sample when one is loaded (`HudState.onBubble`).
+ */
+export function gagBubble(world: World, e: { x: number; y: number }, text: string, ticks: number, speaker = ''): boolean {
+  const hud = hudOf(world);
+  const list = hud.bubbles;
+  for (let i = 0; i < list.length; i++) {
+    const b = list[i];
+    if (b.kind !== 'gag' || b.ticks <= 0 || b.target === e) continue;
+    if (Math.abs(b.target.x - e.x) < 56 && Math.abs(b.target.y - e.y) < 32) return false;
+  }
+  hud.bubble(e, text, { ticks, kind: 'gag', speaker: speaker || undefined });
+  return true;
 }
 
 export interface ReactFilter {

@@ -25,14 +25,26 @@ ctx.enter('handhaver', 'right', { tag: 'adds' });
   bullet / knife / blast gets up and runs off (`MAMA!`); he is dead and does not hold the wave.
 - **Riders despawn off screen** (Enemy despawn margin 96 px after they were seen). Spawn them
   with `ctx.enter` or ahead of the player; they ride toward the player.
-- **Gag bubbles**: `gagBubble(world, e, text, ticks)` (rider.ts) skips a gag line when another live
-  gag bubble hangs within 56 × 32 px, so two riders side by side never print over each other.
+- **Gag bubbles**: `gagBubble(world, e, text, ticks)` (enemy.ts; re-exported by rider.ts) skips a gag
+  line when another live gag bubble hangs within 56 × 32 px, so two riders side by side never print
+  over each other.
+- **The gloat** (every player out, the in-world continue; `docs/design/ams-extras.md` §1, GDD §4.6):
+  each local on screen goes about its own business at the spot where the last player went down —
+  never a laugh, a point or a cheer, never an attack (it still takes damage). Per enemy below. A
+  hero dropping back in ends it: they cower (`!`, 90 ticks, no scream). Hook for new enemies:
+  `thinkGloat(spot, t)` / `onGloatStart(spot)` / `sayGloat(text, ticks)` (docs/api/game.md).
+- **Driven vehicles break them**: a driven player vehicle that touches a rider or a handhaver breaks
+  it (the vehicle takes ½ cell, the driver scores; GDD §8.5), also during a reaction; a gull only
+  while it dives.
+- **Deep water**: a rider (or its body) whose bike leaves the ground over a `water` rect at least
+  16 px deep falls in — `fx` splash, `env/water-splash`, removed, no score of its own.
 - **Shared params**: `facing`, `hp`, `drop`, `tag` / `tags` (Enemy base). `enter` / `entry`
   (`left` / `right`) sets the side a rider or walker comes from.
 - **Fairness is built in**: attack tokens from the telegraph to the end of the attack, every
   telegraph ≥ 18 ticks (×1.25 / ×1 / ×0.9 by difficulty) and it runs while the enemy is in the
   view; no attack from outside the view (8 px margin). Gags are free time (CAUGHT NAPPING).
-- **Sounds** (played by id): `ams/bass-thump`, `ams/bell`, `ams/kick`, `ams/gull`, `ams/ticket`.
+- **Sounds** (played by id): `ams/bass-thump`, `ams/bell`, `ams/kick`, `ams/gull`, `ams/ticket`; the
+  gloat adds `ams/gloat-scribble`, `ams/gloat-tear`, `ams/gloat-peck` (sfx/ams-gloat.ts).
 
 ## 1. `fatbike-youth` — HP 20 (pair 30), soft, 300 (pair 500)
 
@@ -46,6 +58,7 @@ on the bar). Hurtbox 24×34 (rider + bike). 4 looks × 3 skins (+ pair sets), pi
 | kick | box ahead (x +4…+24, y −22…−6) | 8 ticks; **a jump clears it**; touching the bike is harmless |
 | recover | rides on (1.8) and off screen, or (50 %) brakes 20 ticks and turns for one more pass | `turn: true / false` forces it |
 | gag `circles` | slow laps ±40 px round the spawn point, bass thump every 36 ticks | notices a player within 120 px (or a shot): double-take, then rides at him |
+| gloat | in view (rides in from within 24 px of a view edge), a slow wheelie in place facing the spot (`gloat` strip: the bike rocking on the back wheel, heads bobbing), `ams/bass-thump` and a music note from the speaker | every 36 ticks; no kick |
 
 Params: `pair`, `gag` (`circles` / true), `enter`, `facing`, `look` (0–3), `skin` (`a`/`b`/`c`),
 `turn`. Death: tumbles off, the cap flies (cap looks), runs off yelling `MAMA!`; the bike skids
@@ -62,6 +75,7 @@ Black jacket, black helmet, the green cube backpack (a symmetric burger logo, so
 | tell | `ams/bell`, bubble `TRING TRING!` | starts as soon as he is in the view (token), ≥ 20 ticks; he keeps ringing until the player is ≤ 22 px ahead |
 | kick | the same kick box as the youth | 6 ticks while passing; **a jump clears it**; passed without a kick → rides off |
 | gag `phone` | checks his phone, `SORRY, LATE ORDER!`, passes without kicking | a shot within 48 px wakes him (then he may still ring and kick) |
+| gloat | in view, `ams/bell`, one slow lap round the place he stopped (out, back past it, home; turns early at a wall, a drop, water or the view edge), then stops, faces the spot and checks his phone (`gloat` strip) | lap ±22 px at 1.1 px/tick; no kick |
 
 Params: `from` (`behind` = enters at the LEFT view edge, facing right; `left` / `right`), `gag`,
 `enter`, `facing`, `skin`. Death: falls, the cube pops open and drops `pickup-food`
@@ -79,11 +93,13 @@ round the body centre (perched: 18×18 above the feet). No body (flies itself).
 | tell | flaps, gold flash, `ams/gull`, bubble `KAW!` | 20 ticks, in view, token; every ~110 ticks |
 | dive | at the player's position | 3 px/tick, ≤ 170 px; **contact damage only while diving** |
 | climb | back up | 36 ticks |
+| gloat | off its perch if it sat on one, flies to the spot and lands beside it (away from a handhaver there; flock members 14 px apart; inside the view), pecks at the hero's lost fries (`gloat` strip, `ams/gloat-peck`); no dry floor there (a pit, water): it hovers 40 px over the spot | 1.4 px/tick; takes off again when the gloat ends |
 
 `flock: n` (2–5): one spawn = n gulls; they spread round the player (both sides, three heights)
 and their dives are staggered 40 ticks apart (each still needs a token). Params: `perch`, `gag`
 (`sleep` / `fries`), `flock`, `enter` (`left` / `right` / `top` = flies in), `facing`.
-Death: feather puff, falls to the floor; over a `water` hazard it splashes and is gone.
+Death: feather puff, falls to the floor; over a `water` hazard it splashes and is gone. A perched
+gull answers SAY CHEESE and the cower on its perch (`alert`).
 
 ## 4. `handhaver` — HP 20, soft, 300 (boss add, sections c / d)
 
@@ -94,6 +110,7 @@ Navy uniform and cap, yellow hi-vis vest, a ticket book. 3 skin sets.
 | walk | toward the player, stops 130 px away (`hold`), stops at walls and ledges | 0.6 px/tick |
 | tell | opens the book, licks the pencil, bubble `BOETE!`, `ams/ticket` | 24 ticks; player ≤ 220 px, in view, token, < 2 own tickets in the air |
 | throw | a `boete-ticket` at chest height | then recover 40, pause 50 ± 20 |
+| gloat | walks toward the spot (stops 12 px short; at most 40 px; only over his own floor), writes the fine (`ams/gloat-scribble`, bubble `VERBODEN TE LIGGEN!` once per hold), tears the page off (`ams/gloat-tear`), lets it flutter onto the spot (`GloatPage`, `ams/ticket`; it lies there 600 ticks), stands back | walk 0.6 px/tick; write 48, tear 12, drop 14 ticks; no ticket thrown |
 
 Death: swoons; tickets scatter like confetti.
 
@@ -113,7 +130,10 @@ or `throwTicket(world, x, feetY, dir, speed)` from code.
 die, die-knife, die-blast, die-burn, die-crush, flee, bike; extras `enemy/fatbike-youth/cap`,
 `enemy/delivery-rider/food-cube`. Gull: walk, idle, perch, gag, gag-fries, alert, tell, attack,
 die*, photo-pose, feather. Handhaver: idle, walk, alert, tell, throw, photo-pose, die*. Ticket:
-`enemy/boete-ticket/fly`. Look at them: `npm run sprites -- enemy/seagull/`.
+`enemy/boete-ticket/fly`. The continue reactions (every set; deferred, 1× / 2× / 4×): `gloat`
+(fatbike 4 frames: the rocking wheelie; delivery 2: the phone check; handhaver 5, picked by phase:
+write, write, tear, drop, done; gull 4, perched: look, peck, a fry in the beak, gulp) and `cower`
+(2). Look at them: `npm run sprites -- enemy/seagull/`.
 
 ## 6. Boss `ams-mayor` — ROBO-HALSEMA, THE IRON MAYOR (`src/game/content/bosses/ams/`)
 
@@ -139,8 +159,9 @@ yield () => boss instanceof Boss && boss.defeated;         // or the m1 waitBoss
 - **Phase 1** (opens after 40 ticks, so the intro bubble has cleared; after the first slam the taunt `FABEL FRIET WILLEN / WE NIET!`): stamp slam (arm up + a
   red-rimmed floor shadow, T 30; slam 56×22 + a `stamp-wave` each way,
   jump; HARD two pairs) and letter rain (hatch, T 24; 4–6 `noise-letter`, 10 HP, shootable).
-  Adds: `handhaver` from alternating view edges every 420 ticks, ≤ 3 alive (tag
-  `ams-mayor-officer`; all adds carry `ams-mayor-add`).
+  Adds: `handhaver` every 420 ticks, ≤ 3 alive (tag `ams-mayor-officer`; all adds carry
+  `ams-mayor-add`). In every phase the adds come in from alternating sides: the side flips only
+  when an add spawns (the first from the left).
 - **Phase 2** (arm or chain broken; 60-tick intermission, `REGELS ZIJN REGELS!`; after the first whip pair the taunt `IK WORD HELEMAAL GEK / VAN DIE HOTDOGKRAAM...` then `...OP MIJN / MUSEUMPLEIN!` (a cosmetic follow-up bubble, no script yield)): chain whip high
   (crouch) / low (jump) alternating, T 28 (the loop whirls high or low with a gold glow;
   `ams/chain` winds up at pitch 1.15 for high, 0.8 for low), a 124-px lash (contact box, lanes
@@ -152,6 +173,15 @@ yield () => boss instanceof Boss && boss.defeated;         // or the m1 waitBoss
   closes the near crouch lane) and stomp (landing shadow, T 24; a
   48-px hop forward, then back; only the 48×12 landing under her feet hurts). Adds: one
   `delivery-rider` pass at a time, alternating `from: 'behind'` / right.
+- **Stagger** (a continued hero landed: `Boss.stagger(60)` from the runner's in-world continue):
+  the shout face, a 1-px shake and a `!`; no adds. The running attack ends cleanly at once
+  (`cutAttack`): the lash and the landing box go off, no glow or shadow tell, the arm, the far
+  arm, the hatch, the core and the legs at rest; the phase pattern is cancelled and runs on
+  without its opening (`phaseOne/Two/Three(true)`, 12 calm ticks first; phase 3 stomps home
+  first when the cut left her out). Two waits (`canStagger`): a stomp in the air lands first
+  (that landing is harmless), and the stamp's creak runs to its slam (the slam is baked into
+  `ams/stamp`, so it never sounds late). Other bosses keep the default: `cutAttack()` false =
+  the pattern is only paused (Boss API: `BossPhase.resume`, `Boss.cutAttack()`, docs/api/game.md).
 - **Idle life**: while she stands in the fight, the upper body breathes 1 px every 32 ticks and
   the eyes blink (head frame 3) for 6 ticks every 150 ticks.
 - **Death** (230 ticks, `TOT ZIENS...`; broken parts: `MIJN STEMPEL!`, `MIJN HAAR, MIJN / PRACHTIGE HAAR!`): blasts, the wig flies off, the head boings on a spring,

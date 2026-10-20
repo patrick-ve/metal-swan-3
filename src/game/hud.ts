@@ -41,6 +41,11 @@ export interface HudInput {
   runner: MissionRunner | null;
   /** 2 = two-player controls (an empty slot shows PRESS START). */
   inputPlayers: 1 | 2;
+  /**
+   * A 1-player game with a free gamepad connected (docs/design/ams-extras.md §10): player 2's
+   * empty corner blinks PRESS START (START on that pad joins).
+   */
+  joinOpen?: boolean;
   /** Frame counter for blinking. */
   ticks: number;
   /** Options (speech bubbles, boss bar); default DEFAULT_SETTINGS. */
@@ -190,19 +195,20 @@ function solo(session: GameSession): boolean {
 }
 
 /**
- * The in-world continue with one player (GDD §4.6, §13.9): `CONTINUE?` (big, C, y 60) and the
- * countdown (big ×2, C, y 90) over the live world, `PRESS START` (blinking, y 130) and the
- * credits (y 140). Two players see their countdown in their own corner (drawPanel).
+ * The in-world continue with one player (GDD §4.6, §13.9): `CONTINUE?` (big, C, y 40) and the
+ * countdown (big ×2, C, y 66) over the live world, `PRESS START` (blinking, y 92) and the
+ * credits (y 102): the upper third, clear of the gloat's gag bubbles at the spot where the hero
+ * fell. Two players see their countdown in their own corner (drawPanel).
  */
 function drawCountdown(r: Renderer, h: HudInput): void {
   const n = h.runner?.countdownNumber ?? -1;
   if (n < 0 || !solo(h.session)) return;
   const c = VIEW_W >> 1;
-  txt(r, 'CONTINUE?', c, 60, GOLD, 'center', 'big');
-  txt(r, String(n), c, 90, n <= 3 ? RED : WHITE, 'center', 'big', 2);
+  txt(r, 'CONTINUE?', c, 40, GOLD, 'center', 'big');
+  txt(r, String(n), c, 66, n <= 3 ? RED : WHITE, 'center', 'big', 2);
   const credits = h.session.credits;
-  if (credits > 0 && blink(h.ticks)) txt(r, 'PRESS START', c, 130, WHITE, 'center');
-  txt(r, credits === Infinity ? 'FREE PLAY' : credits <= 0 ? 'NO CREDITS' : `CREDITS ${String(credits).padStart(2, '0')}`, c, 140, PAL.stone[3], 'center');
+  if (credits > 0 && blink(h.ticks)) txt(r, 'PRESS START', c, 92, WHITE, 'center');
+  txt(r, credits === Infinity ? 'FREE PLAY' : credits <= 0 ? 'NO CREDITS' : `CREDITS ${String(credits).padStart(2, '0')}`, c, 102, PAL.stone[3], 'center');
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -223,7 +229,7 @@ function drawPanel(r: Renderer, h: HudInput, s: PlayerSlot): void {
   const t = h.ticks;
 
   if (!s.joined) {
-    if (h.inputPlayers === 2 && blink(t)) txt(r, h.session.credits <= 0 ? `${tag} NO CREDITS` : `${tag} PRESS START`, edge, 3, col, align);
+    if ((h.inputPlayers === 2 || h.joinOpen === true) && blink(t)) txt(r, h.session.credits <= 0 ? `${tag} NO CREDITS` : `${tag} PRESS START`, edge, 3, col, align);
     return;
   }
   // Score (always shown, also on the CONTINUE? and GAME OVER screens): the tag, then 7 digits at x 16.

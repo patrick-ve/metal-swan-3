@@ -50,12 +50,29 @@ Start the sound on the first telegraph tick; it ends when the attack comes.
 | 45 | `enemy/piccolo-whistle`, `machine/tank-charge`, `creature/rattle` (three "chk-chk"), `boss/harp-charge` |
 | 50 | `enemy/windup`, `machine/piano-whistle`, `boss/foghorn`, `boss/goose-wiggle` |
 | 20–30 (`ams`) | `ams/bell` (delivery rider, 20; two dings), `ams/gull` (seagull, 20; "KAW!"), `ams/bass-thump` (fatbike youth, 24; two sub thumps + muffled beat), `ams/chain` (CHAIN WHIP, 26; rattle), `ams/stamp` (STAMP SLAM, 30: the creak is the tell and the slam lands at 0.5 s = tick 30, so play it once on the first telegraph tick and no separate hit sound) |
+| 24 (`ams` extras) | `ams/cork-shake` (a stag partier shakes his bottle, 0.4 s), `ams/scan-beep` (SCAN LOCK's freeze: six quickening beeps to a lock tone, 0.4 s; at pitch 0.6 when the reticle appears), `ams/rev` (the scan car's RAM rev, 0.42 s), `ams/reverse-beep` (the tow truck backing in: two beeps, 0.62 s, every 40 ticks) |
 
 The attack sounds that follow: `enemy/tuba-blast`, `enemy/cymbal-crash`, `enemy/drum-hit`,
 `enemy/rifle`, `enemy/piccolo-shot`, `creature/croak`, `machine/piano-crash`, `boss/hihat-open`,
 `boss/organ-chord`, `boss/goose-honk`, `boss/scream` (1.2 s), `boss/voice-crack`, `boss/deflate` (1.5 s).
 Mission `ams` attacks: `ams/kick` (the fatbike kick: whoosh + thud, the thud at 0.1 s),
 `ams/ticket` (a thrown `boete-ticket`: a paper flutter); cheering reuses `env/applause`.
+
+### 2.1 Mission `ams` extras (docs/design/ams-extras.md, 2026-10-20)
+
+Synth recipes only, one table file per area (`src/game/content/sfx/ams-<area>.ts`, spread into
+`SFX` by `sfx/index.ts`):
+
+| Table | Ids |
+|---|---|
+| `AMS_GLOAT` (`ams-gloat.ts`: the gloat, §1) | `ams/gloat-scribble` (the handhaver writes in his notebook), `ams/gloat-tear` (he tears the page off), `ams/gloat-peck` (the gull pecks at the hero's lost fries) |
+| `AMS_STAG` (`ams-stag.ts`: the stag party and the beer bike, §2) | `ams/cork-shake` (the tell), `ams/cork-pop` (a cork flies), `ams/cork-cannon` (the beer bike's tap turret), `ams/clink` (the toast gag), `ams/foam` (FOAM SPRAY, a bottle foaming over), `ams/keg-roll` (the KEG ROLL), `ams/beer-bell` (the empty bike's bell gag), `ams/beer-creak` (the RAM) |
+| `AMS_SCAN` (`ams-scan.ts`: the parking scan car, §3) | `ams/scan-beep`, `ams/rev`, `ams/reverse-beep` (telegraphs, above), `ams/scan-up` (the roof scanner's servo, 1 s), `ams/ticket-print` (the printer runs a strip out, 0.3 s), `ams/clamp-clunk` (a wheel clamp lands, snaps or pops, 0.22 s), `ams/airbag` (the death: bang, whoosh, fabric flop, 0.5 s) |
+| `AMS_ROUTE` (`ams-route.ts`: the canal cruise, §4) | `ams/route-horn` (the tour boat departs; a low bridge comes into view), `ams/route-bell` (the Magere Brug's warning bell), `ams/route-creak` (its bascule lifting), `ams/route-bump` (the boat docks at Waterlooplein) |
+
+Levels (2026-10-20, integrator): `ams/scan-up` vol 0.75, `ams/route-bell` 0.6 and
+`ams/route-creak` 0.8 (they were under the RMS / peak floor), `ams/rev` 0.5 (over −9 LUFS),
+`ams/airbag` 0.6 and `ams/clamp-clunk` 0.5 (their peaks went over 0.9).
 
 ## 3. Aliases (`SFX_ALIASES`)
 
@@ -102,7 +119,8 @@ exactly as before (`tests/content/sfx.test.ts` keeps fingerprints of the engine 
 
 Recipes live per family: `weapons.ts`, `player.ts` (player, items, hostages), `vehicles.ts`
 (vehicles, Swan, fleet), `legion.ts`, `machines.ts` (machines, creatures), `bosses.ts`,
-`world.ts` (`env/*`), `ui.ts`, `ams.ts` (mission `ams`: `ams/*`). `kit.ts` has the builders: `tone`, `noise`, `click`, `clack`,
+`world.ts` (`env/*`), `ui.ts`, `ams.ts` (mission `ams`: `ams/*`) and the `ams` extras tables
+`ams-gloat.ts`, `ams-stag.ts`, `ams-scan.ts`, `ams-route.ts` (§2.1). `kit.ts` has the builders: `tone`, `noise`, `click`, `clack`,
 `bell`, `fmBell`, `note`, `seq`, `hits`, `scatter` (fixed pseudo-random times), `loopRecipe`
 (seamless loops: pick tones and LFO rates that make whole cycles in the loop length) and
 `honk` (the SWAN-3 horn: `swan/honk`, `swan/migrate`, `boss/goose-honk`, `trumpeter/bail`,

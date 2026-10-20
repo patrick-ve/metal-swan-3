@@ -101,7 +101,8 @@ function main(): void {
   const input = new InputManager(parseBindings(store.get('bindings')));
   input.players = params.players;
   input.addSource(new KeyboardSource(window, { isBound: (code) => input.isBound(code) }));
-  input.addSource(new GamepadSource());
+  // Gamepads: identity, sticky player slots, profiles and rumble (docs/api/input.md).
+  input.useGamepads(new GamepadSource());
   // Phones and tablets: an on-screen pad that appears on the first touch.
   if ('ontouchstart' in window || navigator.maxTouchPoints > 0) input.addSource(new TouchSource());
 

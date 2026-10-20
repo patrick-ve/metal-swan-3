@@ -6,7 +6,7 @@ import { terrain } from '../../src/engine/terrain';
 import { drawHud } from '../../src/game/hud';
 import { MissionRunner, type MissionDef, type SectionDef } from '../../src/game/mission/index';
 import { defineMission } from '../../src/game/registry';
-import type { Enemy } from '../../src/game/enemy';
+import { gloatHoldOf, type Enemy } from '../../src/game/enemy';
 import { GameSession } from '../../src/game/session';
 import { TUNING } from '../../src/game/tuning';
 import { FLOOR } from './helpers';
@@ -215,7 +215,7 @@ describe('mission runner', () => {
     expect(runner.checkpoint.x).toBe(600);
   });
 
-  it('the last life starts the countdown over the live world (waves and timer hold, enemies laugh); a continue drops the hero in and the enemies cower; run out: GAME OVER', async () => {
+  it('the last life starts the countdown over the live world (waves and timer hold, enemies gloat); a continue drops the hero in and the enemies cower; run out: GAME OVER', async () => {
     await import('./helpers'); // registers 'test-dummy'
     let beats = 0;
     const mission: MissionDef = {
@@ -258,8 +258,10 @@ describe('mission runner', () => {
     expect(runner.timeLeft).toBe(time0);
     expect(runner.countdownNumber).toBe(8);
     expect(audio.log).toContain('sfx:ui/countdown');
-    expect(foe.reaction).toBe('laugh');
+    expect(foe.reaction).toBe('gloat');
     expect(foe.reactionSource).toBe(p);
+    // A new gloat hold (each enemy gloats afresh, one line per hold).
+    expect(gloatHoldOf(runner.world)).toBe(1);
     // START (free play): the hero drops in; the landing makes the enemy cower and ends the hold.
     drv.hold('start').run(1).hold();
     expect(p.state).toBe('spawn');
@@ -277,6 +279,7 @@ describe('mission runner', () => {
     drv.until(() => over, 200 + TUNING.continues.seconds * TUNING.continues.ticksPerCount + 10);
     expect(runner.state).toBe('gameover');
     expect(allOut).toBe(2);
+    expect(gloatHoldOf(runner.world)).toBe(2);
   });
 
   it('no credits left: the countdown ends after a moment (nothing to wait for)', () => {

@@ -625,3 +625,20 @@ export function capFramesHd(d: HdD): Frame[] {
   }
   return out;
 }
+
+// ------------------------------------------------------------------------------------ the hand phone
+
+/**
+ * The phone the delivery rider checks during the gloat, at density d (the 1× `handPhone` box: 2 × 4
+ * logical with its outline, 4 × 6): a black case seen from the back with a lit bevel, the camera
+ * dot at the top, and the screen's sky-blue glow spilling round the edge toward his face.
+ */
+export function handPhoneHd(d: HdD): PixelBuffer {
+  const c = new HdCanvas(4, 6, d);
+  const matte = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.5, shine: 20, wrap: 0.05 });
+  c.box(1, 1, 2, 4, { mat: matte, z: 0, r: 0.35, bevel: 0.35 });
+  // The screen's light on the edge toward the face (the left side: the rider faces right).
+  c.paint(1, 1.4, 0.55, 3.2, (_x, y) => (y < 2.4 ? PAL_HD.sky[6] : PAL_HD.sky[5]));
+  if (d === 4) c.dot(2.35, 1.55, PAL_HD.steel[4]);
+  return c.render({ outline: 'A', ao: 0.2, rimLight: 2 });
+}

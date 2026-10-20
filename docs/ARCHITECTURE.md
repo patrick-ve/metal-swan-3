@@ -257,11 +257,21 @@ simulation side and the media side can be built in parallel: **extend them, do n
   `pressed(b)` (went down this tick), `released(b)`, `heldTicks(b)`. Edge detection lives in the
   pad, so all sources only report a raw "held" set.
 - Sources: `KeyboardSource` + `GamepadSource` (`input.browser.ts`), `ScriptedSource` (headless,
-  tests, bot, attract mode).
+  tests, bot, attract mode). `GamepadSource` is the pure `PadSource` (`pads.ts`) polling
+  `navigator.getGamepads()`; register it with `input.useGamepads(src)` (`input.gamepads`).
 - Default keys — 1 player: arrows or WASD move, **Z/J fire, X/K jump, C/L bomb**, Enter start,
   Esc pause. 2 players: P1 = WASD + F/G/H (fire/jump/bomb) + 1 (start); P2 = arrows + ,/./
-  (or numpad 1/2/3) + Enter. Bindings are rebindable and saved. Gamepad (standard mapping):
-  X/Square fire, A/Cross jump, B/Circle bomb, Start start; d-pad and left stick move.
+  (or numpad 1/2/3) + Enter. Bindings are rebindable and saved. Gamepads by position (standard
+  indices): west fire, south jump, east bomb, START start, select pause; D-pad and left stick move.
+- Gamepads for 2 players (Bluetooth controllers, 2026-10-20; [`docs/api/input.md`](api/input.md),
+  spec `docs/design/ams-extras.md` §10): pad identity from `Gamepad.id` (Chrome, Firefox and
+  Safari formats), families (PlayStation, Xbox, Nintendo / 8BitDo, generic) with their own labels
+  (PlayStation ✕ ○ □ △ drawn as `ui/pad-ps`), profiles for non-standard pads and the hat-switch
+  D-pad. Player slots claim pads and keep them (sticky: a reconnect gets its slot back, never a
+  swap); 1 player: every pad drives player 1, START on a free pad makes player 2 join (GDD §4.9);
+  2 players: each slot its own pad and pad map (`bindings.pad`, `bindings.pad2`), a third pad
+  drives nobody. A lost pad pauses the game (`LostPadScene`). Rumble via `vibrationActuator`
+  (OPTIONS RUMBLE). `keySplit`: a pad join leaves the keyboard whole for player 1.
 
 ### 5.3 Colours & pixel art toolkit (pure TS, no DOM)
 - `color.ts`: `type Color = number` packed **0xRRGGBBAA** (alpha 0 = transparent), `rgba()`,
@@ -342,6 +352,11 @@ simulation side and the media side can be built in parallel: **extend them, do n
   the other heroes never), the mission's
   `preloadFirst`, the current and the next section's `SectionDef.art` (ams: the decor and the
   fatbike pair sets are section art, never `preloadFirst`) and `boss/` only in the boss section.
+  Ahead (the next section, every route of a split) it builds only what that section's first
+  screens show: not its `fx/`, `boss/`, deferred strips nor its `SectionDef.artLate` (prefixes it
+  shows only well into it, e.g. ams c2's bridges, Carré and stag party; they join on entry). The
+  continue's reaction strips (`gloat`, `cower`, the stag riders' `sit-gloat` / `sit-cower`) are
+  never in the set (`ON_DEMAND_4X`: built when drawn).
   The P2-only art (the Mute Swan) joins only with two players; with two players the fatbike
   youths (solo and pair sets, about 97 MB at 4×) keep their 2× art (`twoPlayer2x`). A 4× id drawn
   outside the set shows its 2× frame and is queued for the pool (`pumpDenseQueue`). On a section
@@ -355,9 +370,11 @@ simulation side and the media side can be built in parallel: **extend them, do n
   art is released (`releaseScreenArt(keepForHeroes(…))`); the glitch bridge releases the
   mission's 4× set before the first-person mode (`releaseMissionDense()`, the fps art kept).
   Measured (node, 8 workers, 2026-10-20, after the polish group): the working set of section a
-  builds in 3.3–3.8 s on a loaded machine (limit 6 s); the working set of one player is 235–250 MB
-  in every ams section for each of the ten heroes, and the resident 4× frames peak at 255.7 MB
-  after the trims (two players, recruit and vincent: at most 251.3 MB).
+  builds in 3.3–3.8 s on a loaded machine (limit 6 s). After the arcade extras (2026-10-20, real
+  4× bytes): the working set of one player is 212.3–251.6 MB in every ams section for each squad
+  hero (worst: bob in section a, 251.6 MB), two players at most 243.0 MB;
+  `tests/content/ams-dense-budget.test.ts` keeps every squad hero (1P) and hero pair (2P) under
+  the budget with a 2 MB margin.
 - **Offline cache** (2026-10-18): the production build writes a service worker `sw.js`
   (tools/sw/plugin.ts fills the template tools/sw/sw.js with every published file and a hash of
   its content). It installs the page, the scripts and the boot sample group, caches other files
@@ -626,7 +643,8 @@ camera locks, `autoScroll(speed)`, `bossIntro(name, {subtitle})` which refills a
 timer, callouts, exits) and `MissionDef` (`hostages` per section for the tally, `startBanner`,
 `announce`, `clearLine`, `artDensity` — the highest dense art it draws, ams 4, §3; `preloadFirst` /
 `preloadLast` — the order of its dense preload; `SectionDef.art` — what a section draws, the
-tier-4 working set, §5.4).
+tier-4 working set, §5.4; `SectionDef.artLate` — the part of `art` the section before it never
+builds ahead).
 Builders keep terrain readable, e.g. `ground().at(0, 170).flat(400).slope(200, -40).gap(48)…`.
 
 `BackgroundDef` and `TerrainStyleDef` are defined in **`src/game/art/art-registry.ts`** (a
@@ -830,7 +848,7 @@ UHD budget (fixed by the lead after the first UHD group, 2026-10-19; measured 20
 | tier 4: the whole ams 4× set in the background, pool | ≤ 25 s | 6.5–7.4 s |
 | one 4× sprite frame, one thread | ≤ 4 ms (hero, rider, NPC); ≤ 15 ms (boss parts, Swan body) | hero 1.9, rider 1.7, Swan 6.7, boss 8.1 ms |
 | one 4× terrain chunk or background layer (an art job) | ≤ 16 ms | medians 1.1–13.2 ms, cold up to 21 ms |
-| resident 4× frames (`denseBytes(4)`) | ≤ 256 MB (`DENSE_BUDGET_BYTES`) | working set of one player 235–250 MB in every ams section (all ten heroes); resident peak after the trims 255.7 MB; two players at most 251.3 MB |
+| resident 4× frames (`denseBytes(4)`) | ≤ 256 MB (`DENSE_BUDGET_BYTES`) | working set of one player 212.3–251.6 MB in every ams section (every squad hero, after the arcade extras; `ams-dense-budget.test.ts`); two players at most 243.0 MB |
 | render + present at k = 8 on the GPU (`npm run perf -- --viewport 3840x2160 --gpu`) | ≤ 2 ms | ams 0.2–0.33 ms (boss max 3.4); title 0.46 ms; first-person 0.75 ms quiet, 1.6 ms average / 2.9 ms p95 on a busy machine (accepted: 60 fps holds) |
 
 Over budget, the cut order is: (1) share parts and identical strips (dense aliases), (2) cheaper

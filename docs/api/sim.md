@@ -72,6 +72,14 @@ input.addSource(new ScriptedSource((tick) => (tick % 20 < 2 ? 'fire' : null), 1)
 `{ update?, read(slot, ctx), drainPressed?, endTick? }` and report raw held masks only. Touch screens:
 `TouchSource` (`input.browser.ts`) is one more source for pad 0: a DOM overlay (drag stick on the left, FIRE / JUMP / BOMB / START buttons on the right) that shows on the first touch and hides on a key press; `main.ts` adds it on touch devices.
 
+The bot (`src/sim/bot.ts`, API `docs/api/slice.md` §5) picks the route of a split by its `route`
+option (`npm run sim -- --route lower|upper`; default `lower`): the enabled exit with the lowest
+(`lower`) or highest (`upper`) rect. Mission ams, section c: `lower` takes RONDVAART ↓ to the
+canal cruise `c2`, `upper` takes BRUG ↑ to `c1` (`tests/content/ams-route.test.ts`). On the cruise
+the bot keeps to the boat's deck and never jumps near a low bridge; it never targets the ams
+secrets (tag `secret`), shoots a beer bike's riders before its armoured body (and hops to reach
+a seated rider), and drives the beer bike without the RAM combo (no fire around a hop).
+
 ## 3. Terrain — terrain.ts
 
 ```ts

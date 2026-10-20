@@ -2,25 +2,41 @@
 
 Code: `src/game/content/missions/ams/**`. Spec: `docs/design/amsterdam.md` (§6 layout, §7 briefing,
 §8 mission def and card). GDD summary: `docs/GAME_DESIGN.md` §1.4, §2.4, §9.6, §10.0a, §11.0a.
-Tests: `tests/content/mission-ams.test.ts`, `tests/content/boss-ams.test.ts`, `tests/content/ams-npcs.test.ts`.
+Tests: `tests/content/mission-ams.test.ts`, `tests/content/ams-route.test.ts` (the route split, the
+cruise, hostages per route, secrets), `tests/content/boss-ams.test.ts`, `tests/content/ams-npcs.test.ts`,
+`tests/content/ams-secrets.test.ts`. The arcade extras of 2026-10-20: `docs/design/ams-extras.md`
+(stag party and beer bike `docs/api/stag.md`, scan car `docs/api/scan-car.md`).
 
 ## Files
 
 | file | what |
 |---|---|
-| `index.ts` | `AMS: MissionDef` (`next: 'm1'`, hostages a 4 / b 3 / c 3) |
+| `index.ts` | `AMS: MissionDef` (`next: 'm1'`, hostages a 5 / b 4 / c 2 / c1 1 / c2 1: the same 12 on both routes, the hidden tourists of a and b included) |
 | `helpers.ts` | the m1 wave notation helpers: `fromRight` (R+), `fromLeft` (L−), `fromTop`, `at`, `hostage`, `crate`, `normalUp` [N], `hardOnly` [H], `twoPlayers` [2P], `waitBoss`, `anyAlive` |
 | `terrain.ts` | terrain and layout numbers (`A_*`, `B_*`, `C_*`, `D_*`, `DECK_Y`, `ROOF_Y`) |
 | `art.ts`, `backgrounds.ts`, `npc.art.ts` | the city art (`decor/ams/…`, bg generators `ams-skyline`, `ams-canal-houses`, `ams-elms`, `ams-plein`) |
 | `entities.ts`, `ambient.ts`, `breakables.ts` | NPCs (`ams-baker`, `ams-hotdog-vendor`, `ams-staff`), city life, `ams-boat-platform`, breakables (see the header of `entities.ts`) |
-| `section-a.ts` … `section-d.ts` | each: `life(ctx)` (ambient life + landmark NPCs; a → `{ baker }`, b → `{ vendor }`), `script`, the `SectionDef` |
+| `section-a.ts` … `section-d.ts`, `section-c1.ts`, `section-c2.ts` | each: `life(ctx)` (ambient life + landmark NPCs; a → `{ baker }`, b → `{ vendor }`), `script`, the `SectionDef` |
+| `cruise.ts`, `art-route.ts`, `art-hd-route*.ts`, `art-hd-bg-amstel.ts` | the canal cruise (c2): `ams-cruise-boat`, `ams-low-bridge`, `ams-magere-brug`, `ams-party-boat`, the route signs and the pontoon of c, the `ams-amstel` far bank layer; 1× and 2× / 4× art |
+| `secrets.ts`, `secrets.art.ts` | `ams-secret` and `AMS_SECRETS` (per section), `placeSecrets(ctx, id)`, `secretArt(id)`, `HIDDEN_TOURISTS` |
 
 ## Section scripts
 
 - Every script calls `life(ctx)` first and reuses its handles (never a second baker / vendor).
-- Exits `end` of a / b / c are `disabled`; a leaves by `exitTo('b')` after the briefing, b and c
-  open their exit (`enableExit('end')`, GO arrow) when the last tagged squad is clear.
-- Camera locks: a `1520–1904` (tag `plein`), `3200–3584` (tag `fabel`); d `896–1280` (boss).
+- Exits of a / b / c / c1 / c2 are `disabled`; a leaves by `exitTo('b')` after the briefing (a
+  beer-bike rider gets off first: `noBeerBikes`), b and c1 open their exit (`enableExit('end')`,
+  GO arrow) when the last tagged squad is clear, c opens both `brug` (→ c1) and `rondvaart`
+  (→ c2) after the scan car (`scanCarFight`, `openFork`), c2 when the boat has docked and the
+  jetty wave is clear.
+- Camera locks: a `1520–1904` (tag `plein`), `2120–2504` (the beer bike, tag `bike`),
+  `3200–3584` (tag `fabel`); c `1984–2368` (the scan car; from camera 1640 a body wall at
+  `C_ARENA[1] − 8` until the car is beaten); c2: the cruise boat holds the camera; d `896–1280`
+  (boss).
+- Tier 4: b, c and c2 list `artLate` (what they show only well into them; the section before
+  never builds it ahead): b the Rijksmuseum facade, c its shop-quay decor and the fork, c2 the
+  bridges, Carré and the stag party.
+- Stag partiers pass their `look` (helpers `STAG_LOOKS` = [0, 2], `stagArt(looks, { groom, bike })`
+  for the section `art`): one look set is about 3.6 MB at 4×, so the sections share two looks.
 - Perched gulls: `G − 70` on a `decor/ams/lamp` top, `ROOF_Y` on a houseboat cabin.
 - One voice at a time in b: the Swan's note shows at once; Gramps's greeting waits for the vendor's
   salute; the glide lesson waits for the greeting.
@@ -48,6 +64,52 @@ back" greeting) and `m1/swan-lesson` (b: the glide lesson was given; m1-c skips 
 `['ams', 'm1', 'm2', 'm3', 'm4', 'm5']`; `missionLabel` / `missionNumber` and the high-score column
 (`missionColumn`) number by that place (`ams` → MISSION 1 / `M1`, `m1` → MISSION 2 / `M2` …, `m5` →
 FINAL MISSION / `M6`). `firstMission()` → `ams`; the title's attract demo plays `ams-a`.
+
+## Play-test record (the arcade extras, final fixer, 2026-10-20)
+
+Sims (`npm run sim -- --mission ams …`, the bot; `--route lower` = RONDVAART c2 (default),
+`upper` = BRUG c1). These are the new baselines:
+
+| run | result |
+|---|---|
+| `--god --expect-complete` (lower) | complete a→b→c→c2→d, 21 443 ticks, 0 deaths, 0 errors, 12 hostages |
+| `--god --route upper --expect-complete` | complete a→b→c→c1→d, 21 843 ticks, 0 deaths, 0 errors, 12 hostages |
+| `--section a / b / c / c1 / c2 / d --god` | complete: 21 455 / 16 901 / 21 915 / 8 721 / 19 090 / 10 740 ticks (to MISSION COMPLETE) |
+| seeds 1 / 2 / 3, normal (lower) | complete in 19 858 / 21 523 / 19 185 ticks; 14 / 14 / 12 deaths; 12 hostages each |
+| seeds 1 / 2 / 3, normal (upper) | complete in 16 209 / 15 694 / 15 391 ticks; 18 / 12 / 15 deaths; 11 / 12 / 12 hostages |
+| seeds 4–8, normal | all complete on both routes (lower 12–20 deaths, upper 13–18) |
+| `--players 2 --god` (lower / upper) | complete, 23 347 / 19 170 ticks, 0 deaths |
+| `--players 2 --seed 1`, normal (lower / upper) | complete, 19 014 / 13 919 ticks, 21 / 20 deaths |
+| `m0`, `m2 --god` | 5 679 ticks; 31 036 ticks, 1 death: byte-identical reports |
+
+Where the bot dies (normal, seeds 1–3, the whole mission): none in a, b and c; c2 1–4 (gulls
+diving at the boat, a cork); c1 3–5; the rest at ROBO-HALSEMA in d (9–14). The scan car (section
+c alone, normal, seeds 1–4): beaten in 541 / 846 / 558 / 551 ticks (9–14 s), 0–1 deaths; the bot
+stands at its rear bumper (out of the RAM's path: level fire hits the body, the 45° shot the
+scanner) and jumps a RAM that comes at it. A human with the pistol is not measured (the spec's
+target is 30–60 s).
+
+Fixes of the final fixer that changed play: seeds 4 and 7 used to time out in a's beer-bike lock
+(the bot on the awning at x 2245, y 126; the seated riders and its level shots could not reach
+each other): the bot now drops to the targets' floor after 240 ticks. c: a body wall at
+`C_ARENA[1] − 8` from the last squad on (a player who runs ahead stays in the arena's view) and the
+car's arena is fixed (`arenaLeft: C_ARENA[0]`). The scan car: SCAN LOCK's strip drops onto the
+frozen spot (a step away dodges it), the RAM never drives into a clamped player, its contact box
+is the leading part of the body. The fork's `BRUG ↑` sign moved 22 px left (its arrow showed under
+the `RONDVAART ↓` board).
+
+Pacing (GDD 1.5; integrator, god, seed 1; spawns unchanged since): the longest stretch without an
+enemy on screen: a 458 ticks (the side canal, older content), b 219, c 226, c1 117, c2 272, d 260.
+
+Tier-4 working set (real 4× bytes, `DENSE_BUDGET_BYTES` 256 MB; worst squad hero, bob, 1P): a
+251.6 · b 249.7 · c 247.6 · c1 241.6 · c2 216.6 · d 241.0 MB (Vincent 247.4 / 245.5 / 243.3 /
+237.3 / 212.3 / 236.7); two players at most 243.0 MB (d). The next section's art joins ahead
+without its `fx/`, `boss/`, deferred strips and its `artLate` (b: the Rijksmuseum facade; c: the
+golden houses, the market stall, the tour boat, the white bridge, the route signs, the pontoon;
+c2: the low bridges, the Magere Brug, Carré, the stag party and the cork), and a route split
+builds every route ahead (`nextSections`). The continue's `sit-gloat` / `sit-cower` strips stay
+out of the set like `gloat` / `cower`. `tests/content/ams-dense-budget.test.ts` keeps every squad
+hero (1P) and hero pair (2P) under the budget with a 2 MB margin.
 
 ## Play-test record (final polish, 2026-10-13)
 

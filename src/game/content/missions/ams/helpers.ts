@@ -17,6 +17,23 @@ export const VIEW_W = 384;
  * Rasterise every sprite under `prefixes` now (section start, under the fade) so the first
  * sighting of the large Amsterdam art (the boss, the NPCs, the decor) does not cost a frame.
  */
+/**
+ * Tier-4 art prefixes (`SectionDef.art`) of the stag party (docs/api/stag.md §5) for the looks a
+ * section spawns (every spawn passes its `look`; look 0's set also holds the selfie flash), the
+ * groom, and the beer bike (its driver and the rideable bike). One look set is about 3.6 MB at 4×:
+ * the sections share looks 0 and 2 so the 1P working set stays inside DENSE_BUDGET_BYTES.
+ */
+export function stagArt(looks: readonly number[], o: { groom?: boolean; bike?: boolean } = {}): string[] {
+  const out = ['enemy/stag-partier/', 'enemy/cork/'];
+  for (const l of looks) if (l > 0) out.push(`enemy/stag-partier-${l}/`);
+  if (o.groom) out.push('enemy/stag-groom/');
+  if (o.bike) out.push('enemy/stag-beer-bike/', 'vehicle/beer-bike/');
+  return [...new Set(out)];
+}
+
+/** The looks of the stag partiers in ams (see `stagArt`). */
+export const STAG_LOOKS: readonly number[] = [0, 2];
+
 export function prewarm(...prefixes: string[]): void {
   for (const pre of prefixes) for (const id of listSprites(pre)) getFrames(id);
 }

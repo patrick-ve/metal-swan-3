@@ -26,7 +26,7 @@ import { PixelBuffer, type Ramp } from '../../../../engine/pixel';
 import { defineHdSprite } from '../../../../engine/sprites';
 import { hash2, noise2x } from '../../../art/paint';
 import { WATER_Y } from './art';
-import { A_CANAL, C_AMSTEL, C_CANAL } from './terrain';
+import { A_CANAL, C2_RIVER, C_AMSTEL, C_CANAL } from './terrain';
 
 const TEAL = PAL_HD.teal;
 const NAVY = PAL_HD.navy;
@@ -209,10 +209,10 @@ const D = 'decor/ams/';
 /** The water body reaches down to y 216 (art.ts `waterDecor`). */
 const WATER_H = 216 - WATER_Y;
 
-/** The piece widths the ams sections cut their canals into (section a's side canal, c's two). */
+/** The piece widths the ams sections cut their canals into (a's side canal, c's canal, c1's Amstel, c2's river). */
 export function amsWaterWidths(): number[] {
   const ws = new Set<number>();
-  for (const [x0, x1] of [A_CANAL, C_CANAL, C_AMSTEL]) for (let x = x0; x < x1; x += WATER_PIECE) ws.add(Math.min(WATER_PIECE, x1 - x));
+  for (const [x0, x1] of [A_CANAL, C_CANAL, C_AMSTEL, C2_RIVER]) for (let x = x0; x < x1; x += WATER_PIECE) ws.add(Math.min(WATER_PIECE, x1 - x));
   return [...ws].sort((a, b) => a - b);
 }
 

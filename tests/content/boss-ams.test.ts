@@ -261,6 +261,123 @@ describe('ROBO-HALSEMA (ams-mayor)', () => {
     }
   });
 
+  it('adds come in from alternating sides in every phase (bug 7.1)', () => {
+    for (const phase of [1, 2, 3] as const) {
+      const { tw, boss } = arena({ playerX: 300, params: { phase } });
+      tw.until(() => boss.state === 'fight', 400);
+      const type = phase === 1 ? 'handhaver' : phase === 2 ? 'seagull' : 'delivery-rider';
+      const sides: number[] = [];
+      let lastTick = -1;
+      tw.world.events.on('spawn', (e) => {
+        if (e.type !== type || tw.world.tick === lastTick) return;
+        lastTick = tw.world.tick;
+        const mid = tw.world.camera.left + 192;
+        sides.push(e.x < mid ? -1 : 1);
+      });
+      for (let i = 0; i < 3000; i++) {
+        tw.run(1);
+        // Clear the adds at once so the caps never hold the next one back.
+        for (const e of tw.world.entities) if (e.type === type && e.alive && !e.removed) e.remove();
+      }
+      expect(sides.length, `phase ${phase}`).toBeGreaterThanOrEqual(3);
+      for (let i = 1; i < sides.length; i++) expect(sides[i], `phase ${phase} add ${i}`).toBe(-sides[i - 1]);
+      expect(tw.world.errors).toEqual([]);
+    }
+  });
+
+  describe('a stagger never leaves a live attack (bug 7.2)', () => {
+    /** Ticks with a live attack box of hers (lash, landing) during the stagger. */
+    const hotTicks = (tw: TestWorld, boss: AmsMayor): number => {
+      let hot = 0;
+      while (boss.staggering) {
+        tw.run(1);
+        if (boss.staggering && boss.contactBoxes().length > 0) hot++;
+      }
+      return hot;
+    };
+
+    it('the stamp slam lands on its baked-in sound, then she holds: arm, glow and shadow at rest, no new stamp sound', () => {
+      const { tw, boss } = arena({ playerX: 300 });
+      tw.until(() => boss.state === 'fight', 400);
+      const audio = tw.world.audio as unknown as { log: string[] };
+      tw.until(() => boss.armPose === 1 && boss.glowT > 0, 400);
+      const soundAt = tw.world.tick - 1;
+      expect(audio.log.at(-1) ?? '').toContain('ams/stamp');
+      const waves = () => tw.world.entities.filter((e) => e.type === 'stamp-wave' && !e.removed).length;
+      tw.run(4);
+      boss.stagger(60);
+      expect(boss.staggering).toBe(true);
+      // The creak runs on to its slam: the slam comes on time, with the sound's baked-in slam.
+      const slamWait = tw.until(() => waves() > 0, 60);
+      const slamAt = tw.world.tick - 1;
+      expect(slamAt - soundAt).toBe(MAYOR.stamp.tele);
+      expect(slamWait).toBeGreaterThan(0);
+      tw.run(1);
+      expect(boss.armPose).toBe(0);
+      expect(boss.glowT).toBe(0);
+      expect(boss.shadowT).toBe(0);
+      const logged = audio.log.length;
+      expect(hotTicks(tw, boss)).toBe(0);
+      expect(audio.log.slice(logged).filter((l) => l.includes('ams/stamp'))).toEqual([]);
+      // Her phase runs on: the next tell comes.
+      tw.until(() => boss.glowT > 0, 400);
+      expect(tw.world.errors).toEqual([]);
+    });
+
+    it('the chain lash: out at the stagger, it goes off at once and stays off; the next whip follows', () => {
+      const { tw, boss } = arena({ playerX: 300, params: { phase: 2 } });
+      tw.until(() => boss.state === 'fight' && boss.phase === 1, 600);
+      tw.until(() => boss.lashHot, 600);
+      expect(boss.contactBoxes().length).toBe(1);
+      boss.stagger(60);
+      tw.run(1);
+      expect(boss.lashHot).toBe(false);
+      expect(boss.lashLen).toBe(0);
+      expect(boss.backArm).toBe(0);
+      expect(hotTicks(tw, boss)).toBe(0);
+      tw.until(() => boss.lashHot, 600);
+      expect(boss.lashHot).toBe(true);
+      expect(tw.world.errors).toEqual([]);
+    });
+
+    it('the stomp: a stagger in mid-air waits for the landing, which is harmless; then she holds', () => {
+      const { tw, boss } = arena({ playerX: 300, params: { phase: 3 } });
+      tw.until(() => boss.state === 'fight' && boss.phase === 2, 600);
+      tw.until(() => boss.lift > 0, 900);
+      boss.stagger(60);
+      let hot = 0;
+      tw.until(() => {
+        if (boss.contactBoxes().length > 0) hot++;
+        return boss.lift === 0;
+      }, 60);
+      expect(hot).toBe(0);
+      expect(boss.stompHot).toBe(0);
+      expect(hotTicks(tw, boss)).toBe(0);
+      // A stagger during the stomp tell cuts it (no hop, no shadow).
+      tw.until(() => boss.shadowT > 0 && boss.shadowFrame === 1 && boss.lift === 0, 900);
+      const x = boss.x;
+      boss.stagger(40);
+      tw.run(1);
+      expect(boss.shadowT).toBe(0);
+      expect(hotTicks(tw, boss)).toBe(0);
+      expect(boss.x).toBe(x);
+      // She runs on (home again first when the cut left her out).
+      tw.run(400);
+      expect(tw.world.errors).toEqual([]);
+    });
+
+    it('the stagger look stays: the shout face shake; the adds are held', () => {
+      const { tw, boss } = arena({ playerX: 300 });
+      tw.until(() => boss.state === 'fight', 400);
+      tw.run(20);
+      boss.stagger(60);
+      expect(boss.holdAdds).toBe(true);
+      expect(boss.staggering).toBe(true);
+      tw.run(61);
+      expect(boss.staggering).toBe(false);
+    });
+  });
+
   it('is won with the pistol (forward, then the 45° diagonal) and grenades; the death sequence ends with bossDefeated', () => {
     const { tw, boss } = arena({ playerX: 300 });
     const p = tw.player!;

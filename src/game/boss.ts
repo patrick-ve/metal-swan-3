@@ -122,6 +122,11 @@ export interface BossPhase<B extends Boss = Boss> {
   pattern?: (boss: B) => ScriptGen;
   /** Called when the phase starts. */
   onEnter?: (boss: B) => void;
+  /**
+   * The attack script that runs on after a stagger cut the running attack (`Boss.cutAttack`): the
+   * phase's loop without its opening (no entrance taunt again). Default: `pattern`.
+   */
+  resume?: (boss: B) => ScriptGen;
 }
 
 export type BossState = 'waiting' | 'intro' | 'fight' | 'dying' | 'done';
@@ -205,6 +210,10 @@ export class Boss extends Entity {
   addsHeld = false;
   /** Ticks left of the stagger (`stagger`): the attack pattern holds, no adds. */
   staggerTicks = 0;
+  /** A stagger cut the running attack (`cutAttack`): the phase pattern runs on when it ends. */
+  private resumeAfterStagger = false;
+  /** The pattern started during this stagger (a new phase, its intermission first): held, never cut. */
+  private holdOnly = false;
   private deathScripted = false;
   private speaker: BossSpeaker | null = null;
   private readonly boxes: Rect[] = [];
@@ -509,18 +518,25 @@ export class Boss extends Entity {
     this.phase = i;
     this.patternHandle?.cancel();
     this.patternHandle = null;
+    this.resumeAfterStagger = false;
+    this.holdOnly = this.staggerTicks > 0;
     const ph = this.phases[i];
     ph.onEnter?.(this);
-    const pause = first ? 0 : this.phaseIntermission;
-    if (ph.pattern || pause > 0) {
-      const self = this;
-      const run = (function* phaseScript(): ScriptGen {
-        if (pause > 0) yield self.intermission(pause);
-        if (ph.pattern) yield* ph.pattern(self);
-      })();
-      this.patternHandle = this.world.scripts.run(run, { owner: this, name: `${this.type || 'boss'}.${ph.name ?? `phase${i}`}` });
-    }
+    this.runPattern(i, first ? 0 : this.phaseIntermission, false);
     this.world.events.emit('bossPhase', { boss: this, phase: i });
+  }
+
+  /** Run phase i's attack script (`resume`: its `resume` script, else its `pattern`) after `pause` intermission ticks. */
+  private runPattern(i: number, pause: number, resume: boolean): void {
+    const ph = this.phases[i];
+    const pattern = resume ? (ph.resume ?? ph.pattern) : ph.pattern;
+    if (!pattern && pause <= 0) return;
+    const self = this;
+    const run = (function* phaseScript(): ScriptGen {
+      if (pause > 0) yield self.intermission(pause);
+      if (pattern) yield* pattern(self);
+    })();
+    this.patternHandle = this.world.scripts.run(run, { owner: this, name: `${this.type || 'boss'}.${ph.name ?? `phase${i}`}` });
   }
 
   /**
@@ -538,10 +554,14 @@ export class Boss extends Entity {
   /**
    * A continued hero landed (the in-world continue): for `ticks` the attack pattern holds and no
    * adds come in, with the shocked look of `onStagger`. The pattern is held only while
-   * `canStagger()` (a boss in the middle of a jump finishes it first). Only in the fight.
+   * `canStagger()` (a boss in the middle of a jump finishes it first). A boss that can end its
+   * running attack cleanly (`cutAttack`) has it cancelled — no live hit box, no late sound — and
+   * its phase runs on (`BossPhase.resume`) when the stagger ends; any other boss has its pattern
+   * paused where it is. Only in the fight.
    */
   stagger(ticks: number): void {
     if (this.state !== 'fight' || this.dead || ticks <= 0) return;
+    if (this.staggerTicks <= 0) this.holdOnly = false;
     this.staggerTicks = Math.max(this.staggerTicks, ticks);
     this.onStagger(ticks);
   }
@@ -559,16 +579,39 @@ export class Boss extends Entity {
   /** Hook: a stagger started (the shocked look; draw reads `staggering`). */
   protected onStagger(_ticks: number): void {}
 
-  /** May the attack pattern hold now? Default true; a boss in mid-air answers false until it lands. */
+  /**
+   * May the attack pattern hold now? Default true; a boss in mid-air answers false until it lands
+   * (and a boss whose telegraph sound has its hit baked in, until the hit).
+   */
   protected canStagger(): boolean {
     return true;
+  }
+
+  /**
+   * Hook: a stagger holds the fight now: end the running attack cleanly — no hit box left on, no
+   * telegraph glow, no sound still to come, the attack look back to rest — and return true. The
+   * pattern is then cancelled and the phase's `resume` (else `pattern`) starts when the stagger
+   * ends. Default false: the pattern is only paused where it is (fine for a boss whose attack
+   * state lives in the script alone).
+   */
+  protected cutAttack(): boolean {
+    return false;
   }
 
   private updateStagger(): void {
     const h = this.patternHandle;
     if (this.state !== 'fight' || this.dead) this.staggerTicks = 0;
     else this.staggerTicks--;
-    if (h && !h.done) h.paused = this.staggerTicks > 0 && this.canStagger();
+    const hold = this.staggerTicks > 0 && this.canStagger();
+    if (hold && h && !h.done && !this.holdOnly && this.cutAttack()) {
+      h.cancel();
+      this.patternHandle = null;
+      this.resumeAfterStagger = true;
+    } else if (h && !h.done) h.paused = hold;
+    if (this.staggerTicks <= 0 && this.resumeAfterStagger) {
+      this.resumeAfterStagger = false;
+      if (this.state === 'fight' && !this.dead && this.phase >= 0) this.runPattern(this.phase, 0, true);
+    }
   }
 
   /** HP fraction 0..1. */

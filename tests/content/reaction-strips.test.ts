@@ -1,10 +1,11 @@
 /**
  * The continue reaction strips of the Amsterdam locals (the in-world continue: the enemies on
- * screen laugh at the empty spot, then cower when a hero drops back in): `enemy/<set>/laugh` and
- * `enemy/<set>/cower` for every rider set, every handhaver set and the gull. Each has 2 frames at
- * 1×, loops at its timing, is deferred (rare art), and its 2× / 4× frames are real dense art
- * (density 2 / 4, never a fallback) with the 1× geometry (count, logical size, anchor, points),
- * PAL_HD only, two different frames, and no generator warning.
+ * screen gloat at the spot — their own business there, docs/design/ams-extras.md §1 — then cower
+ * when a hero drops back in): `enemy/<set>/gloat` and `enemy/<set>/cower` for every rider set,
+ * every handhaver set and the gull. Each has its frames at 1× and its timing, is deferred (rare
+ * art), and its 2× / 4× frames are real dense art (density 2 / 4, never a fallback) with the 1×
+ * geometry (count, logical size, anchor, points), PAL_HD only, no two frames alike, and no
+ * generator warning. No `laugh` strip is left.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { inHdPalette } from '../../src/engine/palette-hd';
@@ -12,10 +13,15 @@ import { getFrames, hasHiSprite, isDeferredSprite, listSprites, spriteAnim, spri
 import '../../src/game/content/locals/art';
 import { duplicateFrames } from '../art/motion';
 
-const TIMING: Record<'laugh' | 'cower', { rider: number; officer: number; gull: number }> = {
-  laugh: { rider: 8, officer: 8, gull: 6 },
-  cower: { rider: 3, officer: 3, gull: 3 },
+type Kind = 'wheelie' | 'phone' | 'officer' | 'gull';
+/** Frames and animation of each gloat strip; the cower: 2 frames, 3 ticks each, looping. */
+const GLOAT: Record<Kind, { frames: number; anim: { ticksPerFrame: number; durations: readonly number[] | undefined; loop: boolean } }> = {
+  wheelie: { frames: 4, anim: { ticksPerFrame: 9, durations: undefined, loop: true } },
+  phone: { frames: 2, anim: { ticksPerFrame: 14, durations: undefined, loop: true } },
+  officer: { frames: 5, anim: { ticksPerFrame: 6, durations: [8, 8, 10, 12, 60], loop: false } },
+  gull: { frames: 4, anim: { ticksPerFrame: 6, durations: [16, 6, 12, 10], loop: true } },
 };
+const COWER = { ticksPerFrame: 3, durations: undefined, loop: true };
 
 let warn: { mock: { calls: unknown[][] }; mockRestore: () => void };
 let riders: string[] = [];
@@ -32,26 +38,30 @@ beforeAll(() => {
 });
 afterAll(() => warn.mockRestore());
 
-describe('continue reaction strips (laugh, cower)', () => {
+describe('continue reaction strips (gloat, cower)', () => {
   it('cover every rider set (27), every handhaver set (3) and the gull', () => {
     expect(riders.length).toBe(27);
     expect(officers.length).toBe(3);
   });
 
-  it('exist with 2 frames at 1×, loop at their timing and are deferred', () => {
-    const all: Array<[string, 'rider' | 'officer' | 'gull']> = [...riders.map((s) => [s, 'rider'] as [string, 'rider']), ...officers.map((s) => [s, 'officer'] as [string, 'officer']), ['enemy/seagull', 'gull']];
-    for (const [set, kind] of all) {
-      for (const name of ['laugh', 'cower'] as const) {
-        const id = `${set}/${name}`;
-        expect(getFrames(id, 1).length, id).toBe(2);
-        expect(spriteAnim(id), id).toEqual({ ticksPerFrame: TIMING[name][kind], durations: undefined, loop: true });
-        expect(isDeferredSprite(id), id).toBe(true);
-      }
+  it('exist at 1× with their frames and timing, and are deferred; no laugh strip is left', () => {
+    const kindOf = (set: string): Kind => (set.includes('delivery') ? 'phone' : set.includes('handhaver') ? 'officer' : set.includes('seagull') ? 'gull' : 'wheelie');
+    for (const set of [...riders, ...officers, 'enemy/seagull']) {
+      const g = GLOAT[kindOf(set)];
+      expect(getFrames(`${set}/gloat`, 1).length, `${set}/gloat`).toBe(g.frames);
+      const anim = spriteAnim(`${set}/gloat`);
+      expect(anim.loop, `${set}/gloat`).toBe(g.anim.loop);
+      if (g.anim.durations) expect(anim.durations, `${set}/gloat`).toEqual(g.anim.durations);
+      else expect(anim.ticksPerFrame, `${set}/gloat`).toBe(g.anim.ticksPerFrame);
+      expect(getFrames(`${set}/cower`, 1).length, `${set}/cower`).toBe(2);
+      expect(spriteAnim(`${set}/cower`), `${set}/cower`).toEqual(COWER);
+      for (const name of ['gloat', 'cower']) expect(isDeferredSprite(`${set}/${name}`), `${set}/${name}`).toBe(true);
     }
+    expect(listSprites('').filter((id) => id.endsWith('/laugh'))).toEqual([]);
   });
 
   it('keep the 1× geometry at 2× and 4×, as real dense art in PAL_HD, with two different frames', () => {
-    const ids = [...riders, ...officers, 'enemy/seagull'].flatMap((s) => [`${s}/laugh`, `${s}/cower`]);
+    const ids = [...riders, ...officers, 'enemy/seagull'].flatMap((s) => [`${s}/gloat`, `${s}/cower`]);
     expect(ids.length).toBe(62);
     for (const id of ids) {
       expect(hasHiSprite(id, 2) && hasHiSprite(id, 4), id).toBe(true);

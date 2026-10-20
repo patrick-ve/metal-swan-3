@@ -18,9 +18,19 @@ class TestBoss extends Boss {
     this.addPart('shield', { box: { x: -50, y: -50, w: 10, h: 50 }, armored: true });
     this.addPart('cannon', { box: { x: -40, y: -90, w: 20, h: 14 }, hp: 100 });
     this.phases = [
-      { at: 1, name: 'calm', pattern: (b) => b.pattern('calm') },
+      { at: 1, name: 'calm', pattern: (b) => b.pattern('calm'), resume: (b) => b.pattern('calm-resume') },
       { at: 0.5, name: 'rage', pattern: (b) => b.pattern('rage') },
     ];
+  }
+
+  /** Test switch: end the attack cleanly on a stagger (`cutAttack` true). */
+  cuts = false;
+  cutCount = 0;
+
+  protected override cutAttack(): boolean {
+    if (!this.cuts) return false;
+    this.cutCount++;
+    return true;
   }
 
   override *intro(): ScriptGen {
@@ -71,6 +81,36 @@ describe('bosses', () => {
     expect(boss.log.length).toBeGreaterThan(n);
     boss.addsHeld = true;
     expect(boss.holdAdds).toBe(true);
+  });
+
+  it('a boss that can cut its attack (cutAttack): the stagger cancels the pattern at once and runs the phase resume script after it', () => {
+    const { rig, boss } = setup();
+    boss.cuts = true;
+    rig.run(12);
+    expect(boss.state).toBe('fight');
+    boss.stagger(40);
+    rig.run(1);
+    expect(boss.cutCount).toBe(1);
+    expect(boss.log).toContain('calm:end'); // cancelled, not paused
+    const n = boss.log.length;
+    rig.run(30);
+    expect(boss.log.length).toBe(n);
+    expect(boss.staggering).toBe(true);
+    rig.run(12);
+    expect(boss.staggering).toBe(false);
+    expect(boss.log[n]).toBe('calm-resume'); // the phase runs on with its resume script
+    expect(boss.cutCount).toBe(1);
+    // A phase entered during a stagger is only held (its intermission), never cut.
+    boss.stagger(60);
+    rig.run(1);
+    expect(boss.cutCount).toBe(2);
+    boss.phaseIntermission = 20;
+    rig.world.damage(boss, hit(600), 0);
+    expect(boss.phase).toBe(1);
+    rig.run(5);
+    expect(boss.cutCount).toBe(2);
+    rig.until(() => boss.log.includes('rage'), 120);
+    expect(boss.staggering).toBe(false);
   });
 
   it('is invulnerable during the intro, then fights in phase 0', () => {

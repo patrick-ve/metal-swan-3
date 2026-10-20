@@ -17,7 +17,7 @@ import { oklab } from '../../src/game/content/missions/ams/art-hd-bg-kit';
 import { getMission } from '../../src/game/registry';
 
 /** The background generators ams uses; each must have 2× and 4× art. */
-const AMS_BG = ['sky-gradient', 'clouds', 'ams-skyline', 'ams-canal-houses', 'ams-elms', 'ams-plein'];
+const AMS_BG = ['sky-gradient', 'clouds', 'ams-skyline', 'ams-canal-houses', 'ams-elms', 'ams-plein', 'ams-amstel'];
 const DENSITIES = [2, 4] as const;
 
 /** Share of logical px whose opacity agrees between a 1× layer and a dense one (any art px of the block). */

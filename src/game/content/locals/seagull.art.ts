@@ -12,8 +12,9 @@
  * feather (4: a falling feather, centre anchor), takeoff (3: crouch, push off, first down-stroke;
  * perched art lifted, anchored at the body centre like the flying frames), pull-up (2: out of the
  * dive, wings flared), turn (2: `turnSquash` of the gliding gull, for the Turner), and the
- * continue reactions (deferred, flying anchor): laugh (2: head back, the beak gaping, wings up /
- * down) and cower (2: a startled hover, feathers puffed, wings flared high).
+ * continue reactions (deferred): gloat (4, perched anchor: landed at the spot, it pecks at the
+ * hero's lost fries on the ground — looks, pecks, a fry in the beak, gulps) and cower (2, flying
+ * anchor: a startled hover, feathers puffed, wings flared high).
  *
  * UHD art (mission ams; docs/ART_GUIDE.md "UHD art"): `gullHd(pose, d)` draws every pose natively
  * at 2× and 4× (lit volumes, layered feathers, outline A) on the 1× logical canvas, and
@@ -42,12 +43,8 @@ const TIP = PAL.black;
 const BEAK = PAL.gold;
 
 export type GullWings = 'up' | 'mid' | 'down' | 'wide' | 'folded' | 'rest';
-/**
- * Faces. `laugh` (the continue laugh): the head thrown back and up, the beak gaping wide toward
- * the sky, the eyes squeezed shut. `alarm` (the startled cower): a wide eye, the brow up, the
- * beak open.
- */
-export type GullFace = 'open' | 'shut' | 'kaw' | 'x' | 'happy' | 'dive' | 'laugh' | 'alarm';
+/** Faces. `alarm` (the startled cower): a wide eye, the brow up, the beak open. */
+export type GullFace = 'open' | 'shut' | 'kaw' | 'x' | 'happy' | 'dive' | 'alarm';
 
 export interface GullPose {
   wings?: GullWings;
@@ -58,8 +55,13 @@ export interface GullPose {
   tucked?: boolean;
   /** Head dipped down (pecking). */
   peck?: number;
-  /** A fries cone in front (0 = none, 1 = in the beak, 2 = on the ground). */
+  /**
+   * Fries in front: 0 = none, 1 = the cone in the beak, 2 = the cone on the ground, 3 = the hero's
+   * lost fries lying loose on the ground (the gloat).
+   */
   fries?: number;
+  /** One fry hanging from the beak (the gloat; one of the loose fries is gone from the ground). */
+  fry?: boolean;
   /** Wing-tip override (shoulder space): the flap in-betweens between the named `wings`. */
   tip?: readonly [number, number];
   /** Feathers puffed out (startled): a bigger body with ruffled tufts on the belly and the crown. */
@@ -68,7 +70,6 @@ export interface GullPose {
 
 /** The head position of a pose (body space; `by` = the body's y offset). */
 function headAt(p: GullPose, by: number): [number, number] {
-  if (p.face === 'laugh') return [5, by - 7 + (p.peck ?? 0)];
   if (p.face === 'alarm') return [6, by - 7 + (p.peck ?? 0)];
   const hx = p.tucked ? 2 : p.face === 'dive' ? 8 : 6;
   const hy = by + (p.tucked ? -3 : p.face === 'dive' ? 1 : -6) + (p.peck ?? 0);
@@ -81,6 +82,13 @@ const PUFF_TUFTS: readonly (readonly [number, number, number])[] = [
   [-7, 6, 1],
   [-3, 6, 1],
   [1, 6, 1],
+];
+
+/** The hero's lost fries on the ground in front of a landed gull (feet space: x0, y0, x1, y1). */
+const GROUND_FRIES: readonly (readonly [number, number, number, number])[] = [
+  [8, -1, 11, -1],
+  [14, -2, 16, -1],
+  [18, -1, 20, -2],
 ];
 
 type V = readonly [number, number];
@@ -149,19 +157,7 @@ export function gull(p: GullPose = {}): Frame {
   }, { base: 3, glint: true });
   // Beak: yellow, hooked, a red spot near the tip.
   const face = p.face ?? 'open';
-  if (!p.tucked && face === 'laugh') {
-    // The laughing gape: the red mouth between the mandibles, the upper one tossed up at the sky.
-    s.add(PAL.red, (b, X, Y) => b.poly([X(hx + 3), Y(hy), X(hx + 8), Y(hy - 5), X(hx + 9), Y(hy + 1)], FLAT), { hi: 0, lo: 0, base: 1 });
-    s.add(BEAK, (b, X, Y) => {
-      b.poly([X(hx + 3), Y(hy - 1), X(hx + 8), Y(hy - 7), X(hx + 9), Y(hy - 6), X(hx + 4), Y(hy)], FLAT);
-      b.poly([X(hx + 3), Y(hy + 1), X(hx + 10), Y(hy + 1), X(hx + 9), Y(hy + 2), X(hx + 4), Y(hy + 2)], FLAT);
-    }, { hi: 0, lo: 0, base: 2 });
-    s.detail((b, X, Y) => {
-      b.set(X(hx + 6), Y(hy - 1), PAL.pink[2]);
-      b.set(X(hx + 9), Y(hy + 2), PAL.red[2]);
-      b.set(X(hx + 9), Y(hy - 6), BEAK[0]);
-    });
-  } else if (!p.tucked) {
+  if (!p.tucked) {
     const down = face === 'dive' ? 2 : 0;
     s.add(BEAK, (b, X, Y) => {
       if (face === 'kaw' || face === 'alarm') {
@@ -195,7 +191,7 @@ export function gull(p: GullPose = {}): Frame {
       b.set(X(hx + 2), Y(hy - 1), INK);
       b.set(X(hx), Y(hy - 3), INK);
       b.set(X(hx + 1), Y(hy - 3), INK);
-    } else if (face === 'happy' || face === 'laugh') {
+    } else if (face === 'happy') {
       b.set(X(hx), Y(hy - 1), INK);
       b.set(X(hx + 1), Y(hy - 2), INK);
       b.set(X(hx + 2), Y(hy - 1), INK);
@@ -216,8 +212,19 @@ export function gull(p: GullPose = {}): Frame {
   } else wingParts(s, [sh[0] - 1, sh[1] + 1], tip, false);
   // Flying feet tucked under the tail.
   if (!perched) s.detail((b, X, Y) => b.hline(X(-6), X(-4), Y(4), PAL.pink[1]));
+  // The hero's lost fries lying loose on the ground (and one in the beak).
+  if (p.fries === 3) {
+    s.add(PAL.gold, (b, X, Y) => {
+      GROUND_FRIES.forEach(([x0, y0, x1, y1], i) => {
+        if (!(p.fry && i === 1)) b.line(X(x0), Y(y0), X(x1), Y(y1), FLAT);
+      });
+    }, { base: 3, lo: 2 });
+  }
+  if (p.fry) {
+    s.add(PAL.gold, (b, X, Y) => b.line(X(hx + 9), Y(hy + 2), X(hx + 10), Y(hy + 4), FLAT), { base: 3, lo: 2 });
+  }
   // Fries: a red-and-white paper cone with yellow sticks.
-  if (p.fries) {
+  if (p.fries && p.fries < 3) {
     const fx = p.fries === 1 ? hx + 9 : 12;
     const fy = p.fries === 1 ? hy + 3 : -1;
     s.add(PAL.red, (b, X, Y) => b.poly([X(fx - 3), Y(fy - 6), X(fx + 3), Y(fy - 6), X(fx), Y(fy)], FLAT), { base: 2 });
@@ -480,20 +487,7 @@ export function gullHd(p: GullPose, d: HdD): Frame {
   // Ruffled crown feathers (puffed): a raised tuft at the back of the head.
   if (p.puff) c.blob(grow([L([hx - 3, hy - 2]), L([hx - 1, hy - 4]), L([hx - 4, hy - 5])], 0.4), 0.35, { mat: m.white, z: 1.8, tone: -0.08, bulge: 0.1 });
   const face = p.face ?? 'open';
-  if (!p.tucked && face === 'laugh') {
-    // The laughing gape toward the sky: a red mouth and a pink tongue between the mandibles, the
-    // upper one tossed up, the darker hook at its tip.
-    const B = (x: number, y: number): P2 => L([hx + x, hy + y]);
-    c.poly(grow([B(3, 0), B(8, -5), B(9, 1)], 0.3), { mat: m.mouth, z: 6 });
-    c.blob(grow([B(3, -1), B(8, -7), B(9, -6), B(4, 0)], 0.35), 0.4, { mat: m.beak, z: 7, bulge: 0.1 });
-    c.blob(grow([B(3, 1), B(10, 1), B(9, 2), B(4, 2)], 0.35), 0.4, { mat: m.beak, z: 7, tone: -0.1, bulge: 0.1 });
-    const tg = B(6.2, -0.6);
-    inkDisc(c, tg[0], tg[1], d === 4 ? 0.55 : 0.5, PAL_HD.pink[5]);
-    const gs = B(9.1, 2.1);
-    inkDisc(c, gs[0], gs[1], 0.45, PAL_HD.red[5]);
-    const hk = B(8.6, -6.4);
-    inkDisc(c, hk[0], hk[1], d === 4 ? 0.4 : 0.45, PAL_HD.gold[2]);
-  } else if (!p.tucked) {
+  if (!p.tucked) {
     const down = face === 'dive' ? 2 : 0;
     const B = (x: number, y: number): P2 => L([hx + x, hy + y]);
     if (face === 'kaw' || face === 'alarm') {
@@ -531,7 +525,7 @@ export function gullHd(p: GullPose, d: HdD): Frame {
     inkDisc(c, ec[0] + 0.3, ec[1] + 0.1, d === 4 ? 0.3 : 0.4, INK);
     if (d === 4) c.dot(ec[0] - 0.2, ec[1] - 0.45, PAL_HD.snow[6]);
     inkLine(c, E(-0.4, -3.1), E(1.9, -3.2), brow, INK);
-  } else if (face === 'happy' || face === 'laugh') {
+  } else if (face === 'happy') {
     inkLine(c, E(0, -0.8), E(1, -1.9), brow, INK);
     inkLine(c, E(1, -1.9), E(2, -0.8), brow, INK);
   } else {
@@ -579,8 +573,23 @@ export function gullHd(p: GullPose, d: HdD): Frame {
     const a = L([-6, 4]);
     c.capsule(a[0], a[1], a[0] + 2, a[1], 0.45, 0.45, { mat: m.leg, z: 1, tone: -0.15 });
   }
+  // The hero's lost fries lying loose on the ground (lit sticks, a toasted tip at 4×), one in the beak.
+  if (p.fries === 3) {
+    GROUND_FRIES.forEach(([x0, y0, x1, y1], i) => {
+      if (p.fry && i === 1) return;
+      const a = L([x0, y0]);
+      const b = L([x1, y1]);
+      c.capsule(a[0], a[1], b[0], b[1], 0.5, 0.5, { mat: m.fry, z: 10 + i * 0.3 });
+      if (d === 4) inkDisc(c, b[0], b[1], 0.3, PAL_HD.gold[3]);
+    });
+  }
+  if (p.fry) {
+    const a = L([hx + 9, hy + 2]);
+    const b = L([hx + 10, hy + 4]);
+    c.capsule(a[0], a[1], b[0], b[1], 0.48, 0.48, { mat: m.fry, z: 8 });
+  }
   // Fries: a red-and-white paper cone with lit yellow fries.
-  if (p.fries) {
+  if (p.fries && p.fries < 3) {
     const fx = p.fries === 1 ? hx + 9 : 12;
     const fy = p.fries === 1 ? hy + 3 : -1;
     const cone = grow([L([fx - 3, fy - 6]), L([fx + 3, fy - 6]), L([fx, fy])], 0.45);
@@ -660,10 +669,16 @@ const POSES: Record<string, Pose[]> = {
   die: [{ wings: 'up', face: 'x' }, { wings: 'down', face: 'x' }, { wings: 'rest', face: 'x' }],
   'photo-pose': [{ wings: 'wide', face: 'happy' }],
   'pull-up': [{ wings: 'down', face: 'dive', tip: [-15, 9] }, { wings: 'mid', tip: [-20, 1] }],
-  // Continue reactions (rare: deferred). Laugh: hovering, the head thrown back, the beak gaping, the
-  // wings beating up / down (frame 2 bobs the head 1 px). Cower: a startled hover, the feathers
-  // puffed out, the wings flared high (frame 2 a little lower), a wide eye, the beak open in alarm.
-  laugh: [{ wings: 'up', face: 'laugh' }, { wings: 'down', face: 'laugh', peck: 1 }],
+  // Continue reactions (rare: deferred). Gloat (perched, landed at the spot): it eyes the hero's
+  // lost fries, pecks one off the ground (the head down, beak to the cobbles), holds it in the beak,
+  // then gulps it (head up, eyes shut). Cower: a startled hover, the feathers puffed out, the wings
+  // flared high (frame 2 a little lower), a wide eye, the beak open in alarm.
+  gloat: [
+    { perched: true, fries: 3 },
+    { perched: true, fries: 3, face: 'dive', peck: 5 },
+    { perched: true, fries: 3, fry: true, peck: 1 },
+    { perched: true, fries: 3, face: 'shut', peck: -1 },
+  ],
   cower: [{ wings: 'up', face: 'alarm', puff: true, tip: [-6, -19] }, { wings: 'up', face: 'alarm', puff: true, tip: [-11, -14] }],
 };
 
@@ -747,10 +762,10 @@ defineSprite(A + 'die-burn', () => burnStrip(grounded(gull({ wings: 'rest', face
 defineSprite(A + 'die-crush', () => crushStrip(grounded(gull({ wings: 'wide', face: 'x' }))), { durations: [...CRUSH_TIMING], loop: false });
 defineSprite(A + 'photo-pose', () => gull({ wings: 'wide', face: 'happy' }));
 defineSprite(A + 'feather', featherFrames, { ticksPerFrame: 6 });
-/** Ticks per frame of the continue reactions (both loop). */
-export const GULL_LAUGH_TPF = 6;
+/** Continue reactions: the gloat's frame timing (looks, pecks, holds the fry, gulps; it loops) and the cower's ticks per frame. */
+export const GULL_GLOAT_TIMING: readonly number[] = [16, 6, 12, 10];
 export const GULL_COWER_TPF = 3;
-defineSprite(A + 'laugh', () => POSES.laugh.map((p) => gull(p)), { ticksPerFrame: GULL_LAUGH_TPF, defer: true });
+defineSprite(A + 'gloat', () => POSES.gloat.map((p) => gull(p)), { durations: GULL_GLOAT_TIMING, defer: true });
 defineSprite(A + 'cower', () => POSES.cower.map((p) => gull(p)), { ticksPerFrame: GULL_COWER_TPF, defer: true });
 
 // UHD art (mission ams): one density-generic generator per strip for 2× and 4×. `idle` is the

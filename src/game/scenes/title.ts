@@ -11,9 +11,14 @@
  * After 600 idle ticks the attract loop runs: demo play (the bot on ams-a, 1200 ticks; m1-a
  * or m0-a when it is missing; the soldier cycles through the roster) → HOW TO PLAY (300 ticks) →
  * high scores (300 ticks) → the title with the next tagline. Start → the mode select.
+ *
+ * Gamepads (docs/design/ams-extras.md §10): the pad whose START (or south / west button) leaves
+ * the title claims player 1; while pads are connected a small line names them over the footer
+ * (`DUALSENSE + XBOX READY`, y 194).
  */
 import { INK, PAL } from '../../engine/palette';
 import type { InputSource } from '../../engine/input';
+import { PAD } from '../../engine/pads';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { frameW, getFrame, hasSprite } from '../../engine/sprites';
@@ -26,6 +31,7 @@ import { HowToPlayScene } from './how-to-play';
 import { BASE_PATROL_Y, drawBase, drawBaseWall, drawScreenSprite, drawStencilTitle, keepForHeroes, NO_WALL, patrolFlip, patrolX, prefetchScreenArt, releaseScreenArt } from './base';
 import { drawSwanRig, SWAN_SPEED, type SwanRigOpts } from './lake';
 import { ModeSelectScene } from './mode-select';
+import { connectedModels } from './pad-prompt';
 import { stencilId } from '../content/ui/military.art';
 
 /** GDD §13.3: the attract loop starts after 600 idle ticks; the demo lasts 1200. */
@@ -88,6 +94,9 @@ export class TitleScene implements Scene {
   private leaving = false;
   /** The next screen's stencil title was handed to the screen art pool (once). */
   private prefetched = false;
+  private readonly models: string[] = [];
+  private pads = '';
+  private padsAt = -1;
 
   constructor(app: GameApp) {
     this.app = app;
@@ -114,6 +123,16 @@ export class TitleScene implements Scene {
     this.app.audio.stopSfx?.(LAKE_LOOP.key, 20);
   }
 
+  /** The connected pads line (`DUALSENSE + XBOX READY`; '' without pads), checked twice a second. */
+  padLine(): string {
+    if (this.padsAt < 0 || this.t - this.padsAt >= 30) {
+      this.padsAt = this.t;
+      const models = connectedModels(this.app.input, this.models);
+      this.pads = models.length === 0 ? '' : models.length > 2 ? `${models.length} CONTROLLERS READY` : `${models.join(' + ')} READY`;
+    }
+    return this.pads;
+  }
+
   /** The tagline on screen now. */
   get tagline(): string {
     const step = this.app.attractStep + Math.floor(this.t / TAGLINE_TICKS);
@@ -131,6 +150,9 @@ export class TitleScene implements Scene {
     const pad = input.pad(0);
     const start = pad.pressed('start') || pad.pressed('fire') || pad.pressed('jump') || input.keyPressed('Enter');
     if (start) {
+      // A pad's START (or south / west button) claims player 1 (sticky).
+      const gp = input.padPressed(PAD.start, PAD.south, PAD.west);
+      if (gp >= 0) input.claimPad(0, gp);
       this.leaving = true;
       app.audio.sfx('ui/confirm');
       app.scenes.replace(new ModeSelectScene(app), { fade: 16 });
@@ -213,6 +235,8 @@ export class TitleScene implements Scene {
     }
     centerText(r, `HI ${scoreText(this.app.highScores.top)}`, 4, UI_WHITE);
     centerText(r, '(C) 2026 THE METAL SWAN 3 TEAM', 206, PAL.stone[3]);
+    const pads = this.padLine();
+    if (pads) centerText(r, pads, 194, PAL.sky[3]);
     const c = this.app.settings.credits;
     uiText(r, c === 'free' ? 'FREE PLAY' : `CREDITS ${String(c).padStart(2, '0')}`, 380, 206, PAL.snow[1], 'right', 'small', INK);
   }

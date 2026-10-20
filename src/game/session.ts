@@ -442,6 +442,22 @@ export class GameSession {
     return this.slot(index)?.addScore(points) ?? 0;
   }
 
+  /** Can a credit be paid (FREE PLAY, or credits left)? */
+  get canPay(): boolean {
+    return this.credits === Infinity || this.credits > 0;
+  }
+
+  /**
+   * Pay one credit for a player who joins (GDD §4.9; free on FREE PLAY). Returns false when no
+   * credits are left.
+   */
+  payCredit(): boolean {
+    if (this.credits === Infinity) return true;
+    if (this.credits <= 0) return false;
+    this.credits--;
+    return true;
+  }
+
   /** Use a continue for a slot. Returns false when no credits are left. */
   continueSlot(index: SlotIndex): boolean {
     if (this.credits !== Infinity) {

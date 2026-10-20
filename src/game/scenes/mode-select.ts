@@ -5,7 +5,12 @@
  * `DIFFICULTY  < NORMAL >` (with a gold small nickname under it — "RECRUIT", "VETERAN" or
  * "COMMANDO" — and a hint at C, y 170) · `OPTIONS` · `HALL OF FAME`. Back returns to the title.
  * The difficulty ids stay easy / normal / hard.
+ *
+ * Gamepads (docs/design/ams-extras.md §10): the pad that confirms `1 SOLDIER` / `2 SOLDIERS`
+ * claims player 1 (player 2 claims on the character select); the help line shows the labels of
+ * the pad used last (`D-PAD: CHOOSE   ✕: OK   ○: BACK`).
  */
+import { PAD } from '../../engine/pads';
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
@@ -18,6 +23,7 @@ import { HighScoresScene } from './high-scores';
 import { drawBase, drawScreenCursor, drawStencilTitle, prefetchScreenArt } from './base';
 import { veil } from './lake';
 import { OptionsScene } from './options';
+import { drawHelpLine } from './pad-prompt';
 import { titleClock } from './title';
 
 type Item = '1P' | '2P' | 'DIFFICULTY' | 'OPTIONS' | 'HIGH SCORES';
@@ -86,11 +92,15 @@ export class ModeSelectScene implements Scene {
     if (!k.confirm) return;
     switch (item) {
       case '1P':
-      case '2P':
+      case '2P': {
+        // The pad that chose claims player 1.
+        const gp = app.input.padPressed(PAD.start, PAD.south, PAD.west);
+        if (gp >= 0) app.input.claimPad(0, gp);
         this.leaving = true;
         app.audio.sfx('ui/confirm');
         app.scenes.replace(new CharacterSelectScene(app, item === '2P' ? 2 : 1), { fade: 16 });
         break;
+      }
       case 'DIFFICULTY':
         this.cycleDifficulty(1);
         break;
@@ -141,6 +151,6 @@ export class ModeSelectScene implements Scene {
     // The nickname under the difficulty row, the hint at y 170.
     uiText(r, info.nick, r.w >> 1, TOP + DIFF_ROW * STEP + 10, PAL.gold[3], 'center', 'small');
     centerText(r, info.hint, 170, ITEMS[this.sel] === 'DIFFICULTY' ? UI_WHITE : PAL.stone[3]);
-    centerText(r, 'UP / DOWN: CHOOSE   FIRE: OK   BOMB: BACK', 196, PAL.stone[2]);
+    drawHelpLine(r, this.app.input, 'UP / DOWN: CHOOSE   FIRE: OK   BOMB: BACK', 'D-PAD: CHOOSE   {OK}: OK   {BACK}: BACK', 196, PAL.stone[2]);
   }
 }

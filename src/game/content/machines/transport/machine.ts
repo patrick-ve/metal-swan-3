@@ -186,7 +186,7 @@ export class TransportMachine extends Enemy {
 
   // ------------------------------------------------------------------------------- reactions
 
-  /** SAY CHEESE and the in-world continue (laugh, cower): the machine holds still (no attacks). Nothing else. */
+  /** SAY CHEESE and the in-world continue (gloat, cower): the machine holds still (no attacks). Nothing else. */
   protected override acceptsReaction(kind: ReactionKind): boolean {
     return everyEnemyReacts(kind);
   }

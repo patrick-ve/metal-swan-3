@@ -8,8 +8,12 @@
  * Gag: after 600 ticks a tiny Legion private walks onto the box, sits on its top edge and falls
  * asleep (snore bubble). He is gone when the game resumes. The gag draws at the art tier
  * (base.ts `screenTier`): like the mission, a 4× frame not built yet shows its 2× art and is queued.
+ *
+ * Gamepads (docs/design/ams-extras.md §10): when a pad was used last, a help line under the box
+ * shows its buttons (`{FIRE} FIRE …`, pad-prompt.ts). `LostPadScene` is the lost-pad pause.
  */
-import { ACTION_BUTTONS } from '../../engine/input';
+import { ACTION_BUTTONS, type InputManager } from '../../engine/input';
+import { PAD } from '../../engine/pads';
 import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
@@ -19,6 +23,10 @@ import type { GameSettings } from '../settings';
 import { toTitle } from './flow';
 import { OptionsScene } from './options';
 import { screenTier } from './base';
+import { drawPadLine, promptPad, slotPadMap } from './pad-prompt';
+
+/** The pad help line under the pause box (the labels of the pad used last). */
+export const PAUSE_PAD_HELP = '{FIRE}: FIRE   {JUMP}: JUMP   {BOMB}: BOMB   {START}: PAUSE';
 
 /**
  * The scene under the pause menu (docs/design/fps.md §1.10): GameplayScene (camera shake) or
@@ -70,7 +78,13 @@ export class PauseScene implements Scene {
 
   enter(): void {
     this.app.input.suppress(ACTION_BUTTONS);
+    // Any pad navigates the menu, also one that no player holds in a 2-player game (§10).
+    this.app.input.menuPads = true;
     this.app.audio.sfx('ui/pause');
+  }
+
+  exit(): void {
+    this.app.input.menuPads = false;
   }
 
   resume(): void {
@@ -159,7 +173,17 @@ export class PauseScene implements Scene {
     const cur = setArtDensity(screenTier(r));
     drawMenu(r, PAUSE_ITEMS, this.confirm === null ? this.sel : -1, 96, this.t, 12);
     setArtDensity(cur);
+    this.drawPadHelp(r);
     if (this.confirm !== null) this.drawConfirm(r);
+  }
+
+  /** The buttons of the pad used last, under the box (nothing after the keyboard). */
+  private drawPadHelp(r: Renderer): void {
+    const input = this.app.input;
+    const info = promptPad(input);
+    if (!info) return;
+    const slot = input.gamepads && input.gamepads.liveIndex(1) === input.gamepads.lastIndex ? 1 : 0;
+    drawPadLine(r, PAUSE_PAD_HELP, r.w >> 1, BOX.y + BOX.h + 6, info, slotPadMap(input, slot), PAL.snow[2]);
   }
 
   private drawConfirm(r: Renderer): void {
@@ -198,5 +222,85 @@ export class PauseScene implements Scene {
       if (k > 90) continue;
       uiText(r, 'Z', x - 14 - Math.round(k / 8) - i * 2, hy - 4 - Math.round(k / 6), PAL.snow[2 + (i & 1)], 'center');
     }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The lost-pad pause
+// ---------------------------------------------------------------------------------------------
+
+/** A keyboard START or pause key went down this tick (any key set). */
+function keyboardResume(input: InputManager): boolean {
+  const b = input.bindings;
+  for (const code of input.rawPressed) {
+    if (code.startsWith('Gamepad')) continue;
+    if (b.pause.includes(code) || b.solo.start.includes(code) || b.p1.start.includes(code) || b.p2.start.includes(code)) return true;
+  }
+  return false;
+}
+
+/**
+ * The lost-pad pause (docs/design/ams-extras.md §10): the pad of player `slot`, who is in play,
+ * dropped out (Bluetooth sleep, a flat battery). The game freezes under a dim like PAUSE with
+ * `CONTROLLER 2 LOST` / `RECONNECT OR PRESS START` and the pad's model. It resumes when the same
+ * pad comes back (pads.ts gives it its slot again), when START is pressed on a free pad (that pad
+ * takes the slot), or on a keyboard START / pause key (the player goes on with the keyboard: the
+ * slot forgets its pad; player 2 gets the 2-player key sets). The 2D game and the first-person
+ * mode push it (`host` is the scene under it).
+ */
+export class LostPadScene implements Scene {
+  readonly transparent = true;
+  readonly slot: 0 | 1;
+  private readonly app: GameApp;
+  private t = 0;
+  private leaving = false;
+
+  constructor(app: GameApp, _host: PauseHost, slot: 0 | 1) {
+    this.app = app;
+    this.slot = slot;
+  }
+
+  enter(): void {
+    this.app.input.suppress(ACTION_BUTTONS);
+    this.app.audio.sfx('ui/pause');
+  }
+
+  update(): void {
+    this.t++;
+    const app = this.app;
+    app.focusLost = false; // already paused
+    if (this.leaving) return;
+    const input = app.input;
+    // The same pad is back.
+    if (!input.padLost(this.slot)) {
+      this.resumeGame();
+      return;
+    }
+    // START on a free pad: it takes the slot.
+    const gp = input.freePadPressed(PAD.start);
+    if (gp >= 0 && input.claimPad(this.slot, gp)) {
+      this.resumeGame();
+      return;
+    }
+    if (keyboardResume(input)) {
+      input.releasePad(this.slot);
+      if (this.slot === 1) input.keySplit = true;
+      this.resumeGame();
+    }
+  }
+
+  private resumeGame(): void {
+    this.leaving = true;
+    this.app.audio.sfx('ui/confirm');
+    this.app.scenes.pop();
+  }
+
+  draw(r: Renderer): void {
+    r.fade(0x05060aff, 0.55);
+    drawPanel(r, 88, 72, 208, 64, 0.95);
+    centerText(r, `CONTROLLER ${this.slot + 1} LOST`, 80, UI_GOLD, 'big');
+    if (blinkOn(this.t)) centerText(r, 'RECONNECT OR PRESS START', 102, UI_WHITE);
+    const model = this.app.input.slotPad(this.slot)?.model;
+    centerText(r, model ? `${model} - OR USE THE KEYBOARD` : 'OR USE THE KEYBOARD', 118, PAL.stone[3]);
   }
 }

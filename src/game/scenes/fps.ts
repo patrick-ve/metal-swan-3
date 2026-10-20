@@ -33,7 +33,8 @@ import type { FloorResult, FpsFloorDef, FpsInput, FpsRun } from '../fps/types';
 import type { PlayerSlot, SlotIndex } from '../session';
 import { ContinueScene, type Continuable } from './continue';
 import { fpsFloorDone } from './fps-route';
-import { PauseScene, type PauseHost } from './pause';
+import { LostPadScene, PauseScene, type PauseHost } from './pause';
+import { RUMBLES } from './rumble';
 
 /** The black card between a death and the restart (spec §1.6). */
 export const RESTART_CARD_TICKS = 60;
@@ -173,6 +174,12 @@ export class FpsScene implements Scene, PauseHost, Continuable {
       }
       return;
     }
+    // The player's pad dropped out (docs/design/ams-extras.md §10): the lost-pad pause.
+    const slot = this.run.slot === 1 ? 1 : 0;
+    if (input.padLost(slot)) {
+      app.scenes.push(new LostPadScene(app, this, slot));
+      return;
+    }
     if (input.pausePressed || app.focusLost || input.keyPressed(padButtonCode(9))) {
       app.focusLost = false;
       app.scenes.push(new PauseScene(app, this));
@@ -197,6 +204,11 @@ export class FpsScene implements Scene, PauseHost, Continuable {
   }
 
   private playerDead(): void {
+    // The own pad rumbles on a death (OPTIONS RUMBLE; docs/design/ams-extras.md §10).
+    if (this.app.settings.rumble) {
+      const [strong, weak, ms] = RUMBLES.death;
+      this.app.input.rumble(this.run.slot === 1 ? 1 : 0, strong, weak, ms);
+    }
     const last = this.slot.loseLife();
     if (!last) {
       this.game.restart();

@@ -13,36 +13,33 @@
  * with the old facing, widening with the new) — a draw-only timer; the logic facing flips at once.
  * A tell or kick cancels it on the same tick.
  * Deaths: the rider tumbles off (`die*` strips), the bike skids away as an fx (`<art>/bike`).
+ * Water: a rider (or its body) whose bike leaves the ground over deep water falls in — a splash,
+ * gone, no score of its own (docs/design/ams-extras.md §7.4).
+ * Vehicles: a driven player vehicle that touches a rider breaks it (GDD §8.5), in reactions too.
+ * The gloat (every player out, docs/design/ams-extras.md §1): `gloatRideIn` keeps a rider in view,
+ * `floorAhead` keeps it on its own floor; the subclasses wheelie (fatbike) or circle and check the
+ * phone (delivery).
  */
-import type { Damage } from '../../../engine/entity';
+import type { Damage, Entity } from '../../../engine/entity';
 import type { DrawOpts, Renderer } from '../../../engine/render';
 import { rectAt, type Rect } from '../../../engine/math';
 import type { World } from '../../../engine/world';
-import { hudOf } from '../../context';
-import { FxEntity } from '../../fx';
+import { gagBubble, type ReactionKind } from '../../enemy';
+import { FxEntity, splash } from '../../fx';
+import { waterRectAt } from '../../water';
 import { paramStr, type SpawnParams } from '../../registry';
 import { Creature, contactHit, entryParam } from '../creatures/common';
 
-/**
- * A gag bubble over `e`, unless another live gag bubble already hangs within 56 × 32 px (two
- * riders side by side would print their lines on top of each other). Returns false when skipped.
- * A shown line is voiced by its `speaker`'s sample when one is loaded (`HudState.onBubble`).
- */
-export function gagBubble(world: World, e: { x: number; y: number }, text: string, ticks: number, speaker = ''): boolean {
-  const list = hudOf(world).bubbles;
-  for (let i = 0; i < list.length; i++) {
-    const b = list[i];
-    if (b.kind !== 'gag' || b.ticks <= 0 || b.target === e) continue;
-    if (Math.abs(b.target.x - e.x) < 56 && Math.abs(b.target.y - e.y) < 32) return false;
-  }
-  hudOf(world).bubble(e, text, { ticks, kind: 'gag', speaker: speaker || undefined });
-  return true;
-}
+/** The shared gag bubble (enemy.ts): no line over another live gag bubble within 56 × 32 px. */
+export { gagBubble };
 
 /** The kick box relative to the anchor (facing right; flipped with the facing). */
 export const KICK_BOX: Readonly<Rect> = { x: 4, y: -22, w: 20, h: 16 };
 /** Rider hurtbox (bike + rider, 24 × 34). */
 export const RIDER_BOX = { w: 24, h: 34 } as const;
+
+/** The gloat: a rider keeps this far (px) inside the view edges; a deep water rect is this deep or more. */
+export const RIDER_GLOAT = { edge: 24, inSpeed: 0.8, deep: 16, sink: 4 } as const;
 
 /** Turn strip: frames and ticks per frame (the strip plays forward, then backward). */
 export const RIDER_TURN = { frames: 3, ticksPerFrame: 2 } as const;
@@ -93,6 +90,7 @@ export abstract class Rider extends Creature {
 
   override update(): void {
     super.update();
+    if (this.removed || this.fallsInWater()) return;
     if (this.dead || this.mode === 'tell' || this.mode === 'kick') {
       this.turnT = 0;
     } else if (this.lastFacing !== 0 && this.facing !== this.lastFacing && this.hasAnim('turn')) {
@@ -116,6 +114,59 @@ export abstract class Rider extends Creature {
     turnOpts.flipX = (k < RIDER_TURN.frames ? this.turnFrom : this.facing) < 0;
     turnOpts.flash = this.flashTicks > 0;
     r.sprite(this.spriteId('turn'), i, this.x, this.y, turnOpts);
+  }
+
+  /**
+   * A rider or its body whose bike left the ground over deep water (its feet `sink` px under the
+   * surface of a water rect at least `deep` px deep) falls in: a splash, removed. It scores nothing
+   * itself (a player's hit that killed it already scored). Returns true when it fell in.
+   */
+  private fallsInWater(): boolean {
+    const b = this.body;
+    if (!b || b.onGround) return false;
+    const h = waterRectAt(this.world, this.x, this.y);
+    if (!h || h.h < RIDER_GLOAT.deep || this.y < h.y + RIDER_GLOAT.sink) return false;
+    splash(this.world, this.x, h.y, 10);
+    this.world.audio.sfx('env/water-splash', { vol: 0.8 });
+    this.remove();
+    return true;
+  }
+
+  /** A reaction (SAY CHEESE, the gloat, the cower) never stops a driven vehicle breaking the rider. */
+  protected override thinkReaction(kind: ReactionKind): void {
+    if (this.bumpVehicles()) return;
+    super.thinkReaction(kind);
+  }
+
+  /**
+   * Is there floor at the rider's own height `dist` px ahead in `dir` (no wall, no drop, no water)?
+   * The gloat moves only over such floor.
+   */
+  protected floorAhead(dir: number, dist = 16): boolean {
+    const t = this.world.terrain;
+    const ax = this.x + dir * dist;
+    if (t.isSolid(ax, this.y - 12)) return false;
+    const f = t.surfaceY(ax, this.y - 6, this.y + 6);
+    return Number.isFinite(f) && Math.abs(f - this.y) <= 3 && waterRectAt(this.world, ax, f - 1) === null;
+  }
+
+  /**
+   * The gloat keeps a rider in view: within `RIDER_GLOAT.edge` px of a view edge it rides slowly
+   * in (over its own floor). Returns true while it rides in.
+   */
+  protected gloatRideIn(): boolean {
+    const cam = this.world.camera;
+    const dir = this.x < cam.left + RIDER_GLOAT.edge ? 1 : this.x > cam.right - RIDER_GLOAT.edge ? -1 : 0;
+    if (dir === 0 || !this.floorAhead(dir)) return false;
+    this.facing = dir;
+    this.pedal(RIDER_GLOAT.inSpeed);
+    return true;
+  }
+
+  /** The default gloat of a rider: in view, stopped, facing the spot, its `gloat` strip. */
+  protected override thinkGloat(spot: Entity | null, t: number): void {
+    if (this.gloatRideIn()) return;
+    super.thinkGloat(spot, t);
   }
 
   /** Only the kick hurts (and only while `contactDamage` is set, during the kick). */

@@ -1,6 +1,7 @@
 /**
  * Mission ams — THE FRYING DUTCHMAN (docs/design/amsterdam.md §6–§8): registration and campaign
- * place, section layouts, exits a → b → c → d → complete, every section script in god mode with
+ * place, section layouts, exits a → b → c → (c1 | c2) → d → complete (the route split:
+ * docs/design/ams-extras.md §4; more in ams-route.test.ts), every section script in god mode with
  * the bot (no errors, no placeholder ids), THE BRIEFING (input lock incl. a player 2 who joins
  * mid-briefing, timer pause / resume, the toss), the vendor and the Swan in b, and the boss
  * section ending in MISSION COMPLETE well inside the section timer.
@@ -32,7 +33,7 @@ describe('mission ams', () => {
     expect(getMission('ams')).toBe(AMS);
     expect(firstMission()).toBe('ams');
     expect(CAMPAIGN_MISSIONS[0]).toBe('ams');
-    expect(Object.keys(AMS.sections).sort()).toEqual(['a', 'b', 'c', 'd']);
+    expect(Object.keys(AMS.sections).sort()).toEqual(['a', 'b', 'c', 'c1', 'c2', 'd']);
     expect(AMS.start).toBe('a');
     expect(AMS.bossSection).toBe('d');
     expect(AMS.next).toBe('m1');
@@ -40,7 +41,9 @@ describe('mission ams', () => {
     expect(AMS.after).toBe('fps');
     expect(AMS.music).toBe('ams');
     expect(AMS.bossMusic).toBe('ams-boss');
-    expect(AMS.hostages).toEqual({ a: 4, b: 3, c: 3 });
+    // The hidden tourists of the secrets count (a's houseboat hatch, b's museum crate); c1 and c2
+    // hold one each: the same total on both routes.
+    expect(AMS.hostages).toEqual({ a: 5, b: 4, c: 2, c1: 1, c2: 1 });
     const card = missionCard('ams');
     expect(card.label).toBe('MISSION 1');
     expect(card.name).toBe('THE FRYING DUTCHMAN');
@@ -48,7 +51,7 @@ describe('mission ams', () => {
     expect(card.map?.dot[1]).toBeLessThan(120);
   });
 
-  it.each(['a', 'b', 'c', 'd'])('section %s builds with a valid layout', (id) => {
+  it.each(['a', 'b', 'c', 'c1', 'c2', 'd'])('section %s builds with a valid layout', (id) => {
     const s = AMS.sections[id];
     expect(s.id).toBe(id);
     expect(s.height).toBe(216);
@@ -62,15 +65,17 @@ describe('mission ams', () => {
     }
   });
 
-  it('exits lead a → b → c → d (opened by the scripts); d ends with the boss', () => {
+  it('exits lead a → b → c → c1 | c2 → d (opened by the scripts); d ends with the boss', () => {
     expect(AMS.sections.a.exits?.map((e) => e.to)).toEqual(['b']);
     expect(AMS.sections.b.exits?.map((e) => e.to)).toEqual(['c']);
-    expect(AMS.sections.c.exits?.map((e) => e.to)).toEqual(['d']);
-    for (const id of ['a', 'b', 'c']) expect(AMS.sections[id].exits?.every((e) => e.disabled)).toBe(true);
+    expect(AMS.sections.c.exits?.map((e) => e.to).sort()).toEqual(['c1', 'c2']);
+    expect(AMS.sections.c1.exits?.map((e) => e.to)).toEqual(['d']);
+    expect(AMS.sections.c2.exits?.map((e) => e.to)).toEqual(['d']);
+    for (const id of ['a', 'b', 'c', 'c1', 'c2']) expect(AMS.sections[id].exits?.every((e) => e.disabled)).toBe(true);
     expect(AMS.sections.d.exits ?? []).toEqual([]);
     expect(AMS.sections.d.bossStart).toBeDefined();
-    expect(AMS.sections.c.vehicles).toEqual(['swan']);
-    expect(AMS.sections.d.vehicles).toEqual(['swan']);
+    // The Swan carries over; the beer bike stays in a (never on the water: c2).
+    for (const id of ['c', 'c1', 'c2', 'd']) expect(AMS.sections[id].vehicles, id).toEqual(['swan']);
   });
 });
 
@@ -79,10 +84,15 @@ const SCRIPT_IDS = [
   'ams-baker', 'ams-bike-rack', 'ams-boat-platform', 'ams-cyclist-bg', 'ams-herring-cart', 'ams-hotdog-vendor', 'ams-market-stall',
   'ams-mayor', 'ams-pigeons', 'ams-staff', 'ams-tour-boat', 'ams-tulip-stall', 'ams-window-waver', 'delivery-rider', 'fatbike-youth',
   'handhaver', 'pickup-gem', 'pickup-weapon', 'seagull', 'swan', 'crate', 'hostage',
+  // docs/design/ams-extras.md: the stag party and the beer bike, the scan car, the cruise, secrets.
+  'stag-partier', 'stag-beer-bike', 'beer-bike', 'ams-scan-car', 'ams-cruise-boat', 'ams-low-bridge', 'ams-magere-brug', 'ams-party-boat', 'ams-secret',
 ];
 
+/** The section each one leads to with the bot's default route (`lower`: c → c2, the cruise). */
+const NEXT: Record<string, string> = { a: 'b', b: 'c', c: 'c2', c1: 'd', c2: 'd' };
+
 describe('ams scripts in god mode', () => {
-  it.each(['a', 'b', 'c', 'd'])('section %s runs its whole script with the bot: no errors, only registered ids', async (id) => {
+  it.each(['a', 'b', 'c', 'c1', 'c2', 'd'])('section %s runs its whole script with the bot: no errors, only registered ids', async (id) => {
     const g = await createHeadlessGame({ missionId: 'ams', sectionId: id, seed: 3, players: 1, god: true, bot: true, captureConsole: true });
     const ids = new Set<string>();
     const placeholders = new Set<string>();
@@ -112,11 +122,11 @@ describe('ams scripts in god mode', () => {
     for (const t of ['fatbike-youth', 'delivery-rider', 'seagull']) expect(ids.has(t), t).toBe(true);
     // The section was finished: the next section (or MISSION COMPLETE for d).
     if (id === 'd') expect(g.missionComplete).toBe(true);
-    else expect(g.runner?.section.id).toBe(String.fromCharCode(id.charCodeAt(0) + 1));
+    else expect(g.runner?.section.id).toBe(NEXT[id]);
     g.dispose();
   }, 120000);
 
-  it('the bot plays the whole mission a → b → c → d → MISSION COMPLETE', async () => {
+  it('the bot plays the whole mission a → b → c → c2 → d → MISSION COMPLETE (the cruise)', async () => {
     const g = await createHeadlessGame({ missionId: 'ams', sectionId: 'a', seed: 1, players: 1, god: true, bot: true, captureConsole: true });
     const seen: string[] = [];
     g.runUntil((gg) => {
@@ -124,7 +134,7 @@ describe('ams scripts in god mode', () => {
       if (s && seen[seen.length - 1] !== s) seen.push(s);
       return gg.missionComplete;
     }, 60000);
-    expect(seen).toEqual(['a', 'b', 'c', 'd']);
+    expect(seen).toEqual(['a', 'b', 'c', 'c2', 'd']);
     expect(g.missionComplete).toBe(true);
     expect(g.report().errors).toEqual([]);
     g.dispose();

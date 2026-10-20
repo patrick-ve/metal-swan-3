@@ -16,7 +16,8 @@ import type { Player } from '../../../player/player';
 import { isSwan } from '../../vehicles/swan/swan';
 import { HOUSE, houseRow, lawnSprite, poolSprite } from './art';
 import { AmsHotdogVendor } from './entities';
-import { at, carillon, crate, fromRight, hostage, normalUp, prewarm, twoPlayers } from './helpers';
+import { at, carillon, crate, fromRight, hostage, normalUp, prewarm, STAG_LOOKS, stagArt, twoPlayers } from './helpers';
+import { placeSecrets, secretArt } from './secrets';
 import { B_HOTDOG_X, B_PASSAGE, B_W, G, terrainB } from './terrain';
 
 export const BG_NOON: BackgroundDef = {
@@ -192,6 +193,9 @@ export function* script(ctx: SectionContext): ScriptGen {
   carillon(ctx);
   ctx.spawn('ams-pigeons', 300, G, { count: 3 });
   ctx.spawn('ams-pigeons', 2900, G, { count: 4 });
+  // Secrets (docs/design/ams-extras.md §5): the museum crate in the passage (a hidden tourist),
+  // the hot-dog stand's roof flag (the hidden 1UP).
+  placeSecrets(ctx, 'b');
 
   // THE SWAN parked next to the stand (the Mute for player 2).
   // She is parked just before she scrolls into view (her nervous egg comes 600 ticks after she
@@ -244,11 +248,16 @@ export function* script(ctx: SectionContext): ScriptGen {
   hostage(ctx, 'tourist', 'chair', 1420, 'auto');
   at(ctx, 'seagull', 1380, { gag: 'fries', facing: -1 });
   at(ctx, 'seagull', 1460, { gag: 'fries', facing: 1 });
-  at(ctx, 'fatbike-youth', 1560, { gag: 'circles', facing: -1 });
+  // A stag party in the gull square (docs/design/ams-extras.md §2.4): two clink bottles, one
+  // takes a selfie with the gulls.
+  at(ctx, 'stag-partier', 1586, { gag: 'toast', facing: 1, look: 2 });
+  at(ctx, 'stag-partier', 1602, { gag: 'toast', facing: -1, look: 0 });
+  at(ctx, 'stag-partier', 1660, { gag: 'selfie', facing: -1, look: 2 });
   yield ctx.waitCamera(1240);
   ctx.spawn('seagull', 1500, 100, { flock: normalUp(ctx) ? 3 : 2 });
   yield ctx.waitCamera(1400);
-  ctx.enter('fatbike-youth', 'right', { params: { pair: true } });
+  ctx.enter('stag-partier', 'right', { params: { look: 0 } });
+  if (normalUp(ctx)) ctx.enter('fatbike-youth', 'right', { margin: 40, params: { pair: true } });
   hostage(ctx, 'tourist', 'sack', 1760, 'auto');
   yield 80;
   ctx.spawn('delivery-rider', 0, 'ground', { from: 'behind' });
@@ -269,7 +278,8 @@ export function* script(ctx: SectionContext): ScriptGen {
   yield ctx.waitCamera(2200);
   fromRight(ctx, 'delivery-rider');
   yield 60;
-  fromRight(ctx, 'fatbike-youth', { pair: true });
+  // One more beer bike on the canal-side road (no lock: blow it up from the Swan, or hijack it).
+  ctx.enter('stag-beer-bike', 'right', { margin: 64, params: { riders: normalUp(ctx) ? 3 : 2, looks: [0, 2, 0] } });
   yield ctx.waitCamera(2380);
   hostage(ctx, 'tourist', 'chair', 2760, 'auto');
   ctx.spawn('delivery-rider', 0, 'ground', { from: 'behind' });
@@ -300,7 +310,10 @@ export const sectionB: SectionDef = {
   // Tier 4: the fatbike pairs ride in b and c only (the solo sets are in the mission's preloadFirst).
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.
-  art: ['enemy/fatbike-youth-pair', ...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-herring-cart', 'decor/ams/ams-tulip-stall'],
+  // The stag party and the beer bike (enemy and rideable; docs/api/stag.md §5).
+  art: ['enemy/fatbike-youth-pair', ...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-herring-cart', 'decor/ams/ams-tulip-stall', ...secretArt('b'), ...stagArt(STAG_LOOKS, { bike: true })],
+  // Tier 4: the museum facade joins when b is entered (not built ahead in a: the 1P budget).
+  artLate: ['decor/ams/rijksmuseum'],
   playerStart: { x: 48, y: G },
   checkpoints: [1200, 2300],
   timeLimit: 60,

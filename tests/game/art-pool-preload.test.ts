@@ -221,6 +221,16 @@ describe('tier 4 working set size', () => {
     expect(denseWorkingSet(m, ['char/zhero/'], 'c', undefined, 1)).toContain('boss/zt/x');
   });
 
+  it("never builds the next section's artLate ahead (only once that section is entered), nor the seated continue strips", () => {
+    for (const id of ['zlate-n/early', 'zlate-n/late', 'zlate-h/sit-gloat', 'zlate-h/sit-cower']) sprite(id, 0x20304100);
+    const m = { ...MISSION, sections: { a: { art: ['zlate-h/'] }, b: { art: ['zlate-n/'], artLate: ['zlate-n/late'] } } } as unknown as MissionArtDef;
+    const a = denseWorkingSet(m, ['char/zhero/'], 'a', 'b', 1);
+    expect(a).toContain('zlate-n/early');
+    expect(a).not.toContain('zlate-n/late');
+    expect(a.filter((id) => id.startsWith('zlate-h/'))).toEqual([]);
+    expect(denseWorkingSet(m, ['char/zhero/'], 'b', undefined, 1)).toContain('zlate-n/late');
+  });
+
   it("holds a 4× alias's target, once, at the alias's place", () => {
     sprite('zalias-t/x', 0x30405000);
     for (const id of ['zalias-a/x', 'zalias-b/x']) {

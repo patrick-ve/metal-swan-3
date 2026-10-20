@@ -16,10 +16,12 @@ import type { ScriptGen } from '../../../../engine/script';
 import type { BackgroundDef, DecorDef, SectionContext, SectionDef } from '../../../mission/index';
 import type { Player } from '../../../player/player';
 import { eraseEnemyShots } from '../../../projectile';
+import { Vehicle } from '../../../vehicle';
 import { AmsBaker } from './entities';
-import { at, carillon, crate, fromLeft, fromRight, hardOnly, hostage, normalUp, prewarm } from './helpers';
+import { at, carillon, crate, fromLeft, fromRight, hardOnly, hostage, normalUp, prewarm, STAG_LOOKS, stagArt } from './helpers';
+import { placeSecrets, secretArt } from './secrets';
 import { awningSprite, balustradeSprite, boatDecor, bridgeDecor, HOUSE, houseRow, rowWidth, waterDecor } from './art';
-import { A_ARENA, A_AWNINGS, A_BOATS, A_BRIDGES, A_CANAL, A_FABEL_X, A_LEDGES, A_W, DECK_Y, G, ROOF_Y, terrainA, WATER_Y } from './terrain';
+import { A_ARENA, A_AWNINGS, A_BIKE_LOCK, A_BOATS, A_BRIDGES, A_CANAL, A_FABEL_X, A_LEDGES, A_W, DECK_Y, G, ROOF_Y, terrainA, WATER_Y } from './terrain';
 
 export const BG_MORNING: BackgroundDef = {
   sky: PAL.sky[2],
@@ -188,6 +190,20 @@ export class InputLock {
  * THE BRIEFING (§7): the timer pauses, the input is locked, the baker talks (8 hint bubbles,
  * auto-advance, fire skips a line) and tosses the fries; then the pads and the timer come back.
  */
+/**
+ * Before the briefing: a player who rides the beer bike gets off (the baker: `GEEN
+ * BIERFIETSEN!`, docs/design/ams-extras.md §2.4); the bike stays parked in section a.
+ */
+export function* noBeerBikes(ctx: SectionContext, baker: Entity): ScriptGen {
+  const riders = ctx.players.filter((p) => p.vehicle instanceof Vehicle && p.vehicle.type === 'beer-bike');
+  if (riders.length === 0) return;
+  if (baker instanceof AmsBaker) baker.say('GEEN BIERFIETSEN!', 80, 'hint');
+  else ctx.hud.bubble(baker, 'GEEN BIERFIETSEN!', { kind: 'hint', ticks: 80, speaker: 'baker' });
+  yield 24;
+  for (const p of riders) if (p.vehicle instanceof Vehicle) p.vehicle.eject('exit');
+  yield 50;
+}
+
 export function* briefing(ctx: SectionContext, baker: Entity): ScriptGen {
   eraseEnemyShots(ctx.world, ctx.camera.view(32, viewRect));
   ctx.timer.pause();
@@ -286,6 +302,9 @@ export function* script(ctx: SectionContext): ScriptGen {
   carillon(ctx);
   // More life on the quay and in the side canal.
   ctx.spawn('ams-boat-platform', 1090, 172, { range: 222, speed: 0.45, pause: 60 });
+  // Secrets (docs/design/ams-extras.md §5): the bike in the elm, the houseboat hatch (a hidden
+  // tourist), the crate on a gable's hoist beam.
+  placeSecrets(ctx, 'a');
   ctx.spawn('ams-pigeons', 2940, G, { count: 4 });
 
   // @0: the first weapon, a tourist at the bike rack, a gull asleep on a lamp.
@@ -361,14 +380,28 @@ export function* script(ctx: SectionContext): ScriptGen {
   yield ctx.waitCamera(1880);
   at(ctx, 'seagull', 2250, { gag: 'fries', facing: -1 });
   ctx.spawn('seagull', 2200, 110, { flock: normalUp(ctx) ? 3 : 2 });
-  yield ctx.waitCamera(2040);
-  fromRight(ctx, 'fatbike-youth');
-  yield 50;
-  fromRight(ctx, 'delivery-rider');
-  yield ctx.waitCamera(2200);
-  ctx.enter('fatbike-youth', 'right', { params: { pair: true } });
+  // @1960: a stag party on foot (docs/design/ams-extras.md §2.4): two clink bottles and one
+  // takes a selfie in the street (CAUGHT NAPPING), the groom walks in from the right.
+  yield ctx.waitCamera(1960);
+  at(ctx, 'stag-partier', 2262, { gag: 'toast', facing: -1, look: 0 }, 'ground', 'stag');
+  at(ctx, 'stag-partier', 2246, { gag: 'toast', facing: 1, look: 2 }, 'ground', 'stag');
+  at(ctx, 'stag-partier', 2318, { gag: 'selfie', facing: -1, look: 0 }, 'ground', 'stag');
   yield 60;
-  ctx.spawn('delivery-rider', 0, 'ground', { from: 'behind' });
+  ctx.enter('stag-partier', 'right', { margin: 40, params: { groom: true }, tag: 'stag' });
+  yield ctx.waitCamera(2080);
+  fromRight(ctx, 'delivery-rider');
+
+  // @2120: LOCK — the beer bike rolls in from the right (the first hijack): shoot the riders off
+  // and ride it, or blow it up for points.
+  yield ctx.waitCamera(A_BIKE_LOCK[0]);
+  ctx.lockCamera(A_BIKE_LOCK[0], A_BIKE_LOCK[1]);
+  ctx.callout('BIERFIETS!', { ticks: 90 });
+  ctx.enter('stag-beer-bike', 'right', { margin: 64, params: { riders: normalUp(ctx) ? 3 : 2, looks: [2, 0, 2] }, tag: 'bike' });
+  yield 150;
+  ctx.spawn('delivery-rider', 0, 'ground', { from: 'behind', tag: 'bike' });
+  yield ctx.waitClear('bike');
+  yield 30;
+  ctx.unlockCamera();
 
   // @2500 (checkpoint): bridge 2 and the arrival street.
   yield ctx.waitCamera(2500);
@@ -405,6 +438,7 @@ export function* script(ctx: SectionContext): ScriptGen {
   yield ctx.waitClear('fabel');
   yield ctx.waitClear();
   yield 40;
+  yield* noBeerBikes(ctx, baker);
   yield* briefing(ctx, baker);
   yield ctx.exitTo('b');
 }
@@ -421,7 +455,8 @@ export const sectionA: SectionDef = {
   decor,
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.
-  art: [...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-bike-rack', 'decor/ams/ams-boat-platform', 'decor/ams/ams-herring-cart', 'decor/ams/ams-tulip-stall'],
+  // The stag party and the beer bike (enemy and rideable; docs/api/stag.md §5).
+  art: [...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-bike-rack', 'decor/ams/ams-boat-platform', 'decor/ams/ams-herring-cart', 'decor/ams/ams-tulip-stall', ...secretArt('a'), ...stagArt(STAG_LOOKS, { groom: true, bike: true })],
   playerStart: { x: 48, y: G },
   checkpoints: [1300, 2500],
   timeLimit: 60,

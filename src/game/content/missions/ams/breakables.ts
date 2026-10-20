@@ -1,7 +1,8 @@
 /**
  * Breakable street furniture of Amsterdam (mission `ams`): `ams-herring-cart`, `ams-tulip-stall`,
  * `ams-market-stall`, `ams-bike-rack` (pattern: props/breakables.ts). Team 'enemy', tags
- * shootable / soft / prop (never 'enemy'). Params: the table at the top of `entities.ts`.
+ * shootable / soft / prop (never 'enemy'). Params: the table at the top of `entities.ts`. Their
+ * food / gem drops follow the vehicle-state rule (`withVehicleDrops`, items/drops.ts).
  */
 import { Entity, type Damage } from '../../../../engine/entity';
 import type { DrawOpts, Renderer } from '../../../../engine/render';
@@ -9,7 +10,7 @@ import type { World } from '../../../../engine/world';
 import { awardScore } from '../../../events';
 import { debris, dust, type DebrisKind } from '../../../fx';
 import { defineEntity, paramNum, type SpawnParams } from '../../../registry';
-import { dropItems } from '../../items/drops';
+import { contentsSpecs, DROP_TABLES, spawnDrops, withVehicleDrops } from '../../items/drops';
 import { spawnReveal } from '../../props/breakables';
 import { sfxNear } from '../../props/common';
 
@@ -33,6 +34,11 @@ export const AMS_BREAKABLES: Readonly<Record<string, BreakableKind>> = {
   'ams-bike-rack': { w: 50, h: 22, hp: 30, contains: 'bombs', debris: 'metal', sfx: 'hit/metal' },
 };
 export const AMS_BREAKABLE_SCORE = 100;
+
+/** Is this drop value a roll of a table (`auto`, a missing value, a table name)? */
+function isTable(v: unknown): boolean {
+  return v === undefined || v === true || v === 'auto' || v === 'random' || (typeof v === 'string' && Object.hasOwn(DROP_TABLES, v));
+}
 
 export class AmsBreakable extends Entity {
   readonly kind: BreakableKind;
@@ -82,7 +88,10 @@ export class AmsBreakable extends Entity {
     dust(this.world, this.x, this.y, 4);
     this.world.audio.sfx(k.sfx);
     awardScore(this.world, d?.owner, AMS_BREAKABLE_SCORE, this.x, this.y - k.h - 4);
-    dropItems(this.world, this.contains, this.x, this.y - 8);
+    // Vehicle-state drops (docs/design/ams-extras.md §6): a fixed food or gem may become a repair
+    // kit while a player rides a damaged vehicle; a table (`auto`) applies the rule itself.
+    const specs = contentsSpecs(this.contains, this.world, 'crate');
+    spawnDrops(this.world, isTable(this.contains) ? specs : withVehicleDrops(this.world, specs), this.x, this.y - 8);
     spawnReveal(this.world, this.reveal, this.x, this.y);
   }
 

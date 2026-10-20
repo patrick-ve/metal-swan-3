@@ -6,8 +6,8 @@
  * vehicles, the default vertical respawn rule, invisible body walls, campaign records (via the
  * session), mission stats for the tally, the in-world continue (GDD §4.6: a player out of lives gets
  * a countdown over the live world; with every player out the section script, the timer,
- * auto-scroll and boss adds hold, the enemies on screen laugh, and a continued hero's landing
- * makes them cower and the boss stagger), mission complete and game-over hooks. Pure (no DOM):
+ * auto-scroll and boss adds hold, the enemies on screen gloat at the spot, and a continued hero's
+ * landing makes them cower and the boss stagger), mission complete and game-over hooks. Pure (no DOM):
  * the Gameplay scene, tests and headless tools drive it.
  *
  * ```ts
@@ -32,7 +32,7 @@ import { artTier, toArtDensity, withArtDensity, type ArtDensity } from '../../en
 import { World } from '../../engine/world';
 import { Boss } from '../boss';
 import { attachGame, HudState, type BannerOpts, type CalloutOpts, type GameContext, type GoDir } from '../context';
-import { floorY, offscreenX, findFloor, reactInArea } from '../enemy';
+import { floorY, offscreenX, findFloor, reactInArea, startGloatHold } from '../enemy';
 import { Player } from '../player/player';
 import { gameEntityFactory, getMission, listMissions, type SpawnParams } from '../registry';
 import type { CampaignRecords, GameSession, PlayerSlot, SlotIndex } from '../session';
@@ -133,8 +133,8 @@ export class MissionRunner {
   /** Ticks since the hold started; the countdown number last heard (its sound per number). */
   private heldT = 0;
   private countShown = -1;
-  /** Who the enemies laugh at: the last player out (it stays in the world, unseen, where it fell). */
-  private laughAt: Entity | null = null;
+  /** The gloat's spot: the last player out (it stays in the world, unseen, where it fell). */
+  private gloatSpot: Entity | null = null;
   /** The next loadSection is the fresh mission start of an introDrop mission (parachute drop). */
   private introDropPending = false;
   /** The highest art density of the drawing (option or mission); `artDensity` caps it by the tier. */
@@ -264,7 +264,7 @@ export class MissionRunner {
     this.session.sectionId = def.id;
     const ctx = this.ctx;
     this.held = false;
-    this.laughAt = null;
+    this.gloatSpot = null;
     this.sectionScript = world.scripts.run(() => def.script(ctx), { name: `section ${this.mission.id}/${def.id}` });
     this.events.emit('sectionLoaded', { id: def.id });
   }
@@ -838,7 +838,7 @@ export class MissionRunner {
 
   /**
    * A player lost the last life: their countdown starts (the game never pauses for it). With every
-   * joined player out the world holds (`hold`) and the enemies on screen laugh at `p`'s spot.
+   * joined player out the world holds (`hold`) and the enemies on screen gloat at `p`'s spot.
    */
   private onPlayerOut(slot: SlotIndex, p: Entity): void {
     // The last player went out during the victory poses (a death just before the win): no
@@ -851,7 +851,7 @@ export class MissionRunner {
     this.continueTicks[slot] = TUNING.continues.seconds * TUNING.continues.ticksPerCount;
     this.events.emit('playerOut', { slot });
     if (this.session.allOut) {
-      this.laughAt = p;
+      this.gloatSpot = p;
       if (!this.held) {
         this.hold(true);
         this.events.emit('allOut', { slot });
@@ -861,13 +861,15 @@ export class MissionRunner {
 
   /**
    * Every player out (`on`): the section script holds (no new waves), so do the timer and
-   * auto-scroll (`update`) and the boss adds (`Boss.addsHeld`); the boss attacks run on.
+   * auto-scroll (`update`) and the boss adds (`Boss.addsHeld`); the boss attacks run on. A new
+   * hold is a new gloat hold (`startGloatHold`: each enemy gloats afresh, one line each).
    */
   private hold(on: boolean): void {
     if (this.held === on) return;
     this.held = on;
     this.heldT = 0;
     this.countShown = -1;
+    if (on) startGloatHold(this.world);
     if (this.sectionScript) this.sectionScript.paused = on;
     const bosses = this.world.byTag('boss');
     for (let i = 0; i < bosses.length; i++) {
@@ -923,13 +925,14 @@ export class MissionRunner {
 
   /**
    * While held: a hero on the ground again (or in a vehicle) ends the hold; until then the enemies
-   * on screen laugh at the spot where the last player went down.
+   * on screen gloat at the spot where the last player went down (their own business there:
+   * `Enemy.thinkGloat`; never a laugh or a point).
    */
   private updateHeld(): void {
     const C = TUNING.continues;
     if (this.players.some((p) => p.state === 'play' || p.state === 'mounted' || p.state === 'victory')) this.hold(false);
-    else if (this.state === 'playing' && this.heldT % C.laughEvery === 1) {
-      reactInArea(this.world, this.world.camera.view(), 'laugh', C.laughTicks, { onScreen: true, source: this.laughAt });
+    else if (this.state === 'playing' && this.heldT % C.gloatEvery === 1) {
+      reactInArea(this.world, this.world.camera.view(), 'gloat', C.gloatTicks, { onScreen: true, source: this.gloatSpot });
     }
   }
 
@@ -983,6 +986,9 @@ export class MissionRunner {
     }
     this.continueTicks[slot] = -1;
     const p = this.addPlayer(slot, s);
+    // Drop in next to the partner (on the side toward the view centre), not at the view centre.
+    const o = this.player((1 - slot) as SlotIndex);
+    if (o && o.state !== 'out') p.x = p.prevX = o.x + (o.x < this.world.camera.centerX ? 20 : -20);
     p.respawn();
     return p;
   }

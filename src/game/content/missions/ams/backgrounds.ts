@@ -14,6 +14,11 @@
  *   Params: `y` (canopy middle, 0.3), `spacing` (px, 112), `bikes` (true).
  * - `ams-plein` — Museumplein: the Rijksmuseum's back far away, the lawn, the long pool, plane
  *   trees, tourists and a white-blue tram. Params: `y` (lawn line, 0.72).
+ * - `ams-amstel` — the far bank of the Amstel seen from the water (section c2): long plastered
+ *   and brick mansions (`AMSTEL_BLOCKS`, four storeys of window rows under a cornice and dormers),
+ *   big elms on the quay in front of them, a tall stone quay wall with mooring rings, moored
+ *   boats, and the broad river below with the bank's wobbly reflections and long glinting
+ *   ripples. Params: `y` (quay line, 0.667).
  */
 import type { Color } from '../../../../engine/color';
 import { INK, PAL } from '../../../../engine/palette';
@@ -474,9 +479,153 @@ const amsPlein: BgGenerator = (w, h, p, seed) => {
   return b.touch();
 };
 
+// ------------------------------------------------------------------------------------ ams-amstel
+
+/** The Amstel mansions: width, storeys, wall colours (fill, lit edge, shade), dormers. */
+export const AMSTEL_BLOCKS: readonly { w: number; floors: number; wall: readonly [Color, Color, Color]; dormers: number }[] = [
+  { w: 132, floors: 4, wall: [PAL.sand[2], PAL.sand[3], PAL.stone[2]], dormers: 5 },
+  { w: 96, floors: 3, wall: [PAL.rust[1], PAL.rust[2], PAL.brown[1]], dormers: 3 },
+  { w: 116, floors: 4, wall: [PAL.snow[1], PAL.snow[2], PAL.stone[3]], dormers: 4 },
+  { w: 84, floors: 3, wall: [PAL.brown[2], PAL.brown[3], PAL.brown[1]], dormers: 2 },
+  { w: 148, floors: 4, wall: [PAL.stone[3], PAL.snow[1], PAL.stone[2]], dormers: 6 },
+  { w: 92, floors: 3, wall: [PAL.red[1], PAL.red[2], PAL.red[0]], dormers: 3 },
+  { w: 100, floors: 4, wall: [PAL.sand[3], PAL.snow[1], PAL.sand[2]], dormers: 4 },
+];
+/** Storey height and the quay wall height of the Amstel bank (px). */
+export const AMSTEL_STOREY = 10;
+export const AMSTEL_WALL = 6;
+/**
+ * The mansion chain starts this far left of the tile (it wraps): the tile seam falls inside the
+ * first mansion, never on a corner (a seamless tile).
+ */
+export const AMSTEL_SEAM = 40;
+
+/** Big elm crowns on the Amstel quay: x of each tree in a tile (fractions of the width). */
+function amstelTree(b: PixelBuffer, cx: number, foot: number, r: number, seed: number, light: Light): void {
+  const leaf = light === 'golden' ? [PAL.green[0], PAL.green[1], PAL.green[2], PAL.olive[3], PAL.gold[2]] : [PAL.green[0], PAL.green[1], PAL.green[2], PAL.green[3], PAL.green[4]];
+  const cy = foot - r - 12;
+  for (let y = cy; y < foot; y++) {
+    setW(b, cx - 1, y, PAL.brown[2]);
+    setW(b, cx, y, PAL.brown[1]);
+    setW(b, cx + 1, y, PAL.brown[0]);
+  }
+  for (let c = 0; c < 6; c++) {
+    const bx = cx + Math.round((hash2(c, 1, seed) - 0.5) * r * 1.4);
+    const by = cy + Math.round((hash2(c, 2, seed) - 0.6) * r * 0.8);
+    const br = Math.round(r * (0.42 + hash2(c, 3, seed) * 0.22));
+    for (let y = -br; y <= br; y++) {
+      for (let x = -br; x <= br; x++) {
+        const d = Math.sqrt(x * x + y * y);
+        if (d > br || (d > br - 2 && hash2(bx + x, by + y, seed + 5) < 0.5)) continue;
+        const v = (-x - y) / br + (hash2(bx + x, by + y, seed + 6) - 0.5) * 0.5;
+        const i = v > 0.9 ? 4 : v > 0.2 ? 3 : v > -0.5 ? 2 : 1;
+        setW(b, bx + x, by + y, d > br - 1 ? leaf[0] : leaf[i]);
+      }
+    }
+  }
+}
+
+const amsAmstel: BgGenerator = (w, h, p, seed) => {
+  const b = new PixelBuffer(w, h);
+  const light = lightOf(p);
+  const quay = px(p, 'y', 0.667, h);
+  const S = AMSTEL_STOREY;
+  // The mansions, wall to wall along the quay (the last one fills the tile; the chain wraps).
+  const end = w - AMSTEL_SEAM;
+  let x0 = -AMSTEL_SEAM;
+  for (let i = 0; x0 < end; i++) {
+    const m = AMSTEL_BLOCKS[(i + Math.floor(hash2(0, 1, seed) * AMSTEL_BLOCKS.length)) % AMSTEL_BLOCKS.length];
+    const bw = end - (x0 + m.w) < 60 ? end - x0 : m.w;
+    const top = quay - m.floors * S - 8;
+    const [fill, lit, shade] = m.wall;
+    rectW(b, x0, top, bw, quay - top, fill);
+    rectW(b, x0, top, 1, quay - top, lit);
+    rectW(b, x0 + bw - 1, top, 1, quay - top, shade);
+    // The cornice and the slate roof with dormers.
+    rectW(b, x0, top - 1, bw, 2, PAL.snow[2]);
+    rectW(b, x0, top, bw, 1, PAL.stone[2]);
+    for (let y = 1; y <= 7; y++) rectW(b, x0 + y, top - 1 - y, bw - 2 * y, 1, y === 7 ? PAL.slate[3] : PAL.slate[1 + (y & 1)]);
+    const nd = m.dormers;
+    for (let k = 0; k < nd; k++) {
+      const dx = x0 + Math.round(((k + 0.5) * bw) / nd) - 2;
+      rectW(b, dx, top - 6, 5, 4, PAL.snow[1]);
+      rectW(b, dx + 1, top - 5, 3, 3, PAL.navy[1]);
+    }
+    // Window rows: tall sash windows with white frames; the ground floor a little taller.
+    const cols = Math.max(2, Math.floor((bw - 6) / 9));
+    for (let f = 0; f < m.floors; f++) {
+      const wy = top + 3 + f * S;
+      for (let k = 0; k < cols; k++) {
+        const wx = x0 + 4 + Math.round((k * (bw - 8)) / cols);
+        rectW(b, wx, wy, 5, S - 4, PAL.snow[2]);
+        rectW(b, wx + 1, wy + 1, 3, S - 6, hash2(k, f + i * 7, seed) < 0.18 ? PAL.gold[2] : PAL.navy[1]);
+        rectW(b, wx + 1, wy + 1 + ((S - 6) >> 1), 3, 1, PAL.snow[1]);
+      }
+      rectW(b, x0 + 1, wy + S - 3, bw - 2, 1, shade);
+    }
+    x0 += bw;
+  }
+  // Elms on the quay, a lamp post between them.
+  const nt = Math.max(1, Math.round(w / 96));
+  for (let k = 0; k < nt; k++) {
+    const cx = Math.round((k + 0.5) * (w / nt) + (hash2(k, 7, seed) - 0.5) * 24);
+    amstelTree(b, cx, quay, 15 + Math.floor(hash2(k, 8, seed) * 6), seed + k * 3, light);
+    const lx = Math.round(cx + w / nt / 2);
+    rectW(b, lx, quay - 18, 1, 18, PAL.ink[1]);
+    rectW(b, lx - 1, quay - 21, 3, 3, PAL.gold[3]);
+  }
+  applyLight(b, light);
+  // The tall stone quay wall: the lit coping, blocks, mooring rings, a dark wet foot.
+  for (let x = 0; x < w; x++) {
+    setW(b, x, quay, PAL.stone[3]);
+    for (let y = 1; y < AMSTEL_WALL; y++) {
+      const joint = y === 3 || (x + (y > 3 ? 6 : 0)) % 12 === 0;
+      setW(b, x, quay + y, y === AMSTEL_WALL - 1 ? PAL.ink[1] : joint ? PAL.stone[0] : PAL.stone[1 + (y < 3 ? 1 : 0)]);
+    }
+    if (x % 48 === 20) setW(b, x, quay + 2, PAL.gold[1]);
+  }
+  // The river: the bank mirrored with a wobble, darker with depth, long glinting ripples.
+  const wr = WATER[light];
+  const top = quay + AMSTEL_WALL;
+  for (let y = top; y < h; y++) {
+    const d = y - top;
+    const wob = Math.round(Math.sin((d * 2 * Math.PI) / 9) * 2);
+    const sy = quay - 1 - Math.floor(d * 1.6);
+    for (let x = 0; x < w; x++) {
+      let c: Color = 0;
+      if (sy >= 0) c = b.data[sy * w + ((((x + wob) % w) + w) % w)];
+      let k = (c & 255) === 0 ? wr.length - 2 : Math.min(wr.length - 2, Math.floor(lum(c) * (wr.length - 1)));
+      k -= Math.floor(d / 10);
+      if (bayer(x, y) < 0.25 && d % 3 === 0) k += 1;
+      const ripple = (d % 5 === 2 && noise1(x + d * 37, 14, w, seed + d) > 0.72) || hash2(x, y, seed + 3) > 0.996;
+      if (ripple) k = wr.length - 1;
+      b.data[y * w + x] = wr[Math.max(0, Math.min(wr.length - 1, k))] >>> 0;
+    }
+  }
+  // Moored sloepen and a long white tour boat along the far quay.
+  const nb = Math.max(1, Math.round(w / 220));
+  for (let k = 0; k < nb; k++) {
+    const bx = Math.round((k + 0.25) * (w / nb) + hash2(k, 9, seed) * 40);
+    if (k % 3 === 1) {
+      rectW(b, bx, top - 4, 54, 4, PAL.snow[2]);
+      rectW(b, bx + 6, top - 7, 40, 3, PAL.sky[2]);
+      rectW(b, bx, top, 54, 2, PAL.navy[1]);
+      rectW(b, bx + 1, top + 2, 52, 1, PAL.ink[1]);
+      continue;
+    }
+    const len = 18 + Math.floor(hash2(k, 10, seed) * 10);
+    const col = [PAL.green[1], PAL.navy[1], PAL.red[1], PAL.brown[2]][k % 4];
+    rectW(b, bx, top, len, 3, col);
+    rectW(b, bx, top, len, 1, PAL.snow[2]);
+    rectW(b, bx + 1, top + 3, len - 2, 1, PAL.ink[1]);
+  }
+  return b.touch();
+};
+
 defineBgGenerator('ams-skyline', amsSkyline);
 defineBgGenerator('ams-canal-houses', amsCanalHouses);
 defineBgGenerator('ams-elms', amsElms);
 defineBgGenerator('ams-plein', amsPlein);
+defineBgGenerator('ams-amstel', amsAmstel);
 
-export const AMS_BG_GENERATORS = ['ams-skyline', 'ams-canal-houses', 'ams-elms', 'ams-plein'] as const;
+export const AMS_BG_GENERATORS = ['ams-skyline', 'ams-canal-houses', 'ams-elms', 'ams-plein', 'ams-amstel'] as const;

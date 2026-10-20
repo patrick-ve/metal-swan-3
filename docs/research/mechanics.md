@@ -759,7 +759,7 @@ play-testing**; each line gives the reason. Names are suggestions for `src/game/
 | `LIVES_PER_CREDIT` | **3**; no extra lives | SOURCED. |
 | `CONTINUE_COUNT` | **9 → 0**, **60** ticks per count, fire/jump ×4 faster | MS nine counts (SOURCED); seconds per count ESTIMATED. |
 | `CONTINUE_GIFT` | machine-gun crate drops on the player | SOURCED (ours: the machine gun is given at once). |
-| In-world continue | no pause: the countdown runs over the live world; every player out → the enemies on screen laugh; a continued hero lands → they cower **90** ticks, the boss staggers **60** | User decision 2026-10-20 (GDD §4.6). |
+| In-world continue | no pause: the countdown runs over the live world; every player out → the enemies on screen **gloat**: their own business at the spot (`gloat` 24 ticks, renewed every **15**; never a laugh, a point or a cheer, see §23.3); a continued hero lands → they cower **90** ticks (no scream), the boss staggers **60** | User decisions 2026-10-20 (GDD §4.6; the gloat: `docs/design/ams-extras.md` §1). |
 | `TIMER_COUNTS` | **60**, shown as a 2-digit counter | SOURCED. |
 | `TIMER_TICKS_PER_COUNT` | **256** (≈ 4.3 s) | MS 128 MS ticks per count (MEASURED); full counter ≈ 4.3 min. |
 | `TIMER_ALARM_AT` | **10** | SOURCED. |
@@ -897,7 +897,9 @@ renamed or slightly changed. Names already banned in ORIGINALITY.md are not repe
 - Enemy idle gags: soldiers cooking at a campfire, gossiping, sunbathing, squatting to poop,
   reading, sleeping, cheering, megaphone; the pointing-and-laughing at the player's death and the
   mass scream when the player respawns; soldiers running away waving their arms in panic with
-  the series' scream. Invent our own idle and panic gags.
+  the series' scream. Invent our own idle and panic gags. (Ours, §22.7: while every player is
+  out the enemies gloat — each goes about its own business at the spot, with no laugh, point or
+  cheer — and a returning hero makes them cower silently.)
 - Death gags: being eaten by flying fish or locusts, vines bursting from the body, turning to gold
   and coins, acid melting to a skeleton, the male "hand on chest" death pose.
 - The capture twist (player 1 abducted and cloned; enemy general revealed as an alien), the

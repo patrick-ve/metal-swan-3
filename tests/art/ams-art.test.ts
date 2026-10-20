@@ -37,7 +37,7 @@ function palette(b: PixelBuffer, label: string): void {
 
 describe('ams background generators', () => {
   it('are registered', () => {
-    expect(GENS.length).toBe(4);
+    expect(GENS.length).toBe(5);
     for (const id of GENS) expect(hasBgGenerator(id), id).toBe(true);
   });
 
@@ -119,17 +119,22 @@ describe('ams terrain materials', () => {
     const painter = getTerrainPainter();
     for (const s of Object.values(mission.sections)) {
       const t = new Terrain(s.terrain);
-      const buf = painter((x, y) => t.cellAt(x, y), s.terrainStyle, 0, 0, 256, 216);
-      expect(buf.countOpaque(), s.id).toBeGreaterThan(256 * 30);
-      palette(buf, s.id);
+      // The whole section in 256-px windows (c1 and c2 are mostly river: little ground at the start).
+      let opaque = 0;
+      for (let x = 0; x < s.width; x += 256) {
+        const buf = painter((cx, cy) => t.cellAt(cx, cy), s.terrainStyle, x, 0, Math.min(256, s.width - x), 216);
+        opaque += buf.countOpaque();
+        palette(buf, `${s.id} @${x}`);
+      }
+      expect(opaque, s.id).toBeGreaterThan(256 * 30);
     }
   });
 });
 
 describe('ams mission', () => {
-  it('is registered with the brief fields (§8) and four sections', () => {
-    expect(mission).toMatchObject({ id: 'ams', name: 'THE FRYING DUTCHMAN', subtitle: 'MISSION 1', music: 'ams', bossMusic: 'ams-boss', start: 'a', bossSection: 'd', next: 'm1', hostages: { a: 4, b: 3, c: 3 } });
-    expect(Object.keys(mission.sections).sort()).toEqual(['a', 'b', 'c', 'd']);
+  it('is registered with the brief fields (§8) and six sections (the route c → c1 | c2)', () => {
+    expect(mission).toMatchObject({ id: 'ams', name: 'THE FRYING DUTCHMAN', subtitle: 'MISSION 1', music: 'ams', bossMusic: 'ams-boss', start: 'a', bossSection: 'd', next: 'm1', hostages: { a: 5, b: 4, c: 2, c1: 1, c2: 1 } });
+    expect(Object.keys(mission.sections).sort()).toEqual(['a', 'b', 'c', 'c1', 'c2', 'd']);
     expect(mission.sections.d.bossStart).toBeDefined();
     expect(mission.sections.c.vehicles).toContain('swan');
     expect(mission.sections.d.vehicles).toContain('swan');

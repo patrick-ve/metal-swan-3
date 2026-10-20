@@ -100,6 +100,12 @@ export interface SectionDef {
    * enter this section or the one before it. Art only; game logic never reads it.
    */
   art?: readonly string[];
+  /**
+   * Prefixes of `art` that show only well into this section (a set piece, a mid-section squad):
+   * the section before it never builds them ahead; they join the tier-4 working set when the
+   * players enter this section (a 4× id drawn before its build shows its 2× art). Art only.
+   */
+  artLate?: readonly string[];
   script: SectionScript;
   exits?: ExitDef[];
   /** With ?boss=1 the players start here (and `ctx.bossRush` is true). */

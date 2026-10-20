@@ -14,7 +14,9 @@
  */
 import { Entity } from '../../../engine/entity';
 import type { World } from '../../../engine/world';
+import { sessionOf } from '../../context';
 import { ITEM_RULES } from '../../pickup';
+import { isPlayer } from '../../player/player';
 import { getEntityFactory, hasEntity, hasWeapon, listWeapons, toSpawnSpec, type SpawnSpec } from '../../registry';
 
 // ---------------------------------------------------------------------------------------------
@@ -111,10 +113,64 @@ function rollWeapon(world: World, weights: Weighted<string>): SpawnSpec {
   return { id: 'pickup-weapon', params: { weapon: roll(world, table) ?? 'machine-gun' } };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Vehicle-state drops (docs/design/ams-extras.md §6)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Vehicle-state drops: while a player rides a vehicle with fewer cells than its max, this share
+ * of the `crate` table's rolls and of the ams breakables' food / gem drops is a `pickup-repair`
+ * instead.
+ */
+export const REPAIR_SHARE = 0.3;
+/**
+ * The missions with vehicle-state drops (the ams extras wave; m0–m5 keep their rolls, so their
+ * runs stay byte-identical). Keyed by `GameSession.missionId`.
+ */
+export const REPAIR_DROP_MISSIONS: Set<string> = new Set(['ams']);
+
+const REPAIR: SpawnSpec = { id: 'pickup-repair' };
+
+/** Does a player of this mission ride a vehicle with fewer cells than its max? (No rng.) */
+export function repairWanted(world: World): boolean {
+  const list = world.byTag('player');
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    if (!isPlayer(p) || p.state !== 'mounted') continue;
+    const v = p.vehicle as (typeof p.vehicle & { cells?: unknown; maxCells?: unknown }) | null;
+    if (!v || !v.alive || typeof v.cells !== 'number' || typeof v.maxCells !== 'number' || v.cells >= v.maxCells) continue;
+    return REPAIR_DROP_MISSIONS.has(sessionOf(world).missionId) && hasEntity('pickup-repair');
+  }
+  return false;
+}
+
+/**
+ * The vehicle-state roll: true in `REPAIR_SHARE` of the calls while `repairWanted` (one gameplay
+ * rng roll, only then: without a damaged ridden vehicle the rng sequence is untouched).
+ */
+export function rollRepair(world: World): boolean {
+  return repairWanted(world) && world.rng.next() < REPAIR_SHARE;
+}
+
+/**
+ * A food / gem drop under the vehicle-state rule: when every spec is food or treasure and
+ * `rollRepair` says so, a `pickup-repair` instead. Other drops pass unchanged (no roll).
+ */
+export function withVehicleDrops(world: World, specs: SpawnSpec[]): SpawnSpec[] {
+  if (specs.length === 0) return specs;
+  for (const s of specs) if (s.id !== 'pickup-food' && s.id !== 'pickup-gem') return specs;
+  return rollRepair(world) ? [REPAIR] : specs;
+}
+
 /** Named drop tables (GDD §7.3). Each roll returns zero or more spawn specs. */
 export const DROP_TABLES: Readonly<Record<string, (world: World) => SpawnSpec[]>> = {
-  /** `crate` without `contains`: bombs 35 · weapon 25 (table-A weights) · food 25 · 3 golden notes 15. */
+  /**
+   * `crate` without `contains`: bombs 35 · weapon 25 (table-A weights) · food 25 · 3 golden notes
+   * 15. Vehicle-state drops first: a rider with a damaged vehicle gets `pickup-repair` in
+   * `REPAIR_SHARE` of the rolls (`rollRepair`; ams).
+   */
   crate: (w) => {
+    if (rollRepair(w)) return [REPAIR];
     const pick = roll(w, [['bombs', 35], ['weapon', 25], ['food', 25], ['notes', 15]] as const);
     if (pick === 'weapon') return [rollWeapon(w, WEAPONS_A)];
     if (pick === 'food') return [food(roll(w, FOOD_A) ?? 'bread')];

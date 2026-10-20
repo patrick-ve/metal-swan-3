@@ -15,7 +15,10 @@ import {
   FOOD_SCORE,
   GEM_SCORE,
   HOSTAGE_KINDS,
+  REPAIR_SHARE,
+  repairWanted,
   weaponForLetter,
+  withVehicleDrops,
 } from '../../src/game/content/items/index';
 import { Hostage, BindTarget } from '../../src/game/hostage';
 import { Pickup } from '../../src/game/pickup';
@@ -484,5 +487,90 @@ describe('hostage kinds and binds (GDD §7.2)', () => {
     const t0 = performance.now();
     tw.run(300);
     expect((performance.now() - t0) / 300).toBeLessThan(0.5);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The ams extras (docs/design/ams-extras.md §6, §7.6)
+// ---------------------------------------------------------------------------------------------
+
+/** A test world with player 1 mounted on a 3-cell ship at x; `cells` left. */
+function riderWorld(x: number, cells = 3, mission = 'ams'): { tw: TestWorld; ship: ItemTestShip } {
+  const tw = new TestWorld({ playerX: x - 80 });
+  tw.session.startMission(mission);
+  const ship = tw.spawn('item-test-ship', x) as ItemTestShip;
+  tw.run(1);
+  ship.mount(tw.player as Player);
+  tw.run(2);
+  ship.cells = cells;
+  return { tw, ship };
+}
+
+describe('a mounted player frees a tied hostage by touch (bug 7.6)', () => {
+  for (const bind of ['chair', 'sack'] as const) {
+    it(`${bind}: the vehicle body overlapping it frees it (+1 tally); apart, it stays tied`, () => {
+      const { tw, ship } = riderWorld(300);
+      const p = tw.player as Player;
+      expect(p.state).toBe('mounted');
+      const h = tw.spawn('hostage', 500, { bind, drop: 'none', band: 0 }) as Hostage;
+      tw.run(30);
+      expect(h.state).toBe('tied');
+      ship.x = h.x - 6;
+      tw.run(2);
+      expect(h.state).not.toBe('tied');
+      expect(tw.session.slots[0].rescued).toBe(1);
+      expect(tw.world.errors).toEqual([]);
+    });
+  }
+
+  it('a bind that a touch does not free (float) stays tied under the vehicle', () => {
+    const { tw, ship } = riderWorld(300);
+    const h = tw.spawn('hostage', 500, { bind: 'float', drop: 'none' }) as Hostage;
+    tw.run(2);
+    ship.x = h.x;
+    tw.run(4);
+    expect(h.state).toBe('tied');
+  });
+});
+
+describe('vehicle-state drops (ams extras §6)', () => {
+  const share = (tw: TestWorld, n = 600): number => {
+    let k = 0;
+    for (let i = 0; i < n; i++) if (DROP_TABLES.crate(tw.world).some((s) => s.id === 'pickup-repair')) k++;
+    return k / n;
+  };
+
+  it(`a rider with a damaged vehicle in ams: the crate table gives pickup-repair in about ${REPAIR_SHARE * 100} % of the rolls`, () => {
+    const { tw } = riderWorld(300, 1);
+    expect(repairWanted(tw.world)).toBe(true);
+    expect(Math.abs(share(tw) - REPAIR_SHARE)).toBeLessThan(0.06);
+  });
+
+  it('full cells, on foot or another mission: no repair rolls and the rng sequence is untouched', () => {
+    const full = riderWorld(300, 3).tw;
+    const other = riderWorld(300, 1, 'm2').tw;
+    const foot = new TestWorld({ playerX: 100 });
+    foot.session.startMission('ams');
+    for (const tw of [full, other, foot]) {
+      expect(repairWanted(tw.world)).toBe(false);
+      // The same rng state gives the same rolls as a world without the rule (no extra roll).
+      const a = new World({ seed: 77 });
+      tw.world.rng.setState(a.rng.getState());
+      for (let i = 0; i < 20; i++) expect(specIds(DROP_TABLES.crate(tw.world)).join('+')).toBe(specIds(DROP_TABLES.crate(a)).join('+'));
+      expect(share(tw, 200)).toBe(0);
+    }
+  });
+
+  it('withVehicleDrops swaps only food / gem drops (about 30 %) and passes other drops without a roll', () => {
+    const { tw } = riderWorld(300, 2);
+    let swapped = 0;
+    for (let i = 0; i < 600; i++) {
+      const out = withVehicleDrops(tw.world, [{ id: 'pickup-gem', params: { kind: 'gem' } }]);
+      if (out[0].id === 'pickup-repair') swapped++;
+    }
+    expect(Math.abs(swapped / 600 - REPAIR_SHARE)).toBeLessThan(0.06);
+    const bombs = [{ id: 'pickup-bombs' }];
+    expect(withVehicleDrops(tw.world, bombs)).toBe(bombs);
+    expect(withVehicleDrops(tw.world, [])).toEqual([]);
   });
 });

@@ -28,14 +28,21 @@
  * each preview figure a third; each group draws at the art tier once the screen art pool has
  * built it (the 2× or 1× art until then), so a large display shows the HD art. A character
  * without select art shows its 32 × 32 portrait on a dark panel (the retired heroes, tests).
+ *
+ * Gamepads (docs/design/ams-extras.md §10): with 2 players each pad drives its own player's
+ * cursor. START or the south button on a free pad claims the first player without a pad (that
+ * press does nothing else); while a free pad is connected, a player without a pad who is still
+ * choosing blinks `PRESS START` in the bottom row instead of `STAND BY`. The keyboard sets keep
+ * working for both.
  */
 import type { Color } from '../../engine/color';
 import { measure } from '../../engine/font';
+import { PAD } from '../../engine/pads';
 import { INK, PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { frameW, getFrame, hasSprite, setArtDensity, type ArtDensity } from '../../engine/sprites';
-import { centerText, menuKeys, uiText, UI_GOLD, type GameApp } from '../app';
+import { centerText, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import {
   MIL_HAZARD_Y,
   MIL_PANEL_H,
@@ -315,6 +322,7 @@ export class CharacterSelectScene implements Scene {
     const app = this.app;
     // A rattle as each shutter starts to rise.
     for (let i = 0; i < this.roster.length && i < MIL_PANELS; i++) if (this.t === SHUTTER_DELAY + i * SHUTTER_STAGGER) app.audio.sfx('ui/mil-shutter');
+    if (this.players === 2) this.claimPads();
     for (let p = 0; p < this.cursors.length; p++) {
       const c = this.cursors[p];
       if (c.chosen) {
@@ -352,6 +360,26 @@ export class CharacterSelectScene implements Scene {
       this.leaving = true;
       startCampaign(app, { players: this.players, characters: this.cursors.map((c) => c.chosen ?? 'recruit') });
     }
+  }
+
+  /**
+   * 2 players: START or the south button on a free pad claims the first player without a pad
+   * (P1 first). The claiming press is hidden from that player's cursor.
+   */
+  private claimPads(): void {
+    const input = this.app.input;
+    const gp = input.freePadPressed(PAD.start, PAD.south);
+    if (gp < 0) return;
+    const slot = !input.slotHasPad(0) ? 0 : !input.slotHasPad(1) ? 1 : -1;
+    if (slot < 0) return;
+    input.claimPad(slot as 0 | 1, gp);
+    this.app.audio.sfx('ui/move');
+  }
+
+  /** Player p has no pad while a free pad is connected (2 players): the bottom row asks for START. */
+  wantsPad(p: number): boolean {
+    const input = this.app.input;
+    return this.players === 2 && !input.slotHasPad(p as 0 | 1) && input.freePads() > 0;
   }
 
   /** Confirm the highlighted soldier (taken by the other player: refused, or the next free one when `force`). */
@@ -550,7 +578,8 @@ export class CharacterSelectScene implements Scene {
       const lit = ready || ((this.t >> 5) & 1) === 0;
       const left = p === 0;
       uiText(r, left ? 'P1' : 'P2', left ? 20 : 364, ROW_Y, SIDE_COLORS[p], left ? 'left' : 'right');
-      if (lit) uiText(r, ready ? 'READY!' : 'STAND BY', left ? 36 : 348, ROW_Y, ready ? UI_GOLD : PAL.snow[2], left ? 'left' : 'right');
+      const ask = !ready && this.wantsPad(p);
+      if (lit) uiText(r, ready ? 'READY!' : ask ? 'PRESS START' : 'STAND BY', left ? 36 : 348, ROW_Y, ready ? UI_GOLD : ask ? UI_WHITE : PAL.snow[2], left ? 'left' : 'right');
     }
     const secs = Math.min(99, this.secondsLeft);
     uiText(r, TWO_DIGITS[secs], r.w >> 1, ROW_Y - 1, secs <= 5 ? PAL.red[3] : PAL.gold[3], 'center', 'big');

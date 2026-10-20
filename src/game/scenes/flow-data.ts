@@ -132,6 +132,24 @@ export const HOW_TO_PLAY: readonly (readonly [string, string])[] = [
   ['FREE THE CRITICS. STOP THE ANTHEM.', ''],
 ];
 
+/**
+ * The HOW TO PLAY card for a gamepad (docs/design/ams-extras.md §10): the same lines with the
+ * pad's own labels (pad-prompt.ts `drawPadLine` tokens `{FIRE}` `{JUMP}` `{BOMB}` `{START}`:
+ * PlayStation ✕ ○ □ △ glyphs, Xbox A B X Y, Nintendo B A Y X, generic positions).
+ */
+export const HOW_TO_PLAY_PAD: readonly (readonly [string, string])[] = [
+  ['D-PAD / LEFT STICK', 'MOVE AND AIM'],
+  ['↑ + ← / →', 'AIM DIAGONALLY'],
+  ['{FIRE}', 'SHOOT (KNIFE UP CLOSE)'],
+  ['{JUMP}', 'JUMP'],
+  ['HOLD {JUMP}', 'GLIDE (SWAN)'],
+  ['↓ + {JUMP}', 'DROP DOWN / LEAVE A VEHICLE'],
+  ['{BOMB}', 'THROW A GRENADE'],
+  ['{FIRE} + {BOMB}', 'VEHICLE SPECIAL'],
+  ['{FIRE} + {JUMP}', 'RAM!'],
+  ['{START}', 'PAUSE / PLAYER 2 JOINS'],
+];
+
 /** Mode select difficulty row (GDD §13.4; military nicknames, docs/design/squad.md §3.3): the gold subtitle and the hint. */
 export const DIFFICULTY_INFO: Readonly<Record<Difficulty, { readonly name: string; readonly nick: string; readonly hint: string }>> = {
   easy: { name: 'EASY', nick: '"RECRUIT"', hint: 'MORE LIVES. SLOWER BULLETS.' },

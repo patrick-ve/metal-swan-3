@@ -1,7 +1,8 @@
 /**
  * Player options that content and the HUD read (GDD §13.13): difficulty, credits, volumes, the
  * announcer, speech bubbles, the boss bar, screen shake, reduced flashes, the graphics filter
- * and the art detail (read by main.ts) and the first-person mouse look and sensitivity (main.ts, the fps scene). Saved through the engine `Store`.
+ * and the art detail (read by main.ts), the first-person mouse look and sensitivity (main.ts, the fps scene) and gamepad
+ * RUMBLE (GameplayScene, docs/design/ams-extras.md §10). Saved through the engine `Store`.
  *
  * Content reaches them with `settingsOf(world)` (context.ts); the Options scene edits
  * `app.settings` and calls `saveSettings`. Pure data, no DOM.
@@ -64,6 +65,8 @@ export interface GameSettings {
   mouseLook: boolean;
   /** SENSITIVITY 1..10 of the mouse look (0.6 × s angle units per pixel). */
   mouseSensitivity: number;
+  /** RUMBLE: short pad rumbles (death, a big explosion near, a boss part break, a vehicle hit; added 2026-10-20). */
+  rumble: boolean;
 }
 
 export const DEFAULT_SETTINGS: Readonly<GameSettings> = Object.freeze({
@@ -81,6 +84,7 @@ export const DEFAULT_SETTINGS: Readonly<GameSettings> = Object.freeze({
   artDetail: 'auto',
   mouseLook: true,
   mouseSensitivity: 5,
+  rumble: true,
 });
 
 /** Is `v` a GRAPHICS value ('pixel' | 'smooth' | 'xbr')? */
@@ -139,6 +143,8 @@ function clean(v: unknown): GameSettings {
     // Added 2026-10-16 (first-person mode): older saves have none and get the defaults.
     mouseLook: bool('mouseLook', d.mouseLook),
     mouseSensitivity: Math.max(1, vol('mouseSensitivity', d.mouseSensitivity)),
+    // Added 2026-10-20 (Bluetooth controllers): older saves have none and get ON.
+    rumble: bool('rumble', d.rumble),
   };
 }
 

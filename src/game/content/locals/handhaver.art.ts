@@ -7,7 +7,8 @@
  * idle frame squeezed by turnSquash; the Turner in handhaver.ts plays it narrowing, flips, then
  * widening), alert (1), tell (3: opens the book, licks the pencil, writes),
  * throw (5: the flick at frame 1, then a 2-frame recover that eases the arm down), photo-pose (1), die (6: swoons), die-knife, die-blast, die-burn,
- * die-crush, and the continue reactions (deferred): laugh (2: head back, pointing, the book kept)
+ * die-crush, and the continue reactions (deferred): gloat (5, frames picked by the game: writes in
+ * the open book ×2, tears the page off and holds it up, lets it go, stands back with the book shut)
  * and cower (2: knees bent, an arm over the cap, trembling). `enemy/boete-ticket/fly` (4: the
  * fluttering ticket, centre anchor).
  *
@@ -111,18 +112,61 @@ function bookHd(open: boolean, d: HdD): PixelBuffer {
   return c.render({ outline: 'A', ao: 0.25, rimLight: 2 });
 }
 
-/** A figure with the book in the far hand (in front of the chest) when `bookOpen` is set. */
-function officer(style: HumanStyle, pose: Pose, bookAt: 'none' | 'shut' | 'open', d: Density = 1): Frame {
+/**
+ * A figure with the book in the far hand (in front of the chest) when `bookAt` is set; `under`:
+ * the book under the hands (the pencil hand writes on its page).
+ */
+function officer(style: HumanStyle, pose: Pose, bookAt: 'none' | 'shut' | 'open', d: Density = 1, under = false): Frame {
   const f = renderHuman(style, { weapon: 'none', ...pose }, 'full', d);
   if (bookAt === 'none') return f;
   const hip = f.pts?.hip ?? [0, -15];
   const open = bookAt === 'open';
   const at = { x: hip[0] + (open ? 3 : 5), y: hip[1] - (open ? 9 : 5) };
   const piece: Piece = d === 1 ? { buf: book(open), ...at } : { buf: bookHd(open, d), ...at, density: d };
+  if (under) piece.behind = true;
   return withPieces(f, [piece]);
 }
 
 const A = (sh: number, el: number, hand: 'fist' | 'open' | 'point' = 'fist') => ({ sh, el, hand });
+
+/** The pencil in the writing fist: a short stick from the fist down onto the page (no outline: it lies inside the figure). */
+function pencil(): PixelBuffer {
+  const b = new PixelBuffer(3, 3);
+  b.set(0, 0, PAL.gold[3]);
+  b.set(1, 1, PAL.gold[2]);
+  b.set(2, 2, PAL.black[1]);
+  return b;
+}
+
+/** The HD pencil (the 1× 3 × 3 box): a lit yellow hexagonal stick, a pale wood cone and the graphite tip. */
+function pencilHd(d: HdD): PixelBuffer {
+  const c = new HdCanvas(3, 3, d);
+  const wood = c.material({ ramp: PAL_HD.gold, lo: 3, hi: 6, spec: 0.4, shine: 14 });
+  const lead = c.material({ ramp: BLACK_ONE_HUE, lo: 1, hi: 4, spec: 0.5, shine: 16 });
+  c.capsule(0.5, 0.5, 2, 2, 0.42, 0.36, { mat: wood, z: 0 });
+  c.capsule(2.1, 2.1, 2.55, 2.55, 0.3, 0.15, { mat: lead, z: 0.2 });
+  return c.render({ outline: 'none', ao: 0 });
+}
+
+/** Add the pencil to the writing fist (its tip toward the page, forward and down). */
+function withPencil(f: Frame, on: boolean): Frame {
+  if (!on) return f;
+  const hand = f.pts?.hand ?? [6, -20];
+  const d = f.density ?? 1;
+  const at = { x: Math.round(hand[0]) + 1, y: Math.round(hand[1]) };
+  const piece: Piece = d === 1 ? { buf: pencil(), ...at } : { buf: pencilHd(d as HdD), ...at, density: d };
+  return withPieces(f, [piece]);
+}
+
+/** The torn-off page held up in the near hand (the BOETE ticket, held up by its lower edge). */
+function withPage(f: Frame, page: boolean): Frame {
+  if (!page) return f;
+  const hand = f.pts?.hand ?? [8, -26];
+  const d = f.density ?? 1;
+  const at = { x: Math.round(hand[0]) - 3, y: Math.round(hand[1]) - 7 };
+  const piece: Piece = d === 1 ? { buf: ticketFrames()[0].buf, ...at } : { buf: ticketFramesHd(d as HdD)[0].buf, ...at, density: d };
+  return withPieces(f, [piece]);
+}
 const HOLD = { to: [7, 9] as const, hand: 'fist' as const };
 
 const TELL: readonly Pose[] = [
@@ -144,19 +188,21 @@ export const HANDHAVER_THROW_TIMING: readonly number[] = [3, 5, 4, 4, 4];
 export const HANDHAVER_WALK_TPF = 6;
 
 /**
- * Continue reactions. Laugh: standing, the head tilted back, the near arm pointing forward at the
- * empty spot, the far hand keeps the book; the eyes stay shut while the mouth opens wide (frame 1)
- * and closes in a grin as the shoulders bob 1 px down (frame 2).
+ * Continue reactions. The gloat (docs/design/ams-extras.md §1; the game picks the frame by its
+ * phase, handhaver.ts `GLOAT_FRAME`: write, write2, tear, drop, done — keep this order): he
+ * writes the fine in the open book (the fist with the pencil on the page, the head bent over it;
+ * frame 2 the pencil moved on and a blink), tears the page off and holds it up beside his cap,
+ * lets it go (the hand open, palm down: it flutters onto the spot as a `GloatPage`), then stands
+ * back, the book shut at his chest, the free hand at his belt, the chin up. Never a point or a
+ * laugh.
  */
-const LAUGH: readonly Pose[] = [0, 1].map((k): Pose => ({
-  ...P.STAND,
-  armN: A(96, 8, 'point'),
-  armF: { to: [9, 6 - k], hand: 'fist' },
-  lean: -6,
-  hunch: k,
-  head: { tilt: -20 },
-  expr: (['yawn', 'happy'] as const)[k],
-}));
+const GLOAT: readonly { pose: Pose; book: 'shut' | 'open'; under?: boolean; page?: boolean; pencil?: boolean }[] = [
+  { pose: { ...P.STAND, armF: HOLD, armN: { to: [6, 2], hand: 'fist' }, head: { tilt: 14 }, expr: 'normal' }, book: 'open', under: true, pencil: true },
+  { pose: { ...P.STAND, armF: HOLD, armN: { to: [8, 3], hand: 'fist' }, head: { tilt: 16 }, expr: 'blink' }, book: 'open', under: true, pencil: true },
+  { pose: { ...P.STAND, armF: HOLD, armN: { to: [9, -6], hand: 'fist' }, lean: -2, head: { tilt: -4 }, expr: 'normal' }, book: 'open', page: true },
+  { pose: { ...P.STAND, armF: HOLD, armN: { to: [11, 1], hand: 'open' }, lean: 2, head: { tilt: 6 }, expr: 'normal' }, book: 'shut' },
+  { pose: { ...P.STAND, armF: HOLD, armN: A(14, 70, 'fist'), lean: -3, head: { tilt: -8 }, expr: 'normal' }, book: 'shut' },
+];
 /**
  * Cower: knees bent low, both hands clamped over the cap, panicking; frame 2 trembles (the upper
  * body sways 1 px forward). The book goes into a pocket: both hands are busy.
@@ -171,8 +217,9 @@ const COWER: readonly Pose[] = [0, 1].map((k): Pose => ({
   head: { dy: 1, tilt: 10 },
   expr: 'panic',
 }));
-/** Ticks per frame of the reactions (both loop). */
-export const HANDHAVER_LAUGH_TPF = 8;
+/** Gloat timing (the frames' own durations; the game holds each frame as long as its phase). */
+export const HANDHAVER_GLOAT_TIMING: readonly number[] = [8, 8, 10, 12, 60];
+/** Ticks per frame of the cower (it loops). */
 export const HANDHAVER_COWER_TPF = 3;
 
 /** Walk with the free (near) arm swinging against the legs; the far hand keeps the book. */
@@ -196,7 +243,7 @@ function defineOfficer(set: string, style: HumanStyle): void {
   defHi(pre + 'throw', (d) => THROW_ALL(style).map((p, i) => officer(style, p, i < 3 ? 'open' : 'shut', d)), { ...o, durations: HANDHAVER_THROW_TIMING, loop: false });
   defHi(pre + 'photo-pose', (d) => [officer(style, { ...P.STAND, armN: A(160, 30, 'open'), armF: HOLD, expr: 'happy' }, 'shut', d)], o);
   // Continue reactions (rare: deferred; they show only around a continue).
-  defHi(pre + 'laugh', (d) => LAUGH.map((p) => officer(style, p, 'shut', d)), { ...o, ticksPerFrame: HANDHAVER_LAUGH_TPF, defer: true });
+  defHi(pre + 'gloat', (d) => GLOAT.map((g) => withPencil(withPage(officer(style, g.pose, g.book, d, g.under === true), g.page === true), g.pencil === true)), { ...o, durations: HANDHAVER_GLOAT_TIMING, loop: false, defer: true });
   defHi(pre + 'cower', (d) => COWER.map((p) => officer(style, p, 'none', d)), { ...o, ticksPerFrame: HANDHAVER_COWER_TPF, defer: true });
   const swoon: readonly Pose[] = [
     { ...P.STAND, armN: A(170, 30, 'open'), armF: A(-20, 40, 'open'), head: { tilt: -10 }, expr: 'dazed' },

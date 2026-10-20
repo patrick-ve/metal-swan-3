@@ -94,7 +94,7 @@ Attract-mode alternates (cycled under the logo, 300 ticks each):
 
 | Mission | Name | Biome | Sections played | Vehicle | Boss | Time (good player) |
 |---|---|---|---|---|---|---|
-| ams | THE FRYING DUTCHMAN (MISSION 1, prologue) | Amsterdam canals, morning → sunset | `a` → `b` → `c` → `d` | SWAN-3 (parked in `b`, may continue to `c`, `d`) | ROBO-HALSEMA (robot mayor) | 4:00 |
+| ams | THE FRYING DUTCHMAN (MISSION 1, prologue) | Amsterdam canals, morning → sunset | `a` → `b` → `c` → `c1`/`c2` → `d` | SWAN-3 (parked in `b`, may continue to `c`, `c1`/`c2`, `d`); BIERFIETS (hijacked in `a` and `b`) | ROBO-HALSEMA (robot mayor); mid-boss the parking scan car (`c`) | 4:30 |
 | m1 | BRASS ON THE RIVERBANK | river town, spring morning | `a` → `b1`/`b2` → `c` | SWAN-3 (`c`) | THE ENCORE (riverboat) | 4:00 |
 | m2 | DUNE BUGLE | desert flats and canyon, noon | `a` → `b` → `c1`/`c2` → `d` | SUNDAE DRIVER (`b`, may continue) | THE BA-DUM BEHEMOTH (drum tank) | 5:00 |
 | m3 | THE HIGH NOTE | ski resort mountain, sunset | `a` → `b1`/`b2` (vertical) → `c` | SWAN-3 (`a`; `c` if she survives `a`) | THE WINDBAG (bagpipe airship) | 4:30 |
@@ -106,7 +106,7 @@ Attract-mode alternates (cycled under the logo, 300 ticks each):
   `docs/design/amsterdam.md`.
 - One-credit clear by a good player on NORMAL: **≈ 26 minutes** (+ ≈ 4 for `ams`) including cards and tallies.
   A first clear with continues: 40–45 minutes.
-- 4 route branches (m1, m2, m3, m4); every branch rejoins before the boss.
+- 5 route branches (ams, m1, m2, m3, m4); every branch rejoins before the boss.
 - Vertical sections: `m3-b1` and `m3-b2` (scroll up; one of them per run), `m5-b` (scroll down).
 - Vehicle sections: `m1-c`, `m2-b` (and optionally `m2-c1`/`m2-c2`/`m2-d`), `m3-a` (and `m3-c`
   when a swan survives `m3-a`), `m4-b`, `m5-a` (horizontal shoot-em-up flight).
@@ -357,6 +357,15 @@ pose for each moment: `docs/design/swan-mount/look.md` §6. The knife look is a 
 
 Engine buttons `left right up down fire jump bomb start` (default keys in ARCHITECTURE §5.2).
 
+**Gamepads** (2026-10-20, docs/design/ams-extras.md §10, docs/api/input.md): every pad by
+position — south **jump**, west **fire**, east **bomb**, START **start**, select **pause**; the
+D-pad and the left stick move. Only the labels differ: PlayStation ✕ jump, □ fire, ○ bomb (drawn
+glyphs); Xbox A / X / B; Nintendo and 8BitDo B / Y / A (by position); generic pads a position
+diamond. Menus, the help and CONTROLS show the labels of the pad in use; CONTROLS rebinds FIRE,
+JUMP, BOMB and START per player (P1 PAD, P2 PAD). Menus: south / west / START confirm, east back.
+OPTIONS RUMBLE (on by default): a short, light rumble on the player's own pad for the player's
+death, a big explosion near the player, a boss part break and a hit on the player's vehicle.
+
 | Input | On foot | In a ground vehicle | In the Trumpeter (flight) |
 |---|---|---|---|
 | left / right | walk; in the air steer (facing follows the pressed side at once) | drive | fly |
@@ -472,8 +481,15 @@ fire is always a plain jump: her squat starts and fire is a shot (8.2).
   checkpoint rewind), and the machine gun (`TUNING.continues.giftWeapon`).
 - **Every player out:** the world keeps running, but the section script (no new waves), the
   section timer, auto-scroll and the boss's adds hold, so the camera holds too. The enemies on
-  screen stop, point at the spot where the last player went down and laugh (reaction `laugh`,
-  renewed every 15 ticks). The boss's attacks run on.
+  screen **gloat** (reaction `gloat`, 24 ticks renewed every 15; `docs/design/ams-extras.md` §1):
+  they stop attacking and go about their own business at the spot where the last player went
+  down — they never point, laugh or cheer. In `ams`: the handhaver walks up to the spot (at most
+  40 px, on his own floor), writes a fine, tears the page off and lets it flutter onto the spot
+  (`VERBODEN TE LIGGEN!`); a fatbike youth does a slow wheelie in place, his speaker thumping; a
+  delivery rider rings his bell, rides one lap and checks his phone; a gull lands at the spot and
+  pecks at the hero's lost fries; the stag party takes a selfie with the spot. At most one gag
+  bubble per enemy per hold. Other enemies stand still and face the spot. They still take
+  damage. The boss's attacks run on.
 - **The hero is back:** when a continued hero lands, every non-boss enemy on screen cowers in
   place for 90 ticks (reaction `cower`: a `!`, no attacks, still takes damage) and the boss
   staggers for 60 ticks (its attack holds, no adds; ROBO-HALSEMA shows her shout face and
@@ -516,6 +532,26 @@ fire is always a plain jump: her squat starts and fire is a shot (8.2).
 ### 4.9 Two-player co-op
 
 - P2 joins at any time with start and drops in like a respawn next to P1.
+  - **1-player game** (2026-10-20, docs/design/ams-extras.md §10): START on a free gamepad (any pad
+    but P1's), or the keyboard key **2**, makes P2 join: a credit (free on FREE PLAY; no credits:
+    nothing happens), the next squad hero P1 is not using, and the input, HUD, session and the
+    tier-4 working set switch to 2 players. A pad join leaves the keyboard to P1 (solo keys); a
+    keyboard join splits it into the 2-player key sets. The P2 HUD corner blinks `PRESS START`
+    while a free pad is connected. Until P2 joins, every pad drives P1. While P1 has no pad yet
+    (keyboard menus, a direct start) and no key was pressed in play, a pad's START is P1's own:
+    it claims the pad for P1 and pauses (no join, no credit; no `PRESS START` for that pad); once
+    the keyboard drives P1 in play, START on a pad makes P2 join with it. When the keyboard splits
+    in mid-play (a keyboard join, or P2 taking the keyboard after a lost pad), two callouts show
+    both key sets (`P1 KEYS: WASD F G H`, `P2 KEYS: ARROWS , . /`).
+  - **Claiming pads**: on the title and the mode select the pad that confirms is P1's; on the
+    2-player character select START or the south button on a free pad claims the first player
+    without a pad (`PRESS START` blinks in that player's corner); in a 2-player game START on a
+    free pad takes a player without a pad. A slot keeps its pad: one that drops out and comes back
+    (Bluetooth sleep) gets its own slot back, never the other player's. A third pad drives nobody
+    but may still navigate menus.
+  - **Lost pad**: when the pad of a player in play disconnects (2D or first person) the game
+    pauses with `CONTROLLER 2 LOST` / `RECONNECT OR PRESS START`; the same pad back, START on a
+    free pad (it takes the slot) or the keyboard resumes.
 - **No friendly fire.** Players pass through each other. A player can stand on a Swan's tail
   perch (8.2) or on the Bandwagon stage (moving one-way platforms).
 - **Camera:** follows the midpoint of the living players, ratchets forward and never leaves a
@@ -921,6 +957,16 @@ the engine step (`vy += g`, then `y += vy`); they are 3–4 % below the formulas
 | `sundae-driver` | m2-a end → m2-b → m2-c1/c2 → m2-d | 3 | sprinkle gun (turret) | sundae mortar (10) | JINGLE | 2.8 / 200 |
 | `bandwagon` | m4-b | 4 | brass cannon (bell) | drum boom (10) | CYMBAL WALL | 2.4 / 240 |
 | `trumpeter` | m5-a + final stage 1 | 3 | twin beak gun | dive bomb (20) | HONK | bail-out missile 4.0 |
+| `beer-bike` | ams-a, ams-b (hijacked; never carried, never on the water) | 3 | cork cannon (tap turret, 0° … −90°) | keg roll (10) | FOAM SPRAY | 3.0 / 200 |
+
+**`beer-bike` — BIERFIETS (ams; docs/design/ams-extras.md §2, API `docs/api/stag.md`).** The stag
+party's pedal beer bike: shoot its riders off (the driver runs, `MIJN FIETS!`) and it becomes
+rideable, or blow it up (400 HP of blasts or the knife, +2,000). Pedal drive (accel 0.08 to
+1.4 px/tick), a small hop, no glide; deep water wrecks it. Cork cannon 10 dmg, speed 7, cooldown 6;
+KEG ROLL (150 + splash r 24); FOAM SPRAY (fire + bomb: a 64-px cone, knocks soft enemies back,
+erases enemy shots; 3 shells, cooldown 240); RAM (fire + jump: 400 in r 40). 2P: the bar counter
+is a one-way perch while the bike is driven. At FABEL FRIET the rider gets off (the baker:
+`GEEN BIERFIETSEN!`): the bike stays in `a`.
 
 ---
 
@@ -1386,7 +1432,14 @@ fairness (tell ≥ 18 ticks in view, attack tokens, only the attack box kills).
 | `fatbike-youth` | 20 (pair 30) | 300 (500) | fat-tyre e-bike, brakes near the player, wheelie + `OI!` (T 24), a shin kick (jump it); gag `circles`; `pair` = a passenger kicks |
 | `delivery-rider` | 10 | 200 | fast pass at 2.2 px/tick, `TRING TRING!` (T 20) in view, a kick while passing; `from: 'behind'`; drops `pickup-food` |
 | `seagull` | 10 | 150 | perches on lamps / roofs (`perch`), steals fries (`gag: 'fries'`), `KAW!` (T 20) then a dive (contact only while diving); `flock: n` |
-| `handhaver` | 20 | 300 | walks in, licks the pencil (T 24), throws a fluttering `boete-ticket` at chest height (crouch it); sections `c`, `d` and the boss adds |
+| `handhaver` | 20 | 300 | walks in, licks the pencil (T 24), throws a fluttering `boete-ticket` at chest height (crouch it); sections `c`, `c1`, `c2`, `d` and the boss adds |
+| `stag-partier` | 20 (groom 40) | 300 (1,000) | a stag party (docs/design/ams-extras.md §2.1, `docs/api/stag.md`): matching party T-shirts, the groom in a pink tutu and a veil; keeps 100–160 px; shakes his bottle (T 24, `ams/cork-shake`) and fires one `cork` at chest height (crouch it; the groom 3); gags `toast`, `selfie`; sits down hard when hit; sections `a`, `b`, `c2` (on the party boat) |
+| `stag-beer-bike` | 400 (blasts, knife) | 2,000 | the enemy beer bike: 2–4 partiers on the stools fire corks in turn; rolls at 0.6 and stops 140–200 px from the player (and only fully in view); bullets ping off its body; every rider down → the rideable `beer-bike` (8.6) |
+
+The gloat (4.6): while every player is out the locals and the partiers go about their own
+business at the spot (the handhaver writes a ticket `VERBODEN TE LIGGEN!`, the youths wheelie,
+the rider rings and circles, the gull pecks at the hero's fries, the stag party takes a selfie
+`FOR THE GROUP CHAT!`); never a laugh or a point.
 
 Friendly NPCs and city life (`missions/ams/entities.ts`): the Fabel Friet baker (the briefing),
 the hot-dog vendor (salutes), the staff (the finale), tour boats, rideable `ams-boat-platform`s,
@@ -1441,6 +1494,27 @@ in front of the Stopera, a weapon crate at 960, a body wall 100 px in front of h
 or the chain stands (a 45° shot reaches the chain), 60 px once both are broken (the medallion).
 **Death:** the wig flies, the head boings, she sits and powers off. Score 20,000 + parts. Then
 the baker and the staff cheer (`FABEL FRIET / BLIJFT OPEN!`).
+
+### 10.0b ams — `ams-scan-car` — THE PARKING SCAN CAR (mid-boss, section `c`)
+
+Spec `docs/design/ams-extras.md` §3, code `src/game/content/bosses/ams-scan/`, API
+`docs/api/scan-car.md`. The city's white electric parking scan car (`SCANAUTO` on the boss bar;
+`PARKEERCONTROLE`, the red bars and the X X X of the city on its doors, the roof scanner box with
+camera windows and the `24`, a handhaver at the wheel). No WARNING banner; the stage music plays
+on. **Arena:** the end of the shop quay, `LOCK 1984–2368`. **Intro:** it drives in from the right,
+brakes, lifts the scanner (60 ticks, invulnerable): `KENTEKEN GESCAND.` **Parts** (required):
+`scanner` 400 (breaking it stops SCAN LOCK) and `body` 900. **Attacks** (telegraphs ≥ 18):
+SCAN LOCK (a red reticle follows the nearest player 40 ticks, freezes 24 and blinks, then the
+printer shoots a ticket strip over the heads to the frozen spot, where it flutters straight down:
+step away); RAM (it revs 24 ticks, then drives across at 3 px/tick; only then the leading part of
+its low body hurts: jump it; never into a clamped player; it turns at the far side); phase 2
+(the scanner broken or the body ≤ 50 %) TOW CALL (`TAKELWAGEN!`: a tow truck `ams-tow-truck`,
+300 HP, backs in with reversing beeps, swings its crane hook low and drops 2 wheel clamps
+`ams-wheel-clamp` that hop at the players; a clamped hero (status `clamped`, 45 ticks) can turn,
+aim and shoot but not walk or jump; a clamp breaks after 2 hits or the knife). **Death:** the
+airbag pops (`AIRBAG!`), it flips onto its roof smoking, the driver runs. Score 10,000; drops
+`pickup-repair` when a player rides a vehicle, else a weapon (H, R or L). The continue's stagger
+works (10.0). Then both routes open (11.0a).
 
 ### 10.1 m1 — `encore` — THE ENCORE (Commodore Blare)
 
@@ -1814,26 +1888,55 @@ the player drops back into the current stage, and destroyed parts stay destroyed
 ### 11.0a ams — THE FRYING DUTCHMAN (MISSION 1)
 
 Full layout, art brief and texts: `docs/design/amsterdam.md` §6–§8; API `docs/api/missions-ams.md`.
-Music `ams` (street-organ waltz), boss `ams-boss`. `next: 'm1'`. Hostages a 4 / b 3 / c 3
-(mostly `tourist`). Golden record on the gable ledge of `ams-a` (x 2334, y 66).
+Music `ams` (street-organ waltz), boss `ams-boss`. `next: 'm1'`. Hostages a 5 / b 4 / c 2 /
+c1 1 / c2 1 (mostly `tourist`; a and b include one hidden tourist each; the same total, 12, on
+both routes). Golden record on the gable ledge of `ams-a` (x 2334, y 66).
+
+**Arcade extras (2026-10-20, spec `docs/design/ams-extras.md`):** the gloat replaces the laugh of
+the in-world continue (§1; 4.6, 9.6); the stag party and the beer bike (§2; 8.6, 9.6); the
+parking scan car mid-boss at the end of `c` (§3; 10.0b); the route choice after it: `c1` BRUG or
+the canal cruise `c2` RONDVAART (§4); secrets (§5: `ams-secret`, a small shootable spot with a
+1-px glint; 1–3 hits, a knife or a blast reveal it, +100; it hides a pickup, the one hidden 1UP
+or a tied tourist; one or more per section, 9 in all); a repair source (§6: `pickup-repair` in
+about 30 % of the crate and food rolls while a player rides a damaged vehicle, a repair crate
+after the scan car, the scan car's drop); bug fixes (§7); Bluetooth controllers for 2 players
+(§10; 4.1, 4.9).
 
 - **`a` Grachtengordel** (3584, checkpoints 1300, 2500): quay street (crate M @420, tourist at
   the bike rack, a gull asleep on a lamp), bridge 1, the side canal (two houseboats and a little
   boat), `LOCK 1520–1904` PLEINTJE (fatbike gang from both sides, a gull, a rider from behind),
   the shopping street (riders both ways, a gull flock, tulip stall, herring cart, awnings up to
-  the record), bridge 2, `LOCK 3200–3584` FABEL FRIET (the last wave), THE BRIEFING (input
-  locked, timer paused, 6 hint lines, fire skips; the baker tosses a flamethrower: "FRIES FOR THE
-  ROAD"), `exitTo('b')`.
+  the record; a stag party on foot: two clink bottles, one takes a selfie, the groom walks in),
+  `LOCK 2120–2504` BIERFIETS (the beer bike rolls in: the first hijack), bridge 2,
+  `LOCK 3200–3584` FABEL FRIET (the last wave; a beer-bike rider gets off: `GEEN BIERFIETSEN!`),
+  THE BRIEFING (input locked, timer paused, 6 hint lines, fire skips; the baker tosses a
+  flamethrower: "FRIES FOR THE ROAD"), `exitTo('b')`. Secrets: the bike in the elm, the houseboat
+  hatch (a hidden tourist), the crate on a gable hoist.
 - **`b` Museumplein** (3072, 1100, 2300): riders through the Rijksmuseum passage, the hot-dog
   vendor and THE SWAN parked at 1080 (2P: the Mute), Gramps `I BROUGHT HER ALONG.` /
   `DON'T TELL ACCOUNTING.`, the glide lesson on the first mount (records `ams/swan-met`,
-  `m1/swan-lesson`; m1-c greets her as an old friend), the gull set piece, youths on the lawn,
-  the canal road; the exit opens after the last squad.
-- **`c` Amstel** (3328, 1200, 2400, 3100; vehicles `swan`): the handhavers arrive, the canal
-  with six houseboats and two little boats, the shop quay, the white Amstel bridge, the
-  Blauwbrug; the exit opens after the last squad.
+  `m1/swan-lesson`; m1-c greets her as an old friend), the gull set piece with a stag party
+  (toast, selfie), youths on the lawn, the canal road with one more beer bike; the exit opens
+  after the last squad. Secrets: the museum crate `NIET OPENEN` (a hidden tourist), the hot-dog
+  stand's roof flag (the hidden 1UP).
+- **`c` Amstel** (2608, 1200, 2176; vehicles `swan`): the handhavers arrive, the canal with six
+  houseboats and two little boats, the shop quay, `LOCK 1984–2368` the parking scan car (10.0b),
+  a repair crate; then the fork: `BRUG ↑` (the white bridge's ramp → `c1`) or `RONDVAART ↓` (the
+  jetty steps to the tour boat → `c2`). Secret: the bike fished out of the canal.
+- **`c1` Brug** (1388, 460, 1160; vehicles `swan`): the white Amstel bridge (its sack tourist) and
+  the Blauwbrug to Waterlooplein, the last squad (the old `c` from x 1940). Secret: the crate on
+  the first portal's balance beam.
+- **`c2` Rondvaart** (2632, 640, 1320, 2040; vehicles `swan`): the canal cruise: board the tour
+  boat (`ams-cruise-boat`: deck and glass roof are one-way platforms; it holds the camera at
+  5/8 px/tick and stops for each wave until it is cleared or 15 s); gulls dive at it, handhavers
+  throw tickets from two low bridges (`BUKKEN!`: a standing roof rider must crouch or get down;
+  never deadly before it was 2 s in view), the moored houseboat with a tied tourist, the stag
+  party alongside on a small party boat, the Magere Brug (handhavers and gulls on it; it opens
+  for the boat) with Carré on the far bank; the boat docks at the Waterlooplein jetty. On foot the
+  river drowns; the Swan swims alongside. Secret: the moored houseboat's roof hatch.
 - **`d` Stopera** (1280, checkpoint 896; vehicles `swan`): the flea market (stalls, a few
-  handhavers), then ROBO-HALSEMA (10.0a), the cheering finale and MISSION COMPLETE.
+  handhavers, a repair crate, the flea-market chest secret), then ROBO-HALSEMA (10.0a), the
+  cheering finale and MISSION COMPLETE.
 
 ### 11.1 m1 — BRASS ON THE RIVERBANK
 
@@ -2857,14 +2960,16 @@ bubble); he leaves when the game resumes.
 ### 13.9 Continue
 
 - **In the world (since 2026-10-20, user decision; 4.6):** no overlay, no dimming, no menu.
-  1 player: the HUD draws `CONTINUE?` (big, C, y 60), the countdown digit (big ×2, C, y 90)
+  1 player: the HUD draws `CONTINUE?` (big, C, y 40), the countdown digit (big ×2, C, y 66)
   `9` … `0` (60 ticks each, each fire/jump press removes 15 ticks), `PRESS START` (small, C,
-  y 130, blinking) and `FREE PLAY` or `CREDITS 04` (small, C, y 140) over the live world; the
+  y 92, blinking) and `FREE PLAY` or `CREDITS 04` (small, C, y 102) over the live world (the
+  upper third: the gloat's gag bubbles at the spot stay clear of it); the
   score stays in the HUD corner. 2 players: the texts are drawn small inside the out player's
   HUD corner. The stage (or boss) music plays on; the announcer says `CONTINUE?` when every
   player is out; `ui/countdown` per digit.
-- The enemies on screen laugh at the empty spot (strips `<art>/laugh`); when the hero is back
-  they cower (`<art>/cower`; Legion soldiers without one use `panic`) — 4.6.
+- The enemies on screen gloat at the spot (their own business there, strips `<art>/gloat`;
+  never a laugh or a point); when the hero is back they cower (`<art>/cower`; Legion soldiers
+  without one use `panic`) — 4.6.
 - The first-person mode keeps the overlay (`ContinueScene`): the view freezes and dims to 50 %,
   the score lines (small, C, y 152), music `continue`, at 0 the `game-over` jingle for 100 ticks,
   then 13.10.
@@ -3092,17 +3197,24 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
 - **Creatures** (`creatures/`): `bullfrog`, `windup-bot` (param `variant`: `walk` | `ski` |
   `fly`), `rattler`, `echo-bat`, `ram-goat`, `usher-bot`, `kazoo-drone` (params `formation`:
   `v` | `sine` | `loop` | `dive`; `shooter`).
-- **Player vehicles** (`vehicles/`): `swan`, `sundae-driver`, `bandwagon`, `trumpeter`.
+- **Player vehicles** (`vehicles/`): `swan`, `sundae-driver`, `bandwagon`, `trumpeter`,
+  `beer-bike` (ams; its keg `beer-keg`).
 - **Amsterdam locals** (`locals/`, mission `ams`): `fatbike-youth`, `delivery-rider`, `seagull`,
   `handhaver` and its projectile `boete-ticket` (see `docs/api/locals.md`). Friendly NPCs and
   set dressing (`missions/ams/`): `ams-hotdog-vendor`, `ams-baker`, `ams-staff`,
   `ams-window-waver`, `ams-cyclist-bg`, `ams-pigeons`, `ams-ducks`, `ams-tour-boat`, `ams-boat-platform`.
   Breakables: `ams-tulip-stall`, `ams-market-stall`, `ams-herring-cart`, `ams-bike-rack`.
+  The ams extras (docs/design/ams-extras.md): `stag-partier`, `stag-beer-bike` and the
+  projectile `cork` (`stag/`); the cruise (`missions/ams/cruise.ts`): `ams-cruise-boat`,
+  `ams-low-bridge`, `ams-magere-brug`, `ams-party-boat`; secrets `ams-secret`
+  (`missions/ams/secrets.ts`).
 - **Mini-bosses:** `golden-goose` (`bosses/m2`; parts `neck`, `hull`), `big-head` (`bosses/m4`;
   parts `moustache-left`, `moustache-right`, `mouth-speaker`, `head`).
 - **Bosses:**
   - `bosses/ams`: `ams-mayor` (ROBO-HALSEMA) — parts `stamp-arm`, `chain`, `medallion`, `head`
     (optional); projectile entities `noise-letter`, `shield-shot` (the stamp wave is internal).
+  - `bosses/ams-scan`: `ams-scan-car` (the mid-boss of ams-c) — parts `scanner`, `body`; adds
+    `ams-tow-truck`, `ams-wheel-clamp`; the printer's `ams-scan-ticket`; status `clamped`.
   - `bosses/m1`: `encore` — parts `horn`, `calliope`, `wheel`.
   - `bosses/m2`: `ba-dum-behemoth` — `hihat-arm`, `tom-left`, `tom-right`, `crash-shield`,
     `bass-drum`.
@@ -3130,8 +3242,8 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
 ### 15.5 Missions and sections (`missions/`)
 
 - `m0` (test range, unchanged).
-- `ams` THE FRYING DUTCHMAN (MISSION 1): `a` Grachtengordel · `b` Museumplein · `c` Amstel ·
-  `d` Stopera (boss).
+- `ams` THE FRYING DUTCHMAN (MISSION 1): `a` Grachtengordel · `b` Museumplein · `c` Amstel
+  (the scan car) · `c1` Brug · `c2` Rondvaart (the canal cruise) · `d` Stopera (boss).
 - `m1` BRASS ON THE RIVERBANK: `a` Puddlewick Quay · `b1` Chimney Chase · `b2` Storm Drain ·
   `c` River Run (boss).
 - `m2` DUNE BUGLE: `a` Rattlebone Flats · `b` Rocky Road · `c1` Canyon Floor · `c2` Mesa Top ·
@@ -3169,6 +3281,9 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
 | `fx/<id>` | `explosion-s`, `explosion-m`, `explosion-l`, `smoke`, `soot`, `poof`, `dust`, `confetti`, `music-note`, `steam-puff`, `helium-cloud`, `splash`, `spark`, `shadow`, `aim-line`, `stars-dizzy`, `flying-shako`, `stick-on-moustache`, `snow-puff`, `ice-cubes`, `tin-feather` (the Swan's stamped ivory feather plate, 4 turning frames), `muzzle-<weapon>` (also `muzzle-swan-beak-gun`) |
 | `ui/<id>` | `logo`, `cursor-swan`, `icon-life`, `icon-hostage`, `icon-bomb`, `icon-shell`, `icon-cell`, `icon-balloon`, `icon-weapon-<weapon>`, `onward`, `ride`, `bubble`, `newspaper`, `star`, `portrait-gusto` |
 | `npc/ams/<id>/…` | the Amsterdam friendly NPCs (vendor, baker, staff, window wavers, background cyclists, pigeons, ducks) |
+| `enemy/stag-…`, `enemy/cork/`, `vehicle/beer-bike/` | the stag party (look sets `stag-partier`, `stag-partier-1` … `-3`, `stag-groom`; the bike driver `stag-beer-bike`), the cork, the beer bike (`docs/api/stag.md` §5) |
+| `boss/ams-scan/…` | the scan car's layers (body, cabin, scanner, wheel, text), the reticle, ticket, tow truck, hook, clamps, wreck |
+| `decor/ams/…` (extras) | `secret-<look>` and `secret-glint`, `ams-cruise-boat`, `route-sign`, `pontoon`, `low-bridge` (+ `/back`), `magere-brug` (+ `/back`), `carre` |
 | `decor/<mission>/<id>` | static props and set-piece art per mission (banners, posters, signs, tents, the parked Trumpeters …; for the Swan beats: `m1/sign-no-diving`, `m1/judges-box`, `m1/sign-timpani`, `m3/sign-piste-closed`, `m3/k-line-blue`, `m3/k-line-red`, `m3/judges-stand`, `m3/snow-mound`, `m3/cable-car-cabin`) |
 
 ### 15.7 Sound effects
@@ -3211,6 +3326,14 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
 
 Mission `ams` (docs/design/amsterdam.md §4; `src/game/content/sfx/ams.ts`): `ams/bell`,
 `ams/bass-thump`, `ams/gull`, `ams/kick`, `ams/stamp`, `ams/chain`, `ams/ticket`.
+
+The ams extras (2026-10-20, docs/design/ams-extras.md; synth tables `sfx/ams-<area>.ts`, details
+in `docs/api/sfx.md` §2.1): the gloat `ams/gloat-scribble`, `ams/gloat-tear`, `ams/gloat-peck`;
+the stag party and the beer bike `ams/cork-shake`, `ams/cork-pop`, `ams/cork-cannon`,
+`ams/clink`, `ams/foam`, `ams/keg-roll`, `ams/beer-bell`, `ams/beer-creak`; the scan car
+`ams/scan-beep`, `ams/scan-up`, `ams/rev`, `ams/reverse-beep`, `ams/clamp-clunk`,
+`ams/ticket-print`, `ams/airbag`; the canal cruise `ams/route-horn`, `ams/route-bell`,
+`ams/route-creak`, `ams/route-bump`.
 
 Added 2026-10-14 with the sampled audio of ams and the start screens (each id has a quiet synth
 recipe as the fallback of its ElevenLabs take): `player/step` (footsteps in missions with
@@ -3344,10 +3467,12 @@ the GO arrow comes up.
    famous cartoon duck).
    Weapon pickups are ivory medallions, not dark boxes with a yellow letter.
 3. **Gags and transformations:** the one status gimmick is Helium Head (head and jump only; no
-   zombie, mummy, fat, gold or snowman transformation). Enemies never laugh at a player's death,
-   and panicking soldiers scurry quietly (no arm-waving, no scream). Set pieces (anthem salutes,
-   parade columns, floating pianos, the jingle queue, the sheet-music telegraph, the willow
-   bridge, the avalanche, the meltwater climb, the drum line, the timpani minefield, the ski-jump
+   zombie, mummy, fat, gold or snowman transformation). Enemies never laugh or point at a
+   player's death: while every player is out they gloat — their own business at the spot (a
+   fine, a wheelie, a lap with the phone, the hero's lost fries; 4.6) — and when the hero is back
+   they cower without a scream. Panicking soldiers scurry quietly (no arm-waving, no scream).
+   Set pieces (anthem salutes, parade columns, floating pianos, the jingle queue, the sheet-music
+   telegraph, the willow bridge, the avalanche, the meltwater climb, the drum line, the timpani minefield, the ski-jump
    K-lines; there is no broken-bridge glide) and all bosses (riverboat, drum kit, bagpipe
    airship, piano, organ, console, podium) are this project's own; there is no free-fall final
    fight.

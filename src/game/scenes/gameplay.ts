@@ -8,9 +8,16 @@
  * Missions that have a mission card (flow-data.ts) start with the card's banner (`MISSION 1` /
  * `START!`, 120 ticks, GDD §13.6) and announcer line, and end with `MISSION COMPLETE! BRAVO!`,
  * unless the MissionDef sets its own `startBanner`, `announce` or `clearLine`.
+ *
+ * Gamepads (docs/design/ams-extras.md §10, GDD §4.9): player 2 joins a 1-player game at any time
+ * with START on a free pad or the keyboard key 2 (a credit; the next squad hero; the input, HUD,
+ * session and tier-4 working set switch to 2 players); in a 2-player game START on a free pad
+ * takes a slot without a pad. The pad of a player in play dropping out pushes the lost-pad pause
+ * (`LostPadScene`). RUMBLE (rumble.ts) on deaths, big blasts, boss part breaks and vehicle hits.
  */
 import { NullAudio } from '../../engine/audio';
-import { ACTION_BUTTONS, type InputSource } from '../../engine/input';
+import { ACTION_BUTTONS, type Bindings, type InputSource } from '../../engine/input';
+import { PAD } from '../../engine/pads';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { browserArtPool, type ArtPool } from '../../engine/art-pool';
@@ -22,6 +29,7 @@ import {
   hasFramesAt,
   hasHiSprite,
   HI_ART_FRAME_BUDGET_MS,
+  isDeferredSprite,
   listHiSprites,
   preloadOrder,
   readyFrames,
@@ -44,7 +52,9 @@ import { GameOverScene } from './game-over';
 import { hasMissionCard, missionCard, ROSTER, VOICE } from './flow-data';
 import { GlitchBridgeScene } from './glitch-bridge';
 import { MissionCompleteScene } from './mission-complete';
-import { PauseScene, type PauseHost } from './pause';
+import { keyName } from './controls';
+import { LostPadScene, PauseScene, type PauseHost } from './pause';
+import { RumbleWatch } from './rumble';
 
 export interface NewGameOpts {
   players?: 1 | 2;
@@ -143,6 +153,18 @@ function sectionArt(mission: MissionArtDef, section: string | undefined): readon
   return mission.sections?.[section]?.art ?? [];
 }
 
+/**
+ * The sections that can come after `section` (`at` in `order`): its exits' targets (a route
+ * split such as ams c → c1 | c2 has two), else the next one in play order.
+ */
+export function nextSections(mission: MissionArtDef, order: readonly string[], section: string, at: number): string[] {
+  const exits = mission.sections?.[section]?.exits ?? [];
+  const to = [...new Set(exits.map((e) => e.to).filter((t) => !!mission.sections?.[t]))];
+  if (to.length) return to;
+  const next = order[at + 1];
+  return next ? [next] : [];
+}
+
 /** Ids (4× generators only) under `prefixes`, ranked by the first prefix each matches. */
 function idsUnder(prefixes: readonly string[], all: readonly string[]): string[] {
   const out: string[] = [];
@@ -177,12 +199,12 @@ const TWO_PLAYER_2X = ['enemy/fatbike-youth'];
 const SCREEN_ONLY = /^char\/[^/]+\/(select|portrait)/;
 
 /**
- * The in-world continue's reaction strips (GDD §4.6: `laugh` while every player is out, `cower`
- * when the hero is back): they show only around a continue, so they never join the tier-4
- * working set (the budget has no room for every set's pair). Drawn at tier 4 they show their 2×
- * art for a moment and are queued (`pumpDenseQueue`): the pool builds the ones on screen.
+ * The in-world continue's reaction strips (GDD §4.6: `gloat` while every player is out, `cower`
+ * when the hero is back; a seated stag rider's `sit-gloat` / `sit-cower`): they show only around a continue, so they never join the tier-4 working set (the budget has no room for every
+ * set's pair). Drawn at tier 4 they show their 2× art for a moment and are queued
+ * (`pumpDenseQueue`): the pool builds the ones on screen.
  */
-const ON_DEMAND_4X = /\/(laugh|cower)$/;
+const ON_DEMAND_4X = /\/(sit-)?(gloat|cower)$/;
 
 /** Does `id` keep its 2× art at tier 4 with `players` players (never a hero's)? */
 export function twoPlayer2x(id: string, players: number): boolean {
@@ -191,7 +213,9 @@ export function twoPlayer2x(id: string, players: number): boolean {
 
 /**
  * The tier-4 working set of section `index` in build order: the chosen heroes, the mission's
- * `preloadFirst`, the current and the next section's `art` (not its `fx/`), the boss
+ * `preloadFirst`, the current and the next section's `art` (`next` may list every route of a
+ * split; ahead only what its first screens show: not its `fx/`, its `boss/` (a mid-boss such as
+ * the ams scan car fights well inside its section), its `artLate` nor its deferred rare strips), the boss
  * (`preloadLast`) at the end.
  * Only ids with a 4× generator; the other heroes never, nor the heroes' menu-only strips
  * (`SCREEN_ONLY`), nor the continue's reaction strips (`ON_DEMAND_4X`: built when drawn). To stay
@@ -207,7 +231,7 @@ export function denseWorkingSet(
   mission: MissionArtDef,
   heroes: readonly string[],
   section: string | undefined,
-  next: string | undefined,
+  next: string | readonly string[] | undefined,
   players: number,
 ): string[] {
   const all = listHiSprites(4).filter(
@@ -219,9 +243,19 @@ export function denseWorkingSet(
   );
   const boss = mission.bossSection;
   const last = (mission.preloadLast ?? []).filter((p) => !boss || section === boss || !p.startsWith('boss/'));
-  // The next section's effects are not built ahead (they show in play, not on its first screen).
-  const ahead = sectionArt(mission, next).filter((p) => !p.startsWith('fx/'));
-  const ids = idsUnder([...heroes, ...(mission.preloadFirst ?? []), ...sectionArt(mission, section), ...ahead, ...last], all);
+  // The next section's effects, mid-boss and rare strips are not built ahead (they show in play,
+  // not on its first screen; they join when that section is entered).
+  // Nor what the next section shows only well into it (`SectionDef.artLate`).
+  const nexts = typeof next === 'string' ? [next] : (next ?? []);
+  const here = idsUnder([...heroes, ...(mission.preloadFirst ?? []), ...sectionArt(mission, section)], all);
+  const inHere = new Set(here);
+  const aheadIds: string[] = [];
+  for (const n of nexts) {
+    const late = mission.sections?.[n]?.artLate ?? [];
+    const ahead = sectionArt(mission, n).filter((p) => !p.startsWith('fx/') && !p.startsWith('boss/'));
+    for (const id of idsUnder(ahead, all)) if (inHere.has(id) || (!isDeferredSprite(id) && !late.some((p) => id.startsWith(p)))) aheadIds.push(id);
+  }
+  const ids = [...here, ...aheadIds, ...idsUnder(last, all)];
   return [...new Set(ids.map((id) => denseTarget(id, 4)))];
 }
 
@@ -328,7 +362,7 @@ async function enterDenseSection(run: DenseRun, section: string): Promise<void> 
   const i = run.order.indexOf(section);
   const at = i < 0 ? 0 : i;
   run.index = at;
-  const next = run.order[at + 1];
+  const next = nextSections(run.mission, run.order, section, at);
   const set = denseWorkingSet(run.mission, run.heroes, section, next, run.players);
   run.current = new Set(set);
   for (const id of set) run.lastUse.set(id, at);
@@ -557,6 +591,9 @@ export interface GameplayOpts {
   demo?: DemoOpts;
 }
 
+/** The keyboard key that makes player 2 join a 1-player game (GDD §4.9; arcade style: 1 / 2 start). */
+export const JOIN_KEY = 'Digit2';
+
 /** The start banner of a mission with a card lasts 120 ticks (GDD §13.6). */
 const START_BANNER_TICKS = 120;
 
@@ -573,6 +610,16 @@ function withCard(id: string): MissionDef | string {
   };
 }
 
+/** One 2-player key set in a line: `P1 KEYS: WASD F G H` (directions, fire, jump, bomb). */
+export function keySetLine(b: Bindings, set: 'p1' | 'p2', who: string): string {
+  const k = b[set];
+  const n = (codes: readonly string[]): string => (codes.length ? keyName(codes[0]) : '-');
+  const dirs = [n(k.up), n(k.left), n(k.down), n(k.right)];
+  const arrows = dirs.join('') === '↑←↓→';
+  const pad = dirs.every((d) => d.length === 1) ? dirs.join('') : dirs.join(' ');
+  return `${who}: ${arrows ? 'ARROWS' : pad} ${n(k.fire)} ${n(k.jump)} ${n(k.bomb)}`;
+}
+
 export class GameplayScene implements Scene, PauseHost {
   readonly app: GameApp;
   readonly opts: GameplayOpts;
@@ -585,6 +632,13 @@ export class GameplayScene implements Scene, PauseHost {
   /** The art tier this scene's preload last saw (a change to or from 4 starts or stops the tier-4 working set). */
   private tierSeen = 0;
   private removeBot: (() => void) | null = null;
+  /** Pad rumble on deaths, big blasts, boss part breaks and vehicle hits (not in the demo). */
+  private rumble: RumbleWatch | null = null;
+  /** The keyboard split last tick (null: not seen yet; the split notice shows on a change in play). */
+  private splitSeen: boolean | null = null;
+  /** The device of the last press in play (the menus' presses do not count), and before this tick. */
+  private playDevice: 'none' | 'keys' | 'pad' = 'none';
+  private deviceBefore: 'none' | 'keys' | 'pad' = 'none';
 
   constructor(app: GameApp, opts: GameplayOpts) {
     this.app = app;
@@ -605,6 +659,9 @@ export class GameplayScene implements Scene, PauseHost {
   enter(): void {
     const app = this.app;
     app.input.suppress();
+    // A free pad's START asks to join (GDD §4.9) instead of pausing player 1.
+    app.input.joinWatch = !this.demo;
+    if (!this.demo) this.rumble = new RumbleWatch(app.input, () => app.settings);
     app.audio.duckMusic?.(1);
     app.focusLost = false;
     app.pointerPressed = false;
@@ -651,6 +708,7 @@ export class GameplayScene implements Scene, PauseHost {
     runner.events.on('sectionLoaded', ({ id }) => {
       // Tier 4: the 4× working set moves on with the sections (preloadMissionArt).
       if (!this.demo) missionArtSection(id);
+      this.rumble?.attach(runner.world, runner);
       runner.world.events.on('timeOut', () => {
         if (!this.demo) app.audio.voice('TIME UP!');
       });
@@ -670,6 +728,7 @@ export class GameplayScene implements Scene, PauseHost {
   }
 
   exit(): void {
+    this.app.input.joinWatch = false;
     // The play is over (QUIT, game over, the mission's end): its tier-4 working set and 4× frames go.
     if (!this.demo) stopDense(this.runner?.mission.id);
     this.app.debug.on('skip', () => {});
@@ -689,12 +748,14 @@ export class GameplayScene implements Scene, PauseHost {
    * (GDD §13.8) and the looping sounds (ambience, engines) fall silent until the game resumes.
    */
   pause(): void {
+    this.app.input.joinWatch = false;
     this.app.audio.duckMusic?.(0.5);
     this.app.audio.pauseLoops?.();
     this.loopsPaused = true;
   }
 
   resume(): void {
+    this.app.input.joinWatch = !this.demo;
     this.app.audio.duckMusic?.(1);
     this.app.audio.resumeLoops?.();
     this.loopsPaused = false;
@@ -713,25 +774,50 @@ export class GameplayScene implements Scene, PauseHost {
     const app = this.app;
     const input = app.input;
     const runner = this.runner;
+    // The device of the last press in play, before this tick's presses (the join rule asks it).
+    this.deviceBefore = this.playDevice;
+    const raw = input.rawPressed;
+    if (raw.length > 0) this.playDevice = raw[raw.length - 1].startsWith('Gamepad') ? 'pad' : 'keys';
     if (this.demo) {
       this.updateDemo();
       if (this.demoEnded) return;
     } else if (runner.state === 'playing' && !app.scenes.busy) {
+      // The pad of a player in play dropped out: the lost-pad pause.
+      const lost = this.lostSlot();
+      if (lost >= 0) {
+        app.scenes.push(new LostPadScene(app, this, lost as 0 | 1));
+        return;
+      }
+      // Joins first: the START that joins (or claims a pad) never pauses.
+      const join = this.handleJoin();
       // Pause: Esc / P, start on the pad of a player who is in the game, or a lost window focus.
-      let pause = input.pausePressed || app.focusLost;
+      let pause = input.pausePressed || app.focusLost || join === 'pause';
       app.focusLost = false;
-      for (const p of runner.players) if (p.state !== 'out' && input.pad(p.index).pressed('start')) pause = true;
+      if (join === 'none') for (const p of runner.players) if (p.state !== 'out' && input.pad(p.index).pressed('start')) pause = true;
       if (pause) {
         app.scenes.push(new PauseScene(app, this));
         return;
       }
-      if (input.players === 2) this.handleJoin();
     }
+    this.watchKeySplit();
     app.debug.apply(runner.world);
     if (this.demo) runner.world.god = true;
     runner.update();
+    this.rumble?.tick(runner.world);
     const cam = runner.world.camera;
     runner.hud.trackCamera(cam.x, cam.y);
+  }
+
+  /** A slot whose player is in play and whose pad dropped out (−1: none). */
+  private lostSlot(): number {
+    const input = this.app.input;
+    for (let i = 0; i < 2; i++) {
+      const s = i as 0 | 1;
+      if (!input.padLost(s)) continue;
+      const p = this.runner.player(s);
+      if (p && p.state !== 'out') return i;
+    }
+    return -1;
   }
 
   /** The demo ends after its ticks, or at once on any real key, pad button or click. */
@@ -752,26 +838,126 @@ export class GameplayScene implements Scene, PauseHost {
     this.opts.demo?.onEnd(byKey);
   }
 
-  /** 2-player mode: start joins an empty slot (a credit when credits are limited) or continues a slot that is out. */
-  private handleJoin(): void {
+  /**
+   * Joins and pad claims (GDD §4.9, docs/design/ams-extras.md §10). Returns 'join' when a START
+   * was used for them (it does not pause), 'pause' when a free pad's START is player 1's pause
+   * after all (no join possible and player 1 has no pad: the pad becomes player 1's), else 'none'.
+   *
+   * - 1 player: START on a free pad (any pad but player 1's) or the keyboard key 2 (or player 2's
+   *   own START keys outside the solo set) makes player 2 join.
+   * - 2 players: START on a free pad takes the first slot without a pad (and joins it when it is
+   *   empty); START on a slot's own pad (or keys) joins an empty slot or continues one that is out.
+   */
+  private handleJoin(): 'join' | 'pause' | 'none' {
+    const app = this.app;
+    const input = app.input;
     const s = this.session;
-    for (let i = 0; i < 2; i++) {
-      const slot = s.slots[i];
-      const pad = this.app.input.pad(i as 0 | 1);
-      if (!pad.pressed('start')) continue;
-      if (!slot.joined) {
-        if (s.credits !== Infinity) {
-          if (s.credits <= 0) continue;
-          s.credits--;
+    const gp = input.freePadPressed(PAD.start);
+    if (input.players === 1) {
+      if (gp >= 0) {
+        // Player 1 has no pad yet and the keyboard does not drive him (a direct start, the first
+        // press in play): the pad is player 1's own, and its START his pause.
+        if (this.padIsP1s()) {
+          input.claimPad(0, gp);
+          return 'pause';
         }
-        this.runner.joinPlayer(i as SlotIndex, joinCharacter(s.slots[1 - i].character));
-        this.app.audio.sfx('ui/coin');
-        // Tier 4: the working set follows the new hero and the second player.
-        this.preloadArtNow();
-      } else if (slot.gameOver && this.runner.continueTicks[i] < 0) {
-        if (this.runner.continuePlayer(i as SlotIndex)) this.app.audio.sfx('ui/confirm');
+        if (this.joinSecond(gp)) return 'join';
+        if (!input.slotHasPad(0) && !input.padLost(0)) {
+          input.claimPad(0, gp);
+          return 'pause';
+        }
+        return 'join';
+      }
+      return this.keyboardJoinPressed() && this.joinSecond(-1) ? 'join' : 'none';
+    }
+    let used: 'join' | 'none' = 'none';
+    if (gp >= 0) {
+      const slot: SlotIndex | null = !input.slotHasPad(0) ? 0 : !input.slotHasPad(1) ? 1 : null;
+      if (slot !== null) {
+        input.claimPad(slot, gp);
+        if (!s.slots[slot].joined) this.joinSlot(slot);
+        used = 'join';
       }
     }
+    for (let i = 0; i < 2; i++) {
+      const slot = s.slots[i];
+      const pad = input.pad(i as 0 | 1);
+      if (!pad.pressed('start')) continue;
+      if (!slot.joined) {
+        if (this.joinSlot(i as SlotIndex)) used = 'join';
+      } else if (slot.gameOver && this.runner.continueTicks[i] < 0) {
+        if (this.runner.continuePlayer(i as SlotIndex)) this.app.audio.sfx('ui/confirm');
+        used = 'join';
+      }
+    }
+    return used;
+  }
+
+  /**
+   * 1 player, no pad on slot 0 (none claimed, none lost) and no key pressed in play before this
+   * tick (the keyboard does not drive player 1): every pad drives player 1, so a pad's START is his
+   * (it claims slot 0), never player 2's join.
+   */
+  private padIsP1s(): boolean {
+    const input = this.app.input;
+    return input.players === 1 && !input.slotHasPad(0) && !input.padLost(0) && this.deviceBefore !== 'keys';
+  }
+
+  /** The P2 HUD corner's PRESS START: a free pad that would join player 2 (never player 1's own). */
+  private joinOpen(): boolean {
+    const input = this.app.input;
+    return !this.demo && input.players === 1 && input.freePads() > 0 && !this.padIsP1s();
+  }
+
+  /**
+   * The keyboard split into the 2-player key sets in mid-play (player 2 joined on the keyboard, or
+   * took the keyboard after a lost pad): a notice with both sets, so player 1 knows his new keys.
+   */
+  private watchKeySplit(): void {
+    const split = this.app.input.keySplit;
+    if (split && this.splitSeen === false && !this.demo) {
+      const b = this.app.input.bindings;
+      this.runner.hud.callout(keySetLine(b, 'p1', 'P1 KEYS'), { ticks: 300 });
+      this.runner.hud.callout(keySetLine(b, 'p2', 'P2 KEYS'), { ticks: 300 });
+    }
+    this.splitSeen = split;
+  }
+
+  /** An empty slot joins (a credit when credits are limited): the next squad hero, near the others. */
+  private joinSlot(i: SlotIndex): boolean {
+    const s = this.session;
+    if (s.slots[i].joined || !s.payCredit()) return false;
+    this.runner.joinPlayer(i, joinCharacter(s.slots[1 - i].character));
+    this.app.audio.sfx('ui/coin');
+    // Tier 4: the working set follows the new hero and the second player.
+    this.preloadArtNow();
+    return true;
+  }
+
+  /**
+   * Player 2 joins a 1-player game: with pad `gp` (−1: on the keyboard). The input switches to 2
+   * players (a pad join keeps the keyboard whole for player 1; a keyboard join splits it into the
+   * 2-player key sets), then the slot joins (credit, hero, HUD, the tier-4 working set).
+   */
+  private joinSecond(gp: number): boolean {
+    const s = this.session;
+    const input = this.app.input;
+    if (s.slots[1].joined || !s.canPay) return false;
+    input.players = 2;
+    if (gp >= 0) {
+      input.keySplit = false;
+      input.claimPad(1, gp);
+    }
+    return this.joinSlot(1);
+  }
+
+  /** Player 2's keyboard START in a 1-player game: the key 2, or a 2-player START key the solo set does not use. */
+  private keyboardJoinPressed(): boolean {
+    const input = this.app.input;
+    if (input.keyPressed(JOIN_KEY)) return true;
+    const b = input.bindings;
+    for (const code of b.p2.start) if (!b.solo.start.includes(code) && input.keyPressed(code)) return true;
+    return false;
   }
 
   /** Debug F5: give the next registered player weapon with full ammo, and 99 bombs. */
@@ -813,7 +999,15 @@ export class GameplayScene implements Scene, PauseHost {
     runner.draw(r);
     // The HUD draws with the mission's art density too (2× icons where they exist).
     withArtDensity(runner.artDensity, () =>
-      drawHud(r, { session: this.session, hud: runner.hud, runner, inputPlayers: this.app.input.players, ticks: this.t, settings: this.app.settings }),
+      drawHud(r, {
+        session: this.session,
+        hud: runner.hud,
+        runner,
+        inputPlayers: this.app.input.players,
+        joinOpen: this.joinOpen(),
+        ticks: this.t,
+        settings: this.app.settings,
+      }),
     );
     if (this.demo && blinkOn(this.t)) centerText(r, 'DEMO PLAY', 40, UI_WHITE, 'big');
     if (!this.demo) this.app.debug.draw(r, runner.world);

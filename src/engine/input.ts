@@ -8,7 +8,12 @@
  *
  * First-person mode (docs/design/fps.md §2): while `fpsMode` is on, slot 0 also gets a 16-bit
  * action pad (`actions`) and an analog channel (`analog`), see input-actions.ts.
+ *
+ * Gamepads (pads.ts, docs/api/input.md): `useGamepads` registers the one `PadSource`; the slot
+ * claims, the free pads, the lost-pad check, the per-pad labels and rumble go through it (the
+ * helpers below answer "no pad" when there is none, as in the headless sims).
  */
+import type { PadInfo, PadSource } from './pads';
 import {
   ActionPad,
   actionsFromPad,
@@ -193,8 +198,10 @@ export interface Bindings {
   p2: KeyMap;
   /** Pause keys (every mode). */
   pause: string[];
-  /** Gamepad buttons (same for every pad). */
+  /** Gamepad buttons (standard indices) of player 1's pad, and of every pad in 1-player mode (P1 PAD). */
   pad: PadMap;
+  /** Gamepad buttons of player 2's pad in 2-player mode (P2 PAD; added 2026-10-20, older saves copy `pad`). */
+  pad2: PadMap;
   /** Gamepad pause buttons. */
   padPause: number[];
 }
@@ -234,18 +241,18 @@ export function defaultBindings(): Bindings {
     },
     pause: ['Escape', 'KeyP'],
     // Standard mapping: 0 A/Cross, 1 B/Circle, 2 X/Square, 3 Y/Triangle, 8 Back, 9 Start, 12-15 d-pad.
-    pad: {
-      left: [14],
-      right: [15],
-      up: [12],
-      down: [13],
-      fire: [2],
-      jump: [0],
-      bomb: [1],
-      start: [9],
-    },
+    pad: defaultPadMap(),
+    pad2: defaultPadMap(),
     padPause: [8],
   };
+}
+
+/**
+ * The positional default of every pad (standard indices): south jump, west fire, east bomb,
+ * START start, the D-pad moves (the left stick too).
+ */
+export function defaultPadMap(): PadMap {
+  return { left: [14], right: [15], up: [12], down: [13], fire: [2], jump: [0], bomb: [1], start: [9] };
 }
 
 function cleanStrings(v: unknown, fallback: string[]): string[] {
@@ -290,13 +297,16 @@ export function parseBindings(json: string | null | undefined): Bindings {
   }
   if (!raw || typeof raw !== 'object') return def;
   const r = raw as Record<string, unknown>;
+  const pad = cleanPadMap(r.pad, def.pad);
   return {
     version: 1,
     solo: cleanKeyMap(r.solo, def.solo),
     p1: cleanKeyMap(r.p1, def.p1),
     p2: cleanKeyMap(r.p2, def.p2),
     pause: cleanStrings(r.pause, def.pause),
-    pad: cleanPadMap(r.pad, def.pad),
+    pad,
+    // Saves from before the per-player pad maps: player 2's pad starts as the shared one.
+    pad2: cleanPadMap(r.pad2, pad),
     padPause: cleanNumbers(r.padPause, def.padPause),
   };
 }
@@ -331,9 +341,13 @@ export function maskFromPad(map: PadMap, isDown: (index: number) => boolean): nu
   return m;
 }
 
-/** Which key set drives a slot in the given player mode (null = no keyboard for that slot). */
-export function keySetFor(slot: PlayerSlot, players: 1 | 2): KeySetName | null {
-  if (players === 1) return slot === 0 ? 'solo' : null;
+/**
+ * Which key set drives a slot (null = no keyboard for that slot). `split` (default: 2 players)
+ * splits the keyboard into the 2-player sets; a player 2 who joined with a pad leaves it whole:
+ * the solo set drives player 1.
+ */
+export function keySetFor(slot: PlayerSlot, players: 1 | 2, split: boolean = players === 2): KeySetName | null {
+  if (players === 1 || !split) return slot === 0 ? 'solo' : null;
   return slot === 0 ? 'p1' : 'p2';
 }
 
@@ -352,6 +366,18 @@ export interface InputContext {
   readonly bindings: Bindings;
   /** First-person mode is on (sources then also report actions and analog for slot 0). */
   readonly fpsMode?: boolean;
+  /** 2 players on the 2-player key sets (default: `players === 2`; see `keySetFor`). */
+  readonly keySplit?: boolean;
+  /**
+   * A 1-player game watches for player 2 (GameplayScene): the START of a pad that is not player
+   * 1's does not reach slot 0 (it asks to join).
+   */
+  readonly joinWatch?: boolean;
+  /**
+   * A menu is open over a 2-player game (PauseScene): pads that no player holds also drive slot 0,
+   * so any pad navigates the menu (play is frozen under it).
+   */
+  readonly menuPads?: boolean;
 }
 
 export interface InputSource {
@@ -523,17 +549,51 @@ export class InputManager implements InputContext {
   readonly analog: AnalogState = newAnalog();
   /** First-person mode: poll `actions` and `analog` for slot 0 (the fps scene turns it on). */
   fpsMode = false;
-  /** 1 = solo key set drives pad 0 (and every gamepad); 2 = per-player key sets and gamepads. */
-  players: 1 | 2 = 1;
+  /**
+   * The keyboard is split into the 2-player key sets (`keySetFor`). Setting `players` sets it to
+   * `players === 2`; a player 2 who joins a 1-player game with a pad sets it back to false (the
+   * solo keys keep driving player 1).
+   */
+  keySplit = false;
+  /** See `InputContext.joinWatch` (GameplayScene sets it while a game plays). */
+  joinWatch = false;
+  /** See `InputContext.menuPads` (PauseScene sets it while it is open). */
+  menuPads = false;
   bindings: Bindings;
   /** Extra key codes the keyboard source should swallow (e.g. debug F-keys). */
   readonly reserved = new Set<string>();
+  /** The gamepads (null: none registered, e.g. headless). */
+  gamepads: PadSource | null = null;
+  private playerCount: 1 | 2 = 1;
   private readonly sources: InputSource[] = [];
   private readonly raw: string[] = [];
   private pauseEdge = false;
+  /** Slots whose buttons are hidden after the next update (a pad just claimed them). */
+  private readonly hideNext = [false, false];
+  private device: 'none' | 'keys' | 'pad' = 'none';
 
   constructor(bindings: Bindings = defaultBindings()) {
     this.bindings = bindings;
+  }
+
+  /** 1 = the solo key set drives pad 0 (and every gamepad); 2 = per-player key sets and gamepads. */
+  get players(): 1 | 2 {
+    return this.playerCount;
+  }
+
+  set players(n: 1 | 2) {
+    this.playerCount = n;
+    this.keySplit = n === 2;
+  }
+
+  /** Register the gamepad source (also added as a source); returns its remover. */
+  useGamepads(src: PadSource): () => void {
+    this.gamepads = src;
+    const remove = this.addSource(src);
+    return () => {
+      remove();
+      if (this.gamepads === src) this.gamepads = null;
+    };
   }
 
   /** Add a source; returns a function that removes it again. */
@@ -556,12 +616,18 @@ export class InputManager implements InputContext {
       let m = 0;
       for (let i = 0; i < srcs.length; i++) m |= srcs[i].read(slot, this);
       this.pads[slot].update(m);
+      if (this.hideNext[s]) {
+        this.hideNext[s] = false;
+        this.pads[slot].suppress();
+      }
     }
     this.updateActions();
     this.raw.length = 0;
     for (let i = 0; i < srcs.length; i++) srcs[i].drainPressed?.(this.raw);
     for (let i = 0; i < srcs.length; i++) srcs[i].endTick?.();
     this.pauseEdge = this.computePause();
+    const raw = this.raw;
+    if (raw.length > 0) this.device = raw[raw.length - 1].startsWith('Gamepad') ? 'pad' : 'keys';
   }
 
   private updateActions(): void {
@@ -632,9 +698,81 @@ export class InputManager implements InputContext {
     this.bindings[set][button] = codes.slice(0, 8);
   }
 
-  /** Replace the gamepad buttons of one button. */
-  setPadButtons(button: Button, indices: readonly number[]): void {
-    this.bindings.pad[button] = indices.slice(0, 8);
+  /** Replace the gamepad buttons of one button (player 1's pad map, or player 2's with slot 1). */
+  setPadButtons(button: Button, indices: readonly number[], slot: PlayerSlot = 0): void {
+    (slot === 0 ? this.bindings.pad : this.bindings.pad2)[button] = indices.slice(0, 8);
+  }
+
+  // ------------------------------------------------------------------------------- gamepads
+
+  /** The device that pressed something last: 'keys', 'pad' or 'none' yet (menu labels). */
+  get lastDevice(): 'none' | 'keys' | 'pad' {
+    return this.device;
+  }
+
+  /** The pad that pressed a button last (null: none, or the keyboard was used after it). */
+  lastPadInfo(): PadInfo | null {
+    const g = this.gamepads;
+    return g && this.device === 'pad' ? g.info(g.lastIndex) : null;
+  }
+
+  /** The pad of a slot (its claim, connected or lost; null: none). */
+  slotPad(slot: PlayerSlot): PadInfo | null {
+    return this.gamepads?.claims[slot]?.info ?? null;
+  }
+
+  /** The slot has a connected pad. */
+  slotHasPad(slot: PlayerSlot): boolean {
+    return (this.gamepads?.liveIndex(slot) ?? -1) >= 0;
+  }
+
+  /** The slot's pad was claimed and is not connected now (the lost-pad pause). */
+  padLost(slot: PlayerSlot): boolean {
+    return this.gamepads?.lost(slot) ?? false;
+  }
+
+  /** Connected pads that are free (1 player: not player 1's; 2 players: nobody's). */
+  freePads(): number {
+    return this.gamepads?.freeCount(this.playerCount) ?? 0;
+  }
+
+  /** The first free pad that pressed one of these (up to 3) standard buttons this tick (−1: none). */
+  freePadPressed(b0: number, b1 = -1, b2 = -1): number {
+    return this.gamepads?.freePressedBy(this.playerCount, b0, b1, b2) ?? -1;
+  }
+
+  /** The first pad (any) that pressed one of these (up to 3) standard buttons this tick (−1: none). */
+  padPressed(b0: number, b1 = -1, b2 = -1): number {
+    return this.gamepads?.pressedBy(b0, b1, b2) ?? -1;
+  }
+
+  /**
+   * Give pad `index` to `slot` (a pad held by the other slot moves). The buttons it holds now are
+   * hidden until released (the START that claimed it does not also confirm or pause).
+   */
+  claimPad(slot: PlayerSlot, index: number): boolean {
+    const ok = this.gamepads?.claim(slot, index) ?? false;
+    if (ok) this.hideNext[slot] = true;
+    return ok;
+  }
+
+  /** Forget the slot's pad (the player goes on with the keyboard). */
+  releasePad(slot: PlayerSlot): void {
+    this.gamepads?.release(slot);
+  }
+
+  /**
+   * Rumble the slot's pad (`strong` / `weak` 0..1, `ms`); with one player and no claimed pad the
+   * pad used last. False when nothing rumbled (no pad, no motor, a stronger effect running).
+   */
+  rumble(slot: PlayerSlot, strong: number, weak: number, ms: number): boolean {
+    return this.gamepads?.rumble(slot, strong, weak, ms, this.playerCount) ?? false;
+  }
+
+  /** Rumble the pad that pressed a button last (OPTIONS: RUMBLE ON). */
+  rumbleLastPad(strong: number, weak: number, ms: number): boolean {
+    const g = this.gamepads;
+    return g ? g.rumblePad(g.lastIndex, strong, weak, ms) : false;
   }
 
   /** Hide held buttons on both pads until released (call on scene changes); `mask` as VirtualPad.suppress. */
@@ -652,5 +790,6 @@ export class InputManager implements InputContext {
     clearAnalog(this.analog);
     this.raw.length = 0;
     this.pauseEdge = false;
+    this.hideNext[0] = this.hideNext[1] = false;
   }
 }

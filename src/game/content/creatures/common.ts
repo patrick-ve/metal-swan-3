@@ -389,7 +389,7 @@ export abstract class Creature extends Enemy {
 
   // ------------------------------------------------------------------------------- reactions
 
-  /** Every creature poses for SAY CHEESE and laughs / cowers around a continue; other reactions are opted in per type. */
+  /** Every creature poses for SAY CHEESE and gloats / cowers around a continue; other reactions are opted in per type. */
   protected override acceptsReaction(kind: ReactionKind): boolean {
     return everyEnemyReacts(kind);
   }

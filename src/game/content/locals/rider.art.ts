@@ -17,8 +17,9 @@
  * the bike leaves as an fx), fatbike only: die-seat (6) and get-up (5) (deferred; falls off the
  * seat, gets up, then flee), flee (4: runs off), bike (6: the riderless bike skids and fades),
  * cap (4: the flying cap), food-cube (4: the popped cube backpack), and the continue reactions
- * (deferred): laugh (2: on the stopped bike, head back, pointing at the empty spot) and cower (2:
- * forearms up before the face, the bike rocking).
+ * (deferred): gloat (fatbike 4: a slow wheelie in place, rocking on the back wheel, heads bobbing
+ * to the speaker; delivery 2: stopped, checking his phone, the screen lit) and cower (2: forearms
+ * up before the face, the bike rocking).
  *
  * UHD art (mission ams; docs/ART_GUIDE.md "UHD art"): every strip has ONE density-generic
  * generator for 2× and 4× (`hd`): the rider is the HD rig (`renderHuman(…, d)`); the bike, its
@@ -42,7 +43,7 @@ import * as P from '../../art/poses';
 import { R } from '../../art/paint';
 import { CRUSH_TIMING, FLAT, Sketch, crushStrip, turnSquash } from '../creatures/draw';
 import { inbetween, tween } from '../../art/tween';
-import { BIKE, BIKE_OX, BIKE_OY, bikeHd, capFramesHd, cubePackHd, onBox, onBoxes, rotor, type BikeKind, type BikeOpts, type HdD, type Pt, type Rect } from './rider.hd';
+import { BIKE, BIKE_OX, BIKE_OY, bikeHd, capFramesHd, cubePackHd, handPhoneHd, onBox, onBoxes, rotor, type BikeKind, type BikeOpts, type HdD, type Pt, type Rect } from './rider.hd';
 
 export { BIKE, type BikeKind, type BikeOpts } from './rider.hd';
 
@@ -273,6 +274,27 @@ function withCube(f: Frame): Frame {
   return withPieces(f, [{ buf: cubePack(), x: hip[0] - 15, y: hip[1] - 22, behind: true }]);
 }
 
+/**
+ * A phone held in the near hand, seen from its back (black case; the lit screen faces the rider:
+ * a sky-blue glow on its edge toward his face), upright above the fist.
+ */
+export function handPhone(): PixelBuffer {
+  const b = new PixelBuffer(2, 4);
+  b.rect(0, 0, 2, 4, PAL.black[1]);
+  b.set(1, 0, PAL.black[2]);
+  b.vline(0, 1, 2, PAL.sky[3]);
+  return b.padded(1).outline(INK);
+}
+
+/** Add the phone to a rider frame: upright in the near hand, its foot on the wrist. */
+function withPhone(f: Frame): Frame {
+  const hand = f.pts?.hand ?? [6, -20];
+  const d = f.density ?? 1;
+  const at = { x: Math.round(hand[0]) - 1, y: Math.round(hand[1]) - 5 };
+  if (d !== 1) return withPieces(f, [{ buf: handPhoneHd(d as HdD), ...at, density: d }]);
+  return withPieces(f, [{ buf: handPhone(), ...at }]);
+}
+
 /** The 1× bike sketch (64 × 56, anchor 32, 50). */
 function bike1(kind: BikeKind, o: BikeOpts): Frame {
   const s = new Sketch(64, 56, BIKE_OX, BIKE_OY);
@@ -299,14 +321,19 @@ function bikeAt(kind: BikeKind, o: BikeOpts, crank: number, d: Density): Frame {
   return bikeHd(kind, { ...o, crank: ((crank % 1) + 1) % 1 }, d, bikeRect(kind, o));
 }
 
-/** One frame: bike + rider (+ passenger) at density d; `crank` = the rider's crank angle (turns). */
-function combo(kind: BikeKind, color: string, phase: number, rot: number, crank: number, people: Array<{ style: HumanStyle; pose: Pose; at?: 'rack' }>, cube: boolean, d: Density = 1): Frame {
+/**
+ * One frame: bike + rider (+ passenger) at density d; `crank` = the rider's crank angle (turns);
+ * `extra` adds a prop to the rider (after the cube backpack).
+ */
+function combo(kind: BikeKind, color: string, phase: number, rot: number, crank: number, people: Array<{ style: HumanStyle; pose: Pose; at?: 'rack' }>, cube: boolean, d: Density = 1, extra?: (f: Frame) => Frame): Frame {
   const geo = BIKE[kind];
   const bike = bikeAt(kind, { color, rot, phase, pair: people.length > 1 }, crank, d);
   const pieces: Piece[] = [];
   for (let i = people.length - 1; i >= 0; i--) {
     const p = people[i];
-    let piece = rider(p.style, p.pose, kind, rot, cube && i === 0 ? withCube : undefined, d);
+    const own = i === 0 && extra ? extra : undefined;
+    const add = cube && i === 0 ? (own ? (f: Frame) => own(withCube(f)) : withCube) : own;
+    let piece = rider(p.style, p.pose, kind, rot, add, d);
     if (p.at === 'rack') {
       // The passenger sits on the rack, 10 px behind the rider.
       const T = rotor(geo, rot);
@@ -391,26 +418,36 @@ function A_(sh: number, el: number): ArmPose {
 const PASSENGER_SIT: Pose = { lean: 2, armN: { sh: 30, el: 60, hand: 'grip' }, armF: { sh: 20, el: 70, hand: 'grip' }, legN: { hip: 70, knee: 80 }, legF: { hip: 60, knee: 90 } };
 
 /**
- * Continue reactions (every hero is out, then one drops back in), on the stopped bike (crank 0).
- * Laugh: seated, the head thrown back, the near arm off the bar pointing at the empty spot in
- * front, the far hand on the bar; frame 2 bobs the shoulders and head 1 px down. The eyes stay
- * shut while the mouth opens wide ("HA", frame 1) and closes in a grin (the bob, frame 2): an open
- * mouth with open eyes reads as a shout, not a laugh.
+ * Continue reactions (every hero is out, then one drops back in). The gloat (docs/design/
+ * ams-extras.md §1: their own business at the spot, never a laugh or a point):
+ * - fatbike: a slow wheelie in place — the bike held up on the back wheel and rocking
+ *   (`GLOAT_TILT`), the pedals creeping round to balance, the rider leaning back cool with both
+ *   hands on the bar, his head bobbing to the speaker's beat (a blink on the last beat); the
+ *   passenger holds on and bobs along.
+ * - delivery: stopped (crank 0), the far hand on the bar, the near hand holding his phone up to
+ *   his face (`withPhone`: the back of the phone, its screen light on his face), the head bent
+ *   over it; frame 2 a thumb scroll (the phone 1 px lower) and a blink.
  */
-export const LAUGH_EXPR = ['yawn', 'happy'] as const;
-const LAUGH_UP: readonly Pose[] = [0, 1].map((k): Pose => ({
-  lean: -8,
-  hunch: k,
-  armN: { sh: 84, el: 6, hand: 'point' },
-  armF: grip(10.2, 2.1 - k),
-  head: { tilt: -20 },
-  expr: LAUGH_EXPR[k],
+export const GLOAT_TILT: readonly number[] = [-12, -15, -16, -14];
+const GLOAT_UP: readonly Pose[] = GLOAT_TILT.map((_, k): Pose => ({
+  ...P.RIDE_UP[0],
+  lean: -6 - (k % 2),
+  head: { dy: k % 2, tilt: k % 2 ? 2 : -8 },
+  expr: k === 3 ? 'blink' : 'normal',
 }));
-/** The passenger laughs too (head back, mouth open) and slaps the rider's shoulder (raised, then down). */
-const LAUGH_PASSENGER: readonly Pose[] = [
-  { ...PASSENGER_SIT, lean: -8, armN: { sh: 175, el: 20, hand: 'open' }, head: { tilt: -20 }, expr: LAUGH_EXPR[0] },
-  { ...PASSENGER_SIT, lean: -8, hunch: 1, armN: { to: [8, -1], hand: 'open' }, head: { tilt: -20 }, expr: LAUGH_EXPR[1] },
-];
+const GLOAT_PASSENGER: readonly Pose[] = GLOAT_TILT.map((_, k): Pose => ({
+  ...PASSENGER_SIT,
+  lean: -8,
+  head: { dy: (k + 1) % 2, tilt: (k + 1) % 2 ? 4 : -6 },
+  expr: k === 1 ? 'blink' : 'normal',
+}));
+const GLOAT_PHONE: readonly Pose[] = [0, 1].map((k): Pose => ({
+  ...P.RIDE_SIT[0],
+  lean: 8,
+  armN: { to: [8, -4 + k], hand: 'fist' },
+  head: { tilt: 10 },
+  expr: k ? 'blink' : 'normal',
+}));
 /**
  * Cower: the rider leans back, both forearms up in front of the face, panicking; the bike wobbles
  * (it rocks front up / rear up: `COWER_TILT` about the rear wheel's contact, the rear-up frame
@@ -436,8 +473,8 @@ const COWER_PASSENGER: readonly Pose[] = [0, 1].map((k): Pose => ({
 }));
 const COWER_TILT: readonly number[] = [-3, 3];
 const COWER_LIFT: readonly number[] = [0, 1];
-/** Ticks per frame of the reactions (both loop). */
-export const LAUGH_TPF = 8;
+/** Ticks per frame of the reactions (both loop): the wheelie rocks one beat per frame (4 beats = one thump). */
+export const GLOAT_TPF = { wheelie: 9, phone: 14 } as const;
 export const COWER_TPF = 3;
 
 // ------------------------------------------------------------------------------------ sets
@@ -523,7 +560,11 @@ export function defineRiderSet(set: string, o: RiderSetOpts): void {
   def(pre + 'photo-pose', (d) => [0, 1].map((i) => combo(kind, color, 0, 0, 0, crew({ ...P.RIDE_CHEER[i], expr: 'happy' }, 0), cube, d)), { ticksPerFrame: 10 });
   // Continue reactions (rare: deferred; they show only around a continue). The bike and both
   // riders are in every frame, so no other set has the same picture (no dense alias).
-  def(pre + 'laugh', (d) => [0, 1].map((k) => combo(kind, color, 0, 0, 0, crew(LAUGH_UP[k], 0, LAUGH_PASSENGER[k]), cube, d)), { ticksPerFrame: LAUGH_TPF, defer: true });
+  if (o.tell === 'wheelie') {
+    def(pre + 'gloat', (d) => GLOAT_TILT.map((rot, k) => combo(kind, color, k, rot, k / 8, crew(GLOAT_UP[k], k / 8, GLOAT_PASSENGER[k]), cube, d)), { ticksPerFrame: GLOAT_TPF.wheelie, defer: true });
+  } else {
+    def(pre + 'gloat', (d) => [0, 1].map((k) => combo(kind, color, 0, 0, 0, crew(GLOAT_PHONE[k], 0), cube, d, withPhone)), { ticksPerFrame: GLOAT_TPF.phone, defer: true });
+  }
   def(pre + 'cower', (d) => [0, 1].map((k) => {
     const f = combo(kind, color, 0, COWER_TILT[k], 0, crew(COWER_UP[k], 0, COWER_PASSENGER[k]), cube, d);
     return { ...f, oy: f.oy + COWER_LIFT[k] };

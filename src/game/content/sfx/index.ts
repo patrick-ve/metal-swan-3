@@ -21,6 +21,10 @@
 import { defineSfx } from '../../../engine/audio';
 import { hashSeed, type SfxRecipe } from '../../../engine/synth';
 import { AMS } from './ams';
+import { AMS_GLOAT } from './ams-gloat';
+import { AMS_ROUTE } from './ams-route';
+import { AMS_SCAN } from './ams-scan';
+import { AMS_STAG } from './ams-stag';
 import { BOSSES } from './bosses';
 import { st } from './kit';
 import { ENEMIES } from './legion';
@@ -86,6 +90,10 @@ export const SFX: Readonly<Record<string, SfxRecipe>> = pinSeeds({
   ...ENV,
   ...UI,
   ...AMS,
+  ...AMS_GLOAT,
+  ...AMS_STAG,
+  ...AMS_SCAN,
+  ...AMS_ROUTE,
 });
 
 /** Seamless loops: play them with `audio.sfxLoop(key, id)` and stop them with `stopSfx(key)`. */

@@ -12,8 +12,8 @@
  *
  * - Phase 1: A STAMP SLAM (the arm rises, a shadow marks the spot, T 30; the slam sends a
  *   `stamp-wave` along the floor both ways: jump it), B LETTER RAIN (the hair hatch opens, T 24;
- *   4–6 `noise-letter`s flutter down: shoot them or step aside). Adds: a `handhaver` from an
- *   arena side every 420 ticks, at most 3 alive (tag cap).
+ *   4–6 `noise-letter`s flutter down: shoot them or step aside). Adds: a `handhaver` every 420
+ *   ticks, at most 3 alive (tag cap). Every phase's adds come in from alternating sides.
  * - Phase 2 (the arm or the chain broken): C CHAIN WHIP (she whirls the chain high — crouch — or
  *   low — jump —, alternating, T 28, `ams/chain` pitched by lane; the lash reaches 124 px), B continues. If the
  *   chain broke first, A replaces C. Adds: a flock of 3 `seagull`s every 600 ticks.
@@ -23,6 +23,9 @@
  *   `delivery-rider` pass from alternating sides.
  * - Death (230 ticks): sparks and small blasts, the hair flies off like a wig, the head
  *   boings on a spring, she sits down and powers off, a big explosion.
+ * - Stagger (a continued hero landed, `Boss.stagger`): the shout face, a 1-px shake and a '!'. The
+ *   running attack ends cleanly (`cutAttack`: no lash or landing box, no glow), after the stamp's
+ *   slam and after a stomp's landing (`canStagger`); then her phase runs on without its opening.
  * Every attack is telegraph (≥ 18 ticks, `telegraphFor`) → attack → recovery (`recoveryFor`).
  */
 import type { Damage, Entity } from '../../../../engine/entity';
@@ -57,6 +60,8 @@ const STAMP_SFX_SLAM = 30;
 const BABBLE_KEY = 'mayor-babble';
 /** The speaker name of her voice clips (`say`): her own lines replace each other. */
 const MAYOR_SPEAKER = 'mayor';
+/** Ticks of calm after a stagger before her phase runs on (its next tell follows). */
+const RESUME_GAP = 12;
 
 type Lane = 'high' | 'low';
 
@@ -112,7 +117,10 @@ export class AmsMayor extends Boss {
   private legsSeen = 0;
   private nextLane: Lane = 'high';
   private addT = 0;
+  /** The side the next add comes in from (flips only when an add spawns). */
   private addSide: 1 | -1 = -1;
+  /** World tick of the slam baked into the running `ams/stamp` sound (a stagger waits for it). */
+  private slamAt = -1;
   private lastPing = 0;
   /** A second bubble that follows a long taunt after `wait` ticks (cosmetic, no script yield). */
   private followUp: { id: MayorLineId; ticks: number; wait: number } | null = null;
@@ -149,9 +157,9 @@ export class AmsMayor extends Boss {
     this.contactDamage = this.hitDamage;
     this.phaseIntermission = MAYOR.phaseIntermission;
     this.phases = [
-      { at: 1, name: 'stamp', pattern: (b) => b.phaseOne() },
-      { name: 'chain', when: (b) => b.brokenCount(['stamp-arm', 'chain']) >= 1, pattern: (b) => b.phaseTwo(), onEnter: (b) => b.enterTwo() },
-      { name: 'core', when: (b) => b.brokenCount(['stamp-arm', 'chain']) >= 2, pattern: (b) => b.phaseThree(), onEnter: (b) => b.enterThree() },
+      { at: 1, name: 'stamp', pattern: (b) => b.phaseOne(), resume: (b) => b.phaseOne(true) },
+      { name: 'chain', when: (b) => b.brokenCount(['stamp-arm', 'chain']) >= 1, pattern: (b) => b.phaseTwo(), resume: (b) => b.phaseTwo(true), onEnter: (b) => b.enterTwo() },
+      { name: 'core', when: (b) => b.brokenCount(['stamp-arm', 'chain']) >= 2, pattern: (b) => b.phaseThree(), resume: (b) => b.phaseThree(true), onEnter: (b) => b.enterThree() },
     ];
   }
 
@@ -276,10 +284,11 @@ export class AmsMayor extends Boss {
 
   // ------------------------------------------------------------------------------- phase 1
 
-  *phaseOne(): ScriptGen {
+  /** Phase 1; `resume`: after a stagger (no opening wait, no taunt). */
+  *phaseOne(resume = false): ScriptGen {
     // 40: the intro's GESLOTEN bubble has cleared before the first raised-stamp tell.
-    yield 40;
-    let taunted = false;
+    yield resume ? RESUME_GAP : 40;
+    let taunted = resume;
     for (;;) {
       if (this.partAlive('stamp-arm')) yield* this.stampSlam();
       if (!taunted) {
@@ -303,7 +312,9 @@ export class AmsMayor extends Boss {
     this.shadowT = tele;
     // `ams/stamp` is the whole warning: a creak with the slam baked in at STAMP_SFX_SLAM ticks.
     // The rate is matched to this difficulty's telegraph so the baked-in slam lands on the slam.
+    // A stagger waits for that slam (`canStagger`): it never leaves the sound's slam for later.
     this.world.audio.sfx('ams/stamp', { pitch: STAMP_SFX_SLAM / tele });
+    this.slamAt = this.world.tick + tele;
     yield tele;
     if (!this.partAlive('stamp-arm')) return;
     this.setArm(2);
@@ -366,13 +377,17 @@ export class AmsMayor extends Boss {
     this.addT = 0;
   }
 
-  *phaseTwo(): ScriptGen {
-    this.headFrame = 2;
-    // The bubble hangs where the chain loop whirls: it clears before the first whip tell.
-    this.say2('rules', 48);
-    yield 52;
-    this.headFrame = 0;
-    let taunted = false;
+  /** Phase 2; `resume`: after a stagger (no opening line, no taunt). */
+  *phaseTwo(resume = false): ScriptGen {
+    if (resume) yield RESUME_GAP;
+    else {
+      this.headFrame = 2;
+      // The bubble hangs where the chain loop whirls: it clears before the first whip tell.
+      this.say2('rules', 48);
+      yield 52;
+      this.headFrame = 0;
+    }
+    let taunted = resume;
     for (;;) {
       if (this.partAlive('chain')) {
         yield* this.chainWhip(this.nextLane);
@@ -433,11 +448,20 @@ export class AmsMayor extends Boss {
     this.addT = 0;
   }
 
-  *phaseThree(): ScriptGen {
-    this.headFrame = 2;
-    this.say2('fine', 110);
-    yield 30;
-    this.headFrame = 0;
+  /** Phase 3; `resume`: after a stagger (no opening line; a stomp back home first when she is out). */
+  *phaseThree(resume = false): ScriptGen {
+    if (resume) {
+      yield RESUME_GAP;
+      if (Math.abs(this.x - this.homeX) > 1) {
+        yield* this.stomp(-1);
+        yield 20;
+      }
+    } else {
+      this.headFrame = 2;
+      this.say2('fine', 110);
+      yield 30;
+      this.headFrame = 0;
+    }
     for (;;) {
       yield* this.shieldFan();
       yield 20;
@@ -501,7 +525,8 @@ export class AmsMayor extends Boss {
     this.lift = 0;
     this.x = to;
     this.legsFrame = 3;
-    this.stompHot = S.land;
+    // A stagger that came in mid-air waited for this landing: it lands harmless.
+    this.stompHot = this.staggering ? 0 : S.land;
     this.world.camera.shake(5, 16);
     this.world.audio.sfx('hit/ground', { pitch: 0.6 });
     this.world.audio.sfx('hit/metal', { vol: 0.5, pitch: 0.6 });
@@ -567,9 +592,31 @@ export class AmsMayor extends Boss {
     this.world.audio.sfx('enemy/double-take');
   }
 
-  /** Never hold the attack in the air: a stomp in flight lands first. */
+  /**
+   * Never hold the attack in the air (a stomp in flight lands first), nor between the stamp's
+   * creak and its slam (the slam is baked into `ams/stamp`: it lands on time, then she holds).
+   */
   protected override canStagger(): boolean {
-    return this.lift === 0;
+    return this.lift === 0 && this.world.tick >= this.slamAt;
+  }
+
+  /**
+   * A stagger holds her: the running attack ends cleanly — the lash and the landing box off, no
+   * glow or shadow tell, the stamp arm, the far arm, the hatch, the core and the legs at rest. The
+   * phase runs on (`phaseOne/Two/Three(true)`) when the stagger ends.
+   */
+  protected override cutAttack(): boolean {
+    this.lashLen = 0;
+    this.lashHot = false;
+    this.backArm = 0;
+    this.stompHot = 0;
+    this.glowT = 0;
+    this.shadowT = 0;
+    this.legsFrame = 0;
+    if (this.partAlive('stamp-arm')) this.setArm(0);
+    if (this.headFrame === 1 || this.headFrame === 2) this.headFrame = 0;
+    if (this.medFrame === 2) this.medFrame = 1;
+    return true;
   }
 
   /** Adds by phase, capped by tags (GDD §10.0 adds). */
@@ -578,7 +625,6 @@ export class AmsMayor extends Boss {
     const A = MAYOR.adds;
     const cam = w.camera;
     this.addT++;
-    this.addSide = this.addSide < 0 ? 1 : -1;
     const side = this.addSide;
     const enter = side < 0 ? 'left' : 'right';
     if (this.phase === 0) {
@@ -596,7 +642,10 @@ export class AmsMayor extends Boss {
       if (w.countAlive(RIDER_TAG) >= A.riderMax) return;
       if (side < 0) w.spawn('delivery-rider', cam.left - 20, this.floorY, { from: 'behind', tags: [ADD_TAG, RIDER_TAG] });
       else w.spawn('delivery-rider', cam.right + 20, this.floorY, { from: 'right', tags: [ADD_TAG, RIDER_TAG] });
-    }
+    } else return;
+    // An add came in: the next one comes from the other side (bug 7.1: the side flipped every
+    // tick and every spawn tick is even, so each phase used one side only).
+    this.addSide = side < 0 ? 1 : -1;
   }
 
   private aliveOfType(type: string): number {

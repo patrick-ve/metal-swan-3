@@ -11,11 +11,15 @@
  *   without kicking, unless a player shoots near him (then he rings and kicks if he still can).
  * - Death: he falls; the cube backpack pops open and drops a food pickup (`pickup-food`,
  *   kind `cheese`; param `drop` overrides).
+ * - The gloat (every player out, docs/design/ams-extras.md §1): in view (rides in from a view
+ *   edge), he rings his bell (`ams/bell`) and rides one slow lap round the place he stopped (out
+ *   `circle` px, back past it, home; only over his own floor and inside the view), then stops,
+ *   faces the spot and checks his phone (`gloat` strip). No attacks.
  *
  * Params: `from` (`behind` / `left` / `right`), `enter` / `entry`, `gag`, `facing`, `skin`
  * (`a` / `b` / `c`), + the Enemy params `hp`, `drop`, `tag`.
  */
-import type { Damage } from '../../../engine/entity';
+import type { Damage, Entity } from '../../../engine/entity';
 import type { World } from '../../../engine/world';
 import { playerNoiseNear } from '../../enemy';
 import { tumble } from '../../fx';
@@ -36,6 +40,9 @@ export const DELIVERY = {
   chat: 120,
   /** Spawn distance outside the view edge for `from: 'behind'`. */
   behind: 20,
+  /** The gloat lap: half its length (px) and the speed. */
+  circle: 22,
+  circleSpeed: 1.1,
 } as const;
 
 const SKINS = ['a', 'b', 'c'] as const;
@@ -43,6 +50,9 @@ const SKINS = ['a', 'b', 'c'] as const;
 export class DeliveryRider extends Rider {
   private told = false;
   private chatted = false;
+  /** The gloat lap: its three turning points (out, back past the start, home) and the next one (−1: not laid yet). */
+  private readonly lap = [0, 0, 0];
+  private lapI = -1;
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     const sk = paramStr(p, 'skin', '');
@@ -116,6 +126,45 @@ export class DeliveryRider extends Rider {
     if (this.modeT < this.telegraph) return;
     if (!this.visible()) return this.cancelAttack();
     if (a <= DELIVERY.reach) this.startKick();
+  }
+
+  // ------------------------------------------------------------------------------- the gloat
+
+  protected override onGloatStart(): void {
+    this.lapI = -1;
+  }
+
+  /** In view, the bell and one slow lap round the place he stopped, then the phone. */
+  protected override thinkGloat(spot: Entity | null, _t: number): void {
+    if (this.gloatRideIn()) return;
+    if (this.lapI < 0) this.layLap();
+    while (this.lapI < this.lap.length) {
+      const dx = this.lap[this.lapI] - this.x;
+      const dir = dx >= 0 ? 1 : -1;
+      // A turning point reached, or no floor / no view ahead: turn early (the next point).
+      if (Math.abs(dx) <= DELIVERY.circleSpeed || !this.floorAhead(dir) || !this.inView(this.x + dir * 16, this.y - 20, -8)) {
+        this.lapI++;
+        continue;
+      }
+      this.facing = dir;
+      this.pedal(DELIVERY.circleSpeed);
+      return;
+    }
+    this.vx = 0;
+    this.faceSpot(spot);
+    this.play('gloat');
+  }
+
+  /** Lay the lap out from here: out along the facing (or the other way when that side is blocked). */
+  private layLap(): void {
+    const R = DELIVERY.circle;
+    const open = (dir: number): boolean => this.floorAhead(dir) && this.inView(this.x + dir * (R + 16), this.y - 20, -8);
+    const dir = open(this.facing) ? this.facing : -this.facing;
+    this.lap[0] = this.x + dir * R;
+    this.lap[1] = this.x - dir * R;
+    this.lap[2] = this.x;
+    this.lapI = 0;
+    if (this.onScreen(0)) this.world.audio.sfx('ams/bell');
   }
 
   protected override deathEffects(d: Damage): void {

@@ -22,6 +22,7 @@ import { getTerrainPainter, hasHiTerrain, hiSceneryErrors, makeHiTerrain, terrai
 import { hasHdTerrainMaterial } from '../../src/game/art/terrain-art';
 import { loadContent } from '../../src/game/content/index';
 import { amsWaterWidths } from '../../src/game/content/missions/ams/art-hd-terrain-water';
+import { C_BASIN_Y } from '../../src/game/content/missions/ams/terrain';
 import type { SectionDef } from '../../src/game/mission/types';
 import { CHUNK } from '../../src/game/mission/view';
 import { getMission } from '../../src/game/registry';
@@ -86,10 +87,16 @@ describe('mission ams: HD terrain', () => {
       const style = def.terrainStyle;
       if (!style) continue;
       const sample = sampler(def);
+      // The detail check: per row, the first chunk from x 256 on with real ground in it (at least
+      // 2048 opaque px: a quay end; a river section's chunk can be a thin bridge deck only). The
+      // detail it needs grows with its ground (a full street chunk: about 20,480 px → 3000 × d).
+      const detailRows = new Set<number>();
       for (let cy = 0; cy * CHUNK < def.height; cy++) {
         for (let cx = 0; cx * CHUNK < def.width; cx++) {
           const one = getTerrainPainter()(sample, style, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK);
           if (one.countOpaque() === 0) continue;
+          const detail = cx >= 1 && !detailRows.has(cy) && one.countOpaque() >= 2048;
+          if (detail) detailRows.add(cy);
           for (const d of DENSITIES) {
             const hi = makeHiTerrain(sample, style, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK, d);
             expect(hi, `ams/${sid} chunk ${cx},${cy} at ${d}×`).not.toBeNull();
@@ -98,18 +105,19 @@ describe('mission ams: HD terrain', () => {
             expect([hi.w, hi.h]).toEqual([CHUNK * d, CHUNK * d]);
             expect(footprintDiff(one, hi, d), `ams/${sid} chunk ${cx},${cy} at ${d}×: opacity differs from 1× at`).toBeNull();
             expect(offHd(hi), `ams/${sid} chunk ${cx},${cy} at ${d}× palette`).toBe(0);
-            if (cx === 1) {
+            if (detail) {
               const again = makeHiTerrain(sample, style, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK, d) as PixelBuffer;
               expect(again.data.every((c, i) => c === hi.data[i]), `ams/${sid} ${d}× deterministic`).toBe(true);
               // Real detail: many d × d blocks are not flat.
               const flat = hi.downsampled(d).scaled(d);
               let diff = 0;
               for (let i = 0; i < hi.data.length; i++) if (hi.data[i] !== flat.data[i]) diff++;
-              expect(diff, `ams/${sid} has ${d}× detail`).toBeGreaterThan(3000 * d);
+              expect(diff, `ams/${sid} has ${d}× detail`).toBeGreaterThan(Math.min(3000, 0.146 * one.countOpaque()) * d);
             }
           }
         }
       }
+      expect(detailRows.size, `ams/${sid}: a chunk with ground gets the detail check`).toBeGreaterThan(0);
     }
     expect(chunks).toBeGreaterThan(80);
     expect(hiSceneryErrors()).toEqual([]);
@@ -174,7 +182,9 @@ describe('mission ams: HD terrain', () => {
 describe('mission ams: HD canal water', () => {
   it('every water id has HD art at 2× and 4× with the 1× geometry, PAL_HD only', () => {
     const ids = listSprites('decor/ams/water-');
-    const want = amsWaterWidths().flatMap((w) => [`decor/ams/water-${w}x36`, `decor/ams/water-${w}x36-back`, `decor/ams/water-${w}x36-tint`]);
+    // The canal pieces (36 px deep) and the pieces of section c's jetty basin (its own water line).
+    const basin = [128].map((w) => `decor/ams/water-${w}x${216 - C_BASIN_Y}`);
+    const want = [...amsWaterWidths().map((w) => `decor/ams/water-${w}x36`), ...basin].flatMap((id) => [id, `${id}-back`, `${id}-tint`]);
     expect([...ids].sort()).toEqual([...want].sort());
     for (const id of ids) {
       const lo = getFrames(id, 1);

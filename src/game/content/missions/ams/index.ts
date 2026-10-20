@@ -3,12 +3,14 @@
  *
  * - `a` Grachtengordel → FABEL FRIET and the briefing
  * - `b` Museumplein (the Rijksmuseum passage, the hot-dog stand, the Swan)
- * - `c` Amstel (canals, houseboats, the white bridge, the Blauwbrug)
+ * - `c` Amstel (canals, houseboats, the shop quay, the scan car; the route choice)
+ * - `c1` Brug (the white bridge, the Blauwbrug) or `c2` Rondvaart (the canal cruise)
  * - `d` Stopera: ROBO-HALSEMA (boss `ams-mayor`, bosses/ams)
  *
  * Files: `art.ts` (decor and the shared house painter), `backgrounds.ts` (ams-skyline,
- * ams-canal-houses, ams-elms, ams-plein), `terrain.ts` (terrain and layout numbers),
- * `section-*.ts` (each with its own `script` function).
+ * ams-canal-houses, ams-elms, ams-plein, ams-amstel), `terrain.ts` (terrain and layout numbers),
+ * `section-*.ts` (each with its own `script` function), `cruise.ts` (the canal cruise's boat and
+ * bridges), `art-route.ts` / `art-hd-route.ts` (the route and cruise art at 1× and 2× / 4×).
  */
 import type { MissionDef, SectionDef } from '../../../mission/index';
 import { defineMission } from '../../../registry';
@@ -18,6 +20,8 @@ import './art-hd-cd';
 import './backgrounds';
 // HD background layers: canal houses, elms, Museumplein, skyline (art-hd-bg*.ts); sky and clouds.
 import './art-hd-bg';
+// The far bank of the Amstel seen from the water (section c2): its UHD layer.
+import './art-hd-bg-amstel';
 import './art-hd-sky';
 // HD terrain materials and canal water (art-hd-terrain*.ts).
 import './art-hd-terrain';
@@ -25,9 +29,18 @@ import './art-hd-terrain-water';
 // HD ambient life: pigeons, ducks, the tour boat, the window cat (npc-hi.art.ts).
 import './npc-hi.art';
 import './entities';
+// The route choice and the canal cruise (docs/design/ams-extras.md §4): entities, art.
+import './cruise';
+import './art-route';
+import './art-hd-route';
+// Secrets: hidden captives, the hidden 1UP, shoot-to-reveal items (docs/design/ams-extras.md §5).
+import './secrets';
+import './secrets.art';
 import { sectionA } from './section-a';
 import { sectionB } from './section-b';
 import { sectionC } from './section-c';
+import { sectionC1 } from './section-c1';
+import { sectionC2 } from './section-c2';
 import { sectionD } from './section-d';
 // After the sections: the 2× decor twins also cover the sized ids the section files registered.
 import './art-hi-ab';
@@ -53,8 +66,18 @@ export const AMS: MissionDef = {
   // After the boss: the glitch bridge into the first-person mode (docs/design/fps.md §1.1).
   after: 'fps',
   announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
-  sections: { a: sectionA, b: sectionB, c: withArt(sectionC, ['fx/explosion-l']), d: withArt(sectionD, ['fx/explosion-l', 'fx/explosion-xl']) },
-  hostages: { a: 4, b: 3, c: 3 },
+  sections: {
+    a: sectionA,
+    b: sectionB,
+    c: withArt(sectionC, ['fx/explosion-l']),
+    c1: withArt(sectionC1, ['fx/explosion-l']),
+    c2: withArt(sectionC2, ['fx/explosion-l']),
+    d: withArt(sectionD, ['fx/explosion-l', 'fx/explosion-xl']),
+  },
+  // Per section id: c → c1 (the bridge sack) or c2 (the houseboat tourist), the same total on
+  // both routes (the tally counts the route a slot took). The hidden tourists of the secrets
+  // count too (secrets.ts HIDDEN_TOURISTS: a's houseboat hatch, b's museum crate).
+  hostages: { a: 5, b: 4, c: 2, c1: 1, c2: 1 },
   // Dense art up to 4× (docs/ART_GUIDE.md "2x art (mission ams)", "UHD art"): only this mission
   // draws it; the runner draws at min(4, artTier()).
   artDensity: 4,
@@ -101,13 +124,17 @@ export const AMS: MissionDef = {
     'fx/splash',
     'fx/tin-feather',
     'fx/confetti',
+    // The gloat's music note (the fatbike speaker; docs/design/ams-extras.md §1).
+    'fx/music-note',
     'weapon/',
     'ui/icon-',
     'ui/onward',
     'ui/swan-marker',
     'ui/ride',
   ],
-  preloadLast: ['boss/', 'enemy/handhaver', 'enemy/boete-ticket/'],
+  // The boss (ROBO-HALSEMA) last; the scan car (boss/ams-scan, the mid-boss of c) is section art
+  // of c: with `boss/` here the boss section's tier-4 set would hold it too.
+  preloadLast: ['boss/ams-mayor/', 'enemy/handhaver', 'enemy/boete-ticket/'],
   // What this mission draws at 1× (the boot preloads only this; tests/game/boot-art.test.ts
   // checks it against the start screens and a bot run of every section and the boss).
   art: [
@@ -115,11 +142,17 @@ export const AMS: MissionDef = {
     'decor/ams/',
     'npc/ams/',
     'boss/ams-mayor/',
+    // The parking scan car of c (docs/design/ams-extras.md §3).
+    'boss/ams-scan/',
     'enemy/fatbike-youth',
     'enemy/delivery-rider',
     'enemy/seagull/',
     'enemy/handhaver',
     'enemy/boete-ticket/',
+    // The stag party, its corks and the beer bike (enemy and rideable; §2).
+    'enemy/stag-',
+    'enemy/cork/',
+    'vehicle/beer-bike/',
     'item/',
     'weapon/',
     'fx/',

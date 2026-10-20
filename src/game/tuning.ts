@@ -265,9 +265,12 @@ export const TUNING = {
     skipTicks: 15,
     /** No credits left: the countdown ends after this many ticks (nothing to wait for). */
     noCreditTicks: 60,
-    /** Every player out: on-screen enemies get a 'laugh' of `laughTicks`, renewed every `laughEvery` ticks. */
-    laughEvery: 15,
-    laughTicks: 24,
+    /**
+     * Every player out: on-screen enemies get a 'gloat' of `gloatTicks`, renewed every `gloatEvery`
+     * ticks (their own business at the spot, docs/design/ams-extras.md §1).
+     */
+    gloatEvery: 15,
+    gloatTicks: 24,
     /** A continued hero lands: on-screen enemies cower this long (no attacks). */
     cowerTicks: 90,
     /** A continued hero lands: the boss stops its attack this long (shocked look). */
