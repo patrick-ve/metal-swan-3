@@ -7,9 +7,10 @@
  * already draws (sections c / d, the breakables, the boats: art-hd-cd*.ts; the canal water pieces:
  * art-hd-terrain-water.ts) are left to it; the
  * canal houses of the golden and sunset lights (sections c, d) are filled in here when no other
- * file registered them.
+ * file registered them. Morning and noon keep the HD light (`lightHd`), so the noon ids are dense
+ * aliases of the morning ones (`defineDenseAlias`: built and held once; 1× stays its own).
  */
-import { listSprites, defineHdSprite, hasHiSprite, type DenseDensity } from '../../../../engine/sprites';
+import { listSprites, defineDenseAlias, defineHdSprite, hasHiSprite, type DenseDensity } from '../../../../engine/sprites';
 import { PAL_HD } from '../../../../engine/palette-hd';
 import type { Frame } from '../../../../engine/render';
 import { HOUSE_VARIANTS, LIGHTS, type Light } from './art';
@@ -118,3 +119,5 @@ for (const id of listSprites(D)) {
 }
 
 for (const [id, gen] of AB_HD) defineHdSprite(id, gen);
+// The same picture (no remap for either light): section b's noon row draws the morning frames.
+for (const name of ['house', 'fabel-friet', 'neighbour']) defineDenseAlias(`${D}${name}-noon`, `${D}${name}-morning`);

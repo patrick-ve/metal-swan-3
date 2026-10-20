@@ -22,7 +22,7 @@ import { INK, PAL } from '../../../engine/palette';
 import { PAL_HD } from '../../../engine/palette-hd';
 import { PixelBuffer } from '../../../engine/pixel';
 import type { Frame } from '../../../engine/render';
-import { defineHdSprite, defineSprite, getFrames } from '../../../engine/sprites';
+import { defineDenseAlias, defineHdSprite, defineSprite, getFrames } from '../../../engine/sprites';
 import { HdCanvas, type Texture } from '../../art/hd';
 import { crushStripHi } from '../../art/hi-strips';
 import { crumbleDense, scorch, sootify, withFlamesDense } from '../../art/human-fx';
@@ -631,5 +631,9 @@ defineSprite(A + 'die-crush', () => crushStrip(grounded(gull({ wings: 'wide', fa
 defineSprite(A + 'photo-pose', () => gull({ wings: 'wide', face: 'happy' }));
 defineSprite(A + 'feather', featherFrames, { ticksPerFrame: 6 });
 
-// UHD art (mission ams): one density-generic generator per strip for 2× and 4×.
-for (const name of GULL_STRIPS) defineHdSprite(A + name, (d) => gullStripHd(name, d, getFrames(A + name, 1)));
+// UHD art (mission ams): one density-generic generator per strip for 2× and 4×. `idle` is the
+// `walk` flap (the same frames, slower): a dense alias of it, built and held once.
+for (const name of GULL_STRIPS) {
+  if (name === 'idle') defineDenseAlias(A + name, A + 'walk');
+  else defineHdSprite(A + name, (d) => gullStripHd(name, d, getFrames(A + name, 1)));
+}

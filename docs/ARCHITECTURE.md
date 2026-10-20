@@ -166,7 +166,9 @@ multi-part bosses, and 2-player co-op.
     (`setDeferDense(true)`): a missing one draws its 2× frame and the id is queued
     (`takeDenseQueue()`) for the art pool, which installs the result (`installFrames(id, 4, …)`);
     `hasFramesAt` / `framesDensityAt` peek without generating, `releaseDense(ids, 4)` /
-    `denseBytes(4)` serve the working set. Renderers: a frame of density d > k is drawn as its
+    `denseBytes(4)` serve the working set. Identical dense art is shared: `defineDenseAlias(id,
+    target)` makes an id show its target's 2× / 4× frames (built, held, counted, sent and packed
+    once; the 1× frames stay its own; the alias must have the target's 1× geometry). Renderers: a frame of density d > k is drawn as its
     reduction to the highest density ≤ k that divides d (`drawDensity`, `reducedFor`: a 4×
     frame at k 2 or 3 shows its 2× image, at k 1 its 1× image; never filtered). Scenery:
     `defineHiBgGenerator(id, gen, d)` / `defineHdBgGenerator(id, (w, h, params, seed, d) => …)`,
@@ -780,7 +782,8 @@ that frame and is uploaded on a later one (`TextureStats.uploadMs` / `uploadDefe
 (`npm run perf -- --viewport 3840x2160 --gpu`, `--art auto,2` to compare); on a software
 rasteriser the governor drops to tier 2 when the 2 s average passes 8 ms. 4× frames are never
 generated on the main thread during play (the art pool builds them; resident 4× frames ≤ 256 MB
-working set).
+working set: identical strips are dense aliases, and with two players the rare strips — deferred,
+photo poses, the Swans' migration — stay 2×, gameplay.ts `rareDenseArt`).
 
 First-person mode (`docs/design/fps.md` §3.5): `renderView` ≤ 2 ms per 384 × 176 frame headless
 at density 1, `FpsGame.step` ≤ 0.3 ms with 60 actors, zero per-tick allocations, one stream slot

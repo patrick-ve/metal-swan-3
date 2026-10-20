@@ -142,6 +142,8 @@ framePoint(frame, name, flipX?, flipY?, out?)
 frameW(f) / frameH(f) / frameDensity(f)          // logical size and density (also in render.ts)
 defineHiSprite(id, gen, d = 2) / defineHdSprite(id, (d) => frames, densities = [4, 2])   // dense art
 hasHiSprite(id, d = 2) / listHiSprites(prefix?, d = 2)   // either argument order: listHiSprites(4, 'enemy/')
+defineDenseAlias(id, target, densities = [4, 2])   // id's dense art IS target's (the same frames, held once)
+denseTarget(id, d = 4) → the id whose dense frames id shows / listDenseAliases(d = 4) → [[alias, target], …]
 setArtDensity(d) → previous / artDensity() / withArtDensity(d, fn) / setHiArt(on) → previous / hiArtOn()
 toArtDensity(n) → 1 | 2 | 4 / HI_DENSITY (2) / MAX_DENSITY (4) / DENSE_DENSITIES ([4, 2])
 // Art tier (UHD art, docs/ARCHITECTURE.md §3): the highest density the display draws (default 2).
@@ -149,7 +151,7 @@ artTier() → 1 | 2 | 4 / setArtTier(t) → previous
 // Tier 4 in the browser: never generate 4× frames on the main thread; queue them for the art pool.
 setDeferDense(on) → previous / denseDeferred() / takeDenseQueue() → ids / pendingDense()
 hasFramesAt(id, d) → built at exactly d? / framesDensityAt(id, d) → the density getFrames would return, no generation
-releaseDense(ids, d = 4) → bytes freed / denseBytes(d = 4)   // working set
+releaseDense(ids, d = 4) → bytes freed / denseBytes(d = 4)   // working set; each buffer counted once
 // 2× art jobs (non-sprite 2× work such as 2× scenery, run in the same per-frame budget):
 setDeferHiArt(on) → previous / hiArtDeferred() / queueArtJob(key, run) / hasArtJob(key)
 cancelArtJobs(prefix) / pendingArtJobs() / runArtJobs(budgetMs, now?) → jobs run
@@ -169,7 +171,8 @@ poolSize())` starts min(cores − 1, 8) module workers (at least 1). `pool.build
 onProgress?)` → `Promise<ArtPoolReport>` sends the ids of one family (`familyOf(id)`) to the same
 worker; the worker sends back raw packs (`buildRawPack(ids, d)`) as transferred ArrayBuffers (no
 SharedArrayBuffer), and the main thread installs them with `installFrames`. The frames are
-byte-identical to `getFrames`. Without Worker, or after a worker fails, the pool warns once and
+byte-identical to `getFrames`. A dense alias is built, sent and installed as its target, once
+(`buildIds(ids, d)`). Without Worker, or after a worker fails, the pool warns once and
 builds on the main thread with the budgeted preload. Node tools and tests use `nodeArtPool(n)`
 (worker_threads through tsx) or `inProcessPort(createArtWorkerHandler(load))`. Also `reset()`,
 `close()`, `pending`, `workers`, `packFrames` / `unpackFrames` / `installRawPack`.
@@ -222,6 +225,16 @@ builds on the main thread with the budgeted preload. Node tools and tests use `n
   queued (`takeDenseQueue()`); `installFrames(id, 4, frames)` installs the pool's result.
   `preloadSprites(…, { density: 4 })` makes each matching id at the highest density it has
   (deferred 4× ids queued, their 2× frames made). Sprite packs carry any density.
+- **Dense aliases.** `defineDenseAlias(id, target)` (default at 2× and 4×) makes an id whose
+  dense art is the same picture as another id's (a fatbike pair set's rider-only strips, a bike
+  per skin, a second name of a pickup or shot) show the target's frames — the same objects, never
+  a copy — and drops its own dense generator there (a later `defineHiSprite` / `hd` replaces the
+  alias; chains collapse). The 1× frames stay the id's own. Only the target is ever built,
+  installed, queued (`takeDenseQueue`), counted (`denseBytes`), released, sent by the art pool or
+  saved in a pack (`readyFrames` / `generatedSprites` list own frames only); `listHiSprites` and
+  `hasHiSprite` include aliases, `denseTarget(id, d)` names the target. Geometry is law: on first
+  use getFrames checks that the alias has its target's 1× geometry (frame count, logical size,
+  anchor, points); one that does not fit draws its next lower frames (`spriteErrors()`: `id@<d>x`).
 
 ```ts
 defineSprite('enemy/grunt/shoot', () => {

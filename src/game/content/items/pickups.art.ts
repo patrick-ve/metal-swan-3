@@ -20,7 +20,7 @@ import { drawText } from '../../../engine/font';
 import { PixelBuffer } from '../../../engine/pixel';
 import { INK, PAL } from '../../../engine/palette';
 import type { Frame } from '../../../engine/render';
-import { defineHdSprite, defineSprite } from '../../../engine/sprites';
+import { defineDenseAlias, defineHdSprite, defineSprite } from '../../../engine/sprites';
 import { PICKUP_HD, weaponStripHd } from './pickups-hi.art';
 
 /** A small hand-drawn item: rows → buffer with a 1-px INK outline. */
@@ -96,7 +96,8 @@ const WEAPON_ALIASES: Readonly<Record<string, string>> = { rocket: 'rocket-launc
 
 /**
  * Register a weapon medallion: `item/pickup-weapon/<weaponId>` (GDD §15.6), `item/pickup-<id>`
- * and `item/pickup-<letter>` (lower case).
+ * and `item/pickup-<letter>` (lower case). One picture: the other ids' 2× / 4× art is a dense
+ * alias of `item/pickup-weapon/<weaponId>` (built and held once).
  */
 export function defineWeaponPickup(weaponId: string, letter: string, accent: Color = PAL.gold[2], aliases: readonly string[] = []): void {
   const gen = (): Frame[] =>
@@ -110,10 +111,12 @@ export function defineWeaponPickup(weaponId: string, letter: string, accent: Col
     ids.add(`item/pickup-weapon/${a}`);
     ids.add(`item/pickup-${a}`);
   }
+  const main = `item/pickup-weapon/${weaponId}`;
   for (const id of ids) {
     defineSprite(id, gen, opts);
     // HD art (2× and 4×, mission ams; pickups-hi.art.ts). m0–m5 keep the 1× art.
-    defineHdSprite(id, (d) => weaponStripHd(letter, accent, id, d));
+    if (id === main) defineHdSprite(id, (d) => weaponStripHd(letter, accent, id, d));
+    else defineDenseAlias(id, main);
   }
 }
 
@@ -558,5 +561,8 @@ export function defineItemSprites(): void {
   defineSprite('item/pickup-1up', cygnetFrames, { ticksPerFrame: 8 });
   defineSprite('item/pickup-repair', repairFrames, { durations: [30, 6] });
   // HD art (2× and 4×, mission ams; pickups-hi.art.ts): bombs, food and treasure. m0–m5 keep the 1× art.
+  // The plain food and gem ids are the bread and the gem: dense aliases of those.
   for (const [id, gen] of Object.entries(PICKUP_HD)) defineHdSprite(id, (d) => gen(id, d));
+  defineDenseAlias('item/pickup-food', 'item/pickup-food/bread');
+  defineDenseAlias('item/pickup-gem', 'item/pickup-gem/gem');
 }

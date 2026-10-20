@@ -21,14 +21,17 @@
  * UHD art (mission ams; docs/ART_GUIDE.md "UHD art"): every strip has ONE density-generic
  * generator for 2× and 4× (`hd`): the rider is the HD rig (`renderHuman(…, d)`); the bike, its
  * wheels, the cube bag and the cap are drawn natively by rider.hd.ts (the bike with its cranks at
- * the rider's crank angle). A pair set reuses its solo twin's rider-only strips at every dense
- * density (`same`), so a pair adds only the strips with the bike or the passenger.
+ * the rider's crank angle). Strips that are the same picture as another set's are dense ALIASES
+ * of it (`defineDenseAlias`: built, held and sent once; their 1× stays their own): a pair set's
+ * rider-only strips are its solo twin's (`same`), its `passenger-flee` is the `flee` of the
+ * passenger's solo set (`passengerSet`), and the riderless `bike` is the skin-a set's of the
+ * same look (`sameBike`). So a pair adds only the strips with the bike and both riders.
  */
 import type { Color } from '../../../engine/color';
 import { INK, PAL } from '../../../engine/palette';
 import { PixelBuffer } from '../../../engine/pixel';
 import type { Frame } from '../../../engine/render';
-import { defineSprite, getFrames } from '../../../engine/sprites';
+import { defineDenseAlias, defineSprite, getFrames } from '../../../engine/sprites';
 import { crushStripHi } from '../../art/hi-strips';
 import { withPieces, type Piece } from '../../art/human-fx';
 import { blastFrames, burnFrames } from '../../art/human-sprites';
@@ -399,15 +402,29 @@ export interface RiderSetOpts {
   gag: 'bob' | 'phone';
   /**
    * A set with the same rider (style and cube): its rider-only strips (deaths, flee) are the same
-   * pictures, so the 2× and 4× art reuse them instead of drawing them again.
+   * pictures, so their 2× and 4× art are aliases of that set's strips.
    */
   same?: string;
+  /** The solo set of the passenger's look and skin: `passenger-flee` is (at 2× / 4×) its `flee`. */
+  passengerSet?: string;
+  /** A set with the same bike (kind, frame colour, pair): `bike` is (at 2× / 4×) its `bike`. */
+  sameBike?: string;
 }
 
 type StripOpts = { ticksPerFrame?: number; durations?: readonly number[]; loop?: boolean; defer?: boolean };
 
 /** Register a trimmed strip at 1× and its UHD art (the same recipe at density 2 and 4). */
 const def = (id: string, gen: (d: Density) => Frame[], o: StripOpts = {}): void => defineSprite(id, () => gen(1), { trim: true, ...o, hd: (d) => gen(d) });
+
+/**
+ * Register a trimmed strip whose 2× and 4× art is the same picture as `target`'s (when given): its
+ * own 1× frames, and a dense alias of `target`. Without a target: `def`.
+ */
+const defAs = (id: string, gen: (d: Density) => Frame[], o: StripOpts, target: string | undefined, gen1: () => Frame[] = () => gen(1)): void => {
+  if (!target) return def(id, gen, o);
+  defineSprite(id, gen1, { trim: true, ...o });
+  defineDenseAlias(id, target);
+};
 
 /** Register one rider set under `enemy/<set>/…`. */
 export function defineRiderSet(set: string, o: RiderSetOpts): void {
@@ -454,11 +471,11 @@ export function defineRiderSet(set: string, o: RiderSetOpts): void {
   def(pre + 'photo-pose', (d) => [0, 1].map((i) => combo(kind, color, 0, 0, 0, crew({ ...P.RIDE_CHEER[i], expr: 'happy' }, 0), cube, d)), { ticksPerFrame: 10 });
   // Deaths: the rider alone (the bike goes its own way as an fx).
   const bareStyle = style;
-  // `all`: share the twin at 1× as well (the rider alone is the same art; used for the rare
-  // deferred strips to keep the rider set inside its generation budget).
+  // A twin's strip is the same picture: 2× / 4× an alias of it. `all`: share the twin at 1× as
+  // well (the rare deferred strips, to keep the rider set inside its generation budget).
   const rideOnly = (name: string, gen: (d: Density) => Frame[], so: StripOpts, all = false): void => {
-    const twin = o.same;
-    def(pre + name, (d) => ((d !== 1 || all) && twin ? [...getFrames(`enemy/${twin}/${name}`, d)] : gen(d)), so);
+    const twin = o.same ? `enemy/${o.same}/${name}` : undefined;
+    defAs(pre + name, gen, so, twin, () => (all && twin ? [...getFrames(twin, 1)] : gen(1)));
   };
   const people = (poses: readonly Pose[], hat: boolean) => (d: Density): Frame[] => poses.map((p) => {
     let f: Frame = renderHuman(bareStyle, { weapon: 'none', ...p, hat }, 'full', d);
@@ -478,9 +495,9 @@ export function defineRiderSet(set: string, o: RiderSetOpts): void {
     rideOnly('die-seat', people(tween(style, DIE_SEAT_KEYS, { perKey: [0, 1, 0, 0], ease: ['in', 'out', 'linear', 'linear'] }), false), { durations: DIE_SEAT_DURATIONS, loop: false, defer: true }, true);
     rideOnly('get-up', people(GET_UP_KEYS, false), { durations: GET_UP_DURATIONS, loop: false, defer: true }, true);
   }
-  def(pre + 'bike', (d) => bikeWreck(kind, color, !!pass, d), { durations: [6, 6, 6, 8, 6, 6], loop: false });
+  defAs(pre + 'bike', (d) => bikeWreck(kind, color, !!pass, d), { durations: [6, 6, 6, 8, 6, 6], loop: false }, o.sameBike && `enemy/${o.sameBike}/bike`);
   // The passenger jumps off and runs for it (an fx, see FatbikeYouth.deathEffects).
-  if (pass) def(pre + 'passenger-flee', (d) => P.PANIC_FLAIL.map((p) => renderHuman(pass, { weapon: 'none', ...p, hat: false }, 'full', d)), { ticksPerFrame: 4 });
+  if (pass) defAs(pre + 'passenger-flee', (d) => P.PANIC_FLAIL.map((p) => renderHuman(pass, { weapon: 'none', ...p, hat: false }, 'full', d)), { ticksPerFrame: 4 }, o.passengerSet && `enemy/${o.passengerSet}/flee`);
 }
 
 /** The riderless bike: on its side, skidding, then fading out (dithered away; at 2× / 4× in whole logical px, the 1× pattern). */
@@ -538,18 +555,31 @@ export function youthStyle(look: number, skin: SkinKey): HumanStyle {
   return { ...YOUTH_LOOKS[look], skin: SKINS[skin] };
 }
 
+// The skins of one look ride the same bike: skin a's `bike` strip serves b and c (dense aliases).
 for (let look = 0; look < YOUTH_LOOKS.length; look++) {
   for (const skin of Object.keys(SKINS) as SkinKey[]) {
     const style = youthStyle(look, skin);
-    defineRiderSet(youthSet(look, skin, false), { kind: 'fat', style, color: YOUTH_FRAME[look], tell: 'wheelie', gag: 'bob' });
+    const bike = (pair: boolean): string | undefined => (skin === 'a' ? undefined : youthSet(look, 'a', pair));
+    defineRiderSet(youthSet(look, skin, false), { kind: 'fat', style, color: YOUTH_FRAME[look], tell: 'wheelie', gag: 'bob', sameBike: bike(false) });
     const pk = (look + 2) % YOUTH_LOOKS.length;
     const ps: SkinKey = skin === 'a' ? 'c' : skin === 'b' ? 'a' : 'b';
-    defineRiderSet(youthSet(look, skin, true), { kind: 'fat', style, color: YOUTH_FRAME[look], passenger: youthStyle(pk, ps), tell: 'wheelie', gag: 'bob', same: youthSet(look, skin, false) });
+    defineRiderSet(youthSet(look, skin, true), {
+      kind: 'fat',
+      style,
+      color: YOUTH_FRAME[look],
+      passenger: youthStyle(pk, ps),
+      tell: 'wheelie',
+      gag: 'bob',
+      same: youthSet(look, skin, false),
+      passengerSet: youthSet(pk, ps, false),
+      sameBike: bike(true),
+    });
   }
 }
 
 for (const skin of Object.keys(SKINS) as SkinKey[]) {
-  defineRiderSet(skin === 'b' ? 'delivery-rider' : `delivery-rider-${skin}`, { kind: 'city', style: { ...DELIVERY_STYLE, skin: SKINS[skin] }, color: 'stone', cube: true, tell: 'bell', gag: 'phone' });
+  const set = skin === 'b' ? 'delivery-rider' : `delivery-rider-${skin}`;
+  defineRiderSet(set, { kind: 'city', style: { ...DELIVERY_STYLE, skin: SKINS[skin] }, color: 'stone', cube: true, tell: 'bell', gag: 'phone', sameBike: skin === 'b' ? undefined : 'delivery-rider' });
 }
 
 defineSprite('enemy/fatbike-youth/cap', () => capFrames(PAL.black[1], PAL.black[2]), { ticksPerFrame: 4, hd: (d) => capFramesHd(d) });

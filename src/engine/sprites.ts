@@ -41,6 +41,15 @@ export { frameDensity, frameH, frameW } from './render';
  * one draws the 2× frame and the id is queued (`takeDenseQueue`) for the art pool, which installs
  * the result (`installFrames`). `hasFramesAt` / `framesDensityAt` peek without generating, and
  * `releaseDense` drops the 4× frames the working set no longer needs.
+ *
+ * Dense aliases (`defineDenseAlias(id, target)`): ids whose dense art is the same picture as
+ * another id's (a pair set's rider-only strips, a bike per skin, two names of one pickup) show
+ * the TARGET's frames at that density — the same objects, never a copy — and have no generator
+ * of their own there. Only the target is ever built, installed, counted (`denseBytes`), released,
+ * queued, sent through the art pool or saved in a pack; `denseTarget(id, d)` names it. An alias
+ * must have the target's 1× geometry (frame count, logical sizes, anchors, points): getFrames
+ * checks it on first use, and an alias that does not fit draws its next lower frames with a
+ * warning (`spriteErrors()` lists it as 'id@<d>x'). 1× frames are never aliased.
  */
 
 export type SpriteAnchor = 'feet' | 'center' | 'top-left' | readonly [number, number];
@@ -110,6 +119,18 @@ interface HiEntry {
   error: string | null;
 }
 
+/** A dense alias (`defineDenseAlias`): the id shows `target`'s frames at one density. */
+interface AliasEntry {
+  /** The id named at registration (it may be an alias itself: chains resolve on lookup). */
+  readonly target: string;
+  /** The 1× geometry check: null until checked, '' when the alias fits, else why it does not. */
+  error: string | null;
+  /** The end of the chain and the 1× frames (alias, end) the check ran on: a change runs it again. */
+  checked: string | null;
+  own: readonly Frame[] | null;
+  base: readonly Frame[] | null;
+}
+
 /** Density of 2× art. */
 export const HI_DENSITY = 2;
 /** The highest art density (4× art, tier 4). */
@@ -121,6 +142,8 @@ const registry = new Map<string, Entry>();
 /** Dense generators and caches, one map per density. */
 const denseRegistry: Record<DenseDensity, Map<string, HiEntry>> = { 2: new Map(), 4: new Map() };
 const hiRegistry = denseRegistry[2];
+/** Dense aliases, one map per density (an alias id has no entry in denseRegistry there). */
+const denseAliases: Record<DenseDensity, Map<string, AliasEntry>> = { 2: new Map(), 4: new Map() };
 /** The art density getFrames uses when none is passed (1, or 2 / 4 while a dense mission draws). */
 let density: ArtDensity = 1;
 /** The art tier (`setArtTier`): the highest density the display draws. Default 2. */
@@ -191,6 +214,8 @@ export function defineSprite(id: string, gen: SpriteGen, opts: SpriteOpts = {}):
  * ```
  */
 export function defineHiSprite(id: string, gen: SpriteGen, d: DenseDensity = 2): void {
+  // A generator replaces an alias of this id at d (the last definition wins).
+  denseAliases[denseOf(d)].delete(id);
   denseRegistry[denseOf(d)].set(id, { gen, frames: null, error: null });
 }
 
@@ -201,6 +226,101 @@ export function defineHiSprite(id: string, gen: SpriteGen, d: DenseDensity = 2):
  */
 export function defineHdSprite(id: string, gen: HdSpriteGen, densities: readonly DenseDensity[] = DENSE_DENSITIES): void {
   for (const d of densities) defineHiSprite(id, () => gen(d), d);
+}
+
+/**
+ * Register `id` at the dense `densities` (default 2 and 4) as an ALIAS of `target`: it shows
+ * target's frames there (the same objects), so identical art is built, held and sent once. It
+ * replaces id's own generator at those densities (a later `defineHiSprite` / `hd` replaces the
+ * alias). Chains resolve on lookup (an alias of an alias shows the end of the chain). Both ids
+ * keep their own 1× sprite, and the alias must have the target's 1× geometry (checked on first
+ * use, see the module comment). An alias of itself (also through a chain) is ignored with a warning.
+ *
+ * ```ts
+ * defineDenseAlias('enemy/fatbike-youth-pair-0b/die', 'enemy/fatbike-youth-0b/die');
+ * ```
+ */
+export function defineDenseAlias(id: string, target: string, densities: readonly DenseDensity[] = DENSE_DENSITIES): void {
+  for (const dd of densities) {
+    const d = denseOf(dd);
+    if (target === id || aliasEnd(target, d) === id) {
+      warnOnce(`alias-self:${id}@${d}`, `[sprites] ${d}× alias "${id}" → "${target}" points at itself — ignored`);
+      continue;
+    }
+    denseRegistry[d].delete(id);
+    denseAliases[d].set(id, { target, error: null, checked: null, own: null, base: null });
+  }
+}
+
+/** The last id of `id`'s alias chain at d (an id with no alias there), or undefined when `id` is no alias. */
+function aliasEnd(id: string, d: DenseDensity): string | undefined {
+  const aliases = denseAliases[d];
+  let t = aliases.get(id)?.target;
+  // Registration refuses cycles; the bound only guards against a broken map.
+  for (let n = 0; t !== undefined && n < 64; n++) {
+    const next = aliases.get(t)?.target;
+    if (next === undefined) return t;
+    t = next;
+  }
+  return undefined;
+}
+
+/**
+ * The id whose dense frames `id` shows at density `d` (default 4; values normalise like
+ * `toArtDensity`, 1 → itself): the end of its alias chain (`defineDenseAlias`), else `id`. An
+ * alias whose geometry check failed names itself (it draws its lower frames). Never generates.
+ */
+export function denseTarget(id: string, d: number = MAX_DENSITY): string {
+  if (d < HI_DENSITY) return id;
+  const dd = denseOf(d);
+  const a = denseAliases[dd].get(id);
+  if (!a) return id;
+  const end = aliasEnd(id, dd) ?? id;
+  return a.error && a.checked === end ? id : end;
+}
+
+/** [alias, target] of every dense alias at density `d` (default 4; the end of each chain), sorted by alias id. */
+export function listDenseAliases(d: number = MAX_DENSITY): Array<[string, string]> {
+  const dd = denseOf(d);
+  const out: Array<[string, string]> = [];
+  for (const id of denseAliases[dd].keys()) out.push([id, aliasEnd(id, dd) ?? id]);
+  return out.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+
+/**
+ * The id whose dense frames getFrames(id, d) draws: the end of the alias chain once the alias
+ * passed its 1× geometry check (run here when the end or the 1× frames are new), else `id`.
+ */
+function drawnId(id: string, d: DenseDensity): string {
+  const a = denseAliases[d].get(id);
+  if (!a) return id;
+  const end = aliasEnd(id, d);
+  if (end === undefined) return id;
+  const own = getFrames(id, 1);
+  const base = getFrames(end, 1);
+  if (a.checked !== end || a.own !== own || a.base !== base) {
+    a.checked = end;
+    a.own = own;
+    a.base = base;
+    a.error = sameGeometry(own, base);
+    if (a.error) warnOnce(`alias:${id}@${d}`, `[sprites] ${d}× alias "${id}" → "${end}": ${a.error} — drawing the lower frames`);
+  }
+  return a.error ? id : end;
+}
+
+/** '' when two 1× strips have the same geometry (frame count, logical size, anchor, points), else the first difference. */
+function sameGeometry(a: readonly Frame[], b: readonly Frame[]): string {
+  if (a.length !== b.length) return `${a.length} frames, the target has ${b.length}`;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i];
+    const q = b[i];
+    const pd = p.density ?? 1;
+    const qd = q.density ?? 1;
+    if (p.buf.w / pd !== q.buf.w / qd || p.buf.h / pd !== q.buf.h / qd) return `frame ${i} is ${p.buf.w / pd}×${p.buf.h / pd}, the target's ${q.buf.w / qd}×${q.buf.h / qd}`;
+    if (p.ox !== q.ox || p.oy !== q.oy) return `frame ${i} anchor (${p.ox}, ${p.oy}), the target's (${q.ox}, ${q.oy})`;
+    if (!samePoints(p.pts, q.pts)) return `frame ${i}: points differ from the target's`;
+  }
+  return '';
 }
 
 /** 2 or 4 for a dense density request (values ≥ 4 → 4, else 2). */
@@ -222,30 +342,32 @@ export function hasSprite(id: string): boolean {
   return registry.has(id);
 }
 
-/** Does `id` have a generator at dense density `d` (default 2)? */
+/** Does `id` have art at dense density `d` (default 2): a generator, or an alias of an id with one? */
 export function hasHiSprite(id: string, d: DenseDensity = 2): boolean {
-  return denseRegistry[denseOf(d)].has(id);
+  return denseRegistry[denseOf(d)].has(denseTarget(id, d));
 }
 
 /**
- * Ids with a generator at dense density `d` (sorted), optionally only those starting with
- * `prefix`. Both argument orders work: listHiSprites('enemy/'), listHiSprites(4),
+ * Ids with art at dense density `d` (sorted): a generator, or an alias of an id with one
+ * (`defineDenseAlias`; build `denseTarget(id, d)`, never both). Optionally only those starting
+ * with `prefix`. Both argument orders work: listHiSprites('enemy/'), listHiSprites(4),
  * listHiSprites('enemy/', 4), listHiSprites(4, 'enemy/'). Default density 2.
  */
 export function listHiSprites(a: string | number = '', b: string | number = ''): string[] {
   const prefix = typeof a === 'string' ? a : typeof b === 'string' ? b : '';
-  const d = typeof a === 'number' ? a : typeof b === 'number' ? b : 2;
+  const d = denseOf(typeof a === 'number' ? a : typeof b === 'number' ? b : 2);
   const out: string[] = [];
-  for (const id of denseRegistry[denseOf(d)].keys()) if (id.startsWith(prefix)) out.push(id);
+  for (const id of denseRegistry[d].keys()) if (id.startsWith(prefix)) out.push(id);
+  for (const id of denseAliases[d].keys()) if (id.startsWith(prefix) && denseRegistry[d].has(aliasEnd(id, d) ?? id)) out.push(id);
   return out.sort();
 }
 
 /**
  * Non-generating peek: are the frames of `id` at exactly density `d` built (generated or
- * installed)? d 1: the 1× frames.
+ * installed; an alias: its target's)? d 1: the 1× frames.
  */
 export function hasFramesAt(id: string, d: number): boolean {
-  const e = d >= HI_DENSITY ? denseRegistry[denseOf(d)].get(id) : registry.get(id);
+  const e = d >= HI_DENSITY ? denseRegistry[denseOf(d)].get(denseTarget(id, d)) : registry.get(id);
   return !!e?.frames;
 }
 
@@ -257,7 +379,7 @@ export function framesDensityAt(id: string, d: number): ArtDensity {
   if (hiArt) {
     for (const dd of DENSE_DENSITIES) {
       if (dd > d) continue;
-      const h = denseRegistry[dd].get(id);
+      const h = denseRegistry[dd].get(denseTarget(id, dd));
       if (!h || (h.frames && h.error)) continue;
       if (h.frames || !(deferDense && dd > HI_DENSITY)) return dd;
     }
@@ -305,25 +427,42 @@ export function pendingDense(): number {
 
 /**
  * Drop the cached frames of `ids` at dense density `d` (the tier-4 working set releases ids it
- * no longer needs); they regenerate (or are queued) on next use. Returns the bytes freed.
+ * no longer needs); they regenerate (or are queued) on next use. Returns the bytes freed (each
+ * buffer once). An alias has no frames of its own: releasing it leaves its target alone.
  */
 export function releaseDense(ids: Iterable<string>, d: DenseDensity = 4): number {
+  const seen = new Set<PixelBuffer>();
   let bytes = 0;
   const reg = denseRegistry[denseOf(d)];
   for (const id of ids) {
     const h = reg.get(id);
     if (!h?.frames) continue;
-    if (!h.error) for (const f of h.frames) bytes += f.buf.data.byteLength;
+    if (!h.error) bytes += newBytes(h.frames, seen);
     h.frames = null;
     h.error = null;
   }
   return bytes;
 }
 
-/** Bytes of the built frames at dense density `d` (own frames, not fallbacks). */
+/**
+ * Bytes of the built frames at dense density `d` (own frames, not fallbacks), each buffer once:
+ * frames that share a buffer, and aliases (which show their target's frames), add nothing.
+ */
 export function denseBytes(d: DenseDensity = 4): number {
+  const seen = new Set<PixelBuffer>();
   let bytes = 0;
-  for (const h of denseRegistry[denseOf(d)].values()) if (h.frames && !h.error) for (const f of h.frames) bytes += f.buf.data.byteLength;
+  for (const h of denseRegistry[denseOf(d)].values()) if (h.frames && !h.error) bytes += newBytes(h.frames, seen);
+  return bytes;
+}
+
+/** Bytes of the buffers of `frames` not in `seen` yet (and add them to it). */
+function newBytes(frames: readonly Frame[], seen: Set<PixelBuffer>): number {
+  let bytes = 0;
+  for (const f of frames) {
+    if (seen.has(f.buf)) continue;
+    seen.add(f.buf);
+    bytes += f.buf.data.byteLength;
+  }
   return bytes;
 }
 
@@ -473,7 +612,8 @@ export function generatedSprites(d = 1, prefix = ''): string[] {
 
 /**
  * The frames of `id` at density `d` (2: its 2× frames) when they exist without an error, else
- * null. Never generates (the sprite cache reads what is already made).
+ * null. Never generates (the sprite cache reads what is already made). Own frames only: a dense
+ * alias has none (its target has them), so packs never hold an alias.
  */
 export function readyFrames(id: string, d = 1): readonly Frame[] | null {
   const e = d >= HI_DENSITY ? denseRegistry[denseOf(d)].get(id) : registry.get(id);
@@ -482,8 +622,8 @@ export function readyFrames(id: string, d = 1): readonly Frame[] | null {
 
 /**
  * Give a registered id frames made earlier by its own generator (the sprite cache), so it never
- * runs the generator. `d` 2 installs 2× frames (the id needs a 2× generator). Only an id without
- * frames takes them; returns true when it did.
+ * runs the generator. `d` 2 installs 2× frames (the id needs a 2× generator; a dense alias takes
+ * none). Only an id without frames takes them; returns true when it did.
  */
 export function installFrames(id: string, d: number, frames: readonly Frame[]): boolean {
   const e = d >= HI_DENSITY ? denseRegistry[denseOf(d)].get(id) : registry.get(id);
@@ -511,14 +651,16 @@ export function getFrames(id: string, d: number = density): readonly Frame[] {
   if (d >= HI_DENSITY && hiArt) {
     for (const dd of DENSE_DENSITIES) {
       if (dd > d) continue;
-      const h = denseRegistry[dd].get(id);
+      // A dense alias draws (and builds, and queues) its target.
+      const t = drawnId(id, dd);
+      const h = denseRegistry[dd].get(t);
       if (!h) continue;
       if (!h.frames) {
         if (deferDense && dd > HI_DENSITY) {
-          denseQueue.add(id);
+          denseQueue.add(t);
           continue;
         }
-        generateHi(id, h, dd);
+        generateHi(t, h, dd);
       }
       return h.frames as readonly Frame[];
     }
@@ -560,12 +702,14 @@ export function spriteAnim(id: string): SpriteAnimInfo {
 
 /**
  * Generation errors so far (ids whose generator threw or returned nothing usable). A failing 2×
- * generator is listed as `id@2x` (that id then draws its 1× frames).
+ * generator is listed as `id@2x` (that id then draws its 1× frames), and so is a dense alias whose
+ * 1× geometry differs from its target's.
  */
 export function spriteErrors(): Array<{ id: string; error: string }> {
   const out: Array<{ id: string; error: string }> = [];
   for (const e of registry.values()) if (e.error) out.push({ id: e.id, error: e.error });
   for (const d of DENSE_DENSITIES) for (const [id, h] of denseRegistry[d]) if (h.error) out.push({ id: `${id}@${d}x`, error: h.error });
+  for (const d of DENSE_DENSITIES) for (const [id, a] of denseAliases[d]) if (a.error) out.push({ id: `${id}@${d}x`, error: `alias of "${a.checked}": ${a.error}` });
   return out;
 }
 
@@ -582,6 +726,13 @@ export function clearSpriteCache(id?: string): void {
       if (id === undefined || hid === id) {
         h.frames = null;
         h.error = null;
+      }
+    }
+    // The alias geometry checks run again on the new 1× frames.
+    for (const [aid, a] of denseAliases[d]) {
+      if (id === undefined || aid === id || a.checked === id) {
+        a.error = a.checked = null;
+        a.own = a.base = null;
       }
     }
   }
@@ -660,8 +811,8 @@ export async function preloadSprites(
   const hi = (opts?.density ?? 1) >= HI_DENSITY;
   const pd = denseOf(opts?.density ?? 1);
   // Density 4: the ids with 4× or 2× art (each at the highest density it has; deferred 4× ids are
-  // queued for the pool and get their 2× frames meanwhile).
-  const keys: Iterable<string> = !hi ? registry.keys() : pd === 4 ? new Set([...denseRegistry[4].keys(), ...hiRegistry.keys()]) : hiRegistry.keys();
+  // queued for the pool and get their 2× frames meanwhile). A dense alias builds its target.
+  const keys: Iterable<string> = !hi ? registry.keys() : pd === 4 ? new Set([...listHiSprites(4), ...listHiSprites(2)]) : listHiSprites(2);
   const ids = preloadOrder(
     [...keys].filter(
       (id) => list.some((p) => id.startsWith(p)) && !(opts?.skipDeferred && isDeferredSprite(id)),
@@ -694,8 +845,8 @@ export async function preloadSprites(
         }
       }
       if (hi) {
-        const id = ids[i];
         let dd: DenseDensity = pd;
+        let id = denseTarget(ids[i], pd);
         let h = denseRegistry[pd].get(id);
         if (pd === 4 && h && !h.frames && deferDense) {
           denseQueue.add(id);
@@ -703,6 +854,7 @@ export async function preloadSprites(
         }
         if (!h && pd === 4) {
           dd = 2;
+          id = denseTarget(ids[i], 2);
           h = hiRegistry.get(id);
         }
         if (h && !h.frames) generateHi(id, h, dd);

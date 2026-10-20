@@ -18,7 +18,7 @@ import type { Color } from '../../../engine/color';
 import { PixelBuffer } from '../../../engine/pixel';
 import { INK, PAL } from '../../../engine/palette';
 import type { Frame } from '../../../engine/render';
-import { defineSprite, type SpriteOpts } from '../../../engine/sprites';
+import { defineDenseAlias, defineSprite, type SpriteOpts } from '../../../engine/sprites';
 import {
   familyFlashHd,
   flameGlowHd,
@@ -390,7 +390,9 @@ export function defineShotSprites(): void {
     defineSprite(id, gen, { ...opts, hd: (d) => hd(id, d) });
   def('weapon/rocket', () => directionStrip(rocketBitmap()), {}, rocketHd);
   def('weapon/homing', () => directionStrip(homingBitmap()), {}, homingHd);
-  def('weapon/homing-missile', () => directionStrip(homingBitmap()), {}, homingHd);
+  // A second name of the homing missile: its own 1× sprite, its 2× / 4× art a dense alias.
+  defineSprite('weapon/homing-missile', () => directionStrip(homingBitmap()));
+  defineDenseAlias('weapon/homing-missile', 'weapon/homing');
   def('weapon/tuba-ring', () => ringStrip(false), { ticksPerFrame: 4 }, (id, d) => ringHd(id, d, false));
   def('weapon/tuba-ring-up', () => ringStrip(true), { ticksPerFrame: 4 }, (id, d) => ringHd(id, d, true));
   def('weapon/mine-disc', mineFrames, { ticksPerFrame: 3 }, mineHd);

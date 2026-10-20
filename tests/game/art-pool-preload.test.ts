@@ -6,7 +6,8 @@
  *   never another hero; setDeferDense on; a section change moves the set on and releases the
  *   sections behind within the budget; drawn-but-missing 4× ids are pumped to the pool;
  *   'hd4-<section>' / 'hd4-char-<hero>' packs are saved, and a later visit restores them; the
- *   P2-only Mute Swan art joins only with two players, boss/ only in the boss section;
+ *   P2-only Mute Swan art joins only with two players, boss/ only in the boss section; a 4×
+ *   alias stands for its target (once); two players leave the rare strips at 2× (set and pump);
  * - fallback: without Worker the pool builds on the main thread after one warning; at tier 4
  *   it never generates 4× art there (2× stand-ins stay) and does not rebuild in a loop.
  */
@@ -16,6 +17,7 @@ import { MemoryByteStore } from '../../src/engine/byte-store';
 import { PixelBuffer } from '../../src/engine/pixel';
 import {
   clearSpriteCache,
+  defineDenseAlias,
   defineHiSprite,
   defineSprite,
   denseBytes,
@@ -25,6 +27,7 @@ import {
   installFrames,
   setArtTier,
   setDeferDense,
+  takeDenseQueue,
 } from '../../src/engine/sprites';
 import { ArtCache } from '../../src/game/art-cache';
 import type { GameSession } from '../../src/game/session';
@@ -203,5 +206,51 @@ describe('tier 4 working set size', () => {
     expect(denseWorkingSet(m, ['char/zhero/'], 'a', 'b', 2)).toContain('vehicle/swan-mute/zt');
     expect(denseWorkingSet(m, ['char/zhero/'], 'b', 'c', 1)).not.toContain('boss/zt/x');
     expect(denseWorkingSet(m, ['char/zhero/'], 'c', undefined, 1)).toContain('boss/zt/x');
+  });
+
+  it("holds a 4× alias's target, once, at the alias's place", () => {
+    sprite('zalias-t/x', 0x30405000);
+    for (const id of ['zalias-a/x', 'zalias-b/x']) {
+      defineSprite(id, () => new PixelBuffer(8, 8).fill(0x30405100));
+      defineDenseAlias(id, 'zalias-t/x');
+    }
+    const m = { ...MISSION, preloadFirst: ['zalias-a/', 'zfirst/'], sections: { a: { art: ['zalias-b/', 'zalias-t/', 'zsec-a/'] }, b: { art: [] } } } as unknown as MissionArtDef;
+    const set = denseWorkingSet(m, ['char/zhero/'], 'a', 'b', 1);
+    expect(set.slice(0, 3)).toEqual(['char/zhero/idle', 'zalias-t/x', 'zfirst/a']);
+    expect(set.filter((id) => id.startsWith('zalias'))).toEqual(['zalias-t/x']);
+  });
+
+  it('two players leave the rare strips (deferred, photo pose, Swan migration) at 2×, never a hero strip', async () => {
+    sprite('enemy/zr/photo-pose', 0x40506000);
+    sprite('vehicle/swan/migrate', 0x40506100);
+    sprite('enemy/zr/ride', 0x40506200);
+    for (const id of ['enemy/zr/die-seat', 'char/zhero/fidget']) {
+      defineSprite(id, () => new PixelBuffer(8, 8).fill(0x40506300), { defer: true });
+      defineHiSprite(id, () => new PixelBuffer(16, 16).fill(0x40506301), 2);
+      defineHiSprite(id, () => new PixelBuffer(32, 32).fill(0x40506302), 4);
+    }
+    const rare = ['enemy/zr/photo-pose', 'vehicle/swan/migrate', 'enemy/zr/die-seat'];
+    const m = { ...MISSION, preloadFirst: ['enemy/zr/', 'vehicle/swan'] } as unknown as MissionArtDef;
+    const one = denseWorkingSet(m, ['char/zhero/'], 'a', 'b', 1);
+    expect(rare.every((id) => one.includes(id))).toBe(true);
+    const two = denseWorkingSet(m, ['char/zhero/'], 'a', 'b', 2);
+    expect(rare.filter((id) => two.includes(id))).toEqual([]);
+    expect(two).toContain('enemy/zr/ride');
+    expect(two).toContain('char/zhero/fidget');
+    // Drawn with two players: the 2× frame, and the pump does not hand it to the pool.
+    const log: ArtBuildRequest[] = [];
+    resetMissionArt(loggingPool(log));
+    setArtTier(4);
+    const both = { slots: [{ joined: true, character: 'zhero' }, { joined: true, character: 'zother' }] } as unknown as GameSession;
+    preloadMissionArt({ preloadArt: true, session: both }, m, 4, both);
+    await settle();
+    takeDenseQueue();
+    expect(getFrames('enemy/zr/photo-pose', 4)[0].density).toBe(2);
+    expect(getFrames('enemy/zr/ride', 4)[0].density).toBe(4);
+    getFrames('zextra/x', 4);
+    expect(pumpDenseQueue()).toBe(1);
+    await settle();
+    expect(log.filter((r) => r.d === 4).flatMap((r) => r.ids)).not.toContain('enemy/zr/photo-pose');
+    expect(hasFramesAt('enemy/zr/photo-pose', 4)).toBe(false);
   });
 });

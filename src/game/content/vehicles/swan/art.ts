@@ -32,7 +32,9 @@
  * the 2× and the 4× art (`defineHdSprite`): new art drawn natively on the UHD kit's lit canvas
  * (`hd-body.art.ts`, `hd-head.art.ts`, `hd-extras.art.ts` over `hd-kit.art.ts`) from the 1× rig's
  * geometry, in the rectangle of the 1× frame with its anchor and points. The sock variants
- * (mission m3 only) stay 1×.
+ * (mission m3 only) stay 1×. `move` / `move-front` (copies of `run` / `run-front`) and
+ * `swim-neck-relax` (the same relaxed S as `neck-relax`) are dense aliases of those strips
+ * (`defineDenseAlias`: built and held once).
  *
  * The head drawing is shared with the HUD and menus: `drawSwanHead(buf, cx, cy, opts)` paints the
  * ivory dome, lens eye, navy face patch and orange beak (or the Mute's black head) into any
@@ -40,7 +42,7 @@
  * `ui/cursor-swan`).
  */
 import type { Frame } from '../../../../engine/render';
-import { defineHdSprite, defineSprite, getFrames, type SpriteOpts } from '../../../../engine/sprites';
+import { defineDenseAlias, defineHdSprite, defineSprite, getFrames, type SpriteOpts } from '../../../../engine/sprites';
 import { scorch } from '../../../art/human-fx';
 import type { BodyOut, SwanStyle } from './body.art';
 import { renderBody } from './body.art';
@@ -156,7 +158,7 @@ function bodyHd(id: string, style: SwanStyle, def: StripDef, d: D): Frame[] {
 for (const [pre, style] of Object.entries(SWAN_BODY_PREFIXES)) {
   if (style.socks) continue;
   for (const anim of Object.keys(RIDDEN)) {
-    if (anim === 'move') defineHdSprite(`${pre}/move`, (d) => [...getFrames(`${pre}/run`, d)]);
+    if (anim === 'move') defineDenseAlias(`${pre}/move`, `${pre}/run`);
     else defineHdSprite(`${pre}/${anim}`, (d) => riddenHd(pre, style.colour, anim, 'body', d));
   }
   for (const [anim, def] of Object.entries(RIDERLESS)) {
@@ -177,7 +179,7 @@ for (const [pre, colour] of Object.entries(SWAN_COLOUR_PREFIXES)) {
     defineSprite(`${pre}/${anim}-front`, () => riddenRender(colour, anim, 'front'), opts);
     defineHdSprite(`${pre}/${anim}-front`, (d) => riddenHd(pre, colour, anim, 'front', d));
   }
-  defineHdSprite(`${pre}/move-front`, (d) => [...getFrames(`${pre}/run-front`, d)]);
+  defineDenseAlias(`${pre}/move-front`, `${pre}/run-front`);
 }
 
 // ------------------------------------------------------------------------------------ necks
@@ -220,7 +222,7 @@ for (const [pre, colour] of Object.entries(SWAN_COLOUR_PREFIXES)) {
   defineSprite(`${pre}/neck-honk`, () => NECK_HONK.map((s) => renderNeckFrame(s, colour)), { durations: [10, 4, 6], loop: false });
   const relaxSpecs: NeckSpec[] = [NECK_RELAX, { ...NECK_RELAX, eye: 'blink' }];
   defineHdSprite(`${pre}/neck-relax`, (d) => neckStripHd(`${pre}/neck-relax`, colour, relaxSpecs, d));
-  defineHdSprite(`${pre}/swim-neck-relax`, (d) => neckStripHd(`${pre}/swim-neck-relax`, colour, relaxSpecs, d));
+  defineDenseAlias(`${pre}/swim-neck-relax`, `${pre}/neck-relax`);
   defineHdSprite(`${pre}/neck-honk`, (d) => neckStripHd(`${pre}/neck-honk`, colour, NECK_HONK, d));
 }
 

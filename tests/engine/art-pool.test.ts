@@ -23,7 +23,7 @@ import {
 } from '../../src/engine/art-pool';
 import { PixelBuffer } from '../../src/engine/pixel';
 import type { Frame } from '../../src/engine/render';
-import { clearSpriteCache, getFrames, listHiSprites, readyFrames } from '../../src/engine/sprites';
+import { clearSpriteCache, denseTarget, getFrames, listHiSprites, readyFrames } from '../../src/engine/sprites';
 import { isLazyContent, loadContent } from '../../src/game/content/index';
 
 /** A frame list as plain data (pixels as a hex digest of every word, for exact compares). */
@@ -37,6 +37,10 @@ function snap(frames: readonly Frame[]): unknown[] {
 
 let sample: string[] = [];
 const reference = new Map<string, unknown[]>();
+/** The 2× frames the pool installed for `id` (a dense alias: its target's; never generates). */
+const installed2 = (id: string): readonly Frame[] => readyFrames(denseTarget(id, 2), 2) ?? [];
+/** Ids the pool builds for the sample (each dense alias as its target, once). */
+const targets2 = (): number => new Set(sample.map((id) => denseTarget(id, 2))).size;
 
 beforeAll(async () => {
   await loadContent((id) => !isLazyContent(id));
@@ -93,8 +97,8 @@ describe('determinism: pool frames = main-thread frames (2×)', () => {
     const pool = new ArtPool([inProcessPort(createArtWorkerHandler(async () => {}))]);
     const r = await pool.build(sample, 2);
     expect(r.failed).toEqual([]);
-    expect(r.installed).toBe(sample.length);
-    for (const id of sample) expect(snap(readyFrames(id, 2) ?? []), id).toEqual(reference.get(id));
+    expect(r.installed).toBe(targets2());
+    for (const id of sample) expect(snap(installed2(id)), id).toEqual(reference.get(id));
   });
 
   let threads: ArtPool | null = null;
@@ -106,8 +110,8 @@ describe('determinism: pool frames = main-thread frames (2×)', () => {
     const r = await threads.build(sample, 2);
     expect(r.fallback).toBe(0);
     expect(r.failed).toEqual([]);
-    expect(r.installed).toBe(sample.length);
-    for (const id of sample) expect(snap(readyFrames(id, 2) ?? []), id).toEqual(reference.get(id));
+    expect(r.installed).toBe(targets2());
+    for (const id of sample) expect(snap(installed2(id)), id).toEqual(reference.get(id));
   }, 120_000);
 });
 

@@ -8,6 +8,7 @@
  *   handed over as transferables (no copy, no SharedArrayBuffer, so no cross-origin isolation).
  * - Ids of one family (`familyOf`: a hero's strip family, enemy/<set>, boss/<id>, vehicle/<id> …) always go
  *   to the same worker, so the art parts memoised inside the art modules stay warm there.
+ * - A dense alias (sprites.ts `defineDenseAlias`) is built, sent and installed as its target, once.
  * - Backends (`ArtWorkerPort`): a browser module worker (`browserArtPool`), an in-process port
  *   for node tools and tests (`inProcessPort`), node worker_threads (`nodeArtPool`, wall time).
  * - Fallback: without Worker, or when a worker fails (console.warn once), its ids are built on
@@ -19,7 +20,7 @@
  */
 import { PixelBuffer } from './pixel';
 import type { Frame } from './render';
-import { clearSpriteCache, getFrames, hasHiSprite, hasSprite, installFrames, preloadSprites, readyFrames, releaseDense, setDeferDense } from './sprites';
+import { clearSpriteCache, denseTarget, getFrames, hasHiSprite, hasSprite, installFrames, preloadSprites, readyFrames, releaseDense, setDeferDense } from './sprites';
 
 /** One frame of a raw sprite: [buffer index, ox, oy, density, points or 0]. */
 type RawFrame = [number, number, number, number, NonNullable<Frame['pts']> | 0];
@@ -103,24 +104,34 @@ export function rawPackBytes(pack: RawPack): number {
 }
 
 /**
+ * `ids` at density `d` as the ids to build: a dense alias becomes its target (`denseTarget`),
+ * each id once, in first-seen order. 1×: `ids` as they are.
+ */
+export function buildIds(ids: readonly string[], d: number): string[] {
+  return d >= 2 ? [...new Set(ids.map((id) => denseTarget(id, d)))] : [...ids];
+}
+
+/**
  * Build `ids` at density `d` in THIS thread (the worker's job) and pack them. Ids without their
- * own frames at `d` are listed in `failed`. Dense frames built here are released after packing
- * (the pack is a copy; the worker keeps only its 1× frames and memoised parts).
+ * own frames at `d` are listed in `failed`; a dense alias is built and packed as its target, once
+ * (`buildIds`). Dense frames built here are released after packing (the pack is a copy; the
+ * worker keeps only its 1× frames and memoised parts).
  */
 export function buildRawPack(ids: readonly string[], d: number): RawPack {
   const built: Array<[string, readonly Frame[]]> = [];
   const failed: string[] = [];
   const dense = d >= 2;
+  const own = buildIds(ids, d);
   // In a worker deferral is off; in-process (node tools, tests) it may be on: build anyway.
   const deferred = setDeferDense(false);
   try {
-    buildInto(ids, d, dense, built, failed);
+    buildInto(own, d, dense, built, failed);
   } finally {
     setDeferDense(deferred);
   }
   const pack = packFrames(d, built);
   pack.failed = failed;
-  if (dense) releaseDense(ids, d >= 4 ? 4 : 2);
+  if (dense) releaseDense(own, d >= 4 ? 4 : 2);
   return pack;
 }
 
@@ -250,7 +261,7 @@ export function poolSize(cores: number | undefined = typeof navigator !== 'undef
 }
 
 export interface ArtPoolReport {
-  /** Ids asked for. */
+  /** Ids asked for (dense aliases counted as their targets, each once). */
   total: number;
   /** Ids installed from the workers (ids that had frames already are not counted). */
   installed: number;
@@ -361,10 +372,12 @@ export class ArtPool {
 
   /**
    * Build `ids` (in priority order) at density `d` and install them. `onProgress(done, total)`
-   * after each batch. Never rejects: a broken worker's ids go to the main-thread fallback.
+   * after each batch. Never rejects: a broken worker's ids go to the main-thread fallback. A
+   * dense alias is built as its target, once (`buildIds`): no worker builds or sends it twice.
    */
-  build(ids: readonly string[], d: number, onProgress?: (done: number, total: number) => void): Promise<ArtPoolReport> {
+  build(asked: readonly string[], d: number, onProgress?: (done: number, total: number) => void): Promise<ArtPoolReport> {
     const t0 = now();
+    const ids = buildIds(asked, d);
     const report: ArtPoolReport = { total: ids.length, installed: 0, fallback: 0, failed: [], ms: 0 };
     if (ids.length === 0) return Promise.resolve(report);
     // Group by family, keeping the order of each family's first id; cut into batches.

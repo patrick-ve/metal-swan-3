@@ -16,9 +16,11 @@ import { browserArtPool, type ArtPool } from '../../engine/art-pool';
 import {
   artTier,
   denseBytes,
+  denseTarget,
   hasFramesAt,
   hasHiSprite,
   HI_ART_FRAME_BUDGET_MS,
+  isDeferredSprite,
   listHiSprites,
   preloadOrder,
   releaseDense,
@@ -151,12 +153,29 @@ function idsUnder(prefixes: readonly string[], all: readonly string[]): string[]
 const TWO_PLAYER_ART = ['vehicle/swan-mute'];
 
 /**
+ * Rare strips (the budget's last cut, tmp/uhd-budget.md): two players' working set is over
+ * DENSE_BUDGET_BYTES even with every identical strip shared, so with two players these keep
+ * their 2× art at tier 4 (left out of the set, never built when drawn): the deferred strips
+ * (SpriteOpts.defer) of everyone but the heroes, the photo poses and the Swans' migration.
+ * One player builds them at 4×.
+ */
+const RARE_ART = [/^enemy\/.+\/photo-pose$/, /^vehicle\/swan(-mute)?\/migrate/];
+
+/** Is `id` a rare strip that stays 2× at tier 4 with `players` players (never a hero's)? */
+export function rareDenseArt(id: string, players: number): boolean {
+  return players > 1 && !id.startsWith('char/') && (isDeferredSprite(id) || RARE_ART.some((re) => re.test(id)));
+}
+
+/**
  * The tier-4 working set of section `index` in build order: the chosen heroes, the mission's
  * `preloadFirst`, the current and the next section's `art`, the boss (`preloadLast`) at the end.
  * Only ids with a 4× generator; the other heroes never. To stay inside DENSE_BUDGET_BYTES the
- * P2-only art joins only with two players, and the `boss/` prefixes only in the boss section
- * (built on entry, long before the fight; a 4× id drawn outside its set shows its 2× art and is
- * queued). On entry the ids of the sections behind are released first when over the budget.
+ * P2-only art joins only with two players, the rare strips only with one (`rareDenseArt`), and
+ * the `boss/` prefixes only in the boss section (built on entry, long before the fight; a 4× id
+ * drawn outside its set shows its 2× art and is queued). On entry the ids of the sections behind
+ * are released first when over the budget.
+ * A 4× alias (sprites.ts `defineDenseAlias`) stands for its target: the set holds the target,
+ * once, at the alias's place when that comes first.
  */
 export function denseWorkingSet(
   mission: MissionArtDef,
@@ -166,11 +185,15 @@ export function denseWorkingSet(
   players: number,
 ): string[] {
   const all = listHiSprites(4).filter(
-    (id) => (!id.startsWith('char/') || heroes.some((h) => id.startsWith(h))) && (players > 1 || !TWO_PLAYER_ART.some((p) => id.startsWith(p))),
+    (id) =>
+      (!id.startsWith('char/') || heroes.some((h) => id.startsWith(h))) &&
+      (players > 1 || !TWO_PLAYER_ART.some((p) => id.startsWith(p))) &&
+      !rareDenseArt(id, players),
   );
   const boss = mission.bossSection;
   const last = (mission.preloadLast ?? []).filter((p) => !boss || section === boss || !p.startsWith('boss/'));
-  return idsUnder([...heroes, ...(mission.preloadFirst ?? []), ...sectionArt(mission, section), ...sectionArt(mission, next), ...last], all);
+  const ids = idsUnder([...heroes, ...(mission.preloadFirst ?? []), ...sectionArt(mission, section), ...sectionArt(mission, next), ...last], all);
+  return [...new Set(ids.map((id) => denseTarget(id, 4)))];
 }
 
 /**
@@ -213,12 +236,12 @@ async function buildDense(run: DenseRun, ids: readonly string[]): Promise<void> 
   if (dense === run) trimDense(run);
 }
 
-/** Hand the 4× ids drawn without frames (sprites.ts `takeDenseQueue`) to the pool. */
+/** Hand the 4× ids drawn without frames (sprites.ts `takeDenseQueue`) to the pool (not the rare strips of two players). */
 export function pumpDenseQueue(): number {
   const run = dense;
   const ids = takeDenseQueue();
   if (!run) return 0;
-  const todo = ids.filter((id) => hasHiSprite(id, 4));
+  const todo = ids.filter((id) => hasHiSprite(id, 4) && !rareDenseArt(id, run.players));
   if (todo.length) void buildDense(run, todo);
   return todo.length;
 }

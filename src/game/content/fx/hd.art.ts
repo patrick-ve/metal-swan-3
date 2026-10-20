@@ -6,14 +6,15 @@
  * weapons/shots.art.ts.
  */
 import type { Frame } from '../../../engine/render';
-import { defineHdSprite } from '../../../engine/sprites';
+import { defineDenseAlias, defineHdSprite } from '../../../engine/sprites';
 import { confettiBitsHd, confettiHd, debrisHd, DEBRIS_HD, dustHd, hitHd, impactHd, noteHd, poofHd, splashHd } from './hd/small';
 
 const reg = (id: string, draw: (id: string, d: number) => Frame[]): void => defineHdSprite(id, (d) => draw(id, d));
 
 reg('fx/impact', impactHd);
 reg('fx/hit', hitHd);
-reg('fx/hit-spark', hitHd);
+// The same spark under a second name: a dense alias (built and held once).
+defineDenseAlias('fx/hit-spark', 'fx/hit');
 reg('fx/dust', dustHd);
 reg('fx/splash', splashHd);
 for (const kind of DEBRIS_HD) reg(`fx/debris-${kind}`, (id, d) => debrisHd(id, d, kind));

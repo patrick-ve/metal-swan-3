@@ -15,6 +15,8 @@
  *   weapon/muzzle-pistol, weapon/muzzle-heavy, and the ids used by src/game/fx.ts: fx/muzzle,
  *   fx/muzzle-up, fx/muzzle-diag, fx/muzzle-heavy[-up|-diag] (point right / up / up-right; the
  *   game flips them); `fx/muzzle-pistol…` and `fx/muzzle-machine-gun…` alias them.
+ * - A second name of the same picture (bullet-pistol, bullet-mg, enemy/bullet, enemy/grenade, the
+ *   muzzle aliases) keeps its own 1× sprite; its 2× / 4× art is a dense alias (`defineDenseAlias`).
  * - HUD icons `ui/icon-<weapon id>` (+ `ui/icon-weapon-<id>`): icons.art.ts; `ui/icon-bomb`,
  *   `ui/icon-life`, `ui/icon-hostage`, `ui/icon-shell` here (top-left anchored).
  */
@@ -23,7 +25,7 @@ import type { Color } from '../../../engine/color';
 import { PixelBuffer } from '../../../engine/pixel';
 import { INK, PAL } from '../../../engine/palette';
 import type { Frame } from '../../../engine/render';
-import { defineSprite, hasSprite, type SpriteOpts } from '../../../engine/sprites';
+import { defineDenseAlias, defineSprite, hasSprite, type SpriteOpts } from '../../../engine/sprites';
 import { grenadeArt } from '../../art/humanoid-gear';
 import { bayer, hash2 } from '../../art/paint';
 import { defineWeaponIcons } from './icons.art';
@@ -256,24 +258,34 @@ const pistolHd = hd((id, d) => tracerHd(id, d, 7, 2, false));
 const mgHd = hd((id, d) => tracerHd(id, d, 8, 2, true));
 const def = (id: string, gen: () => Frame[], opts: SpriteOpts, art: (id: string) => { hd: (d: number) => Frame[] }): void =>
   defineSprite(id, gen, { ...opts, ...art(id) });
+/** A second name of `target`'s picture: its own 1× sprite, its 2× / 4× art a dense alias (built and held once). */
+const same = (id: string, gen: () => Frame[], opts: SpriteOpts, target: string): void => {
+  defineSprite(id, gen, opts);
+  defineDenseAlias(id, target);
+};
 def('weapon/bullet', pistolStrip, {}, pistolHd);
-def('weapon/bullet-pistol', pistolStrip, {}, pistolHd);
+same('weapon/bullet-pistol', pistolStrip, {}, 'weapon/bullet');
 def('weapon/mg-bullet', mgStrip, {}, mgHd);
-def('weapon/bullet-mg', mgStrip, {}, mgHd);
+same('weapon/bullet-mg', mgStrip, {}, 'weapon/mg-bullet');
 def('weapon/vulcan-bullet', vulcanStrip, {}, hd((id, d) => tracerHd(id, d, 9, 3, true)));
 def('weapon/shell', () => rotatedStrip(shellBitmap()), {}, hd(shellHd));
 def('weapon/pellet', pellet, {}, hd(pelletHd));
 def('weapon/enemy-bullet', enemyBullet, { ticksPerFrame: 4 }, hd(enemyBulletHd));
-def('enemy/bullet', enemyBullet, { ticksPerFrame: 4 }, hd(enemyBulletHd));
+same('enemy/bullet', enemyBullet, { ticksPerFrame: 4 }, 'weapon/enemy-bullet');
 def('weapon/enemy-grenade', enemyGrenade, { ticksPerFrame: 4 }, hd(enemyGrenadeHd));
-def('enemy/grenade', enemyGrenade, { ticksPerFrame: 4 }, hd(enemyGrenadeHd));
+same('enemy/grenade', enemyGrenade, { ticksPerFrame: 4 }, 'weapon/enemy-grenade');
 def('weapon/casing', casing, { ticksPerFrame: 3 }, hd(casingHd));
 def('weapon/smoke-trail', smokeTrail, { ticksPerFrame: 5, loop: false }, hd(smokeTrailHd));
 
 const flashOpts: SpriteOpts = { ticksPerFrame: 2, loop: false };
 const flashSet = (heavy: boolean, turn: FlashTurn) => hd((id, d) => genericFlashHd(id, d, heavy, turn));
-const flashSprite = (id: string, heavy: boolean, turn: FlashTurn): void =>
-  def(id, () => muzzleFrames(heavy, turn === 'up', turn === 'diag'), flashOpts, flashSet(heavy, turn));
+/** The generic flash of a weight and turn (`fx/muzzle[-heavy][-up|-diag]`); its other names alias it. */
+const flashId = (heavy: boolean, turn: FlashTurn): string => `fx/muzzle${heavy ? '-heavy' : ''}${turn === 'fwd' ? '' : `-${turn}`}`;
+const flashSprite = (id: string, heavy: boolean, turn: FlashTurn): void => {
+  const gen = (): Frame[] => muzzleFrames(heavy, turn === 'up', turn === 'diag');
+  if (id === flashId(heavy, turn)) def(id, gen, flashOpts, flashSet(heavy, turn));
+  else same(id, gen, flashOpts, flashId(heavy, turn));
+};
 flashSprite('weapon/muzzle-pistol', false, 'fwd');
 flashSprite('weapon/muzzle-heavy', true, 'fwd');
 flashSprite('fx/muzzle', false, 'fwd');
