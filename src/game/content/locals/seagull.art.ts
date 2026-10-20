@@ -12,13 +12,20 @@
  * feather (4: a falling feather, centre anchor), takeoff (3: crouch, push off, first down-stroke;
  * perched art lifted, anchored at the body centre like the flying frames), pull-up (2: out of the
  * dive, wings flared), turn (2: `turnSquash` of the gliding gull, for the Turner).
+ *
+ * UHD art (mission ams; docs/ART_GUIDE.md "UHD art"): `gullHd(pose, d)` draws every pose natively
+ * at 2× and 4× (lit volumes, layered feathers, outline A) on the 1× logical canvas, and
+ * `gullStripHd` repeats each 1× strip recipe on it (one `defineHdSprite` per strip).
  */
+import type { Color } from '../../../engine/color';
 import { INK, PAL } from '../../../engine/palette';
+import { PAL_HD } from '../../../engine/palette-hd';
 import { PixelBuffer } from '../../../engine/pixel';
 import type { Frame } from '../../../engine/render';
-import { defineHiSprite, defineSprite, getFrames } from '../../../engine/sprites';
-import { HI, HiSketch, asHi, fitHi, liftHi, outlineHi, squashedHi, type HiPen } from '../../art/hi';
-import { crumble, scorch, sootify, withFlames } from '../../art/human-fx';
+import { defineHdSprite, defineSprite, getFrames } from '../../../engine/sprites';
+import { HdCanvas, type Texture } from '../../art/hd';
+import { crushStripHi } from '../../art/hi-strips';
+import { crumbleDense, scorch, sootify, withFlamesDense } from '../../art/human-fx';
 import { BLAST_TIMING, BURN_TIMING, CRUSH_TIMING, FLAT, Sketch, blastStrip, burnStrip, crushStrip, reground, turnSquash, xEye } from '../creatures/draw';
 
 const W = 44;
@@ -192,49 +199,132 @@ function featherFrames(): Frame[] {
 }
 
 // ---------------------------------------------------------------------------------------------
-// 2× art (mission ams only; docs/ART_GUIDE.md "2x art (mission ams)")
+// UHD art (mission ams; docs/ART_GUIDE.md "UHD art"): one density-generic drawer for 2× and 4×
 // ---------------------------------------------------------------------------------------------
 
-/** A stroke `w` 2× px wide between logical positions (w = 2: one logical pixel). */
-function stroke(p: HiPen, x0: number, y0: number, x1: number, y1: number, w: number, c: number): void {
-  p.fine(x0, y0, x1, y1, c);
-  if (w > 1) p.fine(x0 + 0.5, y0, x1 + 0.5, y1, c);
+type HdD = 2 | 4;
+type P2 = [number, number];
+
+/** Polygon grown by `g` away from its centroid (the 1× fill also covers its edge pixels). */
+function grow(pts: readonly P2[], g: number): P2[] {
+  let mx = 0;
+  let my = 0;
+  for (const p of pts) {
+    mx += p[0];
+    my += p[1];
+  }
+  mx /= pts.length;
+  my /= pts.length;
+  return pts.map(([x, y]) => {
+    const l = Math.hypot(x - mx, y - my) || 1;
+    return [x + ((x - mx) / l) * g, y + ((y - my) / l) * g];
+  });
 }
 
-/** The 2× wing: the 1× shape, plus a white trailing edge, primary seams and the mirror spot. */
-function wingPartsHi(s: HiSketch, sh: V, tip: V, far: boolean): void {
+/** A fixed-colour stroke of half-width `r` (logical px) from a to b. */
+function inkLine(c: HdCanvas, a: P2, b: P2, r: number, col: Color): void {
+  const x0 = Math.min(a[0], b[0]) - r - 0.5;
+  const y0 = Math.min(a[1], b[1]) - r - 0.5;
+  const vx = b[0] - a[0];
+  const vy = b[1] - a[1];
+  const l2 = vx * vx + vy * vy || 1;
+  c.paint(x0, y0, Math.abs(vx) + 2 * r + 1, Math.abs(vy) + 2 * r + 1, (x, y) => {
+    let t = ((x - a[0]) * vx + (y - a[1]) * vy) / l2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return Math.hypot(x - a[0] - vx * t, y - a[1] - vy * t) <= r ? col : 0;
+  });
+}
+
+/** A fixed-colour disc. */
+function inkDisc(c: HdCanvas, cx: number, cy: number, r: number, col: Color): void {
+  c.paint(cx - r - 0.5, cy - r - 0.5, 2 * r + 1, 2 * r + 1, (x, y) => (Math.hypot(x - cx, y - cy) <= r ? col : 0));
+}
+
+/** Overlapping rows of feather tips (scapulars, coverts): a soft dark arc under each tip, 4× only. */
+function scallops(sx: number, sy: number, amp: number): Texture {
+  return (s) => {
+    if (s.d < 4) return;
+    const row = Math.floor(s.y / sy);
+    const fx = frac(s.x / sx + (row & 1) * 0.5) - 0.5;
+    const e = frac(s.y / sy) - (0.72 - fx * fx * 1.4);
+    if (e > 0 && e < 0.22) s.tone -= amp;
+  };
+}
+const frac = (v: number): number => v - Math.floor(v);
+
+interface GullMats {
+  white: number;
+  grey: number;
+  tip: number;
+  beak: number;
+  leg: number;
+  mouth: number;
+  paper: number;
+  stripe: number;
+  fry: number;
+}
+
+/**
+ * One HD wing from the shoulder `sh` to `tip` (the 1× `wingParts` shape): a smooth covert panel
+ * along the leading edge, secondary feathers across the trailing half (white tips: the white
+ * trailing edge), and the black primaries fanning out to the tip with the white mirror spot —
+ * each feather its own part, a step nearer than the next, so separations and ambient occlusion
+ * draw the layers.
+ */
+function wingHd(c: HdCanvas, m: GullMats, L: (p: V) => P2, sh: V, tip: V, far: boolean): void {
+  const d = c.d;
   const lead: V = [sh[0] + 4, sh[1]];
   const trail: V = [sh[0] - 9, sh[1] + 2];
   const mid = lerp(lead, tip, 0.62);
   const midT = lerp(trail, tip, 0.62);
-  s.add(GREY, (p) => p.poly([lead[0], lead[1], mid[0], mid[1], midT[0], midT[1], trail[0], trail[1]], FLAT), { base: far ? 2 : 3, shift: 0 });
-  s.add(TIP, (p) => p.poly([mid[0], mid[1], tip[0], tip[1], midT[0], midT[1]], FLAT), { base: 1 });
-  s.detail((p) => {
-    // Secondaries: a fine white trailing edge (lit wing only).
-    if (!far) p.fine(trail[0] + 0.5, trail[1] + 0.5, midT[0], midT[1], PAL.snow[3]);
-    // Covert line across the arm.
-    const a = lerp(lead, trail, 0.45);
-    const b = lerp(mid, midT, 0.45);
-    p.fine(a[0], a[1], b[0], b[1], GREY[far ? 1 : 2]);
-    // Primary seams in the black tip, and the white mirror spot near the end.
-    const m = lerp(mid, tip, 0.45);
-    p.fine(lerp(mid, midT, 0.5)[0], lerp(mid, midT, 0.5)[1], lerp(m, tip, 0.5)[0], lerp(m, tip, 0.5)[1], TIP[0]);
-    p.dot(m[0], m[1], PAL.snow[3]);
-    p.dot(m[0] + 0.5, m[1], PAL.snow[3]);
-    p.dot(m[0], m[1] + 0.5, PAL.snow[2]);
-  });
+  const z0 = far ? -6 : 8;
+  const tone = far ? -0.22 : 0;
+  const cA = lerp(lead, trail, 0.45);
+  const cB = lerp(mid, midT, 0.45);
+  const q = (pts: V[]): P2[] => grow(pts.map(L), 0.45);
+  // Primaries first (the furthest layer), outermost on top.
+  const n2 = d === 4 ? 5 : 3;
+  for (let i = n2 - 1; i >= 0; i--) {
+    const C0 = lerp(mid, midT, i / n2);
+    const C1 = lerp(mid, midT, (i + 1) / n2);
+    const Q0 = lerp(tip, midT, (i / n2) * 0.9);
+    const Q1 = lerp(tip, midT, ((i + 1) / n2) * 0.9);
+    c.blob(q([C0, C1, Q1, Q0]), 0.45, { mat: m.tip, z: z0 + (n2 - i) * 0.6, tone, bulge: 0.1 });
+  }
+  // The white mirror spot near the end of the outer primary (and a white tip at 4×).
+  const mir = L(lerp(mid, tip, 0.45));
+  c.ellipsoid(mir[0], mir[1] + 0.15, 0.75, 0.6, { mat: m.white, z: z0 + n2 * 0.6 + 1, tone: tone + 0.1 });
+  if (d === 4 && !far) {
+    const ap = L(lerp(tip, mid, 0.07));
+    c.ellipsoid(ap[0], ap[1], 0.4, 0.4, { mat: m.white, z: z0 + n2 * 0.6 + 1 });
+  }
+  // Secondaries: feather cards across the trailing half of the arm, proximal ones nearest.
+  const n = d === 4 ? 4 : 3;
+  for (let i = n - 1; i >= 0; i--) {
+    const a0 = lerp(cA, cB, i / n);
+    const a1 = lerp(cA, cB, (i + 1) / n);
+    const b0 = lerp(trail, midT, i / n);
+    const b1 = lerp(trail, midT, (i + 1) / n);
+    const z = z0 + 4 + (n - i) * 0.6;
+    const part = c.newPart();
+    c.blob(q([a0, a1, b1, b0]), 0.5, { mat: m.grey, z, part, tone: tone + (i & 1 ? 0.03 : -0.03), bulge: 0.12 });
+    if (!far) c.blob(q([lerp(a0, b0, 0.8), lerp(a1, b1, 0.8), b1, b0]), 0.3, { mat: m.white, z: z + 0.05, part, bulge: 0.05 });
+  }
+  // The covert panel along the leading edge (the nearest layer of the wing).
+  c.blob(q([lead, mid, cB, cA]), 0.9, { mat: m.grey, z: z0 + 9, tone: tone + 0.06, bulge: 0.25, tex: far ? null : scallops(1.3, 1.1, 0.14) });
 }
 
 /**
- * The 2× gull: the 1× pose (same shapes, same logical geometry) with finer details — a yellow eye
- * with a red orbital ring under the frown, a hooked beak with the red gonys spot and a gape line,
- * white tertial crescents on the grey mantle, a white trailing edge and mirror spots on the
- * wings, shaded pink legs. `line`: outline and ring width in 2× px (2 = the 1× weight).
+ * The HD gull (density d): the 1× pose — same shapes on the same logical pixels, 44 × 40 — as lit
+ * volumes: the white body, head and tail with cool shading and near-white light, the pale grey
+ * mantle with scapular rows (4×), layered wings (`wingHd`), the hooked yellow beak with its gape
+ * line, red gonys spot and darker hook, a pale yellow eye with a pupil, a red orbital ring (4×)
+ * and the frown, pink legs with webbed feet; the fries cone with its stripes and lit fries.
  */
-export function gullHi(p: GullPose = {}, line: 1 | 2 = 2): Frame {
+export function gullHd(p: GullPose, d: HdD): Frame {
   const perched = p.perched === true;
   const oy = perched ? H - 2 : OY;
-  const s = new HiSketch(W, H, OX, oy, line);
+  const c = new HdCanvas(W, H, d);
   const by = perched ? -11 : 0;
   const wings = p.wings ?? (perched ? 'rest' : 'mid');
   const tips: Record<GullWings, V> = {
@@ -247,148 +337,177 @@ export function gullHi(p: GullPose = {}, line: 1 | 2 = 2): Frame {
   };
   const tip = p.tip ?? tips[wings];
   const sh: V = [1, by - 3];
-  if (wings === 'up' || wings === 'wide' || wings === 'mid') wingPartsHi(s, sh, [tip[0] + 5, tip[1] - 2], true);
+  /** The centre of the 1× pixel at body-space point v. */
+  const L = (v: V): P2 => [OX + v[0] + 0.5, oy + v[1] + 0.5];
+  const m: GullMats = {
+    white: c.material({ ramp: PAL_HD.snow, lo: 3, hi: 6, spec: 0.25, shine: 14, wrap: 0.12 }),
+    // Feather greys on the steel ramp from its slate tone up: the separations between feathers
+    // (the ramp's first tone) are soft slate lines, not ink stripes.
+    grey: c.material({ ramp: PAL_HD.steel.slice(2), lo: 1, hi: 4, spec: 0.2, shine: 10, wrap: 0.1 }),
+    tip: c.material({ ramp: PAL_HD.black, lo: 1, hi: 3, spec: 0.35, shine: 16, wrap: 0.05 }),
+    beak: c.material({ ramp: PAL_HD.gold, lo: 3, hi: 6, spec: 0.7, shine: 22, wrap: 0.05 }),
+    leg: c.material({ ramp: PAL_HD.pink, lo: 2, hi: 5, spec: 0.3, shine: 12 }),
+    mouth: c.material({ ramp: PAL_HD.red, lo: 2, hi: 4, wrap: 0.2 }),
+    paper: c.material({ ramp: PAL_HD.red, lo: 3, hi: 6, spec: 0.15, wrap: 0.1 }),
+    stripe: c.material({ ramp: PAL_HD.snow, lo: 3, hi: 6, spec: 0.15, wrap: 0.1 }),
+    fry: c.material({ ramp: PAL_HD.gold, lo: 4, hi: 6, spec: 0.3, shine: 12 }),
+  };
+  if (wings === 'up' || wings === 'wide' || wings === 'mid') wingHd(c, m, L, sh, [tip[0] + 5, tip[1] - 2], true);
   if (perched) {
-    s.add(PAL.pink, (q) => {
-      q.vline(-2, -6, -1, FLAT);
-      q.vline(1, -6, -1, FLAT);
-      q.hline(-4, 0, -1, FLAT);
-      q.hline(-1, 3, -1, FLAT);
-    }, { hi: 0, lo: 0, base: 1 });
-    s.detail((q) => {
-      // Lit shin edge, a knee joint and the toe webs.
-      for (const x of [-2, 1]) {
-        q.fine(x, -6, x, -2, PAL.pink[2]);
-        q.dot(x + 0.5, -4, PAL.pink[0]);
-      }
-      q.fine(-4, -1, -3, -1, PAL.pink[2]);
-      q.fine(-1, -1, 0, -1, PAL.pink[2]);
-    });
+    // Pink legs (a lit shin, a joint at 4×) and webbed feet.
+    for (const x of [-2, 1]) {
+      const a = L([x, -6]);
+      const b = L([x, -1.6]);
+      c.capsule(a[0], a[1], b[0], b[1], 0.55, 0.5, { mat: m.leg, z: -2 });
+      if (d === 4) c.ellipsoid(a[0], a[1] + 2, 0.6, 0.45, { mat: m.leg, z: -1.8 });
+    }
+    for (const [x0, x1] of [[-4, 0], [-1, 3]] as const) {
+      const a = L([x0, -1]);
+      const b = L([x1, -1]);
+      c.blob([[a[0] - 0.4, a[1] - 0.5], [b[0] + 0.5, b[1] - 0.3], [b[0] + 0.5, b[1] + 0.5], [a[0] - 0.5, a[1] + 0.5]], 0.35, { mat: m.leg, z: -1.5, tone: -0.05 });
+    }
   }
-  s.add(WHITE, (q) => q.poly([-8, by - 2, -15, by - 1 + (perched ? 3 : 0), -14, by + 2 + (perched ? 3 : 0), -7, by + 3], FLAT), { base: 2 });
-  s.add(WHITE, (q) => q.ellipse(-9, by - 5, 18, 10, FLAT), { base: 3, glint: true });
-  s.add(GREY, (q) => q.ellipse(-8, by - 5, 13, 4, FLAT), { base: 3, lo: 0 });
-  // Tertial crescent: a fine white row along the mantle's lower edge, and soft belly shading.
-  s.detail((q) => {
-    q.fine(-6, by - 1.5, 2, by - 1.5, PAL.snow[3]);
-    q.fine(-6, by + 3.5, 0, by + 3.5, PAL.snow[1]);
-  });
+  // Tail (white, behind the body; feather separations at 4×).
+  const tail = grow([L([-8, by - 2]), L([-15, by - 1 + (perched ? 3 : 0)]), L([-14, by + 2 + (perched ? 3 : 0)]), L([-7, by + 3])], 0.45);
+  const tailPart = c.newPart();
+  c.blob(tail, 0.8, { mat: m.white, z: -1, part: tailPart, bulge: 0.15 });
+  if (d === 4) {
+    const t0 = L([-11, by]);
+    c.shade(t0[0] - 5, t0[1] - 4, 8, 8, (x, y) => (Math.abs(frac((y - t0[1]) / 1.3 + (x - t0[0]) * 0.12) - 0.5) < 0.08 && x < t0[0] + 2 ? -0.25 : 0), tailPart);
+  }
+  // Body: a big white teardrop, the pale grey mantle on the back with scapular rows.
+  const bc = [OX, oy + by] as const;
+  // One part: the mantle meets the white body in a clean colour edge, not a separation line.
+  const body = c.newPart();
+  c.ellipsoid(bc[0], bc[1], 9, 5, { mat: m.white, z: 0, part: body });
+  c.ellipsoid(bc[0] - 1.5, bc[1] - 3, 6.5, 2.05, { mat: m.grey, z: 3.2, part: body, tex: scallops(1.4, 1.0, 0.12) });
+  // Head and neck (one part).
   const hx = p.tucked ? 2 : p.face === 'dive' ? 8 : 6;
   const hy = by + (p.tucked ? -3 : p.face === 'dive' ? 1 : -6) + (p.peck ?? 0);
-  s.add(WHITE, (q) => {
-    q.circle(hx, hy, 4, FLAT);
-    if (!p.tucked) q.thick(3, by - 2, hx, hy, 4, FLAT);
-  }, { base: 3, glint: true });
+  const head = c.newPart();
+  const hc = L([hx, hy]);
+  c.ellipsoid(hc[0], hc[1], 4.5, 4.5, { mat: m.white, z: 2, part: head });
+  if (!p.tucked) c.capsule(OX + 4, oy + by - 1, OX + hx + 1, oy + hy + 1, 2, 2, { mat: m.white, z: 2, part: head });
   const face = p.face ?? 'open';
   if (!p.tucked) {
     const down = face === 'dive' ? 2 : 0;
-    s.add(BEAK, (q) => {
-      if (face === 'kaw') {
-        q.poly([hx + 3, hy - 1, hx + 10, hy - 4, hx + 9, hy - 2, hx + 4, hy], FLAT);
-        q.poly([hx + 3, hy + 1, hx + 9, hy + 3, hx + 4, hy + 2], FLAT);
-      } else {
-        q.poly([hx + 3, hy - 1, hx + 10, hy + down, hx + 10, hy + 2 + down, hx + 3, hy + 2], FLAT);
-      }
-    }, { hi: 0, lo: 0, base: 2 });
-    s.detail((q) => {
-      if (face === 'kaw') {
-        // Open gape: a red throat and a pink tongue tip.
-        q.px(hx + 6, hy + 2, PAL.red[2]);
-        q.px(hx + 5, hy, PAL.red[0]);
-        q.dot(hx + 7, hy + 2.5, PAL.pink[2]);
-        q.fine(hx + 4, hy - 1, hx + 9, hy - 3.5, PAL.gold[3]);
-      } else {
-        // Gape line, lit ridge, the red gonys spot and the darker hook.
-        q.fine(hx + 3.5, hy + 1, hx + 8, hy + 1 + down * 0.5, BEAK[1]);
-        q.fine(hx + 4, hy - 0.5, hx + 8.5, hy + down * 0.5, PAL.gold[3]);
-        q.px(hx + 8, hy + 1.5 + down, PAL.red[2]);
-        q.dot(hx + 8, hy + 1.5 + down, PAL.red[3]);
-      }
-      // The darker hook (the open 'kaw' beak has no tip there).
-      if (face !== 'kaw') {
-        q.px(hx + 10, hy + 1 + down, BEAK[0]);
-        q.dot(hx + 10, hy + 1 + down, BEAK[1]);
-      }
-    });
-  }
-  s.detail((q) => {
-    if (p.tucked) {
-      q.fine(hx, hy, hx + 1.5, hy, INK);
-      if (line > 1) q.fine(hx, hy + 0.5, hx + 1.5, hy + 0.5, INK);
-      return;
-    }
-    if (face === 'x') {
-      stroke(q, hx, hy - 2, hx + 2, hy, line, INK);
-      stroke(q, hx, hy, hx + 2, hy - 2, line, INK);
-    } else if (face === 'shut') {
-      q.fine(hx, hy - 1, hx + 2.5, hy - 1, INK);
-      if (line > 1) q.fine(hx, hy - 0.5, hx + 2.5, hy - 0.5, INK);
-    } else if (face === 'happy') {
-      stroke(q, hx, hy - 1, hx + 1, hy - 2, line, INK);
-      stroke(q, hx + 1, hy - 2, hx + 2, hy - 1, line, INK);
+    const B = (x: number, y: number): P2 => L([hx + x, hy + y]);
+    if (face === 'kaw') {
+      // Open beak: a red gape and a pink tongue between the mandibles.
+      c.poly([B(3, -0.4), B(8.5, -2.6), B(8.5, 2.6), B(3, 1.6)], { mat: m.mouth, z: 6 });
+      c.blob(grow([B(3, -1), B(10, -4), B(9, -2), B(4, 0)], 0.35), 0.4, { mat: m.beak, z: 7, bulge: 0.1 });
+      c.blob(grow([B(3, 1), B(9, 3), B(4, 2)], 0.35), 0.35, { mat: m.beak, z: 7, tone: -0.1, bulge: 0.1 });
+      const tg = B(6.6, 1.2);
+      inkDisc(c, tg[0], tg[1], 0.45, PAL_HD.pink[5]);
     } else {
-      // Pale yellow iris with a small black pupil, a red orbital ring at the front.
-      q.px(hx + 1, hy - 1, PAL.gold[3]);
-      q.dot(hx + 1, hy - 0.5, PAL.gold[2]);
-      q.dot(hx + 2, hy - 1, INK);
-      q.dot(hx + 2, hy - 0.5, INK);
-      q.dot(hx + 2.5, hy - 1, PAL.red[2]);
-      // The frown: a brow slanting down to the beak.
-      stroke(q, hx - 0.5, hy - 3, hx + 1.5, hy - 2.5, line, INK);
-      stroke(q, hx + 1.5, hy - 2.5, hx + 2.5, hy - 1.5, line, INK);
+      const beak = c.newPart();
+      c.blob(grow([B(3, -1), B(10, down), B(10, 2 + down), B(3, 2)], 0.4), 0.55, { mat: m.beak, z: 7, part: beak, bulge: 0.1 });
+      // The darker hook, the gape line, the red gonys spot.
+      const hk = B(9.6, down);
+      c.shade(hk[0] - 0.6, hk[1] - 1, 2, 4, () => -0.35, beak);
+      inkLine(c, B(3.4, 1.15), B(8.6, 1.15 + down * 0.5), 0.5 / d, PAL_HD.gold[1]);
+      const gs = B(8.1, 1.6 + down);
+      inkDisc(c, gs[0], gs[1], d === 4 ? 0.55 : 0.5, PAL_HD.red[5]);
+      if (d === 4) inkDisc(c, gs[0] + 0.1, gs[1] + 0.1, 0.25, PAL_HD.red[3]);
     }
-  });
+  }
+  // The eye and the frown.
+  const E = (x: number, y: number): P2 => L([hx + x, hy + y]);
+  const brow = d === 4 ? 0.36 : 0.45;
+  if (p.tucked) inkLine(c, E(-0.2, 0), E(1.6, 0), 0.4, INK);
+  else if (face === 'x') {
+    inkLine(c, E(0, -2), E(2, 0), brow, INK);
+    inkLine(c, E(0, 0), E(2, -2), brow, INK);
+  } else if (face === 'shut') inkLine(c, E(-0.1, -1), E(2.4, -0.8), 0.42, INK);
+  else if (face === 'happy') {
+    inkLine(c, E(0, -0.8), E(1, -1.9), brow, INK);
+    inkLine(c, E(1, -1.9), E(2, -0.8), brow, INK);
+  } else {
+    const ec = E(1.4, -0.9);
+    if (d === 4) inkDisc(c, ec[0], ec[1], 0.85, PAL_HD.red[4]);
+    inkDisc(c, ec[0], ec[1], d === 4 ? 0.62 : 0.72, PAL_HD.gold[6]);
+    inkDisc(c, ec[0] + 0.32, ec[1] + 0.05, d === 4 ? 0.3 : 0.45, INK);
+    if (d === 4) c.dot(ec[0] + 0.1, ec[1] - 0.3, PAL_HD.snow[6]);
+    // The frown: a brow slanting down to the beak.
+    inkLine(c, E(-0.6, -2.6), E(1.4, -2.2), brow, INK);
+    inkLine(c, E(1.4, -2.2), E(2.6, -1.3), brow, INK);
+  }
+  // Near wing in front.
   if (wings === 'rest' || wings === 'folded') {
-    s.add(GREY, (q) => q.poly([2, by - 4, -6, by - 5, tip[0], by + tip[1] - 1, -4, by + 1], FLAT), { base: 2 });
-    s.add(TIP, (q) => q.poly([-8, by - 3, tip[0] - 1, by + tip[1] - 1, -8, by], FLAT), { base: 1 });
-    s.detail((q) => {
-      // Folded wing: tertial crescent, a covert line and the mirror spot.
-      q.fine(-5, by - 4, 1, by - 3.5, PAL.snow[3]);
-      q.fine(-6, by - 1.5, 0, by - 1, GREY[1]);
-      q.px(-10, by - 1, PAL.snow[3]);
-      q.dot(-9.5, by - 0.5, PAL.snow[2]);
-      q.fine(-8.5, by - 2, tip[0], by + tip[1] - 1, TIP[0]);
-    });
-  } else wingPartsHi(s, [sh[0] - 1, sh[1] + 1], tip, false);
-  if (!perched) s.detail((q) => {
-    q.hline(-6, -4, 4, PAL.pink[1]);
-    q.fine(-6, 4, -4.5, 4, PAL.pink[2]);
-  });
+    const wz = 9;
+    const W0 = grow([L([2, by - 4]), L([-6, by - 5]), L([tip[0], by + tip[1] - 1]), L([-4, by + 1])], 0.45);
+    const fold = c.newPart();
+    c.blob(W0, 0.9, { mat: m.grey, z: wz, part: fold, bulge: 0.25, tex: scallops(1.3, 1.1, 0.14) });
+    // The secondaries under the coverts: a lower band, its white tips along the lower edge.
+    const lowA = L([-4, by + 1]);
+    const lowB = L([tip[0] + 1, by + tip[1] - 1]);
+    const sec = c.newPart();
+    c.blob(grow([L([-5, by - 1.4]), L([tip[0] + 2, by + tip[1] - 2.4]), lowB, lowA], 0.3), 0.5, { mat: m.grey, z: wz + 0.9, part: sec, tone: -0.06, bulge: 0.1 });
+    inkLine(c, [lowA[0] - 0.2, lowA[1] - 0.15], [lowB[0] + 1.2, lowB[1] - 0.25], d === 4 ? 0.3 : 0.3, PAL_HD.snow[5]);
+    // Tertial crescent: a white edge along the top of the folded wing.
+    inkLine(c, L([-5, by - 4.3]), L([1, by - 3.8]), d === 4 ? 0.3 : 0.32, PAL_HD.snow[5]);
+    // The black primaries (two or three long feathers) and the mirror spot.
+    const pa = L([-8, by - 3]);
+    const pb = L([tip[0] - 1, by + tip[1] - 1]);
+    const pc = L([-8, by]);
+    const np = d === 4 ? 3 : 2;
+    for (let i = 0; i < np; i++) {
+      const t0 = i / np;
+      const t1 = (i + 1) / np;
+      const A0: P2 = [pa[0] + (pc[0] - pa[0]) * t0, pa[1] + (pc[1] - pa[1]) * t0];
+      const A1: P2 = [pa[0] + (pc[0] - pa[0]) * t1, pa[1] + (pc[1] - pa[1]) * t1];
+      const tipI: P2 = [pb[0] + i * 0.9, pb[1] - i * 0.3];
+      c.blob(grow([A0, A1, tipI], 0.45), 0.4, { mat: m.tip, z: wz + 1 + (np - i) * 0.6, bulge: 0.08 });
+    }
+    const mr = L([-10, by - 1]);
+    c.ellipsoid(mr[0], mr[1], 0.7, 0.55, { mat: m.white, z: wz + 4 });
+  } else wingHd(c, m, L, [sh[0] - 1, sh[1] + 1], tip, false);
+  // Flying feet tucked under the tail.
+  if (!perched) {
+    const a = L([-6, 4]);
+    c.capsule(a[0], a[1], a[0] + 2, a[1], 0.45, 0.45, { mat: m.leg, z: 1, tone: -0.15 });
+  }
+  // Fries: a red-and-white paper cone with lit yellow fries.
   if (p.fries) {
     const fx = p.fries === 1 ? hx + 9 : 12;
     const fy = p.fries === 1 ? hy + 3 : -1;
-    s.add(PAL.red, (q) => q.poly([fx - 3, fy - 6, fx + 3, fy - 6, fx, fy], FLAT), { base: 2 });
-    s.detail((q) => {
-      q.vline(fx - 1, fy - 6, fy - 3, PAL.snow[3]);
-      q.vline(fx + 1, fy - 6, fy - 3, PAL.snow[3]);
-      // Fries: thinner sticks at 2×, lit on the left.
-      for (let k = -2; k <= 2; k++) {
-        const top = fy - 9 + (k & 1);
-        q.fine(fx + k, top, fx + k, fy - 6.5, PAL.gold[3]);
-        q.fine(fx + k + 0.5, top + 0.5, fx + k + 0.5, fy - 6.5, PAL.gold[2]);
-      }
-      q.fine(fx - 3, fy - 6, fx + 3, fy - 6, PAL.red[3]);
+    const cone = grow([L([fx - 3, fy - 6]), L([fx + 3, fy - 6]), L([fx, fy])], 0.45);
+    const cx = OX + fx + 0.5;
+    c.blob(cone, 0.6, {
+      mat: m.paper,
+      z: 10,
+      bulge: 0.1,
+      tex: (s) => {
+        if (Math.abs(Math.abs(s.x - cx) - 1) < 0.5) s.mat = m.stripe;
+      },
     });
+    for (let k = -2; k <= 2; k++) {
+      const a = L([fx + k, fy - 9 + (k & 1)]);
+      const b = L([fx + k, fy - 6.6]);
+      c.capsule(a[0], a[1], b[0], b[1], 0.48, 0.48, { mat: m.fry, z: 9.5 + (k & 1) * 0.6 });
+    }
   }
-  return s.frame();
+  return { buf: c.render({ outline: 'A', ao: 0.3, rimLight: 2 }), ox: OX, oy, density: d };
 }
 
-/** The 2× feather (18×18): a white vane on a grey shaft, grey outline `line` px wide. */
-function featherFramesHi(line: number): Frame[] {
+/** The HD feather (9 × 9 logical, centre anchor): a white tapered vane, a grey shaft at 4×, a grey outline. */
+function featherFramesHd(d: HdD): Frame[] {
   return [0, 1, 2, 3].map((i) => {
-    const b = new PixelBuffer(9 * HI, 9 * HI);
+    const c = new HdCanvas(9, 9, d);
+    const vane = c.material({ ramp: PAL_HD.snow, lo: 2, hi: 5, spec: 0.3, shine: 12, wrap: 0.2 });
+    const shaft = c.material({ ramp: PAL_HD.steel, lo: 3, hi: 5 });
     const pts = [
       [1, 4, 7, 4],
       [2, 6, 6, 2],
       [4, 1, 4, 7],
       [2, 2, 6, 6],
     ][i];
-    const q = (v: number): number => v * HI + 0.5;
-    b.thickLine(q(pts[0]), q(pts[1]), q(pts[2]), q(pts[3]), 2, PAL.snow[3]);
-    b.line(pts[0] * HI + 1, pts[1] * HI + 1, pts[2] * HI + 1, pts[3] * HI + 1, PAL.snow[2]);
-    b.rect(pts[2] * HI, pts[3] * HI, 2, 2, PAL.steel[3]);
-    outlineHi(b, line, PAL.steel[2]);
-    return { buf: b, ox: 4, oy: 4, density: HI };
+    const a: P2 = [pts[0] + 0.5, pts[1] + 0.5];
+    const b: P2 = [pts[2] + 0.5, pts[3] + 0.5];
+    c.capsule(a[0], a[1], b[0], b[1], 0.62, 0.42, { mat: vane, z: 0 });
+    if (d === 4) c.capsule(a[0], a[1], b[0], b[1], 0.13, 0.13, { mat: shaft, z: 2 });
+    inkDisc(c, b[0], b[1], 0.45, PAL_HD.steel[5]);
+    return { buf: c.render({ outline: 'A', ink: PAL.steel[2], ao: 0 }), ox: 4, oy: 4, density: d };
   });
 }
 
@@ -441,50 +560,55 @@ function lifted(f: Frame, lift: number): Frame {
   return { ...f, oy: f.oy - 11 + lift };
 }
 
+/** A dense buffer on the 1× frame `lo`'s anchor (the same logical box). */
+function onLo(buf: PixelBuffer, lo: Frame, d: number): Frame {
+  return { buf, ox: lo.ox, oy: lo.oy, density: d };
+}
+
+/** The HD gull of a pose on the 1× frame `f1`'s anchor (the same 44 × 40 logical canvas). */
+function gullOn(pose: Pose, f1: Frame, d: HdD): Frame {
+  return { ...gullHd(pose, d), ox: f1.ox, oy: f1.oy, ...(f1.pts ? { pts: f1.pts } : {}) };
+}
+
 /**
- * The 2× strip `name` (an enemy/seagull/… suffix) with outline width `line`, each frame matched
- * to the 1× frame (`lo`) it doubles. Death strips repeat the 1× recipe on the 2× pose: colour
- * maps and quarter turns stay at 2× detail, flames and ash are whole logical pixels (liftHi).
+ * The HD strip `name` (an enemy/seagull/… suffix) at density d, each frame on the 1× frame (`lo`)
+ * it twins. Death strips repeat the 1× recipe on the HD pose: scorch and soot step along the HD
+ * ramps, the quarter turns are exact, flames and the crumbling ash are drawn natively
+ * (`withFlamesDense`, `crumbleDense`), the crush squashes whole logical px (`crushStripHi`).
  */
-export function gullStripHi(name: string, line: 1 | 2, lo: readonly Frame[]): Frame[] {
+export function gullStripHd(name: string, d: HdD, lo: readonly Frame[]): Frame[] {
   const poses = POSES[name];
-  if (poses) return poses.map((pose, i) => asHi(gullHi(pose, line).buf, lo[i]));
-  if (name === 'feather') return featherFramesHi(line);
-  if (name === 'takeoff') return TAKEOFF_POSES.map((pose, i) => asHi(gullHi(pose, line).buf, lo[i]));
+  if (poses) return poses.map((pose, i) => onLo(gullHd(pose, d).buf, lo[i], d));
+  if (name === 'feather') return featherFramesHd(d);
+  if (name === 'takeoff') return TAKEOFF_POSES.map((pose, i) => onLo(gullHd(pose, d).buf, lo[i], d));
   if (name === 'turn') {
     const mid = gull({ wings: 'mid' });
-    return turnSquash({ ...asHi(gullHi({ wings: 'mid' }, line).buf, mid), pts: mid.pts });
+    return turnSquash(gullOn({ wings: 'mid' }, mid, d));
   }
   if (name === 'die-blast') {
-    const f2 = gullHi({ wings: 'rest', face: 'x' }, line);
-    const s2 = sootify(f2, 1, false).buf;
-    return [asHi(scorch(f2, 2).buf, lo[0]), ...[1, 2, 3, 2].map((q, i) => asHi(s2.rotated((q * Math.PI) / 2), lo[i + 1]))];
+    const fd = gullHd({ wings: 'rest', face: 'x' }, d);
+    const sd = sootify(fd, 1, false).buf;
+    return [onLo(scorch(fd, 2).buf, lo[0], d), ...[1, 2, 3, 2].map((q, i) => onLo(sd.rotated((q * Math.PI) / 2), lo[i + 1], d))];
   }
   if (name === 'die-burn') {
     const f1 = grounded(gull({ wings: 'rest', face: 'shut' }));
-    const f2 = gullHi({ wings: 'rest', face: 'shut' }, line);
+    const fd = gullOn({ wings: 'rest', face: 'shut' }, f1, d);
     const sc1 = scorch(f1, 1);
-    const sc2 = scorch(f2, 1).buf;
+    const scd = scorch(fd, 1);
     const s1 = sootify(f1, 1, false);
-    const s2 = sootify(f2, 1, false).buf;
-    const flames = (src1: Frame, src2: PixelBuffer, phase: number, seed?: number, height?: number): Frame =>
-      liftHi(withFlames(src1, phase, seed, height), src1.buf, src2, 2, (height ?? 7) + 2);
-    const ash = (t: number): Frame => liftHi(crumble(s1, t), s1.buf, s2, 4, 0);
-    const out = [flames(sc1, sc2, 0), flames(sc1, sc2, 1), flames(s1, s2, 2, 9, 5), asHi(s2, lo[3]), asHi(s2, lo[4]), asHi(s2, lo[5]), ash(0.4), ash(0.75), ash(1), ash(1), ash(1), ash(1)];
-    return out.map((f, i) => asHi(f.buf, lo[i]));
+    const sd = sootify(fd, 1, false);
+    const ash = (t: number): Frame => crumbleDense(s1, sd, t);
+    const out = [withFlamesDense(sc1, scd, 0), withFlamesDense(sc1, scd, 1), withFlamesDense(s1, sd, 2, 9, 5), sd, sd, sd, ash(0.4), ash(0.75), ash(1), ash(1), ash(1), ash(1)];
+    return out.map((f, i) => onLo(f.buf, lo[i], d));
   }
   if (name === 'die-crush') {
     const f1 = grounded(gull({ wings: 'wide', face: 'x' }));
-    const f2 = gullHi({ wings: 'wide', face: 'x' }, line).buf;
-    const half = squashedHi(f1, f2, lo[0], line);
-    const flat = squashedHi(f1, f2, lo[1], line);
-    const peel = (angle: number, i: number): Frame => fitHi(flat.buf.rotated(angle, { align: HI }), lo[i]);
-    return [half, flat, asHi(flat.buf, lo[2]), peel(-0.35, 3), peel(0.3, 4), peel(-0.25, 5), peel(0.2, 6)];
+    return crushStripHi(f1, gullOn({ wings: 'wide', face: 'x' }, f1, d), lo);
   }
-  throw new Error(`no 2× strip "${name}"`);
+  throw new Error(`no HD strip "${name}"`);
 }
 
-/** Every strip of the gull (the 2× generators cover them all). */
+/** Every strip of the gull (the HD generators cover them all). */
 export const GULL_STRIPS = [...Object.keys(POSES), 'feather', 'takeoff', 'turn', 'die-blast', 'die-burn', 'die-crush'];
 
 const A = 'enemy/seagull/';
@@ -507,5 +631,5 @@ defineSprite(A + 'die-crush', () => crushStrip(grounded(gull({ wings: 'wide', fa
 defineSprite(A + 'photo-pose', () => gull({ wings: 'wide', face: 'happy' }));
 defineSprite(A + 'feather', featherFrames, { ticksPerFrame: 6 });
 
-// 2× (mission ams): the 2-px outline (the weight of the 1× art; the pilot settled it).
-for (const name of GULL_STRIPS) defineHiSprite(A + name, () => gullStripHi(name, 2, getFrames(A + name, 1)));
+// UHD art (mission ams): one density-generic generator per strip for 2× and 4×.
+for (const name of GULL_STRIPS) defineHdSprite(A + name, (d) => gullStripHd(name, d, getFrames(A + name, 1)));

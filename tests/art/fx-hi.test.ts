@@ -6,7 +6,7 @@
  * palette colours only and real 2× detail.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { inPalette } from '../../src/engine/palette';
+import { inHdPalette } from '../../src/engine/palette-hd';
 import { getFrames, hasHiSprite, listSprites, spriteErrors } from '../../src/engine/sprites';
 import { loadContent } from '../../src/game/content/index';
 
@@ -51,8 +51,8 @@ describe('fx: 2× art', () => {
         expect(f.density, `${id}[${i}]`).toBe(2);
         expect([f.buf.w, f.buf.h, f.ox, f.oy], `${id}[${i}]`).toEqual([lo[i].buf.w * 2, lo[i].buf.h * 2, lo[i].ox, lo[i].oy]);
         expect(f.pts ?? {}, `${id}[${i}]`).toEqual(lo[i].pts ?? {});
-        // Crisp and palette-only: every pixel transparent or an opaque palette colour.
-        const bad = [...f.buf.data].find((c) => (c & 255) !== 0 && ((c & 255) !== 255 || !inPalette(c)));
+        // Crisp and HD-palette-only (UHD wave: 2× art is PAL_HD): every pixel transparent or an opaque PAL_HD colour.
+        const bad = [...f.buf.data].find((c) => (c & 255) !== 0 && ((c & 255) !== 255 || !inHdPalette(c)));
         expect(bad, `${id}[${i}]`).toBeUndefined();
       }
       // Real 2× art, not the 1× frames doubled.

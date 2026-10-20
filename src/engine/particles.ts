@@ -11,10 +11,23 @@
  * ```
  * When the pool is full, new particles overwrite old ones (round-robin). Randomness comes from
  * the cosmetic rng (`world.fxRng`) so particles never change gameplay.
+ *
+ * HD draw (art tier ≥ 2, docs/ART_GUIDE.md "UHD art"): while a dense mission draws (art density
+ * d ≥ 2, dense art on (`hiArtOn`) and the backbuffer shows art px), 'pixel' and 'rect' particles are drawn as small HD
+ * frames in art px (1/d logical px) instead of flat squares — a hot core with a glowing rim
+ * and a motion streak for additive sparks and embers, a round lit puff with a soft ordered rim
+ * for translucent smoke, dust and steam, a lit chunk for debris, drops and casings — at
+ * positions snapped to art px (smooth motion), in PAL_HD tones of the particle's colour. The
+ * frames are built once per (look, size, colour, density) and cached: no per-tick allocation.
+ * Sprite particles move in art-px steps too. The 1× draw is unchanged.
  */
 import type { Color } from './color';
-import type { DrawOpts, Renderer } from './render';
+import { HD_PALETTE, hdHome } from './palette-hd';
+import { PixelBuffer } from './pixel';
+import type { DrawOpts, Frame, Renderer } from './render';
+import { drawDensity } from './render-common';
 import { Rng } from './rng';
+import { artDensity, hiArtOn } from './sprites';
 import type { Terrain } from './terrain';
 
 export type ParticleKind = 'pixel' | 'rect' | 'sprite';
@@ -189,6 +202,109 @@ export const EMBER: ParticlePreset = {
 /** Shared, mutated per draw call (renderers must not keep DrawOpts). */
 const drawOpts: DrawOpts = { alpha: 1, blend: 'normal', flipX: false };
 
+// ---------------------------------------------------------------------------------------------
+// HD particle frames (art tier ≥ 2)
+// ---------------------------------------------------------------------------------------------
+
+/** HD looks: a hot glow (additive), a soft puff (translucent), a lit chunk (opaque). */
+const GLOW = 0;
+const PUFF = 1;
+const CHUNK = 2;
+
+/** The HD look of a compiled preset. */
+function lookOf(c: Compiled): number {
+  if (c.blend === 'add') return GLOW;
+  for (const col of c.colors) if ((col & 255) < 255) return PUFF;
+  return c.fadeFrom < 0.5 && c.w >= 3 ? PUFF : CHUNK;
+}
+
+const nearestCache = new Map<number, { ramp: readonly Color[]; i: number }>();
+
+/** The HD ramp and index of a colour: its PAL_HD home, else the nearest PAL_HD colour's. */
+function hdTones(c: Color): { ramp: readonly Color[]; i: number } {
+  const key = (c | 255) >>> 0;
+  let hit = nearestCache.get(key);
+  if (hit) return hit;
+  hit = hdHome(key) ?? undefined;
+  if (!hit) {
+    const r = key >>> 24;
+    const g = (key >>> 16) & 255;
+    const b = (key >>> 8) & 255;
+    let best = HD_PALETTE[0];
+    let bd = Infinity;
+    for (const p of HD_PALETTE) {
+      const dr = (p >>> 24) - r;
+      const dg = ((p >>> 16) & 255) - g;
+      const db = ((p >>> 8) & 255) - b;
+      const dd = dr * dr * 3 + dg * dg * 4 + db * db * 2;
+      if (dd < bd) {
+        bd = dd;
+        best = p;
+      }
+    }
+    hit = hdHome(best) ?? { ramp: [best], i: 0 };
+  }
+  nearestCache.set(key, hit);
+  return hit;
+}
+
+const hdFrames = new Map<number, Frame>();
+
+/** Ordered 4 × 4 threshold (0..1). */
+function bayer(x: number, y: number): number {
+  return (BAYER4[((y & 3) << 2) | (x & 3)] + 0.5) / 16;
+}
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
+/**
+ * The HD frame of a particle look: `w` × `h` logical px at density `d` in the tones of `col`
+ * (top-left anchored). Built once per key.
+ */
+function hdParticle(look: number, pw: number, ph: number, col: Color, d: number): Frame {
+  // The key and the frame use the same clamped size (a wider particle must not reuse a smaller one's frame).
+  const w = Math.max(1, Math.min(63, Math.round(pw)));
+  const h = Math.max(1, Math.min(63, Math.round(ph)));
+  const key = ((((col >>> 8) * 64 + w) * 64 + h) * 4 + look) * 8 + d;
+  let f = hdFrames.get(key);
+  if (f) return f;
+  const { ramp, i } = hdTones(col);
+  const n = ramp.length;
+  const tone = (k: number): Color => ramp[Math.max(0, Math.min(n - 1, i + k))];
+  const W = Math.max(1, Math.round(w * d));
+  const H = Math.max(1, Math.round(h * d));
+  const b = new PixelBuffer(W, H);
+  const cx = W / 2;
+  const cy = H / 2;
+  for (let Y = 0; Y < H; Y++) {
+    for (let X = 0; X < W; X++) {
+      const dx = (X + 0.5 - cx) / cx;
+      const dy = (Y + 0.5 - cy) / cy;
+      const q = Math.hypot(dx, dy);
+      const lit = -(dx + dy) * 0.5;
+      let c: Color = 0;
+      if (look === GLOW) {
+        // A hot core (lighter tones) inside the colour, the rim one tone cooler.
+        if (q > 1.05) continue;
+        c = q < 0.45 ? tone(2) : q < 0.8 ? tone(1) : tone(0);
+      } else if (look === PUFF) {
+        // A round lit puff whose rim frays through an ordered pattern on 2 × 2 art-px cells
+        // (never a single-art-px checker on a sprite).
+        if (q > 1 || (q > 0.72 && (q - 0.72) / 0.28 > bayer(X >> 1, Y >> 1))) continue;
+        c = lit + (0.6 - q) * 0.2 > 0.25 ? tone(1) : lit < -0.3 ? tone(-1) : tone(0);
+      } else {
+        // A lit chunk with soft corners: light upper left, shade lower right.
+        if (Math.abs(dx) > 0.75 && Math.abs(dy) > 0.75 && W > 2 && H > 2) continue;
+        c = lit > 0.3 ? tone(1) : lit < -0.3 ? tone(-1) : tone(0);
+      }
+      b.data[Y * W + X] = c;
+    }
+  }
+  b.touch();
+  f = { buf: b, ox: 0, oy: 0, density: d };
+  hdFrames.set(key, f);
+  return f;
+}
+
 export class Particles {
   readonly capacity: number;
   private n = 0;
@@ -330,6 +446,10 @@ export class Particles {
     const y0 = r.camY - 32;
     const x1 = r.camX + r.w + 32;
     const y1 = r.camY + r.h + 32;
+    // HD (art tier ≥ 2): the art density the renderer actually shows (0 = the 1× draw).
+    const ad = artDensity();
+    const pd = ad >= 2 && r.res >= 2 && hiArtOn() ? drawDensity(ad, r.res) : 1;
+    const hd = pd >= 2 ? pd : 0;
     for (let i = 0; i < this.n; i++) {
       const x = this.px[i];
       const y = this.py[i];
@@ -344,14 +464,45 @@ export class Particles {
       drawOpts.flipX = this.flip[i] === 1;
       if (c.kind === 2) {
         const f = this.frame0[i] + (c.ticksPerFrame > 0 ? Math.floor(this.age[i] / c.ticksPerFrame) : 0);
-        r.sprite(c.sprite, f, Math.round(x), Math.round(y), drawOpts);
+        if (hd) r.sprite(c.sprite, f, Math.round(x * hd) / hd, Math.round(y * hd) / hd, drawOpts);
+        else r.sprite(c.sprite, f, Math.round(x), Math.round(y), drawOpts);
         continue;
       }
       const ramp = c.colors;
       const col = this.color[i] !== 0 ? this.color[i] : ramp[Math.min(ramp.length - 1, Math.floor(t * ramp.length))];
+      if (hd) {
+        this.drawHd(r, i, c, col, hd);
+        continue;
+      }
       if (c.kind === 0) r.rect(Math.floor(x), Math.floor(y), 1, 1, col, drawOpts);
       else r.rect(Math.round(x - c.w / 2), Math.round(y - c.h / 2), c.w, c.h, col, drawOpts);
     }
+  }
+
+  /** The HD draw of a 'pixel' / 'rect' particle (drawOpts already set; see the module doc). */
+  private drawHd(r: Renderer, i: number, c: Compiled, col: Color, d: number): void {
+    const look = lookOf(c);
+    const w = c.kind === 0 ? 1 : c.w;
+    const h = c.kind === 0 ? 1 : c.h;
+    const f = hdParticle(look, w, h, col, d);
+    // The colour's own alpha (translucent smoke) times the fade.
+    const ca = (col & 255) / 255;
+    drawOpts.alpha = (drawOpts.alpha ?? 1) * ca;
+    drawOpts.flipX = false;
+    const left = this.px[i] - w / 2;
+    const top = this.py[i] - h / 2;
+    if (look === GLOW) {
+      // A motion streak: the same glow half a tick back, fainter.
+      const vx = this.pvx[i];
+      const vy = this.pvy[i];
+      if (vx * vx + vy * vy > 0.5) {
+        const a = drawOpts.alpha ?? 1;
+        drawOpts.alpha = a * 0.45;
+        r.frame(f, Math.round((left - vx * 0.6) * d) / d, Math.round((top - vy * 0.6) * d) / d, drawOpts);
+        drawOpts.alpha = a;
+      }
+    }
+    r.frame(f, Math.round(left * d) / d, Math.round(top * d) / d, drawOpts);
   }
 
   clear(): void {

@@ -297,6 +297,8 @@ export const sectionB: SectionDef = {
   terrain: terrainB(),
   terrainStyle: { ground: 'klinker', edge: 'bikepath', platform: 'wood', solid: 'brick' },
   decor,
+  // Tier 4: the fatbike pairs ride in b and c only (the solo sets are in the mission's preloadFirst).
+  art: ['enemy/fatbike-youth-pair'],
   playerStart: { x: 48, y: G },
   checkpoints: [1200, 2300],
   timeLimit: 60,

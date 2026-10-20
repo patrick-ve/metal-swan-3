@@ -9,14 +9,16 @@
  * throw (5: the flick at frame 1, then a 2-frame recover that eases the arm down), photo-pose (1), die (6: swoons), die-knife, die-blast, die-burn,
  * die-crush. `enemy/boete-ticket/fly` (4: the fluttering ticket, centre anchor).
  *
- * 2× art (mission ams): every strip is registered again at density 2 (the rig at 2×, the ticket
- * book and the ticket redrawn on the 2× grid; docs/ART_GUIDE.md "2x art (mission ams)").
+ * UHD art (mission ams; docs/ART_GUIDE.md "UHD art"): every strip has one density-generic
+ * generator for 2× and 4× (`hd`): the officer is the HD rig (`renderHuman(…, d)`: navy uniform,
+ * cap, hi-vis vest with silver bands), the ticket book and the ticket are drawn natively here.
  */
 import { INK, PAL } from '../../../engine/palette';
+import { PAL_HD } from '../../../engine/palette-hd';
 import { PixelBuffer } from '../../../engine/pixel';
 import type { Frame } from '../../../engine/render';
-import { defineSprite, getFrames, type SpriteOpts } from '../../../engine/sprites';
-import { HI, outlineHi } from '../../art/hi';
+import { defineSprite, getFrames, type DenseDensity as HdD, type SpriteOpts } from '../../../engine/sprites';
+import { HdCanvas } from '../../art/hd';
 import { withPieces, type Piece } from '../../art/human-fx';
 import { blastFrames, burnFrames, withSwing } from '../../art/human-sprites';
 import { renderHuman, type Density, type HumanStyle, type Pose } from '../../art/humanoid';
@@ -24,6 +26,9 @@ import * as P from '../../art/poses';
 import { CRUSH_TIMING, crushStrip, turnSquash } from '../creatures/draw';
 import { tween } from '../../art/tween';
 import { crushStripHi } from '../../art/hi-strips';
+import { onBoxes } from './rider.hd';
+
+const frac = (v: number): number => v - Math.floor(v);
 
 export const HANDHAVER_STYLE: HumanStyle = {
   skin: 'skinA', hair: 'hairB', hairStyle: 'short', headgear: 'cap', gear: 'navy', accent: 'gold',
@@ -49,53 +54,59 @@ function book(open: boolean): PixelBuffer {
 }
 
 /**
- * The 2× ticket book (the same 7×8 / 11×8 logical box as `book` with its outline): a navy cover
- * with a lit edge, the page block and an elastic band; open, two ruled pages, a red BOETE header
- * on the left page and a half-written ticket on the right one.
+ * The HD ticket book at density d (the 7 × 8 / 11 × 8 logical box of `book` with its outline): a
+ * navy board cover with a lit bevel and a small gold city crest, the page block and the black
+ * elastic band (shut); open, two gently curved pages over the cover with a spine shadow, a red
+ * header and ruled lines on the left page, a half-written ticket with a red total on the right
+ * (the fine print at 4×).
  */
-function bookHi(open: boolean): PixelBuffer {
-  const w = (open ? 9 : 5) * HI;
-  const h = 6 * HI;
-  const b = new PixelBuffer(w, h);
-  const N = PAL.navy;
+function bookHd(open: boolean, d: HdD): PixelBuffer {
+  const w = open ? 11 : 7;
+  const c = new HdCanvas(w, 8, d);
+  const cover = c.material({ ramp: PAL_HD.navy, lo: 1, hi: 4, spec: 0.35, shine: 16, wrap: 0.05 });
+  const paper = c.material({ ramp: PAL_HD.snow, lo: 3, hi: 6, spec: 0.1, wrap: 0.15 });
+  const band = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.4, shine: 14 });
   if (open) {
-    b.rect(0, 0, w, h, N[1]);
-    b.hline(0, w - 1, 0, N[2]);
-    b.vline(0, 0, h - 1, N[2]);
-    b.hline(0, w - 1, h - 1, N[0]);
-    // Pages (2 logical px of cover round them, the spine in the middle).
-    for (const x0 of [2, 10]) {
-      b.rect(x0, 2, 6, 8, PAL.snow[3]);
-      b.vline(x0 + 5, 2, 9, PAL.snow[2]);
-      b.hline(x0, x0 + 5, 9, PAL.snow[1]);
+    c.box(1, 1, 9, 6, { mat: cover, z: 0, r: 0.4, bevel: 0.45 });
+    for (const [x0, side] of [[1.55, -1], [5.45, 1]] as const) {
+      c.box(x0, 1.5, 4, 5, {
+        mat: paper,
+        z: 0.6,
+        tex: (t) => {
+          // Each page bows up from the spine: the normal leans away from it.
+          const u = side < 0 ? 1 - t.u : t.u;
+          t.nx = side * (0.55 - u) * 0.9;
+          t.nz = 1;
+          if (u < 0.12) t.tone -= 0.3;
+          if (d === 4 && t.v > 0.25 && t.v < 0.9 && frac(t.v * 6.5) < 0.12) t.tone -= 0.12;
+        },
+      });
     }
-    b.vline(8, 1, h - 2, N[0]);
-    b.vline(9, 1, h - 2, N[2]);
-    // Left page: red header, ruled lines.
-    b.hline(3, 6, 3, PAL.red[2]);
-    for (const y of [5, 7]) b.hline(3, 6, y, PAL.steel[3]);
-    // Right page: a half-written ticket (dark scribbles on the rules) and a red total.
-    b.hline(11, 14, 4, PAL.steel[2]);
-    b.hline(11, 13, 6, PAL.steel[2]);
-    b.hline(13, 14, 8, PAL.red[2]);
+    // Left page: the red header; right page: the scribbled ticket and a red total.
+    c.paint(2, 2.1, 3, 0.6, (x) => (x < 4.6 ? PAL_HD.red[5] : 0));
+    c.paint(6.3, 2.4, 3.2, 3.6, (x, y) => {
+      const row = Math.floor((y - 2.4) / 0.9);
+      const v = frac((y - 2.4) / 0.9);
+      if (row > 2 || v > (d === 4 ? 0.28 : 0.5)) return 0;
+      if (row === 2) return x > 7.9 && x < 9.2 ? PAL_HD.red[5] : 0;
+      const end = row === 0 ? 9.2 : 8.4;
+      if (x > end) return 0;
+      return d === 4 && frac(x * 2.2 + row * 0.4) < 0.25 ? 0 : PAL_HD.navy[3];
+    });
   } else {
-    b.rect(0, 0, w, h, N[1]);
-    b.hline(0, w - 2, 0, N[2]);
-    b.vline(0, 0, h - 2, N[2]);
-    b.hline(1, w - 1, h - 1, N[0]);
-    // The page block on the right edge (two 1-px leaves) and the elastic band.
-    b.vline(w - 2, 1, h - 3, PAL.snow[3]);
-    b.vline(w - 1, 1, h - 3, PAL.snow[1]);
-    for (let y = 2; y < h - 3; y += 2) b.set(w - 1, y, PAL.steel[3]);
-    b.vline(6, 0, h - 1, PAL.black[1]);
-    // A small gold city crest on the cover.
-    b.set(2, 3, PAL.gold[3]);
-    b.set(3, 3, PAL.gold[2]);
-    b.set(2, 4, PAL.gold[2]);
-    b.set(3, 4, PAL.gold[1]);
-    b.hline(2, 3, 7, PAL.cloth[1]);
+    c.box(1, 1, 5, 6, { mat: cover, z: 0, r: 0.4, bevel: 0.5 });
+    c.box(4.75, 1.55, 1.1, 4.9, { mat: paper, z: 0.4, r: 0.15, tex: d === 4 ? (t) => {
+      if (frac(t.x * 3) < 0.3) t.tone -= 0.18;
+    } : null });
+    c.capsule(3.55, 1.1, 3.55, 6.9, 0.32, 0.32, { mat: band, z: 1 });
+    // The gold city crest: a small shield.
+    c.paint(1.8, 2.6, 1.4, 1.8, (x, y) => {
+      const u = Math.abs(x - 2.5);
+      if (y < 2.8 || y > 4.3 - u * 0.9 || u > 0.6) return 0;
+      return x < 2.5 ? PAL_HD.gold[6] : PAL_HD.gold[4];
+    });
   }
-  return outlineHi(b.padded(HI), 2);
+  return c.render({ outline: 'A', ao: 0.25, rimLight: 2 });
 }
 
 /** A figure with the book in the far hand (in front of the chest) when `bookOpen` is set. */
@@ -105,7 +116,7 @@ function officer(style: HumanStyle, pose: Pose, bookAt: 'none' | 'shut' | 'open'
   const hip = f.pts?.hip ?? [0, -15];
   const open = bookAt === 'open';
   const at = { x: hip[0] + (open ? 3 : 5), y: hip[1] - (open ? 9 : 5) };
-  const piece: Piece = d === 1 ? { buf: book(open), ...at } : { buf: bookHi(open), ...at, density: HI };
+  const piece: Piece = d === 1 ? { buf: book(open), ...at } : { buf: bookHd(open, d), ...at, density: d };
   return withPieces(f, [piece]);
 }
 
@@ -133,9 +144,9 @@ export const HANDHAVER_WALK_TPF = 6;
 /** Walk with the free (near) arm swinging against the legs; the far hand keeps the book. */
 export const WALK_SWING: readonly Pose[] = withSwing(P.WALK, 0.6, 24);
 
-/** Register a strip at 1× and its 2× twin (the same recipe at density 2). */
+/** Register a strip at 1× and its UHD art (the same recipe at density 2 and 4). */
 function defHi(id: string, gen: (d: Density) => Frame[], o: SpriteOpts): void {
-  defineSprite(id, () => gen(1), { ...o, hi: () => gen(2) });
+  defineSprite(id, () => gen(1), { ...o, hd: (d) => gen(d) });
 }
 
 /** Register one officer set (`enemy/<set>/…`). */
@@ -155,8 +166,8 @@ function defineOfficer(set: string, style: HumanStyle): void {
     { ...P.STAND, armN: A(160, 50, 'open'), armF: A(30, 20, 'open'), lean: -10, expr: 'dazed' },
     ...P.DIE.slice(2).map((p) => ({ ...p, expr: 'dazed' as const })),
   ];
-  // At 2× the swoon hand goes to the forehead (back of the hand above the brow): the 1× arm
-  // straight up across the face smears the finer 2× face. The 2× frame keeps the 1× points.
+  // At 2× / 4× the swoon hand goes to the forehead (back of the hand above the brow): the 1× arm
+  // straight up across the face smears the finer HD face. The HD frame keeps the 1× points.
   const swoonHi: readonly Pose[] = [
     { ...swoon[0], armN: { to: [5, -9], hand: 'open' } },
     { ...swoon[1], armN: { to: [5, -10], hand: 'open' } },
@@ -168,12 +179,13 @@ function defineOfficer(set: string, style: HumanStyle): void {
   }), { ...o, durations: [8, 8, 6, 8, 8, 30], loop: false });
   defHi(pre + 'die-knife', (d) => P.DIE_KNIFE.map((p) => officer(style, { ...p, hat: false }, 'none', d)), { ...o, durations: [8, 6, 6, 6, 30], loop: false });
   defHi(pre + 'die-blast', (d) => blastFrames(style, { hat: false, weapon: 'none' }, d), { ...o, durations: [5, 5, 5, 5, 30], loop: false });
-  defHi(pre + 'die-burn', (d) => burnFrames(style, { weapon: 'none' }, 9, d), { ...o, ticksPerFrame: 6, loop: false });
+  // HD flames may reach a few art px past the trimmed 1× box: cut them to it here (geometry is law).
+  defHi(pre + 'die-burn', (d) => (d === 1 ? burnFrames(style, { weapon: 'none' }, 9, 1) : onBoxes(burnFrames(style, { weapon: 'none' }, 9, d), getFrames(pre + 'die-burn', 1), d)), { ...o, ticksPerFrame: 6, loop: false });
   const stand = (d: Density): Frame => renderHuman(style, { weapon: 'none', ...P.STAND }, 'full', d);
   defineSprite(pre + 'die-crush', () => crushStrip(stand(1)), {
     durations: CRUSH_TIMING,
     loop: false,
-    hi: () => crushStripHi(stand(1), stand(2), getFrames(pre + 'die-crush', 1)),
+    hd: (d) => crushStripHi(stand(1), stand(d), getFrames(pre + 'die-crush', 1)),
   });
 }
 
@@ -197,40 +209,58 @@ function ticketFrames(): Frame[] {
 }
 
 /**
- * The 2× ticket (same logical boxes as `ticketFrames`): a paper slip with a red header band, ruled
- * lines of fine print, a red stamp and a curled corner. No letters: the ticket is drawn mirrored
- * when it flies left, so the print stays an abstract (mirror-safe) pattern.
+ * The HD BOETE ticket (the logical boxes of `ticketFrames`, density d): a paper slip bowed as it
+ * flutters, a red header band with a white rule, ruled lines of fine print and a red stamp ring
+ * (4×: dashed print and a double ring), a curled corner. No letters: the ticket is drawn
+ * mirrored when it flies left, so the print stays an abstract (mirror-safe) pattern.
  */
-function ticketFramesHi(): Frame[] {
+function ticketFramesHd(d: HdD): Frame[] {
   return [0, 1, 2, 3].map((i) => {
     const w = i === 1 || i === 3 ? 8 : 9;
     const h = i === 2 ? 4 : 6;
-    const W = w * HI;
-    const H = h * HI;
-    const b = new PixelBuffer(W, H);
-    b.rect(0, 0, W, H, PAL.snow[3]);
-    b.vline(W - 1, 0, H - 1, PAL.snow[2]);
-    b.hline(0, W - 1, H - 1, PAL.snow[2]);
-    // Red header band with a white rule through it (the title, abstracted).
-    b.rect(2, 2, W - 4, 2, PAL.red[2]);
-    b.hline(2, W - 3, 2, PAL.red[3]);
-    for (let x = 3; x < W - 3; x += 3) b.set(x, 3, PAL.red[1]);
+    const c = new HdCanvas(w + 2, h + 2, d);
+    const paper = c.material({ ramp: PAL_HD.snow, lo: 3, hi: 6, spec: 0.15, shine: 10, wrap: 0.15 });
+    const bow = [0.5, -0.4, 0.2, -0.5][i];
+    c.box(1, 1, w, h, {
+      mat: paper,
+      z: 0,
+      tex: (t) => {
+        t.nx = (t.u - 0.5) * bow;
+        t.ny = (t.v - 0.5) * 0.25;
+        t.nz = 1;
+        // The curled corner (bottom right): its back faces away from the light.
+        if (t.u + t.v > 1.72) {
+          t.tone -= 0.35;
+          t.nx = 0.5;
+          t.ny = 0.5;
+        }
+      },
+    });
+    c.erase(w - 0.2, h - 0.2, 1.4, 1.4, (x, y) => x + y > w + h + 1.4);
+    c.paint(1.6, 1.6, w - 1.2, 1.1, (x, y) => {
+      if (d === 4 && Math.abs(y - 2.15) < 0.12 && x > 2.2 && x < w - 0.4) return PAL_HD.snow[6];
+      return PAL_HD.red[5];
+    });
     if (h > 4) {
-      // Fine print: two dashed rules, a red stamp on the right.
-      for (let x = 2; x < W - 6; x++) if (x % 4 !== 1) b.set(x, 6, PAL.steel[2]);
-      for (let x = 2; x < W - 7; x++) if (x % 5 !== 3) b.set(x, 8, PAL.steel[3]);
-      b.rect(W - 5, 6, 3, 3, PAL.red[2]);
-      b.set(W - 4, 7, PAL.snow[3]);
+      c.paint(1.8, 3.4, w - 3.4, 2.4, (x, y) => {
+        const v = frac((y - 3.4) / 0.95);
+        if (v > (d === 4 ? 0.26 : 0.5)) return 0;
+        if (y > 4.35 && x > w - 2.6) return 0;
+        return d === 4 && frac(x * 1.7) < 0.22 ? 0 : PAL_HD.steel[3];
+      });
+      const sx = w - 1.1;
+      const sy = 4.4;
+      c.paint(sx - 1, sy - 1, 2, 2, (x, y) => {
+        const q = Math.hypot(x - sx, y - sy);
+        if (d === 2) return q < 0.75 ? PAL_HD.red[5] : 0;
+        if (q < 0.85 && q > 0.55) return PAL_HD.red[5];
+        return q < 0.25 ? PAL_HD.red[4] : 0;
+      });
     } else {
-      for (let x = 2; x < W - 3; x++) if (x % 4 !== 1) b.set(x, 5, PAL.steel[2]);
+      c.paint(1.8, 3.6, w - 2.4, 0.6, (x) => (d === 4 && frac(x * 1.7) < 0.22 ? 0 : PAL_HD.steel[3]));
     }
-    // A curled corner (bottom right).
-    b.set(W - 1, H - 1, 0);
-    b.set(W - 2, H - 1, PAL.snow[1]);
-    b.set(W - 1, H - 2, PAL.snow[1]);
-    b.set(W - 2, H - 2, PAL.steel[3]);
-    const t = outlineHi(b.padded(HI), 2);
-    return { buf: i === 3 ? t.flipped(false, true) : t, ox: (w + 2) >> 1, oy: (h + 2) >> 1, density: HI };
+    const b = c.render({ outline: 'A', ao: 0, rimLight: 2 });
+    return { buf: i === 3 ? b.flipped(false, true) : b, ox: (w + 2) >> 1, oy: (h + 2) >> 1, density: d };
   });
 }
-defineSprite('enemy/boete-ticket/fly', ticketFrames, { ticksPerFrame: 4, hi: ticketFramesHi });
+defineSprite('enemy/boete-ticket/fly', ticketFrames, { ticksPerFrame: 4, hd: (d) => ticketFramesHd(d) });

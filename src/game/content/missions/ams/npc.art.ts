@@ -19,20 +19,25 @@
  * Decor: `decor/ams/ams-boat-platform` (2, wake), breakables `decor/ams/<id>` (0 intact,
  * 1 broken) for ams-herring-cart, ams-tulip-stall, ams-market-stall, ams-bike-rack.
  *
- * 2× art (docs/ART_GUIDE.md "2x art (mission ams)"): every NPC strip, the counter, the background
- * cyclists and the window waver's person have 2× twins — the rig at 2×, the aprons, scoop, saluting
- * forearm, counter, omafiets and window redrawn on the 2× grid (`…Hi` below). The ambient pigeons,
- * ducks, tour boat and window cat have their 2× twins in npc-hi.art.ts.
+ * UHD art (docs/ART_GUIDE.md "UHD art"): every id here except the breakables and the boat platform
+ * (their dense art lives with the city decor) has ONE density-generic generator for 2× and 4×
+ * (`hd: (d) => …`): the rig at d (renderHuman), and the aprons, fry scoop, saluting forearm,
+ * counter, omafiets and sash window painted natively with the UHD kit (HdCanvas, PAL_HD, outline
+ * A, rim light; `…Hd` below), each fitted into its 1× footprint. The vendor's tricolour cap is
+ * recoloured on the HD red ramp. The ambient pigeons, ducks, tour boat and window cat have their
+ * HD art in npc-hi.art.ts.
  */
 import type { Color } from '../../../../engine/color';
 import { drawText } from '../../../../engine/font';
 import { INK, PAL } from '../../../../engine/palette';
-import { PixelBuffer } from '../../../../engine/pixel';
+import { PAL_HD, hdHome } from '../../../../engine/palette-hd';
+import { PixelBuffer, type Ramp } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
 import { defineSprite, getFrames } from '../../../../engine/sprites';
 import { turnSquash } from '../../creatures/draw';
 import { inbetween, tween } from '../../../art/tween';
-import { HI, outlineHi } from '../../../art/hi';
+import { HdCanvas, folds, texAll, wood, type DrawOpts, type HdMaterial, type RenderOpts, type Texture } from '../../../art/hd';
+import { spanOf } from '../../../art/hd/body';
 import { withPieces, type Piece } from '../../../art/human-fx';
 import { withSwing } from '../../../art/human-sprites';
 import { renderHuman, stackFrames, type ArmPose, type Density, type HumanStyle, type LegPose, type Pose } from '../../../art/humanoid';
@@ -191,105 +196,251 @@ function scoop(): PixelBuffer {
   return b.outline(INK);
 }
 
-/**
- * The 2× aprons (each the box of its 1× twin with the outline, on the 2× grid). Dark Fabel Friet
- * apron: gold piping with a lit edge, two soft fold lines, a stitched pocket under the gold "F".
- */
-function darkApronHi(): PixelBuffer {
-  const K = PAL.black;
-  const G = PAL.gold;
-  const b = new PixelBuffer(16, 26);
-  b.rect(0, 0, 16, 26, K[2]);
-  b.vline(0, 0, 25, K[3]);
-  b.vline(15, 0, 25, K[1]);
-  b.vline(14, 2, 23, K[1]);
-  for (const x of [5, 11]) for (let y = 4; y < 23; y++) if (y % 6 !== 0) b.set(x, y, K[1]);
-  b.rect(0, 0, 16, 2, G[1]);
-  b.hline(0, 15, 0, G[2]);
-  b.rect(0, 24, 16, 2, G[1]);
-  b.hline(0, 15, 24, G[2]);
-  // Pocket with stitches, and the gold "F" on it (as at 1×, with 1-px strokes).
-  for (let x = 4; x <= 11; x += 2) b.set(x, 7, K[3]);
-  for (let y = 8; y <= 16; y += 2) {
-    b.set(4, y, K[3]);
-    b.set(11, y, K[3]);
+// ------------------------------------------------------------------------------------ UHD pieces
+
+/** A dense density of the UHD art. */
+export type HdD = 2 | 4;
+
+/** The cast's sprite look (style decisions): outline A, a cool rim light, AO — as the rig. */
+export const HD_RENDER: RenderOpts = { outline: 'A', ao: 0.3, rimLight: 2 };
+
+/** Finished HD pieces (each a pure function of its key: same input, same pixels). */
+const hdPieces = new Map<string, PixelBuffer>();
+function hdCached(key: string, make: () => PixelBuffer): PixelBuffer {
+  let b = hdPieces.get(key);
+  if (!b) {
+    b = make();
+    hdPieces.set(key, b);
   }
-  b.vline(6, 8, 15, G[2]);
-  b.vline(7, 8, 15, G[1]);
-  b.hline(6, 10, 8, G[3]);
-  b.hline(7, 10, 9, G[1]);
-  b.hline(6, 9, 11, G[2]);
-  return outlineHi(b.padded(HI), 2);
+  return b;
 }
 
-/** The vendor's 2× white apron: hems, two fold lines, a mustard smear and a ketchup drop. */
-function whiteApronHi(): PixelBuffer {
-  const C = PAL.cloth;
-  const b = new PixelBuffer(18, 22);
-  b.rect(0, 0, 18, 22, C[2]);
-  b.rect(0, 0, 18, 2, C[3]);
-  b.hline(0, 17, 2, C[1]);
-  b.vline(16, 2, 21, C[1]);
-  b.vline(17, 1, 21, C[1]);
-  b.hline(0, 17, 21, C[1]);
-  for (const x of [5, 12]) for (let y = 4; y < 20; y++) if (y % 5 !== 2) b.set(x, y, C[1]);
-  // Mustard smear (a short streak with a highlight) and a ketchup drop.
-  b.hline(10, 13, 12, PAL.gold[2]);
-  b.hline(11, 14, 13, PAL.gold[1]);
-  b.set(10, 12, PAL.gold[3]);
-  b.rect(4, 6, 2, 2, PAL.red[2]);
-  b.set(4, 6, PAL.red[3]);
-  b.set(5, 8, PAL.red[1]);
-  return outlineHi(b.padded(HI), 2);
+/** 2 or 4 for a dense density. */
+export function hdOf(d: number): HdD {
+  return d >= 4 ? 4 : 2;
 }
 
 /**
- * The 2× fry scoop (same 9 × 10 box with its outline): single fries with a lit side, a steel
- * scoop with a bright rim and a darker belly, a handle.
+ * Keep a drawing inside the 1× footprint `lo` placed at logical (ox, oy) on the canvas (geometry
+ * is law): every art px outside the opaque box of the 1× piece less its 1-px outline is dropped
+ * BEFORE the render, so outline A wraps a clean edge inside the 1× box instead of being cut by it
+ * (as the rig's `fitFrame`).
  */
-function scoopHi(): PixelBuffer {
-  const b = new PixelBuffer(18, 20);
-  // Fries: 2-px sticks of different heights and slants, each lit on the left.
-  for (const [x, top] of [[6, 1], [8, 3], [10, 1], [12, 4], [14, 2], [7, 4], [11, 3]] as const) {
-    b.vline(x, top + 2, 11, PAL.gold[2]);
-    b.vline(x + 1, top + 2, 11, PAL.gold[1]);
-    b.set(x, top + 2, PAL.gold[3]);
-  }
-  b.poly([[4, 8], [17, 8], [15, 17], [6, 17]], PAL.steel[3]);
-  b.hline(4, 17, 8, PAL.steel[4]);
-  b.hline(5, 16, 9, PAL.steel[4]);
-  for (let y = 13; y <= 17; y++) b.hline(Math.round(6 + (y - 13) * 0.3) + 6, 15 - Math.round((17 - y) * 0.3), y, PAL.steel[2]);
-  b.hline(6, 15, 17, PAL.steel[1]);
-  b.thickLine(2, 14, 6, 12, 2, PAL.steel[2]);
-  b.line(2, 14, 6, 12, PAL.steel[3]);
-  return outlineHi(b, 2);
+export function fitHd(c: HdCanvas, lo: PixelBuffer, ox = 0, oy = 0): void {
+  const b = lo.trimBounds();
+  if (!b) return;
+  const x0 = b.x + ox + 1;
+  const y0 = b.y + oy + 1;
+  const x1 = b.x + ox + b.w - 1;
+  const y1 = b.y + oy + b.h - 1;
+  c.erase(0, 0, c.w, c.h, (x, y) => x < x0 || x > x1 || y < y0 || y > y1);
 }
 
-/** Lower body with an apron hung at the hip, then the torso on top (like the hostage aprons). */
+/** A short stable key of a ramp (piece caches). */
+function rampKey(r: Ramp): string {
+  let k = '';
+  for (const c of r) k += (c >>> 0).toString(36) + '.';
+  return k;
+}
+
+/** Cloth of a 1× style ramp in the rig's bands (hd/body.ts `spanOf`), so a piece matches the figure's cloth. */
+export function clothOf(c: HdCanvas, r: Ramp, o: Partial<HdMaterial> = {}): number {
+  const s = spanOf(r);
+  return c.material({ ramp: s.ramp, lo: s.lo, hi: s.hi, wrap: 0.05, rim: 0.05, ...o });
+}
+
+/** Skin of a 1× skin ramp in the rig's bands (hd/body.ts `Painter.skin`). */
+export function skinOf(c: HdCanvas, r: Ramp): number {
+  const s = spanOf(r);
+  const top = Math.min(s.ramp.length - 2, s.hi);
+  return c.material({ ramp: s.ramp, lo: Math.max(1, top - 3), hi: top, spec: 0.2, shine: 18, wrap: 0.1, rim: 0.05, amb: 0.12 });
+}
+
+const goldMat = (c: HdCanvas): number => c.material({ ramp: PAL_HD.gold, lo: 2, hi: 6, spec: 0.9, shine: 22 });
+const steelMat = (c: HdCanvas): number => c.material({ ramp: PAL_HD.steel, lo: 2, hi: 6, spec: 1, shine: 26 });
+
+/** A dashed seam `inset` logical px inside the box x, y, w, h (stitches: dashes at 4×, a dotted line at 2×). */
+function stitches(x: number, y: number, w: number, h: number, inset = 0.5): Texture {
+  return (s) => {
+    const dl = s.x - x;
+    const dr = x + w - s.x;
+    const dt = s.y - y;
+    const db = y + h - s.y;
+    const m = Math.min(dl, dr, dt, db);
+    if (Math.floor(m * s.d) !== Math.floor(inset * s.d)) return;
+    const along = dl === m || dr === m ? s.y : s.x;
+    const per = s.d >= 4 ? 0.75 : 1;
+    if ((((along / per) % 1) + 1) % 1 < 0.5) s.tone -= 0.32;
+  };
+}
+
+/**
+ * The dark Fabel Friet apron (the `darkApron` box, 10 × 15 with its outline): heavy black cloth
+ * hanging in soft vertical folds, the torso's shadow under the waistband, gold piping at the
+ * waist and the hem, a stitched pocket with the gold "F" standing off it.
+ */
+function darkApronHd(d: HdD): PixelBuffer {
+  return hdCached(`dark-apron@${d}`, () => {
+    const c = new HdCanvas(10, 15, d);
+    const cloth = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, wrap: 0.05, spec: 0.35, shine: 10, rim: 0.12 });
+    const gold = goldMat(c);
+    const body = c.newPart();
+    c.blob([[1, 1], [9, 1], [9, 14], [1, 14]], 1.1, { mat: cloth, part: body, bulge: 0.25, tex: folds({ angle: Math.PI / 2, spacing: 2, amp: 1, cover: 0.8, seed: 21 }) });
+    c.shade(1, 2, 8, 2.5, (_x, y) => -0.35 * Math.max(0, 1 - (y - 2) / 2.5), body);
+    c.box(1, 1, 8, 1.1, { mat: gold, z: 2, bevel: 0.4 });
+    c.box(1, 13, 8, 1, { mat: gold, z: 2, bevel: 0.4 });
+    c.box(3, 4.2, 5, 5.4, { mat: cloth, z: 2, bevel: 0.45, r: 0.25, tone: 0.08, tex: stitches(3, 4.2, 5, 5.4) });
+    const F = { mat: gold, z: 2.6, bevel: 0.3 };
+    c.box(4, 5, 1, 4, F);
+    c.box(4, 5, 3, 0.95, F);
+    c.box(4, 6.6, 2, 0.8, F);
+    return c.render(HD_RENDER);
+  });
+}
+
+/**
+ * The vendor's white apron (the `whiteApron` box, 11 × 13): warm white cotton in folds, a rolled
+ * waistband, a slanted mustard smear and a glossy ketchup drop.
+ */
+function whiteApronHd(d: HdD): PixelBuffer {
+  return hdCached(`white-apron@${d}`, () => {
+    const c = new HdCanvas(11, 13, d);
+    const cloth = c.material({ ramp: PAL_HD.cloth, lo: 1, hi: 5, wrap: 0.1, spec: 0.1, shine: 8 });
+    const mustard = c.material({ ramp: PAL_HD.gold, lo: 3, hi: 6, spec: 0.5, shine: 16 });
+    const ketchup = c.material({ ramp: PAL_HD.red, lo: 2, hi: 6, spec: 0.9, shine: 24 });
+    const body = c.newPart();
+    const smear: Texture = (s) => {
+      const u = (s.x - 7) * 0.9 + (s.y - 7.6) * 0.45;
+      const v = -(s.x - 7) * 0.45 + (s.y - 7.6) * 0.9;
+      if ((u / 1.6) ** 2 + (v / 0.55) ** 2 < 1) {
+        s.mat = mustard;
+        s.tone += 0.05;
+      }
+    };
+    c.blob([[1, 1], [10, 1], [10, 12], [1, 12]], 1, { mat: cloth, part: body, bulge: 0.25, tex: texAll(folds({ angle: Math.PI / 2, spacing: 2.8, amp: 0.7, cover: 0.6, seed: 23 }), smear) });
+    c.shade(1, 2, 9, 2.5, (_x, y) => -0.3 * Math.max(0, 1 - (y - 2) / 2.5), body);
+    c.box(1, 1, 9, 1.2, { mat: cloth, z: 2, bevel: 0.45, tone: 0.1 });
+    c.ellipsoid(3.5, 4.6, 0.75, 0.85, { mat: ketchup, z: 2, round: 0.6 });
+    return c.render(HD_RENDER);
+  });
+}
+
+/**
+ * The steel fry scoop (the `scoop` box, 9 × 10; hand at its handle): single golden fries of
+ * different heights and slants with crisp darker tips, a polished scoop with a rolled bright rim
+ * and a darker belly, the handle.
+ */
+function scoopHd(d: HdD): PixelBuffer {
+  return hdCached(`scoop@${d}`, () => {
+    const c = new HdCanvas(9, 10, d);
+    const steel = steelMat(c);
+    const fry = c.material({ ramp: PAL_HD.gold, lo: 3, hi: 6, spec: 0.25, shine: 10, wrap: 0.1 });
+    const fries: ReadonlyArray<readonly [number, number, number]> = [
+      [3.5, 1.3, -0.3],
+      [4.4, 2.3, 0.2],
+      [5.4, 1.1, 0.1],
+      [6.4, 3.0, 0.4],
+      [7.3, 2.1, 0.5],
+      [4.9, 2.7, -0.2],
+      [6.0, 2.4, 0.3],
+    ];
+    fries.forEach(([x, top, lean], k) =>
+      c.capsule(x + lean, top + 0.4, x, 5.6, 0.42, 0.42, {
+        mat: fry,
+        z: 0.4 + (k % 3) * 0.15,
+        round: 0.8,
+        tone: k % 2 ? -0.06 : 0.06,
+        tex: (s) => {
+          if (s.y < top + 0.7) s.tone -= 0.3;
+        },
+      }),
+    );
+    c.blob([[2, 4.4], [8, 4.4], [7.2, 8.4], [2.8, 8.4]], 0.7, { mat: steel, z: 1.2, bulge: 0.3 });
+    c.box(1.9, 4, 6.2, 0.8, { mat: steel, z: 2.6, bevel: 0.35, r: 0.3, tone: 0.15 });
+    c.capsule(1.4, 7.6, 3.3, 6.5, 0.45, 0.4, { mat: steel, z: 1, tone: -0.1 });
+    return c.render(HD_RENDER);
+  });
+}
+
+/**
+ * The saluting forearm (the 1× piece's 10 × 13 box): a sleeve of the shirt's cloth rising steeply
+ * in front of the face, narrowed so the eye and the moustache stay clear, a cuff, and the flat
+ * hand at the cap peak (fingers forward; finger lines at 4×).
+ */
+function saluteArmHd(top: Ramp, skin: Ramp, d: HdD): PixelBuffer {
+  return hdCached(`salute:${rampKey(top)}:${rampKey(skin)}@${d}`, () => {
+    const c = new HdCanvas(10, 13, d);
+    const sleeve = clothOf(c, top);
+    const sk = skinOf(c, skin);
+    c.capsule(2.4, 11.2, 5.6, 5.4, 1.05, 0.8, { mat: sleeve, z: 0, tex: folds({ angle: 1.1, spacing: 1.6, amp: 0.6, seed: 31 }) });
+    c.capsule(5.4, 5.6, 6.1, 4.3, 0.85, 0.75, { mat: sleeve, z: 0.5, tone: 0.12 });
+    c.blob([[4.7, 1.2], [7.9, 1.1], [8.5, 2.2], [8, 3.6], [5.4, 4], [4.6, 2.9]], 0.6, {
+      mat: sk,
+      z: 1,
+      bulge: 0.2,
+      tex: (s) => {
+        if (s.d >= 4 && s.x > 6.2 && (Math.abs(s.y - 2.05) < 0.13 || Math.abs(s.y - 2.85) < 0.13)) s.tone -= 0.3;
+      },
+    });
+    return c.render(HD_RENDER);
+  });
+}
+
+/** Map every tone of ramp `from` in rows y0 ≤ y < y1 of `b` (art px) to the same-index tone of `to`. */
+function remap(b: PixelBuffer, y0: number, y1: number, from: Ramp, to: Ramp): void {
+  for (let y = Math.max(0, y0); y < Math.min(b.h, y1); y++) {
+    for (let x = 0; x < b.w; x++) {
+      const i = from.indexOf(b.get(x, y));
+      if (i >= 0) b.set(x, y, to[Math.min(to.length - 1, i)]);
+    }
+  }
+}
+
+/** The cap's white band and blue peak (HD tones, index for index with the red crown's ramp). */
+const CAP_BAND: Ramp = [PAL_HD.snow[0], PAL_HD.snow[1], PAL_HD.snow[2], PAL_HD.snow[3], PAL_HD.snow[4], PAL_HD.snow[5], PAL_HD.snow[6], PAL_HD.snow[6]];
+const CAP_PEAK: Ramp = [PAL_HD.navy[0], PAL_HD.navy[1], PAL_HD.navy[2], PAL_HD.navy[3], PAL_HD.navy[4], PAL_HD.sky[1], PAL_HD.sky[2], PAL_HD.sky[3]];
+
+/** `tricolorCap` on an HD frame: the crown stays red, logical row 2 of the cap turns white, rows 3+ blue (the HD red ramp, tone for tone). */
+function tricolorCapHd(f: Frame): Frame {
+  const head = f.pts?.head;
+  const d = f.density ?? 1;
+  if (!head || d === 1) return f;
+  const b = f.buf.clone();
+  const RED = PAL_HD.red;
+  const yMax = (f.oy + head[1]) * d;
+  let top = -1;
+  for (let y = 0; y < yMax && top < 0; y++) for (let x = 0; x < b.w; x++) if (RED.includes(b.get(x, y))) { top = y; break; }
+  if (top < 0) return f;
+  remap(b, top + 2 * d, Math.min(yMax, top + 3 * d), RED, CAP_BAND);
+  remap(b, top + 3 * d, Math.min(yMax, top + 7 * d), RED, CAP_PEAK);
+  return { ...f, buf: b };
+}
+
+/** Lower body with an apron hung at the hip, then the torso on top (like the hostage aprons). `apron` has density `d`. */
 function figure(style: HumanStyle, pose: Pose, apron: PixelBuffer | null, d: Density = 1): Frame {
   if (!apron || pose.rot) return renderHuman(style, pose, 'full', d);
   const lower = renderHuman(style, pose, 'lower', d);
   const upper = renderHuman(style, pose, 'upper', d);
   const hip = lower.pts?.hip ?? [0, -15];
   const piece: Piece = { buf: apron, x: hip[0] - 4, y: hip[1] - 1 };
-  if (d !== 1) piece.density = HI;
+  if (d !== 1) piece.density = d;
   const legs = withPieces(lower, [piece]);
   return stackFrames(legs, upper);
 }
 
-/** The scoop in the near hand (`d` 2: a 2× scoop). */
+/** The scoop in the near hand (`sc` has density `d`). */
 function withScoop(f: Frame, sc: PixelBuffer, d: Density = 1): Frame {
   const h: V2 = f.pts?.hand ?? [4, -16];
-  const pieces: Piece[] = [d === 1 ? { buf: sc, x: h[0] - 2, y: h[1] - 8 } : { buf: sc, x: h[0] - 2, y: h[1] - 8, density: HI }];
+  const pieces: Piece[] = [d === 1 ? { buf: sc, x: h[0] - 2, y: h[1] - 8 } : { buf: sc, x: h[0] - 2, y: h[1] - 8, density: d }];
   return withPieces(f, pieces);
 }
 
-/** The saluting forearm: a sleeve from the chest up to a flat hand at the cap peak. */
+/** The saluting forearm: a sleeve from the chest up to a flat hand at the cap peak (`d` ≥ 2: the HD piece in the same box). */
 function withSaluteArm(f: Frame, style: HumanStyle, d: Density = 1): Frame {
   const h: V2 = f.pts?.hand ?? [6, -28];
   const top: readonly Color[] = typeof style.top === 'string' ? PAL[style.top as keyof typeof PAL] : PAL.sky;
   const skin: readonly Color[] = typeof style.skin === 'string' && PAL[style.skin as keyof typeof PAL].length >= 4 ? PAL[style.skin as keyof typeof PAL] : PAL.skinA;
-  if (d !== 1) return withPieces(f, [{ buf: saluteArmHi(top, skin), x: Math.round(h[0]) - 6, y: Math.round(h[1]) - 2, density: HI }]);
+  if (d !== 1) return withPieces(f, [{ buf: saluteArmHd(top, skin, hdOf(d)), x: Math.round(h[0]) - 6, y: Math.round(h[1]) - 1, density: d }]);
   const b = new PixelBuffer(10, 13);
   b.thickLine(2, 10, 5, 4, 2, top[Math.min(2, top.length - 1)]);
   b.line(1, 11, 4, 5, top[Math.min(1, top.length - 1)]);
@@ -297,27 +448,6 @@ function withSaluteArm(f: Frame, style: HumanStyle, d: Density = 1): Frame {
   b.hline(4, 7, 1, skin[3]);
   b.outline(INK);
   return withPieces(f, [{ buf: b, x: Math.round(h[0]) - 6, y: Math.round(h[1]) - 1 }]);
-}
-
-/**
- * The 2× saluting forearm: a sleeve with a lit edge and a cuff, a flat hand with finger lines.
- * The hand sits 1 logical px higher than at 1× (on the cap peak) and the forearm rises steeply in
- * front of the face, narrowed to 1 logical px, so the eye and the moustache stay clear. Placed 1
- * logical px higher than the 1× piece (the buffer is 1 logical px taller).
- */
-function saluteArmHi(top: readonly Color[], skin: readonly Color[]): PixelBuffer {
-  const t = (i: number): Color => top[Math.min(i, top.length - 1)];
-  const b = new PixelBuffer(20, 28);
-  b.thickLine(6, 24, 9, 17, 4, t(2));
-  b.thickLine(4, 25, 7, 18, 2, t(1));
-  b.thickLine(10, 17, 14, 8, 2, t(2));
-  b.line(8, 21, 13, 9, t(3));
-  b.hline(12, 14, 8, t(1));
-  b.rect(10, 2, 7, 5, skin[2]);
-  b.hline(10, 16, 2, skin[3]);
-  b.vline(10, 2, 6, skin[3]);
-  for (const y of [4, 6]) b.hline(12, 16, y, skin[1]);
-  return outlineHi(b, 2);
 }
 
 /** Paint the vendor's cap red (crown) / white (band) / navy (peak): the cap is the red area over the head. */
@@ -361,13 +491,13 @@ function defineStrips(prefix: string, style: HumanStyle, apron: (d: Density) => 
     if (ap[d] === undefined) ap[d] = apron(d);
     return s.poses.map((p) => {
       let f = figure(style, { weapon: 'none', ...p }, ap[d] ?? null, d);
-      if (s.scoop) f = withScoop(f, (sc[d] ??= d === 1 ? scoop() : scoopHi()), d);
+      if (s.scoop) f = withScoop(f, (sc[d] ??= d === 1 ? scoop() : scoopHd(hdOf(d))), d);
       if (s.salute) f = withSaluteArm(f, style, d);
       return post ? post(f) : f;
     });
   };
   for (const [name, s] of Object.entries(strips)) {
-    defineSprite(`${prefix}/${name}`, gen(s, 1), { ticksPerFrame: s.ticks, loop: s.loop ?? true, hi: gen(s, 2) });
+    defineSprite(`${prefix}/${name}`, gen(s, 1), { ticksPerFrame: s.ticks, loop: s.loop ?? true, hd: (d) => gen(s, d)() });
   }
   // Mode transitions: two eased in-betweens from the idle frame to the mode's first frame.
   const idle = strips.idle;
@@ -381,17 +511,19 @@ function defineStrips(prefix: string, style: HumanStyle, apron: (d: Density) => 
     // read as an odd reach); the other modes ease straight in.
     const second = m === 'wave' ? { ...inbetween(style, a, b, 0.7, { hold: 'b' }), armN: A(95, 45, 'open') } : inbetween(style, a, b, 0.7, { hold: 'b' });
     const tr: Strip = { poses: [inbetween(style, a, b, 0.35, { hold: 'b' }), second], ticks: PERSON_TR_TICKS, scoop: to.scoop };
-    defineSprite(`${prefix}/in-${m}`, gen(tr, 1), { ticksPerFrame: PERSON_TR_TICKS, loop: false, hi: gen(tr, 2) });
+    defineSprite(`${prefix}/in-${m}`, gen(tr, 1), { ticksPerFrame: PERSON_TR_TICKS, loop: false, hd: (d) => gen(tr, d)() });
   }
-  // Turn-around: the idle frame squeezed (play narrowing, flip, widening).
+  // Turn-around: the idle frame squeezed (play narrowing, flip, widening). The HD turn squeezes
+  // its own idle frame (made here, not read from the registry: a deferred 4× read would hand
+  // back the 2× frame).
   defineSprite(`${prefix}/turn`, () => turnSquash(getFrames(`${prefix}/idle`, 1)[0]), {
     ticksPerFrame: PERSON_TURN_TICKS,
-    hi: () => turnSquash(getFrames(`${prefix}/idle`, 2)[0]),
+    hd: (d) => turnSquash(gen(idle, d)()[0]),
   });
 }
 
-const dark = (d: Density): PixelBuffer => (d === 1 ? darkApron() : darkApronHi());
-const white = (d: Density): PixelBuffer => (d === 1 ? whiteApron() : whiteApronHi());
+const dark = (d: Density): PixelBuffer => (d === 1 ? darkApron() : darkApronHd(hdOf(d)));
+const white = (d: Density): PixelBuffer => (d === 1 ? whiteApron() : whiteApronHd(hdOf(d)));
 
 defineStrips('npc/ams/ams-baker', BAKER_STYLE, dark, {
   idle: { poses: HOLD_SCOOP, ticks: 15, scoop: true },
@@ -413,7 +545,7 @@ defineStrips(
     talk: { poses: TALK, ticks: 8 },
     wave: { poses: WAVE4, ticks: 5 },
   },
-  tricolorCap,
+  (f) => ((f.density ?? 1) === 1 ? tricolorCap(f) : tricolorCapHd(f)),
 );
 
 STAFF_STYLES.forEach((style, i) => {
@@ -443,42 +575,56 @@ defineSprite('npc/ams/counter', () => {
   b.vline(26, 9, 16, PAL.stone[3]);
   b.hline(1, 26, 16, PAL.stone[2]);
   return { buf: b.outline(INK), ox: 14, oy: 18 };
-}, { hi: counterHi });
+}, { hd: (d) => counterHd(hdOf(d)) });
 
 /**
- * The 2× counter: the same cream box and fry cones on the 2× grid — single fries in the cones,
- * a red-white striped paper cone, a lit counter top with a gold trim, inset panels with a lit
- * and a shaded edge, a stone kick plate.
+ * The HD counter (the 1× 28 × 18 box, feet anchor): a cream-painted front with two moulded
+ * panels (the recess shaded from the top-left), a lit counter-top slab with a gold trim, a stone
+ * kick plate, the shaded side face; two red-and-white striped paper cones of single fries on top.
  */
-function counterHi(): Frame {
-  const b = new PixelBuffer(56, 36);
-  const C = PAL.cloth;
-  for (const cx of [6, 20]) {
-    const x = cx * HI + 1;
-    // Cone (paper) with a white stripe, then the fries above it.
-    b.poly([[x - 5, 10], [x + 4, 10], [x, 19]], PAL.red[2]);
-    b.line(x - 4, 10, x, 18, PAL.red[3]);
-    b.line(x - 1, 11, x + 1, 15, C[3]);
-    b.hline(x - 5, x + 4, 10, C[3]);
-    for (const [dx, top, c] of [[-4, 6, 2], [-2, 4, 3], [0, 5, 2], [1, 3, 3], [3, 6, 2], [-1, 7, 1]] as const) {
-      b.vline(x + dx, top, 9, PAL.gold[c]);
-      b.set(x + dx, top, PAL.gold[3]);
-    }
+function counterHd(d: HdD): Frame {
+  const c = new HdCanvas(28, 18, d);
+  const cream = c.material({ ramp: PAL_HD.cloth, lo: 2, hi: 5, spec: 0.3, shine: 14, wrap: 0.05, amb: 0.3 });
+  const gold = goldMat(c);
+  const stone = c.material({ ramp: PAL_HD.stone, lo: 1, hi: 5, spec: 0.1 });
+  const paper = c.material({ ramp: PAL_HD.red, lo: 2, hi: 6, spec: 0.2, shine: 10 });
+  const white = c.material({ ramp: PAL_HD.cloth, lo: 3, hi: 6, spec: 0.2, shine: 10 });
+  const fry = c.material({ ramp: PAL_HD.gold, lo: 3, hi: 6, spec: 0.25, shine: 10, wrap: 0.1 });
+  const front = c.newPart();
+  c.box(1, 9, 25, 8, { mat: cream, part: front, z: 0, bevel: 0.25 });
+  // Panels: a raised moulding ring; inside it the panel face lies deeper (shade at its top and left).
+  for (const x0 of [4, 15]) {
+    const m = { mat: cream, z: 0.5, bevel: 0.35 };
+    c.box(x0, 11, 9, 0.8, m);
+    c.box(x0, 15.2, 9, 0.8, m);
+    c.box(x0, 11, 0.8, 5, m);
+    c.box(x0 + 8.2, 11, 0.8, 5, m);
+    c.shade(x0 + 0.8, 11.8, 7.4, 3.4, (x, y) => (y < 12.4 || x < x0 + 1.3 ? -0.3 : x > x0 + 7.7 || y > 14.7 ? 0.12 : 0), front);
   }
-  b.rect(2, 16, 52, 18, C[2]);
-  b.rect(2, 16, 52, 2, C[3]);
-  b.rect(2, 18, 52, 2, PAL.gold[1]);
-  b.hline(2, 53, 18, PAL.gold[2]);
-  for (const x0 of [8, 30]) {
-    b.rect(x0, 22, 18, 10, C[1]);
-    b.rect(x0 + 1, 23, 16, 8, C[2]);
-    b.hline(x0 + 1, x0 + 16, 30, C[3]);
-    b.vline(x0 + 16, 23, 30, C[3]);
+  // The side face (turned away from the light), the kick plate, the slab and its gold trim.
+  c.box(26, 9, 1, 8, { mat: cream, z: 0.2, n: [0.85, 0.1, 0.5] });
+  c.box(1, 15.9, 26, 1.1, { mat: stone, z: 0.8, bevel: 0.35 });
+  c.box(1, 9, 26, 1, { mat: gold, z: 1, bevel: 0.35 });
+  c.box(1, 8, 26, 1.1, { mat: cream, z: 1.4, bevel: 0.4, tone: 0.2 });
+  // Paper cones of fries.
+  for (const cx of [6.5, 20.5]) {
+    const stripes: Texture = (s) => {
+      if ((((s.x - cx) * 1.2 + s.y * 0.7) % 2 + 2) % 2 < 0.8) s.mat = white;
+    };
+    const fries: ReadonlyArray<readonly [number, number]> = [[-1.9, 2.6], [-0.9, 2.0], [0.1, 2.4], [1.0, 1.9], [1.9, 2.8], [-0.4, 3.0], [0.6, 3.1]];
+    fries.forEach(([dx, top], k) => c.capsule(cx + dx + dx * 0.15, top, cx + dx * 0.7, 6, 0.42, 0.42, {
+      mat: fry,
+      z: 2 + (k % 3) * 0.15,
+      round: 0.8,
+      tone: k % 2 ? -0.06 : 0.06,
+      tex: (s) => {
+        if (s.y < top + 0.5) s.tone -= 0.3;
+      },
+    }));
+    c.blob([[cx - 2.6, 5], [cx + 2.6, 5], [cx + 0.4, 9.6], [cx - 0.4, 9.6]], 0.9, { mat: paper, z: 2.6, bulge: 0.2, tex: stripes });
+    c.box(cx - 2.6, 4.9, 5.2, 0.7, { mat: white, z: 2.8, bevel: 0.25 });
   }
-  b.rect(52, 18, 2, 16, PAL.stone[3]);
-  b.rect(2, 32, 52, 2, PAL.stone[2]);
-  b.hline(2, 53, 33, PAL.stone[1]);
-  return { buf: outlineHi(b, 2), ox: 14, oy: 18, density: HI };
+  return { buf: c.render(HD_RENDER), ox: 14, oy: 18, density: d };
 }
 
 // ------------------------------------------------------------------------------------ tour boat
@@ -607,66 +753,132 @@ const PEDAL: readonly Pose[] = [
   { legN: L(60, 70), legF: L(55, 100), armN: { to: [9, 2], hand: 'grip' }, armF: { to: [8, 2], hand: 'grip' }, lean: 14, grounded: false },
 ];
 
-/**
- * The 2× omafiets (the `bike` box on the 2× grid): spoked wheels with a tyre and a silver rim,
- * 2-px frame tubes with a lit edge, a sprung saddle, a wicker basket, the crank.
- */
-function bikeHi(frame: Color, phase: number): PixelBuffer {
-  const b = new PixelBuffer(68, 40);
-  for (const cx of [7, 26]) {
-    const X = cx * HI + 1;
-    const Y = 13 * HI + 1;
-    // Tyre (the 1× ink ring) and the silver rim (the 1× stone ring, with a lit inner line).
-    b.ellipse(X - 12, Y - 12, 24, 24, PAL.ink[1], false);
-    b.ellipse(X - 11, Y - 11, 22, 22, PAL.ink[1], false);
-    b.ellipse(X - 10, Y - 10, 20, 20, PAL.stone[2], false);
-    b.ellipse(X - 9, Y - 9, 18, 18, PAL.stone[3], false);
-    for (let k = 0; k < 4; k++) {
-      const a = ((k + phase / 2) / 4) * Math.PI;
-      const dx = Math.round(Math.cos(a) * 8);
-      const dy = Math.round(Math.sin(a) * 8);
-      b.line(X - dx, Y - dy, X + dx, Y + dy, PAL.stone[1]);
-    }
-    b.rect(X - 1, Y - 1, 2, 2, PAL.steel[3]);
-  }
-  const tube = (x0: number, y0: number, x1: number, y1: number): void => {
-    b.thickLine(x0 * HI, y0 * HI, x1 * HI, y1 * HI, 2, frame);
-  };
-  tube(7, 13, 14, 13);
-  tube(14, 13, 12, 4);
-  tube(14, 13, 24, 6);
-  tube(24, 3, 26, 13);
-  tube(12, 4, 7, 13);
-  // Saddle with springs, bars with a grip, the basket (wicker weave).
-  b.rect(20, 6, 10, 2, PAL.brown[1]);
-  b.hline(21, 28, 6, PAL.brown[2]);
-  b.set(22, 8, PAL.steel[3]);
-  b.set(26, 8, PAL.steel[3]);
-  b.rect(44, 4, 8, 2, PAL.steel[3]);
-  b.rect(44, 4, 2, 2, PAL.black[2]);
-  b.rect(52, 8, 10, 8, PAL.brown[2]);
-  b.hline(52, 61, 8, PAL.brown[3]);
-  for (let y = 10; y < 16; y += 2) for (let x = 52 + ((y >> 1) & 1); x < 62; x += 2) b.set(x, y, PAL.brown[1]);
-  // Crank and pedal.
-  const a = (phase / 4) * Math.PI * 2;
-  const cx = 14 * HI + 1;
-  const cy = 13 * HI + 1;
-  const px = Math.round(cx + Math.cos(a) * 6);
-  const py = Math.round(cy + Math.sin(a) * 6);
-  b.thickLine(cx - 1, cy - 1, px - 1, py - 1, 2, PAL.steel[2]);
-  b.rect(px - 3, py - 1, 6, 2, PAL.black[3]);
-  b.ellipse(cx - 2, cy - 2, 4, 4, PAL.steel[3]);
-  return outlineHi(b, 2);
+/** A ring (tyre, rim, fender) round (cx, cy) between radii r0 and r1, shaded as a tube; `arc` limits it to angles a0..a1 (rad, 0 = +x, y down). */
+function ring(c: HdCanvas, cx: number, cy: number, r0: number, r1: number, o: DrawOpts, arc?: readonly [number, number]): void {
+  const rm = (r0 + r1) / 2;
+  const hw = (r1 - r0) / 2;
+  c.plane(cx - r1, cy - r1, 2 * r1, 2 * r1, {
+    ...o,
+    mask: (x, y) => {
+      const q = Math.hypot(x - cx, y - cy);
+      if (q < r0 || q >= r1) return false;
+      if (!arc) return true;
+      const a = Math.atan2(y - cy, x - cx);
+      return a >= arc[0] && a <= arc[1];
+    },
+    normal: (x, y, out) => {
+      const dx = x - cx;
+      const dy = y - cy;
+      const q = Math.hypot(dx, dy) || 1;
+      const t = Math.max(-1, Math.min(1, (q - rm) / hw));
+      out[0] = (t * dx) / q;
+      out[1] = (t * dy) / q;
+      out[2] = Math.sqrt(Math.max(0.05, 1 - t * t));
+    },
+  });
 }
 
-/** One background cyclist frame (`d` 2: the 2× rider on the 2× omafiets). */
+/**
+ * The HD omafiets (the `bike` box, 34 × 20; wheels at (7, 13) and (26, 13) on the 1× grid): black
+ * rubber tyres, polished rims and fine spokes turning with the crank (a layer under the outlined
+ * bike, so the spokes stay one art px thin), mudguards, the lacquered step-through frame with a
+ * chain case, a sprung leather saddle, the handlebar with a grip, a wicker basket, the chain ring;
+ * the crank arm and pedal on top at the pedalling phase. Fitted into the 1× bike's footprint.
+ * The bike without the crank is painted once per colour and density (`bikeBaseHd`).
+ */
+export function bikeHd(frame: Color, phase: number, d: HdD): PixelBuffer {
+  const W = 34;
+  const H = 20;
+  const lo = bike(frame, phase);
+  // Spokes (one art px, no outline) under the bike.
+  const sp = new HdCanvas(W, H, d);
+  const spoke = sp.material({ ramp: PAL_HD.steel, lo: 3, hi: 6, flat: true });
+  for (const cx of BIKE_WHEELS) {
+    for (let k = 0; k < 4; k++) {
+      const t = ((k + phase / 2) / 4) * Math.PI;
+      const dx = Math.cos(t) * 4.6;
+      const dy = Math.sin(t) * 4.6;
+      sp.capsule(cx - dx, BIKE_HUB_Y - dy, cx + dx, BIKE_HUB_Y + dy, 0.5 / d, 0.5 / d, { mat: spoke, z: 0, tone: k & 1 ? 0.1 : -0.1 });
+    }
+  }
+  const out = sp.render({ outline: 'none', ao: 0, clean: false, sep: false });
+  out.blit(bikeBaseHd(frame, d), 0, 0);
+  // The crank arm and pedal at the phase, outlined on their own (in front of the chain case).
+  const c = new HdCanvas(W, H, d);
+  const steel = steelMat(c);
+  const rubber = c.material({ ramp: PAL_HD.black, lo: 0, hi: 3, spec: 0.3, shine: 12 });
+  const a = (phase / 4) * Math.PI * 2;
+  const px = 14.5 + Math.cos(a) * 3;
+  const py = 13.5 + Math.sin(a) * 3;
+  c.capsule(14.5, 13.5, px, py, 0.38, 0.38, { mat: steel, z: 2 });
+  c.box(px - 1.2, py - 0.4, 2.4, 0.8, { mat: rubber, z: 2.2, bevel: 0.25, tone: 0.15 });
+  fitHd(c, lo);
+  out.blit(c.render(HD_RENDER), 0, 0);
+  return out;
+}
+
+const BIKE_WHEELS: readonly number[] = [7.5, 26.5];
+const BIKE_HUB_Y = 13.5;
+
+/** The omafiets without its crank and spokes, per frame colour and density (cached). */
+function bikeBaseHd(frame: Color, d: HdD): PixelBuffer {
+  return hdCached(`bike:${frame >>> 0}@${d}`, () => {
+    const home = hdHome(frame);
+    const fr = home?.ramp ?? PAL_HD.black;
+    const fi = home?.i ?? 2;
+    const c = new HdCanvas(34, 20, d);
+    const paint = c.material({ ramp: fr, lo: Math.max(1, fi - 2), hi: Math.min(fr.length - 2, fi + 2), spec: 0.8, shine: 26 });
+    const rubber = c.material({ ramp: PAL_HD.black, lo: 0, hi: 3, spec: 0.3, shine: 12 });
+    const steel = steelMat(c);
+    const leather = c.material({ ramp: PAL_HD.brown, lo: 1, hi: 5, spec: 0.5, shine: 18 });
+    const wicker = c.material({ ramp: PAL_HD.wood, lo: 2, hi: 6, spec: 0.1 });
+    const grip = c.material({ ramp: PAL_HD.black, lo: 1, hi: 4, spec: 0.4, shine: 14 });
+    for (const cx of BIKE_WHEELS) {
+      ring(c, cx, BIKE_HUB_Y, 5.35, 6.45, { mat: rubber, z: 0 });
+      ring(c, cx, BIKE_HUB_Y, 4.55, 5.35, { mat: steel, z: 0.2 });
+      c.ellipsoid(cx, BIKE_HUB_Y, 0.75, 0.75, { mat: steel, z: 0.5 });
+      // The mudguard over the top of the tyre.
+      ring(c, cx, BIKE_HUB_Y, 6.3, 6.9, { mat: paint, z: 0.6, tone: -0.05 }, [-Math.PI * 0.86, -Math.PI * 0.14]);
+    }
+    const tube = (x0: number, y0: number, x1: number, y1: number, z = 1): void => {
+      c.capsule(x0 + 0.5, y0 + 0.5, x1 + 0.5, y1 + 0.5, 0.55, 0.55, { mat: paint, z });
+    };
+    tube(12, 4, 7, 13, 0.9);
+    tube(14, 13, 12, 4);
+    tube(14, 13, 24, 6, 1.1);
+    tube(24, 3, 26, 13, 1.2);
+    // The chain case along the chain stay, the chain ring.
+    c.blob([[7.6, 12.6], [15.6, 12.4], [15.8, 14.6], [7.8, 14.4]], 0.5, { mat: paint, z: 1.3, bulge: 0.15, tone: -0.12 });
+    c.ellipsoid(14.5, 13.5, 1.35, 1.35, { mat: steel, z: 1.8, round: 0.6 });
+    // Saddle with two springs, the handlebar and its grip, the basket on the front carrier.
+    c.capsule(10.8, 4.2, 10.9, 4.9, 0.22, 0.22, { mat: steel, z: 1.4 });
+    c.capsule(13.6, 4.2, 13.5, 4.9, 0.22, 0.22, { mat: steel, z: 1.4 });
+    c.blob([[9.8, 2.9], [14.6, 3], [14.3, 4.3], [10.3, 4.4]], 0.45, { mat: leather, z: 1.6, bulge: 0.25 });
+    c.capsule(21.8, 2.6, 25.6, 2.4, 0.42, 0.42, { mat: steel, z: 1.5 });
+    c.capsule(21.6, 2.7, 22.8, 2.6, 0.55, 0.55, { mat: grip, z: 1.7 });
+    c.box(26, 4, 5, 4, {
+      mat: wicker,
+      z: 1.6,
+      bevel: 0.35,
+      tex: (s) => {
+        const k = Math.floor(s.x * 1.4) + Math.floor(s.y * 1.4);
+        s.tone += (k & 1 ? -0.14 : 0.08) + (Math.floor(s.y * 1.4) & 1 ? 0 : -0.05);
+      },
+    });
+    c.box(25.8, 3.6, 5.4, 0.85, { mat: wicker, z: 1.9, bevel: 0.3, tone: 0.18 });
+    fitHd(c, bike(frame, 0));
+    return c.render(HD_RENDER);
+  });
+}
+
+/** One background cyclist frame (`d` 2 / 4: the rig at d on the HD omafiets). */
 function cyclist(c: { style: HumanStyle; bike: Color }, pose: Pose, i: number, d: Density): Frame {
   const upper = renderHuman(c.style, { weapon: 'none', ...pose }, 'upper', d);
   const lower = renderHuman(c.style, { weapon: 'none', ...pose }, 'lower', d);
   const body = stackFrames(lower, upper);
   const hip = lower.pts?.hip ?? [0, -15];
   // Wheels rest on the anchor line; the saddle (12, 3) under the hip.
-  const bk = d === 1 ? bike(c.bike, i) : bikeHi(c.bike, i);
+  const bk = d === 1 ? bike(c.bike, i) : bikeHd(c.bike, i, hdOf(d));
   const out = new PixelBuffer(44 * d, 46 * d);
   const ox = 18;
   const oy = 45;
@@ -686,7 +898,7 @@ CYCLISTS.forEach((c, look) => {
   defineSprite(`npc/ams/ams-cyclist-bg/${look}`, () => PEDAL.map((pose, i) => cyclist(c, pose, i, 1)), {
     ticksPerFrame: 6,
     trim: true,
-    hi: () => PEDAL.map((pose, i) => cyclist(c, pose, i, 2)),
+    hd: (d) => PEDAL.map((pose, i) => cyclist(c, pose, i, d)),
   });
 });
 
@@ -777,51 +989,82 @@ export function windowDone(b: PixelBuffer, inner: PixelBuffer | null): Frame {
   return { buf: b, ox: 10, oy: 24 };
 }
 
-/** The 2× sash window (the `windowFrame` box): a painted frame with a lit edge, folded curtains. */
-export function windowFrameHi(): PixelBuffer {
-  const b = new PixelBuffer(40, 52);
-  b.rect(2, 2, 36, 44, PAL.cloth[3]);
-  b.vline(37, 2, 45, PAL.cloth[2]);
-  b.rect(6, 6, 28, 32, PAL.navy[0]);
-  b.hline(6, 33, 6, PAL.cloth[1]);
-  b.vline(6, 6, 37, PAL.cloth[1]);
-  for (const x0 of [6, 28]) {
-    b.rect(x0, 6, 6, 32, PAL.red[1]);
-    for (let y = 6; y < 38; y++) {
-      b.set(x0 + 2, y, PAL.red[2]);
-      b.set(x0 + 3, y, (y & 3) === 0 ? PAL.red[3] : PAL.red[2]);
-      b.set(x0 + 5, y, PAL.red[0]);
-    }
-    // Tie-backs.
-    b.hline(x0, x0 + 5, 24, PAL.gold[2]);
-  }
-  return b;
+/** Who or what is at the HD window: a finished picture of the inner 14 × 16 box (density d), or lit shapes drawn into the room. */
+export interface WindowInner {
+  img?: PixelBuffer | null;
+  /** Draw into the room canvas (inner logical px, z ≥ 2: in front of the curtains). */
+  draw?: (c: HdCanvas) => void;
 }
 
-/** `windowDone` at 2×: sash bar, a flower box with plank lines and tulips, the 2-px outline. */
-export function windowDoneHi(b: PixelBuffer, inner: PixelBuffer | null): Frame {
-  if (inner) b.blit(inner, 6, 6);
-  b.rect(6, 12, 28, 2, PAL.cloth[2]);
-  b.hline(6, 33, 12, PAL.cloth[3]);
-  b.rect(2, 38, 36, 8, PAL.brown[1]);
-  b.rect(2, 38, 36, 2, PAL.brown[2]);
-  b.hline(2, 37, 38, PAL.brown[3]);
-  b.hline(2, 37, 43, PAL.brown[0]);
-  const tulips: readonly Color[] = [PAL.red[2], PAL.gold[2], PAL.pink[2], PAL.red[3], PAL.orange[2]];
-  for (let i = 0; i < 5; i++) {
-    const x = (3 + i * 3) * HI;
-    b.vline(x + 1, 32, 37, PAL.green[2]);
-    b.set(x, 35, PAL.green[3]);
-    b.rect(x, 30, 3, 3, tulips[i]);
-    b.set(x + 1, 29, tulips[i]);
-    b.set(x, 30, PAL.snow[3]);
+/**
+ * The HD canal-house sash window (the `windowFrame` box, 20 × 26, feet anchor at the sill): a dim
+ * room behind the glass with a soft falloff, red curtains in deep folds gathered by gold
+ * tie-backs, whoever is at the window, the frame's shadow on the room; the painted white frame
+ * and sash bar (bevelled), an oiled plank flower box with a lit lip and five tulips (each with a
+ * stem, a leaf and a notched cup).
+ */
+export function windowHd(d: HdD, inner: WindowInner | null): Frame {
+  const r = new HdCanvas(14, 16, d);
+  const room = r.material({ ramp: PAL_HD.navy, lo: 0, hi: 4, flat: true, dither: 0.3 });
+  r.plane(0, 0, 14, 16, {
+    mat: room,
+    z: 0,
+    tex: (s) => {
+      s.tone = 0.3 - s.y * 0.035 - Math.abs(s.x - 8) * 0.025;
+    },
+  });
+  const curtain = r.material({ ramp: PAL_HD.red, lo: 1, hi: 5, wrap: 0.1, spec: 0.15, shine: 10 });
+  const tie = goldMat(r);
+  const sides: ReadonlyArray<readonly [ReadonlyArray<readonly [number, number]>, number]> = [
+    [[[0, 0], [3.2, 0], [3.2, 0.6], [1.8, 9.2], [2.6, 16], [0, 16]], 0],
+    [[[10.8, 0], [14, 0], [14, 16], [11.4, 16], [12.2, 9.2], [10.8, 0.6]], 11.8],
+  ];
+  for (const [pts, tx] of sides) {
+    r.blob(pts, 0.8, { mat: curtain, z: 0.6, bulge: 0.3, tex: folds({ angle: Math.PI / 2, spacing: 1.1, amp: 0.9, cover: 0.9, seed: 41 + tx }) });
+    r.box(tx, 8.7, 2.2, 0.8, { mat: tie, z: 2.4, bevel: 0.3 });
   }
-  return { buf: outlineHi(b, 2), ox: 10, oy: 24, density: HI };
+  if (inner?.img) r.image(inner.img, 0, 0, { z: 4 });
+  inner?.draw?.(r);
+  // The frame and the sash bar throw a shadow into the room (light from the upper left).
+  r.shade(0, 0, 14, 16, (x, y) => (y < 0.9 || x < 0.7 ? -0.3 : y > 3 && y < 3.9 ? -0.2 : 0));
+  const pic = r.render({ outline: 'none', ao: 0.25 });
+
+  const c = new HdCanvas(20, 26, d);
+  c.image(pic, 3, 3, { z: 0 });
+  const trim = c.material({ ramp: PAL_HD.gable, lo: 2, hi: 5, spec: 0.35, shine: 16, amb: 0.35 });
+  const frameOpts = { mat: trim, z: 1, bevel: 0.5 };
+  c.box(1, 1, 18, 2, frameOpts);
+  c.box(1, 3, 2, 16, frameOpts);
+  c.box(17, 3, 2, 16, frameOpts);
+  c.box(3, 6, 14, 1, { mat: trim, z: 1.4, bevel: 0.35 });
+  const plank = c.material({ ramp: PAL_HD.wood, lo: 1, hi: 5, spec: 0.2, shine: 10 });
+  c.box(1, 19.3, 18, 3.7, { mat: plank, z: 2, bevel: 0.35, tex: wood({ seed: 43, plank: 1.8 }) });
+  c.box(1, 19, 18, 0.9, { mat: plank, z: 2.4, bevel: 0.3, tone: 0.2 });
+  const stem = c.material({ ramp: PAL_HD.green, lo: 2, hi: 6, wrap: 0.1 });
+  const cups: readonly Ramp[] = [PAL_HD.red, PAL_HD.gold, PAL_HD.pink, PAL_HD.red, PAL_HD.orange];
+  for (let i = 0; i < 5; i++) {
+    const x = 3 + i * 3;
+    const cx = x + 1;
+    const cupR = cups[i];
+    const cup = c.material({ ramp: cupR, lo: i === 3 ? 3 : 2, hi: cupR.length - 2, spec: 0.45, shine: 16 });
+    c.capsule(x + 0.5, 16.6, x + 0.5, 19.4, 0.3, 0.3, { mat: stem, z: 2.6 });
+    c.ellipsoid(x + 1.3, 18.3, 0.9, 0.38, { mat: stem, z: 2.7 });
+    c.ellipsoid(cx, 16, 1, 1.15, {
+      mat: cup,
+      z: 3,
+      tex: (s) => {
+        // A notch between the outer petals at the top, a crease down each petal edge (4×).
+        if (s.y < 15.35 && Math.abs(s.x - cx) < 0.28) s.cut = true;
+        else if (s.d >= 4 && s.y < 16.4 && Math.abs(Math.abs(s.x - cx) - 0.38) < 0.12) s.tone -= 0.22;
+      },
+    });
+  }
+  return { buf: c.render(HD_RENDER), ox: 10, oy: 24, density: d };
 }
 
 export const WAVER_STYLE: HumanStyle = { skin: 'skinA', hair: 'hairC', hairStyle: 'bob', headgear: 'none', top: 'teal', topType: 'sweater', pants: 'slate', boots: 'black', gloves: null, build: 'slim' };
 
-/** The window waver's person strip (`d` 2: the 2× window and the rig at 2×). */
+/** The window waver's person strip (`d` 2 / 4: the HD window and the rig at d). */
 function waverFrames(d: Density): Frame[] {
   const out: Frame[] = [];
   const poses: (Pose | null)[] = [null, { armN: A(6, 30, 'open'), armF: A(-4, 30, 'open'), expr: 'normal' }, { ...WAVE[0] }, { ...WAVE[1] }];
@@ -833,12 +1076,12 @@ function waverFrames(d: Density): Frame[] {
       // Hip 9 px below the window bottom: the chest, head and a raised hand show.
       inner.blitFrame(f, 7 * d, (16 + 1) * d, undefined, d);
     }
-    out.push(d === 1 ? windowDone(windowFrame(), inner) : windowDoneHi(windowFrameHi(), inner));
+    out.push(d === 1 ? windowDone(windowFrame(), inner) : windowHd(hdOf(d), { img: inner }));
   }
   return out;
 }
 
-defineSprite('npc/ams/ams-window-waver/person', () => waverFrames(1), { ticksPerFrame: 10, hi: () => waverFrames(2) });
+defineSprite('npc/ams/ams-window-waver/person', () => waverFrames(1), { ticksPerFrame: 10, hd: (d) => waverFrames(d) });
 
 defineSprite('npc/ams/ams-window-waver/cat', () =>
   [0, 1].map((t) => {

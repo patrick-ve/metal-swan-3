@@ -58,7 +58,22 @@ export const AMS: MissionDef = {
   // section a shows first; the boss last. The small explosion goes before the big ones: the first
   // explosion generated pays the JIT warm-up of the 2× explosion code (about 1 ms more for s,
   // while l first costs about 16 ms instead of 8).
-  preloadFirst: ['vehicle/swan', 'enemy/delivery-rider', 'enemy/seagull/', 'item/', 'enemy/fatbike-youth', 'npc/ams/', 'decor/ams/', 'fx/explosion-s'],
+  // The solo fatbike sets only (`fatbike-youth`, `fatbike-youth-<look><skin>`): the pair sets
+  // ride in sections b and c, which declare them as section `art` (the tier-4 working set).
+  preloadFirst: [
+    'vehicle/swan',
+    'enemy/delivery-rider',
+    'enemy/seagull/',
+    'item/',
+    'enemy/fatbike-youth/',
+    'enemy/fatbike-youth-0',
+    'enemy/fatbike-youth-1',
+    'enemy/fatbike-youth-2',
+    'enemy/fatbike-youth-3',
+    'npc/ams/',
+    'decor/ams/',
+    'fx/explosion-s',
+  ],
   preloadLast: ['boss/', 'enemy/handhaver', 'enemy/boete-ticket/'],
   // What this mission draws at 1× (the boot preloads only this; tests/game/boot-art.test.ts
   // checks it against the start screens and a bot run of every section and the boss).

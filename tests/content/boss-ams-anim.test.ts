@@ -2,7 +2,7 @@
  * ROBO-HALSEMA motion (animation wave, plan Phase 3 BOSS): the stamp arm has 6 poses per facing
  * (low, raised, impact, anticipation, smear, recoil), the chain whirl is a 6-frame loop per lane,
  * the walk is 6 frames, the stomp has a half squat and a push-off, and the flying wig turns in 8
- * steps. Frames next to each other in a loop are never identical, at 1× and 2×.
+ * steps. Frames next to each other in a loop are never identical, at 1×, 2× and 4× (UHD art).
  */
 import { describe, expect, it } from 'vitest';
 import { frameCount, getFrames, setHiArt } from '../../src/engine/sprites';
@@ -39,9 +39,9 @@ describe('ROBO-HALSEMA motion strips', () => {
     expect(WIG_STEPS).toBe(8);
   });
 
-  for (const d of [1, 2]) {
+  for (const d of [1, 2, 4]) {
     it(`no two consecutive frames are identical (${d}×)`, () => {
-      if (d === 2) setHiArt(true);
+      if (d > 1) setHiArt(true);
       // Slam: raise (0 → anticipation → smear → raised), drop (smear → impact → recoil → impact → low).
       loopDiffers(`${ART}/stamp-arm-0`, [0, 3, 4, 1, 4, 2, 5], d);
       loopDiffers(`${ART}/stamp-arm-0`, [6, 9, 10, 7, 10, 8, 11], d);

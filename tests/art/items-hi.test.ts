@@ -6,7 +6,7 @@
  * the 1× logical geometry and real 2× detail, and the 2× art is palette-only and opaque.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PAL, INK } from '../../src/engine/palette';
+import { HD_PALETTE } from '../../src/engine/palette-hd';
 import { getFrames, hasHiSprite, listSprites, spriteErrors } from '../../src/engine/sprites';
 import { loadContent } from '../../src/game/content/index';
 
@@ -29,11 +29,9 @@ const IDS = [
   'item/crate-break',
 ];
 
-/** Every palette colour (and INK). */
+/** Every HD palette colour (UHD wave: the 2× art is PAL_HD, which holds every 64-palette swatch). */
 function paletteSet(): Set<number> {
-  const s = new Set<number>([INK >>> 0]);
-  for (const r of Object.values(PAL)) if (Array.isArray(r)) for (const c of r) s.add((c as number) >>> 0);
-  return s;
+  return new Set<number>(HD_PALETTE.map((c) => c >>> 0));
 }
 
 describe('ams items: 2× art', () => {

@@ -2,11 +2,13 @@
  * 2× art of ROBO-HALSEMA (mission ams boss, docs/ART_GUIDE.md "2x art (mission ams)"): every
  * `boss/ams-mayor/…` strip (the body pieces, the head frames, the wig, the spring, the floor shadow,
  * the lash and her shots) has a 2× generator the registry accepts (no 'id@2x' fallback, no pixels
- * cut outside the 1× frame), with the 1× logical geometry, palette colours only and real 2× detail.
+ * cut outside the 1× frame), with the 1× logical geometry, palette colours only (PAL or, since the UHD
+ * wave, PAL_HD) and real 2× detail.
  * The pieces share one anchor, so the medallion centre and the hatch sit where the game reads them.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PAL, INK } from '../../src/engine/palette';
+import { inHdPalette } from '../../src/engine/palette-hd';
 import { getFrames, hasHiSprite, listSprites, spriteErrors } from '../../src/engine/sprites';
 import { MAYOR } from '../../src/game/content/bosses/ams/geometry';
 import { loadContent } from '../../src/game/content/index';
@@ -65,7 +67,7 @@ describe('ROBO-HALSEMA: 2× art', () => {
         expect([f.buf.w, f.buf.h, f.ox, f.oy], `${id}[${i}]`).toEqual([lo[i].buf.w * 2, lo[i].buf.h * 2, lo[i].ox, lo[i].oy]);
         expect(f.pts ?? {}, `${id}[${i}]`).toEqual(lo[i].pts ?? {});
         const odd = new Set<string>();
-        for (const c of f.buf.data) if ((c & 255) !== 0 && !palette.has(c >>> 0)) odd.add((c >>> 0).toString(16));
+        for (const c of f.buf.data) if ((c & 255) !== 0 && !palette.has(c >>> 0) && !inHdPalette(c)) odd.add((c >>> 0).toString(16));
         expect([...odd], `${id}[${i}] colours`).toEqual([]);
         const doubled = lo[i].buf.scaled(2).data;
         if (!f.buf.data.every((c, k) => c === doubled[k])) detailed = true;

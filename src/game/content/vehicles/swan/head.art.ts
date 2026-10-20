@@ -19,7 +19,7 @@ import type { Frame } from '../../../../engine/render';
 import type { Ramp } from '../../../../engine/pixel';
 import { INK, PAL } from '../../../../engine/palette';
 import type { Pt, V } from './kit.art';
-import { OWN, OX, OY, Stack, add, bez, dot, fine, harvest, kitDensity, lerp2, placeHi, poly, release, shade, sub, take, thick, unit, withHiCover, withKitDensity } from './kit.art';
+import { OWN, OX, OY, Stack, add, bez, dot, harvest, lerp2, poly, release, shade, sub, take, thick, unit } from './kit.art';
 
 /** Colour scheme: SWAN-3 (ivory) or P2's "the Mute" (black neck, head and beak). */
 export type SwanColour = 'ivory' | 'mute';
@@ -90,15 +90,28 @@ function dirOf(angle: number): V {
  * (body space). Rings go base first, so each ring's edge is a steel joint line on the one before.
  */
 export function drawNeck(st: Stack, socket: Pt, spec: NeckSpec, colour: SwanColour, collar = true): NeckOut {
-  return withHiCover(NECK_NEAR, NECK_INSET, () => drawNeckAt(st, socket, spec, colour, collar));
+  return drawNeckAt(st, socket, spec, colour, collar);
 }
 
-/** The neck and head's tighter 2× coverage (`withHiCover`): the 2× masks match the 1× ones. */
-const NECK_NEAR = 0.4;
-const NECK_INSET = 0.75;
+/** One neck ring (body space) from its base end `a` to its head end `b`, diameter `w`. */
+export interface Ring {
+  a: V;
+  b: V;
+  w: number;
+}
 
-function drawNeckAt(st: Stack, socket: Pt, spec: NeckSpec, colour: SwanColour, collar: boolean): NeckOut {
-  const pa = paintOf(colour);
+/** The geometry of one neck pose (look.md §5.6), shared by the 1× rig and the HD drawer. */
+export interface NeckParts {
+  P3: V;
+  /** The hose segments (each 3 px thick), from the socket. */
+  hose: Array<readonly [V, V]>;
+  /** The six rings, base first. */
+  rings: Ring[];
+  /** The neck's first direction at the socket (the collar sits across it). */
+  dir0: V;
+}
+
+export function neckParts(socket: Pt, spec: NeckSpec): NeckParts {
   const P0: Pt = socket;
   const P1 = add(socket, spec.p1);
   const P2 = add(socket, spec.p2);
@@ -122,43 +135,47 @@ function drawNeckAt(st: Stack, socket: Pt, spec: NeckSpec, colour: SwanColour, c
     return pts[pts.length - 1];
   };
   // The hose: steel, 1 px on the inside of the curve (and between spread rings).
-  const hose = take();
   const mid = at(total / 2);
   const chordMid = lerp2(P0, P3, 0.5);
   const inside = unit(sub(chordMid, mid));
   const off = Math.hypot(inside[0], inside[1]) > 0.1 ? inside : ([0, 0] as V);
+  const hose: Array<readonly [V, V]> = [];
   for (let i = 1; i < pts.length; i++) {
     const t0 = Math.min(1, acc[i - 1] / Math.max(1, total));
     if (t0 > 0.92) break;
-    const w = 3;
-    const a = add(pts[i - 1], off, 1.6);
-    const b = add(pts[i], off, 1.6);
-    thick(hose, a, b, w, PAL.steel[1]);
+    hose.push([add(pts[i - 1], off, 1.6), add(pts[i], off, 1.6)]);
   }
-  st.put(hose, OWN.neck, PAL.steel[0], false);
   // Rings.
+  const rings: Ring[] = [];
   const ringLen = total <= 24 ? total / 6 : 4;
   for (let k = 0; k < 6; k++) {
     const c = total <= 24 ? (k + 0.5) * ringLen : 2 + ((k + 0.5) * (total - 4)) / 6;
-    const a = at(Math.max(0, c - ringLen / 2));
-    const b = at(Math.min(total, c + ringLen / 2));
+    rings.push({ a: at(Math.max(0, c - ringLen / 2)), b: at(Math.min(total, c + ringLen / 2)), w: RINGS[k] });
+  }
+  return { P3, hose, rings, dir0: unit(sub(at(3), P0)) };
+}
+
+function drawNeckAt(st: Stack, socket: Pt, spec: NeckSpec, colour: SwanColour, collar: boolean): NeckOut {
+  const pa = paintOf(colour);
+  const parts = neckParts(socket, spec);
+  const hose = take();
+  for (const [a, b] of parts.hose) thick(hose, a, b, 3, PAL.steel[1]);
+  st.put(hose, OWN.neck, PAL.steel[0], false);
+  for (const { a, b, w } of parts.rings) {
     const L = take();
-    thick(L, a, b, RINGS[k], pa.ring[2]);
+    thick(L, a, b, w, pa.ring[2]);
     shade(L, pa.ring, { base: pa.ringBase });
     if (pa.glint !== null) {
       // The Mute: a steel glint on the lit edge of each ring.
-      const mx = Math.round((a[0] + b[0]) / 2 - RINGS[k] / 2 + 1);
-      const my = Math.round((a[1] + b[1]) / 2 - RINGS[k] / 2 + 1);
-      if (L.d === 2) {
-        // 2×: a short 1-px glint streak on the lit shoulder of the ring.
-        for (const [gx, gy] of [[0, 0.5], [0.5, 0], [1, 0]] as const) if (L.get(mx + gx, my + gy) !== 0) fine(L, mx + gx, my + gy, pa.glint);
-      } else if (L.get(mx, my) !== 0) dot(L, mx, my, pa.glint);
+      const mx = Math.round((a[0] + b[0]) / 2 - w / 2 + 1);
+      const my = Math.round((a[1] + b[1]) / 2 - w / 2 + 1);
+      if (L.get(mx, my) !== 0) dot(L, mx, my, pa.glint);
     }
     st.put(L, OWN.neck, pa.ring[0]);
   }
   // The navy collar at the base (9 across × 5 along, two gold rivets).
-  if (collar) drawCollar(st, P0, unit(sub(at(3), P0)));
-  return drawHeadAt(st, P3, spec, colour);
+  if (collar) drawCollar(st, socket, parts.dir0);
+  return drawHeadAt(st, parts.P3, spec, colour);
 }
 
 /** The navy neck collar on the socket, across the neck's first direction `t`. */
@@ -173,15 +190,7 @@ export function drawCollar(st: Stack, socket: Pt, t: Pt): void {
   release(L);
   for (const s of [-2.6, 2.6]) {
     const p = add(c, n, s);
-    if (st.d === 2) {
-      // A round 2× stud: lit up-left, dark down-right.
-      const x = Math.round(p[0]);
-      const y = Math.round(p[1]);
-      st.fine(x, y, PAL.gold[3]);
-      st.fine(x + 0.5, y, PAL.gold[2]);
-      st.fine(x, y + 0.5, PAL.gold[2]);
-      st.fine(x + 0.5, y + 0.5, PAL.gold[0]);
-    } else st.detail(p[0], p[1], PAL.gold[3]);
+    st.detail(p[0], p[1], PAL.gold[3]);
   }
 }
 
@@ -192,43 +201,62 @@ export function drawCollar(st: Stack, socket: Pt, t: Pt): void {
  * mirrored back-facing head share one drawing.
  */
 export function drawHead(st: Stack, P3: Pt, spec: NeckSpec, colour: SwanColour): NeckOut {
-  return withHiCover(NECK_NEAR, NECK_INSET, () => drawHeadAt(st, P3, spec, colour));
+  return drawHeadAt(st, P3, spec, colour);
 }
 
-function drawHeadAt(st: Stack, P3: Pt, spec: NeckSpec, colour: SwanColour): NeckOut {
-  const pa = paintOf(colour);
+/** The head's frame (look.md §5.7): beak direction u, facing f, local down dn, local → body. */
+export interface HeadFrame {
+  u: V;
+  /** 1 facing her way, −1 looking back (the head drawn mirrored). */
+  f: number;
+  dn: V;
+  loc: (x: number, y: number) => V;
+}
+
+/** The head frame of a neck spec with the head centre at P3 (body space). */
+export function headFrame(P3: Pt, spec: NeckSpec): HeadFrame {
   const u = dirOf(spec.angle);
   // Past −90° she looks back: the head is drawn mirrored, the eye stays on top.
   const f = Math.cos((spec.angle * Math.PI) / 180) < -0.01 ? -1 : 1;
   // Local "down" on the head (the beak's normal away from the eye).
   const dn: V = f > 0 ? [-u[1], u[0]] : [u[1], -u[0]];
   const loc = (x: number, y: number): V => [P3[0] + u[0] * x + dn[0] * y, P3[1] + u[1] * x + dn[1] * y];
-    // Dome about 9 × 8: round at the back, tapering forward into the beak base (an egg that
-  // points along the beak), so the head reads as a bird's head at every aim.
-  const dome = take();
-  const domePts: V[] = [];
+  return { u, f, dn, loc };
+}
+
+/**
+ * The dome outline in head-local coordinates: about 9 × 8, round at the back, tapering forward
+ * into the beak base (an egg that points along the beak).
+ */
+export function domeLocal(): Array<readonly [number, number]> {
+  const out: Array<readonly [number, number]> = [];
   for (let k = 0; k <= 10; k++) {
     const a = Math.PI / 2 + (k / 10) * Math.PI;
-    domePts.push(loc(-0.6 + Math.cos(a) * 4.2, -0.3 + Math.sin(a) * 3.9));
+    out.push([-0.6 + Math.cos(a) * 4.2, -0.3 + Math.sin(a) * 3.9]);
   }
-  domePts.push(loc(1.6, -4), loc(3.3, -2.6), loc(4, -0.6), loc(3.6, 1.8), loc(1.8, 3.4));
+  out.push([1.6, -4], [3.3, -2.6], [4, -0.6], [3.6, 1.8], [1.8, 3.4]);
+  return out;
+}
+
+/** The navy face patch (head-local): a wedge from the lower front of the eye to the beak base. */
+export const FACE_PATCH: ReadonlyArray<readonly [number, number]> = [[1.2, -0.2], [3.6, -2.2], [4.2, -0.4], [3.8, 1.8], [2, 1.2]];
+
+function drawHeadAt(st: Stack, P3: Pt, spec: NeckSpec, colour: SwanColour): NeckOut {
+  const pa = paintOf(colour);
+  const { u, f, dn, loc } = headFrame(P3, spec);
+  // Dome about 9 × 8: round at the back, tapering forward into the beak base (an egg that
+  // points along the beak), so the head reads as a bird's head at every aim.
+  const dome = take();
+  const domePts: V[] = domeLocal().map(([x, y]) => loc(x, y));
   poly(dome, domePts, pa.ring[2]);
-  if (dome.d === 2) {
-    // 2×: the small chin tuft that the 1× dome's flat bottom row makes under its centre.
-    for (const [x, y] of [[-1.3, 3.9], [-0.8, 3.9], [-0.3, 3.9], [-1.1, 4.4], [-0.6, 4.4]] as const) {
-      const p = loc(x, y);
-      fine(dome, p[0] + 0.25, p[1] + 0.25, pa.ring[2]);
-    }
-  }
   shade(dome, pa.ring, { base: pa.ringBase, glint: colour === 'ivory' });
   st.put(dome, OWN.head, pa.ring[0]);
   // Face patch (ivory only): a navy wedge from the lower front of the eye to the beak base, like
   // the dark face skin of a real swan (never a band round the head).
   if (colour === 'ivory' && !spec.flop) {
     const L = take();
-    const patch = [loc(1.2, -0.2), loc(3.6, -2.2), loc(4.2, -0.4), loc(3.8, 1.8), loc(2, 1.2)];
-    // At 2× the corners snap to the logical grid as the 1× polygon's do (the same wedge).
-    poly(L, st.d === 2 ? patch.map((q): V => [Math.round(q[0]), Math.round(q[1])]) : patch, PAL.navy[0]);
+    const patch = FACE_PATCH.map(([x, y]) => loc(x, y));
+    poly(L, patch, PAL.navy[0]);
     st.put(L, OWN.head, PAL.navy[0], false);
   }
   // Beak (= the gun barrel): base half width 2 at x 3, tip half width 1 at x 11.
@@ -252,52 +280,22 @@ function drawHeadAt(st: Stack, P3: Pt, spec: NeckSpec, colour: SwanColour): Neck
     poly(L, md.pts, pa.beak[2]);
     shade(L, pa.beak, { base: 2 });
     // The steel nail: the last 2 px.
-    if (L.d === 2) {
-      // 2×: the nail on the finer grid, lit along its upper edge, a dark seam where it meets the bill.
-      for (let k = 0; k <= 5; k++) {
-        for (const w of [-1.35, -0.95, -0.55, -0.15, 0.25, 0.65, 1.05, 1.45]) {
-          const p = add(add(md.tip, md.along, -k * 0.45), dn, w);
-          const x = p[0] + 0.25;
-          const y = p[1] + 0.25;
-          if (L.get(x, y) === 0) continue;
-          fine(L, x, y, k === 5 ? pa.beak[0] : k <= 1 ? PAL.steel[2] : w < -0.5 ? PAL.steel[4] : PAL.steel[3]);
-        }
-      }
-    } else {
-      for (let k = 0; k <= 2; k++) {
-        for (const w of [-1.2, -0.4, 0.4, 1.2]) {
-          const p = add(add(md.tip, md.along, -k * 0.9), dn, w);
-          if (L.get(p[0], p[1]) !== 0) dot(L, p[0], p[1], k === 0 ? PAL.steel[2] : PAL.steel[3]);
-        }
+    for (let k = 0; k <= 2; k++) {
+      for (const w of [-1.2, -0.4, 0.4, 1.2]) {
+        const p = add(add(md.tip, md.along, -k * 0.9), dn, w);
+        if (L.get(p[0], p[1]) !== 0) dot(L, p[0], p[1], k === 0 ? PAL.steel[2] : PAL.steel[3]);
       }
     }
     st.put(L, OWN.head, pa.beak[0]);
   }
   // Gold breech ring across the beak at x 4, the bore at the tip.
-  if (st.d === 2) {
-    // 2×: a lit band and a dark band, 1 px each, across the whole beak.
-    for (let w = -2; w <= 2; w += 0.4) {
-      for (const [x, c] of [[3.9, w < 0 ? PAL.gold[3] : PAL.gold[2]], [4.4, w < 0 ? PAL.gold[1] : PAL.gold[0]]] as const) {
-        const p = loc(x, w);
-        st.fine(p[0] + 0.25, p[1] + 0.25, c, OWN.head);
-      }
-    }
-    if (open === 0) {
-      // The bore: a dark 2× pixel pair at the tip with the lit lip above it.
-      for (const [x, w, c] of [[10.8, -0.25, INK], [10.8, 0.25, INK], [10.3, -0.25, PAL.steel[1]]] as const) {
-        const p = loc(x, w);
-        st.fine(p[0] + 0.25, p[1] + 0.25, c, OWN.head);
-      }
-    }
-  } else {
-    for (const w of [-1.8, -0.9, 0, 0.9, 1.8]) {
-      const p = loc(4.2, w);
-      st.detail(p[0], p[1], w < 0 ? PAL.gold[2] : PAL.gold[1], OWN.head);
-    }
-    if (open === 0) {
-      const t = loc(11, 0);
-      st.detail(t[0], t[1], INK, OWN.head);
-    }
+  for (const w of [-1.8, -0.9, 0, 0.9, 1.8]) {
+    const p = loc(4.2, w);
+    st.detail(p[0], p[1], w < 0 ? PAL.gold[2] : PAL.gold[1], OWN.head);
+  }
+  if (open === 0) {
+    const t = loc(11, 0);
+    st.detail(t[0], t[1], INK, OWN.head);
   }
   // The lens eye on the upper half of the dome, 1 px toward the beak.
   const e = loc(1, -1.5);
@@ -311,10 +309,6 @@ function drawHeadAt(st: Stack, P3: Pt, spec: NeckSpec, colour: SwanColour): Neck
  * `f` = 1 facing right, −1 facing back.
  */
 function drawEye(st: Stack, e: V, f: number, eye: SwanEye, colour: SwanColour): void {
-  if (st.d === 2) {
-    drawEyeHi(st, e, f, eye, colour);
-    return;
-  }
   const x0 = e[0] - 1;
   const y0 = e[1] - 1;
   // Local (lx, ly) in 0..3, mirrored when the head faces back.
@@ -415,128 +409,19 @@ function drawEye(st: Stack, e: V, f: number, eye: SwanEye, colour: SwanColour): 
   }
 }
 
-/**
- * The 2× lens eye: the 1× eye's 4 × 4 box as 8 × 8 2× pixels (the wide eye and the Mute's rim
- * reach 2 px further out), hand-drawn per expression. Keys: G / g gold ring lit / dark, Y gold
- * glint, W lens, k ink, L / l steel lid lit / dark, s skin (the dome tone), '.' = leave.
- * Columns run from the back of the head to the beak; mirrored when the head faces back.
- */
-const EYE_HI: Readonly<Record<string, readonly string[]>> = {
-  // Lens with the pupil (front-low) and a 1-px glint on the ring's lit top.
-  normal: ['..YGGG..', '.GGGGGg.', 'GGWWWWgg', 'GGWWWWgg', 'GGWWkkgg', 'GGWWkkgg', '.gggggg.', '..gggg..'],
-  'back-low': ['..YGGG..', '.GGGGGg.', 'GGWWWWgg', 'GGWWWWgg', 'GGkkWWgg', 'GGkkWWgg', '.gggggg.', '..gggg..'],
-  'back-high': ['..YGGG..', '.GGGGGg.', 'GGkkWWgg', 'GGkkWWgg', 'GGWWWWgg', 'GGWWWWgg', '.gggggg.', '..gggg..'],
-  'front-high': ['..YGGG..', '.GGGGGg.', 'GGWWkkgg', 'GGWWkkgg', 'GGWWWWgg', 'GGWWWWgg', '.gggggg.', '..gggg..'],
-  // The lid slants down toward the beak; its ink edge runs into the pupil: a glare.
-  angry: ['..LLLL..', '.LLLLLL.', 'GkkLLLLl', 'GWWkkLLl', 'GWWWWkkk', 'GWWWkkkg', '.gggggg.', '..gggg..'],
-  half: ['..LLLL..', '.LLLLLL.', 'GLLLLLLl', 'GkkkkkkG', 'GWWWkkWg', 'GWWWkkWg', '.gggggg.', '..gggg..'],
-  blink: ['..LLLL..', '.LLLLLL.', 'GLLLLLLl', 'GLLLLLLl', 'GllllllL', 'Gkkkkkkg', '.gggggg.', '..gggg..'],
-  // An ink chevron pointing back, over skin.
-  squint: ['sssskkss', 'ssskksss', 'sskkssss', 'skksssss', 'skksssss', 'sskkssss', 'ssskksss', 'sssskkss'],
-  // An ink arch.
-  happy: ['........', '........', '..kkkk..', '.kk..kk.', 'kk....kk', 'k......k', '........', '........'],
-  // A 1-px ink spiral over skin.
-  dizzy: ['kkkkkkkk', 'sssssssk', 'skkkkksk', 'sksssksk', 'sksksksk', 'skskkksk', 'skssssss', 'skkkkkkk'],
-};
-
-/** The wide eye: 12 × 12 2× px from 2 px before the box (lens 5 × 5 logical, pupil centred). */
-const EYE_WIDE_HI = [
-  '............',
-  '....YGGG....',
-  '..GGGGGGgg..',
-  '..GGWWWWgg..',
-  '.GWWWWWWWWg.',
-  '.GWWWkkWWWg.',
-  '.GWWWkkWWWg.',
-  '.GWWWWWWWWg.',
-  '..ggWWWWgg..',
-  '..gggggggg..',
-  '....gggg....',
-  '............',
-];
-
-/** The Mute's steel rim round the lens (12 × 12 from 2 px before the box). */
-const EYE_RIM_HI = [
-  '...RRRRRR...',
-  '..RRRRRRRR..',
-  '.RR......Rr.',
-  'RR........rr',
-  'RR........rr',
-  'RR........rr',
-  'RR........rr',
-  'RR........rr',
-  'RR........rr',
-  '.Rr......rr.',
-  '..rrrrrrrr..',
-  '...rrrrrr...',
-];
-
-function drawEyeHi(st: Stack, e: V, f: number, eye: SwanEye, colour: SwanColour): void {
-  const skin = colour === 'mute' ? PAL.black[2] : PAL.snow[2];
-  const key: Readonly<Record<string, Color>> = {
-    G: PAL.gold[2],
-    g: PAL.gold[1],
-    Y: PAL.gold[3],
-    W: PAL.snow[3],
-    k: INK,
-    L: PAL.steel[3],
-    l: PAL.steel[2],
-    s: skin,
-    R: PAL.steel[3],
-    r: PAL.steel[2],
-  };
-  // 2× pixel (i, j) of a w-wide pattern starting `o` 2× px before the box (logical e − 2).
-  const put = (rows: readonly string[], o: number): void => {
-    const w = rows[0].length;
-    rows.forEach((row, j) => {
-      for (let i = 0; i < w; i++) {
-        const c = key[row[i]];
-        if (c === undefined) continue;
-        const col = f > 0 ? i - o : 7 - (i - o);
-        st.fine(e[0] - 2 + col / 2, e[1] - 2 + (j - o) / 2, c);
-      }
-    });
-  };
-  if (colour === 'mute') put(EYE_RIM_HI, 2);
-  if (eye === 'wide') {
-    put(EYE_WIDE_HI, 2);
-    return;
-  }
-  const rows = EYE_HI[eye === 'front-low' ? 'normal' : eye] ?? EYE_HI.normal;
-  put(rows, 0);
-}
-
 // ------------------------------------------------------------------------------------ strips
 
-const neckStacks: Partial<Record<1 | 2, Stack>> = {};
+let neckStack: Stack | null = null;
 /** Where the socket sits while a neck strip is drawn (room for necks up and down). */
-const SOCKET_Y = -44;
+export const SOCKET_Y = -44;
 
 /**
  * One neck frame (look.md §8.2): anchored at the socket, points `muzzle` and `cannon` (the beak
- * tip) and `head` (the head centre), all relative to the socket. `density` 2: the 2× twin, in
- * the 2× rectangle of the 1× frame with its points.
+ * tip) and `head` (the head centre), all relative to the socket. The 2× and 4× frames:
+ * `renderNeckFrameHd` (hd-head.art.ts).
  */
-export function renderNeckFrame(spec: NeckSpec, colour: SwanColour, density: 1 | 2 = 1): Frame {
-  const lo = withKitDensity(1, () => neckFrameAt(spec, colour));
-  if (density === 1) return lo;
-  return withKitDensity(2, () => {
-    const st = (neckStacks[2] ??= new Stack());
-    st.reset();
-    drawNeck(st, [0, SOCKET_Y], spec, colour);
-    const h = harvest(st);
-    st.reset();
-    const p = placeHi(h.buf, h.ox, h.oy, lo.buf.w, lo.buf.h, lo.ox, lo.oy - SOCKET_Y, true);
-    neckCut.px += p.cut;
-    return { buf: p.buf, ox: lo.ox, oy: lo.oy, pts: lo.pts, density: 2 };
-  });
-}
-
-/** Pixels of 2× neck art cut off at the edge of the 1× frame rectangle (tests, tools). */
-export const neckCut = { px: 0 };
-
-function neckFrameAt(spec: NeckSpec, colour: SwanColour): Frame {
-  const st = (neckStacks[kitDensity()] ??= new Stack());
+export function renderNeckFrame(spec: NeckSpec, colour: SwanColour): Frame {
+  const st = (neckStack ??= new Stack());
   st.reset();
   const o = drawNeck(st, [0, SOCKET_Y], spec, colour);
   const h = harvest(st);

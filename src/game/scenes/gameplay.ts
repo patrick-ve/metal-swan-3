@@ -107,6 +107,8 @@ interface DenseRun {
   order: string[];
   /** `char/<id>/` of the chosen heroes (pinned: never released, never another hero at 4×). */
   heroes: string[];
+  /** Joined players (the P2-only art joins the working set with two). */
+  players: number;
   index: number;
   /** Section index of each 4× id's last use (built for, or drawn in, that section). */
   lastUse: Map<string, number>;
@@ -145,19 +147,30 @@ function idsUnder(prefixes: readonly string[], all: readonly string[]): string[]
   return out;
 }
 
+/** Sprite id prefixes only a second player uses (P2 rides the Mute Swan). */
+const TWO_PLAYER_ART = ['vehicle/swan-mute'];
+
 /**
  * The tier-4 working set of section `index` in build order: the chosen heroes, the mission's
  * `preloadFirst`, the current and the next section's `art`, the boss (`preloadLast`) at the end.
- * Only ids with a 4× generator; the other heroes never.
+ * Only ids with a 4× generator; the other heroes never. To stay inside DENSE_BUDGET_BYTES the
+ * P2-only art joins only with two players, and the `boss/` prefixes only in the boss section
+ * (built on entry, long before the fight; a 4× id drawn outside its set shows its 2× art and is
+ * queued). On entry the ids of the sections behind are released first when over the budget.
  */
 export function denseWorkingSet(
   mission: MissionArtDef,
   heroes: readonly string[],
   section: string | undefined,
   next: string | undefined,
+  players: number,
 ): string[] {
-  const all = listHiSprites(4).filter((id) => !id.startsWith('char/') || heroes.some((h) => id.startsWith(h)));
-  return idsUnder([...heroes, ...(mission.preloadFirst ?? []), ...sectionArt(mission, section), ...sectionArt(mission, next), ...(mission.preloadLast ?? [])], all);
+  const all = listHiSprites(4).filter(
+    (id) => (!id.startsWith('char/') || heroes.some((h) => id.startsWith(h))) && (players > 1 || !TWO_PLAYER_ART.some((p) => id.startsWith(p))),
+  );
+  const boss = mission.bossSection;
+  const last = (mission.preloadLast ?? []).filter((p) => !boss || section === boss || !p.startsWith('boss/'));
+  return idsUnder([...heroes, ...(mission.preloadFirst ?? []), ...sectionArt(mission, section), ...sectionArt(mission, next), ...last], all);
 }
 
 /**
@@ -215,7 +228,7 @@ async function enterDenseSection(run: DenseRun, section: string): Promise<void> 
   const i = run.order.indexOf(section);
   run.index = Math.max(run.index, i < 0 ? 0 : i);
   const next = run.order[run.index + 1];
-  const set = denseWorkingSet(run.mission, run.heroes, section, next);
+  const set = denseWorkingSet(run.mission, run.heroes, section, next, run.players);
   const inSet = new Set(set);
   const cache = run.app.artCache;
   if (cache) {
@@ -237,13 +250,15 @@ async function enterDenseSection(run: DenseRun, section: string): Promise<void> 
  * Turns on `setDeferDense`: the main thread never generates 4× art during play.
  */
 function startDense(app: ArtApp, mission: MissionArtDef, session: Pick<GameSession, 'slots'> | null, section: string | undefined): void {
-  const heroes = [...new Set((session?.slots ?? []).filter((s) => s.joined).map((s) => `char/${s.character}/`))];
-  const key = `${mission.id ?? '?'}|${heroes.join(',')}`;
+  const joined = (session?.slots ?? []).filter((s) => s.joined);
+  const heroes = [...new Set(joined.map((s) => `char/${s.character}/`))];
+  const players = joined.length;
+  const key = `${mission.id ?? '?'}|${heroes.join(',')}|${players}`;
   setDeferDense(true);
   if (dense?.key !== key) {
     if (dense?.timer) clearInterval(dense.timer);
     const order = Object.keys(mission.sections ?? {});
-    dense = { key, app, mission, order, heroes, index: 0, lastUse: new Map(), inFlight: new Set(), unbuilt: new Set(), packed: new Set(), timer: null };
+    dense = { key, app, mission, order, heroes, players, index: 0, lastUse: new Map(), inFlight: new Set(), unbuilt: new Set(), packed: new Set(), timer: null };
     if (app.preloadArt && typeof setInterval === 'function') dense.timer = setInterval(pumpDenseQueue, DENSE_PUMP_MS);
   }
   void enterDenseSection(dense, section ?? mission.start ?? dense.order[0] ?? '');

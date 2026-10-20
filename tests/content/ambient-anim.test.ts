@@ -1,7 +1,7 @@
 /**
  * Motion of the ams flyers and ambient life (animation wave, plan Phase 3 FLYERS + AMBIENT):
- * frame counts, the smoothness gate (no identical consecutive frames, 1× and 2×), 2× twins match
- * the 1× geometry, and the draw-only transitions: the gull's take-off, pull-up and squash turn
+ * frame counts, the smoothness gate (no identical consecutive frames, 1× and 2×), 2× and 4× art
+ * keeps the 1× geometry, and the draw-only transitions: the gull's take-off, pull-up and squash turn
  * (a tell cancels them; the tell timing is unchanged), the pigeons' take-off, the ducks' 4-step
  * paddle, the window waver's lean, the cat's swish and the tour boat's end-of-run turn.
  */
@@ -46,18 +46,20 @@ function recorder(): { r: Renderer; calls: [string, number][] } {
 
 describe('ambient motion: strips', () => {
   for (const [id, n] of Object.entries(COUNTS)) {
-    it(`${id}: ${n} frames, palette, no identical neighbours, 2× twin`, () => {
+    it(`${id}: ${n} frames, palette, no identical neighbours, 2× and 4× art`, () => {
       const lo = getFrames(id, 1);
-      const hi = getFrames(id, 2);
       expect(lo.length).toBe(n);
-      expect(hi.length).toBe(n);
-      for (let i = 0; i < n; i++) {
-        for (const c of lo[i].buf.data) if (c !== 0 && !inPalette(c)) expect.fail(`${id}[${i}] colour ${c.toString(16)}`);
-        // 2×: the 64 palette, or PAL_HD where the UHD kit draws the figure.
-        for (const c of hi[i].buf.data) if (c !== 0 && !inPalette(c) && !inHdPalette(c)) expect.fail(`${id}[${i}] 2× colour ${c.toString(16)}`);
-        expect(hi[i].buf.w).toBe(lo[i].buf.w * 2);
-        expect(hi[i].buf.h).toBe(lo[i].buf.h * 2);
-        expect([hi[i].ox, hi[i].oy]).toEqual([lo[i].ox, lo[i].oy]);
+      for (let i = 0; i < n; i++) for (const c of lo[i].buf.data) if (c !== 0 && !inPalette(c)) expect.fail(`${id}[${i}] colour ${c.toString(16)}`);
+      for (const d of [2, 4]) {
+        const hi = getFrames(id, d);
+        expect(hi.length).toBe(n);
+        for (let i = 0; i < n; i++) {
+          // Dense art: the 64 palette, or PAL_HD where the UHD kit draws it.
+          for (const c of hi[i].buf.data) if (c !== 0 && !inPalette(c) && !inHdPalette(c)) expect.fail(`${id}[${i}] ${d}× colour ${c.toString(16)}`);
+          expect(hi[i].buf.w).toBe(lo[i].buf.w * d);
+          expect(hi[i].buf.h).toBe(lo[i].buf.h * d);
+          expect([hi[i].ox, hi[i].oy]).toEqual([lo[i].ox, lo[i].oy]);
+        }
       }
       // The duck paddle holds two looping 4-frame cycles (drake, hen): check each.
       if (id !== 'npc/ams/ams-ducks/paddle') assertNoDuplicateFrames(id);

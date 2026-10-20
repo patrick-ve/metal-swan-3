@@ -5,7 +5,8 @@
  * - tier 4: the WORKING SET (chosen heroes, preloadFirst, current + next section, boss) at 4×,
  *   never another hero; setDeferDense on; a section change moves the set on and releases the
  *   sections behind within the budget; drawn-but-missing 4× ids are pumped to the pool;
- *   'hd4-<section>' / 'hd4-char-<hero>' packs are saved, and a later visit restores them;
+ *   'hd4-<section>' / 'hd4-char-<hero>' packs are saved, and a later visit restores them; the
+ *   P2-only Mute Swan art joins only with two players, boss/ only in the boss section;
  * - fallback: without Worker the pool builds on the main thread after one warning; at tier 4
  *   it never generates 4× art there (2× stand-ins stay) and does not rebuild in a loop.
  */
@@ -27,7 +28,7 @@ import {
 } from '../../src/engine/sprites';
 import { ArtCache } from '../../src/game/art-cache';
 import type { GameSession } from '../../src/game/session';
-import { missionArtSection, preloadMissionArt, pumpDenseQueue, resetMissionArt, type MissionArtDef } from '../../src/game/scenes/gameplay';
+import { denseWorkingSet, missionArtSection, preloadMissionArt, pumpDenseQueue, resetMissionArt, type MissionArtDef } from '../../src/game/scenes/gameplay';
 
 /** An 8×8 logical sprite with 2× and 4× frames. */
 function sprite(id: string, c: number): void {
@@ -187,5 +188,20 @@ describe('fallback', () => {
     pumpDenseQueue();
     await settle();
     expect(builds.filter((d) => d === 4).length).toBe(n4);
+  });
+});
+
+describe('tier 4 working set size', () => {
+  it('takes the P2-only Mute Swan art only with two players, and boss/ only in the boss section', () => {
+    for (const id of ['vehicle/swan/zt', 'vehicle/swan-mute/zt', 'boss/zt/x']) sprite(id, 0x20304000);
+    const m = { ...MISSION, preloadFirst: ['vehicle/swan'], preloadLast: ['boss/', 'zboss/'] } as unknown as MissionArtDef;
+    const one = denseWorkingSet(m, ['char/zhero/'], 'a', 'b', 1);
+    expect(one).toContain('vehicle/swan/zt');
+    expect(one).not.toContain('vehicle/swan-mute/zt');
+    expect(one).not.toContain('boss/zt/x');
+    expect(one).toContain('zboss/x');
+    expect(denseWorkingSet(m, ['char/zhero/'], 'a', 'b', 2)).toContain('vehicle/swan-mute/zt');
+    expect(denseWorkingSet(m, ['char/zhero/'], 'b', 'c', 1)).not.toContain('boss/zt/x');
+    expect(denseWorkingSet(m, ['char/zhero/'], 'c', undefined, 1)).toContain('boss/zt/x');
   });
 });

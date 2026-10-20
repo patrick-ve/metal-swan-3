@@ -29,27 +29,21 @@ import {
   along,
   disc,
   dot,
-  fine,
   harvest,
-  hiToBody,
-  kitDensity,
   len,
   lerp2,
   line,
-  placeHi,
   poly,
   recolor,
   rot,
   samplePolyline,
   shade,
-  slab,
   sub,
   take,
   tangentAt,
   taper,
   thick,
   unit,
-  withKitDensity,
 } from './kit.art';
 
 // ------------------------------------------------------------------------------------ types
@@ -143,7 +137,7 @@ export interface BodyOut {
 // ------------------------------------------------------------------------------------ constants
 
 /** Leg lengths per mode: drumstick, shank (look.md §3.6). */
-const LEGS: Readonly<Record<LegMode, readonly [number, number]>> = {
+export const LEGS: Readonly<Record<LegMode, readonly [number, number]>> = {
   L: [15, 17],
   M: [13, 15],
   S: [11, 12],
@@ -151,8 +145,8 @@ const LEGS: Readonly<Record<LegMode, readonly [number, number]>> = {
   T: [7, 8],
 };
 
-const HIP_N: Pt = [-4, -31];
-const HIP_F: Pt = [-6, -32];
+export const HIP_N: Pt = [-4, -31];
+export const HIP_F: Pt = [-6, -32];
 
 /** Named rest points (look.md §8.1). */
 export const REST = {
@@ -171,7 +165,7 @@ export const SURFACE = -16;
  * Hull polygon (rest), clockwise from the deck's rear end (look.md §5.1 with a rounder breast
  * and stern; keel row −30, so a parked keel rests on the ground line).
  */
-function hullPoly(breast: number): Pt[] {
+export function hullPoly(breast: number): Pt[] {
   const b = breast;
   return [
     [-26, -48],
@@ -241,7 +235,7 @@ const FAR_WINGS: Readonly<Record<WingPose, WingGeo>> = {
 };
 
 /** Near-wing poses drawn behind the rider (look.md §5.3 cover rule). */
-const BACK_POSES: ReadonlySet<WingPose> = new Set<WingPose>(['UP', 'BRAKE', 'BUSK', 'BLAST']);
+export const BACK_POSES: ReadonlySet<WingPose> = new Set<WingPose>(['UP', 'BRAKE', 'BUSK', 'BLAST']);
 
 /** Primary blade tips: navy bands (the Mute: steel). */
 const TIP_IVORY = new Map<Color, Color>([
@@ -263,37 +257,34 @@ function clamp01(v: number): number {
 
 /** A gold rivet (light dot, dark pixel below right) on an existing part. */
 function rivet(st: Stack, p: Pt, owner?: number): void {
-  if (st.d === 2) {
-    rivetHi(st, Math.round(p[0]), Math.round(p[1]), owner);
-    return;
-  }
   st.detail(p[0], p[1], PAL.gold[3], owner);
   st.detail(p[0] + 1, p[1] + 1, PAL.gold[0], owner);
 }
 
-/**
- * The 2× rivet: a round head the size of one logical pixel (lit 2× pixel up-left, mid tones,
- * dark down-right) and a 1-px cast shadow below right of it.
- */
-export function rivetHi(st: Stack, x: number, y: number, owner?: number): void {
-  st.fine(x, y, PAL.gold[3], owner);
-  st.fine(x + 0.5, y, PAL.gold[2], owner);
-  st.fine(x, y + 0.5, PAL.gold[2], owner);
-  st.fine(x + 0.5, y + 0.5, PAL.gold[1], owner);
-  st.fine(x + 1, y + 1, PAL.gold[0], owner);
+/** One wing blade from root `a` to tip `b` (body space) with its root and tip diameters. */
+export interface Blade {
+  a: V;
+  b: V;
+  w0: number;
+  w1: number;
 }
 
-/** Logical pixel-centre position → the `fine` position of the 2× pixel under it. */
-function fc(v: number): number {
-  return v + 0.25;
+/** The parts of one wing, each list in draw order (body space). */
+export interface WingParts {
+  /** Primary blades, the inner ones first, the leading one last (navy tips: the last 2.5 px). */
+  prim: Blade[];
+  /** Secondary blades, the outer ones first. */
+  sec: Blade[];
+  /** The arm plate over the blade roots (leading edge out, inner edge back). */
+  plate: V[];
+  /** Number of leading-edge points at the start of `plate`. */
+  lead: number;
+  /** The three gold rivets along the plate's top edge. */
+  rivets: V[];
 }
 
-/**
- * One wing: four primary blades (navy tips), three secondary blades and the arm plate with
- * three gold rivets (look.md §5.3). Blades are separate parts, so their edges become steel
- * lines on the blade behind. Far wing: one shade darker.
- */
-export function drawWing(st: Stack, xf: Xf, w: Wing, far: boolean, style: SwanStyle): void {
+/** The geometry of one wing pose (look.md §5.3), shared by the 1× rig and the HD drawer. */
+export function wingParts(xf: Xf, w: Wing, far: boolean): WingParts {
   const g = (far ? FAR_WINGS : NEAR_WINGS)[w.p];
   const lift = w.lift ?? 0;
   const lead: Pt[] = g.lead.map(([x, y]) => [x, y - lift * clamp01((-14 - x) / 10)] as const);
@@ -309,11 +300,9 @@ export function drawWing(st: Stack, xf: Xf, w: Wing, far: boolean, style: SwanSt
   const nm = nAt(Lw * 0.5);
   const r90 = rot(tm, 90);
   const sign = r90[0] * nm[0] + r90[1] * nm[1] > 0 ? 1 : -1;
-  const shift = far ? -1 : 0;
-  const tipMap = style.colour === 'mute' ? TIP_MUTE : TIP_IVORY;
-  const owner = far ? OWN.farWing : OWN.nearWing;
   const T = along(sm, Lw);
   const up = w.tips ?? 0;
+  const out: WingParts = { prim: [], sec: [], plate: [], lead: 0, rivets: [] };
   // Primaries: the inner ones first, the leading one last (on top). Broad round-ended
   // plates that overlap like shingles, so their edges read as steel lines.
   for (let k = 3; k >= 0; k--) {
@@ -324,15 +313,7 @@ export function drawWing(st: Stack, xf: Xf, w: Wing, far: boolean, style: SwanSt
     const fan = add(root, rot(sub(T, root), sign * k * 12), 1 - 0.06 * k);
     const tip = lerp2(fold, fan, g.s);
     tip[1] -= up * (1 - k * 0.15);
-    const a = xf.pt(root);
-    const b = xf.pt(tip);
-    const L = take();
-    slab(L, a, b, 6, 5, PAL.snow[2]);
-    shade(L, PAL.snow, { shift });
-    const ax = unit(sub(b, a));
-    const bl = len(sub(b, a));
-    recolor(L, (c, x, y) => (bl - ((x - a[0]) * ax[0] + (y - a[1]) * ax[1]) <= 2.5 ? (tipMap.get(c) ?? c) : c));
-    st.put(L, owner, PAL.snow[0]);
+    out.prim.push({ a: xf.pt(root), b: xf.pt(tip), w0: 6, w1: 5 });
   }
   // Secondaries: from the arm toward the trailing side; their round ends scallop the edge.
   for (let j = 2; j >= 0; j--) {
@@ -342,30 +323,56 @@ export function drawWing(st: Stack, xf: Xf, w: Wing, far: boolean, style: SwanSt
     const root = add(along(sm, du), nn, 3);
     const dir = unit(lerp2(rot(tt, sign * 14), rot(nn, -sign * 24), g.s));
     const tip = add(root, dir, g.c * (0.7 + 0.25 * g.s));
-    const L = take();
-    slab(L, xf.pt(root), xf.pt(tip), 7, 6, PAL.snow[2]);
-    shade(L, PAL.snow, { shift });
-    st.put(L, owner, PAL.snow[0]);
+    out.sec.push({ a: xf.pt(root), b: xf.pt(tip), w0: 7, w1: 6 });
   }
   // The arm plate over the blade roots, with three gold rivets along its top edge.
   const end = Lw * 0.5;
   const steps = 10;
-  const plate: V[] = [];
-  for (let i = 0; i <= steps; i++) plate.push(xf.pt(along(sm, (end * i) / steps)));
+  for (let i = 0; i <= steps; i++) out.plate.push(xf.pt(along(sm, (end * i) / steps)));
+  out.lead = steps + 1;
   for (let i = steps; i >= 0; i--) {
     const d = (end * i) / steps;
     // Round front (the wrist knuckle), slimmer toward the hand.
     const depth = (i === 0 ? 5 : 8 - (2.5 * i) / steps) * Math.min(1, g.c / 10);
-    plate.push(xf.pt(add(along(sm, d), nAt(d), depth)));
+    out.plate.push(xf.pt(add(along(sm, d), nAt(d), depth)));
   }
-  const L = take();
-  poly(L, plate, PAL.snow[2]);
-  shade(L, PAL.snow, { shift, glint: !far });
-  st.put(L, owner, PAL.snow[0]);
   for (const f of [0.14, 0.3, 0.46]) {
     const d = end * f * 2;
-    rivet(st, xf.pt(add(along(sm, d), nAt(d), 2)), owner);
+    out.rivets.push(xf.pt(add(along(sm, d), nAt(d), 2)));
   }
+  return out;
+}
+
+/**
+ * One wing: four primary blades (navy tips), three secondary blades and the arm plate with
+ * three gold rivets (look.md §5.3). Blades are separate parts, so their edges become steel
+ * lines on the blade behind. Far wing: one shade darker.
+ */
+export function drawWing(st: Stack, xf: Xf, w: Wing, far: boolean, style: SwanStyle): void {
+  const parts = wingParts(xf, w, far);
+  const shift = far ? -1 : 0;
+  const tipMap = style.colour === 'mute' ? TIP_MUTE : TIP_IVORY;
+  const owner = far ? OWN.farWing : OWN.nearWing;
+  for (const { a, b, w0, w1 } of parts.prim) {
+    const L = take();
+    taper(L, a, b, w0, w1, PAL.snow[2]);
+    shade(L, PAL.snow, { shift });
+    const ax = unit(sub(b, a));
+    const bl = len(sub(b, a));
+    recolor(L, (c, x, y) => (bl - ((x - a[0]) * ax[0] + (y - a[1]) * ax[1]) <= 2.5 ? (tipMap.get(c) ?? c) : c));
+    st.put(L, owner, PAL.snow[0]);
+  }
+  for (const { a, b, w0, w1 } of parts.sec) {
+    const L = take();
+    taper(L, a, b, w0, w1, PAL.snow[2]);
+    shade(L, PAL.snow, { shift });
+    st.put(L, owner, PAL.snow[0]);
+  }
+  const L = take();
+  poly(L, parts.plate, PAL.snow[2]);
+  shade(L, PAL.snow, { shift, glint: !far });
+  st.put(L, owner, PAL.snow[0]);
+  for (const p of parts.rivets) rivet(st, p, owner);
 }
 
 // ------------------------------------------------------------------------------------ legs
@@ -385,14 +392,14 @@ export function ik(h: Pt, f: Pt, l1: number, l2: number): { joint: V; foot: V } 
 }
 
 /** Paddle outlines in foot space (heel joint at (0, 0), toes +x, sole row y 2). */
-const PADDLE_SPREAD: readonly Pt[] = [[-2, 1], [0, 0], [4, -1], [7, -1], [8, 0], [8, 2], [-2, 2]];
+export const PADDLE_SPREAD: readonly Pt[] = [[-2, 1], [0, 0], [4, -1], [7, -1], [8, 0], [8, 2], [-2, 2]];
 const PADDLE_HALF: readonly Pt[] = [[-2, 0], [4, 0], [6, 1], [5, 2], [-2, 2]];
 const PADDLE_FOLD: readonly Pt[] = [[-1, -1], [3, 0], [4, 1], [3, 2], [-1, 1]];
 const MITTEN: readonly Pt[] = [[-2, 0], [-1, -1], [6, -1], [7, 0], [7, 1], [6, 2], [-1, 2], [-2, 1]];
 const MITTEN_FOLD: readonly Pt[] = [[-1, 0], [0, -1], [5, -1], [6, 0], [6, 1], [5, 2], [0, 2], [-1, 1]];
 
 /** Rotation of the paddle (degrees, + = toes down) per foot state. */
-const FOOT_ANGLE: Readonly<Record<FootState, number>> = { S: 0, S15: -15, S20: -20, P: 25, H: 18, F: 40 };
+export const FOOT_ANGLE: Readonly<Record<FootState, number>> = { S: 0, S15: -15, S20: -20, P: 25, H: 18, F: 40 };
 
 /** Lowest sole pixel of a paddle below its joint (foot space y, after the state's turn). */
 function paddleBottom(s: FootState, style: SwanStyle): number {
@@ -403,7 +410,7 @@ function paddleBottom(s: FootState, style: SwanStyle): number {
 }
 
 /** The outline of a paddle (or a sock foot) in a foot state. */
-function paddleShape(s: FootState, style: SwanStyle): readonly Pt[] {
+export function paddleShape(s: FootState, style: SwanStyle): readonly Pt[] {
   if (style.socks) return s === 'F' || s === 'H' ? MITTEN_FOLD : MITTEN;
   return s === 'F' ? PADDLE_FOLD : s === 'H' ? PADDLE_HALF : PADDLE_SPREAD;
 }
@@ -436,20 +443,6 @@ function drawPaddle(st: Stack, F: Pt, s: FootState, extra: number, far: boolean,
     for (const [a, b] of [[[1, 1], [6, -1]], [[1, 1], [7, 1]]] as const) {
       const p0 = map(a);
       const p1 = map(b);
-      if (L.d === 2) {
-        // 1-px webbing grooves between the toes (the 1× ridge tone), each with its lit lower wall.
-        const n = Math.max(1, Math.round(len(sub(p1, p0)) * 2));
-        for (let i = 2; i <= n; i++) {
-          const q = lerp2(p0, p1, i / n);
-          const x = fc(q[0]);
-          const y = fc(q[1]);
-          if (L.get(x, y) === 0) continue;
-          fine(L, x, y, PAL.orange[0]);
-          const c = L.get(x, y + 0.5);
-          if (c !== 0 && c !== PAL.orange[0] && c !== PAL.orange[1]) fine(L, x, y + 0.5, PAL.orange[3]);
-        }
-        continue;
-      }
       const n = Math.max(1, Math.round(len(sub(p1, p0))));
       for (let i = 1; i <= n; i++) {
         const q = lerp2(p0, p1, i / n);
@@ -492,22 +485,24 @@ function drawSock(st: Stack, J: Pt, F: Pt, far: boolean): void {
   st.put(L, far ? OWN.farLeg : OWN.nearLeg, PAL.red[0]);
 }
 
-/** The 2× gold cap of a knee bolt: a round head one logical pixel wide. */
-function boltHi(st: Stack, x: number, y: number, far: boolean, owner: number): void {
-  const k = far ? -1 : 0;
-  st.fine(x, y, PAL.gold[3 + k], owner);
-  st.fine(x + 0.5, y, PAL.gold[2 + k], owner);
-  st.fine(x, y + 0.5, PAL.gold[2 + k], owner);
-  st.fine(x + 0.5, y + 0.5, PAL.gold[1 + k], owner);
-}
-
 interface LegOut {
   /** Sole centre (foot joint + (3, 3)). */
   sole: [number, number];
 }
 
-/** One leg: drumstick, shank (sleeve + piston rod, or a sock), paddle, joint bolt, hip disc. */
-function drawLeg(st: Stack, xf: Xf, pose: BodyPose, far: boolean, style: SwanStyle): LegOut {
+/** The joints of one leg (body space): hip H, joint J, foot joint F, the sleeve end m. */
+export interface LegParts {
+  foot: Foot;
+  H: V;
+  J: V;
+  F: V;
+  m: V;
+  /** Paddle turn (degrees, + = toes down): the foot state's angle plus the body roll. */
+  ang: number;
+}
+
+/** The geometry of one leg (look.md §3.6, §5.5), shared by the 1× rig and the HD drawer. */
+export function legParts(xf: Xf, pose: BodyPose, far: boolean, style: SwanStyle): LegParts {
   const foot = (far ? pose.far : pose.near) ?? { x: far ? -7 : -3, y: -4, s: 'S' as FootState };
   const H = xf.pt(far ? HIP_F : HIP_N);
   const target: V = pose.feetOnHull ? xf.p(foot.x, foot.y) : [foot.x, foot.y];
@@ -520,6 +515,13 @@ function drawLeg(st: Stack, xf: Xf, pose: BodyPose, far: boolean, style: SwanSty
   const [l1, l2base] = LEGS[pose.legs];
   const l2 = l2base + (foot.piston ?? 0);
   const { joint: J, foot: F } = ik(H, target, l1, l2);
+  const m = lerp2(J, F, Math.max(0.35, 0.62 - (foot.piston ?? 0) * 0.06));
+  return { foot, H, J, F, m, ang: FOOT_ANGLE[foot.s] + (pose.feetOnHull ? xf.deg : 0) };
+}
+
+/** One leg: drumstick, shank (sleeve + piston rod, or a sock), paddle, joint bolt, hip disc. */
+function drawLeg(st: Stack, xf: Xf, pose: BodyPose, far: boolean, style: SwanStyle): LegOut {
+  const { foot, H, J, F, m } = legParts(xf, pose, far, style);
   const shift = far ? -1 : 0;
   const owner = far ? OWN.farLeg : OWN.nearLeg;
   // Drumstick.
@@ -531,7 +533,6 @@ function drawLeg(st: Stack, xf: Xf, pose: BodyPose, far: boolean, style: SwanSty
   if (style.socks) {
     drawSock(st, J, F, far);
   } else {
-    const m = lerp2(J, F, Math.max(0.35, 0.62 - (foot.piston ?? 0) * 0.06));
     L = take();
     thick(L, J, m, 4, PAL.steel[2]);
     shade(L, PAL.steel, { shift });
@@ -548,30 +549,15 @@ function drawLeg(st: Stack, xf: Xf, pose: BodyPose, far: boolean, style: SwanSty
   disc(L, Math.round(J[0]), Math.round(J[1]), 2, PAL.steel[2]);
   shade(L, PAL.steel, { shift, glint: true });
   st.put(L, owner, PAL.steel[0]);
-  if (st.d === 2) boltHi(st, Math.round(J[0]), Math.round(J[1]), far, owner);
-  else st.detail(Math.round(J[0]), Math.round(J[1]), far ? PAL.gold[1] : PAL.gold[2], owner);
+  st.detail(Math.round(J[0]), Math.round(J[1]), far ? PAL.gold[1] : PAL.gold[2], owner);
   if (!far) {
     // Hip bearing: steel disc r 3 with a gold bolt.
     L = take();
     disc(L, Math.round(H[0]), Math.round(H[1]), 3, PAL.steel[2]);
     shade(L, PAL.steel, { glint: true });
     st.put(L, owner, PAL.steel[0]);
-    if (st.d === 2) {
-      // A hex bolt head with a lit facet, a dark facet and its slot.
-      const hx = Math.round(H[0]);
-      const hy = Math.round(H[1]);
-      for (const [x, y, c] of [
-        [0, -0.5, PAL.gold[3]], [0.5, -0.5, PAL.gold[2]],
-        [-0.5, 0, PAL.gold[3]], [0, 0, PAL.gold[2]], [0.5, 0, PAL.gold[2]], [1, 0, PAL.gold[1]],
-        [-0.5, 0.5, PAL.gold[2]], [0, 0.5, PAL.gold[1]], [0.5, 0.5, PAL.gold[1]], [1, 0.5, PAL.gold[0]],
-        [0, 1, PAL.gold[0]], [0.5, 1, PAL.gold[0]],
-      ] as const) st.fine(hx + x, hy + y, c, owner);
-      st.fine(hx, hy + 0.5, PAL.gold[0], owner);
-      st.fine(hx + 0.5, hy, PAL.gold[0], owner);
-    } else {
-      st.detail(Math.round(H[0]), Math.round(H[1]), PAL.gold[2], owner);
-      st.detail(Math.round(H[0]) + 1, Math.round(H[1]), PAL.gold[1], owner);
-    }
+    st.detail(Math.round(H[0]), Math.round(H[1]), PAL.gold[2], owner);
+    st.detail(Math.round(H[0]) + 1, Math.round(H[1]), PAL.gold[1], owner);
   }
   return { sole: [Math.round(F[0] + 3) + 0, Math.round(F[1] + 3) + 0] };
 }
@@ -618,22 +604,19 @@ function drawHull(st: Stack, xf: Xf, pose: BodyPose): void {
   shade(L, PAL.snow, {});
   // Volume: the lower hull (from the waterline down) is in shade, with an ordered-dither
   // border; the lowest row is the darkest tone, so she has weight even over snow.
-  if (L.d === 2) hullToneHi(L, xf);
-  else {
-    const inside = (x: number, y: number): boolean => L.get(x, y) !== 0;
-    const tone: Array<[number, number, Color]> = [];
-    for (let y = L.y0 - OY; y <= L.y1 - OY; y++) {
-      for (let x = L.x0 - OX; x <= L.x1 - OX; x++) {
-        if (!inside(x, y)) continue;
-        const r = xf.inv(x, y);
-        if (!inside(x, y + 1)) tone.push([x, y, PAL.snow[0]]);
-        else if (r[1] > -35.5 || (r[1] > -37.5 && bayer(x + OX, y + OY) < (r[1] + 37.5) / 2)) {
-          if (L.get(x, y) !== PAL.snow[3]) tone.push([x, y, PAL.snow[1]]);
-        }
+  const inside = (x: number, y: number): boolean => L.get(x, y) !== 0;
+  const tone: Array<[number, number, Color]> = [];
+  for (let y = L.y0 - OY; y <= L.y1 - OY; y++) {
+    for (let x = L.x0 - OX; x <= L.x1 - OX; x++) {
+      if (!inside(x, y)) continue;
+      const r = xf.inv(x, y);
+      if (!inside(x, y + 1)) tone.push([x, y, PAL.snow[0]]);
+      else if (r[1] > -35.5 || (r[1] > -37.5 && bayer(x + OX, y + OY) < (r[1] + 37.5) / 2)) {
+        if (L.get(x, y) !== PAL.snow[3]) tone.push([x, y, PAL.snow[1]]);
       }
     }
-    for (const [x, y, c] of tone) dot(L, x, y, c);
   }
+  for (const [x, y, c] of tone) dot(L, x, y, c);
   st.put(L, OWN.hull, PAL.snow[0]);
   // Navy waterline stripe (rows −34..−33), clipped to the hull.
   const S = take();
@@ -651,10 +634,6 @@ function drawHull(st: Stack, xf: Xf, pose: BodyPose): void {
   for (const [a, b] of seams) {
     const A = xf.pt(a);
     const B = xf.pt(b);
-    if (st.d === 2) {
-      seamHi(st, A, B);
-      continue;
-    }
     const n = Math.round(len(sub(B, A)));
     for (let i = 0; i <= n; i++) {
       const q = lerp2(A, B, i / Math.max(1, n));
@@ -663,10 +642,6 @@ function drawHull(st: Stack, xf: Xf, pose: BodyPose): void {
   }
   // Gold rivets on the keel line.
   for (let x = -20; x <= 10; x += 5) rivet(st, xf.ip(x, -32), OWN.hull);
-  if (st.d === 2) {
-    hullMarksHi(st, xf);
-    return;
-  }
   // Bow number "3" (navy stencil) and the two flush jet vents (never tubes).
   for (let r = 0; r < 5; r++) {
     for (let c = 0; c < 3; c++) {
@@ -694,92 +669,8 @@ function drawHull(st: Stack, xf: Xf, pose: BodyPose): void {
   st.put(V0, OWN.hull, PAL.steel[0]);
 }
 
-/**
- * The 2× hull volume (the 1× rule on the 2× grid): the lower hull in shade with the 1×
- * ordered-dither border (the Bayer cell of the logical pixel, so the checker keeps the 1×
- * texture at game scale), the lowest two 2× rows (one logical row) the darkest tone.
- */
-function hullToneHi(L: Layer, xf: Xf): void {
-  const { w, data } = L.buf;
-  const tone: Array<[number, Color]> = [];
-  for (let y = L.y0; y <= L.y1; y++) {
-    for (let x = L.x0; x <= L.x1; x++) {
-      const i = y * w + x;
-      if ((data[i] & 255) === 0) continue;
-      const r = xf.inv(hiToBody(x, OX), hiToBody(y, OY));
-      if ((data[i + w] & 255) === 0 || (data[i + 2 * w] & 255) === 0) tone.push([i, PAL.snow[0]]);
-      else if (r[1] > -35.5 || (r[1] > -37.5 && bayer(x >> 1, y >> 1) < (r[1] + 37.5) / 2)) {
-        if (data[i] !== PAL.snow[3]) tone.push([i, PAL.snow[1]]);
-      }
-    }
-  }
-  for (const [i, c] of tone) data[i] = c;
-  L.buf.touch();
-}
-
-/** One step lighter on the ivory ramp (a lit groove wall). */
-const LIGHTER = new Map<Color, Color>([
-  [PAL.snow[0], PAL.snow[1]],
-  [PAL.snow[1], PAL.snow[2]],
-  [PAL.snow[2], PAL.snow[3]],
-]);
-
-/**
- * A 2× panel seam: a 1-px dark groove with its lit wall 1 px to the right of it (light from the
- * upper left), on the hull only.
- */
-function seamHi(st: Stack, A: Pt, B: Pt): void {
-  const n = Math.max(1, Math.round(len(sub(B, A)) * 2));
-  for (let i = 0; i <= n; i++) {
-    const q = lerp2(A, B, i / n);
-    const x = fc(q[0]);
-    const y = fc(q[1]);
-    st.fine(x, y, PAL.snow[0], OWN.hull);
-    const c = st.get(x + 0.5, y);
-    const l = LIGHTER.get(c);
-    if (l !== undefined && st.ownerAt(x + 0.5, y) === OWN.hull) st.fine(x + 0.5, y, l, OWN.hull);
-  }
-}
-
-/** The bow "3" at 2× (6 × 10 2× px): the 1× stencil with round outer corners. */
-const THREE_HI = ['#####.', '######', '....##', '....##', '..####', '..####', '....##', '....##', '######', '#####.'];
-
-/**
- * The 2× flush jet vent (6 × 6 2× px, one 1× vent): the 1× square port with its corners cut
- * by one 2× pixel, the rim lit at the top left (A navy[2]), mid on the diagonal (B navy[1]) and
- * dark at the bottom right (C navy[0]), an ink core with a steel glint (S).
- */
-const VENT_HI = ['.AAAB.', 'AAAABB', 'AAkkCC', 'AAkSCC', 'BBCCCC', '.BCCC.'];
-
-/** Bow number, jet vents and the smoke grille at 2× (they turn with the hull at 2× steps). */
-function hullMarksHi(st: Stack, xf: Xf): void {
-  // Each 2× pixel (i, j) of a pattern placed at rest (x, y): rest centre (x + i/2 − 0.25, …).
-  const place = (x: number, y: number, rows: readonly string[], col: (ch: string) => Color | null): void => {
-    rows.forEach((row, j) => {
-      for (let i = 0; i < row.length; i++) {
-        const c = col(row[i]);
-        if (c === null) continue;
-        const q = xf.p(x + i / 2 - 0.25, y + j / 2 - 0.25);
-        st.fine(fc(q[0]), fc(q[1]), c, OWN.hull);
-      }
-    });
-  };
-  place(16, -39, THREE_HI, (ch) => (ch === '#' ? PAL.navy[1] : null));
-  const vent: Readonly<Record<string, Color>> = { A: PAL.navy[2], B: PAL.navy[1], C: PAL.navy[0], k: INK, S: PAL.steel[2] };
-  for (const vx of [7, 11]) place(vx - 1, -38, VENT_HI, (ch) => vent[ch] ?? null);
-  // Smoke vent: three dark slots in a steel plate on the rump deck.
-  const V0 = take();
-  const g = xf.all([[-21, -49], [-19, -49]]);
-  line(V0, g[0], g[1], PAL.steel[2]);
-  st.put(V0, OWN.hull, PAL.steel[0]);
-  for (const x of [-21, -20, -19]) {
-    const q = xf.p(x, -49);
-    st.fine(fc(q[0]) - 0.25, fc(q[1]) - 0.25, x === -21 ? PAL.steel[4] : PAL.steel[3]);
-    st.fine(fc(q[0]) + 0.25, fc(q[1]) + 0.25, PAL.steel[0]);
-  }
-}
-
-function drawTail(st: Stack, xf: Xf, pose: BodyPose): void {
+/** The tail (look.md §5.4): three blades (back to front) and the rudder fin, body space. */
+export function tailParts(xf: Xf, pose: BodyPose): { blades: Blade[]; fin: V[] } {
   const lift = pose.tail ?? 0;
   const wag = pose.fin ?? 0;
   // Three short blades rising back and up from the stern (look.md §5.4): broad roots that
@@ -789,12 +680,6 @@ function drawTail(st: Stack, xf: Xf, pose: BodyPose): void {
     [[-24, -43], [-35, -52 - lift * 0.7], 6],
     [[-23, -46], [-34, -55 - lift], 5],
   ];
-  blades.forEach(([r, t, w], i) => {
-    const L = take();
-    taper(L, xf.pt(r), xf.pt(t), w, 3, PAL.snow[2]);
-    shade(L, PAL.snow, { shift: i === 0 ? -1 : 0 });
-    st.put(L, OWN.tail, PAL.snow[0]);
-  });
   // A small navy rudder fin capping the top blade, swept back (tip at (−36, −58)).
   const fin: Pt[] = [
     [-32 + wag, -55 - lift],
@@ -803,8 +688,19 @@ function drawTail(st: Stack, xf: Xf, pose: BodyPose): void {
     [-36 + wag, -55 - lift],
     [-34 + wag, -53 - lift],
   ];
+  return { blades: blades.map(([r, t, w]) => ({ a: xf.pt(r), b: xf.pt(t), w0: w, w1: 3 })), fin: xf.all(fin) };
+}
+
+function drawTail(st: Stack, xf: Xf, pose: BodyPose): void {
+  const parts = tailParts(xf, pose);
+  parts.blades.forEach(({ a, b, w0, w1 }, i) => {
+    const L = take();
+    taper(L, a, b, w0, w1, PAL.snow[2]);
+    shade(L, PAL.snow, { shift: i === 0 ? -1 : 0 });
+    st.put(L, OWN.tail, PAL.snow[0]);
+  });
   const F = take();
-  poly(F, xf.all(fin), PAL.navy[1]);
+  poly(F, parts.fin, PAL.navy[1]);
   shade(F, PAL.navy, { base: 1 });
   st.put(F, OWN.tail, PAL.navy[0]);
 }
@@ -814,25 +710,6 @@ function drawPad(st: Stack, xf: Xf): void {
   poly(L, xf.all([[-11, -50], [1, -50], [1, -49], [-11, -49]]), PAL.navy[1]);
   shade(L, PAL.navy, { base: 1 });
   st.put(L, OWN.pad, PAL.navy[0]);
-  if (st.d === 2) {
-    // Quilting: a 1-px stitch seam along the pad with tufts, three gold studs on the front rim.
-    for (let x = -10.5; x <= 0.5; x += 0.5) {
-      const q = xf.p(x, -50);
-      st.fine(fc(q[0]), fc(q[1]) + 0.5, PAL.navy[0], OWN.pad);
-    }
-    for (const x of [-9, -5, -1]) {
-      const q = xf.p(x, -50);
-      st.fine(fc(q[0]), fc(q[1]), PAL.navy[2], OWN.pad);
-      st.fine(fc(q[0]) + 0.5, fc(q[1]) + 0.5, PAL.navy[0], OWN.pad);
-    }
-    for (const x of [-8, -4, 0]) {
-      const q = xf.p(x, -49);
-      st.fine(fc(q[0]), fc(q[1]), PAL.gold[3], OWN.pad);
-      st.fine(fc(q[0]) + 0.5, fc(q[1]), PAL.gold[1], OWN.pad);
-      st.fine(fc(q[0]), fc(q[1]) + 0.5, PAL.gold[1], OWN.pad);
-    }
-    return;
-  }
   // Quilting dots and three gold rivets on the front rim.
   for (const x of [-9, -5, -1]) {
     const q = xf.ip(x, -50);
@@ -870,19 +747,17 @@ function drawHandles(st: Stack, xf: Xf, folded: boolean): void {
 /** Water fx above the surface: foam at the hull, a bow wave, two wake dashes (look.md §5.8). */
 function waterMarks(h: Harvest, alt: boolean): void {
   const { buf, oy } = h;
-  const k = h.d ?? 1;
-  // Logical grid (at 2× each mark is a 2 × 2 block, the hull span is found on 2× pixels).
-  const bw = buf.w / k;
-  const bh = buf.h / k;
+  const bw = buf.w;
+  const bh = buf.h;
   const row = SURFACE - 1 + oy;
   if (row < 0 || row >= bh) return;
   // Hull span on the surface row.
   let x0 = -1;
   let x1 = -1;
   for (let x = 0; x < buf.w; x++) {
-    if ((buf.get(x, (row + 1) * k) & 255) !== 0) {
-      if (x0 < 0) x0 = Math.floor(x / k);
-      x1 = Math.floor(x / k);
+    if ((buf.get(x, row + 1) & 255) !== 0) {
+      if (x0 < 0) x0 = x;
+      x1 = x;
     }
   }
   if (x0 < 0) return;
@@ -890,9 +765,7 @@ function waterMarks(h: Harvest, alt: boolean): void {
   const spray = PAL.sky[3];
   const put = (x: number, y: number, c: Color): void => {
     if (x < 0 || y < 0 || x >= bw || y >= bh) return;
-    for (let j = 0; j < k; j++) {
-      for (let i = 0; i < k; i++) if ((buf.get(x * k + i, y * k + j) & 255) === 0) buf.set(x * k + i, y * k + j, c);
-    }
+    if ((buf.get(x, y) & 255) === 0) buf.set(x, y, c);
   };
   // Foam line outside the hull.
   for (let k = 1; k <= 2; k++) {
@@ -920,19 +793,6 @@ function sparkMarks(h: Harvest, alt: boolean): void {
   const pts: ReadonlyArray<readonly [number, number, Color]> = alt
     ? [[-16, 0, PAL.gold[3]], [-19, -1, PAL.fire[5]], [-22, -2, PAL.gold[2]], [-12, -1, PAL.fire[6]]]
     : [[-14, -1, PAL.gold[3]], [-18, 0, PAL.fire[6]], [-21, -1, PAL.fire[5]], [-24, -3, PAL.gold[2]]];
-  if (h.d === 2) {
-    // 2×: each spark a bright 2× pixel with a short hot streak trailing back along the keel.
-    for (const [dx, dy, c] of pts) {
-      const x = (ox + dx) * 2;
-      const yy = (y + dy) * 2 + 1;
-      for (const [i, cc] of [[0, c], [1, PAL.fire[6]], [2, c]] as const) {
-        const px = x + i;
-        if (px >= 0 && yy >= 0 && px < buf.w && yy < buf.h && (buf.get(px, yy) & 255) === 0) buf.set(px, yy, cc);
-      }
-      if (x >= 0 && yy > 0 && x < buf.w && (buf.get(x, yy - 1) & 255) === 0) buf.set(x, yy - 1, PAL.gold[2]);
-    }
-    return;
-  }
   for (const [dx, dy, c] of pts) {
     const x = ox + dx;
     const yy = y + dy;
@@ -946,13 +806,12 @@ function sparkMarks(h: Harvest, alt: boolean): void {
 function castShadow(st: Stack): void {
   const w = st.buf.w;
   const d = st.buf.data;
-  const k = st.d;
-  for (let y = st.y1; y >= Math.max(2 * k, st.y0); y--) {
+  for (let y = st.y1; y >= Math.max(2, st.y0); y--) {
     for (let x = st.x0; x <= st.x1; x++) {
       const i = y * w + x;
       if (st.own[i] !== OWN.hull) continue;
       let under = false;
-      for (let j = 1; j <= 2 * k && !under; j++) under = st.own[i - j * w] === OWN.nearWing;
+      for (let j = 1; j <= 2 && !under; j++) under = st.own[i - j * w] === OWN.nearWing;
       if (!under) continue;
       const c = d[i];
       d[i] = c === PAL.snow[3] ? PAL.snow[2] : c === PAL.snow[2] ? PAL.snow[1] : c === PAL.snow[1] ? PAL.snow[0] : c;
@@ -961,36 +820,16 @@ function castShadow(st: Stack): void {
   st.buf.touch();
 }
 
-const stacks: Partial<Record<1 | 2, Stack>> = {};
-
-/** Pixels of 2× body art cut off at the edge of the 1× frame rectangle (tests, tools). */
-export const hiCut = { px: 0, frames: 0 };
+let stack: Stack | null = null;
 
 /**
  * Render one body frame (and its front overlay for ridden strips). Points (look.md §8.1):
  * `seat`, `neck`, `hull`, `smoke`, `perch`, `wake`, `footN`, `footF`, `muzzle` / `cannon` (the
  * 0° beak-tip fallback for the base class), plus `head` for frames with the neck drawn in and
- * any extra points of the pose.
+ * any extra points of the pose. The 2× and 4× frames: `renderBodyHd` (hd-body.art.ts).
  */
-export function renderBody(style: SwanStyle, pose: BodyPose, density: 1 | 2 = 1): BodyOut {
-  const lo = withKitDensity(1, () => drawBody(style, pose, null));
-  if (density === 1) return lo.out;
-  return withKitDensity(2, () => drawBody(style, pose, lo)).out;
-}
-
-/** A body frame drawn at the kit's density, and the lift that set it on the ground line. */
-interface Drawn {
-  out: BodyOut;
-  lift: number;
-}
-
-/**
- * Draw one body frame at the kit's density. At 2× (`base` = the 1× result) the art is placed in
- * the 2× twin of the 1× frame rectangle with the 1× lift and points, so both densities share
- * one logical geometry.
- */
-function drawBody(style: SwanStyle, pose: BodyPose, base: Drawn | null): Drawn {
-  const st = (stacks[kitDensity()] ??= new Stack());
+export function renderBody(style: SwanStyle, pose: BodyPose): BodyOut {
+  const st = (stack ??= new Stack());
   st.reset();
   const xf = new Xf(pose.tilt + (pose.roll ?? 0), pose.dx ?? 0, pose.dy);
   const nearBack = BACK_POSES.has(pose.wingN.p);
@@ -1030,24 +869,6 @@ function drawBody(style: SwanStyle, pose: BodyPose, base: Drawn | null): Drawn {
   const h = harvest(st, { surface, extra: marks.length > 0 ? [-48, -24, 34, 4] : undefined });
   if (marks.includes('foam') || marks.includes('foam2')) waterMarks(h, marks.includes('foam2'));
   if (marks.includes('sparks') || marks.includes('sparks2')) sparkMarks(h, marks.includes('sparks2'));
-  if (base) {
-    const { lift, out } = base;
-    const pts = out.body.pts ?? {};
-    const lb = out.body;
-    const pb = placeHi(h.buf, h.ox, h.oy, lb.buf.w, lb.buf.h, lb.ox, lb.oy + lift, true);
-    noteCut(pb.cut);
-    const body: Frame = { buf: pb.buf, ox: lb.ox, oy: lb.oy, pts, density: 2 };
-    let front: Frame | null = null;
-    if (out.front) {
-      const lf = out.front;
-      const cut = cutFrontHi(h, xf, pose, !nearBack, lift);
-      const pf = placeHi(cut, h.ox, h.oy, lf.buf.w, lf.buf.h, lf.ox, lf.oy + lift, 'outline');
-      if (lf.buf.w > 1) noteCut(pf.cut);
-      front = { buf: pf.buf, ox: lf.ox, oy: lf.oy, pts, density: 2 };
-    }
-    st.reset();
-    return { out: { body, front }, lift };
-  }
   // Rolled frames rest their lowest pixel on the ground line; no frame ever sinks below it (a
   // tilted keel corner, a tucked beak): move the art, keep the anchor. Points move with it.
   let lift = 0;
@@ -1081,75 +902,7 @@ function drawBody(style: SwanStyle, pose: BodyPose, base: Drawn | null): Drawn {
   const body: Frame = { buf: h.buf, ox: h.ox, oy: h.oy, pts };
   const front = pose.rider ? cutFront(h, xf, pose, !nearBack, pts) : null;
   st.reset();
-  return { out: { body, front }, lift };
-}
-
-function noteCut(n: number): void {
-  if (n > 0) {
-    hiCut.px += n;
-    hiCut.frames++;
-  }
-}
-
-/**
- * `cutFront` at 2× (same parts, same flank band; `lift` = the 1× frame's ground lift), uncropped: the near wing and the flank band
- * with the 2-px outline around them, in a buffer the size of the 2× harvest.
- */
-function cutFrontHi(h: Harvest, xf: Xf, pose: BodyPose, wingFront: boolean, lift: number): PixelBuffer {
-  const { buf, ox, oy, own } = h;
-  const w = buf.w;
-  const hh = buf.h;
-  const keep = new Uint8Array(w * hh);
-  for (let y = 0; y < hh; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      const o = own[i];
-      if (o === 0 || (buf.data[i] & 255) === 0) continue;
-      if (o === OWN.nearWing && wingFront) {
-        keep[i] = 1;
-        continue;
-      }
-      if (pose.low) continue;
-      if (o === OWN.hull || o === OWN.pad || o === OWN.handle) {
-        // The 1× test on the logical pixel under this 2× pixel (with the 1× anchor, moved by the
-        // lift): the band ends where the 1× band does.
-        const r = xf.inv(Math.floor(x / 2) - ox, Math.floor(y / 2) - (oy - lift));
-        if (r[0] >= -15.5 && r[0] <= 11.5 && r[1] >= -49.5 && r[1] <= -36.5) keep[i] = 1;
-      }
-    }
-  }
-  // The outline pixels next to the kept parts: the first ring (4-neighbours), then the second
-  // (8-neighbours of the parts and the first ring).
-  const ring = new Uint8Array(w * hh);
-  const line = (i: number): boolean => own[i] === 0 && (buf.data[i] & 255) !== 0;
-  for (let y = 0; y < hh; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      if (keep[i] || !line(i)) continue;
-      if ((x > 0 && keep[i - 1]) || (x < w - 1 && keep[i + 1]) || (y > 0 && keep[i - w]) || (y < hh - 1 && keep[i + w])) ring[i] = 1;
-    }
-  }
-  const out = new PixelBuffer(w, hh);
-  for (let y = 0; y < hh; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      let take = keep[i] === 1 || ring[i] === 1;
-      if (!take && line(i)) {
-        for (let dy = -1; dy <= 1 && !take; dy++) {
-          for (let dx = -1; dx <= 1 && !take; dx++) {
-            const xx = x + dx;
-            const yy = y + dy;
-            if (xx < 0 || yy < 0 || xx >= w || yy >= hh) continue;
-            const k = yy * w + xx;
-            take = keep[k] === 1 || ring[k] === 1;
-          }
-        }
-      }
-      if (take) out.data[i] = buf.data[i];
-    }
-  }
-  out.touch();
-  return out;
+  return { body, front };
 }
 
 /**

@@ -25,6 +25,7 @@ THIS WAVE: UHD art - arcade-level FIDELITY at 2x and 4x art density for the miss
 
 THE APPROVED PLAN: ${PLAN} - read it first (Context, User decisions, Fidelity targets, Architecture, your group's section, Style decisions). It is final; do not re-litigate it.
 REPORTS OF EARLIER GROUPS (read them; do the requests that name YOUR files): ${PRIOR_REPORTS}
+OPEN ITEMS: ${ROOT}/tmp/uhd-polish-todo.md (if it exists) lists known issues found so far; fix the ones that fall inside YOUR files and say so in your report.${FEEDBACK && GROUP !== 'style' ? `\nLEAD NOTES FOR THIS GROUP: ${FEEDBACK}` : ''}
 BUDGET: ${ROOT}/tmp/uhd-budget.md once it exists (written by the lead after group 'found').
 FIDELITY YARDSTICK: ${ROOT}/tmp/uhd-ref/ (README.md first). ref.png / soldiers.png are a screenshot of the 1990s arcade reference: use them ONLY to judge the LEVEL (tones per material, form shading, contrast, clean clusters, outlines, texture, wear, depth). Never copy, trace or sample colours from them; never put them or any part of them in src/, public/, docs/ or tests/. ours-today-*.png show our game before the wave (keep our identity).
 

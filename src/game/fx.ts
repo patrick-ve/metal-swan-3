@@ -18,10 +18,12 @@ import { Entity, hostile, type Damage, type DamageKind, type Team } from '../eng
 import { TRANSPARENT, withAlpha, type Color } from '../engine/color';
 import { distToRect } from '../engine/math';
 import { PAL } from '../engine/palette';
+import { hdHome } from '../engine/palette-hd';
 import type { ParticlePreset } from '../engine/particles';
 import { PixelBuffer } from '../engine/pixel';
-import type { DrawOpts, Renderer } from '../engine/render';
-import { Animator, frameCount, hasSprite, type PlayOpts } from '../engine/sprites';
+import type { DrawOpts, Frame, Renderer } from '../engine/render';
+import { drawDensity } from '../engine/render-common';
+import { Animator, artDensity, frameCount, hasSprite, hiArtOn, type PlayOpts } from '../engine/sprites';
 import type { World } from '../engine/world';
 import { acquire, release } from './pool';
 
@@ -898,10 +900,28 @@ export function drawShadow(r: Renderer, x: number, y: number, w: number, alpha =
 
 const aimOpts: DrawOpts = {};
 
+/** HD aim dots (½ logical px, a lit core) per colour and density, built once. */
+const aimDots = new Map<number, Frame>();
+
+function aimDot(c: Color, d: number): Frame {
+  const key = (c >>> 8) * 8 + d;
+  let f = aimDots.get(key);
+  if (f) return f;
+  const home = hdHome(c);
+  const n = Math.max(1, d >> 1);
+  const b = new PixelBuffer(n, n);
+  b.fill(home ? home.ramp[Math.min(home.ramp.length - 1, home.i + 1)] : c);
+  if (n > 1) b.set(n - 1, n - 1, c);
+  f = { buf: b, ox: 0, oy: 0, density: d };
+  aimDots.set(key, f);
+  return f;
+}
+
 /**
  * A sniper's aim line (GDD §9.1 `piccolo`): crimson dots on every other pixel from (x0, y0) to
  * (x1, y1); `locked` draws it solid (the shot comes in 12 ticks). `phase` (e.g. world.tick)
- * makes the dots crawl toward the target. World space; no allocation.
+ * makes the dots crawl toward the target. World space; no allocation. While a dense mission
+ * draws (art tier ≥ 2) the dots are ½ logical px on art px, twice as dense (finer, the same ink).
  */
 export function drawAimLine(r: Renderer, x0: number, y0: number, x1: number, y1: number, locked = false, phase = 0, color: Color = PAL.red[3]): void {
   const dx = x1 - x0;
@@ -909,6 +929,19 @@ export function drawAimLine(r: Renderer, x0: number, y0: number, x1: number, y1:
   const n = Math.max(Math.abs(dx), Math.abs(dy));
   if (n < 1) return;
   aimOpts.alpha = 1;
+  const ad = artDensity();
+  const d = ad >= 2 && r.res >= 2 && hiArtOn() ? drawDensity(ad, r.res) : 1;
+  if (d >= 2) {
+    const f = aimDot(color, d);
+    const step = locked ? 0.5 : 1;
+    const sx = (dx / n) * step;
+    const sy = (dy / n) * step;
+    const m = Math.floor(n / step);
+    for (let i = locked ? 0 : phase & 1; i <= m; i += locked ? 1 : 2) {
+      r.frame(f, Math.round((x0 + sx * i + 0.25) * d) / d, Math.round((y0 + sy * i + 0.25) * d) / d, aimOpts);
+    }
+    return;
+  }
   if (locked) {
     r.line(Math.round(x0), Math.round(y0), Math.round(x1), Math.round(y1), color, aimOpts);
     return;

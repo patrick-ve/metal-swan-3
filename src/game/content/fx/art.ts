@@ -11,9 +11,10 @@
  * stick-on-moustache, snow-puff, ice-cubes): gags.art.ts; fx/tin-feather is the Swan art's. Muzzle flashes
  * fx/muzzle-*: weapons/art.ts.
  *
- * 2× art (mission ams, docs/ART_GUIDE.md "2x art (mission ams)"): the explosions in
- * explosion.art.ts (`explosionFramesHi`), the other fx that ams shows in hi.art.ts; the muzzle
- * flashes have theirs next to their 1× art (weapons/art.ts, weapons/shots.art.ts).
+ * HD art (2× and 4×, mission ams, docs/ART_GUIDE.md "UHD art"): one density-generic drawer per
+ * id in fx/hd/ — explosions (hd/explosion.ts, registered below), the small fx (hd/small.ts,
+ * registered in hd.art.ts), the chute (chute.art.ts), the snore (snore.art.ts), the flashes and
+ * shots (hd/shots.ts, registered in weapons/art.ts and weapons/shots.art.ts).
  *
  * This module also loads the shared art rigs that register at import time: background
  * generators (bg.ts) and the terrain painter (terrain-art.ts). UI art has its own manifest
@@ -28,10 +29,11 @@ import { defineSprite } from '../../../engine/sprites';
 import '../../art/bg';
 import '../../art/terrain-art';
 import { bayer } from '../../art/paint';
-import { cloudFrames, explosionFrames, explosionFramesHi, type ExplosionSpec } from './explosion.art';
+import { cloudFrames, explosionFrames, type ExplosionSpec } from './explosion.art';
+import { explosionFramesHd } from './hd/explosion';
 import { defineGagSprites } from './gags.art';
 // 2× art of the fx that mission ams shows (registers at import).
-import './hi.art';
+import './hd.art';
 // The player's drop canopy (fx/chute, fx/chute-collapse; mission ams intro drop).
 import './chute.art';
 
@@ -46,7 +48,8 @@ const EXPLOSIONS: ReadonlyArray<[string, ExplosionSpec, number]> = [
   ['xl', { radius: 40, frames: 12, seed: 51, puffs: 10, chunky: true }, 4],
 ];
 for (const [size, spec, tpf] of EXPLOSIONS) {
-  defineSprite(`fx/explosion-${size}`, () => explosionFrames(spec), { ticksPerFrame: tpf, loop: false, hi: () => explosionFramesHi(spec) });
+  const id = `fx/explosion-${size}`;
+  defineSprite(id, () => explosionFrames(spec), { ticksPerFrame: tpf, loop: false, hd: (d) => explosionFramesHd(id, spec, d) });
 }
 
 const smokePuff = (): Frame[] => cloudFrames(6, 6, [PAL.stone[0], PAL.stone[1], PAL.stone[2], PAL.stone[3]], PAL.ink[1], 5);

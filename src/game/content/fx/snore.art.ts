@@ -1,8 +1,8 @@
 /**
  * Snore for the player's time-out sleep (anim wave p2, plan Phase 2 row 15): `fx/snore`, 6
  * frames × 8 ticks, loop, deferred (a rare strip). Little "z" letters (white, ink outline) rise
- * up and forward from the sleeper's head, growing from 3 to 5 px, and fade at the top. The 2×
- * twin draws the same letters on the 2× grid with a thinner stroke (same logical geometry).
+ * up and forward from the sleeper's head, growing from 3 to 5 px, and fade at the top. The HD
+ * twins (2× and 4×, fx/hd/small.ts `snoreHd`) draw the same letters as lit strokes.
  *
  * Anchor: bottom-left of the frame box (put it at the head point).
  */
@@ -11,6 +11,7 @@ import { PixelBuffer } from '../../../engine/pixel';
 import { INK, PAL } from '../../../engine/palette';
 import type { Frame } from '../../../engine/render';
 import { defineSprite } from '../../../engine/sprites';
+import { snoreHd } from './hd/small';
 
 const W = 16;
 const H = 18;
@@ -46,8 +47,9 @@ function snoreFrame(i: number, d: number): Frame {
   return { buf: b.touch(), ox: 0, oy: H, ...(d > 1 ? { density: d } : {}) };
 }
 
+// HD art (2× and 4×): fx/hd/small.ts `snoreHd` (lit letters, outline A).
 defineSprite('fx/snore', () => Array.from({ length: FRAMES }, (_, i) => snoreFrame(i, 1)), {
   ticksPerFrame: 8,
   defer: true,
-  hi: () => Array.from({ length: FRAMES }, (_, i) => snoreFrame(i, 2)),
+  hd: (d) => snoreHd('fx/snore', d),
 });

@@ -26,11 +26,13 @@
  * - `fx/tin-feather` (4, centre) and `fx/muzzle-swan-beak-gun` (2, centre, round: fits every aim);
  *   `vehicle/swan/beak-flash` is the same flash under a Swan-owned id (the one the logic draws).
  *
- * 2× art (mission ams, docs/ART_GUIDE.md "2x art (mission ams)"): every `vehicle/swan/…` and
+ * UHD art (mission ams, docs/ART_GUIDE.md "UHD art"): every `vehicle/swan/…` and
  * `vehicle/swan-mute/…` id (bodies, front overlays, necks, scuffs, egg, beak flash) and
- * `fx/tin-feather` / `fx/muzzle-swan-beak-gun` also register a 2× generator: the same rig drawn
- * by the kit at density 2 (`renderBody(…, 2)`, `renderNeckFrame(…, 2)`), in the 2× rectangle of
- * the 1× frame with its points. The sock variants (mission m3 only) stay 1×.
+ * `fx/tin-feather` / `fx/muzzle-swan-beak-gun` also register ONE density-generic generator for
+ * the 2× and the 4× art (`defineHdSprite`): new art drawn natively on the UHD kit's lit canvas
+ * (`hd-body.art.ts`, `hd-head.art.ts`, `hd-extras.art.ts` over `hd-kit.art.ts`) from the 1× rig's
+ * geometry, in the rectangle of the 1× frame with its anchor and points. The sock variants
+ * (mission m3 only) stay 1×.
  *
  * The head drawing is shared with the HUD and menus: `drawSwanHead(buf, cx, cy, opts)` paints the
  * ivory dome, lens eye, navy face patch and orange beak (or the Mute's black head) into any
@@ -38,13 +40,17 @@
  * `ui/cursor-swan`).
  */
 import type { Frame } from '../../../../engine/render';
-import { defineHiSprite, defineSprite, getFrames, type SpriteOpts } from '../../../../engine/sprites';
+import { defineHdSprite, defineSprite, getFrames, type SpriteOpts } from '../../../../engine/sprites';
 import { scorch } from '../../../art/human-fx';
 import type { BodyOut, SwanStyle } from './body.art';
 import { renderBody } from './body.art';
-import { beakFlashFrames, eggFrames, scuffFrames, scuffFramesHi, tinFeatherFrames } from './extras.art';
+import { beakFlashFrames, eggFrames, scuffFrames, tinFeatherFrames } from './extras.art';
 import type { NeckSpec, SwanColour } from './head.art';
 import { renderNeckFrame } from './head.art';
+import { type BodyHd, renderBodyHd } from './hd-body.art';
+import { beakFlashFramesHd, eggFramesHd, scuffFramesHd, tinFeatherFramesHd } from './hd-extras.art';
+import { renderNeckFrameHd } from './hd-head.art';
+import type { D } from './hd-kit.art';
 import type { NeckVariant, StripDef } from './poses.art';
 import { NECK_CROUCH, NECK_DUCK, NECK_HONK, NECK_LAND, NECK_RELAX, NECK_WATER, RIDDEN, RIDERLESS, neckVariant } from './poses.art';
 
@@ -80,21 +86,20 @@ function optsOf(def: StripDef): SpriteOpts {
  */
 const pending = new Map<string, { out: BodyOut[]; body: boolean; front: boolean }>();
 
-function riddenRender(colour: SwanColour, anim: string, part: 'body' | 'front', density: 1 | 2 = 1): Frame[] {
-  const key = `${colour}/${anim}@${density}`;
-  let e = pending.get(key);
+function riddenRender(colour: SwanColour, anim: string, part: 'body' | 'front'): Frame[] {
+  let e = pending.get(colour + '/' + anim);
   if (!e) {
     const style: SwanStyle = { colour, socks: false };
-    e = { out: RIDDEN[anim].frames.map((p) => renderBody(style, p, density)), body: false, front: false };
-    pending.set(key, e);
+    e = { out: RIDDEN[anim].frames.map((p) => renderBody(style, p)), body: false, front: false };
+    pending.set(colour + '/' + anim, e);
   }
   e[part] = true;
-  if (e.body && e.front) pending.delete(key);
+  if (e.body && e.front) pending.delete(colour + '/' + anim);
   return e.out.map((o) => (part === 'body' ? o.body : (o.front ?? o.body)));
 }
 
-function bodyFrames(style: SwanStyle, def: StripDef, density: 1 | 2 = 1): Frame[] {
-  return def.frames.map((p) => renderBody(style, p, density).body);
+function bodyFrames(style: SwanStyle, def: StripDef): Frame[] {
+  return def.frames.map((p) => renderBody(style, p).body);
 }
 
 for (const [pre, style] of Object.entries(SWAN_BODY_PREFIXES)) {
@@ -118,17 +123,46 @@ for (const [pre, style] of Object.entries(SWAN_BODY_PREFIXES)) {
   }
 }
 
-// 2× bodies (mission ams): the ivory Swan and the Mute, never the m3 sock variants.
+// ------------------------------------------------------------------------------------ HD bodies
+
+/**
+ * One HD render of a ridden strip gives both the body frames and the front overlays (drawn in the
+ * rectangles of the 1× frames, with their anchors and points); the half not asked for yet waits
+ * here, as at 1×.
+ */
+const pendingHd = new Map<string, { out: BodyHd[]; body: boolean; front: boolean }>();
+
+function riddenHd(pre: string, colour: SwanColour, anim: string, part: 'body' | 'front', d: D): Frame[] {
+  const key = `${colour}/${anim}@${d}`;
+  let e = pendingHd.get(key);
+  if (!e) {
+    const style: SwanStyle = { colour, socks: false };
+    const lo = getFrames(`${pre}/${anim}`, 1);
+    const lf = getFrames(`${pre}/${anim}-front`, 1);
+    e = { out: RIDDEN[anim].frames.map((p, i) => renderBodyHd(style, p, d, lo[i], lf[i])), body: false, front: false };
+    pendingHd.set(key, e);
+  }
+  e[part] = true;
+  if (e.body && e.front) pendingHd.delete(key);
+  return e.out.map((o) => (part === 'body' ? o.body : (o.front ?? o.body)));
+}
+
+function bodyHd(id: string, style: SwanStyle, def: StripDef, d: D): Frame[] {
+  const lo = getFrames(id, 1);
+  return def.frames.map((p, i) => renderBodyHd(style, p, d, lo[i], null).body);
+}
+
+// UHD bodies (mission ams, 2× and 4×): the ivory Swan and the Mute, never the m3 sock variants.
 for (const [pre, style] of Object.entries(SWAN_BODY_PREFIXES)) {
   if (style.socks) continue;
   for (const anim of Object.keys(RIDDEN)) {
-    if (anim === 'move') defineHiSprite(`${pre}/move`, () => [...getFrames(`${pre}/run`, 2)]);
-    else defineHiSprite(`${pre}/${anim}`, () => riddenRender(style.colour, anim, 'body', 2));
+    if (anim === 'move') defineHdSprite(`${pre}/move`, (d) => [...getFrames(`${pre}/run`, d)]);
+    else defineHdSprite(`${pre}/${anim}`, (d) => riddenHd(pre, style.colour, anim, 'body', d));
   }
   for (const [anim, def] of Object.entries(RIDERLESS)) {
-    defineHiSprite(
+    defineHdSprite(
       `${pre}/${anim}`,
-      anim === 'migrate-soot' ? () => bodyFrames(style, def, 2).map((f) => scorch(f, 2)) : () => bodyFrames(style, def, 2),
+      anim === 'migrate-soot' ? (d) => bodyHd(`${pre}/${anim}`, style, def, d).map((f) => scorch(f, 2)) : (d) => bodyHd(`${pre}/${anim}`, style, def, d),
     );
   }
 }
@@ -141,9 +175,9 @@ for (const [pre, colour] of Object.entries(SWAN_COLOUR_PREFIXES)) {
       continue;
     }
     defineSprite(`${pre}/${anim}-front`, () => riddenRender(colour, anim, 'front'), opts);
-    defineHiSprite(`${pre}/${anim}-front`, () => riddenRender(colour, anim, 'front', 2));
+    defineHdSprite(`${pre}/${anim}-front`, (d) => riddenHd(pre, colour, anim, 'front', d));
   }
-  defineHiSprite(`${pre}/move-front`, () => [...getFrames(`${pre}/run-front`, 2)]);
+  defineHdSprite(`${pre}/move-front`, (d) => [...getFrames(`${pre}/run-front`, d)]);
 }
 
 // ------------------------------------------------------------------------------------ necks
@@ -153,8 +187,14 @@ const NECK_FACES: readonly NeckVariant[] = ['', 'fire', 'shell', 'blink', 'hurt'
 /** Timing of the face variants (look.md §9): fire 2 per round, shell 6, blink 6, hurt 12. */
 const FACE_TICKS: Readonly<Record<NeckVariant, number>> = { '': 30, fire: 2, shell: 6, blink: 6, hurt: 12 };
 
-function neckStrip(colour: SwanColour, specs: readonly NeckSpec[], v: NeckVariant, density: 1 | 2 = 1): () => Frame[] {
-  return () => specs.map((s) => renderNeckFrame(neckVariant(s, v), colour, density));
+function neckStrip(colour: SwanColour, specs: readonly NeckSpec[], v: NeckVariant): () => Frame[] {
+  return () => specs.map((s) => renderNeckFrame(neckVariant(s, v), colour));
+}
+
+/** The HD frames of a neck strip, each in its 1× frame's rectangle. */
+function neckStripHd(id: string, colour: SwanColour, specs: readonly NeckSpec[], d: D): Frame[] {
+  const lo = getFrames(id, 1);
+  return specs.map((s, i) => renderNeckFrameHd(s, colour, d, lo[i]));
 }
 
 for (const [pre, colour] of Object.entries(SWAN_COLOUR_PREFIXES)) {
@@ -167,8 +207,9 @@ for (const [pre, colour] of Object.entries(SWAN_COLOUR_PREFIXES)) {
   for (const [name, specs] of postures) {
     for (const v of NECK_FACES) {
       // Aim frames are picked by code (no animation): loop off, the face's own hold time.
-      defineSprite(`${pre}/${name}${v ? `-${v}` : ''}`, neckStrip(colour, specs, v), { ticksPerFrame: FACE_TICKS[v], loop: false });
-      defineHiSprite(`${pre}/${name}${v ? `-${v}` : ''}`, neckStrip(colour, specs, v, 2));
+      const id = `${pre}/${name}${v ? `-${v}` : ''}`;
+      defineSprite(id, neckStrip(colour, specs, v), { ticksPerFrame: FACE_TICKS[v], loop: false });
+      defineHdSprite(id, (d) => neckStripHd(id, colour, specs.map((sp) => neckVariant(sp, v)), d));
     }
   }
   // The relaxed S: f0 open eye, f1 the blink.
@@ -177,10 +218,10 @@ for (const [pre, colour] of Object.entries(SWAN_COLOUR_PREFIXES)) {
   defineSprite(`${pre}/swim-neck-relax`, relax, { durations: [180, 6] });
   // HONK: inhale, HONK (beak wide), hold — follows the `honk` body strip (f0–2, f3, f4).
   defineSprite(`${pre}/neck-honk`, () => NECK_HONK.map((s) => renderNeckFrame(s, colour)), { durations: [10, 4, 6], loop: false });
-  const relaxHi = (): Frame[] => [renderNeckFrame(NECK_RELAX, colour, 2), renderNeckFrame({ ...NECK_RELAX, eye: 'blink' }, colour, 2)];
-  defineHiSprite(`${pre}/neck-relax`, relaxHi);
-  defineHiSprite(`${pre}/swim-neck-relax`, relaxHi);
-  defineHiSprite(`${pre}/neck-honk`, () => NECK_HONK.map((s) => renderNeckFrame(s, colour, 2)));
+  const relaxSpecs: NeckSpec[] = [NECK_RELAX, { ...NECK_RELAX, eye: 'blink' }];
+  defineHdSprite(`${pre}/neck-relax`, (d) => neckStripHd(`${pre}/neck-relax`, colour, relaxSpecs, d));
+  defineHdSprite(`${pre}/swim-neck-relax`, (d) => neckStripHd(`${pre}/swim-neck-relax`, colour, relaxSpecs, d));
+  defineHdSprite(`${pre}/neck-honk`, (d) => neckStripHd(`${pre}/neck-honk`, colour, NECK_HONK, d));
 }
 
 // ------------------------------------------------------------------------------------ extras
@@ -194,9 +235,9 @@ defineSprite('fx/muzzle-swan-beak-gun', beakFlashFrames, { ticksPerFrame: 2, loo
 // also registers `fx/muzzle-swan-beak-gun` (a forward-only weapon flash) cannot change her look.
 defineSprite('vehicle/swan/beak-flash', beakFlashFrames, { ticksPerFrame: 2, loop: false });
 
-// 2× extras (mission ams).
-defineHiSprite('vehicle/swan/scuffs', scuffFramesHi);
-defineHiSprite('vehicle/swan/egg', () => eggFrames(2));
-defineHiSprite('fx/tin-feather', () => tinFeatherFrames(2));
-defineHiSprite('fx/muzzle-swan-beak-gun', () => beakFlashFrames(2));
-defineHiSprite('vehicle/swan/beak-flash', () => beakFlashFrames(2));
+// UHD extras (mission ams, 2× and 4×), each in its 1× frames' rectangles.
+defineHdSprite('vehicle/swan/scuffs', (d) => scuffFramesHd(d, getFrames('vehicle/swan/scuffs', 1)));
+defineHdSprite('vehicle/swan/egg', (d) => eggFramesHd(d, getFrames('vehicle/swan/egg', 1)));
+defineHdSprite('fx/tin-feather', (d) => tinFeatherFramesHd(d, getFrames('fx/tin-feather', 1)));
+defineHdSprite('fx/muzzle-swan-beak-gun', (d) => beakFlashFramesHd(d, getFrames('fx/muzzle-swan-beak-gun', 1)));
+defineHdSprite('vehicle/swan/beak-flash', (d) => beakFlashFramesHd(d, getFrames('vehicle/swan/beak-flash', 1)));
