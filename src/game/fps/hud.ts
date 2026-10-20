@@ -4,11 +4,15 @@
  * game steps (the face, the damage / pickup flashes, the edge markers); the draw functions read
  * the game. Sprite ids come from the art group (§8); an id that is not registered yet draws a
  * plain stand-in shape (never magenta in the shipped HUD). Nothing here changes the simulation.
+ *
+ * UHD: the bar, its icons, the face and the weapon view draw their dense frames (2× / 4×) at the
+ * art tier (`hudDensity`) when those frames are READY (the fps loader builds them in the art pool);
+ * a frame never generates here, so a missing dense frame draws the next lower one.
  */
 import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer, TextOpts } from '../../engine/render';
 import type { Rng } from '../../engine/rng';
-import { getFrame, hasSprite } from '../../engine/sprites';
+import { artTier, getFrame, hasFramesAt, hasSprite, hiArtOn } from '../../engine/sprites';
 import { PLAYER_COLORS, scoreText, textWidth, uiText } from '../app';
 import { KEY_GOLD, KEY_SILVER } from './doors';
 import { MAX_HP } from './player';
@@ -160,10 +164,28 @@ const plain: DrawOpts = { screen: true };
 const faded: DrawOpts = { screen: true, alpha: 1 };
 const frameOpts: DrawOpts = { screen: true };
 
+/** Density for dense art `want` on a backbuffer of res k (the mission view's rule: 4 only when 4 divides k). */
+export function densityAtRes(want: number, k: number): 1 | 2 | 4 {
+  if (want >= 4 && k >= 4 && k % 4 === 0) return 4;
+  return want >= 2 && k >= 2 ? 2 : 1;
+}
+
+/** The density the HUD art draws at on renderer `r`: the art tier at the backbuffer's res; 1 when dense art is off. */
+export function hudDensity(r: Pick<Renderer, 'res'>): 1 | 2 | 4 {
+  return hiArtOn() ? densityAtRes(artTier(), r.res) : 1;
+}
+
+/** The highest density ≤ `want` at which `id`'s frames are built (1 at least); never generates a dense frame. */
+export function readyDensity(id: string, want: number): number {
+  if (want >= 4 && hasFramesAt(id, 4)) return 4;
+  if (want >= 2 && hasFramesAt(id, 2)) return 2;
+  return 1;
+}
+
 /** Draw frame `index` of sprite `id` with its top-left at (x, y); false when it is not registered. */
 function spriteTL(r: Renderer, id: string, index: number, x: number, y: number): boolean {
   if (!hasSprite(id)) return false;
-  const f = getFrame(id, index, 1);
+  const f = getFrame(id, index, readyDensity(id, hudDensity(r)));
   r.frame(f, x + f.ox, y + f.oy, frameOpts);
   return true;
 }
@@ -253,7 +275,7 @@ export function drawWeaponView(r: Renderer, s: HudSource): void {
   const x = 192;
   const y = BAR_Y + bob + drop + 2;
   if (hasSprite(def.view)) {
-    r.sprite(def.view, frame, x, y, plain);
+    r.frame(getFrame(def.view, frame, readyDensity(def.view, hudDensity(r))), x, y, plain);
     return;
   }
   // Stand-in: a dark glove and a barrel; a flash on fire A.

@@ -12,6 +12,7 @@ import { prepareRayAssets } from '../../engine/ray';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { preloadSprites } from '../../engine/sprites';
+import { requestFpsDenseArt } from '../content/fps/dense-load';
 import { blinkOn, centerText, PLAYER_COLORS, type GameApp } from '../app';
 import { isLazyContent, loadContent } from '../content/index';
 import { MODE_TITLE } from '../content/fps/names';
@@ -119,6 +120,13 @@ async function runLoad(app: GameApp): Promise<void> {
   LOAD.ready = true;
 }
 
+/** The characters whose HUD face the fps run may show (the joined slots; the recruit as the fallback). */
+export function fpsChars(app: GameApp): string[] {
+  const out = new Set<string>(['recruit']);
+  for (const s of app.session?.slots ?? []) if (s.joined && s.character) out.add(s.character);
+  return [...out];
+}
+
 /** The card shows at least this long; PRESS START after CARD_SKIP; it goes on its own at CARD_AUTO. */
 export const CARD_MIN = 120;
 export const CARD_SKIP = 60;
@@ -149,6 +157,8 @@ export class FpsIntroScene implements Scene {
     void loadFpsContent(this.app);
     this.app.input.suppress();
   }
+
+  private readonly chars = (): readonly string[] => fpsChars(this.app);
 
   /** True while the content still loads. */
   get loading(): boolean {
@@ -201,6 +211,8 @@ export class FpsIntroScene implements Scene {
       return;
     }
     const app = this.app;
+    // The dense art (UHD) for the display, in the background while the card shows.
+    requestFpsDenseArt(r, this.chars, app.artCache);
     const def = fpsFloorByNumber(this.floor) ?? fpsFloorByNumber(0);
     const slot = app.session?.slots[this.run.slot];
     centerText(r, MODE_TITLE, 40, PAL.gold[3], 'big');

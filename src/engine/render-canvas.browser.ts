@@ -1,7 +1,7 @@
 import type { Color } from './color';
 import { BLACK, toCss, WHITE } from './color';
-import type { BitmapFont, Glyph } from './font';
-import { getFont, glyphAtlas, layoutText, textPasses, textScale } from './font';
+import type { BitmapFont, Glyph, GlyphDensity, HdTextPass } from './font';
+import { GLYPH_ATLAS_COLS, getFont, glyphAtlas, glyphDensity, hdAtlasCell, hdTextPasses, layoutText, textPasses, textScale } from './font';
 import type { PixelBuffer } from './pixel';
 import { traceLine } from './pixel';
 import type { DrawOpts, Frame, ParallaxOpts, Renderer, TextOpts } from './render';
@@ -23,7 +23,7 @@ import {
   spriteFilter,
   toPx,
 } from './render-common';
-import { getFrame, spriteIdOf } from './sprites';
+import { artTier, getFrame, hiArtOn, spriteIdOf } from './sprites';
 import { upscale, upscaleFactor, type UpscaleMode } from './upscale';
 
 /**
@@ -254,7 +254,8 @@ export class CanvasRenderer implements Renderer {
   private readonly streamMap = new Map<PixelBuffer, StreamSlot>();
   private readonly streamList: StreamSlot[] = [];
   private streamUploads = 0;
-  private readonly atlases = new Map<string, Map<number, AnyCanvas>>();
+  /** Glyph atlases by font, glyph density, pass and atlas scale (a number: no string per draw), then colour. */
+  private readonly atlases = new Map<number, Map<number, AnyCanvas>>();
   private readonly css = new Map<number, string>();
   private readonly place: Placement = { x: 0, y: 0 };
   private readonly ends: LineEnds = { x0: 0, y0: 0, x1: 0, y1: 0 };
@@ -280,6 +281,36 @@ export class CanvasRenderer implements Renderer {
   private readonly textPass = (color: Color, dx: number, dy: number): void => {
     this.textAtlas = this.atlas(this.textFont, color);
     layoutText(this.textStr, dx, dy, this.textFont, this.textAlign, this.drawGlyphAt, this.textScale);
+  };
+  // HD text (glyph density 2 / 4, font.ts `glyphDensity`): the pass, its atlas cell and art px size.
+  private textD: GlyphDensity = 1;
+  private textKind: HdTextPass = 'fill';
+  private textCw = 0;
+  private textCh = 0;
+  /** Atlas px per art px: 1, or the art px size itself when it is uneven (k 3, 5: a 1:1 copy). */
+  private textAs = 1;
+  private readonly drawHdGlyphAt = (g: Glyph, x: number, y: number): void => {
+    const a = this.textAtlas;
+    if (!a) return;
+    const D = this.textD;
+    const f = (this.textScale * this.k) / D;
+    const A = this.textAs;
+    const ring = this.textKind === 'outline';
+    const pad = ring ? 0 : D;
+    const sx = Math.round(((g.index % GLYPH_ATLAS_COLS) * this.textCw + pad) * A);
+    const sy = Math.round((Math.floor(g.index / GLYPH_ATLAS_COLS) * this.textCh + pad) * A);
+    // Whole px: (g.w + 2 − 2·pad / D) cell px of scale·k backbuffer px.
+    const dw = Math.round((g.w * D + 2 * (D - pad)) * f);
+    const dh = Math.round((this.textFont.height * D + 2 * (D - pad)) * f);
+    const back = ring ? D * f : 0;
+    const sw = A === 1 ? dw / f : dw;
+    const sh = A === 1 ? dh / f : dh;
+    this.ctx.drawImage(a, sx, sy, sw, sh, this.textX + x * this.k - back, this.textY + y * this.k - back, dw, dh);
+  };
+  private readonly hdTextPass = (color: Color, kind: HdTextPass, dx: number, dy: number): void => {
+    this.textAtlas = this.atlas(this.textFont, color, this.textD, kind, this.textAs);
+    this.textKind = kind;
+    layoutText(this.textStr, dx, dy, this.textFont, this.textAlign, this.drawHdGlyphAt, this.textScale);
   };
   // Line pixels (logical) are merged into horizontal or vertical runs, one fillRect each.
   private runX = 0;
@@ -503,8 +534,22 @@ export class CanvasRenderer implements Renderer {
     this.textX = toPx(x, k, fine) - (screen ? 0 : this.cx);
     this.textY = toPx(y, k, fine) - (screen ? 0 : this.cy);
     this.textStr = s;
-    textPasses(o, this.textPass);
+    // Glyph density 1: the bitmap atlas as k × k blocks; 2 / 4: the HD glyphs (font.ts).
+    const D = glyphDensity(k, hiArtOn() ? artTier() : 1, this.textScale);
+    if (D === 1) textPasses(o, this.textPass);
+    else {
+      this.textD = D;
+      const cell = hdAtlasCell(this.textFont, D);
+      this.textCw = cell.cw;
+      this.textCh = cell.ch;
+      // Uneven art px (scale·k / D not whole): an atlas drawn at that size (font.ts `glyphEdge`),
+      // copied 1:1, so Canvas places every art px as the software renderer does.
+      const f = (this.textScale * k) / D;
+      this.textAs = Number.isInteger(f) ? 1 : f;
+      hdTextPasses(o, this.hdTextPass);
+    }
     this.textStr = '';
+    this.textAtlas = null;
   }
 
   parallax(
@@ -802,15 +847,17 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
-  private atlas(font: BitmapFont, color: Color): AnyCanvas {
-    let byColor = this.atlases.get(font.id);
+  /** The glyph atlas of a font in one colour: the bitmap one (density 1) or an HD pass's at atlas scale `as` (font.ts `glyphAtlas`). */
+  private atlas(font: BitmapFont, color: Color, d: GlyphDensity = 1, kind: HdTextPass = 'fill', as = 1): AnyCanvas {
+    const key = (((font.id === 'big' ? 1 : 0) * 8 + d) * 4 + (kind === 'fill' ? 0 : kind === 'flat' ? 1 : 2)) * 256 + Math.round(as * 8);
+    let byColor = this.atlases.get(key);
     if (!byColor) {
       byColor = new Map();
-      this.atlases.set(font.id, byColor);
+      this.atlases.set(key, byColor);
     }
     let a = byColor.get(color);
     if (!a) {
-      a = upload(glyphAtlas(font, color), false, false, null);
+      a = upload(glyphAtlas(font, color, d, kind, as), false, false, null);
       byColor.set(color, a);
     }
     return a;

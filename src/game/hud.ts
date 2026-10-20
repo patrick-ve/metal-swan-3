@@ -10,13 +10,21 @@
  * Every element is optional art: `ui/icon-<weapon>` (or `WeaponDef.icon`), `ui/icon-bomb`,
  * `ui/icon-shell`, `ui/icon-life`, `ui/icon-hostage`, `ui/icon-cell`, `ui/onward`,
  * `ui/swan-marker`; missing ones fall back to small shapes or text.
+ *
+ * HD (UHD wave): at art density 2 / 4 (`hudDensity`: the mission's art density, what the
+ * backbuffer shows) the widgets the 1× HUD draws as rects — the timer frame, the boss and status
+ * bars, the special-ready dot, speech bubbles — are HD frames painted here (cached per size and
+ * density) with the same logical geometry; text uses the HD glyphs (font.ts) and the icons their
+ * HD art. At density 1 every pixel is the 1× HUD's.
  */
 import type { Color } from '../engine/color';
 import { measure } from '../engine/font';
 import type { Rect } from '../engine/math';
 import { INK, PAL } from '../engine/palette';
-import type { DrawOpts, Renderer, TextOpts } from '../engine/render';
-import { frameH, frameW, getFrame, hasSprite } from '../engine/sprites';
+import { hdHome, PAL_HD } from '../engine/palette-hd';
+import { PixelBuffer, type Ramp } from '../engine/pixel';
+import type { DrawOpts, Frame, Renderer, TextOpts } from '../engine/render';
+import { artDensity, frameH, frameW, getFrame, hasSprite, hiArtOn } from '../engine/sprites';
 import { Boss } from './boss';
 import type { Bubble, HudState, Pointer } from './context';
 import type { MissionRunner } from './mission/runner';
@@ -69,6 +77,84 @@ function icon(r: Renderer, id: string, x: number, y: number, i = 0): number {
 /** Width of an icon sprite (0 when missing). */
 function iconW(id: string): number {
   return hasSprite(id) ? frameW(getFrame(id, 0)) : 0;
+}
+
+/**
+ * The density of the HUD's HD widgets: the art density the mission draws at (gameplay draws the
+ * HUD inside `withArtDensity`), when the backbuffer has room for it; 1 = the 1× rects.
+ */
+export function hudDensity(r: Renderer): 1 | 2 | 4 {
+  if (!hiArtOn()) return 1;
+  const a = artDensity();
+  if (a >= 4 && r.res >= 4) return 4;
+  if (a >= 2 && r.res >= 2) return 2;
+  return 1;
+}
+
+/** HD widget frames by key (kind, size, variant, density): painted once, drawn every frame. */
+const widgets = new Map<number, Frame>();
+
+/** Widget kinds: the timer panel, a bar trough (v 0 pink, 1 crimson), a bar fill (v: BAR_COLORS), the gem (v 1 lit), a bubble box / tail (v 1 radio). */
+const W_PANEL = 1;
+const W_TROUGH = 2;
+const W_FILL = 3;
+const W_GEM = 4;
+const W_BOX = 5;
+const W_TAIL = 6;
+
+/** The HD widget `kind` of w × h logical px, variant `v`, at density d (cached; no allocation once painted). */
+function widget(kind: number, w: number, h: number, v: number, d: number): Frame {
+  const key = ((((kind * 512 + w) * 64 + h) * 64 + v) * 8 + d) >>> 0;
+  let f = widgets.get(key);
+  if (!f) {
+    // Bubble sizes vary with the text: keep the cache small.
+    if (widgets.size > 96) widgets.clear();
+    f = { buf: paintWidget(kind, w, h, v, d), ox: 0, oy: 0, density: d };
+    widgets.set(key, f);
+  }
+  return f;
+}
+
+function paintWidget(kind: number, w: number, h: number, v: number, d: number): PixelBuffer {
+  switch (kind) {
+    case W_PANEL:
+      return hudPanelHd(w, h, d);
+    case W_TROUGH:
+      return hudBarHd('trough', w, h, v === 1 ? PAL_HD.red : PAL_HD.pink, d);
+    case W_FILL: {
+      const g = glossOf(BAR_COLORS[v] ?? WHITE);
+      // The boss bar (the long one) is segmented at 4×.
+      return hudBarHd('fill', w, h, g.ramp, d, w >= 100 ? 8 : 0, g.top);
+    }
+    case W_GEM:
+      return hudGemHd(d, v === 1);
+    case W_BOX:
+      return bubbleBoxHd(w, h, d, v === 1 ? PAL.navy[1] : PAL.snow[3], INK);
+    default:
+      return bubbleTailHd(d, v === 1 ? PAL.navy[1] : PAL.snow[3], INK);
+  }
+}
+
+/** The HD ramp and lip tone of a bar drawn flat in `c` at 1×: the body keeps `c`, the lip is one tone lighter. */
+function glossOf(c: Color): { ramp: Ramp; top: number } {
+  const home = hdHome(c);
+  if (!home) return { ramp: PAL_HD.snow, top: PAL_HD.snow.length - 1 };
+  return { ramp: home.ramp, top: Math.min(home.ramp.length - 1, home.i + 1) };
+}
+
+/** Variant ids of the bar colours (cache keys). */
+const BAR_COLORS: readonly Color[] = [PAL.red[2], WHITE, PAL.pink[2], RED];
+
+const barOpts: DrawOpts & { src: { x: number; y: number; w: number; h: number } } = { screen: true, src: { x: 0, y: 0, w: 0, h: 0 } };
+
+/** A bar fill of colour `c` (one of BAR_COLORS; w × h logical) at density d, drawn `fill` logical px long. */
+function drawBarHd(r: Renderer, x: number, y: number, w: number, h: number, fill: number, c: Color, d: number): void {
+  if (fill <= 0) return;
+  const v = BAR_COLORS.indexOf(c);
+  const f = widget(W_FILL, w, h, v < 0 ? 1 : v, d);
+  barOpts.src.w = Math.min(w, fill);
+  barOpts.src.h = h;
+  r.frame(f, x, y, barOpts);
 }
 
 /** GDD §13: blink 30 ticks on / 30 off unless noted. */
@@ -220,8 +306,14 @@ function drawVehicle(r: Renderer, v: Vehicle, left: boolean, t: number): void {
   }
   if (specialReady(v)) {
     const dx = x0 + n * 10 + 1;
+    const lit = blink(t, 15);
+    const d = hudDensity(r);
+    if (d > 1) {
+      r.frame(widget(W_GEM, 5, 5, lit ? 1 : 0, d), dx - 1, 21, iconOpts);
+      return;
+    }
     r.rect(dx - 1, 21, 5, 5, INK, iconOpts);
-    r.rect(dx, 22, 3, 3, blink(t, 15) ? GOLD : PAL.gold[2], iconOpts);
+    r.rect(dx, 22, 3, 3, lit ? GOLD : PAL.gold[2], iconOpts);
   }
 }
 
@@ -245,8 +337,15 @@ function drawStatus(r: Renderer, p: Player, left: boolean): void {
     const total = s.def.ticks === Infinity ? 1 : s.def.ticks;
     const frac = s.ticks === Infinity ? 1 : Math.max(0, Math.min(1, s.ticks / total));
     const bx = left ? ix + iw + 2 : ix - 26;
+    const col = frac < 0.2 && blink(p.world.tick, 8) ? RED : PAL.pink[2];
+    const d = hudDensity(r);
+    if (d > 1) {
+      r.frame(widget(W_TROUGH, 26, 4, 0, d), bx - 1, 33, iconOpts);
+      drawBarHd(r, bx, 34, 24, 2, Math.round(24 * frac), col, d);
+      return;
+    }
     r.rect(bx - 1, 33, 26, 4, INK, iconOpts);
-    r.rect(bx, 34, Math.round(24 * frac), 2, frac < 0.2 && blink(p.world.tick, 8) ? RED : PAL.pink[2], iconOpts);
+    r.rect(bx, 34, Math.round(24 * frac), 2, col, iconOpts);
     return;
   }
 }
@@ -262,9 +361,13 @@ function drawTimer(r: Renderer, runner: MissionRunner, ticks: number): void {
   const t = runner.timeLeft;
   if (t === Infinity) return;
   const low = t <= TUNING.timer.alarmAt;
-  r.rect(178, 2, 28, 18, INK, iconOpts);
-  r.rect(179, 3, 26, 16, PAL.ui[0], frameOpts);
-  r.rect(179, 3, 26, 1, PAL.ui[1], iconOpts);
+  const d = hudDensity(r);
+  if (d > 1) r.frame(widget(W_PANEL, 28, 18, 0, d), 178, 2, iconOpts);
+  else {
+    r.rect(178, 2, 28, 18, INK, iconOpts);
+    r.rect(179, 3, 26, 16, PAL.ui[0], frameOpts);
+    r.rect(179, 3, 26, 1, PAL.ui[1], iconOpts);
+  }
   const col = low && !blink(ticks) ? RED : WHITE;
   txt(r, String(Math.max(0, t)).padStart(2, '0'), 192, 6, col, 'center', 'big');
 }
@@ -296,9 +399,15 @@ function drawBossBar(r: Renderer, runner: MissionRunner, ticks: number): void {
   const x = 96;
   const y = 207;
   txt(r, boss.name, VIEW_W >> 1, 198, GOLD, 'center');
+  const fill = Math.round(w * Math.max(0, Math.min(1, boss.healthFrac)));
+  const d = hudDensity(r);
+  if (d > 1) {
+    r.frame(widget(W_TROUGH, w + 2, 6, 1, d), x - 1, y - 1, iconOpts);
+    drawBarHd(r, x, y, w, 4, fill, flash ? WHITE : PAL.red[2], d);
+    return;
+  }
   r.rect(x - 1, y - 1, w + 2, 6, INK, iconOpts);
   r.rect(x, y, w, 4, PAL.red[0], iconOpts);
-  const fill = Math.round(w * Math.max(0, Math.min(1, boss.healthFrac)));
   if (fill > 0) {
     r.rect(x, y, fill, 4, flash ? WHITE : PAL.red[2], iconOpts);
     r.rect(x, y, fill, 1, flash ? WHITE : PAL.red[3], iconOpts);
@@ -452,13 +561,23 @@ export function drawBubble(r: Renderer, b: Bubble): void {
   const y = tipY - 3 - h;
   const fill = b.kind === 'radio' ? PAL.navy[1] : PAL.snow[3];
   const ink = b.kind === 'radio' ? PAL.snow[3] : INK;
+  const tx = Math.max(x + 3, Math.min(x + w - 4, tipX));
+  worldText.color = ink;
+  const d = hudDensity(r);
+  if (d > 1) {
+    // HD: the rounded box (ink edge included) and the tail over its bottom edge.
+    const radio = b.kind === 'radio' ? 1 : 0;
+    r.frame(widget(W_BOX, w + 2, h + 2, radio, d), x - 1, y - 1, worldOpts);
+    r.frame(widget(W_TAIL, 5, 3, radio, d), tx - 2, y + h, worldOpts);
+    r.text(b.text, x + (w >> 1), y + 2, worldText);
+    return;
+  }
   // Outline, box with rounded corners, tail.
   r.rect(x + 1, y - 1, w - 2, h + 2, INK, worldOpts);
   r.rect(x - 1, y + 1, w + 2, h - 2, INK, worldOpts);
   r.rect(x, y, w, h, INK, worldOpts);
   r.rect(x + 1, y, w - 2, h, fill, worldOpts);
   r.rect(x, y + 1, w, h - 2, fill, worldOpts);
-  const tx = Math.max(x + 3, Math.min(x + w - 4, tipX));
   r.rect(tx - 1, y + h, 3, 1, fill, worldOpts);
   r.rect(tx, y + h + 1, 1, 1, fill, worldOpts);
   r.rect(tx - 2, y + h, 1, 2, INK, worldOpts);
@@ -466,7 +585,6 @@ export function drawBubble(r: Renderer, b: Bubble): void {
   r.rect(tx - 1, y + h + 1, 1, 1, INK, worldOpts);
   r.rect(tx + 1, y + h + 1, 1, 1, INK, worldOpts);
   r.rect(tx, y + h + 2, 1, 1, INK, worldOpts);
-  worldText.color = ink;
   r.text(b.text, x + (w >> 1), y + 2, worldText);
 }
 
@@ -498,4 +616,141 @@ function drawPointer(r: Renderer, p: Pointer, ticks: number): void {
   worldText.outline = INK;
   r.text(p.text, x, top - 9, worldText);
   worldText.outline = undefined;
+}
+
+// ---------------------------------------------------------------------------------------------
+// HD widgets (tier 2 / 4): the timer frame, bars, the special-ready gem, speech bubbles
+// ---------------------------------------------------------------------------------------------
+
+/** A buffer of w × h logical px at density d, each art px coloured by `fn(x, y)` at its centre (0 = clear). */
+export function paintHd(w: number, h: number, d: number, fn: (x: number, y: number) => Color): PixelBuffer {
+  const b = new PixelBuffer(w * d, h * d);
+  for (let Y = 0; Y < b.h; Y++) {
+    const y = (Y + 0.5) / d;
+    for (let X = 0; X < b.w; X++) {
+      const c = fn((X + 0.5) / d, y);
+      if (c !== 0) b.data[Y * b.w + X] = c >>> 0;
+    }
+  }
+  return b.touch();
+}
+
+/** Signed distance to a rounded box (negative inside). */
+export function sdBox(x: number, y: number, x0: number, y0: number, x1: number, y1: number, r: number): number {
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const qx = Math.abs(x - cx) - ((x1 - x0) / 2 - r);
+  const qy = Math.abs(y - cy) - ((y1 - y0) / 2 - r);
+  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+}
+
+/**
+ * A glossy charge (cells, bars): `t` 0..1 down its height, `u` along it (logical px from its
+ * start, `len` long): the highlight lip in tone `top` of `ramp`, the lit body one tone lower, a
+ * darker belly, the deep edge at the bottom, and its end one tone darker (one art px).
+ */
+export function glossTone(ramp: Ramp, t: number, u: number, len: number, d: number, top = ramp.length - 1): Color {
+  let i = t < 0.2 ? top : t < 0.6 ? top - 1 : t < 0.85 ? top - 2 : top - 3;
+  if (u > len - 1 / d) i--;
+  return ramp[Math.max(0, i)];
+}
+
+/**
+ * A speech bubble's box, W × H logical px (the ink edge included): a rounded box with an ink edge
+ * one logical px wide and the fill, a cool shade along its lower inner edge.
+ */
+export function bubbleBoxHd(W: number, H: number, d: number, fill: Color, ink: Color): PixelBuffer {
+  const shade = shadeOf(fill);
+  return paintHd(W, H, d, (x, y) => {
+    const s = sdBox(x, y, 0, 0, W, H, 1.6);
+    if (s > 0) return 0;
+    if (s > -1) return ink;
+    return y > H - 1 - 0.6 || (y > H - 2 && s > -1.5) ? shade : fill;
+  });
+}
+
+/**
+ * The tail of a speech bubble: 5 × 3 logical px, its top row over the box's bottom edge (column 2
+ * = the tail's x): the fill runs on from the box between two ink edges one logical px wide that
+ * close smoothly to the tip on the bottom row (the 1× tail's rows: 5, 5, 1 px wide).
+ */
+export function bubbleTailHd(d: number, fill: Color, ink: Color): PixelBuffer {
+  const shade = shadeOf(fill);
+  return paintHd(5, 3, d, (x, y) => {
+    // Half-width of the outer edge: the whole 5 px down to y 1.2, then closing to the tip px.
+    const hw = y < 1.2 ? 2.5 : 2.5 - (y - 1.2) * 1.15;
+    const u = Math.abs(x - 2.5);
+    if (u > hw) return 0;
+    if (y < 0.25 && u < 1.5) return fill;
+    return u < hw - 1 && y < 2 ? (y > 0.5 ? shade : fill) : ink;
+  });
+}
+
+/** The cool shade of a bubble fill (the next lower tone of its HD ramp: snow, navy or its home ramp). */
+function shadeOf(fill: Color): Color {
+  const f = fill >>> 0;
+  const ramp: Ramp = PAL_HD.snow.includes(f) ? PAL_HD.snow : PAL_HD.navy.includes(f) ? PAL_HD.navy : (hdHome(fill)?.ramp ?? PAL_HD.snow);
+  const i = ramp.indexOf(f);
+  return i > 0 ? ramp[i - 1] : fill;
+}
+
+
+/**
+ * The timer frame (w × h logical, the 1× rects: an ink edge, the navy panel, its lit top line):
+ * a rounded ink bezel, a bevelled navy panel (lit top and left lips, deep lower and right ones),
+ * the cool sky top line, four rivets at 4×.
+ */
+export function hudPanelHd(w: number, h: number, d: number): PixelBuffer {
+  const fine = d >= 4;
+  const e = 1 / d;
+  const rivets: readonly (readonly [number, number])[] = [[2.25, 2.75], [w - 2.25, 2.75], [2.25, h - 2.25], [w - 2.25, h - 2.25]];
+  return paintHd(w, h, d, (x, y) => {
+    if (sdBox(x, y, 0, 0, w, h, 1.2) > 0) return 0;
+    if (x < 1 || y < 1 || x > w - 1 || y > h - 1) return PAL_HD.ink[0];
+    if (fine) {
+      for (const [rx, ry] of rivets) {
+        const r = Math.hypot(x - rx, y - ry);
+        if (r < 0.45) return x + y < rx + ry - 0.1 ? PAL_HD.steel[6] : x + y > rx + ry + 0.1 ? PAL_HD.steel[2] : PAL_HD.steel[4];
+      }
+    }
+    if (y < 2) return y < 1 + e ? PAL_HD.sky[2] : PAL_HD.sky[1];
+    if (x < 1 + e) return PAL_HD.navy[3];
+    if (y > h - 1 - e || x > w - 1 - e) return PAL_HD.navy[0];
+    return y < 2 + 2 * e ? PAL_HD.navy[1] : PAL_HD.navy[2];
+  });
+}
+
+/**
+ * A bar of the HUD, w × h logical px: 'trough' = the ink frame with a recessed `ramp` channel
+ * inside (the channel one px in from every side); 'fill' = the glossy charge in `ramp`, its lip
+ * in tone `top` (`notch` > 0: a darker notch every `notch` px at 4×).
+ */
+export function hudBarHd(kind: 'trough' | 'fill', w: number, h: number, ramp: Ramp, d: number, notch = 0, top = ramp.length - 1): PixelBuffer {
+  const e = 1 / d;
+  if (kind === 'trough') {
+    return paintHd(w, h, d, (x, y) => {
+      if (sdBox(x, y, 0, 0, w, h, Math.min(1, h / 4)) > 0) return 0;
+      if (x < 1 || y < 1 || x > w - 1 || y > h - 1) return PAL_HD.ink[0];
+      return y < 1 + e ? ramp[0] : ramp[Math.min(1, ramp.length - 1)];
+    });
+  }
+  return paintHd(w, h, d, (x, y) => {
+    const c = glossTone(ramp, y / h, x, w, d, top);
+    if (notch > 0 && d >= 4 && x > 0.5 && (x % notch) < e && y > e) return ramp[Math.max(0, ramp.indexOf(c) - 1)];
+    return c;
+  });
+}
+
+/** The special-ready dot (5 × 5): a round faceted gold gem in an ink setting; `lit` = the bright blink phase. */
+export function hudGemHd(d: number, lit: boolean): PixelBuffer {
+  const g = PAL_HD.gold;
+  const o = lit ? 1 : 0;
+  return paintHd(5, 5, d, (x, y) => {
+    const r = Math.hypot(x - 2.5, y - 2.5);
+    if (sdBox(x, y, 0, 0, 5, 5, 1.2) > 0) return 0;
+    if (r > 1.75) return PAL_HD.ink[0];
+    if (d >= 4 && r < 0.35 && x < 2.5 && y < 2.5) return PAL_HD.snow[6];
+    const lightSide = x + y < 4.4;
+    return g[Math.min(7, (r < 0.9 ? (lightSide ? 6 : 4) : lightSide ? 5 : 3) + o - 1)];
+  });
 }

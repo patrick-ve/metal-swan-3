@@ -8,18 +8,21 @@
  * push a giant loudspeaker one step closer on every number. At 0 they switch it on, the
  * `game-over` jingle plays and the character salutes against their will (then GAME OVER).
  * Continued in time: the ropes snap, the character punches the speaker over and drops back in.
+ * The gag draws at the art tier (base.ts `screenTier`): like the mission, a 4× frame not built
+ * yet shows its 2× art and is queued.
  */
 import type { InputManager } from '../../engine/input';
 import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { getFrame, hasSprite } from '../../engine/sprites';
+import { getFrame, hasSprite, setArtDensity } from '../../engine/sprites';
 import { blinkOn, centerText, PLAYER_COLORS, scoreText, UI_GOLD, UI_RED, UI_WHITE, type GameApp } from '../app';
 import { getCharacter } from '../registry';
 import type { SlotIndex } from '../session';
 import { TUNING } from '../tuning';
 import { VOICE } from './flow-data';
 import { GameOverScene } from './game-over';
+import { screenTier } from './base';
 
 /**
  * The scene under the continue overlay (docs/design/fps.md §1.10): GameplayScene passes an
@@ -160,7 +163,11 @@ export class ContinueScene implements Scene {
     r.fade(0x05060aff, 0.5);
     const session = this.app.session;
     const slots = session?.slots.filter((s) => s.joined) ?? [];
-    if (this.solo && this.host.continueGag !== false) this.drawGag(r);
+    if (this.solo && this.host.continueGag !== false) {
+      const prev = setArtDensity(screenTier(r));
+      this.drawGag(r);
+      setArtDensity(prev);
+    }
     if (this.phase === 'escape' && this.solo) return;
     centerText(r, 'CONTINUE?', 60, UI_GOLD, 'big');
     const n = this.number;

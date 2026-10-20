@@ -25,7 +25,9 @@ describe('dense aliases of the content', () => {
   it('every alias names a target with its own generator and has its 1× geometry, the same at 2× and 4×', () => {
     const four = listDenseAliases(4);
     expect(four).toEqual(listDenseAliases(2));
-    expect(four.length).toBe(174);
+    // 174 + 14 HUD weapon icon names (weapons/icons.art.ts: the GDD `ui/icon-weapon-<id>` names
+    // and the old art names rocket / flame / bouncer show the weapon's own icon).
+    expect(four.length).toBe(188);
     for (const [id, target] of four) {
       expect(hasSprite(id) && hasSprite(target), id).toBe(true);
       expect(denseTarget(target, 4), id).toBe(target);

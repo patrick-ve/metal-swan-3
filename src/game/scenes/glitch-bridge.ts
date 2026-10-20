@@ -13,11 +13,22 @@
  *
  * All corruption works on palette colours (copies, shifts, `stepShade`): it stays palette-only.
  * Cosmetic randomness only (`fxRng`); no per-tick allocations.
+ *
+ * UHD: the freeze shows the snapshot at the mission's art density; the glitch and the fold work
+ * at the GLITCH DENSITY g = min(that density, 2) (a 4× snapshot is thinned to 2×: a corrupted
+ * frame streamed every tick stays cheap at 4K), with the same random choices in logical px, so
+ * blocks, bands and the banner's jitter are the 1× ones; a shade band steps two tones of the HD
+ * ramps (`hdHome`). The card is rendered at g for the fold, so its text stays crisp while it
+ * squeezes. At density 1 everything is exactly as before. On enter the mission's 4× frames (its
+ * tier-4 working set) are dropped: the route never goes back to the mission, the snapshot is a
+ * copy, and the fps art (dense-load.ts) gets the DENSE_BUDGET_BYTES to itself.
  */
 import { hasSfx } from '../../engine/audio';
+import { generatedSprites, releaseDense } from '../../engine/sprites';
 import type { Color } from '../../engine/color';
 import { hasSong } from '../../engine/music';
 import { PAL, stepShade } from '../../engine/palette';
+import { hdHome } from '../../engine/palette-hd';
 import { PixelBuffer } from '../../engine/pixel';
 import type { DrawOpts, Frame, Renderer } from '../../engine/render';
 import { lowRes } from '../../engine/render-common';
@@ -99,6 +110,11 @@ function snapshot(scene: Scene | undefined, d: number, runner: MissionRunner | n
   return { buf: r.target, ox: 0, oy: 0, density: scene ? d : 1 };
 }
 
+/** Drop every 4× frame but the fps art's (the mission is over); returns the bytes freed. */
+export function releaseMissionDense(): number {
+  return releaseDense(generatedSprites(4).filter((id) => !id.startsWith('fps/')), 4);
+}
+
 export class GlitchBridgeScene implements Scene {
   private readonly app: GameApp;
   private readonly runner: MissionRunner | null;
@@ -107,8 +123,15 @@ export class GlitchBridgeScene implements Scene {
   /** The 1× image the damage accumulates in (blocks), and the frame shown (+ shifts, shades). */
   private readonly base: PixelBuffer;
   private readonly work: PixelBuffer;
+  /** The glitch density (1 or 2) and the frame of the work image at it. */
+  readonly g: number;
+  private readonly workFrame: Frame;
   /** One row (shift scratch). */
-  private readonly row: Uint32Array = new Uint32Array(W);
+  private readonly row: Uint32Array;
+  /** The last shade step looked up (colour → shaded): runs of one colour skip the look-up. */
+  private shadeFrom = -1;
+  private shadeTo = 0;
+  private shadeDelta = 0;
   private readonly fxRng: Rng;
   private _phase: BridgePhase = 'freeze';
   /** Ticks in the current phase. */
@@ -141,10 +164,16 @@ export class GlitchBridgeScene implements Scene {
     // Before scenes.replace runs the gameplay scene's exit: its frame is still intact.
     this.snap = snapshot(o.from, d, this.runner);
     this.bannerY = o.from ? BANNER_Y : PLACEHOLDER_BANNER_Y;
-    const one = lowRes(this.snap.buf, this.snap.density ?? 1);
-    // A copy either way: lowRes returns the snapshot itself at density 1, and a cached buffer else.
-    this.base = one.clone();
+    const sd = this.snap.density ?? 1;
+    this.g = sd >= 2 ? 2 : 1;
+    if (this.g === 1) {
+      const one = lowRes(this.snap.buf, sd);
+      // A copy either way: lowRes returns the snapshot itself at density 1, and a cached buffer else.
+      this.base = one.clone();
+    } else this.base = thinned(this.snap.buf, sd / this.g);
     this.work = this.base.clone();
+    this.workFrame = { buf: this.work, ox: 0, oy: 0, density: this.g };
+    this.row = new Uint32Array(W * this.g);
     this.fxRng = new Rng(((app.session?.seed ?? 1) ^ 0x9b1d93) >>> 0);
     const session = app.session;
     const charId = session ? session.slots[fpsSlotIndex(session)].character : 'recruit';
@@ -179,6 +208,7 @@ export class GlitchBridgeScene implements Scene {
     app.input.suppress();
     app.pointerPressed = false;
     app.audio.music(null, { fadeTicks: 20 });
+    releaseMissionDense();
   }
 
   update(): void {
@@ -283,14 +313,16 @@ export class GlitchBridgeScene implements Scene {
     const k = Math.min(1, Math.max(0, (this.pt - 1) / GLITCH_TICKS));
     const base = this.base;
     const work = this.work;
+    const g = this.g;
+    const GW = W * g;
     // 8×8 blocks copied from random places: lasting damage.
     const blocks = 2 + Math.round(10 * k);
     for (let b = 0; b < blocks; b++) {
-      const sx = rng.int(0, W - 8);
-      const sy = rng.int(0, H - 8);
-      const dx = rng.int(0, W - 8);
-      const dy = rng.int(0, H - 8);
-      for (let y = 0; y < 8; y++) base.data.copyWithin((dy + y) * W + dx, (sy + y) * W + sx, (sy + y) * W + sx + 8);
+      const sx = rng.int(0, W - 8) * g;
+      const sy = rng.int(0, H - 8) * g;
+      const dx = rng.int(0, W - 8) * g;
+      const dy = rng.int(0, H - 8) * g;
+      for (let y = 0; y < 8 * g; y++) base.data.copyWithin((dy + y) * GW + dx, (sy + y) * GW + sx, (sy + y) * GW + sx + 8 * g);
     }
     work.data.set(base.data);
     // Row bands shift sideways (wrapping).
@@ -309,27 +341,47 @@ export class GlitchBridgeScene implements Scene {
     const sy = rng.int(0, H - 2);
     const sn = rng.int(2, 6 + Math.round(10 * k));
     const delta = rng.sign();
-    for (let y = sy; y < Math.min(H, sy + sn); y++) {
-      const o = y * W;
-      for (let x = 0; x < W; x++) work.data[o + x] = stepShade(work.data[o + x] as Color, delta);
+    if (g === 1) {
+      for (let y = sy; y < Math.min(H, sy + sn); y++) {
+        const o = y * W;
+        for (let x = 0; x < W; x++) work.data[o + x] = stepShade(work.data[o + x] as Color, delta);
+      }
+    } else {
+      const data = work.data;
+      for (let i = sy * g * GW, end = Math.min(H, sy + sn) * g * GW; i < end; i++) data[i] = this.shadeHd(data[i], delta);
     }
     work.touch();
   }
 
-  /** Shift `n` rows of the work frame from `y0` sideways by `s` px (wrapping). */
+  /** A colour two tones lighter (+1) or darker (−1) in its HD ramp; other colours stay. */
+  private shadeHd(c: number, delta: number): number {
+    if (c === this.shadeFrom && delta === this.shadeDelta) return this.shadeTo;
+    const h = hdHome(c as Color);
+    let out = c;
+    if (h) out = h.ramp[Math.max(0, Math.min(h.ramp.length - 1, h.i + delta * 2))] >>> 0;
+    this.shadeFrom = c;
+    this.shadeDelta = delta;
+    this.shadeTo = out;
+    return out;
+  }
+
+  /** Shift `n` rows of the work frame from `y0` sideways by `s` px (wrapping); logical px. */
   private shiftRows(y0: number, n: number, s: number): void {
     const data = this.work.data;
     const row = this.row;
-    for (let y = Math.max(0, y0); y < Math.min(H, y0 + n); y++) {
-      const o = y * W;
-      row.set(data.subarray(o, o + W));
-      for (let x = 0; x < W; x++) data[o + ((x + s + W * 4) % W)] = row[x];
+    const g = this.g;
+    const GW = W * g;
+    const sg = s * g;
+    for (let y = Math.max(0, y0) * g; y < Math.min(H, y0 + n) * g; y++) {
+      const o = y * GW;
+      row.set(data.subarray(o, o + GW));
+      for (let x = 0; x < GW; x++) data[o + ((x + sg + GW * 4) % GW)] = row[x];
     }
   }
 
-  /** The card at its final state, as a 1× image (the fold squeezes it). */
+  /** The card at its final state, as an image at the glitch density (the fold squeezes it). */
   private renderCard(): PixelBuffer {
-    const r = new SoftRenderer(W, H);
+    const r = new SoftRenderer(W, H, undefined, { res: this.g });
     this.drawCard(r, Math.max(this.pt, this.typedAt), false);
     r.end();
     return r.target;
@@ -343,7 +395,7 @@ export class GlitchBridgeScene implements Scene {
         return;
       case 'glitch':
         r.begin(0x000000ff);
-        if (this.pt < GLITCH_TICKS - GLITCH_BLACK) r.image(this.work, 0, 0, streamed);
+        if (this.pt < GLITCH_TICKS - GLITCH_BLACK) this.drawWork(r);
         return;
       case 'card':
         this.drawCard(r, this.pt, true);
@@ -376,20 +428,42 @@ export class GlitchBridgeScene implements Scene {
       r.rect(0, FOLD_Y, W, 1, PAL.snow[3], plain);
       return;
     }
+    const g = this.g;
+    const GW = W * g;
+    const GH = H * g;
     const s = 1 - t / 30;
-    const h = Math.max(1, Math.round(H * s));
-    const top = FOLD_Y - Math.floor(h / 2);
+    const h = Math.max(1, Math.round(GH * s));
+    const top = FOLD_Y * g - Math.floor(h / 2);
     const work = this.work;
     work.data.fill(0x000000ff);
     for (let y = 0; y < h; y++) {
       const dy = top + y;
-      if (dy < 0 || dy >= H) continue;
-      const sy = Math.min(H - 1, Math.floor((y / h) * H));
-      work.data.set(card.data.subarray(sy * W, sy * W + W), dy * W);
+      if (dy < 0 || dy >= GH) continue;
+      const sy = Math.min(GH - 1, Math.floor((y / h) * GH));
+      work.data.set(card.data.subarray(sy * GW, sy * GW + GW), dy * GW);
     }
-    // The squeezed picture glows: the centre line brightens as it closes.
-    if (t >= 20) work.hline(0, W - 1, FOLD_Y, PAL.snow[3]);
+    // The squeezed picture glows: the centre line (one logical px) brightens as it closes.
+    if (t >= 20) for (let k = 0; k < g; k++) work.hline(0, GW - 1, FOLD_Y * g + k, PAL.snow[3]);
     work.touch();
-    r.image(work, 0, 0, streamed);
+    this.drawWork(r);
   }
+
+  /** The work image, streamed (at the glitch density). */
+  private drawWork(r: Renderer): void {
+    if (this.g === 1) r.image(this.work, 0, 0, streamed);
+    else r.frame(this.workFrame, 0, 0, streamed);
+  }
+}
+
+/** Every `k`-th pixel of a buffer in both directions (a k× denser picture thinned; k ≥ 1). */
+function thinned(src: PixelBuffer, k: number): PixelBuffer {
+  if (k <= 1) return src.clone();
+  const w = Math.floor(src.w / k);
+  const h = Math.floor(src.h / k);
+  const out = new PixelBuffer(w, h);
+  for (let y = 0; y < h; y++) {
+    const o = y * k * src.w;
+    for (let x = 0; x < w; x++) out.data[y * w + x] = src.data[o + x * k];
+  }
+  return out.touch();
 }

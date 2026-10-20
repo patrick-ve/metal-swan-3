@@ -22,22 +22,46 @@
  * The variant 'fps' (docs/design/fps.md §1.9) ends the first-person route: CAPTIONS (with
  * FPS_ENDING_CAPTIONS) → the credits roll alone over a night backdrop with drifting embers (the
  * route never met the parade's cast) → the poses. It skips THE LAST NOTE and SPLASHDOWN.
+ *
+ * Screen art (UHD): the backdrops (night and dawn sea, the parade street's sky, skyline and house
+ * fronts, the credits night and its embers, the lake), the swan and her rider, the parade's
+ * marchers and the victory stage draw at the density base.ts `screenArt` picks (the art tier once
+ * the screen art pool built them; content/ui/ending.art.ts paints them); the campaign's own cast
+ * (organ, pipes, Fanfaroni, the leaders) has 1× art only. On exit the 4× frames of the ending's
+ * backdrops are dropped (the lake stays for the final tally).
  */
 import type { Color } from '../../engine/color';
 import { measure } from '../../engine/font';
-import { INK, PAL } from '../../engine/palette';
-import { PixelBuffer } from '../../engine/pixel';
-import type { DrawOpts, Renderer, SrcRect } from '../../engine/render';
+import { PAL } from '../../engine/palette';
+import type { DrawOpts, ParallaxOpts, Renderer, SrcRect } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { frameH, frameW, getFrame, hasSprite } from '../../engine/sprites';
-import { getBgGenerator, hasBgGenerator } from '../art/art-registry';
+import { frameH, frameW, getFrame, hasFramesAt, hasSprite, releaseDense, setArtDensity } from '../../engine/sprites';
 import { centerText, PLAYER_COLORS, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { wrapText } from '../context';
 import { getCharacter, hasCharacter } from '../registry';
 import { FPS_ENDING_CAPTIONS } from '../content/fps/story';
 import { CHARACTER_TEXTS, CREDITS, ENDING_CAPTIONS, ROSTER } from './flow-data';
 import { FinalTallyScene } from './final-tally';
-import { drawLake, drawRiddenSwan, drawSwanRig, LAKE_SURFACE, veil } from './lake';
+import { screenArt, screenArtOf, screenTier } from './base';
+import {
+  BEAM_ID,
+  drawLake,
+  drawRiddenSwan,
+  drawSwanRig,
+  EMBER_ID,
+  ENDING_ART,
+  LAKE_ART,
+  LAKE_SURFACE,
+  NIGHT_ID,
+  SEA_DAWN_ID,
+  SEA_NIGHT_ID,
+  STAGE_ID,
+  STREET_CITY_ID,
+  STREET_ID,
+  STREET_SKY_ID,
+  veil,
+  type SwanRigOpts,
+} from './lake';
 
 export type EndingPhase = 'last-note' | 'splashdown' | 'parade' | 'captions' | 'poses';
 
@@ -59,11 +83,11 @@ export const POSE_TICKS = 240;
 const CREDITS_SPEED = 0.5;
 const SKIP_AFTER = 60;
 
-/** The sea's waterline in the first two parts. */
+/** The sea's waterline in the first two parts (content/ui/ending.art.ts ENDING_WATER_Y). */
 const WATER_Y = 176;
 const W = 384;
 const H = 216;
-/** The parade street: the house fronts stand on this line, the pavement and the road below it. */
+/** The parade street: the house fronts stand on this line, the pavement and the road below it (ENDING_STREET_Y). */
 const STREET_Y = 166;
 
 const plain: DrawOpts = { screen: true };
@@ -130,97 +154,18 @@ function pipeLandsAfter(p: Pipe): number {
 const PIPE_LAND: readonly number[] = PIPES.map((p) => p.at + pipeLandsAfter(p));
 
 // ---------------------------------------------------------------------------------------------
-// Backdrops (built once)
+// Backdrops (content/ui/ending.art.ts)
 // ---------------------------------------------------------------------------------------------
 
-let nightSea: PixelBuffer | null = null;
-let dawnSea: PixelBuffer | null = null;
-let streetSky: PixelBuffer | null = null;
-let streetCity: PixelBuffer | null = null;
-let streetFront: PixelBuffer | null = null;
+/** The parade street's three layers (one group: they switch to HD together). */
+const STREET_ART: readonly string[] = [STREET_SKY_ID, STREET_CITY_ID, STREET_ID];
+const NIGHT_ART: readonly string[] = [NIGHT_ID, EMBER_ID];
+const DENSE_LAYER: readonly ParallaxOpts[] = [{}, {}, { density: 2 }, {}, { density: 4 }];
 
-function seaBackdrop(sky: Color[], water: Color[], sun: { x: number; y: number; r: number } | null, stars: number, seed: number, moon = false): PixelBuffer {
-  const b = new PixelBuffer(W, H);
-  if (hasBgGenerator('sky-gradient')) b.blit(getBgGenerator('sky-gradient')(W, WATER_Y + 2, { colors: sky, dither: 0.35, stars, y1: WATER_Y, moon, ...(sun ? { sun } : {}) }, seed), 0, 0);
-  else b.gradient(0, 0, W, WATER_Y + 2, sky);
-  if (hasBgGenerator('sea')) b.blit(getBgGenerator('sea')(W, H, { ramp: water, y: WATER_Y, sparkle: 0.6, foam: water[water.length - 1] }, seed + 1), 0, 0);
-  else b.gradient(0, WATER_Y, W, H - WATER_Y, water);
-  return b;
-}
-
-function nightBackdrop(): PixelBuffer {
-  nightSea ??= seaBackdrop([PAL.ink[1], PAL.navy[0], PAL.navy[0], PAL.navy[1], PAL.purple[0]], [PAL.ink[1], PAL.navy[0], PAL.navy[1], PAL.purple[0], PAL.purple[1]], { x: 0.18, y: 34, r: 7 }, 40, 3, true);
-  return nightSea;
-}
-
-function dawnBackdrop(): PixelBuffer {
-  dawnSea ??= seaBackdrop([PAL.navy[1], PAL.purple[1], PAL.pink[1], PAL.orange[2], PAL.gold[3]], [PAL.navy[0], PAL.navy[1], PAL.purple[1], PAL.pink[1], PAL.orange[2]], { x: 0.7, y: WATER_Y - 2, r: 14 }, 6, 5);
-  return dawnSea;
-}
-
-/** The parade street: a day sky, a far skyline, and a wrapping row of Lowmere house fronts. */
-function buildStreet(): void {
-  const sky = new PixelBuffer(W, H);
-  const skyCols = [PAL.sky[1], PAL.sky[2], PAL.sky[3], PAL.snow[2]];
-  if (hasBgGenerator('sky-gradient')) sky.blit(getBgGenerator('sky-gradient')(W, H, { colors: skyCols, dither: 0.3 }, 9), 0, 0);
-  else sky.gradient(0, 0, W, H, skyCols);
-  streetSky = sky;
-  streetCity = hasBgGenerator('city') ? getBgGenerator('city')(W, 150, { ramp: [PAL.sky[0], PAL.sky[1], PAL.steel[2], PAL.steel[3], PAL.snow[1]], y: 0.6, height: 0.4, night: false, lit: 0.2 }, 21) : new PixelBuffer(W, 150);
-  streetFront = houseFronts();
-}
-
-/** Eight narrow house fronts (wrapping tile, 384 wide): plaster, roofs, windows, flower boxes, bunting. */
-function houseFronts(): PixelBuffer {
-  const b = new PixelBuffer(W, H);
-  const walls: readonly (readonly Color[])[] = [PAL.sand, PAL.gold, PAL.teal, PAL.snow, PAL.orange, PAL.sky, PAL.red, PAL.stone];
-  const ground = STREET_Y;
-  let x = 0;
-  for (let i = 0; i < 8; i++) {
-    const w = 48;
-    const top = 112 + ((i * 37) % 3) * 6;
-    const ramp = walls[i];
-    // Wall with a lit left edge, a gable roof, a door and two rows of windows.
-    b.rect(x, top, w, ground - top, ramp[2]);
-    b.rect(x, top, 2, ground - top, ramp[3]);
-    b.rect(x + w - 2, top, 2, ground - top, ramp[1]);
-    b.poly([x - 2, top, x + w / 2, top - 18, x + w + 2, top], PAL.red[1]);
-    b.line(x - 2, top, x + w / 2, top - 18, PAL.red[2]);
-    b.rect(x - 2, top, w + 4, 2, PAL.brown[1]);
-    for (let row = 0; row < 2; row++) {
-      for (let c = 0; c < 2; c++) {
-        const wx = x + 8 + c * 22;
-        const wy = top + 10 + row * 28;
-        if (row === 1 && c === 1) continue;
-        b.rect(wx - 1, wy - 1, 12, 14, INK);
-        b.rect(wx, wy, 10, 12, PAL.navy[1]);
-        b.rect(wx, wy, 10, 1, PAL.sky[2]);
-        b.rect(wx + 4, wy, 1, 12, ramp[3]);
-        // A flower box under the window.
-        b.rect(wx - 1, wy + 13, 12, 3, PAL.brown[1]);
-        for (let f = 0; f < 4; f++) b.set(wx + 1 + f * 3, wy + 12, f % 2 ? PAL.red[3] : PAL.gold[3]);
-      }
-    }
-    b.rect(x + 30, ground - 22, 12, 22, INK);
-    b.rect(x + 31, ground - 21, 10, 21, PAL.brown[1]);
-    b.set(x + 39, ground - 11, PAL.gold[3]);
-    b.rect(x + w, top + 4, 1, ground - top - 4, PAL.ink[1]);
-    x += w;
-  }
-  // Bunting across the street: crimson, gold and white flags on a string.
-  for (let bx = 0; bx < W; bx += 6) {
-    const sag = Math.round(Math.sin((bx / W) * Math.PI * 4) * 3) + 100;
-    b.set(bx, sag, PAL.ink[1]);
-    const c = [PAL.red[2], PAL.gold[3], PAL.snow[3]][(bx / 6) % 3];
-    b.rect(bx + 1, sag + 1, 4, 1, c);
-    b.rect(bx + 2, sag + 2, 2, 2, c);
-  }
-  // Pavement and kerb, then the road.
-  b.rect(0, ground, W, 8, PAL.stone[2]);
-  for (let px = 0; px < W; px += 12) b.rect(px, ground, 1, 8, PAL.stone[1]);
-  b.rect(0, ground + 8, W, 2, PAL.stone[3]);
-  b.rect(0, ground + 10, W, H - ground - 10, PAL.stone[1]);
-  for (let px = 4; px < W; px += 32) b.rect(px, 194, 14, 2, PAL.snow[1]);
-  return b;
+/** A full-screen backdrop sprite at the screen density (its 1× buffer drawn as before at 1×). */
+function backdrop(r: Renderer, id: string, d: number = screenArtOf(r, id)): void {
+  if (d > 1) r.frame(getFrame(id, 0, d), 0, 0, plain);
+  else r.image(getFrame(id, 0, 1).buf, 0, 0, plain);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -285,8 +230,11 @@ export class EndingScene implements Scene {
   private readonly pt = { x: 0, y: 0 };
   /** Caption lines per caption (wrapped once). */
   private readonly captions: string[][];
+  /** The victory stage's group: beam, stage and the hero's `victory` strip (set per draw). */
+  private readonly poseArt: string[] = [BEAM_ID, STAGE_ID, ''];
   /** The squad (the roster), the first chosen hero first (they all ride home together). */
   private readonly crewIds: string[];
+  private marchIds: string[] | null = null;
 
   readonly variant: EndingVariant;
   private readonly phases: readonly EndingPhase[];
@@ -325,6 +273,14 @@ export class EndingScene implements Scene {
       case 'poses':
         return POSE_TICKS * this.heroes.length;
     }
+  }
+
+  /** The 4× frames of the ending's backdrops go; the lake stays for the final tally. */
+  exit(): void {
+    releaseDense(
+      ENDING_ART.filter((id) => !LAKE_ART.includes(id)),
+      4,
+    );
   }
 
   enter(): void {
@@ -409,7 +365,7 @@ export class EndingScene implements Scene {
   private drawLastNote(r: Renderer): void {
     const t = this.t;
     r.begin(PAL.ink[0]);
-    r.image(nightBackdrop(), 0, 0, plain);
+    backdrop(r, SEA_NIGHT_ID);
     // The two halves: shaking together, then the crack, then drifting apart, tilting and sinking.
     const shake = t < 96 && t % 4 < 2 ? 1 : 0;
     const k = Math.max(0, t - 96);
@@ -490,7 +446,7 @@ export class EndingScene implements Scene {
   private drawSplashdown(r: Renderer): void {
     const t = this.t;
     r.begin(PAL.navy[1]);
-    r.image(dawnBackdrop(), 0, 0, plain);
+    backdrop(r, SEA_DAWN_ID);
     // Swan Mk1 surfaces under Fanfaroni; he drifts down and lands on its head.
     const mk1X = 262;
     const rise = Math.max(0, Math.min(1, (t - 70) / 50));
@@ -569,17 +525,21 @@ export class EndingScene implements Scene {
       this.drawCreditsNight(r, t);
       return;
     }
-    if (!streetFront) buildStreet();
     r.begin(PAL.sky[2]);
-    if (streetSky) r.image(streetSky, 0, 0, plain);
+    const d = screenArt(r, STREET_ART);
+    backdrop(r, STREET_SKY_ID, d);
     const cam = Math.round(t * PARADE_SPEED);
     r.setCamera(cam, 0);
-    if (streetCity) r.parallax(streetCity, 0.3, 0, 0, 0);
-    if (streetFront) r.parallax(streetFront, 1, 0, 0, 0);
+    const layer = d > 1 ? DENSE_LAYER[d] : undefined;
+    r.parallax(getFrame(STREET_CITY_ID, 0, d).buf, 0.3, 0, 0, 0, layer);
+    r.parallax(getFrame(STREET_ID, 0, d).buf, 1, 0, 0, 0, layer);
     r.setCamera(0, 0);
-    // The roadside stations pass by (world x − camera): the leaders' community service.
+    // The roadside stations pass by (world x − camera): the leaders' community service. The
+    // townsfolk, the band and the critics draw at the screen density of their group.
+    const prev = setArtDensity(screenArt(r, PARADE_ART));
     this.drawStations(r, cam, t);
     this.drawColumn(r, t);
+    setArtDensity(prev);
     this.drawRoll(r, t);
     // The finale: the TING, confetti and cheering.
     const ting = t - (this.paradeTicks - TING_BEFORE);
@@ -633,11 +593,15 @@ export class EndingScene implements Scene {
       if (kinds[i] === 'critic' && hasSprite('ui/placard')) r.sprite('ui/placard', 0, x + 4, ROAD_Y - 22 - bob + (i % 2), plain);
     }
     // The SWAN-3 as the parade's float, the first hero on her back, cheering.
-    drawSwanRig(r, 200, ROAD_Y + 2, t, { anim: 'move', neck: 'neck-relax', char: this.heroes[0], pose: 'ride-cheer', bodyTicks: 10, riderTicks: 8 });
+    paradeSwan.char = this.heroes[0];
+    drawSwanRig(r, 200, ROAD_Y + 2, t, paradeSwan);
     // The rest of the squad marches behind her: 18 px apart from x 150, so four marchers end at
     // x 96, clear of the band (first player at x 76).
     const crew = this.crewIds;
+    // The squad at 2× at most, once built (the mission's 2× set): 4× holds only the chosen heroes.
+    const prev = setArtDensity(this.marchDensity(r));
     for (let i = 1; i < crew.length; i++) this.drawMarcher(r, crew[i], 150 - (i - 1) * MARCH_GAP, ROAD_Y + (i % 2), step + i);
+    setArtDensity(prev);
     // The band, and Fanfaroni at the very end with his triangle.
     const band = BAND;
     for (let i = 0; i < band.length; i++) if (hasSprite(band[i])) r.sprite(band[i], step + i, 76 - i * 22, ROAD_Y + (i % 2), plain);
@@ -649,13 +613,27 @@ export class EndingScene implements Scene {
     }
   }
 
+  /** The marching squad's density: 2 when the tier allows it and their 2× strips are built, else 1. */
+  private marchDensity(r: Renderer): number {
+    if (screenTier(r) < 2) return 1;
+    if (!this.marchIds) {
+      this.marchIds = [];
+      for (const id of this.crewIds.slice(1)) {
+        const art = getCharacter(id).art;
+        this.marchIds.push(`${art}/legs-run`, `${art}/torso-pistol-idle`);
+      }
+    }
+    for (const id of this.marchIds) if (hasSprite(id) && !hasFramesAt(id, 2)) return 1;
+    return 2;
+  }
+
   /** A Cygnet marching: running legs at a walk with the torso on the hip point. */
   private drawMarcher(r: Renderer, char: string, x: number, y: number, step: number): void {
     const art = getCharacter(char).art;
     const legs = `${art}/legs-run`;
     const torso = `${art}/torso-pistol-idle`;
     if (!hasSprite(legs) || !hasSprite(torso)) return;
-    const lf = getFrame(legs, step);
+    const lf = getFrame(legs, step, 1);
     const hip = lf.pts?.hip ?? [0, -14];
     r.sprite(legs, step, x, y, plain);
     r.sprite(torso, 0, x + hip[0], y + hip[1], plain);
@@ -675,12 +653,16 @@ export class EndingScene implements Scene {
   /** The fps variant's parade: the same credits roll (same timing), alone over a night sky with embers. */
   private drawCreditsNight(r: Renderer, t: number): void {
     r.begin(PAL.navy[0]);
+    const d = screenArt(r, NIGHT_ART);
+    if (d > 1) backdrop(r, NIGHT_ID, d);
     // Slow embers drifting up (cosmetic, from the tick).
     for (let i = 0; i < EMBERS; i++) {
       const speed = 0.12 + (i % 4) * 0.05;
       const x = (i * 53 + Math.round(Math.sin((t + i * 37) / 40) * 8) + W) % W;
       const y = H - (((t * speed + i * 41) % (H + 8)) | 0);
-      r.rect(x, y, 1, 1, EMBER_COLS[i % EMBER_COLS.length], (i & 3) === 0 ? plain : EMBER_DIM);
+      const o = (i & 3) === 0 ? plain : EMBER_DIM;
+      if (d > 1) r.frame(getFrame(EMBER_ID, i % EMBER_COLS.length, d), x, y, o);
+      else r.rect(x, y, 1, 1, EMBER_COLS[i % EMBER_COLS.length], o);
     }
     // The roll's window, centred on the screen instead of the parade's sky.
     this.drawRoll(r, t, NIGHT_ROLL_DY);
@@ -703,7 +685,7 @@ export class EndingScene implements Scene {
     r.begin(PAL.navy[0]);
     drawLake(r, t);
     // The SWAN-3 swims home across the lake.
-    drawRiddenSwan(r, Math.round(-60 + t * 0.4), LAKE_SURFACE + 16, t, this.heroes[0]);
+    drawRiddenSwan(r, Math.round(-60 + t * 0.4), LAKE_SURFACE + 16, t, this.heroes[0], true);
     veil(r, 0.45);
     const i = Math.min(this.captions.length - 1, Math.floor(t / CAPTION_TICKS));
     const ct = t - i * CAPTION_TICKS;
@@ -723,15 +705,26 @@ export class EndingScene implements Scene {
     const pt = t - i * POSE_TICKS;
     const id = this.heroes[i];
     const def = getCharacter(id);
-    // A spotlight on a little stage.
-    r.rect(152, 150, 80, 3, PAL.stone[1], plain);
-    // The beam widens from 12 px at the top to 72 px on the stage floor.
-    for (let y = 44; y < 150; y += 2) {
-      const half = 6 + Math.round(((y - 44) / 106) * 30);
-      r.rect(192 - half, y, half * 2, 2, PAL.gold[3], LIGHT);
-    }
     const vic = `${def.art}/victory`;
-    if (hasSprite(vic)) r.sprite(vic, Math.floor(pt / 8), 192, 150, plain);
+    const art = this.poseArt;
+    art[2] = vic;
+    const d = screenArt(r, art);
+    // A spotlight on a little stage.
+    if (d > 1) r.frame(getFrame(STAGE_ID, 0, d), 152, 150, plain);
+    else r.rect(152, 150, 80, 3, PAL.stone[1], plain);
+    // The beam widens from 12 px at the top to 72 px on the stage floor.
+    if (d > 1) r.frame(getFrame(BEAM_ID, 0, d), 156, 44, LIGHT);
+    else {
+      for (let y = 44; y < 150; y += 2) {
+        const half = 6 + Math.round(((y - 44) / 106) * 30);
+        r.rect(192 - half, y, half * 2, 2, PAL.gold[3], LIGHT);
+      }
+    }
+    if (hasSprite(vic)) {
+      const prev = setArtDensity(d);
+      r.sprite(vic, Math.floor(pt / 8), 192, 150, plain);
+      setArtDensity(prev);
+    }
     const slot = this.app.session?.slots.find((s) => s.joined && s.character === id);
     centerText(r, def.fullName ?? def.name, 30, slot ? PLAYER_COLORS[slot.index] : UI_GOLD, 'big');
     const line = def.endingLine ?? CHARACTER_TEXTS[id]?.endingLine ?? '';
@@ -752,6 +745,7 @@ const PHASES: readonly EndingPhase[] = ['last-note', 'splashdown', 'parade', 'ca
 const FPS_PHASES: readonly EndingPhase[] = ['captions', 'parade', 'poses'];
 /** The fps credits night: embers, their colours, the roll window's move down (centred). */
 const EMBERS = 36;
+/** The embers' colours (frames 0–3 of `ui/ending-ember`). */
 const EMBER_COLS: readonly Color[] = [PAL.red[2], PAL.gold[2], PAL.gold[3], PAL.red[3]];
 const EMBER_DIM: DrawOpts = { screen: true, alpha: 0.6 };
 const NIGHT_ROLL_DY = 56;
@@ -772,6 +766,10 @@ const AUDIENCE: readonly string[] = ['tourist', 'tea-lady', 'roadie'];
 const MARCHERS: readonly string[] = ['critic', 'dollop', 'critic'];
 const BAND: readonly string[] = ['enemy/oompah-trooper/walk', 'enemy/rifleman/walk'];
 const CONFETTI: readonly Color[] = [PAL.red[3], PAL.gold[3], PAL.sky[3], PAL.snow[3], PAL.pink[2]];
+/** The parade's townsfolk, critics and band (one screen art group). */
+const PARADE_ART: readonly string[] = [...AUDIENCE.map((k) => `item/hostage/${k}/give`), ...MARCHERS.map((k) => `item/hostage/${k}/walk`), ...BAND];
+/** The SWAN-3 float (the rider is set per draw). */
+const paradeSwan: SwanRigOpts = { anim: 'move', neck: 'neck-relax', char: '', pose: 'ride-cheer', bodyTicks: 10, riderTicks: 8, screen: true };
 
 /** The leaders' posts along the street (world x; the camera passes 0.75 px per tick). */
 const STATIONS: readonly { who: string; x: number; flip?: boolean }[] = [

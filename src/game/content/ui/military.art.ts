@@ -13,6 +13,7 @@
  * - `ui/mil/plate`      64 × 14 riveted nameplate (names go on top in the small font, ink)
  * - `ui/mil/preview`    44 × 52 grey-blue glass window with a steel bevel
  * - `ui/mil/emblem`     40 × 36 the squad emblem (stencil paint), also baked into the shutter
+ * - `ui/mil/bolt`       5 × 5 corner bolt of the menu panels (`drawMilPanel`)
  * - `ui/mil/stencil-<slug>`  stencil lettering for the menu titles (STENCIL_TITLES, bone paint;
  *                       STENCIL_GOLD, gold paint: `PRESS START`; slug = the text in lower case
  *                       with '-' for spaces), the big font at scale 2
@@ -20,9 +21,12 @@
 import type { Color } from '../../../engine/color';
 import { drawText, getFont, layoutText, measureText } from '../../../engine/font';
 import { INK, PAL } from '../../../engine/palette';
-import { PixelBuffer } from '../../../engine/pixel';
+import { PAL_HD } from '../../../engine/palette-hd';
+import { PixelBuffer, type Ramp } from '../../../engine/pixel';
 import { Rng } from '../../../engine/rng';
 import { defineSprite } from '../../../engine/sprites';
+import { HdCanvas, type Texture } from '../../art/hd/index';
+import { hash1, hash2, noise2 } from '../../art/paint';
 
 const MASK: Color = 0xff00ffff;
 const TL = { anchor: 'top-left' } as const;
@@ -569,16 +573,679 @@ function preview(): PixelBuffer {
   return b;
 }
 
+// ---------------------------------------------------------------------------------------------
+// HD (2× and 4×): the same parts painted natively (docs/ART_GUIDE.md "UHD art"). Each id has one
+// drawer for d 2 and 4 with exactly its 1× size; lit from the upper left; PAL_HD only. Painted
+// menu furniture (frame, shutter, plates) has no ink outline; the lettering floats over the
+// backdrop and keeps outline A and its drop shadow.
+// ---------------------------------------------------------------------------------------------
+
+/** A dense density of the UHD art. */
+export type HdD = 2 | 4;
+
+/**
+ * The art-px mask (cw·cell × ch·cell) of a grid of cells (`on`), with every one-cell stair cut
+ * to a 45° edge through the step midpoints and real corners kept square: the contour rule of the
+ * HD 'big' glyphs (engine/font.ts), so stencil lettering and HD text share one letterform.
+ */
+export function contourCells(on: (x: number, y: number) => boolean, cw: number, ch: number, cell: number): Uint8Array {
+  const W = cw * cell;
+  const H = ch * cell;
+  const out = new Uint8Array(W * H);
+  const t = 0.5 + 1e-9;
+  for (let Y = 0; Y < H; Y++) {
+    const v = (Y + 0.5) / cell;
+    const y = Math.floor(v);
+    const fy = v - y;
+    for (let X = 0; X < W; X++) {
+      const u = (X + 0.5) / cell;
+      const x = Math.floor(u);
+      const fx = u - x;
+      const L = on(x - 1, y);
+      const R = on(x + 1, y);
+      const U = on(x, y - 1);
+      const B = on(x, y + 1);
+      let ink: boolean;
+      if (on(x, y)) {
+        ink = !(
+          (!L && !U && (on(x - 1, y + 1) || on(x + 1, y - 1)) && fx + fy <= t) ||
+          (!R && !U && (on(x + 1, y + 1) || on(x - 1, y - 1)) && 1 - fx + fy <= t) ||
+          (!L && !B && (on(x - 1, y - 1) || on(x + 1, y + 1)) && fx + 1 - fy <= t) ||
+          (!R && !B && (on(x + 1, y - 1) || on(x - 1, y + 1)) && 2 - fx - fy <= t)
+        );
+      } else {
+        ink =
+          (R && B && (!on(x + 1, y + 1) || (!on(x + 1, y - 1) && !on(x - 1, y + 1))) && 2 - fx - fy <= t) ||
+          (L && B && (!on(x - 1, y + 1) || (!on(x - 1, y - 1) && !on(x + 1, y + 1))) && fx + 1 - fy <= t) ||
+          (R && U && (!on(x + 1, y - 1) || (!on(x + 1, y + 1) && !on(x - 1, y - 1))) && 1 - fx + fy <= t) ||
+          (L && U && (!on(x - 1, y - 1) || (!on(x - 1, y + 1) && !on(x + 1, y - 1))) && fx + fy <= t);
+      }
+      if (ink) out[Y * W + X] = 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Distance (art px, chamfer 1 / √2) from every set px of the mask to the nearest unset px or the
+ * buffer edge: 1 on the rim, growing inwards; 0 outside.
+ */
+export function insideDist(m: Uint8Array, W: number, H: number): Float32Array {
+  const D = new Float32Array(W * H);
+  const big = 1e9;
+  const R2 = Math.SQRT2;
+  for (let i = 0; i < D.length; i++) D[i] = m[i] ? big : 0;
+  const at = (X: number, Y: number): number => (X < 0 || Y < 0 || X >= W || Y >= H ? 0 : D[Y * W + X]);
+  for (let Y = 0; Y < H; Y++) {
+    for (let X = 0; X < W; X++) {
+      const i = Y * W + X;
+      if (!m[i]) continue;
+      D[i] = Math.min(D[i], at(X - 1, Y) + 1, at(X, Y - 1) + 1, at(X - 1, Y - 1) + R2, at(X + 1, Y - 1) + R2);
+    }
+  }
+  for (let Y = H - 1; Y >= 0; Y--) {
+    for (let X = W - 1; X >= 0; X--) {
+      const i = Y * W + X;
+      if (!m[i]) continue;
+      D[i] = Math.min(D[i], at(X + 1, Y) + 1, at(X, Y + 1) + 1, at(X + 1, Y + 1) + R2, at(X - 1, Y + 1) + R2);
+    }
+  }
+  return D;
+}
+
+/** A scratch: a short straight stroke in logical px (start, end, half width). */
+interface Scratch {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  w: number;
+}
+
+/** Distance from (x, y) to the scratch's axis, and whether (x, y) lies on its lower (lip) side. */
+function scratchDist(s: Scratch, x: number, y: number): number {
+  const vx = s.x1 - s.x0;
+  const vy = s.y1 - s.y0;
+  const l2 = vx * vx + vy * vy || 1;
+  let t = ((x - s.x0) * vx + (y - s.y0) * vy) / l2;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(s.x0 + t * vx - x, s.y0 + t * vy - y);
+}
+
+/** Random scratches in a box (logical px), seeded. */
+function scratches(seed: string, x: number, y: number, w: number, h: number, n: number, len: [number, number], wid = 0.22): Scratch[] {
+  const rng = new Rng(seed);
+  const out: Scratch[] = [];
+  for (let i = 0; i < n; i++) {
+    const x0 = x + rng.range(0, w);
+    const y0 = y + rng.range(0, h);
+    const l = rng.range(len[0], len[1]);
+    const a = rng.range(0.15, 0.6) * (rng.next() < 0.5 ? 1 : -1);
+    out.push({ x0, y0, x1: x0 + Math.cos(a) * l, y1: y0 + Math.sin(a) * l, w: wid });
+  }
+  return out;
+}
+
+/** The night-lit ramps of the menu furniture (all PAL_HD). */
+const RUST_PAINT: Ramp = [PAL_HD.ink[0], PAL_HD.brown[0], PAL_HD.brown[1], PAL_HD.brown[2], PAL_HD.rust[1], PAL_HD.brown[3], PAL_HD.brown[4], PAL_HD.brown[6]];
+const RUST: Ramp = [PAL_HD.brown[0], PAL_HD.rust[0], PAL_HD.rust[1], PAL_HD.rust[2], PAL_HD.rust[3], PAL_HD.rust[4], PAL_HD.rust[6]];
+const GUNMETAL: Ramp = [PAL_HD.ink[0], PAL_HD.steel[0], PAL_HD.steel[1], PAL_HD.steel[2], PAL_HD.steel[3], PAL_HD.steel[4], PAL_HD.steel[5], PAL_HD.steel[7]];
+const BOLT: Ramp = [PAL_HD.ink[0], PAL_HD.stone[1], PAL_HD.stone[2], PAL_HD.stone[3], PAL_HD.stone[4], PAL_HD.stone[5], PAL_HD.stone[6], PAL_HD.stone[7]];
+const WELD: Ramp = [PAL_HD.ink[0], PAL_HD.brown[1], PAL_HD.stone[1], PAL_HD.stone[2], PAL_HD.stone[3], PAL_HD.stone[4], PAL_HD.stone[6]];
+const SLOT: Ramp = [PAL_HD.ink[0], PAL_HD.ink[1], PAL_HD.steel[0], PAL_HD.steel[1], PAL_HD.steel[2], PAL_HD.steel[3]];
+const HAZ_GOLD: Ramp = [PAL_HD.gold[0], PAL_HD.gold[1], PAL_HD.gold[2], PAL_HD.gold[3], PAL_HD.gold[4], PAL_HD.gold[5], PAL_HD.gold[6]];
+const HAZ_INK: Ramp = [PAL_HD.ink[0], PAL_HD.ink[1], PAL_HD.steel[0], PAL_HD.steel[1], PAL_HD.steel[2]];
+
+/** Bolt-head positions (3 × 3 heads, top-left) of a 1× rust plate with bolts (as `rustPlate`). */
+function plateBolts(x: number, y: number, w: number, h: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  if (w < 10 || h < 10) return out;
+  const top = y + 3;
+  const bot = y + h - 6;
+  out.push([x + 3, top], [x + w - 6, top]);
+  if (h >= 16) out.push([x + 3, bot], [x + w - 6, bot]);
+  const n = Math.floor((w - 12) / 22);
+  for (let i = 1; i <= n; i++) {
+    const bx = x + 3 + Math.round(((w - 9) * i) / (n + 1));
+    out.push([bx, top]);
+    if (h >= 16) out.push([bx, bot]);
+  }
+  return out;
+}
+
+/** A bolt: a washer and a domed hex head with a cross slot, lit from the upper left. */
+function boltHd(c: HdCanvas, cx: number, cy: number, mat: number, z: number, r = 1.5): void {
+  const p = c.newPart();
+  c.ellipsoid(cx, cy, r + 0.1, r + 0.1, { mat, z, part: p, round: 0.25, tone: -0.15 });
+  const hex: Array<[number, number]> = [];
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
+    hex.push([cx + Math.cos(a) * r * 0.82, cy + Math.sin(a) * r * 0.82]);
+  }
+  c.blob(hex, r * 0.35, { mat, z: z + 0.2, part: p, bulge: 0.3 });
+  if (c.d === 4) c.shade(cx - r * 0.5, cy - 0.12, r, 0.25, () => -0.45, p);
+}
+
+/** A weld bead along a line: overlapping ripples of lit steel. */
+function weldHd(c: HdCanvas, x0: number, y0: number, x1: number, y1: number, mat: number, z: number, seed: number): void {
+  const len = Math.hypot(x1 - x0, y1 - y0);
+  const n = Math.max(1, Math.round(len / 0.7));
+  const p = c.newPart();
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const j = (hash1(i, seed) - 0.5) * 0.15;
+    c.ellipsoid(x0 + (x1 - x0) * t + j, y0 + (y1 - y0) * t + j, 0.95, 0.95, { mat, z: z + i * 0.0005, part: p, round: 0.7 });
+  }
+}
+
+/** A recess (a slot pressed into the plate): sloped inner walls in `wall`, a dark floor in `floor`. */
+function recessHd(c: HdCanvas, x: number, y: number, w: number, h: number, wall: number, floor: number, depth = 0.9): void {
+  const b = 0.8;
+  const p = c.newPart();
+  c.erase(x - 0.5, y - 0.5, w + 1, h + 1, () => true);
+  c.heightField(
+    x - 0.5,
+    y - 0.5,
+    w + 1,
+    h + 1,
+    (px, py) => {
+      const e = Math.min(px - (x - 0.5), x + w + 0.5 - px, py - (y - 0.5), y + h + 0.5 - py);
+      return -Math.min(depth, (e * depth) / b);
+    },
+    {
+      mat: floor,
+      part: p,
+      z: 0,
+      tex: (s) => {
+        const e = Math.min(s.x - (x - 0.5), x + w + 0.5 - s.x, s.y - (y - 0.5), y + h + 0.5 - s.y);
+        if (e < b) s.mat = wall;
+        else {
+          // The plate's shadow inside the slot (top and left), faint brushed grain on the floor.
+          if (s.x - x < 1.2 || s.y - y < 1.2) s.tone -= 0.3;
+          s.tone += (noise2(s.x * 0.15, s.y * 2.5, 1, 337) - 0.5) * 0.18;
+        }
+      },
+    },
+  );
+}
+
+/** Hazard stripes painted on a steel strip (gold / black, period 8 px, worn). */
+function hazardTex(gold: number, black: number, bare: number, x0: number, y0: number, phase: number, seed: number): Texture {
+  return (s) => {
+    const k = (((s.x - x0 + (s.y - y0) + phase) % 8) + 8) % 8;
+    s.mat = k < 4 ? gold : black;
+    // A soft lift at the stripe borders (thick paint), grime toward the bottom, chips of bare steel.
+    s.tone -= Math.max(0, s.v - 0.6) * 0.35;
+    const chip = noise2(s.x, s.y, 1.3, seed);
+    if (chip > 0.88) {
+      s.mat = bare;
+      s.tone -= 0.35;
+      s.dz = -0.05;
+    } else if (chip > 0.83) s.tone -= 0.2;
+  };
+}
+
+/**
+ * A stencil title at density d (`ui/mil/stencil-<slug>`): the stencilled big font at scale 2 as
+ * thick enamel letters (bone, or gold), a rounded lit edge, lighter toward the top of each line,
+ * worn by scratches and chips of dark metal; outline A and the 2-px dark drop shadow of the 1×.
+ */
+function stencilTitleHd(text: string, gold: boolean, d: HdD): PixelBuffer {
+  const m1 = stencilMask(text, 1, 0);
+  const cw = m1.w;
+  const ch = m1.h;
+  const on1 = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < cw && y < ch && m1.get(x, y) === MASK;
+  const cell = 2 * d;
+  const mw = cw * cell;
+  const mh = ch * cell;
+  const mk = contourCells(on1, cw, ch, cell);
+  const dist = insideDist(mk, mw, mh);
+  // The 1× frame: the stencil mask at scale 2 with 1 px of padding, plus 2 px for the shadow.
+  const wl = cw * 2 + 4;
+  const hl = ch * 2 + 4;
+  const c = new HdCanvas(wl, hl, d);
+  const ramp = gold ? PAL_HD.gold : PAL_HD.sand;
+  const paint = c.material({ ramp, lo: 1, hi: 6, spec: 0.3, shine: 20, wrap: 0.18, bounce: 0.15 });
+  const metal = c.material({ ramp: GUNMETAL, lo: 0, hi: 3, spec: 0.2 });
+  const glyphH = 16;
+  const scr = scratches(`stencil-hd:${text}`, 1, 2, wl - 6, hl - 8, Math.max(2, Math.floor(wl / 26)), [2.5, 5]);
+  const at = (x: number, y: number): number => {
+    const X = Math.floor(x * d) - d;
+    const Y = Math.floor(y * d) - d;
+    return X < 0 || Y < 0 || X >= mw || Y >= mh ? 0 : dist[Y * mw + X];
+  };
+  const bev = 0.6 * d;
+  c.heightField(
+    1,
+    1,
+    cw * 2,
+    ch * 2,
+    (x, y) => {
+      const e = at(x, y);
+      if (e === 0) return NaN;
+      const t = Math.min(1, (e - 0.5) / bev);
+      return 0.6 * Math.sqrt(Math.max(0, 1 - (1 - t) * (1 - t)));
+    },
+    {
+      mat: paint,
+      z: 0,
+      tex: (s) => {
+        const row = (s.y - 1) / glyphH;
+        s.tone += 0.22 - row * 0.5;
+        // Bare dark metal in the scratches, a lit lip under them.
+        for (const k of scr) {
+          const e = scratchDist(k, s.x, s.y);
+          if (e < k.w) {
+            s.mat = metal;
+            s.tone -= 0.1;
+            s.dz = -0.3;
+          } else if (e < k.w + 1 / d && s.y > (k.y0 + k.y1) / 2) s.tone += 0.25;
+        }
+        // Chips along the edges.
+        const e = at(s.x, s.y) / d;
+        if (e < 0.9 && noise2(s.x, s.y, 0.7, 211) > 0.78) {
+          s.mat = metal;
+          s.dz = -0.2;
+        }
+      },
+    },
+  );
+  const lettered = c.render({ outline: 'A', ao: 0, sep: false, clean: true });
+  const out = new PixelBuffer(wl * d, hl * d);
+  const sh = PAL_HD.ink[0];
+  for (let Y = 0; Y < mh; Y++) {
+    for (let X = 0; X < mw; X++) if (mk[Y * mw + X]) out.set(X + 3 * d, Y + 3 * d, sh);
+  }
+  out.blit(lettered, 0, 0);
+  return out;
+}
+
+/** The select-screen frame at density d: riveted rust-brown steel plates, welds, slots, bezels, five windows. */
+function frameHd(d: HdD): PixelBuffer {
+  const W = 384;
+  const H = 216;
+  const c = new HdCanvas(W, H, d);
+  const paint = c.material({ ramp: RUST_PAINT, lo: 1, hi: 6, spec: 0.12, shine: 10, wrap: 0.1 });
+  const rust = c.material({ ramp: RUST, lo: 0, hi: 4, spec: 0.05, wrap: 0.1 });
+  const bare = c.material({ ramp: BOLT, lo: 2, hi: 5, spec: 0.5, shine: 28 });
+  const bolt = c.material({ ramp: BOLT, lo: 1, hi: 5, spec: 0.7, shine: 26 });
+  const weld = c.material({ ramp: WELD, lo: 1, hi: 5, spec: 0.6, shine: 22 });
+  const steel = c.material({ ramp: GUNMETAL, lo: 1, hi: 6, spec: 0.55, shine: 26 });
+  const slot = c.material({ ramp: SLOT, lo: 0, hi: 3, wrap: 0.1 });
+  const back = c.material({ ramp: [PAL_HD.ink[0], PAL_HD.ink[1], PAL_HD.brown[0]], flat: true, lo: 0, hi: 0 });
+  const gold = c.material({ ramp: HAZ_GOLD, lo: 1, hi: 5, spec: 0.15 });
+  const black = c.material({ ramp: HAZ_INK, lo: 0, hi: 3, spec: 0.15 });
+  const ink = c.material({ ramp: [PAL_HD.ink[0], PAL_HD.ink[1]], flat: true, lo: 0, hi: 0 });
+  // The dark gap behind the plates (the seams).
+  c.box(0, 0, W, H, { mat: back, z: -3, round: 0 });
+  // Plates: 1× rects; the right and bottom ½ px left open as the seam.
+  const plates: Array<[number, number, number, number, boolean]> = [
+    [0, 0, 62, 45, true],
+    [62, 0, 260, 45, false],
+    [322, 0, 62, 45, true],
+  ];
+  for (let i = 0; i <= MIL_PANELS; i++) {
+    const x0 = i === 0 ? 0 : milPanelX(i - 1) + MIL_PANEL_W;
+    const x1 = i === MIL_PANELS ? W : milPanelX(i);
+    plates.push([x0, 45, x1 - x0, 125, false]);
+  }
+  plates.push([0, 170, 192, 19, true], [192, 170, 192, 19, true], [0, 189, 128, 27, true], [128, 189, 128, 27, true], [256, 189, 128, 27, true]);
+  const scr = scratches('mil-frame-hd', 4, 4, W - 8, H - 8, 34, [3, 8]);
+  const runs: Array<[number, number, number]> = [];
+  plates.forEach(([x, y, w, h, withBolts], i) => {
+    if (withBolts) {
+      for (const [bx, by] of plateBolts(x, y, w, h)) if (hash2(bx, by, 307) < 0.45 && by < y + h - 10) runs.push([bx + 1.5, by + 3, 2 + hash2(bx, by, 311) * 6]);
+    }
+    c.box(x, y, w - 0.5, h - 0.5, {
+      mat: paint,
+      z: 0,
+      bevel: 1,
+      tex: (s) => {
+        const n = noise2(s.x, s.y, 6, 401 + i) * 0.6 + noise2(s.x, s.y, 2.2, 431 + i) * 0.4;
+        if (n > 0.6) {
+          s.mat = rust;
+          s.tone += (n - 0.6) * 1.2 - 0.05;
+          s.nx += (noise2(s.x, s.y, 0.5, 461) - 0.5) * 0.9;
+          s.ny += (noise2(s.x + 9, s.y, 0.5, 461) - 0.5) * 0.9;
+        } else s.tone += (n - 0.4) * 0.35;
+        // Grime toward the bottom of each plate.
+        s.tone -= Math.max(0, s.v - 0.65) * 0.45;
+        for (const [rx, ry, len] of runs) {
+          const t = (s.y - ry) / len;
+          if (t >= 0 && t <= 1 && Math.abs(s.x - rx) < 0.55 * (1 - t * 0.7)) {
+            s.mat = rust;
+            s.tone += 0.15 - t * 0.35;
+          }
+        }
+        for (const k of scr) {
+          const e = scratchDist(k, s.x, s.y);
+          if (e < k.w) {
+            s.mat = bare;
+            s.tone -= 0.15;
+          } else if (e < k.w + 0.6 && s.y > Math.min(k.y0, k.y1) + 0.3) s.tone -= 0.3;
+        }
+      },
+    });
+    if (withBolts) for (const [bx, by] of plateBolts(x, y, w, h)) boltHd(c, bx + 1.5, by + 1.5, bolt, 0.9);
+  });
+  // A bolt column down each pillar.
+  for (let i = 0; i <= MIL_PANELS; i++) {
+    const x0 = i === 0 ? 0 : milPanelX(i - 1) + MIL_PANEL_W;
+    const x1 = i === MIL_PANELS ? W : milPanelX(i);
+    for (let y = 52; y < 166; y += 18) boltHd(c, ((x0 + x1) >> 1) + 0.5, y + 1.5, bolt, 0.9, 1.3);
+  }
+  // Welds along the plate seams.
+  weldHd(c, 0, 44.9, W, 44.9, weld, 0.5, 503);
+  weldHd(c, 0, 169.9, W, 169.9, weld, 0.5, 509);
+  weldHd(c, 191.9, 170.5, 191.9, 189, weld, 0.5, 521);
+  // The title recess, hazard corners, the badge slots and the bottom text band.
+  const tr = MIL_TITLE_RECESS;
+  recessHd(c, tr.x, tr.y, tr.w, tr.h, paint, slot, 1.1);
+  for (const x of [8, 330]) {
+    c.box(x - 1, 9, 48, 14, { mat: ink, z: 1.2, round: 0 });
+    c.box(x, 10, 46, 12, { mat: gold, z: 1.4, bevel: 0.5, tex: hazardTex(gold, black, bare, x, 10, x, 541 + x) });
+  }
+  for (let i = 0; i < MIL_PANELS; i++) recessHd(c, milPanelX(i) + 1, 30, 62, 13, paint, slot, 0.8);
+  const bb = MIL_BOTTOM_BAND;
+  recessHd(c, bb.x, bb.y + 1, bb.w, bb.h, paint, slot, 1);
+  // The window bezels: gunmetal bars, lit top-left, a screw in each corner; the windows open.
+  for (let i = 0; i < MIL_PANELS; i++) {
+    const px = milPanelX(i);
+    const x = px - 3;
+    const y = MIL_PANEL_Y - 3;
+    const w = MIL_PANEL_W + 6;
+    const h = MIL_PANEL_H + 6;
+    const p = c.newPart();
+    c.box(x - 0.5, y - 0.5, w + 1, h + 1, { mat: ink, z: 1.1, round: 0 });
+    c.box(x, y, w, 2.5, { mat: steel, z: 1.3, bevel: 0.7, part: p });
+    c.box(x, y + h - 2.5, w, 2.5, { mat: steel, z: 1.3, bevel: 0.7, part: p });
+    c.box(x, y, 2.5, h, { mat: steel, z: 1.3, bevel: 0.7, part: p });
+    c.box(x + w - 2.5, y, 2.5, h, { mat: steel, z: 1.3, bevel: 0.7, part: p });
+    for (const [sx, sy] of [
+      [x + 1.25, y + 1.25],
+      [x + w - 1.25, y + 1.25],
+      [x + 1.25, y + h - 1.25],
+      [x + w - 1.25, y + h - 1.25],
+    ] as const) c.ellipsoid(sx, sy, 0.75, 0.75, { mat: bolt, z: 1.9, round: 0.8 });
+    c.erase(px, MIL_PANEL_Y, MIL_PANEL_W, MIL_PANEL_H, () => true);
+  }
+  const out = c.render({ outline: 'none', ao: 0.3, sep: false, shadow: 0.35, shadowMax: 2 });
+  // The ink edge inside each bezel (½ px, as the 1× edge reads at this size).
+  const e = d >> 1;
+  for (let i = 0; i < MIL_PANELS; i++) {
+    const X = milPanelX(i) * d;
+    const Y = MIL_PANEL_Y * d;
+    out.rect(X - e, Y - e, MIL_PANEL_W * d + 2 * e, e, PAL_HD.ink[0]);
+    out.rect(X - e, Y + MIL_PANEL_H * d, MIL_PANEL_W * d + 2 * e, e, PAL_HD.ink[0]);
+    out.rect(X - e, Y, e, MIL_PANEL_H * d, PAL_HD.ink[0]);
+    out.rect(X + MIL_PANEL_W * d, Y, e, MIL_PANEL_H * d, PAL_HD.ink[0]);
+  }
+  return out;
+}
+
+/** The squad emblem as an art-px mask at density d (the 1× strokes, drawn at d). */
+function emblemMaskHd(d: HdD): PixelBuffer {
+  const m = new PixelBuffer(40 * d, 36 * d);
+  const L = (x0: number, y0: number, x1: number, y1: number, w: number): void => {
+    m.thickLine((x0 + 0.5) * d - 0.5, (y0 + 0.5) * d - 0.5, (x1 + 0.5) * d - 0.5, (y1 + 0.5) * d - 0.5, w * d, MASK);
+  };
+  L(3, 17, 19, 32, 6);
+  L(36, 17, 20, 32, 6);
+  m.rect(19 * d, 24 * d, 2 * d, 12 * d, 0);
+  L(19, 28, 15, 22, 7);
+  L(15, 22, 15, 16, 6);
+  L(15, 16, 18, 10, 6);
+  m.ellipse(13 * d, d, 12 * d, 10 * d, MASK);
+  m.tri(26 * d, 4 * d, 37 * d, 8 * d, 26 * d, 11 * d, MASK);
+  m.rect(25 * d, 3 * d, d, 9 * d, 0);
+  m.rect(19 * d, 4 * d, 2 * d, 2 * d, 0);
+  drawText(m, '3', 2, 1, { font: 'big', color: MASK }, d);
+  return m;
+}
+
+/** The squad emblem (40 × 36) at density d: worn stencil paint, lit toward the top. */
+function emblemHd(d: HdD): PixelBuffer {
+  const m = emblemMaskHd(d);
+  const c = new HdCanvas(40, 36, d);
+  c.paint(0, 0, 40, 36, (x, y, X, Y) => {
+    if (m.get(X, Y) !== MASK) return 0;
+    if (noise2(x, y, 2.2, 223) > 0.78 || noise2(x, y, 0.7, 227) > 0.86) return 0;
+    const t = y < 12 ? 5 : y < 24 ? 4 : 3;
+    return m.get(X, Y + 1) !== MASK ? PAL_HD.sand[2] : PAL_HD.sand[t];
+  });
+  return c.render({ outline: 'none', ao: 0, sep: false, clean: false });
+}
+
+/** The shutter door (68 × 128) at density d: corrugated olive slats, steel guides, the emblem, the hazard foot. */
+function shutterDoorHd(d: HdD): PixelBuffer {
+  const W = 68;
+  const H = 128;
+  const c = new HdCanvas(W, H, d);
+  const olive = c.material({ ramp: PAL_HD.olive, lo: 1, hi: 5, spec: 0.18, shine: 14, wrap: 0.1 });
+  const rust = c.material({ ramp: RUST, lo: 0, hi: 4, wrap: 0.1 });
+  const paint = c.material({ ramp: PAL_HD.sand, lo: 2, hi: 6, spec: 0.1, wrap: 0.15 });
+  const steel = c.material({ ramp: GUNMETAL, lo: 1, hi: 6, spec: 0.55, shine: 24 });
+  const bare = c.material({ ramp: BOLT, lo: 2, hi: 5, spec: 0.4 });
+  const gold = c.material({ ramp: HAZ_GOLD, lo: 1, hi: 5, spec: 0.15 });
+  const black = c.material({ ramp: HAZ_INK, lo: 0, hi: 3, spec: 0.15 });
+  const em = emblemMaskHd(d);
+  const ex = (W - 40) >> 1;
+  const ey = 9;
+  // Dents: shallow dimples (lit on the lower right edge, dark on the upper left).
+  const rng = new Rng('mil-shutter-hd');
+  const dents: Array<[number, number, number]> = [];
+  for (let i = 0; i < 7; i++) dents.push([rng.range(8, W - 10), rng.range(4, H - 26), rng.range(1.6, 3)]);
+  c.heightField(
+    4,
+    0,
+    W - 8,
+    H - 14,
+    (x, y) => {
+      const v = (((y % 5) + 5) % 5) / 5;
+      let h = 0.85 * Math.sqrt(Math.max(0, Math.sin(Math.PI * v)));
+      for (const [dx, dy, r] of dents) {
+        const q = ((x - dx) / r) ** 2 + ((y - dy) / (r * 0.6)) ** 2;
+        if (q < 1) h -= 0.5 * (1 - q) * (1 - q);
+      }
+      return h;
+    },
+    {
+      mat: olive,
+      z: 0,
+      tex: (s) => {
+        const v = (((s.y % 5) + 5) % 5) / 5;
+        // Rust where water stands in the grooves, vertical grime streaks.
+        if ((v > 0.8 || v < 0.06) && noise2(s.x, s.y, 4, 601) > 0.72) {
+          s.mat = rust;
+          s.tone -= 0.25;
+        }
+        const g = noise2(s.x * 0.9, s.y * 0.06, 2, 607);
+        if (g > 0.62) s.tone -= (g - 0.62) * 0.6;
+        s.tone -= Math.max(0, s.y / H - 0.75) * 0.5;
+        // The emblem in worn stencil paint.
+        const X = s.X - ex * d;
+        const Y = s.Y - ey * d;
+        if (X >= 0 && Y >= 0 && X < em.w && Y < em.h && em.get(X, Y) === MASK) {
+          const wear = Math.max(noise2(s.x, s.y, 2.4, 613), noise2(s.x, s.y, 0.8, 617) - 0.08);
+          if (wear < 0.78) {
+            s.mat = paint;
+            s.tone += s.y < ey + 12 ? 0.12 : 0;
+          } else if (wear < 0.86) s.mat = bare;
+        }
+      },
+    },
+  );
+  // Side guides: steel channels with a groove.
+  for (const x of [0, W - 4]) {
+    const p = c.newPart();
+    c.box(x, 0, 4, H - 6, { mat: steel, z: 1, bevel: 0.9, part: p });
+    c.shade(x + 1.6, 0, 0.8, H - 6, () => -0.45, p);
+  }
+  // The foot: a hazard band, the steel bottom lip with its handle.
+  c.box(4, H - 14, W - 8, 8, { mat: gold, z: 0.4, bevel: 0.4, tex: hazardTex(gold, black, bare, 4, H - 14, 0, 619) });
+  c.box(0, H - 6, W, 5.5, { mat: steel, z: 1.2, bevel: 0.9 });
+  const hp = c.newPart();
+  c.box(W / 2 - 7, H - 5, 2, 3, { mat: steel, z: 1.6, bevel: 0.5, part: hp, tone: -0.2 });
+  c.box(W / 2 + 5, H - 5, 2, 3, { mat: steel, z: 1.6, bevel: 0.5, part: hp, tone: -0.2 });
+  c.capsule(W / 2 - 6, H - 4.2, W / 2 + 6, H - 4.2, 0.8, 0.8, { mat: steel, z: 2.1 });
+  const out = c.render({ outline: 'none', ao: 0.35, sep: true, sepZ: 0.6, shadow: 0.3, shadowMax: 2 });
+  out.rect(0, (H - 0.5) * d, W * d, d >> 1, PAL_HD.ink[0]);
+  return out;
+}
+
+/** 8 frames at density d: the HD door raised by 0, 1/7 … 7/7 of its height (as `shutterFrames`). */
+function shutterFramesHd(d: HdD): PixelBuffer[] {
+  const door = shutterDoorHd(d);
+  const H = 128;
+  const out: PixelBuffer[] = [];
+  for (let k = 0; k < MIL_SHUTTER_FRAMES; k++) {
+    const f = new PixelBuffer(door.w, door.h);
+    const dk = Math.round((H * k) / (MIL_SHUTTER_FRAMES - 1));
+    if (dk < H) f.blit(door, 0, -dk * d);
+    out.push(f);
+  }
+  return out;
+}
+
+/** The hazard strip (64 × 6) at density d: painted stripes on steel, ink rims, worn. */
+function hazardHd(d: HdD): PixelBuffer {
+  const c = new HdCanvas(64, 6, d);
+  const gold = c.material({ ramp: HAZ_GOLD, lo: 1, hi: 5, spec: 0.15 });
+  const black = c.material({ ramp: HAZ_INK, lo: 0, hi: 3, spec: 0.15 });
+  const bare = c.material({ ramp: BOLT, lo: 2, hi: 5, spec: 0.4 });
+  const ink = c.material({ ramp: [PAL_HD.ink[0], PAL_HD.ink[1]], flat: true, lo: 0, hi: 0 });
+  c.box(0, 0, 64, 6, { mat: ink, z: 0, round: 0 });
+  c.box(0, 1, 64, 4, { mat: gold, z: 0.3, bevel: 0.6, tex: hazardTex(gold, black, bare, 0, 0, 0, 631) });
+  return c.render({ outline: 'none', ao: 0, sep: false });
+}
+
+/** A lamp badge (28 × 10) at density d: dark glass behind a grille, or a glowing P1 / P2 lens. */
+function badgeHd(kind: 'off' | 'p1' | 'p2', d: HdD): PixelBuffer {
+  const W = 28;
+  const H = 10;
+  const c = new HdCanvas(W, H, d);
+  const ink = c.material({ ramp: [PAL_HD.ink[0], PAL_HD.ink[1]], flat: true, lo: 0, hi: 0 });
+  c.box(0, 0, W, H, { mat: ink, z: 0, round: 0 });
+  if (kind === 'off') {
+    const glass = c.material({ ramp: [PAL_HD.ink[0], PAL_HD.ink[1], PAL_HD.slate[1], PAL_HD.slate[2], PAL_HD.slate[3], PAL_HD.slate[5]], lo: 1, hi: 3, spec: 0.8, shine: 30 });
+    const grille = c.material({ ramp: GUNMETAL, lo: 1, hi: 4, spec: 0.4 });
+    c.box(1, 1, W - 2, H - 2, { mat: glass, z: 0.2, bevel: 1.2, r: 0.8 });
+    for (let x = 3; x < W - 2; x += 3) c.capsule(x + 0.5, 1.2, x + 0.5, H - 1.2, 0.35, 0.35, { mat: grille, z: 0.8 });
+    return c.render({ outline: 'none', ao: 0.3, sep: false, shadow: 0.3, shadowMax: 1 });
+  }
+  const ramp = kind === 'p1' ? PAL_HD.red : PAL_HD.sky;
+  const lens = c.material({ ramp, flat: true, lo: 1, hi: ramp.length - 2 });
+  // The lens glows brightest in the middle; a curved glass glint across its upper left.
+  c.box(1, 1, W - 2, H - 2, {
+    mat: lens,
+    z: 0.2,
+    r: 0.8,
+    tex: (s) => {
+      const gx = (s.u - 0.5) * 2;
+      const gy = (s.v - 0.45) * 2;
+      s.tone += 0.35 - (gx * gx * 0.5 + gy * gy) * 0.55;
+    },
+  });
+  c.paint(2.5, 1.5, W - 6, 0.5, (x) => (x < W * 0.6 ? ramp[ramp.length - 1] : ramp[ramp.length - 2]));
+  c.paint(2, 2, 0.5, 2.5, () => ramp[ramp.length - 2]);
+  const out = c.render({ outline: 'none', ao: 0, sep: false, clean: false });
+  const glow = kind === 'p1' ? PAL_HD.red[6] : PAL_HD.sky[5];
+  drawText(out, kind === 'p1' ? 'P1' : 'P2', W >> 1, 2, { font: 'small', color: PAL_HD.snow[6], align: 'center', outline: glow }, d);
+  return out;
+}
+
+/** The nameplate (64 × 14) at density d: khaki enamel on a steel blank, brass rivets, worn edges. */
+function plateHd(d: HdD): PixelBuffer {
+  const W = 64;
+  const H = 14;
+  const c = new HdCanvas(W, H, d);
+  const ink = c.material({ ramp: [PAL_HD.ink[0], PAL_HD.ink[1]], flat: true, lo: 0, hi: 0 });
+  const khaki = c.material({ ramp: PAL_HD.sand, lo: 2, hi: 6, spec: 0.2, shine: 16, wrap: 0.15 });
+  const bare = c.material({ ramp: BOLT, lo: 2, hi: 5, spec: 0.5 });
+  const brass = c.material({ ramp: PAL_HD.gold, lo: 1, hi: 5, spec: 0.8, shine: 26 });
+  c.box(0, 0, W, H, { mat: ink, z: 0, round: 0 });
+  c.box(1, 1, W - 2, H - 2, {
+    mat: khaki,
+    z: 0.3,
+    bevel: 1,
+    tex: (s) => {
+      s.tone -= Math.max(0, s.v - 0.7) * 0.4;
+      const e = Math.min(s.x - 1, W - 1 - s.x, s.y - 1, H - 1 - s.y);
+      if (e < 0.9 && noise2(s.x, s.y, 0.8, 641) > 0.74) s.mat = bare;
+      else if (noise2(s.x, s.y, 3, 643) > 0.7) s.tone -= 0.12;
+    },
+  });
+  for (const x of [4.5, W - 4.5]) c.ellipsoid(x, 6.5, 1.5, 1.5, { mat: brass, z: 1, round: 0.8 });
+  return c.render({ outline: 'none', ao: 0.3, sep: false, shadow: 0.3, shadowMax: 1 });
+}
+
+/** The preview window (44 × 52) at density d: a bevelled steel frame with screws round a grey-blue glass. */
+function previewHd(d: HdD): PixelBuffer {
+  const W = 44;
+  const H = 52;
+  const c = new HdCanvas(W, H, d);
+  const ink = c.material({ ramp: [PAL_HD.ink[0], PAL_HD.ink[1]], flat: true, lo: 0, hi: 0 });
+  const steel = c.material({ ramp: GUNMETAL, lo: 1, hi: 6, spec: 0.55, shine: 24 });
+  const bolt = c.material({ ramp: BOLT, lo: 1, hi: 5, spec: 0.7, shine: 26 });
+  const glassR: Ramp = [PAL_HD.navy[0], PAL_HD.navy[1], PAL_HD.navy[2], PAL_HD.slate[2], PAL_HD.steel[1], PAL_HD.steel[2], PAL_HD.slate[4]];
+  const glass = c.material({ ramp: glassR, flat: true, lo: 0, hi: 5, dither: 0.3 });
+  c.box(0, 0, W, H, { mat: ink, z: 0, round: 0 });
+  const p = c.newPart();
+  c.box(0.5, 0.5, W - 1, 3, { mat: steel, z: 1, bevel: 0.8, part: p });
+  c.box(0.5, H - 3.5, W - 1, 3, { mat: steel, z: 1, bevel: 0.8, part: p });
+  c.box(0.5, 0.5, 3, H - 1, { mat: steel, z: 1, bevel: 0.8, part: p });
+  c.box(W - 3.5, 0.5, 3, H - 1, { mat: steel, z: 1, bevel: 0.8, part: p });
+  for (const [x, y] of [
+    [2, 2],
+    [W - 2, 2],
+    [2, H - 2],
+    [W - 2, H - 2],
+  ] as const) c.ellipsoid(x, y, 0.8, 0.8, { mat: bolt, z: 1.5, round: 0.8 });
+  c.box(4, 4, W - 8, H - 8, {
+    mat: glass,
+    z: 0.1,
+    round: 0,
+    tex: (s) => {
+      // Navy at the top to slate at the bottom; two diagonal glints across the upper left.
+      s.tone += -0.45 + s.v * 0.75;
+      const g = s.x - 4 + (s.y - 4) * 1.0;
+      if ((g > 7 && g < 8.2) || (g > 10 && g < 10.6)) s.tone += s.y < 26 ? 0.45 * (1 - (s.y - 4) / 22) : 0;
+    },
+  });
+  return c.render({ outline: 'none', ao: 0.4, sep: false, shadow: 0.35, shadowMax: 2 });
+}
+
+/** A panel corner bolt (5 × 5, `drawMilPanel`): 1× the look of the panel's rect bolt. */
+function panelBolt(): PixelBuffer {
+  const b = new PixelBuffer(5, 5);
+  b.rect(0, 0, 5, 5, INK);
+  b.rect(1, 1, 3, 3, PAL.stone[2]);
+  b.rect(1, 1, 2, 1, PAL.stone[3]);
+  b.rect(3, 2, 1, 2, PAL.stone[0]);
+  return b;
+}
+
+/** The panel corner bolt at density d: an ink socket, a domed hex bolt head with a slot. */
+function panelBoltHd(d: HdD): PixelBuffer {
+  const c = new HdCanvas(5, 5, d);
+  const ink = c.material({ ramp: [PAL_HD.ink[0], PAL_HD.ink[1]], flat: true, lo: 0, hi: 0 });
+  const bolt = c.material({ ramp: BOLT, lo: 1, hi: 5, spec: 0.7, shine: 26 });
+  c.box(0, 0, 5, 5, { mat: ink, z: 0, round: 0 });
+  boltHd(c, 2.5, 2.5, bolt, 0.5, 1.6);
+  return c.render({ outline: 'none', ao: 0.2, sep: false });
+}
+
 export function defineMilitaryArt(): void {
-  defineSprite('ui/mil/frame', () => [frame()], TL);
-  defineSprite('ui/mil/shutter', shutterFrames, { ...TL, ticksPerFrame: 2, loop: false });
-  defineSprite('ui/mil/hazard', () => [hazard()], TL);
-  defineSprite('ui/mil/badge-off', () => [badge('off')], TL);
-  defineSprite('ui/mil/badge-p1', () => [badge('p1')], TL);
-  defineSprite('ui/mil/badge-p2', () => [badge('p2')], TL);
-  defineSprite('ui/mil/plate', () => [plate()], TL);
-  defineSprite('ui/mil/preview', () => [preview()], TL);
-  defineSprite('ui/mil/emblem', () => [emblem()], TL);
-  for (const t of STENCIL_TITLES) defineSprite(stencilId(t), () => [stencilTitle(t)], TL);
-  for (const t of STENCIL_GOLD) defineSprite(stencilId(t), () => [stencilTitle(t, true)], TL);
+  defineSprite('ui/mil/bolt', () => [panelBolt()], { ...TL, hd: (d) => [panelBoltHd(d)] });
+  defineSprite('ui/mil/frame', () => [frame()], { ...TL, hd: (d) => [frameHd(d)] });
+  defineSprite('ui/mil/shutter', shutterFrames, { ...TL, ticksPerFrame: 2, loop: false, hd: (d) => shutterFramesHd(d) });
+  defineSprite('ui/mil/hazard', () => [hazard()], { ...TL, hd: (d) => [hazardHd(d)] });
+  defineSprite('ui/mil/badge-off', () => [badge('off')], { ...TL, hd: (d) => [badgeHd('off', d)] });
+  defineSprite('ui/mil/badge-p1', () => [badge('p1')], { ...TL, hd: (d) => [badgeHd('p1', d)] });
+  defineSprite('ui/mil/badge-p2', () => [badge('p2')], { ...TL, hd: (d) => [badgeHd('p2', d)] });
+  defineSprite('ui/mil/plate', () => [plate()], { ...TL, hd: (d) => [plateHd(d)] });
+  defineSprite('ui/mil/preview', () => [preview()], { ...TL, hd: (d) => [previewHd(d)] });
+  defineSprite('ui/mil/emblem', () => [emblem()], { ...TL, hd: (d) => [emblemHd(d)] });
+  for (const t of STENCIL_TITLES) defineSprite(stencilId(t), () => [stencilTitle(t)], { ...TL, hd: (d) => [stencilTitleHd(t, false, d)] });
+  for (const t of STENCIL_GOLD) defineSprite(stencilId(t), () => [stencilTitle(t, true)], { ...TL, hd: (d) => [stencilTitleHd(t, true, d)] });
 }

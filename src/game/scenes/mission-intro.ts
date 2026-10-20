@@ -13,11 +13,16 @@ import { measure } from '../../engine/font';
 import { INK, PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { getFrame, hasSprite } from '../../engine/sprites';
+import { getFrame, hasSprite, setArtDensity } from '../../engine/sprites';
 import { blinkOn, centerText, drawPanel, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { BRIEFING_SPEAKER, missionCard, type MissionCard } from './flow-data';
 import { getMission } from '../registry';
 import { GameplayScene, preloadMissionArt, preloadMissionAudio } from './gameplay';
+import { RADIO_BOX } from '../content/ui/screens.art';
+import { keepForHeroes, releaseScreenArt, screenArt } from './base';
+
+/** The radio box and the portrait (one screen-art group: HD at the art tier once built). */
+const RADIO_ART: readonly string[] = ['ui/radio', 'ui/portrait-gusto'];
 
 /** GDD §13.6: the card lasts at most 360 ticks; start skips it after 60. */
 export const INTRO_TICKS = 360;
@@ -108,7 +113,9 @@ export class MissionIntroScene implements Scene {
     this.app.pointerPressed = false;
     this.app.audio.duckMusic?.(1);
     this.app.audio.music('briefing', { fadeTicks: 20 });
-    // A 2× mission (ams): generate its 2× sprites while the card is shown.
+    // The game proper starts: the menus' 4× art makes room for the mission's working set (the
+    // chosen heroes' strips stay), then a 2× / 4× mission (ams) builds its art while the card shows.
+    releaseScreenArt(this.keep());
     preloadMissionArt(this.app, getMission(this.mission));
     // Its sampled music, sounds and dialogue load while the card is shown.
     preloadMissionAudio(this.app, getMission(this.mission));
@@ -117,6 +124,12 @@ export class MissionIntroScene implements Scene {
   exit(): void {
     if (this.radio) this.app.audio.stopSfx?.('radio');
     this.radio = false;
+    releaseScreenArt(this.keep());
+  }
+
+  /** The 4× screen art a release keeps: the joined players' heroes and the vehicles. */
+  private keep(): (id: string) => boolean {
+    return keepForHeroes((this.app.session?.slots ?? []).filter((s) => s.joined).map((s) => s.character));
   }
 
   update(): void {
@@ -182,12 +195,18 @@ export class MissionIntroScene implements Scene {
   }
 
   private drawRadio(r: Renderer): void {
-    drawPanel(r, 16, 120, 352, 80, 0.95);
+    const d = screenArt(r, RADIO_ART);
+    const hd = d > 1 && hasSprite('ui/radio') && hasSprite('ui/portrait-gusto');
+    // The box: the HD field radio at the art tier, else the 1× panel.
+    if (!hd) drawPanel(r, 16, 120, 352, 80, 0.95);
+    const prev = setArtDensity(hd ? d : 1);
+    if (hd) r.sprite('ui/radio', 0, RADIO_BOX.x, RADIO_BOX.y, plain);
     // Gusto's portrait (24, 128) with a little radio tag under it.
     if (hasSprite('ui/portrait-gusto')) {
-      const f = getFrame('ui/portrait-gusto', 0);
+      const f = getFrame('ui/portrait-gusto', 0, 1);
       r.sprite('ui/portrait-gusto', 0, 24 + f.ox, 128 + f.oy, plain);
     } else r.rect(24, 128, 32, 32, PAL.navy[1], plain);
+    setArtDensity(prev);
     uiText(r, 'GUSTO', 40, 164, PAL.gold[2], 'center');
     // A live signal: a crackling bar under the name while he talks.
     const talking = this.typed < this.chars && this.t > TYPE_START;

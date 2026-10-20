@@ -5,11 +5,17 @@
  * Built with the 3D joint rig (src/game/art/figure3d.ts): yaws 0–4 are rendered, the engine
  * mirrors 5–7. Our own 1940s uniforms (no armbands, no symbols on uniforms, spec §0); blood is
  * classic red (this mode only), PAL.red[0..2] only. Never traced from the reference game.
+ *
+ * UHD: the same drawers make the 2× / 4× frames (`withFigDensity`): the rigs render through
+ * figure-hd.ts (lit by the UHD kit, outline A) and the 2D details (blooms, glints, blood, the
+ * reactor, sparks, smoke, the face) draw natively at the density (fx-hd.ts). Every billboard is
+ * registered with its carrier sprite (ray-art.ts) so the art pool builds the dense frames.
  */
 import type { Color } from '../../../engine/color';
 import { INK, PAL, type Ramp } from '../../../engine/palette';
+import { PAL_HD } from '../../../engine/palette-hd';
 import { PixelBuffer } from '../../../engine/pixel';
-import { defineRayBillboard } from '../../../engine/ray';
+import type { RayBillboardDef } from '../../../engine/ray';
 import {
   add,
   Figure,
@@ -19,7 +25,6 @@ import {
   lookAlong,
   mulMM,
   norm3,
-  renderFigure,
   rotX,
 
   rotY,
@@ -32,6 +37,14 @@ import {
 } from '../../art/figure3d';
 import { hash2 } from '../../art/paint';
 import { face27, face34, MECHA_FACE_KEY, type MechaFaceImage } from './art/mecha-face.gen';
+import { fig, figDensity, withFigDensity } from './figure-hd';
+import { bloodPoolHd, flashHd, glintHd, nearestHd, reactorHd, smokeHd, sparksHd, sprayHd, drop, streak } from './fx-hd';
+import { defineRayBillboardArt } from './ray-art';
+
+/** A billboard drawn by `def.gen` at every density (the dense frames inside `withFigDensity`). */
+function defineBillboard(id: string, def: RayBillboardDef): void {
+  defineRayBillboardArt(id, def, (d, frame, yaw) => withFigDensity(d, () => def.gen(frame, yaw)));
+}
 
 // ------------------------------------------------------------------------------------ materials
 
@@ -389,6 +402,11 @@ function armTo(f: Figure, sh: V3, hand: V3, st: SoldierStyle, pole: V3): void {
  */
 export function muzzleFlash(b: PixelBuffer, pr: Projector, at: V3, r = 6): void {
   const [x, y] = pr.p(at);
+  const D = figDensity();
+  if (D > 1) {
+    flashHd(b, x, y, r * D);
+    return;
+  }
   const cx = Math.round(x);
   const cy = Math.round(y);
   const R = Math.ceil(r);
@@ -410,6 +428,11 @@ export function muzzleFlash(b: PixelBuffer, pr: Projector, at: V3, r = 6): void 
 /** A bright glint (a 2 × 2 white core with short gold rays: the aimed barrel's tip in the tell). */
 export function glintAt(b: PixelBuffer, pr: Projector, at: V3): void {
   const [x, y] = pr.p(at);
+  const D = figDensity();
+  if (D > 1) {
+    glintHd(b, x, y, D);
+    return;
+  }
   const cx = Math.round(x);
   const cy = Math.round(y);
   const pts: ReadonlyArray<readonly [number, number, Color]> = [
@@ -426,6 +449,11 @@ export function glintAt(b: PixelBuffer, pr: Projector, at: V3): void {
 
 /** A blood pool on the floor (an irregular ellipse in the bottom rows), size 0..1. */
 export function bloodPool(b: PixelBuffer, cx: number, groundY: number, size: number, seed: number): void {
+  const D = figDensity();
+  if (D > 1) {
+    bloodPoolHd(b, cx, groundY, size, seed, D);
+    return;
+  }
   const rx = 6 + size * 16;
   const ry = 1.5 + size * 3;
   for (let y = Math.floor(groundY - ry); y <= groundY + 1; y++) {
@@ -446,6 +474,11 @@ export function bloodPool(b: PixelBuffer, cx: number, groundY: number, size: num
 
 /** Blood drops flying from a point (die frames). */
 function spray(b: PixelBuffer, x: number, y: number, n: number, seed: number): void {
+  const D = figDensity();
+  if (D > 1) {
+    sprayHd(b, x, y, n, seed, D);
+    return;
+  }
   for (let i = 0; i < n; i++) {
     const a = hash2(i, 1, seed) * Math.PI * 2;
     const d = 2 + hash2(i, 2, seed) * 7;
@@ -463,7 +496,7 @@ const FIG_SCALE = 1.1;
 
 /** Render a soldier frame; `fall` lays the body on its side (toward screen left). */
 function soldierFrame(kind: SoldierKind, p: SoldierPose, yaw: number): PixelBuffer {
-  const fig = soldier(kind, p);
+  const figure = soldier(kind, p);
   let pose: M3 = IDENT;
   let offset: V3 = [0, 0, 0];
   if (p.fall > 0) {
@@ -473,7 +506,7 @@ function soldierFrame(kind: SoldierKind, p: SoldierPose, yaw: number): PixelBuff
     pose = mulMM(rotY(0.75 * p.fall), mulMM(rotZ(-a), rotX(-0.25 * p.fall)));
     offset = [-p.fall * 22, p.fall * 3.5, 0];
   }
-  const b = renderFigure(fig, { size: SIZE, yaw, pose, offset, ground: GROUND, cx: SIZE / 2, scale: FIG_SCALE });
+  const b = fig(figure, { size: SIZE, yaw, pose, offset, ground: GROUND, cx: SIZE / 2, scale: FIG_SCALE });
   if (p.blood >= 3) bloodPool(b, SIZE / 2 + 2, GROUND, p.blood >= 4 ? 1 : 0.45, 11);
   if (p.blood === 2 && p.fall < 0.5) spray(b, SIZE / 2 + 1, 24, 10, 5);
   return b.touch();
@@ -502,12 +535,12 @@ export function soldierActPose(frame: number): SoldierPose {
 }
 
 for (const kind of ['guard', 'officer', 'ss'] as const) {
-  defineRayBillboard(`fps/${kind}/move`, {
+  defineBillboard(`fps/${kind}/move`, {
     yaws: 8,
     frames: 5,
     gen: (frame, yaw) => soldierFrame(kind, frame === 0 ? POSE0 : { ...POSE0, walk: (frame - 1) / 4 }, yaw),
   });
-  defineRayBillboard(`fps/${kind}/act`, {
+  defineBillboard(`fps/${kind}/act`, {
     yaws: 1,
     frames: 8,
     gen: (frame) => soldierFrame(kind, soldierActPose(frame), 0),
@@ -610,7 +643,7 @@ function dogTilt(yaw: number): { pose: M3; lift: number } {
 }
 
 function dogFrame(p: DogPose, yaw: number): PixelBuffer {
-  const fig = dog(p);
+  const figure = dog(p);
   let pose: M3 = IDENT;
   let offset: V3 = [0, 0, 0];
   if (p.fall > 0) {
@@ -622,7 +655,7 @@ function dogFrame(p: DogPose, yaw: number): PixelBuffer {
     offset = [0, t.lift, 0];
   }
   // the dog stands across the billboard when seen side-on: render it a little smaller than a person
-  const b = renderFigure(fig, { size: SIZE, yaw, pose, offset, ground: GROUND, cx: SIZE / 2, scale: 1.3 });
+  const b = fig(figure, { size: SIZE, yaw, pose, offset, ground: GROUND, cx: SIZE / 2, scale: 1.3 });
   if (p.blood >= 2) bloodPool(b, SIZE / 2, GROUND, p.blood >= 3 ? 0.7 : 0.35, 23);
   return b.touch();
 }
@@ -644,13 +677,13 @@ const dogAct = (frame: number): DogPose => {
   }
 };
 
-defineRayBillboard('fps/dog/move', {
+defineBillboard('fps/dog/move', {
   yaws: 8,
   frames: 5,
   // run phases 1/8, 3/8, 5/8, 7/8: no run frame repeats the stand pose
   gen: (frame, yaw) => dogFrame(frame === 0 ? DOG0 : { ...DOG0, run: (frame - 0.5) / 4 }, yaw),
 });
-defineRayBillboard('fps/dog/act', { yaws: 1, frames: 6, gen: (frame) => dogFrame(dogAct(frame), 0) });
+defineBillboard('fps/dog/act', { yaws: 1, frames: 6, gen: (frame) => dogFrame(dogAct(frame), 0) });
 
 // ------------------------------------------------------------------------------------ boss
 
@@ -741,6 +774,127 @@ export function mechaFace(img: MechaFaceImage, fx: FaceFx = FACE0): PixelBuffer 
           const corner = Math.abs(dx) === r && Math.abs(dy) === r;
           if (corner && r === 2) continue;
           b.data[y * img.w + x] = d === 0 ? (fx.flare === 2 ? PAL.snow[3] : PAL.gold[3]) : d === 1 ? (fx.flare === 2 ? PAL.red[3] : PAL.red[2]) : PAL.red[2];
+        }
+      }
+    }
+  }
+  return b.touch();
+}
+
+/**
+ * The face at density d (UHD): the imported 1× face resampled smoothly (premultiplied bilinear)
+ * to w·d × h·d and mapped to the HD palette, then the act effects drawn at that density (eyes out,
+ * the white pain flash, cracks along the 1× paths, the eye flare as a round glow).
+ * TODO(art import): a higher-resolution import of the user's face (tools/art/import-face.ts) would
+ * replace the resampling; until then the face carries the 1× import's detail.
+ */
+export function mechaFaceHd(img: MechaFaceImage, fx: FaceFx, d: number): PixelBuffer {
+  const w = img.w;
+  const h = img.h;
+  const W = w * d;
+  const H = h * d;
+  const src = (x: number, y: number): Color => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return 0;
+    const ch = img.rows[y][x];
+    return ch === '.' ? 0 : MECHA_FACE_KEY[ch] >>> 0;
+  };
+  const b = new PixelBuffer(W, H);
+  for (let Y = 0; Y < H; Y++) {
+    for (let X = 0; X < W; X++) {
+      const fx0 = (X + 0.5) / d - 0.5;
+      const fy0 = (Y + 0.5) / d - 0.5;
+      const x0 = Math.floor(fx0);
+      const y0 = Math.floor(fy0);
+      const tx = fx0 - x0;
+      const ty = fy0 - y0;
+      let r = 0;
+      let g = 0;
+      let bl = 0;
+      let a = 0;
+      for (let k = 0; k < 4; k++) {
+        const c = src(x0 + (k & 1), y0 + (k >> 1));
+        const wgt = ((k & 1) ? tx : 1 - tx) * ((k >> 1) ? ty : 1 - ty);
+        if ((c & 255) === 0 || wgt === 0) continue;
+        r += (c >>> 24) * wgt;
+        g += ((c >>> 16) & 255) * wgt;
+        bl += ((c >>> 8) & 255) * wgt;
+        a += wgt;
+      }
+      if (a < 0.5) continue;
+      b.data[Y * W + X] = nearestHd(((Math.round(r / a) << 24) | (Math.round(g / a) << 16) | (Math.round(bl / a) << 8) | 255) >>> 0);
+    }
+  }
+  const reddish = (c: Color): boolean => {
+    const rr = c >>> 24;
+    const gg = (c >>> 16) & 255;
+    const bb = (c >>> 8) & 255;
+    return rr > 90 && rr > gg * 1.6 && rr > bb * 1.5;
+  };
+  const nearEye = (X: number, Y: number, r: number): boolean => img.eyes.some(([ex, ey]) => Math.abs((X + 0.5) / d - (ex + 0.5)) <= r + 0.5 && Math.abs((Y + 0.5) / d - (ey + 0.5)) <= r + 0.5);
+  if (fx.eyesOut) {
+    for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
+      const i = Y * W + X;
+      if (nearEye(X, Y, 3) && (b.data[i] & 255) !== 0 && reddish(b.data[i])) b.data[i] = PAL_HD.red[0];
+    }
+  }
+  if (fx.white) {
+    const sn = PAL_HD.snow;
+    for (let i = 0; i < b.data.length; i++) {
+      const c = b.data[i];
+      if ((c & 255) === 0) continue;
+      const l = ((c >>> 24) * 3 + ((c >>> 16) & 255) * 6 + ((c >>> 8) & 255)) / 10;
+      b.data[i] = l > 170 ? sn[6] : l > 135 ? sn[5] : l > 100 ? sn[4] : l > 70 ? sn[3] : l > 45 ? sn[2] : sn[1];
+    }
+  }
+  if (fx.crack > 0) {
+    const cracks: [number, number, number, number][] = [
+      [0.55, 0.12, -0.6, 1],
+      [0.2, 0.3, 0.5, 1],
+      [0.8, 0.55, -0.8, 1],
+      [0.35, 0.7, 0.4, -1],
+    ];
+    const lw = Math.max(1, Math.round(d * 0.5));
+    for (let k = 0; k < Math.min(cracks.length, fx.crack); k++) {
+      const [fx0, fy0, slope, dir] = cracks[k];
+      let x = Math.round(fx0 * w);
+      let y = Math.round(fy0 * h);
+      const len = 6 + fx.crack * 3;
+      for (let st = 0; st < len; st++) {
+        const nx = x + (hash2(st, k, 77) < 0.5 ? dir : Math.round(slope));
+        // a line from this logical cell's centre to the next, lw art px wide
+        const ax = (x + 0.5) * d;
+        const ay = (y + 0.5) * d;
+        const bx = (nx + 0.5) * d;
+        const by = (y + 1.5) * d;
+        const n = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay)));
+        for (let q = 0; q <= n; q++) {
+          const X = Math.floor(ax + ((bx - ax) * q) / n);
+          const Y = Math.floor(ay + ((by - ay) * q) / n);
+          for (let t = 0; t < lw; t++) {
+            const XX = X + t;
+            if (XX < 0 || Y < 0 || XX >= W || Y >= H || (b.data[Y * W + XX] & 255) === 0) continue;
+            b.data[Y * W + XX] = PAL_HD.ink[0];
+          }
+          // a lit chip on the crack's right lip
+          const XX = X + lw;
+          if (st % 3 === 0 && q === n >> 1 && XX < W && Y >= 0 && Y < H && (b.data[Y * W + XX] & 255) !== 0) b.data[Y * W + XX] = PAL_HD.stone[4];
+        }
+        y += 1;
+        x = nx;
+      }
+    }
+  }
+  if (fx.flare > 0 && !fx.eyesOut) {
+    const R = (fx.flare === 2 ? 2.4 : 1.5) * d;
+    for (const [ex, ey] of img.eyes) {
+      const cx = (ex + 0.5) * d;
+      const cy = (ey + 0.5) * d;
+      for (let Y = Math.floor(cy - R); Y <= Math.ceil(cy + R); Y++) {
+        for (let X = Math.floor(cx - R); X <= Math.ceil(cx + R); X++) {
+          if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+          const q = Math.hypot(X + 0.5 - cx, Y + 0.5 - cy) / R;
+          if (q > 1) continue;
+          b.data[Y * W + X] = q < 0.3 ? (fx.flare === 2 ? PAL_HD.fire[7] : PAL_HD.fire[6]) : q < 0.55 ? (fx.flare === 2 ? PAL_HD.red[7] : PAL_HD.red[6]) : q < 0.8 ? PAL_HD.red[5] : PAL_HD.red[3];
         }
       }
     }
@@ -901,6 +1055,11 @@ export function buildMech(p: MechPose, yaw: number): { fig: Figure; horns: V3[];
 
 /** Reactor core rings (white-hot centre, red rings) on the chest. */
 function reactor(b: PixelBuffer, x: number, y: number, pulse: number, dead: boolean): void {
+  const D = figDensity();
+  if (D > 1) {
+    reactorHd(b, x, y, pulse, dead, D);
+    return;
+  }
   const R = 5.5 + pulse * 1.5;
   for (let yy = Math.floor(y - R - 1); yy <= y + R + 1; yy++) {
     for (let xx = Math.floor(x - R - 1); xx <= x + R + 1; xx++) {
@@ -916,6 +1075,11 @@ function reactor(b: PixelBuffer, x: number, y: number, pulse: number, dead: bool
 
 /** Sparks around the suit (break frames). */
 function sparks(b: PixelBuffer, n: number, seed: number): void {
+  const D = figDensity();
+  if (D > 1) {
+    sparksHd(b, n, seed, D, MECH_SIZE / 2, MECH_GROUND - 46);
+    return;
+  }
   for (let i = 0; i < n; i++) {
     const x = 18 + Math.floor(hash2(i, 1, seed) * 60);
     const y = 30 + Math.floor(hash2(i, 2, seed) * 45);
@@ -931,6 +1095,11 @@ function sparks(b: PixelBuffer, n: number, seed: number): void {
 
 /** Smoke puffs (grey, dithered) at a point. */
 function smoke(b: PixelBuffer, x: number, y: number, r: number, seed: number): void {
+  const D = figDensity();
+  if (D > 1) {
+    smokeHd(b, x, y, r, seed, D);
+    return;
+  }
   for (let yy = Math.floor(y - r); yy <= y + r; yy++) {
     for (let xx = Math.floor(x - r); xx <= x + r; xx++) {
       const d = Math.hypot(xx - x, yy - y) / r + (hash2(xx, yy, seed) - 0.5) * 0.5;
@@ -965,8 +1134,8 @@ export function mechFrame(walk: number, yaw: number, act = -1): PixelBuffer {
     fx.crack = act - 4;
     fx.eyesOut = act === 8;
   }
-  const { fig, horns, core } = buildMech(p, yaw);
-  const b = renderFigure(fig, { size: MECH_SIZE, yaw, ground: MECH_GROUND, cx: MECH_SIZE / 2 });
+  const { fig: figure, horns, core } = buildMech(p, yaw);
+  const b = fig(figure, { size: MECH_SIZE, yaw, ground: MECH_GROUND, cx: MECH_SIZE / 2 });
   const pr = projector(yaw, MECH_GROUND, MECH_SIZE);
   if (yaw <= 1) {
     const [cxp, cyp] = pr(core);
@@ -987,13 +1156,17 @@ export function mechFrame(walk: number, yaw: number, act = -1): PixelBuffer {
 }
 
 /** Blit the user's face onto a front-yaw suit frame (yaw 0 = face34, yaw 1 = face27 squeezed). */
-function placeFace(b: PixelBuffer, yaw: number, fx: FaceFx, drop: number): void {
+function placeFace(b: PixelBuffer, yaw: number, fx: FaceFx, dropBy: number): void {
   if (yaw > 1) return;
   const img = yaw === 0 ? face34 : face27;
-  const face = mechaFace(img, fx);
   const x = Math.round(MECH_SIZE / 2 - img.w / 2) + (yaw === 1 ? -3 : 0);
-  const y = MECH_GROUND - FACE_TOP + drop;
-  b.blit(face, x, y);
+  const y = MECH_GROUND - FACE_TOP + dropBy;
+  const D = figDensity();
+  if (D > 1) {
+    b.blit(mechaFaceHd(img, fx, D), x * D, y * D);
+    return;
+  }
+  b.blit(mechaFace(img, fx), x, y);
 }
 
 /** Screen position of a body-space point for a yaw (no pose), as renderFigure projects it. */
@@ -1005,14 +1178,19 @@ function projector(yaw: number, ground: number, size: number): (v: V3) => [numbe
 }
 
 function flashAt(b: PixelBuffer, x: number, y: number, r: number): void {
+  const D = figDensity();
+  if (D > 1) {
+    flashHd(b, x * D, y * D, r * D);
+    return;
+  }
   const pr: Projector = { p: () => [x, y, 0], rot: IDENT };
   muzzleFlash(b, pr, [0, 0, 0], r);
 }
 
 /** The wreck (§7.1): kneeling, the chest opened, smoking, the dead face (eyes dark). */
 export function wreckFrame(): PixelBuffer {
-  const { fig } = buildMech({ ...MECH0, wreck: 1 }, 0);
-  const b = renderFigure(fig, { size: MECH_SIZE, yaw: 0, ground: MECH_GROUND, cx: MECH_SIZE / 2 });
+  const { fig: figure } = buildMech({ ...MECH0, wreck: 1 }, 0);
+  const b = fig(figure, { size: MECH_SIZE, yaw: 0, ground: MECH_GROUND, cx: MECH_SIZE / 2 });
   placeFace(b, 0, { ...FACE0, crack: 4, eyesOut: true }, 12);
   smoke(b, 36, 30, 6, 120);
   smoke(b, 58, 22, 5, 121);
@@ -1035,7 +1213,7 @@ export function footFrame(walk: number, yaw: number, act = -1): PixelBuffer {
     p = soldierActPose(Math.min(6, 3 + Math.floor((k * 4) / 5)));
     if (k === 0) p = { ...POSE0, aim: 0.3, lean: 0.3, headRoll: -0.25, blood: 2 };
   } else if (act === 10) p = soldierActPose(7);
-  const fig = soldier('boss', p);
+  const figure = soldier('boss', p);
   let pose: M3 = IDENT;
   let offset: V3 = [0, 0, 0];
   if (p.fall > 0) {
@@ -1043,36 +1221,78 @@ export function footFrame(walk: number, yaw: number, act = -1): PixelBuffer {
     pose = mulMM(rotY(0.75 * p.fall), mulMM(rotZ(-a), rotX(-0.25 * p.fall)));
     offset = [-p.fall * 22, p.fall * 3.5, 0];
   }
-  const b = renderFigure(fig, { size: SIZE, yaw, pose, offset, ground: GROUND, cx: SIZE / 2, scale: FIG_SCALE });
+  const b = fig(figure, { size: SIZE, yaw, pose, offset, ground: GROUND, cx: SIZE / 2, scale: FIG_SCALE });
   if (p.blood >= 3) bloodPool(b, SIZE / 2 + 2, GROUND, p.blood >= 4 ? 1 : 0.45, 13);
   // scorched hem: soot texels along the bottom of the coat
   return b.touch();
 }
 
-defineRayBillboard('fps/boss/mech/move', { size: 96, yaws: 8, frames: 5, worldW: 1.5, worldH: 1.5, gen: (frame, yaw) => mechFrame(frame === 0 ? -1 : (frame - 1) / 4, yaw) });
-defineRayBillboard('fps/boss/mech/act', { size: 96, yaws: 1, frames: 9, worldW: 1.5, worldH: 1.5, gen: (frame) => mechFrame(-1, 0, frame) });
-defineRayBillboard('fps/boss/wreck', { size: 96, yaws: 1, frames: 1, worldW: 1.5, worldH: 1.5, gen: () => wreckFrame() });
+defineBillboard('fps/boss/mech/move', { size: 96, yaws: 8, frames: 5, worldW: 1.5, worldH: 1.5, gen: (frame, yaw) => mechFrame(frame === 0 ? -1 : (frame - 1) / 4, yaw) });
+defineBillboard('fps/boss/mech/act', { size: 96, yaws: 1, frames: 9, worldW: 1.5, worldH: 1.5, gen: (frame) => mechFrame(-1, 0, frame) });
+defineBillboard('fps/boss/wreck', { size: 96, yaws: 1, frames: 1, worldW: 1.5, worldH: 1.5, gen: () => wreckFrame() });
 // A little bigger than the troops (world 1.15): the boss on foot stands out at range.
-defineRayBillboard('fps/boss/foot/move', { yaws: 8, frames: 5, worldW: 1.15, worldH: 1.15, gen: (frame, yaw) => footFrame(frame === 0 ? -1 : (frame - 1) / 4, yaw) });
-defineRayBillboard('fps/boss/foot/act', { yaws: 1, frames: 11, worldW: 1.15, worldH: 1.15, gen: (frame) => footFrame(-1, 0, frame) });
+defineBillboard('fps/boss/foot/move', { yaws: 8, frames: 5, worldW: 1.15, worldH: 1.15, gen: (frame, yaw) => footFrame(frame === 0 ? -1 : (frame - 1) / 4, yaw) });
+defineBillboard('fps/boss/foot/act', { yaws: 1, frames: 11, worldW: 1.15, worldH: 1.15, gen: (frame) => footFrame(-1, 0, frame) });
 
 
 // ------------------------------------------------------------------------------------ fx
 
-defineRayBillboard('fps/fx/blood-pool', {
+/** The hit spurt at density d: the 1× core and spray at the same logical places, as round lit drops. */
+function spurtHd(frame: number, D: number): PixelBuffer {
+  const b = new PixelBuffer(SIZE * D, SIZE * D);
+  const cx = SIZE / 2;
+  const cy = 28 + frame;
+  const core = [2.2, 1.6, 0][frame] ?? 0;
+  if (core > 0) drop(b, (cx + 0.5) * D, (cy + 0.5) * D, (core + 0.5) * D, 3);
+  const n = [22, 34, 26][frame] ?? 20;
+  const spread = [5, 8, 11][frame] ?? 5;
+  for (let i = 0; i < n; i++) {
+    const a = hash2(i, 1, 40 + frame) * Math.PI * 2;
+    const dist = 1 + hash2(i, 2, 40 + frame) * spread;
+    const x = cx + Math.cos(a) * dist + 0.5;
+    const y = 28 + Math.sin(a) * dist * 0.8 + frame * 2 + 0.5;
+    drop(b, x * D, y * D, D * (i % 4 === 0 ? 0.8 : i % 3 === 0 ? 0.65 : 0.5), i % 4 === 0 ? 3 : 2);
+  }
+  return b.touch();
+}
+
+/** The suit's hit sparks at density d: streaks flying out from the chest, a white-hot burst on frame 0. */
+function hitSparksHd(frame: number, D: number): PixelBuffer {
+  const b = new PixelBuffer(MECH_SIZE * D, MECH_SIZE * D);
+  const cx = MECH_SIZE / 2;
+  const cy = MECH_GROUND - 46;
+  if (frame === 0) flashHd(b, (cx + 0.5) * D, (cy + 0.5) * D, 3 * D);
+  const n = [14, 22, 16][frame] ?? 12;
+  const spread = [8, 14, 20][frame] ?? 10;
+  for (let i = 0; i < n; i++) {
+    const a = hash2(i, 1, 60 + frame) * Math.PI * 2;
+    const dist = 2 + hash2(i, 2, 60 + frame) * spread;
+    const ux = Math.cos(a);
+    const uy = Math.sin(a) * 0.7;
+    const x = cx + ux * dist + 0.5;
+    const y = cy + uy * dist + frame * 2 + 0.5;
+    streak(b, x * D, y * D, ux * D, uy * D, frame === 2 ? 1.6 : 2.4, i % 3);
+  }
+  return b.touch();
+}
+
+defineBillboard('fps/fx/blood-pool', {
   yaws: 1,
   frames: 3,
   gen: (frame) => {
-    const b = new PixelBuffer(SIZE, SIZE);
+    const D = figDensity();
+    const b = new PixelBuffer(SIZE * D, SIZE * D);
     bloodPool(b, SIZE / 2, GROUND, [0.2, 0.5, 0.9][frame] ?? 0.5, 31 + frame);
     return b.touch();
   },
 });
 
-defineRayBillboard('fps/fx/spurt', {
+defineBillboard('fps/fx/spurt', {
   yaws: 1,
   frames: 3,
   gen: (frame) => {
+    const D = figDensity();
+    if (D > 1) return spurtHd(frame, D);
     const b = new PixelBuffer(SIZE, SIZE);
     const cx = SIZE / 2;
     const cy = 28; // chest height of a 64-px person
@@ -1102,13 +1322,15 @@ defineRayBillboard('fps/fx/spurt', {
  * The suit's hit sparks (§7.1/§7.2: the suit takes no pain, sparks only; also the break): a
  * 1.5-tile billboard like the mech, the sparks at his chest and shoulders, gold / orange / white.
  */
-defineRayBillboard('fps/fx/sparks', {
+defineBillboard('fps/fx/sparks', {
   size: MECH_SIZE,
   yaws: 1,
   frames: 3,
   worldW: 1.5,
   worldH: 1.5,
   gen: (frame) => {
+    const D = figDensity();
+    if (D > 1) return hitSparksHd(frame, D);
     const b = new PixelBuffer(MECH_SIZE, MECH_SIZE);
     const cx = MECH_SIZE / 2;
     const cy = MECH_GROUND - 46; // the chest of the suit

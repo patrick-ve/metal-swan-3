@@ -9,8 +9,8 @@ import { defaultBindings, serializeBindings, type Bindings, type Button, type Ke
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { blinkOn, centerText, drawCursor, drawPanel, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
-import { drawBase } from './base';
+import { blinkOn, centerText, drawPanel, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { drawBase, drawScreenCursor } from './base';
 import { veil } from './lake';
 import { titleClock } from './title';
 
@@ -257,7 +257,7 @@ export class ControlsScene implements Scene {
       const y = TOP + i * STEP;
       const sel = i === this.sel && !this.capture;
       uiText(r, row.label, LABEL_X, y, sel ? UI_GOLD : PAL.snow[1]);
-      if (sel) drawCursor(r, LABEL_X - 4, y + 3, this.t);
+      if (sel) drawScreenCursor(r, LABEL_X - 4, y + 3, this.t);
       if (row.id === 'reset' || row.id === 'back') continue;
       const v = REBIND_BUTTONS.map((btn) => bindingText(b, row.id as SetId, btn)).join(' ');
       uiText(r, v, VALUE_X, y, sel ? UI_WHITE : PAL.snow[2], 'right');

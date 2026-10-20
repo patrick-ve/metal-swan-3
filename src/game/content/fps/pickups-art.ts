@@ -6,8 +6,11 @@
 import type { Color } from '../../../engine/color';
 import { INK, PAL, type Ramp } from '../../../engine/palette';
 import { PixelBuffer } from '../../../engine/pixel';
-import { defineRayBillboard } from '../../../engine/ray';
-import { Figure, lookAlong, norm3, renderFigure, rotX, rotY, rotZ, mulMM, type Mat, type V3 } from '../../art/figure3d';
+import { hdHome, PAL_HD } from '../../../engine/palette-hd';
+import { HdCanvas } from '../../art/hd';
+import { eachArtPx, fig, figDensity, withFigDensity } from './figure-hd';
+import { defineRayBillboardArt } from './ray-art';
+import { Figure, lookAlong, norm3, rotX, rotY, rotZ, mulMM, type Mat, type V3 } from '../../art/figure3d';
 
 const S = 64;
 const G = 62;
@@ -35,12 +38,24 @@ const BEAK = m([PAL.orange[0], PAL.orange[1], PAL.gold[2]]);
 
 /** Render an item seen from above-front (tilt) at `scale` texels per unit. */
 function look(f: Figure, scale = 1, tilt = 0.55, angle = 0.35): PixelBuffer {
-  return renderFigure(f, { size: S, angle, pose: rotX(tilt), ground: G, scale });
+  return fig(f, { size: S, angle, pose: rotX(tilt), ground: G, scale });
 }
 
 /** A floor shadow under an item (drawn under the opaque texels). */
 function shadow(b: PixelBuffer, w: number): PixelBuffer {
   const cx = S / 2;
+  if (figDensity() > 1) {
+    // a soft contact shadow: an ellipse of dark px (a fine ordered pattern towards its rim)
+    eachArtPx(b, cx - w / 2, G - 0.5, w, 2.5, (x, y, c) => {
+      if ((c & 255) !== 0) return 0;
+      const e = Math.hypot((x - cx) / (w / 2), (y - (G + 0.6)) / 1.4);
+      if (e > 1) return 0;
+      const X = Math.floor(x * figDensity());
+      const Y = Math.floor(y * figDensity());
+      return e < 0.6 || ((X + Y) & 1) === 0 ? PAL_HD.ink[1] : 0;
+    });
+    return b.touch();
+  }
   for (let x = Math.round(cx - w / 2); x < cx + w / 2; x++) {
     for (const y of [G, G + 1]) if ((b.data[y * S + x] & 255) === 0 && ((x + y) & 1) === 0) b.data[y * S + x] = PAL.ink[1];
   }
@@ -81,6 +96,7 @@ const ITEMS: Record<string, () => PixelBuffer> = {
     return shadow(look(f, 1.6), 20);
   },
   'blood-pool': () => {
+    if (figDensity() > 1) return bloodPoolItemHd(figDensity());
     const b = new PixelBuffer(S, S);
     for (let y = G - 4; y <= G + 1; y++) {
       for (let x = 20; x < 44; x++) {
@@ -170,6 +186,7 @@ const ITEMS: Record<string, () => PixelBuffer> = {
   },
   'pocket-watch': () => {
     // an open brass pocket watch on a chain
+    if (figDensity() > 1) return shadow(pocketWatchHd(figDensity()), 18);
     const b = new PixelBuffer(S, S);
     const cx = 30;
     const cy = 52;
@@ -230,10 +247,24 @@ const ITEMS: Record<string, () => PixelBuffer> = {
     const f = new Figure();
     f.box([-4, 9, 0], [9, 9, 0.6], SLEEVE, rotZ(0.12));
     f.ell([4, 11, 0.9], [8.5, 8.5, 0.5], VINYL, rotX(Math.PI / 2 - Math.PI / 2));
-    const b = renderFigure(f, { size: S, yaw: 0, ground: G, scale: 1.2, angle: 0.25 });
+    const b = fig(f, { size: S, yaw: 0, ground: G, scale: 1.2, angle: 0.25 });
     // grooves and the label
     const cx = 37;
     const cy = 48;
+    if (figDensity() > 1) {
+      eachArtPx(b, cx - 11, cy - 11, 22, 22, (x, y, c) => {
+        if (hdHome(c)?.ramp !== PAL_HD.gold) return 0;
+        const dd = Math.hypot(x - cx - 0.5, y - cy - 0.5);
+        if (dd < 2.5) return dd < 0.6 ? PAL_HD.ink[1] : PAL_HD.gold[1];
+        if (dd < 4.5) return dd > 4.1 ? PAL_HD.red[3] : PAL_HD.red[5];
+        // fine grooves: a dark ring every ¾ logical px, the light catching them on the upper left
+        const g = (dd * 1.35) % 1;
+        if (g < 0.3) return (hdHome(c)?.i ?? 4) >= 5 ? PAL_HD.gold[4] : PAL_HD.gold[2];
+        return 0;
+      });
+      eachArtPx(b, cx - 6, cy - 7, 2, 2, (x, y, c) => (hdHome(c)?.ramp === PAL_HD.gold && Math.hypot(x - cx + 4.5, y - cy + 5.5) < 0.7 ? PAL_HD.snow[6] : 0));
+      return shadow(b.touch(), 26);
+    }
     for (let y = cy - 11; y <= cy + 11; y++) {
       for (let x = cx - 11; x <= cx + 11; x++) {
         const d = Math.hypot(x - cx, y - cy);
@@ -248,6 +279,57 @@ const ITEMS: Record<string, () => PixelBuffer> = {
     return shadow(b.touch(), 26);
   },
 };
+
+/** The blood pool item at density d: an irregular lit pool (a wet highlight top left). */
+function bloodPoolItemHd(d: number): PixelBuffer {
+  const b = new PixelBuffer(S * d, S * d);
+  withFigDensity(d, () =>
+    eachArtPx(b, 20, G - 4, 24, 6, (x, y) => {
+      const ex = (x - 32) / 11;
+      const ey = (y - (G - 1.5)) / 3.2;
+      const dd = ex * ex + ey * ey + Math.sin(x * 1.7) * 0.08;
+      if (dd > 1) return 0;
+      if (Math.hypot(x - 29.5, (y - (G - 2.6)) * 2) < 1.2) return PAL_HD.red[6];
+      return dd < 0.3 ? PAL_HD.red[4] : dd < 0.55 ? PAL_HD.red[3] : dd < 0.8 ? PAL_HD.red[2] : PAL_HD.red[1];
+    }),
+  );
+  return b.touch();
+}
+
+/** The pocket watch at density d: a lit brass case and open lid, the white dial, hands, the chain (outline A). */
+function pocketWatchHd(d: number): PixelBuffer {
+  const c = new HdCanvas(S, S, d);
+  const brass = c.material({ ramp: PAL_HD.gold, lo: 1, hi: 6, spec: 1, shine: 26 });
+  const dial = c.material({ ramp: PAL_HD.snow, lo: 2, hi: 5, spec: 0.5, shine: 30 });
+  const cx = 30.5;
+  const cy = 52.5;
+  // the open lid behind, the crown, the case and the dial
+  c.ellipsoid(cx, cy - 11.5, 6.5, 4.5, { mat: brass, z: 0, tone: -0.15 });
+  c.ellipsoid(cx, cy - 11.5, 4.5, 2.5, { mat: brass, z: 0.5, tone: -0.45, round: 0.4 });
+  c.box(cx - 1.5, cy - 8, 3, 2, { mat: brass, z: 3, bevel: 0.6, r: 0.5 });
+  c.ellipsoid(cx, cy, 7.5, 6, { mat: brass, z: 2 });
+  c.ellipsoid(cx, cy, 6.3, 4.9, { mat: dial, z: 4, round: 0.25 });
+  c.paint(cx - 7, cy - 6, 14, 12, (x, y) => {
+    const dx = x - cx;
+    const dy = y - cy;
+    // hour marks, the hands
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      if (Math.hypot(dx - Math.cos(a) * 5, (dy - Math.sin(a) * 4) * 1.1) < 0.4) return PAL_HD.stone[2];
+    }
+    const along = (ux: number, uy: number, len: number, w: number): boolean => {
+      const t = (dx * ux + dy * uy) / (ux * ux + uy * uy);
+      if (t < 0 || t > len) return false;
+      return Math.hypot(dx - ux * t, dy - uy * t) < w;
+    };
+    if (along(3, -2, 1, 0.35) || along(0, -3, 1, 0.3) || Math.hypot(dx, dy) < 0.5) return PAL_HD.ink[0];
+    return 0;
+  }, 10);
+  // the chain
+  for (let k = 0; k < 9; k++) c.ellipsoid(cx + 8.5 + k * 2, cy + 4.5 - (k & 1) - Math.round(k / 3), 0.9, 0.7, { mat: brass, z: 1, tone: k & 1 ? 0.1 : -0.2 });
+  c.dot(cx - 4.5, cy - 2.5, PAL_HD.snow[6]);
+  return c.render({ outline: 'A', ao: 0.3, rimLight: 1 }).touch();
+}
 
 function bitKey(r: Ramp): PixelBuffer {
   // a large old bit key on a paper tag
@@ -266,4 +348,4 @@ function bitKey(r: Ramp): PixelBuffer {
 ITEMS['key-gold'] = () => bitKey([PAL.gold[0], PAL.gold[1], PAL.gold[2], PAL.gold[3]]);
 ITEMS['key-silver'] = () => bitKey([PAL.steel[1], PAL.steel[2], PAL.steel[3], PAL.steel[4], PAL.snow[2]]);
 
-for (const [id, gen] of Object.entries(ITEMS)) defineRayBillboard(`fps/item/${id}`, { yaws: 1, frames: 1, gen: () => gen() });
+for (const [id, gen] of Object.entries(ITEMS)) defineRayBillboardArt(`fps/item/${id}`, { yaws: 1, frames: 1, gen: () => gen() }, (d) => withFigDensity(d, gen));

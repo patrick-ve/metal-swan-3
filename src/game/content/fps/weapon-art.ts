@@ -9,8 +9,9 @@ import type { Color } from '../../../engine/color';
 import { INK, PAL, type Ramp } from '../../../engine/palette';
 import { PixelBuffer } from '../../../engine/pixel';
 import { defineSprite } from '../../../engine/sprites';
-import { add, Figure, lerp3, mulMM, renderFigure, rotX, rotZ, type Mat, type V3 } from '../../art/figure3d';
+import { add, Figure, lerp3, mulMM, rotX, rotZ, type Mat, type V3 } from '../../art/figure3d';
 import { muzzleFlash } from './billboards';
+import { figWin, hdLook, withFigDensity } from './figure-hd';
 
 export const VIEW_W = 112;
 export const VIEW_H = 80;
@@ -58,8 +59,7 @@ function render(f: Figure, muzzle: V3 | null, p: ViewPose, cx = VIEW_W / 2, tilt
     f.overlay((b, pr) => muzzleFlash(b, pr, mz, flashR));
   }
   const pose = lean !== 0 ? mulMM(rotZ(lean), rotX(tilt)) : rotX(tilt);
-  const b = renderFigure(f, { size, angle: Math.PI + turn, pose, ground: size + 4, cx: cx + (size - VIEW_W) / 2, scale });
-  return b.crop((size - VIEW_W) / 2, size - VIEW_H, VIEW_W, VIEW_H).touch();
+  return figWin(f, { size, angle: Math.PI + turn, pose, ground: size + 4, cx: cx + (size - VIEW_W) / 2, scale }, (size - VIEW_W) / 2, size - VIEW_H, VIEW_W, VIEW_H).touch();
 }
 
 // The renderer views yaw 4 (from behind): the figure's +x (its right) is screen +x.
@@ -181,5 +181,17 @@ function chaingun(frame: number): PixelBuffer {
 
 const VIEWS: Readonly<Record<string, (frame: number) => PixelBuffer>> = { knife, pistol, mg, chaingun };
 
-for (const [id, gen] of Object.entries(VIEWS)) defineSprite(`fps/view/${id}`, () => [0, 1, 2, 3].map((fr) => gen(fr)), { anchor: 'feet' });
+// UHD light of the view's materials (figure-hd.ts): oiled gun steel, a matte leather glove, a polished blade.
+hdLook(GUN, { spec: 0.75, shine: 22, wrap: 0.05 });
+hdLook(GUN_LIT, { spec: 0.9, shine: 26, wrap: 0.05 });
+hdLook(HOUSING, { spec: 0.6, shine: 18, wrap: 0.05 });
+hdLook(GLOVE, { spec: 0.25, shine: 12, wrap: 0.15 });
+hdLook(CUFF, { wrap: 0.3 });
+hdLook(BLADE, { spec: 1, shine: 34, wrap: 0.05 });
+hdLook(WOOD, { spec: 0.2, shine: 14, wrap: 0.15 });
+hdLook(BRASS, { spec: 1, shine: 24, wrap: 0.05 });
+
+for (const [id, gen] of Object.entries(VIEWS)) {
+  defineSprite(`fps/view/${id}`, () => [0, 1, 2, 3].map((fr) => gen(fr)), { anchor: 'feet', hd: (d) => withFigDensity(d, () => [0, 1, 2, 3].map((fr) => gen(fr))) });
+}
 

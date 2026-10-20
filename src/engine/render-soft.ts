@@ -1,6 +1,6 @@
 import type { Color } from './color';
 import { BLACK, WHITE } from './color';
-import { drawGlyph, drawText, getFont, layoutText, textPasses, textScale } from './font';
+import { drawText, drawTextPx, glyphDensity, textScale } from './font';
 import type { BlitOpts } from './pixel';
 import { PixelBuffer, traceLine } from './pixel';
 import type { DrawOpts, Frame, ParallaxOpts, Renderer, TextOpts } from './render';
@@ -21,7 +21,7 @@ import {
   spriteFilter,
   toPx,
 } from './render-common';
-import { getFrame, spriteIdOf } from './sprites';
+import { artTier, getFrame, hiArtOn, spriteIdOf } from './sprites';
 import { upscale, upscaleFactor, type UpscaleMode } from './upscale';
 
 export interface SoftRendererOpts {
@@ -193,18 +193,12 @@ export class SoftRenderer implements Renderer {
       drawText(this.target, s, Math.round(x) - (screen ? 0 : this.camX), Math.round(y) - (screen ? 0 : this.camY), o);
       return;
     }
-    // Lay out in logical pixels from (0, 0), then place every glyph as k × k blocks.
+    // Lay out in logical pixels from (0, 0), then place every glyph as k × k blocks (glyph
+    // density 1), or draw the HD glyphs of the art tier the backbuffer shows (font.ts).
     const fine = !screen && this.subpixel === 'all';
     const bx = toPx(x, k, fine) - (screen ? 0 : this.cx);
     const by = toPx(y, k, fine) - (screen ? 0 : this.cy);
-    const font = getFont(o?.font);
-    const align = o?.align ?? 'left';
-    const alpha = o?.alpha ?? 1;
-    const sc = textScale(o);
-    const target = this.target;
-    textPasses(o, (color, dx, dy) => {
-      layoutText(s, dx, dy, font, align, (g, gx, gy) => drawGlyph(target, g, bx + gx * k, by + gy * k, color, alpha, sc * k), sc);
-    });
+    drawTextPx(this.target, s, bx, by, o, k, glyphDensity(k, hiArtOn() ? artTier() : 1, textScale(o)));
   }
 
   parallax(

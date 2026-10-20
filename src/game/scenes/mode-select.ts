@@ -9,13 +9,13 @@
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { centerText, drawCursor, menuKeys, scoreText, textWidth, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { centerText, menuKeys, scoreText, textWidth, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { saveSettings } from '../settings';
-import { CharacterSelectScene } from './character-select';
+import { CharacterSelectScene, MIL_ART } from './character-select';
 import { DIFFICULTIES, DIFFICULTY_INFO } from './flow-data';
 import { toTitle } from './flow';
 import { HighScoresScene } from './high-scores';
-import { drawBase, drawStencilTitle } from './base';
+import { drawBase, drawScreenCursor, drawStencilTitle, prefetchScreenArt } from './base';
 import { veil } from './lake';
 import { OptionsScene } from './options';
 import { titleClock } from './title';
@@ -33,6 +33,8 @@ export class ModeSelectScene implements Scene {
   private sel = 0;
   private t = 0;
   private leaving = false;
+  /** The select screen's furniture was handed to the screen art pool (once). */
+  private prefetched = false;
 
   constructor(app: GameApp, sel = 0) {
     this.app = app;
@@ -122,13 +124,18 @@ export class ModeSelectScene implements Scene {
     veil(r, 0.6);
     centerText(r, `HI ${scoreText(this.app.highScores.top)}`, 4, UI_WHITE);
     drawStencilTitle(r, 'SELECT OPERATION', 36);
+    // The select screen comes next: its HD furniture builds while this menu shows.
+    if (!this.prefetched) {
+      this.prefetched = true;
+      prefetchScreenArt(r, MIL_ART);
+    }
     for (let i = 0; i < ITEMS.length; i++) {
       const sel = i === this.sel;
       // The rows under DIFFICULTY move down to make room for its subtitle.
       const y = TOP + i * STEP + (i > DIFF_ROW ? SUB_GAP : 0);
       const text = this.label(ITEMS[i]);
       centerText(r, text, y, sel ? UI_GOLD : PAL.snow[1], 'big');
-      if (sel) drawCursor(r, (r.w >> 1) - (textWidth(text, 'big') >> 1) - 5, y + 4, this.t);
+      if (sel) drawScreenCursor(r, (r.w >> 1) - (textWidth(text, 'big') >> 1) - 5, y + 4, this.t);
     }
     const info = DIFFICULTY_INFO[this.app.settings.difficulty];
     // The nickname under the difficulty row, the hint at y 170.

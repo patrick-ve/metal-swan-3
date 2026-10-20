@@ -23,15 +23,18 @@
  * (`startCampaign`). The timer (SELECT_SECONDS) picks the highlighted (or the next free) soldier
  * at 0. Back (bomb) before any pick: the mode select.
  *
- * Portraits draw at art density 2, so the 2× art shows on a large display. A character without
- * select art shows its 32 × 32 portrait on a dark panel (the retired heroes, tests).
+ * Screen art at the tier (UHD, base.ts `screenArt`): the military furniture (frame, title,
+ * shutters, lamps, plates, preview window, hazard strip) is one group, the portraits another, and
+ * each preview figure a third; each group draws at the art tier once the screen art pool has
+ * built it (the 2× or 1× art until then), so a large display shows the HD art. A character
+ * without select art shows its 32 × 32 portrait on a dark panel (the retired heroes, tests).
  */
 import type { Color } from '../../engine/color';
 import { measure } from '../../engine/font';
 import { INK, PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { frameW, getFrame, hasSprite, setArtDensity } from '../../engine/sprites';
+import { frameW, getFrame, hasSprite, setArtDensity, type ArtDensity } from '../../engine/sprites';
 import { centerText, menuKeys, uiText, UI_GOLD, type GameApp } from '../app';
 import {
   MIL_HAZARD_Y,
@@ -51,6 +54,7 @@ import { getCharacter, hasCharacter, listCharacters, type CharacterDef } from '.
 import { CHARACTER_TEXTS, ROSTER } from './flow-data';
 import { startCampaign } from './flow';
 import { ModeSelectScene } from './mode-select';
+import { screenArt, screenTier } from './base';
 
 /** 20 seconds to choose (GDD §13.5). */
 export const SELECT_SECONDS = 20;
@@ -187,6 +191,19 @@ function panelArt(id: string): PanelArt {
   return { select: `${art}/select`, grey: `${art}/select-grey`, portrait: `${art}/portrait`, legs: `${art}/legs-idle`, torso: `${art}/torso-pistol-idle` };
 }
 
+/** The military furniture of the screen (one screen-art group: it switches to HD at once). */
+export const MIL_ART: readonly string[] = [
+  'ui/mil/frame',
+  stencilId(TITLE),
+  'ui/mil/shutter',
+  'ui/mil/badge-off',
+  'ui/mil/badge-p1',
+  'ui/mil/badge-p2',
+  'ui/mil/plate',
+  'ui/mil/preview',
+  'ui/mil/hazard',
+];
+
 interface Cursor {
   index: number;
   /** Chosen character (null while choosing) and the ticks since the choice. */
@@ -206,6 +223,11 @@ export class CharacterSelectScene implements Scene {
   readonly players: 1 | 2;
   readonly roster: string[];
   private readonly art: PanelArt[];
+  /** The portraits (one screen-art group) and each soldier's preview figure (legs, torso). */
+  private readonly portraitIds: string[];
+  private readonly previewIds: string[][];
+  /** The screen density of the furniture this frame (set at the top of draw). */
+  private mil: ArtDensity = 1;
   private readonly cursors: Cursor[];
   private left = SELECT_SECONDS * 60;
   private t = 0;
@@ -216,6 +238,8 @@ export class CharacterSelectScene implements Scene {
     this.players = players;
     this.roster = selectRoster();
     this.art = this.roster.map(panelArt);
+    this.portraitIds = this.art.flatMap((a) => [a.select, a.grey, a.portrait]).filter(hasSprite);
+    this.previewIds = this.art.map((a) => [a.legs, a.torso]);
     this.cursors = [];
     for (let i = 0; i < players; i++) this.cursors.push({ index: Math.min(i, this.roster.length - 1), chosen: null, chosenT: 0, since: 0 });
   }
@@ -364,10 +388,12 @@ export class CharacterSelectScene implements Scene {
   draw(r: Renderer): void {
     r.rect(0, 0, r.w, r.h, INK, plain);
     const n = Math.min(MIL_PANELS, this.roster.length);
-    // Portraits at art density 2 (the 2× art shows on a large display).
-    const prev = setArtDensity(2);
+    // Portraits, furniture and previews at the screen density of their group. At screen tier 1
+    // the portraits keep their 2× art (its reduction at res 1), as before the UHD wave.
+    const prev = setArtDensity(screenTier(r) === 1 ? 2 : screenArt(r, this.portraitIds));
     for (let i = 0; i < n; i++) this.drawPortrait(r, i);
-    setArtDensity(prev);
+    this.mil = screenArt(r, MIL_ART);
+    setArtDensity(this.mil);
     for (let i = 0; i < MIL_PANELS; i++) {
       if (i < n && this.shutterFrame(i) > 0) this.drawBio(r, i);
       this.drawShutter(r, i);
@@ -380,6 +406,7 @@ export class CharacterSelectScene implements Scene {
       this.drawBadges(r, i);
       this.drawPlate(r, i);
     }
+    setArtDensity(prev);
     this.drawBottomRow(r);
   }
 
@@ -487,9 +514,12 @@ export class CharacterSelectScene implements Scene {
     if (!hasSprite(legs) || !hasSprite(torso)) return;
     const fx = px + 22;
     const fy = py + 46;
-    const hip = getFrame(legs, 0).pts?.hip;
+    const hip = getFrame(legs, 0, 1).pts?.hip;
+    // The soldier's in-game idle at the art tier (the HD rig at 2× / 4× on a large display).
+    setArtDensity(screenArt(r, this.previewIds[this.roster.indexOf(c.chosen ?? '')]));
     r.sprite(legs, 0, fx, fy, plain);
     r.sprite(torso, Math.floor(c.chosenT / 20), fx + (hip?.[0] ?? 0), fy + (hip?.[1] ?? -14), plain);
+    setArtDensity(this.mil);
   }
 
   private drawBadges(r: Renderer, i: number): void {

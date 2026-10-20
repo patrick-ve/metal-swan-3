@@ -9,18 +9,19 @@
  * (P1 from x 24, P2 from x 200; one player: centred), a line every 30 ticks with `ui/tally-tick`,
  * the total with `ui/tally-end`, `PRESS START` (C, y 206); it moves on by itself after 600
  * ticks; the credits song plays on. Then name entry (if the score qualifies), the high scores and the
- * title.
+ * title. The lake is the ending's (lake.ts, at the screen density); its 4× frames go on exit.
  */
 import type { Color } from '../../engine/color';
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
+import { releaseDense } from '../../engine/sprites';
 import { blinkOn, centerText, drawPanel, PLAYER_COLORS, scoreText, uiText, UI_GOLD, UI_WHITE, type CampaignRecord, type GameApp } from '../app';
 import { getCharacter } from '../registry';
 import type { PlayerSlot } from '../session';
 import { CALLOUTS, CAMPAIGN_MISSIONS, goldenRecordRoute } from './flow-data';
 import { finishGame } from './flow';
-import { drawLake, veil } from './lake';
+import { drawLake, LAKE_ART, veil } from './lake';
 
 /** GDD §14.6 values. */
 export const FINAL_TALLY = {
@@ -129,6 +130,11 @@ export class FinalTallyScene implements Scene {
     this.leaving = true;
     this.payOut(true);
     finishGame(this.app, true);
+  }
+
+  /** The ending flow is over: the lake's 4× frames go (drawLake drew it at the screen density). */
+  exit(): void {
+    releaseDense(LAKE_ART, 4);
   }
 
   draw(r: Renderer): void {

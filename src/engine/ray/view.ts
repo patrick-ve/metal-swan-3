@@ -3,13 +3,18 @@
  * distance, no fisheye) and billboards sorted far → near with a per-column z-buffer test.
  * Renders into a reused `PixelBuffer`; no allocations per frame (the sprite order arrays grow
  * only when a scene has more sprites than ever before).
+ *
+ * A view of density D (buffer w·D × h·D, the same 66° field) samples the highest texture and
+ * billboard LEVEL installed at a density ≤ D (textures.ts `rayTextureLevel`, `billboardLevel`), so
+ * the dense art (UHD) adds texels without changing any logical size; with only 1× levels it draws
+ * the 1× texels, enlarged.
  */
 import type { Color } from '../color';
 import { PixelBuffer } from '../pixel';
 import { castRay, newRayHit, type RayHit } from './cast';
 import { ANG_MASK, COS, SIN } from './fixed';
 import type { DoorTable, PushWall, RayGrid } from './grid';
-import { billboardColumns, billboardSpans, RAY_TEX, rayTextureColumns, type RayBillboard } from './textures';
+import { billboardLevel, billboardSlot, rayTextureLevel, type RayBillboard } from './textures';
 
 export const RAY_VIEW_W = 384;
 export const RAY_VIEW_H = 176;
@@ -92,6 +97,7 @@ export function renderView(view: RayView, scene: RayScene, cam: RayCamera): void
   const zbuf = view.zbuf;
   const colK = view.colK;
   const hit = view.hit;
+  const D = view.density;
 
   const a = cam.angle & ANG_MASK;
   const dirX = COS[a];
@@ -141,17 +147,19 @@ export function renderView(view: RayView, scene: RayScene, cam: RayCamera): void
     if (y0 < bandTop) y0 = bandTop;
     if (y1 > bandBot) y1 = bandBot;
     if (y1 <= y0) continue;
-    const cols = rayTextureColumns(hit.tex, hit.side === 1);
-    let tu = (hit.u * RAY_TEX) | 0;
+    const lv = rayTextureLevel(hit.tex, D, D > 1 ? bottom - top : 0);
+    const T = lv.size;
+    const cols = hit.side === 1 ? lv.dark : lv.cols;
+    let tu = (hit.u * T) | 0;
     if (tu < 0) tu = 0;
-    else if (tu > RAY_TEX - 1) tu = RAY_TEX - 1;
-    const base = tu * RAY_TEX;
-    const step = RAY_TEX / (bottom - top);
+    else if (tu > T - 1) tu = T - 1;
+    const base = tu * T;
+    const step = T / (bottom - top);
     let vpos = (y0 + 0.5 - top) * step;
     let o = y0 * W + x;
     for (let y = y0; y < y1; y++) {
       let v = vpos | 0;
-      if (v > RAY_TEX - 1) v = RAY_TEX - 1;
+      if (v > T - 1) v = T - 1;
       data[o] = cols[base + v];
       vpos += step;
       o += W;
@@ -189,7 +197,8 @@ export function renderView(view: RayView, scene: RayScene, cam: RayCamera): void
     const sp = sprites[si];
     const bb = sp.bb;
     const lat = (sp.x - px) * plX + (sp.y - py) * plY;
-    const size = bb.size;
+    const blv = billboardLevel(bb, D);
+    const size = blv.size;
     const wpx = (F * bb.worldW) / d;
     const hpx = (F * bb.worldH * s) / d;
     if (wpx <= 0 || hpx <= 0) continue;
@@ -202,8 +211,10 @@ export function renderView(view: RayView, scene: RayScene, cam: RayCamera): void
     if (x0 < 0) x0 = 0;
     if (x1 > W) x1 = W;
     if (x1 <= x0) continue;
-    const cols = billboardColumns(bb, sp.frame, sp.yaw);
-    const spans = billboardSpans(bb, sp.frame, sp.yaw);
+    const k = billboardSlot(bb, sp.frame, sp.yaw);
+    const cols = blv.cols[k];
+    const firsts = blv.first[k];
+    const lasts = blv.last[k];
     const uStep = size / wpx;
     const vStep = size / hpx;
     const rowH = hpx / size;
@@ -212,10 +223,9 @@ export function renderView(view: RayView, scene: RayScene, cam: RayCamera): void
       let u = ((x + 0.5 - left) * uStep) | 0;
       if (u < 0) u = 0;
       else if (u > size - 1) u = size - 1;
-      const span = spans[u];
-      if (span === 0xffff) continue;
-      const first = span >> 8;
-      const last = span & 255;
+      const first = firsts[u];
+      if (first === 0xffff) continue;
+      const last = lasts[u];
       let ys = Math.ceil(top + first * rowH - 0.5);
       let ye = Math.ceil(top + (last + 1) * rowH - 0.5);
       if (ys < bandTop) ys = bandTop;

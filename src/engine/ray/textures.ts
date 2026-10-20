@@ -9,9 +9,15 @@
  *   yaws 0..4 and yaws 5, 6, 7 are the mirrors of 3, 2, 1.
  * - Missing ids and failing generators never crash: a 64 × 64 magenta / ink checker, one warning
  *   per id.
+ * - Dense LEVELS (UHD art, density d = 2 or 4): content installs a texture's art at (64·d)² with
+ *   `installRayTextureHd` (and its y-side variant, painted or two HD ramp steps down) and a
+ *   billboard's frames at (size·d)² with `installRayBillboardHd`. A view of density D draws the
+ *   highest installed level ≤ D (`rayTextureLevel`, `billboardLevel`); the world size and every
+ *   logical size stay the 1× ones, so a level only adds texels. Nothing installed: the 1× level.
  */
 import { MAGENTA, type Color } from '../color';
 import { INK, stepShade } from '../palette';
+import { hdHome } from '../palette-hd';
 import { PixelBuffer } from '../pixel';
 import { ANG_MASK, angleTo } from './fixed';
 
@@ -38,16 +44,32 @@ function checker(size = RAY_TEX): PixelBuffer {
 
 // ------------------------------------------------------------------------------------ textures
 
+/** One density level of a wall / door texture: column-major texels (`cols[u × size + v]`). */
+export interface RayTexLevel {
+  /** Texels per logical texel (1, 2 or 4). */
+  readonly density: number;
+  /** Texels per side: 64 × density. */
+  readonly size: number;
+  readonly cols: Uint32Array;
+  /** The y-side variant. */
+  readonly dark: Uint32Array;
+}
+
 interface TexEntry {
   id: string;
   gen: (() => PixelBuffer) | null;
   cols: Uint32Array | null;
   dark: Uint32Array | null;
   error: string | null;
+  /** The 1× level (made with cols / dark). */
+  lv1: RayTexLevel | null;
+  /** Installed dense levels: [2] and [4]. */
+  hd: Array<RayTexLevel | null>;
 }
 
 const FALLBACK_ID = '#fallback';
-const texList: TexEntry[] = [{ id: FALLBACK_ID, gen: () => checker(), cols: null, dark: null, error: null }];
+const newTex = (id: string, gen: (() => PixelBuffer) | null): TexEntry => ({ id, gen, cols: null, dark: null, error: null, lv1: null, hd: [] });
+const texList: TexEntry[] = [newTex(FALLBACK_ID, () => checker())];
 const texIndex = new Map<string, number>();
 
 /** Register (or replace, keeping its index) a 64 × 64 wall / door texture generator. */
@@ -59,10 +81,12 @@ export function defineRayTexture(id: string, gen: () => PixelBuffer): void {
     e.cols = null;
     e.dark = null;
     e.error = null;
+    e.lv1 = null;
+    e.hd = [];
     return;
   }
   texIndex.set(id, texList.length);
-  texList.push({ id, gen, cols: null, dark: null, error: null });
+  texList.push(newTex(id, gen));
 }
 
 /** Stable small int (definition order, from 1); unknown id → 0, the magenta fallback (+ one warning). */
@@ -142,6 +166,109 @@ export function listRayTextures(): string[] {
   return [...texIndex.keys()].sort();
 }
 
+/** The y-side texel of a dense level: two steps down its HD ramp (a 64-palette step is about two HD steps). */
+function darkHd(c: Color): Color {
+  if ((c & 255) === 0) return c;
+  const h = hdHome(c);
+  if (!h) return stepShade(c, -1) >>> 0;
+  return h.ramp[h.i >= 2 ? h.i - 2 : 0] >>> 0;
+}
+
+/** The y-side variant of a dense texture: every texel two steps down its HD ramp (the default of `installRayTextureHd`). */
+export function rayTexDarkHd(src: PixelBuffer): PixelBuffer {
+  const out = new PixelBuffer(src.w, src.h);
+  const cache = new Map<Color, Color>();
+  for (let k = 0; k < src.data.length; k++) {
+    const c = src.data[k] >>> 0;
+    let v = cache.get(c);
+    if (v === undefined) {
+      v = darkHd(c);
+      cache.set(c, v);
+    }
+    out.data[k] = v;
+  }
+  return out.touch();
+}
+
+/**
+ * A view of density ≥ 2 picks a dense level per wall column by its height `span` (view px of one
+ * whole texture height): the smallest installed level that is magnified at most this much, else
+ * the largest (so a 256² level shows only on near walls, a 128² level elsewhere: less shimmer).
+ */
+export const RAY_LEVEL_MAG = 1.25;
+
+/** Column-major copy of an opaque size × size buffer (transparent texels become ink). */
+function columnsOf(src: PixelBuffer, size: number): { cols: Uint32Array; holes: number } {
+  const cols = new Uint32Array(size * size);
+  let holes = 0;
+  for (let u = 0; u < size; u++) {
+    for (let v = 0; v < size; v++) {
+      let c = src.data[v * size + u] >>> 0;
+      if ((c & 255) === 0) {
+        holes++;
+        c = INK;
+      }
+      cols[u * size + v] = c;
+    }
+  }
+  return { cols, holes };
+}
+
+const isDense = (d: number): d is 2 | 4 => d === 2 || d === 4;
+
+/**
+ * Install texture `id`'s art at density `d` (2 or 4): `src` is (64·d)², opaque; `dark` (same size,
+ * optional) is its y-side variant — default: every texel two HD ramp steps down. Replaces an
+ * earlier install of that level. False (and one warning) for an unknown id, a bad density or size.
+ */
+export function installRayTextureHd(id: string, d: number, src: PixelBuffer, dark?: PixelBuffer): boolean {
+  const i = texIndex.get(id);
+  const size = RAY_TEX * d;
+  if (i === undefined || !isDense(d) || src.w !== size || src.h !== size || (dark && (dark.w !== size || dark.h !== size))) {
+    warnOnce(`texhd:${id}@${d}`, `[ray] cannot install texture "${id}" at ${d}× (${src.w}×${src.h}; unknown id, density or size)`);
+    return false;
+  }
+  const lit = columnsOf(src, size);
+  const dk = columnsOf(dark ?? rayTexDarkHd(src), size).cols;
+  if (lit.holes > 0) warnOnce(`texholehd:${id}@${d}`, `[ray] texture "${id}" at ${d}× has ${lit.holes} transparent texels — filled with ink`);
+  texList[i].hd[d] = { density: d, size, cols: lit.cols, dark: dk };
+  return true;
+}
+
+/**
+ * The level of texture `index` a view of density `d` draws: at d 1 the 1× level (built on first
+ * use); at d ≥ 2 the installed dense levels — for a column `span` view px tall the smallest one
+ * magnified at most RAY_LEVEL_MAG, else the largest (span 0: the highest density ≤ d) — and the 1×
+ * level when none is installed. Bad indices give the fallback. No allocation once built.
+ */
+export function rayTextureLevel(index: number, d: number, span = 0): RayTexLevel {
+  const e = texList[index] ?? texList[0];
+  if (d >= 2) {
+    const l2 = e.hd[2];
+    const l4 = e.hd[4];
+    if (span <= 0) {
+      if (d >= 4 && l4) return l4;
+      if (l2) return l2;
+    } else {
+      if (l2 && (!l4 || span <= l2.size * RAY_LEVEL_MAG)) return l2;
+      if (l4) return l4;
+    }
+  }
+  if (!e.lv1) {
+    if (!e.cols) buildTexture(e);
+    e.lv1 = { density: 1, size: RAY_TEX, cols: e.cols as Uint32Array, dark: e.dark as Uint32Array };
+  }
+  return e.lv1;
+}
+
+/** Densities installed for texture `id` (1 always; then 2 and / or 4). */
+export function rayTextureDensities(id: string): number[] {
+  const i = texIndex.get(id);
+  if (i === undefined) return [];
+  const e = texList[i];
+  return [1, ...[2, 4].filter((d) => !!e.hd[d])];
+}
+
 // ---------------------------------------------------------------------------------- billboards
 
 export interface RayBillboardDef {
@@ -153,6 +280,19 @@ export interface RayBillboardDef {
   worldH?: number;
   /** Frame `frame` seen at yaw `yaw` (0..4 for `yaws: 8`, 0 for `yaws: 1`); size × size, TRANSPARENT = empty. */
   gen: (frame: number, yaw: number) => PixelBuffer;
+}
+
+/**
+ * One density level of a billboard, per slot (frame × yaws + yaw): column-major texels (size²) and
+ * per column the first and last opaque row (`first[u]` 0xFFFF = an empty column).
+ */
+export interface RayBbLevel {
+  readonly density: number;
+  /** Texels per side: the billboard's size × density. */
+  readonly size: number;
+  readonly cols: readonly Uint32Array[];
+  readonly first: readonly Uint16Array[];
+  readonly last: readonly Uint16Array[];
 }
 
 export interface RayBillboard {
@@ -176,6 +316,10 @@ class BillboardEntry implements RayBillboard {
   cols: Uint32Array[] | null = null;
   spans: Uint16Array[] | null = null;
   errors: string[] = [];
+  /** The 1× level (made with cols / spans). */
+  lv1: RayBbLevel | null = null;
+  /** Installed dense levels: [2] and [4]. */
+  hd: Array<RayBbLevel | null> = [];
 
   constructor(id: string, def: RayBillboardDef) {
     this.id = id;
@@ -199,6 +343,8 @@ class BillboardEntry implements RayBillboard {
     this.cols = null;
     this.spans = null;
     this.errors = [];
+    this.lv1 = null;
+    this.hd = [];
   }
 }
 
@@ -316,6 +462,139 @@ export function billboardSpans(bb: RayBillboard, frame: number, yaw: number): Ui
   const e = entryOf(bb);
   if (!e.cols) buildBillboard(e);
   return (e.spans as Uint16Array[])[slot(e, frame, yaw)];
+}
+
+/** Column-major copy with first / last opaque rows per column (mirrored: u runs right to left). */
+function columnizeHd(src: PixelBuffer, size: number, mirror: boolean): { cols: Uint32Array; first: Uint16Array; last: Uint16Array } {
+  const cols = new Uint32Array(size * size);
+  const first = new Uint16Array(size);
+  const last = new Uint16Array(size);
+  for (let u = 0; u < size; u++) {
+    const sx = mirror ? size - 1 - u : u;
+    let f = -1;
+    let l = -1;
+    for (let v = 0; v < size; v++) {
+      const c = src.data[v * size + sx] >>> 0;
+      cols[u * size + v] = c;
+      if ((c & 255) !== 0) {
+        if (f < 0) f = v;
+        l = v;
+      }
+    }
+    first[u] = f < 0 ? 0xffff : f;
+    last[u] = l < 0 ? 0 : l;
+  }
+  return { cols, first, last };
+}
+
+/**
+ * Install billboard `id`'s frames at density `d` (2 or 4): `frames` in generator order — for each
+ * frame its rendered yaws (5 for an 8-yaw billboard: yaws 0..4; the mirrors 5..7 are made here, as
+ * at 1×), each (size·d)², TRANSPARENT = empty. Replaces an earlier install of that level. False
+ * (and one warning) for an unknown id, a bad density, a wrong frame count or size.
+ */
+export function installRayBillboardHd(id: string, d: number, frames: readonly PixelBuffer[]): boolean {
+  const e = bbMap.get(id);
+  const rendered = e ? (e.yaws === 8 ? 5 : 1) : 0;
+  const size = e ? e.size * d : 0;
+  if (!e || !isDense(d) || frames.length !== e.frames * rendered || frames.some((b) => b.w !== size || b.h !== size)) {
+    warnOnce(`bbhd:${id}@${d}`, `[ray] cannot install billboard "${id}" at ${d}× (unknown id, density, frame count or size)`);
+    return false;
+  }
+  const n = e.frames * e.yaws;
+  const cols: Uint32Array[] = new Array<Uint32Array>(n);
+  const first: Uint16Array[] = new Array<Uint16Array>(n);
+  const last: Uint16Array[] = new Array<Uint16Array>(n);
+  for (let f = 0; f < e.frames; f++) {
+    for (let k = 0; k < rendered; k++) {
+      const src = frames[f * rendered + k];
+      const i = f * e.yaws + k;
+      const a = columnizeHd(src, size, false);
+      cols[i] = a.cols;
+      first[i] = a.first;
+      last[i] = a.last;
+      if (e.yaws === 8 && k >= 1 && k <= 3) {
+        const m = f * e.yaws + (8 - k);
+        const b = columnizeHd(src, size, true);
+        cols[m] = b.cols;
+        first[m] = b.first;
+        last[m] = b.last;
+      }
+    }
+  }
+  e.hd[d] = { density: d, size, cols, first, last };
+  return true;
+}
+
+/**
+ * The level of billboard `bb` a view of density `d` draws: the highest installed density ≤ d, else
+ * the 1× level (built on first use). No allocation once built.
+ */
+export function billboardLevel(bb: RayBillboard, d: number): RayBbLevel {
+  const e = entryOf(bb);
+  if (d >= 4 && e.hd[4]) return e.hd[4];
+  if (d >= 2 && e.hd[2]) return e.hd[2];
+  if (!e.lv1) {
+    if (!e.cols) buildBillboard(e);
+    const spans = e.spans as Uint16Array[];
+    const first = spans.map((sp) => {
+      const f = new Uint16Array(sp.length);
+      for (let u = 0; u < sp.length; u++) f[u] = sp[u] === 0xffff ? 0xffff : sp[u] >> 8;
+      return f;
+    });
+    const last = spans.map((sp) => {
+      const l = new Uint16Array(sp.length);
+      for (let u = 0; u < sp.length; u++) l[u] = sp[u] === 0xffff ? 0 : sp[u] & 255;
+      return l;
+    });
+    e.lv1 = { density: 1, size: e.size, cols: e.cols as Uint32Array[], first, last };
+  }
+  return e.lv1;
+}
+
+/** The slot (frame × yaws + yaw) a frame and yaw draw from (frames wrap; 1-yaw billboards ignore the yaw). */
+export function billboardSlot(bb: RayBillboard, frame: number, yaw: number): number {
+  return slot(entryOf(bb), frame, yaw);
+}
+
+/** Densities installed for billboard `id` (1 always; then 2 and / or 4). */
+export function rayBillboardDensities(id: string): number[] {
+  const e = bbMap.get(id);
+  if (!e) return [];
+  return [1, ...[2, 4].filter((d) => !!e.hd[d])];
+}
+
+/** Drop every installed dense level of the textures and billboards (`d` alone, or both); returns the levels dropped. */
+export function releaseRayHd(d?: number): number {
+  let n = 0;
+  const drop = (hd: Array<unknown>): void => {
+    for (const k of [2, 4]) {
+      if ((d === undefined || d === k) && hd[k]) {
+        hd[k] = null;
+        n++;
+      }
+    }
+  };
+  for (const e of texList) drop(e.hd);
+  for (const e of bbMap.values()) drop(e.hd);
+  return n;
+}
+
+/** Bytes held by the installed dense levels (texels of textures with their y-side variant, billboards with mirrors). */
+export function rayHdBytes(d?: number): number {
+  let bytes = 0;
+  for (const k of [2, 4]) {
+    if (d !== undefined && d !== k) continue;
+    for (const e of texList) {
+      const lv = e.hd[k];
+      if (lv) bytes += (lv.cols.byteLength + lv.dark.byteLength);
+    }
+    for (const e of bbMap.values()) {
+      const lv = e.hd[k];
+      if (lv) for (const c of lv.cols) bytes += c.byteLength;
+    }
+  }
+  return bytes;
 }
 
 /**

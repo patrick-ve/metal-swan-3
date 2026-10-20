@@ -78,12 +78,19 @@ describe('res k = nearest enlargement of res 1 (pixel mode, no sub-pixel)', () =
   ];
   for (const [name, draw] of scenes) {
     it(`synthetic scene "${name}" at res ${KS.join(', ')}`, () => {
-      const r1 = soft(1);
-      draw(r1);
-      for (const k of KS) {
-        const rk = soft(k);
-        draw(rk);
-        expect(nearestDiff(r1.target, rk.target, k), `res ${k}`).toBe('');
+      // The 1× art only: with the dense art on, text uses the HD glyphs at res ≥ 2 (font.ts
+      // `glyphDensity`, tests/engine/font-hd.test.ts), which are not the 1× glyphs enlarged.
+      const hiArt = setHiArt(false);
+      try {
+        const r1 = soft(1);
+        draw(r1);
+        for (const k of KS) {
+          const rk = soft(k);
+          draw(rk);
+          expect(nearestDiff(r1.target, rk.target, k), `res ${k}`).toBe('');
+        }
+      } finally {
+        setHiArt(hiArt);
       }
     });
   }

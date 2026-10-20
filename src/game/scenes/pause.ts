@@ -6,17 +6,19 @@
  * on RESUME go back to the game.
  *
  * Gag: after 600 ticks a tiny Legion private walks onto the box, sits on its top edge and falls
- * asleep (snore bubble). He is gone when the game resumes.
+ * asleep (snore bubble). He is gone when the game resumes. The gag draws at the art tier
+ * (base.ts `screenTier`): like the mission, a 4× frame not built yet shows its 2× art and is queued.
  */
 import { ACTION_BUTTONS } from '../../engine/input';
 import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { getFrame, hasSprite } from '../../engine/sprites';
+import { getFrame, hasSprite, setArtDensity } from '../../engine/sprites';
 import { blinkOn, centerText, drawMenu, drawPanel, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import type { GameSettings } from '../settings';
 import { toTitle } from './flow';
 import { OptionsScene } from './options';
+import { screenTier } from './base';
 
 /**
  * The scene under the pause menu (docs/design/fps.md §1.10): GameplayScene (camera shake) or
@@ -149,9 +151,14 @@ export class PauseScene implements Scene {
   draw(r: Renderer): void {
     r.fade(0x05060aff, 0.5);
     drawPanel(r, BOX.x, BOX.y, BOX.w, BOX.h, 0.94);
+    const prev = setArtDensity(screenTier(r));
     this.drawGag(r);
+    setArtDensity(prev);
     centerText(r, 'PAUSE', 76, UI_GOLD, 'big');
+    // The menu's swan cursor at the tier, like the gag (the text keeps its own glyph density).
+    const cur = setArtDensity(screenTier(r));
     drawMenu(r, PAUSE_ITEMS, this.confirm === null ? this.sel : -1, 96, this.t, 12);
+    setArtDensity(cur);
     if (this.confirm !== null) this.drawConfirm(r);
   }
 

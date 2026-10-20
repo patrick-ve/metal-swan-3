@@ -23,9 +23,10 @@ import { GameSession } from '../session';
 import { ROSTER, TAGLINES } from './flow-data';
 import { GameplayScene } from './gameplay';
 import { HowToPlayScene } from './how-to-play';
-import { BASE_PATROL_Y, drawBase, drawBaseWall, drawStencilTitle, NO_WALL, patrolFlip, patrolX } from './base';
+import { BASE_PATROL_Y, drawBase, drawBaseWall, drawScreenSprite, drawStencilTitle, keepForHeroes, NO_WALL, patrolFlip, patrolX, prefetchScreenArt, releaseScreenArt } from './base';
 import { drawSwanRig, SWAN_SPEED, type SwanRigOpts } from './lake';
 import { ModeSelectScene } from './mode-select';
+import { stencilId } from '../content/ui/military.art';
 
 /** GDD §13.3: the attract loop starts after 600 idle ticks; the demo lasts 1200. */
 export const ATTRACT_IDLE_TICKS = 600;
@@ -61,6 +62,8 @@ function loadBot(): void {
 let lakeClock = 640;
 
 const plain: DrawOpts = { screen: true };
+/** The stencil title of the mode select (the next screen): built while the title shows. */
+const NEXT_TITLES: readonly string[] = [stencilId('SELECT OPERATION')];
 
 /** The swan's x on her endless pass over the lake (enters left, leaves right, comes back). */
 export function swanX(clock: number, w = 384): number {
@@ -69,7 +72,7 @@ export function swanX(clock: number, w = 384): number {
 }
 
 /** The patrol's rig: walking, the relaxed neck, the rider sitting up (docs/design/squad.md §3.2). */
-const patrolOpts: SwanRigOpts = { anim: 'move', neck: 'neck-relax', char: 'vincent', pose: 'ride-sit', bodyTicks: 8 };
+const patrolOpts: SwanRigOpts = { anim: 'move', neck: 'neck-relax', char: 'vincent', pose: 'ride-sit', bodyTicks: 8, screen: true };
 
 /** The patrol's rider: `vincent`, else the first registered roster soldier. */
 export function patrolRider(): string {
@@ -83,6 +86,8 @@ export class TitleScene implements Scene {
   private t = 0;
   private idle = 0;
   private leaving = false;
+  /** The next screen's stencil title was handed to the screen art pool (once). */
+  private prefetched = false;
 
   constructor(app: GameApp) {
     this.app = app;
@@ -169,6 +174,8 @@ export class TitleScene implements Scene {
       },
     };
     const bot: InputSource = new Bot(host, 0, { route: loop % 2 ? 'upper' : 'lower' });
+    // The demo is the game proper: the screens' 4× art makes room for its working set.
+    releaseScreenArt(keepForHeroes([char]));
     scene = new GameplayScene(app, {
       mission,
       section: getMission(mission)?.sections[section] ? section : undefined,
@@ -195,11 +202,15 @@ export class TitleScene implements Scene {
     drawBaseWall(r);
     // Logo (C, y 18–84) or a text stand-in.
     if (hasSprite('ui/logo')) {
-      const f = getFrame('ui/logo', 0);
-      r.sprite('ui/logo', 0, ((r.w - frameW(f)) >> 1) + f.ox, 18 + f.oy, plain);
+      const f = getFrame('ui/logo', 0, 1);
+      drawScreenSprite(r, 'ui/logo', 0, ((r.w - frameW(f)) >> 1) + f.ox, 18 + f.oy, plain);
     } else centerText(r, 'METAL SWAN 3', 44, UI_WHITE, 'big', 3);
     centerText(r, this.tagline, 92, PAL.sand[3]);
     if (blinkOn(t)) drawStencilTitle(r, 'PRESS START', 114);
+    if (!this.prefetched) {
+      this.prefetched = true;
+      prefetchScreenArt(r, NEXT_TITLES);
+    }
     centerText(r, `HI ${scoreText(this.app.highScores.top)}`, 4, UI_WHITE);
     centerText(r, '(C) 2026 THE METAL SWAN 3 TEAM', 206, PAL.stone[3]);
     const c = this.app.settings.credits;

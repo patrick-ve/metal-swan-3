@@ -7,18 +7,25 @@
  * Wiring by group flow (spec §1.10): the scene is the PauseScene's host (`applySettings`) and the
  * ContinueScene's (`continuePlayer`, `resumeMusic`, `startPressed`): the last life pushes the
  * continue screen, which uses the shared `session.credits`.
+ *
+ * UHD (docs/design/fps.md §3.4): the view renders at density `fpsViewDensity(artTier(), r.res)` —
+ * 2 at tiers 2 and 4 (the measured cost of a 4× view is over the §3.5 budget), drawing the dense
+ * texture / billboard levels the loader installed (fps-intro.ts); the weapon view and the bar
+ * draw their own dense frames at the tier (fps/hud.ts).
  */
 import { padButtonCode, type InputManager } from '../../engine/input';
 import { ACTION_BIT } from '../../engine/input-actions';
 import { PAL } from '../../engine/palette';
 import { RayView, CELL_DOOR, CELL_OPAQUE, CELL_PROP, type RayGrid } from '../../engine/ray';
-import type { DrawOpts, Renderer } from '../../engine/render';
+import type { DrawOpts, Frame, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
+import { artTier, hiArtOn } from '../../engine/sprites';
 import { blinkOn, centerText, type GameApp } from '../app';
+import { requestFpsDenseArt } from '../content/fps/dense-load';
 import { ST_ATTACK, ST_TELL } from '../fps/actors';
 import { DOOR_CLOSED } from '../fps/doors';
 import { DYING_TICKS, FpsGame } from '../fps/game';
-import { drawBossBand, drawFeedback, drawMessages, drawStatusBar, drawWeaponView, type HudInfo } from '../fps/hud';
+import { densityAtRes, drawBossBand, drawFeedback, drawMessages, drawStatusBar, drawWeaponView, type HudInfo } from '../fps/hud';
 import { LOCK_GOLD, LOCK_SILVER } from '../fps/map';
 import { fpsFloorByNumber } from '../fps/registry';
 import { emptyFpsInput, reserveLives } from '../fps/run';
@@ -41,12 +48,31 @@ const plain: DrawOpts = { screen: true };
 const half: DrawOpts = { screen: true, alpha: 0.5 };
 const view: DrawOpts = { screen: true, stream: true };
 
+/**
+ * The view's highest density. Measured (node, `renderView`, every floor, many poses): density 1
+ * 0.2–0.3 ms mean (max 1.1), density 2 0.8–1.1 ms mean (max 1.7), density 4 2.9–4.2 ms mean (max
+ * 6.1) — 4 is over the 2.0 ms budget of §3.5 (and streams 4.3 MB per frame), so tier 4 draws the
+ * view at 2; the weapon view and the bar still draw at 4.
+ */
+export const FPS_VIEW_MAX_DENSITY = 2;
+
+/** The density the first-person view renders at for an art tier and a backbuffer res (1 when dense art is off). */
+export function fpsViewDensity(tier: number, res: number): 1 | 2 | 4 {
+  if (!hiArtOn()) return 1;
+  return densityAtRes(Math.min(tier, FPS_VIEW_MAX_DENSITY), res);
+}
+
 export class FpsScene implements Scene, PauseHost, Continuable {
   readonly app: GameApp;
   readonly run: FpsRun;
   readonly def: FpsFloorDef;
   readonly game: FpsGame;
-  readonly view = new RayView();
+  /** The characters whose HUD face the dense art builds (the joined slots and the recruit). */
+  private readonly denseChars = (): readonly string[] => ['recruit', ...(this.app.session?.slots ?? []).filter((s) => s.joined).map((s) => s.character)];
+  /** The views by density (index 1, 2, 4), made on first use. */
+  private readonly views: Array<RayView | undefined> = [new RayView()];
+  private readonly viewFrames: Array<Frame | undefined> = [];
+  private viewD = 1;
   readonly slot: PlayerSlot;
   private readonly input: FpsInput = emptyFpsInput();
   private t = 0;
@@ -78,6 +104,21 @@ export class FpsScene implements Scene, PauseHost, Continuable {
     });
     this.game.events.on('floorComplete', ({ result }) => this.floorComplete(result));
     this.game.events.on('playerDead', () => this.playerDead());
+  }
+
+  /** The view drawn last (density 1 until a dense frame is drawn). */
+  get view(): RayView {
+    return this.viewAt(this.viewD);
+  }
+
+  private viewAt(d: number): RayView {
+    const k = d >= 4 ? 4 : d >= 2 ? 2 : 0;
+    let v = this.views[k];
+    if (!v) {
+      v = new RayView(undefined, undefined, d);
+      this.views[k] = v;
+    }
+    return v;
   }
 
   private inputOn(on: boolean): void {
@@ -208,8 +249,18 @@ export class FpsScene implements Scene, PauseHost, Continuable {
       return;
     }
     const g = this.game;
-    g.render(this.view);
-    r.image(this.view.buf, 0, 0, view);
+    // The dense art the display can show (built in the background; one compare once asked).
+    requestFpsDenseArt(r, this.denseChars, this.app.artCache);
+    const d = fpsViewDensity(artTier(), r.res);
+    this.viewD = d;
+    const v = this.viewAt(d);
+    g.render(v);
+    if (d === 1) r.image(v.buf, 0, 0, view);
+    else {
+      const k = d >= 4 ? 4 : 2;
+      const f = (this.viewFrames[k] ??= { buf: v.buf, ox: 0, oy: 0, density: d });
+      r.frame(f, 0, 0, view);
+    }
     const app = this.app;
     // The death-cam shows his fall: no weapon view in front of it (spec §7.3).
     if (g.state !== 'deathcam') drawWeaponView(r, g);

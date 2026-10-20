@@ -9,14 +9,15 @@
  * rows blink; a press or 600 ticks → the title) and 'menu' (from the mode select; back returns).
  */
 import { PAL } from '../../engine/palette';
-import type { Renderer } from '../../engine/render';
+import type { DrawOpts, Renderer } from '../../engine/render';
+import { getFrame, hasSprite } from '../../engine/sprites';
 import type { Scene } from '../../engine/scene';
 import { blinkOn, centerText, menuKeys, scoreText, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import type { HighScoreEntry } from '../session';
 import { missionNumber, rankLabel } from './flow-data';
 import { toTitle } from './flow';
-import { headIcon } from './heads';
-import { drawBase, drawStencilTitle } from './base';
+import { headIcon, headSpriteId } from './heads';
+import { drawBase, drawStencilTitle, screenArtOf } from './base';
 import { veil } from './lake';
 
 export type HighScoresMode = 'attract' | 'after-game' | 'menu';
@@ -114,8 +115,7 @@ export class HighScoresScene implements Scene {
       }
       uiText(r, e.name, 80, y, col);
       uiText(r, scoreText(e.score), 220, y, col, 'right');
-      const head = headIcon(e.character);
-      if (head) r.image(head, 228, y + 3 - (head.h >> 1), { screen: true });
+      drawHead(r, e.character, 228, y + 3);
       uiText(r, missionColumn(e), 252, y, PAL.snow[1]);
       const d = e.difficulty === 'easy' ? 'E' : e.difficulty === 'hard' ? 'H' : 'N';
       uiText(r, d, 284, y, e.difficulty === 'hard' ? PAL.red[3] : e.difficulty === 'easy' ? PAL.green[3] : PAL.snow[1]);
@@ -123,4 +123,21 @@ export class HighScoresScene implements Scene {
     }
     if (this.opts.mode === 'menu' && blinkOn(this.t)) centerText(r, 'PRESS FIRE TO GO BACK', 196, PAL.stone[3]);
   }
+}
+
+const headOpts: DrawOpts = { screen: true };
+
+/**
+ * The head icon of `id` with its left edge at x and its middle row at `midY` (top = midY − ⌊h / 2⌋):
+ * the painted HD icon (`ui/score-head/<id>`) at the screen density once it is built, else the 1×
+ * icon; nothing when the character has none.
+ */
+function drawHead(r: Renderer, id: string, x: number, midY: number): void {
+  const one = headIcon(id);
+  if (!one) return;
+  const top = midY - (one.h >> 1);
+  const sid = headSpriteId(id);
+  const d = hasSprite(sid) ? screenArtOf(r, sid) : 1;
+  if (d > 1) r.frame(getFrame(sid, 0, d), x, top, headOpts);
+  else r.image(one, x, top, headOpts);
 }

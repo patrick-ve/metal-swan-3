@@ -113,32 +113,35 @@ export function stain(b: PixelBuffer, x: number, y: number, len: number, r: Ramp
 // ------------------------------------------------------------------------------------ the symbol
 
 /**
+ * Is the point (dx, dy) from the centre inside the hooked cross of radius `r` (the geometry of
+ * `hookedCross`; also sampled per art px by the UHD banner, fps/walls-hd.ts)?
+ */
+export function inHookedCross(dx: number, dy: number, r: number): boolean {
+  const arm = r * 0.78; // half length of the bars
+  const t = Math.max(1.2, r * 0.2); // half thickness
+  const s = Math.SQRT1_2;
+  const u = (dx + dy) * s;
+  const v = (dy - dx) * s;
+  // the cross
+  if (Math.abs(u) <= t && Math.abs(v) <= arm) return true;
+  if (Math.abs(v) <= t && Math.abs(u) <= arm) return true;
+  // hooks (clockwise): top bar → right, right bar → down, bottom bar → left, left bar → up
+  if (Math.abs(v + arm) <= t && u >= -t && u <= arm) return true;
+  if (Math.abs(u - arm) <= t && v >= -t && v <= arm) return true;
+  if (Math.abs(v - arm) <= t && u <= t && u >= -arm) return true;
+  if (Math.abs(u + arm) <= t && v <= t && v >= -arm) return true;
+  return false;
+}
+
+/**
  * The historical hooked cross (black, rotated 45°, hooks clockwise) inside a radius `r` around
  * (cx, cy). Sampled per texel from its geometry. Used on banners and flags only (spec §0).
  */
 export function hookedCross(b: PixelBuffer, cx: number, cy: number, r: number, c: Color, wrap = true): void {
-  const arm = r * 0.78; // half length of the bars
-  const t = Math.max(1.2, r * 0.2); // half thickness
-  const s = Math.SQRT1_2;
-  const inside = (u: number, v: number): boolean => {
-    // the cross
-    if (Math.abs(u) <= t && Math.abs(v) <= arm) return true;
-    if (Math.abs(v) <= t && Math.abs(u) <= arm) return true;
-    // hooks (clockwise): top bar → right, right bar → down, bottom bar → left, left bar → up
-    if (Math.abs(v + arm) <= t && u >= -t && u <= arm) return true;
-    if (Math.abs(u - arm) <= t && v >= -t && v <= arm) return true;
-    if (Math.abs(v - arm) <= t && u <= t && u >= -arm) return true;
-    if (Math.abs(u + arm) <= t && v <= t && v >= -arm) return true;
-    return false;
-  };
   const R = Math.ceil(r * 1.5);
   for (let y = Math.floor(cy - R); y <= cy + R; y++) {
     for (let x = Math.floor(cx - R); x <= cx + R; x++) {
-      const dx = x + 0.5 - cx;
-      const dy = y + 0.5 - cy;
-      const u = (dx + dy) * s;
-      const v = (dy - dx) * s;
-      if (!inside(u, v)) continue;
+      if (!inHookedCross(x + 0.5 - cx, y + 0.5 - cy, r)) continue;
       if (wrap) wset(b, x, y, c);
       else b.set(x, y, c);
     }
