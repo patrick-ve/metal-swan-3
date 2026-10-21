@@ -232,7 +232,22 @@ describe('the m5 trap and the direct start', () => {
     h.step(3);
     expect(game.runner.section.id).toBe('oz-c');
     const art = bootArt({ mission: OLDENZAAL_ID, char: null, mode: undefined }) ?? [];
-    for (const p of ['decor/oz/', 'enemy/oz-shambler/', 'npc/oz-wu/', 'fx/oz/light/']) expect(art).toContain(p);
+    for (const p of ['decor/oz/', 'npc/oz-wu/', 'fx/oz/light/']) expect(art).toContain(p);
+    // Revision 2 (R2-6): the wave-A possessed are gone.
+    expect(art).not.toContain('enemy/oz-shambler/');
+    // Revision 2: the dead soldiers and the wave-B owners' prefixes are in the boot art too.
+    for (const p of ['enemy/oz-grunt/', 'enemy/oz-mg/', 'boss/oz-plechelmus/', 'decor/oz-nave/', 'decor/oz-tower/', 'decor/oz-ruin/']) expect(art).toContain(p);
+  });
+
+  it('?mission=oldenzaal&section=oz-f (revision 2: the tower) starts at the foot of the climb', () => {
+    const h = harness();
+    startNewGame(h.app, { mission: OLDENZAAL_ID, section: 'oz-f', characters: ['vincent'] });
+    expect(h.until(GameplayScene, 60)).toBe(true);
+    const game = h.app.scenes.top as GameplayScene;
+    h.step(3);
+    expect(game.runner.section.id).toBe('oz-f');
+    expect(game.runner.section.scroll).toBe('up');
+    expect(game.runner.players[0].y).toBeGreaterThan(game.runner.section.height - 64);
   });
 });
 

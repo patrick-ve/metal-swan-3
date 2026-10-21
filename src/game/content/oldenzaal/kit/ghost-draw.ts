@@ -1,7 +1,7 @@
 /**
  * The ghost draw of mission `oldenzaal` (docs/design/oldenzaal.md §6, §10.2; docs/api/oldenzaal.md
- * "Ghost draw"): the see-through souls over the possessed hosts, the free souls, the ejected
- * souls and Mevrouw Winkel all draw with `drawGhost`, so they share one look:
+ * "Ghost draw"): Mevrouw Winkel draws with `drawGhost` (revision 2: she is the only ghost; wave A's
+ * souls are gone), and the TO BE CONTINUED face shares its look:
  *
  * 1. the body at alpha ~0.5 (see-through; normal blend),
  * 2. an ADDITIVE tint pass: the same frame as a solid silhouette of the ghost green

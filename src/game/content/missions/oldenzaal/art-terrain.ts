@@ -20,6 +20,7 @@ import { PAL_HD, PAL_HD_OZ } from '../../../../engine/palette-hd';
 import type { Ramp } from '../../../../engine/pixel';
 import { hash2 } from '../../../art/paint';
 import { defineHdTerrainMaterial, OZ_PAVER_A, ozDrainAt, ozPaverCell, ozPaverZ, type Px } from '../../../art/terrain-art';
+import { fnoise } from '../../oldenzaal/ruin/paint';
 
 const BAY = new Float64Array([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((m) => (m + 0.5) / 16 - 0.5));
 
@@ -38,6 +39,7 @@ const STEEL = PAL_HD.steel;
 const INK = PAL_HD.ink;
 const SAND = PAL_HD_OZ.sandstone;
 const NIGHT = PAL_HD_OZ.night;
+const MOSS = PAL_HD.moss;
 
 /** The street: herringbone pavers in perspective. */
 function paversHd(p: Readonly<Px>, d: number, out: Uint32Array, i: number, stride: number): void {
@@ -50,6 +52,8 @@ function paversHd(p: Readonly<Px>, d: number, out: Uint32Array, i: number, strid
     const zm = (z0 + z1) / 2;
     const Y = p.y * d + sy;
     const row = i + sy * stride;
+    // Weeds cluster in smooth patches (revision 2; once per logical px row: cheap).
+    const weedy = drain || p.up === 0 ? 0 : fnoise(p.x + 0.5, zm, 9, seed + 61) + (p.up < 7 ? 0.22 : 0);
     for (let sx = 0; sx < d; sx++) {
       const X = p.x * d + sx;
       const x = p.x + (sx + 0.5) / d;
@@ -66,9 +70,17 @@ function paversHd(p: Readonly<Px>, d: number, out: Uint32Array, i: number, strid
         const cell = ozPaverCell(x, zm);
         const crossZ = Math.floor(z1 / OZ_PAVER_A) > Math.floor(z0 / OZ_PAVER_A) && cell.m !== 2;
         const jointX = cell.fx < 1 / d + (d >= 4 && p.up > 20 ? 0.25 : 0) && cell.m !== 1;
+        // Revision 2 (RUIN, R2-7): weeks without care: weeds in the joints (in clusters, thickest at
+        // the façades' foot), a cracked or sunken brick here and there.
+        const hb = hash2(cell.bx, cell.bz, seed + 94);
         if (crossZ || jointX) {
-          // Sandy dark joints, a little lighter near the viewer.
-          c = hash2(X, Y, seed + 5) > 0.75 ? BROWN[1] : p.up > 18 ? STONE[1] : INK[1];
+          // Sandy dark joints, a little lighter near the viewer; green where the weeds took them.
+          if (weedy > 0.66 && hash2(X, Y, seed + 6) > 0.25) c = tone(MOSS, 1.6 + (weedy - 0.66) * 6 + (hash2(X, Y, seed + 8) - 0.5), X, Y, 0.4);
+          else c = hash2(X, Y, seed + 5) > 0.75 ? BROWN[1] : p.up > 18 ? STONE[1] : INK[1];
+        } else if (hb > 0.985 && p.up > 4) {
+          // A sunken / missing brick: a dark hollow of dirt, a weed in it.
+          const fzz = cell.m === 2 ? cell.fz + OZ_PAVER_A : cell.fz;
+          c = fzz < 0.8 ? INK[0] : hash2(X >> 1, Y >> 1, seed + 3) > 0.7 ? MOSS[2] : BROWN[0];
         } else {
           const h = hash2(cell.bx, cell.bz, seed + 91);
           const r: Ramp = h > 0.9 ? BROWN : h < 0.72 ? DARK : BRICK;
@@ -89,6 +101,12 @@ function paversHd(p: Readonly<Px>, d: number, out: Uint32Array, i: number, strid
             else if (g < 0.04) t += 0.6;
             // A chipped corner on some bricks.
             if (hash2(cell.bx, cell.bz, seed + 93) > 0.85 && fz < 0.9 && fxx < 0.9) t -= 1.6;
+          }
+          // A crack across some bricks (a hair line, diagonal in the brick's plan).
+          if (hb > 0.93 && d >= 2) {
+            const fzc = cell.m === 2 ? cell.fz + OZ_PAVER_A : cell.fz;
+            const fxc = cell.m === 1 ? cell.fx + OZ_PAVER_A : cell.fx;
+            if (Math.abs(fzc - fxc * 0.6 - 0.4) < 0.5 / d + 0.08) t -= 2.2;
           }
           c = tone(r, t, X, Y, 0.25);
           // The cold sky's sheen on the far rows (wet stone at dusk).

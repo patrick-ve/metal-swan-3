@@ -27,15 +27,15 @@ the basilica and the statue) are for likeness only and never enter the repositor
 | 1 | New 2D mission `oldenzaal` = level 4 (`MISSION 4`), after the first-person floors | user |
 | 2 | **Meneer Wu: our own design, the name stays**; a **hard-working** owner of De Smulhoek with a **Chinese background** (the user); no likeness of a real person, no accent, no stereotype | user |
 | 3 | **Mevrouw Winkel is fictional** (made up by the user): a middle-aged woman with dark grey hair | user |
-| 4 | The zombies are **possessed townspeople**: daily clothes, a ghostly grey soldier helmet, green glowing eyes, a see-through soldier soul over them; **no Nazi symbols** anywhere in this mission | user |
-| 5 | **Shoot the soul out**: at 0 HP the soul rises and fades; the person falls dazed, then runs off (bloodless; the townspeople are victims) | user |
-| 6 | The meal: a 20 s **snack power** (faster fire, one hit absorbed by a mayo splat) + **2 frikandel bombs** (a holy-mayo blast that drives the souls out of a group) | user |
+| 4 | The zombies are **possessed townspeople**: daily clothes, a ghostly grey soldier helmet, green glowing eyes, a see-through soldier soul over them; **no Nazi symbols** anywhere in this mission **(replaced by revision 2)** | user |
+| 5 | **Shoot the soul out**: at 0 HP the soul rises and fades; the person falls dazed, then runs off (bloodless; the townspeople are victims) **(replaced by revision 2)** | user |
+| 6 | The meal: a 20 s **snack power** (faster fire, one hit absorbed by a mayo splat) + **2 frikandel bombs** (a holy-mayo blast that drives the souls out of a group) **(replaced by revision 2)** | user |
 | 7 | The climb: **inside the tower**, scrolling up, a **horde tide** climbs up behind the players; the bells swing as hazards | user |
 | 8 | The rescue: a **cutscene**; the Swan comes with **rocket units under her wings**, the heroes jump on, she flies off into the storm | user |
-| 9 | About **7 minutes, 5 sections**: the drop + the shopping street, De Smulhoek, Plechelmusplein (the statue boss), the nave, the tower | user |
-| 10 | The statue: **possessed, 3 phases, freed at the end** (it sits back on its plinth, whole) | user |
-| 11 | Mevrouw Winkel: **story moments only** here (she cannot be hit); her fight comes in stage 2 | user |
-| 12 | The nave: **horde + church set pieces**, no mini-boss, nothing mocks the faith | user |
+| 9 | About **7 minutes, 5 sections**: the drop + the shopping street, De Smulhoek, Plechelmusplein (the statue boss), the nave, the tower **(replaced by revision 2)** | user |
+| 10 | The statue: **possessed, 3 phases, freed at the end** (it sits back on its plinth, whole) **(replaced by revision 2)** | user |
+| 11 | Mevrouw Winkel: **story moments only** here (she cannot be hit); her fight comes in stage 2 **(replaced by revision 2)** | user |
+| 12 | The nave: **horde + church set pieces**, no mini-boss, nothing mocks the faith **(replaced by revision 2)** | user |
 | 13 | Audio: **ElevenLabs for this level** (music, sfx, designed voices for Meneer Wu, the ghost and the statue); a new dated exception (§12); synth fallbacks for every id | user |
 | 14 | Darkness: **dusk → night → storm**, darker step by step (§10) | user |
 | 15 | Story: a **typed story card** after the first-person floors + the `MISSION 4` card; Meneer Wu tells the rest in voiced bubbles | user |
@@ -44,11 +44,31 @@ the basilica and the statue) are for likeness only and never enter the repositor
 | 18 | The atmosphere is **spooky, dark and grim** | user |
 | 19 | All new art at 1×, 2× and 4× (one density-generic drawer per family) inside the tier-4 budget | standing rule |
 | 20 | The mission is a normal `defineMission` 2D mission on the unchanged `MissionRunner`; new engine features only as additive opt-ins (§13) | lead (architect) |
-| 21 | Section ids `oz-a` … `oz-e` (the art packs are keyed by section id; `a` … `e` would share ams's packs) | lead default |
+| 21 | Section ids `oz-a` … `oz-e` (the art packs are keyed by section id; `a` … `e` would share ams's packs) **(replaced by revision 2)** | lead default |
 | 22 | The card's subtitle: **`A HAUNTING IN OTOWN`** ("Otown" = Oldenzaal) | user |
 | 23 | The statue's plaque shows only `ST. PLECHELMUS` in our own lettering (not the real plaque's other lines) | lead default |
 | 24 | Patrick ("master of eating frikandellen", his bio) gets a longer snack power (30 s) | lead default |
-| 25 | The free souls can possess a fleeing townsperson again if the players do not shoot them (§3.4) | lead proposal |
+| 25 | The free souls can possess a fleeing townsperson again if the players do not shoot them (§3.4) **(replaced by revision 2)** | lead proposal |
+
+### Revision 2 (2026-10-21 evening, the user's feedback after playing wave A)
+
+These rows replace rows 4, 5, 6 (the blast), 9, 10, 11, 12, 21 and 25. Where a section below still
+says otherwise, revision 2 wins.
+
+| # | Item | Decided by |
+|---|---|---|
+| R2-1 | The enemies are **real, high-fidelity Nazi zombies**: risen WW2 German soldiers, rotting, in field-grey uniforms and steel helmets. They are **tanks: slow, and they take many hits** (§3) | user |
+| R2-2 | **Swastika armbands** on the zombies' uniforms and a few torn, rotten swastika banners in the town; no other insignia (no SS runes, no eagle, no slogans); a new dated exception (§12) | user |
+| R2-3 | **Rotting, no red blood**: grey-green skin, bone showing, torn cloth; hits knock off chunks and helmets; at death they collapse into bones and dust | user |
+| R2-4 | The roster: **grunt** (melee), **rifleman**, **MG gunner** (heavy), **crawler** (§3.2) | user |
+| R2-5 | The entrances: **rise from the ground**, **break out of buildings**, **climb out of manholes**, **march in from the far end** (§3.3) | user |
+| R2-6 | **No more ghosts**: no souls, no ghost rifles, no possession, no townspeople. **Mevrouw Winkel appears once, in the middle of the level**: on Plechelmusplein she wakes the statue (§6); her face stays on the `TO BE CONTINUED` card | user |
+| R2-7 | Oldenzaal looks **abandoned and worn down, after the outbreak**: today's town, left weeks ago (§10.3); only De Smulhoek is still open | user |
+| R2-8 | **St. Plechelmus is a mini-boss**: short and sharp, **2 phases**, about 45–60 s (§5.2) | user |
+| R2-9 | The players **explore the church interior before the tower**: the **nave** (a spooky **Catholic** church, §7.1), then the **crypt** (§7.2), then the tower | user |
+| R2-10 | Six sections `oz-a` … `oz-f`: street, De Smulhoek, the square (mini-boss), the nave, the crypt, the tower (+ the Swan finale); about 8 minutes | lead default |
+| R2-11 | The frikandel blast is now a big **explosion** (heavy damage to the zombies in a wide radius) | lead default |
+| R2-12 | Meneer Wu is the last living soul in town who still works: his joke gets stronger (he keeps the fryer going while the dead walk) | lead default |
 
 Scope: the new mission `oldenzaal`, its flow changes and the engine opt-ins it needs. `ams`, `ring`
 and the first-person floors keep their content; `ams` (lower and upper), m0 and m2 keep their sims
@@ -67,7 +87,7 @@ byte-identical, and the ring's sims stay byte-identical too.
 - Numbering: the first-person floors count as one level (`MISSION 3`), so `oldenzaal` is
   `MISSION 4` and its high-score column is `M4`. `FPS_ROUTE` gets `oldenzaal`, with the number
   special-cased (today `missionNumber` would give 5).
-- `?mission=oldenzaal` starts it directly (with `section=oz-a … oz-e`, `players`, `char`, `god`,
+- `?mission=oldenzaal` starts it directly (with `section=oz-a … oz-f`, `players`, `char`, `god`,
   `debug`, `art`, `res`, `difficulty` as today). `?mission=oldenzaal&boss=1` starts at the statue.
 - After the first-person mode (one slot), P2 rejoins the 2D runner as in the ring → fps hand-off;
   verify P2 and the continues.
@@ -76,61 +96,63 @@ byte-identical, and the ring's sims stay byte-identical too.
 - **Trap:** `listMissions` sorts ids, so `oldenzaal` comes after `m5` and would become m5's
   default `next`. Keep m0–m5 exactly as they are (an explicit `next` or a filter).
 
-## 2. The sections (about 7 minutes)
+## 2. The sections (about 8 minutes; revision 2)
 
 | Section | Place | Time | Light | Content |
 |---|---|---|---|---|
-| `oz-a` | the drop over the roofs, then the main shopping street | ~1:45 | dusk: a low red sun, fog, flickering lamps | the parachute start (`introDrop`), closed shops, the first possessed, frightened townspeople, free souls; Mevrouw Winkel watches from a roof and vanishes |
-| `oz-b` | the street corner with **De Smulhoek**, the basilica's tower above the roofs | ~1:00 | late dusk | the Meneer Wu scene (the story, the meal), a short fight on the way to the square |
-| `oz-c` | **Plechelmusplein** (red-brick pavers, the basilica's long side as the backdrop) | ~1:30 | night, full moon | the statue boss (§5) |
-| `oz-d` | **the nave** of the basilica | ~1:30 | candle light, lightning in the windows | the horde and the church set pieces (§7) |
-| `oz-e` | **the tower**, scrolling up to the top | ~1:30 | storm: rain, lightning | the climb, the horde tide, the bells (§8); at the top the Swan finale (§9) |
+| `oz-a` | the drop over the roofs, then the main shopping street | ~1:45 | dusk: a low red sun, fog, dead and flickering lamps | the parachute start (`introDrop`), the abandoned street, the first zombies (every entrance kind), a column marching in from the fog |
+| `oz-b` | the street corner with **De Smulhoek**, the basilica's tower above the roofs | ~1:00 | late dusk | the Meneer Wu scene (the story, the meal), a fight on the way to the square |
+| `oz-c` | **Plechelmusplein** (cracked red-brick pavers, the basilica's long side as the backdrop) | ~1:15 | night, full moon | **Mevrouw Winkel's scene**: she wakes the statue; the **mini-boss** (§5); the red doors open |
+| `oz-d` | **the nave** of the basilica | ~1:30 | candle light, lightning in the windows | the spooky Catholic church (§7.1); the dead rise from the grave slabs and come out of the side chapels |
+| `oz-e` | **the crypt** under the choir | ~1:00 | almost dark: votive candles, a lantern glow | tombs and niches; the dead climb out of the tombs; crawlers; stairs up to the tower door (§7.2) |
+| `oz-f` | **the tower**, scrolling up to the top | ~1:30 | storm: rain, lightning | the climb, the horde tide, the bells (§8); at the top the Swan finale (§9) |
 
-- Checkpoints at most 1,400 px apart (the mission tests). `oz-e` is a vertical section
-  (`scroll: 'up'`, like m3-b1, about 384 × 1,800 px).
+- Checkpoints at most 1,400 px apart (the mission tests). `oz-f` is a vertical section
+  (`scroll: 'up'`, like m3-b1, about 384 × 1,800 px); `oz-a` … `oz-e` scroll right.
 - 2P co-op everywhere, as in ams. The in-world continue applies (gloat, cower, stagger).
 
-## 3. The possessed (enemies)
+## 3. The dead soldiers (enemies; revision 2)
 
-### 3.1 The look and the rule
-- Hosts are Oldenzaal townspeople in daily clothes (shoppers, a jogger, a butcher in an apron, a
-  student, a market vendor, a pensioner with a walking stick; churchgoers in the nave). They wear
-  a **ghostly grey soldier helmet** (WW2 style, see-through, no insignia) and have **green
-  glowing eyes**; a pale, see-through **soldier soul** (greatcoat, helmet, no symbol) hovers over
-  and behind the host and moves with it, a little delayed.
-- **No Nazi symbol** in this mission (not on souls, banners, flags or walls). No blood: the souls
-  are pale green-grey mist.
-- Never the reference game's zombie gags: no vomit attack, no hero transformation, no cure item.
+### 3.1 The look and the rules
+- **Real, high-fidelity Nazi zombies**: risen WW2 German soldiers. Field-grey wool uniforms (torn,
+  muddy, faded), the steel helmet with its flared rim, leather belts and Y-straps, ammo pouches,
+  the cylindrical gas-mask can, bread bags, jackboots; a **red swastika armband** on the left upper
+  arm (the user, R2-2); collar tabs and shoulder straps without marks; no other insignia.
+- Rotting faces at real fidelity (the 4× target: the ams / ring 4× art): grey-green and yellowed
+  skin, sunken eyes with a dull glow, exposed teeth and jaw bone, torn cheeks, wisps of hair,
+  bony hands. **No red blood** (R2-3): hits knock off dust, cloth and chunks of rot; helmets fly
+  off; at 0 HP a zombie stops, sags and **collapses into bones and dust** (the helmet rolls).
+- **Tanks** (R2-1): slow (about 0.35–0.5 px/tick), many hits, a heavy stagger only on big hits
+  (grenades, the frikandel blast, the knife); they never run.
+- Never the reference game's zombie gags (ORIGINALITY.md): no vomit attack, no hero
+  transformation, no cure item; no laughing or pointing at a player's death.
 
-### 3.2 Kinds (the builders may add one more if play needs it)
-1. `oz-shambler` — slow walk (about 0.5 px/tick), arms forward; a grab / claw at close range
-   (a tell ≥ 18 ticks; the attack box is live only in the strike). The common enemy.
-2. `oz-gunner` — the host stands still and the **soul raises a ghost rifle**: a slow, visible
-   spectral shot along the ground or a low arc (a long tell: the rifle glows).
-3. `oz-brute` — a big host (the butcher, a bouncer): more HP, a heavy charge, knocks over street
-   furniture.
-4. `oz-soul` — a **free soul** (a flyer, `body: false`): it drifts and swoops at the heroes; it
-   dies in a few shots. Free souls come out of drains, chimneys and chandeliers.
-5. Townspeople (neutral NPCs): frightened people who run and hide. A free soul that reaches one
-   **possesses** him (§3.4).
+### 3.2 Kinds (R2-4)
+1. `oz-grunt` — the common one: shambles forward, swings a rifle butt or a trench shovel at close
+   range (a tell ≥ 18 ticks on screen; the attack box is live only in the strike). About 8 pistol
+   hits (the builders tune HP with the bot and a human-speed estimate).
+2. `oz-rifleman` — stops at range, raises a rusty rifle (a long, clear tell), fires **one slow
+   shot** (a visible, slow bullet that the heroes can jump or duck), reloads slowly. About 8 hits.
+3. `oz-gunner` — a big zombie with a machine gun: walks slowly to a spot, **plants the gun** (a
+   bipod), aims after a clear tell, fires a **short sweeping burst**, then cools down. About 25
+   hits; the threat in each locked fight. His helmet and the gun's barrel can be shot off (cosmetic
+   damage states).
+4. `oz-crawler` — a legless zombie that drags itself along the ground and **grabs a hero's feet**
+   (a short hold: tap to break free, or a small hit); low: aim down or jump over. About 4 hits.
 
-### 3.3 Shooting the soul out (the user's rule)
-- Shots hurt the host's HP as usual (the host is the hit box). At 0 HP the **soul is ejected**: it
-  rises with a wail, flickers and fades (about 40 ticks; a few points more if shot while it
-  rises). The person drops, sits up dazed (about 60 ticks), then runs off screen with a thank-you
-  line now and then (`BEDANKT!`, `WAT IS ER GEBEURD?`). Score as for a kill.
-- The knife and the grenades work the same. The frikandel bomb ejects every soul in its blast at
-  once (§4.3).
+### 3.3 Entrances (R2-5; each with a clear tell, never on top of a hero)
+- **Rise from the ground**: cracks and a hand break through the pavers (or a grave slab in the
+  nave, a tomb in the crypt); the zombie climbs out (about 60–90 ticks, invulnerable only while
+  fully underground).
+- **Break out of buildings**: a boarded-up door or shop window bursts (planks and glass fly) and
+  the zombie staggers out.
+- **Climb out of manholes**: a drain cover lifts and slides away; the zombie pulls itself up.
+- **March in from the far end**: a slow column of 3–6 silhouettes in the fog at the end of the
+  street, a grim moment before a big fight (the light pass and the fog sell it).
 
-### 3.4 Re-possession (lead proposal)
-- An ejected soul that is not shot drifts off; a **free soul** that touches a fleeing or dazed
-  townsperson possesses him again (a 30-tick tell: the soul circles and dives). This gives the
-  street a reason to shoot souls fast. Never more than 2 re-possessions on screen at once.
-
-### 3.5 Gloat and cower (the in-world continue)
-- Gloat: the hosts sway and groan, the souls circle above the gloat spot (no pointing, no
-  laughing; `docs/research/mechanics.md` §23). Cower: the souls pull back into the hosts, the
-  hosts flinch.
+### 3.4 Gloat and cower (the in-world continue)
+- Gloat: the zombies stop, sway and groan, the gunner pats his gun, the crawler lies still (no
+  pointing, no laughing; `docs/research/mechanics.md` §23). Cower: they flinch and step back.
 
 ## 4. Meneer Wu, De Smulhoek and the meal
 
@@ -158,7 +180,8 @@ byte-identical, and the ring's sims stay byte-identical too.
   kind and a bit gruff.
 - The scene (like the ams FABEL FRIET briefing, `section-a.ts` `briefing()`): the heroes reach
   the corner, the input locks, Meneer Wu waves them in from the door, says 4–6 short lines (voiced,
-  ElevenLabs designed voice) about the ghost of Mevrouw Winkel and the soldiers' souls, and
+  ElevenLabs designed voice) about the ghost of Mevrouw Winkel and the dead soldiers who walk again
+  since she came back (revision 2), and
   tosses each living hero a paper tray: `PATAT MAYO MET 2 FRIKANDELLEN`. Skippable after 20
   ticks; the meal is given even when skipped.
 
@@ -167,8 +190,9 @@ byte-identical, and the ring's sims stay byte-identical too.
   ×1.5; one hit is absorbed by a mayo splat (a white splash, a `SPLAT!` pop); a HUD icon (a tray
   of fries) with a countdown ring; a warm tint pulse on the hero.
 - **Frikandel bombs**: 2 per hero, a special throw (BOMB while you have them; then the normal
-  grenades come back): a frikandel in a high arc, a **holy-mayo blast** on landing (a wide
-  radius) that ejects every soul in it at once and blasts free souls. No other damage to people.
+  grenades come back): a frikandel in a high arc, a **holy-mayo blast** on landing: a big
+  explosion (revision 2, R2-11) with heavy damage to every zombie in a wide radius and a stagger
+  (a cream-white burst with a glow).
 - In 2P each hero gets their own meal. A later continue does not give a new meal.
 
 ## 5. The statue boss: St. Plechelmus (oz-c)
@@ -182,102 +206,111 @@ byte-identical, and the ring's sims stay byte-identical too.
 - The square: red-brick pavers in a herringbone, benches, the tall black street lamps, the
   basilica's side behind (§10.3).
 
-### 5.2 The fight (the user's choice: possessed, 3 phases, freed at the end)
-- **Phase 0 — decor.** The statue looks like decor; shots chip dust but do nothing. A wave of
-  possessed comes over the square. Then **Mevrouw Winkel** glides in, laughs, and **flies into
-  the statue**: the stone cracks, the eyes glow green, the boss bar `ST. PLECHELMUS` fills; the
-  camera locks.
-- **Phase 1 — seated** (100 % → 60 %): it stays on its plinth. The **crozier sweep** (a low sweep
-  across the square: jump it; tell: the crozier glows and swings back), the **thrown stone** (it
-  breaks a block off the plinth and lobs it; it shatters into small bouncing stones), the raised
-  hand casts a slow **curse orb** that drifts toward a hero.
-- **Phase 2 — on foot** (60 % → 25 %): it steps down off the plinth, heavy and slow. The
-  **ground slam** (a shockwave along the pavers: jump it), the **crozier hook** (it hooks a hero
-  and pulls him in; shoot the crozier head or jump to break free), a short stomp walk across the
-  arena.
-- **Phase 3 — cracked** (25 % → 0): cracks glow, the **souls swirl out** as adds (`oz-soul`),
-  faster sweeps, the curse orbs come in pairs.
-- **Parts**: the head (the weak point, ×1.5 in phases 2–3), the crozier (breakable: no hook
-  while it is broken, it re-forms from mist after a while), the body. Bosses do not use attack
-  tokens; every attack has a tell ≥ 18 ticks and starts only on screen.
-- **The end** (the user's wish: the saint is a victim): the ghost is torn out of the stone and
-  flees into the basilica with a shriek; the cracks close; the statue walks back, **sits down on
-  its plinth, whole**, and its eyes go dark. The basilica's red doors creak open. Points as for a
-  boss (10,000), a weapon drop.
-- Continue: the statue staggers (as ROBO-HALSEMA); its souls cower.
+### 5.2 The fight (revision 2: a mini-boss, 2 phases, about 45–60 s)
+- **The wake** (Mevrouw Winkel's only scene, §6): the heroes reach the square; the statue looks like
+  decor (shots chip dust but do nothing); the camera locks; **Mevrouw Winkel** fades in beside the
+  plinth, says 2–3 lines, laughs and **flies into the statue**: the stone cracks, the eyes glow,
+  the boss bar `ST. PLECHELMUS` fills (marked as a mini-boss).
+- **Phase 1 — seated** (100 % → 50 %): the **crozier sweep** (a low sweep across the square: jump
+  it; tell: the crozier glows and swings back) and the **thrown stone** (it breaks a block off the
+  plinth and lobs it; it shatters into small bouncing stones).
+- **Phase 2 — on foot** (50 % → 0): it steps down off the plinth, heavy and slow: the **ground
+  slam** (a shockwave along the pavers: jump it) and the **crozier hook** (it hooks a hero and
+  pulls him in; shoot the crozier head or jump to break free).
+- **Parts**: the head (the weak point in phase 2), the crozier (breakable: no hook while it is
+  broken), the body. Bosses do not use attack tokens; every attack has a tell ≥ 18 ticks and starts
+  only on screen.
+- **The end** (the saint is a victim): the ghost is torn out of the stone and flees with a shriek
+  (she is not seen again in this level); the cracks close; the statue walks back, **sits down on
+  its plinth, whole**, and its eyes go dark. The basilica's red doors creak open. Points as a
+  mini-boss (5,000), a weapon drop.
+- Continue: the statue staggers; zombies on the square cower.
 
-## 6. Mevrouw Winkel (the ghost; story moments only)
+## 6. Mevrouw Winkel (the ghost; one scene; revision 2)
 
-- Fictional (the user made her up): a **middle-aged woman with dark grey hair** (the user), in a
-  pinned-up style, in an old-fashioned long dark dress with a high collar and a shawl, carrying an
-  old lantern with a green flame. She is see-through and pale, with a cold green glow and a trail
-  of mist (alpha + an additive glow pass, §10.2).
-- She **cannot be hit** in this level (shots pass through her; she is not a target). Her
-  appearances:
-  1. `oz-a`: she stands on a roof at dusk as the heroes drop, raises the lantern, vanishes.
-  2. `oz-c`: she glides in and possesses the statue (§5.2); she flees from it at the end.
-  3. `oz-d`: she shrieks in the nave, slams the doors (the camera lock) and calls the souls down
-     from the chandeliers.
-  4. `oz-e` top: she floats beside the spire in the storm and watches the Swan fly off.
-  5. The `TO BE CONTINUED` card: her face and her laugh.
-- Her lines: few and short, our own (English with Dutch flavour), voiced by an ElevenLabs
-  designed voice (an eerie, whispering middle-aged woman; never a clone or an imitation).
+- Fictional (the user made her up): a **middle-aged woman with dark grey hair** (the user), pinned
+  up in a bun, in an old-fashioned long dark dress with a high collar and a shawl, carrying an old
+  lantern with a green flame. She is see-through and pale, with a cold green glow and a trail of
+  mist (`drawGhost`, an additive glow, a light for the light pass).
+- She **cannot be hit** (shots pass through her; she is not a target).
+- **No more ghosts** (R2-6): she appears **once, in the middle of the level**: on Plechelmusplein
+  she wakes the statue (§5.2). Her roof moment in `oz-a` goes. Her face and her laugh stay on the
+  `TO BE CONTINUED` card (a teaser for stage 2, where she is fought).
+- Her lines: few and short, our own (English with Dutch flavour), voiced by an ElevenLabs designed
+  voice (an eerie, whispering middle-aged woman; never a clone or an imitation).
 
-## 7. The nave (oz-d)
+## 7. The church interior: the nave (oz-d) and the crypt (oz-e) (revision 2)
 
-- The heroes enter through the **red doors** (from the photo: pointed-arch doors in the long side).
-  Inside: a long nave with grey sandstone **pillars** and arches, rows of dark wooden **pews**
-  (low one-way platforms and cover), **candle stands** and wall candles (flickering light
-  sources), tall **pointed windows** with stained glass that flash white in the lightning, iron
-  **chandeliers** high up, a stone floor with grave slabs, the organ loft at the far end.
-- The set pieces: possessed churchgoers rise from the pews; the ghost slams the doors (a camera
-  lock, a horde arena: two waves); souls drop from the chandeliers (a chandelier sways); the
-  lightning shows the possessed in silhouette for a moment; at the west end a small door leads
-  into the tower.
-- **Respect** (the user's choice, ORIGINALITY.md: no religious stereotype): nothing in the nave is
-  mocked, broken or burned; shots never damage the altar, crosses or images; no enemy wears a
-  church vestment as a joke; the church is the place the squad frees from the curse.
-- No mini-boss in the nave.
+The players **explore the church before the tower** (R2-9). It must look like a **spooky Catholic
+church**: rich, old, dark, candle-lit, abandoned for weeks (dust, cobwebs, fallen hymn boards,
+toppled candle stands), never mocked.
 
-## 8. The tower climb (oz-e)
+### 7.1 The nave (oz-d, ~1:30)
+- Enter through the **red pointed-arch doors**. Grey sandstone **pillars** and round and pointed
+  arches, the **side aisles** with **side chapels** behind iron grilles, rows of dark wooden
+  **pews** (low one-way platforms and cover), a stone floor with **grave slabs**.
+- Catholic details (our own drawings): **votive candle racks** with many small flames (light
+  sources), **statues of saints** and of **Mary** in niches, the **Stations of the Cross** as small
+  framed reliefs along the walls, **confessionals** (dark wooden booths with curtains), a **holy
+  water font** by the door, the **pulpit** with its canopy, the **altar** in the choir with a
+  **crucifix** and tall candlesticks, the red **sanctuary lamp** (the eternal light) glowing, an
+  **organ loft** with pipes at the west end, iron **chandeliers**, tall **stained-glass windows**
+  that flash in the lightning.
+- Set pieces: the dead rise from the grave slabs; a zombie column comes out of a side chapel; the
+  doors slam shut behind the players (a camera lock, a fight with a gunner); the organ moans by
+  itself (a sound, no ghost); lightning shows the zombies in silhouette for a moment. At the choir
+  a stair leads **down into the crypt**.
+- **Respect** (ORIGINALITY.md: no religious stereotype or mockery): nothing in the church is
+  mocked, broken or burned on purpose; shots never damage the altar, the crucifix, statues or
+  images; no zombie wears a church vestment; the church is the place the squad frees.
+
+### 7.2 The crypt (oz-e, ~1:00)
+- A low vaulted crypt under the choir: squat columns, rough stone, **tombs** and **wall niches**,
+  old coffins, iron gates, votive candles and a few lanterns (almost dark: the light pass), dust
+  in the air.
+- The dead **climb out of the tombs** and niches (the rise entrance with a lid that slides off);
+  **crawlers** come along the floor; a short locked fight at a gate.
+- At the far end a narrow **stair goes up** to the tower door (the exit to `oz-f`).
+
+## 8. The tower climb (oz-f)
 
 - A vertical section, scrolling **up** (about 384 × 1,800 px). Inside the square tower: wooden
   **stairs and landings** (one-way platforms, drop-through), heavy beams, the stone walls with
   narrow openings (rain and lightning outside), the **clock works**, the **bell chamber** with
   2–3 swinging **bells** (the bell is a hazard when it swings at a hero and a platform at rest; a
-  bell toll stuns the souls near it for a moment).
-- **The horde tide**: from about a third of the way up, a mass of possessed climbs up behind the
+  bell toll stuns the zombies near it for a moment).
+- **The horde tide**: from about a third of the way up, a mass of zombies climbs up behind the
   players at a steady rate (like m3-b2's rising meltwater): it pushes the camera up and **kills on
-  contact** (one hit, the genre rule). The players must keep moving; souls fly in through the
-  openings; a few `oz-gunner` hosts stand on landings.
+  contact** (one hit, the genre rule). The players must keep moving; a few riflemen stand on
+  landings.
 - **The top**: the roof platform under the small spire with the clock, the storm all around. The
-  tide stops one landing below (the souls cannot pass the bells' last toll), the heroes are
-  trapped: the ghost floats beside the spire (§6), then the Swan comes (§9).
+  tide stops one landing below (the dead cannot pass the bells' last toll), the heroes are
+  trapped; then the Swan comes (§9).
 - The bot must be able to finish the climb (the m3 platform-staircase rule: goals more than 20 px
   up; the tide must leave the bot enough time).
 
-## 9. The Swan finale (the end of oz-e)
+## 9. The Swan finale (the end of oz-f)
 
 - A scripted, cosmetic **jet Swan** (`oz-swan-jet`), modelled on the m5 finale's flying ship
   (`m5/finale.ts`: a `Mountable`, `canMount` / `boardAll`, `autoRun`, `leave()`): the Metal Swan
   with two **rocket units under her wings** (blue-white flames) flies in from the storm, hovers
   beside the roof, the heroes jump on (in 2P both ride: the second hero on the tail perch, as on
-  the Swan today), she turns and flies off into the clouds with a long jet trail. The ghost
-  watches. Then MISSION COMPLETE.
+  the Swan today), she turns and flies off into the clouds with a long jet trail. Then MISSION COMPLETE.
 - The Swan's look stays her own (a robot swan, ams art); only the jet units and the flight
   frames are new.
 
 ## 10. The atmosphere and the art
 
 ### 10.1 Dusk → night → storm
-- `oz-a`: a low red-orange sun behind the roofs, a purple sky, thick ground fog, the street lamps
-  flickering on, shop windows dark with shutters down.
+- `oz-a`: a low red-orange sun behind the roofs, a purple sky, thick ground fog, most street
+  lamps dead, a few flickering, shop windows dark, smashed or boarded up (revision 2).
 - `oz-b`: late dusk, the fog thicker; De Smulhoek's windows are warm.
 - `oz-c`: night, a **full moon** behind the basilica's tower, cold blue light, the statue in a
   pool of lamp light.
 - `oz-d`: dark inside, warm **candle light** pools, cold flashes of **lightning** through the
   windows.
-- `oz-e`: a storm: rain streaks, wind, lightning flashes that light the whole tower.
+- `oz-e` (the crypt): almost dark; votive candles and a lantern glow.
+- `oz-f` (the tower): a storm: rain streaks, wind, lightning flashes that light the whole tower.
 - Overall: desaturated, cold greens, greys and blues; warm light only from lamps, candles and De
   Smulhoek. The squad and the pickups stay readable (the readability rule).
 
@@ -286,11 +319,11 @@ byte-identical, and the ring's sims stay byte-identical too.
   darkness overlay with additive light sources (lamps, candles, the ghost's glow, De Smulhoek's
   windows), a lightning flash, like the ring's tunnel light pass. Without the opt-in nothing
   changes.
-- **Weather layers**: fog bands (parallax, drifting), rain streaks, wind gusts in `oz-e`.
+- **Weather layers**: fog bands (parallax, drifting), rain streaks, wind gusts in `oz-f`.
 - **Vertical chunk eviction**: dense chunks are evicted by x only today; the tower needs eviction
   by y too (else every chunk of a vertical section stays resident).
 - **The ghost draw**: alpha ~0.5, then an additive tint pass and a glow sprite (render.ts
-  `DrawOpts` `alpha` / `tint` / `blend: 'add'`). The souls use the same draw.
+  `DrawOpts` `alpha` / `tint` / `blend: 'add'`). (Revision 2: only Mevrouw Winkel uses it.)
 - **New light lists**: `Light` (ams art) today has morning, noon, golden and sunset only; add
   dusk and night for the new drawers.
 
@@ -301,16 +334,23 @@ byte-identical, and the ring's sims stay byte-identical too.
   nave** with tall pointed tracery windows, stepped buttresses, a steep grey slate roof with small
   dormers and finials; red pointed-arch doors; benches along the wall.
 - **The shopping street**: Dutch brick shop fronts of 2–3 storeys (red-brown and dark brick, white
-  window frames, some plastered fronts), closed shutters, shop signs in our own lettering, the
-  tall black **double street lamps** with hanging flower baskets, signposts (`MUSEUM`,
-  `PLECHELMUSBASILIEK`, `STADHUIS`, `GANZENMARKT`, from the photo's signpost), red-brick pavers,
-  bicycle racks, the basilica's tower always above the roofs.
+  window frames, some plastered fronts), shop signs in our own lettering, the tall black **double
+  street lamps** with hanging flower baskets, signposts (`MUSEUM`, `PLECHELMUSBASILIEK`,
+  `STADHUIS`, `GANZENMARKT`, from the photo's signpost), red-brick pavers, bicycle racks, the
+  basilica's tower always above the roofs.
+- **Abandoned and worn down, after the outbreak** (revision 2, R2-7): the town was left weeks ago.
+  Boarded-up and smashed shop windows (planks nailed across, broken glass, `GESLOTEN` and
+  `NIET BETREDEN` notes), half-open roller shutters, peeling paint and plaster, damp stains and
+  cracks, dead hanging baskets, dead or flickering lamps, weeds between cracked pavers, rubbish
+  and blown newspapers, toppled bikes and bins, abandoned cars (doors open, flat tyres, a
+  **burned-out car**), police tape and crowd barriers, an emergency sign, a few torn swastika
+  banners hung by the dead (R2-2). Only **De Smulhoek** is still open: its windows glow warm.
 - **Plechelmusplein**: the open square in front of the basilica (§5.1).
 - Shop and brand names other than De Smulhoek are our own made-up names.
 
 ### 10.4 Palette and budget
-- PAL_HD (209 of 256 colours today): new ramps for the sandstone, the dusk sky, the ghost green and
-  the candle amber, inside the 256 limit. 1× keeps the 64-colour palette (mapped).
+- PAL_HD: the wave-A ramps (sandstone, dusk sky, ghost green, candle amber, night blue) plus what
+  revision 2 needs (rotting skin, field grey, rust, soot), inside the 256 limit. 1× keeps the 64-colour palette (mapped).
 - Tier-4 working set: the mission's sprites + its dense scenery must fit `DENSE_BUDGET_BYTES`
   (256 MB; ams's worst case is 251.6 MB today), with a `denseReserve` for the scenery like the
   ring, and a budget test like `ams-dense-budget.test.ts`. 2P uses the same rules as ams.
@@ -321,7 +361,8 @@ byte-identical, and the ring's sims stay byte-identical too.
   slow organ and choir pad over a low heartbeat drum, rising in `oz-b`), the statue boss song
   (heavy, stone percussion, a choir), the tower chase (fast, the bells in the rhythm), a
   `TO BE CONTINUED` sting. Prompts in our own words, never a named song, artist, game or composer.
-- **Sfx**: the souls' wail and eject, the hosts' groans, the ghost rifle, the brute's charge, the
+- **Sfx** (revision 2): the zombies' groans and collapse into bones, the rifle shot, the MG burst,
+  the crawler's drag and grab, the ground breaking, boards and glass bursting, a manhole cover, the
   ghost's shriek and laugh, the stone crack, the crozier sweep, the ground slam, bells, thunder,
   rain and wind loops, the doors slamming, candles, the frikandel throw and the mayo splat, the
   jet Swan.
@@ -336,7 +377,7 @@ byte-identical, and the ring's sims stay byte-identical too.
   after the user's OK at the play-test stop. The ElevenLabs key lives only in `.env.local`: never
   print it, commit it or read the file.
 
-## 12. Originality exception (a new dated section in docs/ORIGINALITY.md)
+## 12. Originality exception (a dated section in docs/ORIGINALITY.md; revision 2)
 
 - Real names allowed in `oldenzaal`: Oldenzaal, the Plechelmus Basilica (Sint-Plechelmusbasiliek),
   Plechelmusplein, St. Plechelmus and his statue (a likeness, freed and whole at the end), the
@@ -345,8 +386,14 @@ byte-identical, and the ring's sims stay byte-identical too.
 - Meneer Wu is our own design with a name the user chose: a hard-working snack-bar owner with a
   Chinese background, drawn and voiced without any stereotype (§4.2); no likeness of a real
   person. Mevrouw Winkel is fictional.
-- **No Nazi symbols** in this mission; the soldiers are the villains' souls; bloodless.
-- The possessed are not the reference game's zombie gag: no hero transformation, no vomit attack,
+- **Nazi symbols (revision 2, the user's decision of 2026-10-21):** in this mission only, the
+  zombie soldiers wear a **swastika armband**, and a few **torn, rotten swastika banners** hang in
+  the town. Nothing else: no SS runes, no eagle, no slogans, no real units or names, no
+  uniform badges beyond the armband. The symbols are on the villains only, never shown in a
+  positive light; no Holocaust imagery, no real victims, no real quotes.
+- **Rotting, bloodless**: no red blood in this mission (the first-person mode keeps its own
+  exception).
+- The zombies are not the reference game's zombie gag: no hero transformation, no vomit attack,
   no cure item.
 - **Respect for the church**: no mockery of the faith, its objects or clergy; the saint is a victim
   of the curse and is freed.
@@ -358,9 +405,9 @@ byte-identical, and the ring's sims stay byte-identical too.
 
 - `src/game/content/missions/oldenzaal/` — `index.ts` (`defineMission`, `introDrop: true`,
   `artDensity: 4`, `art`, `audioGroup`, `hostages: 0` unless the builders add some), `terrain.ts`,
-  `section-oz-{a,b,c,d,e}.ts`, `backgrounds.ts`, `art*.ts`, `helpers.ts`, `entities.ts` (Meneer Wu,
-  the townspeople, the ghost, the jet Swan), `finale.ts`.
-- `src/game/content/oldenzaal/possessed/` — the hosts, the souls, the eject, art.
+  `section-oz-{a,b,c,d,e,f}.ts`, `backgrounds.ts`, `art*.ts`, `helpers.ts`, `entities.ts`,
+  `finale.ts`.
+- `src/game/content/oldenzaal/zombies/` — the dead soldiers (revision 2; replaces `possessed/`).
 - `src/game/content/bosses/oldenzaal/` — the statue (parts, phases, art, voice).
 - `src/game/content/characters/snack-power.ts` (the status) and the frikandel bomb (with the
   grenade code); a meal pickup in `content/items/`.
@@ -430,12 +477,55 @@ songs and ambience set; the route fps-2 → story card → `MISSION 4` → olden
 - Unchanged from the builders: shambler 30 HP, gunner hold 170 px, soul 20 HP, the holy-mayo
   radius 48 px, snack power 1,200 ticks (Patrick 1,800).
 
-**Stop: the user plays `oz-a` and `oz-b`**, and OKs the credit estimate.
+**Stop: the user played `oz-a` and `oz-b`** (2026-10-21) and gave the feedback of revision 2
+(§0). The credit estimate is not OK'd yet: no generation until the user says so.
 
-**Wave B — the basilica and the escape** (8 agents): **STATUE** (`oz-c` + the boss), **NAVE**
-(`oz-d`), **TOWER** (`oz-e`: the climb, the tide, the bells), **FINALE** (the jet Swan, the
-ghost's last moments, the `TO BE CONTINUED` card art), **AUDIO-GEN** (generate, review and ship
-the takes) in parallel → **INTEGRATE** → **REVIEW** → **FIX**.
+**Wave B — revision 2, the church and the escape** (9 agents; the user is away: autonomous):
+1. **PREP** (first, alone): revision 2's foundation: sections `oz-a` … `oz-f` (`oz-e` becomes the
+   crypt, a new vertical `oz-f` tower placeholder; light configs), ids and owners, the rewritten
+   lines (story card, Meneer Wu, Mevrouw Winkel's wake lines, the statue), the zombie API with a
+   working placeholder, the boarded-door contract, the PAL_HD ramps, the ORIGINALITY exception
+   (R2-2), `docs/api/oldenzaal.md` revision 2.
+2. Then in parallel:
+   - **ZOMBIES**: the four dead soldiers (grunt, rifleman, MG gunner, crawler), the four entrances,
+     gloat / cower, the frikandel explosion, art at real fidelity; `possessed/` stays until the
+     integrator switches the scripts.
+   - **RUIN**: `oz-a` / `oz-b` abandoned and worn down (§10.3), the boarded doors and windows that
+     burst, manholes, abandoned cars, the torn banners.
+   - **STATUE**: `oz-c` (the square, Mevrouw Winkel's wake scene, the 2-phase mini-boss, the doors),
+     Meneer Wu's hair (grey temples), the `TO BE CONTINUED` card's ghost face.
+   - **CHURCH**: `oz-d` the nave and `oz-e` the crypt (§7): the Catholic interior art, layout,
+     scripts and set pieces.
+   - **TOWER**: `oz-f` the climb, the horde tide, the bells, the top and the jet Swan finale (§8, §9).
+3. **INTEGRATE**: `oz-a` / `oz-b` scripts on the zombies (no souls, no townspeople, no roof ghost),
+   `possessed/` removed, pacing for tank zombies, the whole mission end to end, the bot (the
+   mini-boss, the tide), sims, budget, the audio spec and estimate for revision 2 (no generation),
+   docs.
+4. **REVIEW** (read-only) → 5. **FIX**.
+
+**Wave B: DONE (2026-10-21).** PREP, then ZOMBIES, RUIN, STATUE, CHURCH, TOWER, then INTEGRATE:
+the six sections play end to end (oz-a → oz-f → tally → `TO BE CONTINUED` → ending); `oz-a` and
+`oz-b` run on the dead soldiers (every kind, every entrance, at RUIN's openings); wave A's
+possessed, souls, townspeople and roof ghost are removed (code, ids, sprites, sfx, tests, spec).
+The bot completes the mission 1P and 2P on easy, normal and hard, god and mortal, and from every
+`--section`; all 12 identity sims unchanged; the tier-4 peaks are 123.2 MB (1P) and 146.5 MB (2P)
+of 256 MB. The audio spec lists every revision-2 id; the credit estimate is now about 32,300
+credits (about 37,200 with a 15 % reserve): `tmp/oz-audio-estimate.md`, still not OK'd, nothing
+generated. Tuning in wave B (the integrator, from bot runs and a human-speed estimate):
+- Tank pacing: each big lock has one MG zombie at most; the weapons come first: a machine-gun
+  crate before oz-a's first lock (x 520), the middle MG zombie drops a machine gun, a shotgun crate
+  on the way to the last lock (x 2210), oz-b's MG zombie drops a shotgun. Entries are always IN
+  VIEW (an opening out of view gives a rise in view instead), never behind a low wall.
+- `ENTRY.maxWait` 600 → 240 ticks, and a zombie whose opening spot a hero blocks comes out beside
+  it (it never came out: a 69-s lock in oz-b).
+- The dead clamber over low walls (≤ 20 px) and step down off them: a march column stood stuck
+  behind oz-a's middle garden wall.
+- The zombies' hit flash is a pale overlay (alpha 0.3), not the white cut-out: under steady fire a
+  zombie was white half the time and read as a ghost (R2-6: no ghosts).
+- The statue's hook strike goes through `world.damage` (it killed god-mode players).
+- Bot times (normal 1P): oz-a 89 s, oz-b 65 s, oz-c 72 s, oz-d 79 s, oz-e 30 s, oz-f 38 s (6:13
+  in all); a human is slower (about 8 minutes). The longest locks for the bot: oz-a 21 s / 20 s,
+  oz-b 13 s; a human with the machine gun about 10–15 s, on the pistol alone about 30 s.
 
 ## 15. Gates (the lead, after each wave)
 
@@ -456,7 +546,9 @@ the takes) in parallel → **INTEGRATE** → **REVIEW** → **FIX**.
   careful tier-4 set (the boss, the hosts' variants share parts).
 - **The light pass cost at 4K** (a full-screen dark layer + additive lights each frame).
 - **The vertical section**: y eviction, the tide's fairness, the bot's climb.
-- **Re-possession** can feel unfair; cap it and give a clear tell.
+- **Tank zombies** can make the fights slow and grindy: tune HP with a human-speed estimate, not
+  only the bot; give the heroes weapon drops.
+- **The symbols** (R2-2): keep them to the armband and a few torn banners; nothing more.
 - **Sensitivity**: the church, the saint and the WW2 theme: the respect rules (§7, §12) and no
   symbols.
 - **ElevenLabs**: the credit cost and the take quality (the user listens at the stop).

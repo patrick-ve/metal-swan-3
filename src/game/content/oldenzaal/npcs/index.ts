@@ -40,9 +40,8 @@
  * - `laugh()` (`oz/ghost/laugh`; never at a player's death), `whisper()`,
  *   `say(text, ticks = 150)` (a bubble voiced by speaker 'winkel').
  *
- * `winkelAppear(ctx, x, y, o?)`: oz-a's roof moment — she fades in on the roof at (x, y),
- * raises the lantern, says `WINKEL_LINES.roof`, holds `o.hold` (150) ticks and vanishes. A
- * background script (the section's script does not wait); returns the entity.
+ * Revision 2 (R2-6): she appears ONCE, in the oz-c wake scene (script-oz-c.ts); wave A's roof
+ * moment in oz-a (`winkelAppear`) is gone.
  */
 import { Entity } from '../../../../engine/entity';
 import { buttonMask, VirtualPad } from '../../../../engine/input';
@@ -64,7 +63,7 @@ import { eraseEnemyShots } from '../../../projectile';
 import { defineEntity, paramBool, paramNum, paramStr, toSpawnSpec, type SpawnParams } from '../../../registry';
 import { eatMeal } from '../../characters/snack-power';
 import { OZ_SPEAKER, OZ_STATUS_SNACK, OZ_WUGHOST } from '../../missions/oldenzaal/ids';
-import { WINKEL_LINES, WU_CALL, WU_LINES } from '../../missions/oldenzaal/lines';
+import { WU_CALL, WU_LINES } from '../../missions/oldenzaal/lines';
 import { drawGhost } from '../kit/ghost-draw';
 import { LIGHT_TAG, type LightSource, type LightSpot } from '../kit/light-api';
 import { WINKEL_FLAME_DX, WINKEL_FLAME_DY, WU_TOSS_RELEASE, WU_TR_TICKS, WU_TRANSITIONS, WU_TURN_TICKS, WU_WALK_SPEED } from './art';
@@ -681,39 +680,6 @@ export class OzWinkel extends Entity implements LightSource {
 
 const NO_BOXES: readonly Rect[] = [];
 const flameAt: [number, number] = [0, 0];
-
-export interface WinkelAppearOpts {
-  /** Ticks she stays after the line (default 150). */
-  hold?: number;
-  /** Say `WINKEL_LINES.roof` (default true). */
-  line?: boolean;
-  facing?: 1 | -1;
-}
-
-/** oz-a's roof moment (see the module comment): returns Mevrouw Winkel; she removes herself. */
-export function winkelAppear(ctx: SectionContext, x: number, y: number, o: WinkelAppearOpts = {}): Entity {
-  const w = ctx.spawn(OZ_WUGHOST.winkel, x, y, { facing: o.facing ?? -1 }) as OzWinkel;
-  if (!(w instanceof OzWinkel)) return w;
-  const hold = o.hold ?? 150;
-  const line = o.line !== false;
-  ctx.world.scripts.run(
-    function* ozWinkelRoof(): ScriptGen {
-      w.appear(45);
-      yield 50;
-      if (w.removed) return;
-      w.raiseLantern();
-      w.whisper();
-      if (line) w.say(WINKEL_LINES.roof, Math.min(150, hold));
-      yield hold;
-      if (w.removed) return;
-      w.laugh();
-      yield 30;
-      if (!w.removed) w.vanish(30);
-    },
-    { name: 'oz winkel roof' },
-  );
-  return w;
-}
 
 // ============================================================================== registry
 

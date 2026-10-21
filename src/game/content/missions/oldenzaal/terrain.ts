@@ -7,9 +7,18 @@
  *
  * Exported for the scripts (INTEGRATE) and the builders: `OZ_A_*` / `OZ_B_*` (the arenas, the
  * wave spots, Mevrouw Winkel's roof, Meneer Wu's door `OZ_B_DOOR_X`, the golden record's ledge).
+ *
+ * Revision 2 (RUIN, R2-7, spec §3.3): the town after the outbreak, laid out for slow tank fights:
+ * wider arenas (`OZ_A_ARENAS` / `OZ_B_ARENAS`, about 1.3–1.5 views, room to back off), abandoned
+ * cars whose roofs are one-way platforms (`OZ_A_CARS`, cover and height over the dead), the
+ * openings the dead come out of (`OZ_A_OPENINGS` / `OZ_B_OPENINGS`: boarded doors and windows,
+ * manholes; ruin/index.ts places them), clear paver spots to rise from (`OZ_A_RISE`, `OZ_B_RISE`)
+ * and the far end a column marches in from (`OZ_A_MARCH`, `OZ_B_MARCH`).
  */
 import { terrain, type TerrainDef } from '../../../mission/index';
-import { AWNING_WIDTHS, SHOP_FL, SHOP_GF, shopBayTop, shopGeom, SHOPS } from './art-street';
+import { OZ_CAR_ROOF } from '../../oldenzaal/ruin/art';
+import type { RuinOpeningDef } from '../../oldenzaal/ruin/index';
+import { AWNING_WIDTHS, SHOP_DOOR_W, SHOP_FL, SHOP_GF, shopBayTop, shopDoorX, SHOPS, shopWindowX } from './art-street';
 import { SMULHOEK_DOOR_X, SMULHOEK_W } from './art-smulhoek';
 
 /** The standard ground line (feet y), as in ams. */
@@ -119,37 +128,104 @@ export const OZ_A_WALLS: readonly Block[] = [
 /** Checkpoints (≤ 1,400 px apart). */
 export const OZ_A_CHECKPOINTS: readonly number[] = [1024, 2048];
 
+// ---- revision 2: the abandoned street (RUIN)
+
+/** An abandoned car (decor `decor/oz-ruin/car` frame, left x); its roof is a one-way platform. */
+export interface OzCar {
+  readonly x: number;
+  readonly frame: number;
+}
+
+/** The car roofs of a list as platforms. */
+export function carRoofs(cars: readonly OzCar[]): Plat[] {
+  return cars.map((c) => {
+    const r = OZ_CAR_ROOF[c.frame];
+    return [c.x + r.x0, G - r.up, r.w] as const;
+  });
+}
+
+/** A boarded window of the shop at index k of a row (its glass rect). */
+function winOf(shops: ReadonlyArray<{ frame: number; x: number }>, k: number): RuinOpeningDef {
+  const s = shops[k];
+  const w = shopWindowX(SHOPS[s.frame]);
+  return { kind: 'window', x: s.x + w.x, y: G, w: w.w };
+}
+
+/** The boarded door of the shop at index k of a row. */
+function doorOf(shops: ReadonlyArray<{ frame: number; x: number }>, k: number): RuinOpeningDef {
+  const s = shops[k];
+  return { kind: 'door', x: s.x + shopDoorX(SHOPS[s.frame]), y: G, w: SHOP_DOOR_W };
+}
+
+function manhole(x: number): RuinOpeningDef {
+  return { kind: 'manhole', x, y: G };
+}
+
+/** oz-a's cars: a hatchback (door open) in the first fight, the burned-out car in the middle one, an estate on the way to the end. */
+export const OZ_A_CARS: readonly OzCar[] = [
+  { x: 760, frame: 0 },
+  { x: 1622, frame: 2 },
+  { x: 2150, frame: 1 },
+];
+export const OZ_A_CAR_ROOFS: readonly Plat[] = carRoofs(OZ_A_CARS);
+
 /**
- * The fights of oz-a (INTEGRATE): camera arenas one view wide (384 px) where the possessed come
- * in waves, and the spots they come from.
- * - `first`: the first possessed after the drop (a shambler pair from the right, townspeople
- *   fleeing left).
- * - `middle`: the shopping street's main fight (shamblers, a gunner on the bay roof at 1480, free
- *   souls from the drain at 1732).
- * - `end`: the last fight before the corner (a brute, souls from the chimneys), then the exit.
+ * The openings of oz-a (ruin/index.ts `placeRuin`; in this order, left to right). Every one is in
+ * view of its fight and clear of the walls, the cars and the other decor in front of it.
+ * - before the first fight: 0 manhole 300, 1 window x 453 (MUZIEK: the first burst the squad sees)
+ * - first fight [600, 1100]: 2 window 669 (IJZERWAREN), 3 door 896 (BAKKERIJ), 4 manhole 1000
+ * - middle fight [1380, 1960]: 5 window 1481 (IJZERWAREN), 6 window 1593 (KAPPER), 7 manhole 1720,
+ *   8 door 1858 (BAKKERIJ), 9 manhole 1920
+ * - on the way: 10 window 2082 (KOFFIE), 11 manhole 2310
+ * - end fight [2440, 3040]: 12 manhole 2580, 13 window 2651 (KAPPER), 14 door 2742 (BAKKERIJ),
+ *   15 window 2842 (KOFFIE)
+ */
+export const OZ_A_OPENINGS: readonly RuinOpeningDef[] = [
+  manhole(300),
+  winOf(OZ_A_SHOPS, 8),
+  winOf(OZ_A_SHOPS, 12),
+  doorOf(OZ_A_SHOPS, 16),
+  manhole(1000),
+  winOf(OZ_A_SHOPS, 26),
+  winOf(OZ_A_SHOPS, 28),
+  manhole(1720),
+  doorOf(OZ_A_SHOPS, 33),
+  manhole(1920),
+  winOf(OZ_A_SHOPS, 37),
+  manhole(2310),
+  manhole(2580),
+  winOf(OZ_A_SHOPS, 47),
+  doorOf(OZ_A_SHOPS, 49),
+  winOf(OZ_A_SHOPS, 51),
+];
+
+/** Clear paver spots of oz-a where the dead rise from the ground (feet on G; ≥ 24 px from every opening, car and wall). */
+export const OZ_A_RISE: readonly number[] = [560, 735, 960, 1440, 1560, 1830, 2000, 2390, 2700, 2960];
+
+/** The far end of oz-a: a column marches in from the right, out of the fog (`marchColumn` from 'right'). */
+export const OZ_A_MARCH = { from: 'right', x: 3060 } as const;
+
+/**
+ * The fights of oz-a (INTEGRATE): camera arenas (revision 2: wider than a view, 500–600 px, so
+ * the squad can back off from the slow dead; `lockCamera(a[0], a[1])`), and the spots they come
+ * from.
+ * - `first`: the first fight after the drop (the shops burst, a rifleman walks in).
+ * - `middle`: the shopping street's main fight (a column marches in out of the fog, the MG zombie).
+ * - `end`: the last fight before the corner (the big column, the drains open), then the exit.
  */
 export const OZ_A_ARENAS = {
-  first: [640, 1024],
-  middle: [1400, 1784],
-  end: [2560, 2944],
+  first: [600, 1100],
+  middle: [1380, 1960],
+  end: [2440, 3040],
 } as const;
 
-/** Spots for the waves (world px; y = feet): drains (souls rise), alley mouths (hosts step out), roofs. */
+/** Spots of the street (world px; y = feet): the gutter drains, the alley mouths. */
 export const OZ_A_SPOTS = {
-  /** The cast-iron drains in the gutter (terrain-art `ozDrainAt`, style seed 1): souls rise there. */
+  /** The cast-iron drains in the gutter (terrain-art `ozDrainAt`, style seed 1). */
   drains: drainXs(OZ_A_W, 1),
-  /** The alleys between the fronts (hosts and townspeople come out of them; feet on the street). */
+  /** The alleys between the fronts (feet on the street). */
   alleys: alleyXs(OZ_A_ROW_X, OZ_A_ROW),
-  /** Chimney tops a few roofs up (free souls come out). */
-  chimneys: [
-    [1040, 60],
-    [1890, 62],
-    [2720, 60],
-  ] as ReadonlyArray<readonly [number, number]>,
 };
-
-/** Mevrouw Winkel's roof at the drop (oz-a, spec §6.1): she stands on this ridge, feet at y. */
-export const OZ_A_WINKEL_ROOF: readonly [number, number] = winkelRoof();
 
 /** The exit to oz-b: the street's end (feet in the rect). */
 export const OZ_A_EXIT = { x: OZ_A_W - 24, y: 0, w: 24, h: 216 } as const;
@@ -157,7 +233,7 @@ export const OZ_A_EXIT = { x: OZ_A_W - 24, y: 0, w: 24, h: 216 } as const;
 export function terrainOzA(): TerrainDef {
   const t = terrain(OZ_A_W, 216);
   t.ground().at(0, G).flat(OZ_A_W);
-  for (const [x, y, w] of [...OZ_A_AWNINGS, ...OZ_A_BALCONIES, ...OZ_A_BAYS, OZ_A_LEDGE]) t.platform(x, y, w);
+  for (const [x, y, w] of [...OZ_A_AWNINGS, ...OZ_A_BALCONIES, ...OZ_A_BAYS, OZ_A_LEDGE, ...OZ_A_CAR_ROOFS]) t.platform(x, y, w);
   for (const [x, y, w, h] of OZ_A_WALLS) t.solid(x, y, w, h);
   return t.build();
 }
@@ -192,13 +268,20 @@ export const OZ_B_WALLS: readonly Block[] = [
 ];
 export const OZ_B_CHECKPOINTS: readonly number[] = [896];
 
+/** oz-b's cars: an estate on the approach, a hatchback before the square. */
+export const OZ_B_CARS: readonly OzCar[] = [
+  { x: 212, frame: 1 },
+  { x: 1070, frame: 0 },
+];
+export const OZ_B_CAR_ROOFS: readonly Plat[] = carRoofs(OZ_B_CARS);
+
 /**
  * The fights of oz-b (INTEGRATE): `approach` before the corner (a small group, then the scene at
- * `OZ_B_WU_ARENA`), `square` the short fight on the way to Plechelmusplein.
+ * `OZ_B_WU_ARENA`), `square` the fight on the way to Plechelmusplein (revision 2: wider).
  */
 export const OZ_B_ARENAS = {
-  approach: [120, 504],
-  square: [1300, 1684],
+  approach: [80, 520],
+  square: [1200, 1768],
 } as const;
 
 export const OZ_B_SPOTS = {
@@ -206,13 +289,36 @@ export const OZ_B_SPOTS = {
   alleys: [...alleyXs(OZ_B_ROW_AFTER_X, OZ_B_ROW_AFTER)],
 };
 
+/**
+ * The openings of oz-b (none in Meneer Wu's lock [470, 854]: De Smulhoek's corner stays calm):
+ * - approach [80, 520]: 0 window 179 (MUZIEK), 1 door 322 (BAKKERIJ), 2 manhole 290
+ * - square [1200, 1768]: 3 window 1331 (BAKKERIJ), 4 door 1415 (HOEDEN), 5 manhole 1520,
+ *   6 window 1589 (MUZIEK), 7 manhole 1700
+ */
+export const OZ_B_OPENINGS: readonly RuinOpeningDef[] = [
+  winOf(OZ_B_SHOPS, 3),
+  doorOf(OZ_B_SHOPS, 6),
+  manhole(290),
+  winOf(OZ_B_SHOPS, 21),
+  doorOf(OZ_B_SHOPS, 22),
+  manhole(1520),
+  winOf(OZ_B_SHOPS, 25),
+  manhole(1700),
+];
+
+/** Clear paver spots of oz-b to rise from. */
+export const OZ_B_RISE: readonly number[] = [130, 940, 1230, 1460, 1650];
+
+/** The far end of oz-b (toward Plechelmusplein): a column marches in from the right. */
+export const OZ_B_MARCH = { from: 'right', x: 1790 } as const;
+
 /** The exit to oz-c (Plechelmusplein). */
 export const OZ_B_EXIT = { x: OZ_B_W - 24, y: 0, w: 24, h: 216 } as const;
 
 export function terrainOzB(): TerrainDef {
   const t = terrain(OZ_B_W, 216);
   t.ground().at(0, G).flat(OZ_B_W);
-  for (const [x, y, w] of [...OZ_B_AWNINGS, ...OZ_B_BALCONIES, ...OZ_B_BAYS]) t.platform(x, y, w);
+  for (const [x, y, w] of [...OZ_B_AWNINGS, ...OZ_B_BALCONIES, ...OZ_B_BAYS, ...OZ_B_CAR_ROOFS]) t.platform(x, y, w);
   for (const [x, y, w, h] of OZ_B_WALLS) t.solid(x, y, w, h);
   return t.build();
 }
@@ -238,56 +344,4 @@ function alleyXs(x0: number, items: readonly RowItem[]): number[] {
     }
   }
   return out;
-}
-
-/** The ridge of the first three-storey front with an eaves roof in oz-a's opening view. */
-function winkelRoof(): readonly [number, number] {
-  for (const s of OZ_A_SHOPS) {
-    const spec = SHOPS[s.frame];
-    if (s.x > 40 && spec.floors === 3 && spec.roof === 'eaves') {
-      const top = G - shopGeom(spec).h;
-      return [s.x + Math.round(spec.w / 2), top + 4];
-    }
-  }
-  return [260, 52];
-}
-
-// ------------------------------------------------------------------------------------ wave B (placeholders)
-
-/** Placeholder sizes of wave B's sections (checkpoints ≤ 1,400 px apart). */
-export const OZ_C_W = 768;
-export const OZ_D_W = 1152;
-/** oz-e: a small vertical placeholder (wave B: about 384 × 1,800). */
-export const OZ_E_W = 384;
-export const OZ_E_H = 648;
-/** oz-e floor (feet y) and the climb's ledges: k = 1 … OZ_E_LEDGES, 36 px apart, alternating. */
-export const OZ_E_FLOOR = OZ_E_H - 24;
-export const OZ_E_LEDGES = 16;
-export const ozELedgeY = (k: number): number => OZ_E_FLOOR - 36 * k;
-
-/** A flat street from x 0 to w (one ground line at G). */
-function flatStreet(w: number): TerrainDef {
-  const t = terrain(w, 216);
-  t.ground().at(0, G).flat(w);
-  return t.build();
-}
-
-export function terrainOzC(): TerrainDef {
-  return flatStreet(OZ_C_W);
-}
-
-export function terrainOzD(): TerrainDef {
-  return flatStreet(OZ_D_W);
-}
-
-/**
- * oz-e: a floor, two walls and a zig-zag of one-way ledges (the m3-b1 staircase rule: every goal
- * more than 20 px up, so the bot climbs it): odd k on the left, even k on the right.
- */
-export function terrainOzE(): TerrainDef {
-  const t = terrain(OZ_E_W, OZ_E_H);
-  t.ground().at(0, OZ_E_FLOOR).flat(OZ_E_W);
-  t.solid(0, 0, 24, OZ_E_H, 'stone').solid(OZ_E_W - 24, 0, 24, OZ_E_H, 'stone');
-  for (let k = 1; k <= OZ_E_LEDGES; k++) t.platform(k % 2 ? 24 : 184, ozELedgeY(k), 176);
-  return t.build();
 }

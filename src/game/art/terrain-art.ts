@@ -20,7 +20,10 @@
  *   changed): ground `oz-pavers` (red-brown brick pavers in a herringbone, in perspective, with
  *   cast-iron drains), platform `oz-ledge` (a dark iron awning rail / lead flashing with a lit
  *   top), solid `oz-brick` (a low dark-red brick wall under a sandstone coping). The HD versions:
- *   missions/oldenzaal/art-terrain.ts.
+ *   missions/oldenzaal/art-terrain.ts. The church (wave B, additive rows): ground `oz-nave-floor`
+ *   (worn sandstone flags in perspective) and `oz-crypt-floor` (rough dark flags), platform
+ *   `oz-pew` (a pew's dark oak top rail), solid `oz-nave-step` (sandstone steps); the HD
+ *   versions: content/oldenzaal/church/art-terrain.ts.
  *
  * HD terrain (UHD art, docs/ART_GUIDE.md "UHD art"): `defineHdTerrainMaterial(kind, id, paint)`
  * adds the density-generic version of one material for the 2× and the 4× tier:
@@ -187,7 +190,46 @@ const GROUND: Readonly<Record<string, Paint>> = {
     if (h > 0.84 && p.up >= 8) return PAL.red[1];
     return PAL.brown[1];
   },
+  // --- Oldenzaal, the church (CHURCH, wave B, additive): worn sandstone flags in perspective (the
+  // nave) and rough dark flags (the crypt). HD: content/oldenzaal/church/art-terrain.ts.
+  'oz-nave-floor': (p) => {
+    const f = ozFlagAt(p.x, p.up, p.up + 1, false);
+    if (p.up === 0) return PAL.ink[1];
+    if (f.joint) return PAL.ink[1];
+    const h = hash2(f.col, f.row, p.seed + 41);
+    if (h > 0.86) return PAL.stone[0];
+    return p.up > 14 && h < 0.5 ? PAL.stone[2] : PAL.stone[1];
+  },
+  'oz-crypt-floor': (p) => {
+    const f = ozFlagAt(p.x, p.up, p.up + 1, true);
+    if (p.up === 0) return PAL.ink[0];
+    if (f.joint) return PAL.ink[0];
+    const h = hash2(f.col, f.row, p.seed + 43);
+    return h > 0.7 ? PAL.brown[0] : h > 0.2 ? PAL.stone[0] : PAL.stone[1];
+  },
 };
+
+/**
+ * The church's flagstones (oz-nave-floor, oz-crypt-floor): the flag under the screen span of
+ * depth u0 … u1 below the floor line at x (rows by the plan depth `ozPaverZ`, staggered by half a
+ * flag). `joint`: a row boundary inside the span, or x within `jw` px of the flag's left edge.
+ * `fx` / `fz`: the offset inside the flag (0 … 1).
+ */
+export function ozFlagAt(x: number, u0: number, u1: number, crypt: boolean, jw = 1): { row: number; col: number; fx: number; fz: number; joint: boolean } {
+  const depth = crypt ? 7 : 10;
+  const width = crypt ? 17 : 26;
+  const z0 = ozPaverZ(u0);
+  const z1 = ozPaverZ(u1);
+  const z = (z0 + z1) / 2;
+  const row = Math.floor(z / depth);
+  const off = (row & 1) * (width >> 1) + (crypt ? (row % 3) * 3 : 0);
+  const xx = x + off;
+  const col = Math.floor(xx / width);
+  const fx = (xx - col * width) / width;
+  const fz = (z - row * depth) / depth;
+  const rowJoint = Math.floor(z1 / depth) > Math.floor(z0 / depth);
+  return { row, col, fx, fz, joint: rowJoint || xx - col * width < jw };
+}
 
 /** Oldenzaal pavers: the herringbone's unit (plan units; a brick is 2 × 1 units). */
 export const OZ_PAVER_A = 4;
@@ -389,6 +431,11 @@ const PLATFORM: Readonly<Record<string, PlatMat>> = {
     paint: (p) => (p.up === 1 ? PAL.steel[2] : p.up === 2 ? PAL.steel[1] : p.down === 1 ? PAL.ink[0] : PAL.ink[1]),
     hang: () => 0,
   },
+  // --- Oldenzaal, the church (CHURCH, additive): the dark oak top rail of a pew back / a coffin lid.
+  'oz-pew': {
+    paint: (p) => (p.up === 1 ? PAL.brown[2] : p.up === 2 ? PAL.brown[1] : p.down === 1 ? PAL.ink[0] : PAL.brown[0]),
+    hang: () => 0,
+  },
 };
 
 // ------------------------------------------------------------------------------------ solids
@@ -453,6 +500,14 @@ const SOLID: Readonly<Record<string, Paint>> = {
     const bx = (((p.left - 1 + off) % 6) + 6) % 6;
     if ((p.up - 4) % 3 === 2 || bx === 5) return PAL.ink[1];
     return hash2(Math.floor((p.left - 1 + off) / 6), row, p.seed + 3) > 0.6 ? PAL.brown[1] : PAL.rust[0];
+  },
+  // --- Oldenzaal, the church (CHURCH, additive): sandstone steps and blocks (a lit tread, joints).
+  'oz-nave-step': (p) => {
+    if (p.up === 1) return PAL.stone[3];
+    if (p.down === 1 || p.right === 1) return PAL.ink[1];
+    if (p.up === 2 || p.left === 1) return PAL.stone[2];
+    if ((p.up - 1) % 6 === 0 || (((p.left - 1 + (Math.floor((p.up - 1) / 6) & 1) * 9) % 18) + 18) % 18 === 0) return PAL.stone[0];
+    return PAL.stone[1];
   },
 };
 

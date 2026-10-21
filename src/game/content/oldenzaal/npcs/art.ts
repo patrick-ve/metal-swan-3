@@ -64,14 +64,14 @@ function hdCached(key: string, make: () => PixelBuffer): PixelBuffer {
 
 // =============================================================================== MENEER WU
 
-/** Straight black hair (a cool near-black with a soft sheen). */
-const WU_HAIR: Ramp = [PAL.ink[0], PAL.black[1], PAL.black[2]];
+/** Straight black hair (a cool blue-black with a soft sheen; wave B: no purple cast). */
+const WU_HAIR: Ramp = [PAL.ink[0], PAL.black[2], PAL.steel[1]];
 
 /** Meneer Wu's look (the squad's rig; the face is the rig's own, drawn as the heroes' faces). */
 export const WU_STYLE: HumanStyle = {
   skin: 'skinB',
   hair: WU_HAIR,
-  hairStyle: 'parted',
+  hairStyle: 'short',
   headgear: 'none',
   top: 'teal',
   topType: 'tee',
@@ -218,23 +218,24 @@ function greyTemples(f: Frame): Frame {
   const b = f.buf.clone();
   const hx = (f.ox + head[0]) * d;
   const hy = (f.oy + head[1]) * d;
-  const hair = new Set<number>();
-  for (let y = Math.round(hy - 6 * d); y < Math.round(hy - 4 * d); y++) {
-    for (let x = Math.round(hx - 3 * d); x < Math.round(hx + 2 * d); x++) {
-      const c = b.get(x, y);
-      if ((c & 255) === 0 || c === INK || c === PAL_HD.ink[0]) continue;
-      if (luma(c) < 80) hair.add(c);
-    }
-  }
-  if (hair.size === 0) return f;
   const greys: readonly Color[] = d === 1 ? [PAL.stone[1], PAL.stone[2]] : [PAL_HD.stone[2], PAL_HD.stone[3], PAL_HD.stone[4]];
-  const tones = [...hair].sort((a, b2) => luma(a) - luma(b2));
-  for (let y = Math.round(hy - 3 * d); y < Math.round(hy + 1 * d); y++) {
-    for (let x = Math.round(hx - 4 * d); x < Math.round(hx - 1 * d); x++) {
+  const isHair = (c: number): boolean => (c & 255) !== 0 && c !== INK && c !== PAL_HD.ink[0] && luma(c) < 72;
+  // The temple and the sideburn: the hair just behind the eye and above the ear (the head faces
+  // right, so the back is −x). Salt and pepper: about every other hair px turns grey, the lit
+  // ones lighter; the 1× frame gets a single grey px or two.
+  const x0 = Math.round(hx - 4.5 * d);
+  const x1 = Math.round(hx - 0.5 * d);
+  const y0 = Math.round(hy - 2.5 * d);
+  const y1 = Math.round(hy + 1.5 * d);
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
       const c = b.get(x, y);
-      const k = tones.indexOf(c);
-      if (k < 0) continue;
-      b.set(x, y, greys[Math.min(greys.length - 1, Math.floor((k / Math.max(1, tones.length - 1)) * (greys.length - 0.01)))]);
+      if (!isHair(c)) continue;
+      // Only hair at the edge of the face side (a skin px within 2 art px to the right / below) or every other px.
+      const nearSkin = !isHair(b.get(x + 1, y)) && (b.get(x + 1, y) & 255) !== 0 && b.get(x + 1, y) !== INK && b.get(x + 1, y) !== PAL_HD.ink[0];
+      if (!nearSkin && (x + y * 3) % (d === 1 ? 4 : 3) !== 0) continue;
+      const l = luma(c);
+      b.set(x, y, greys[Math.min(greys.length - 1, Math.floor((l / 72) * greys.length))]);
     }
   }
   return { ...f, buf: b };
@@ -412,7 +413,7 @@ defineSprite('npc/oz-wu/turn', () => turnSquash(getFrames('npc/oz-wu/idle', 1)[0
 // ============================================================================ MEVROUW WINKEL
 
 /** Dark grey hair, pinned up (a cool grey ramp). */
-const WINKEL_HAIR: Ramp = [PAL.ink[1], PAL.stone[0], PAL.stone[1]];
+const WINKEL_HAIR: Ramp = [PAL.ink[1], PAL.steel[1], PAL.steel[2]];
 
 /** The dark dress: a near-black violet-grey (cold, old-fashioned). */
 const WINKEL_DRESS: Ramp = [PAL.ink[0], PAL.black[1], PAL.black[2], PAL.stone[0]];
@@ -513,26 +514,37 @@ function skirtHd(trail: number, i: number, d: HdD): PixelBuffer {
   });
 }
 
-/** The bun at the back of the head (1×: 5 × 5 with its outline). */
+/** The bun pinned up at the back of the head (1×: 6 × 6 with its outline; a hairpin across it). */
 function bun1(): PixelBuffer {
-  const b = new PixelBuffer(3, 3);
-  b.rect(0, 0, 3, 3, PAL.stone[0]);
-  b.set(0, 0, PAL.stone[1]);
+  const b = new PixelBuffer(4, 4);
+  b.rect(0, 0, 4, 4, PAL.steel[1]);
+  b.set(0, 0, 0);
+  b.set(3, 3, 0);
+  b.set(1, 1, PAL.steel[2]);
+  b.set(2, 1, PAL.steel[2]);
   b.set(2, 2, PAL.ink[1]);
+  b.set(3, 0, PAL.stone[2]);
   return b.padded(1).outline(INK);
 }
 
 function bunHd(d: HdD): PixelBuffer {
   return hdCached(`winkel-bun@${d}`, () => {
-    const c = new HdCanvas(5, 5, d);
-    const hair = c.material({ ramp: PAL_HD.stone, lo: 0, hi: 2, spec: 0.4, shine: 14 });
-    c.ellipsoid(2.5, 2.5, 1.6, 1.5, {
+    const c = new HdCanvas(6, 6, d);
+    const hair = c.material({ ramp: PAL_HD.steel, lo: 0, hi: 3, spec: 0.45, shine: 16 });
+    const pin = c.material({ ramp: PAL_HD.stone, lo: 2, hi: 4, spec: 0.6, shine: 20 });
+    c.ellipsoid(3, 3, 2.1, 2, {
       mat: hair,
-      round: 0.8,
+      round: 0.85,
+      z: 1,
       tex: (s) => {
-        if (s.d >= 4 && Math.sin((s.x - s.y) * 5) > 0.6) s.tone -= 0.15;
+        // The hair wound round the bun: a soft spiral of darker strands.
+        const a = Math.atan2(s.y - 3, s.x - 3);
+        const r = Math.hypot(s.x - 3, s.y - 3);
+        if (Math.sin(a * 2 + r * 4.2) > 0.55) s.tone -= 0.2;
       },
     });
+    // A hairpin across it.
+    c.capsule(1.4, 4.4, 4.8, 1.5, 0.28, 0.28, { mat: pin, z: 2 });
     return c.render(HD_RENDER);
   });
 }
@@ -585,10 +597,43 @@ function winkelFrame(pose: Pose, trail: number, i: number, d: Density): Frame {
   const head: V2 = f.pts?.head ?? [0, -30];
   const h: V2 = f.pts?.hand ?? [5, -14];
   f = withPieces(f, [
-    dd({ buf: d === 1 ? bun1() : bunHd(hdOf(d)), x: Math.round(head[0]) - 6, y: Math.round(head[1]) - 6, behind: true }),
+    dd({ buf: d === 1 ? bun1() : bunHd(hdOf(d)), x: Math.round(head[0]) - 9, y: Math.round(head[1]) - 8, behind: true }),
     dd({ buf: d === 1 ? lantern1() : lanternHd(hdOf(d)), x: Math.round(h[0]) + LANTERN_DX, y: Math.round(h[1]) + LANTERN_DY }),
   ]);
+  if (d !== 1) ageLines(f, head, d);
   return f;
+}
+
+/** The skin ramp's tones one step darker (for the lines of her face). */
+const SKIN_DOWN = new Map<number, number>();
+{
+  const sk = PAL_HD.skinA as unknown as readonly number[];
+  for (let i = 3; i < sk.length; i++) SKIN_DOWN.set(sk[i] >>> 0, sk[i - 1] >>> 0);
+}
+/** Her face's lines (head-centre offsets, logical px; she faces right): under the eye, the cheek fold. */
+const AGE_LINES: ReadonlyArray<readonly [number, number, number, number]> = [
+  [0.4, 2.7, 2.4, 3.0],
+  [3.1, 3.3, 2.5, 4.7],
+];
+
+/**
+ * A middle-aged face at 2× / 4× (spec §6): a soft line under the eye and the fold from the nose
+ * to the mouth corner, one dense px wide, only on skin (a tilted head never paints the hair).
+ */
+function ageLines(f: Frame, head: V2, d: number): void {
+  const b = f.buf;
+  for (const [x0, y0, x1, y1] of AGE_LINES) {
+    const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * d) + 1;
+    for (let k = 0; k <= n; k++) {
+      const u = k / n;
+      const X = Math.round((f.ox + head[0] + x0 + (x1 - x0) * u) * d);
+      const Y = Math.round((f.oy + head[1] + y0 + (y1 - y0) * u) * d);
+      if (X < 0 || Y < 0 || X >= b.w || Y >= b.h) continue;
+      const c = b.data[Y * b.w + X] >>> 0;
+      const to = SKIN_DOWN.get(c);
+      if (to !== undefined) b.data[Y * b.w + X] = to;
+    }
+  }
 }
 
 for (const [name, s] of Object.entries(WINKEL_STRIPS)) {

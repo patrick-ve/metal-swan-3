@@ -13,17 +13,18 @@ import { defineSectionLight } from '../../oldenzaal/kit/light-api';
 import { decorArt, OZ_B_DECOR, OZ_B_LAMP_LIGHTS } from './art-layout';
 import { BG_OZ_B } from './backgrounds';
 import { OZ_AMBIENCE, OZ_SECTION, OZ_SONG } from './ids';
-import { OZ_STREET_ART, OZ_WUGHOST_ART } from './script-kit';
+import { OZ_WUGHOST_ART, OZ_ZOMBIE_ART } from './script-kit';
+import { OZ_RUIN_ART, withRuin } from '../../oldenzaal/ruin/index';
 import { scriptOzB } from './script-oz-b';
 import { OZ_STREET_STYLE } from './section-oz-a';
-import { G, OZ_B_CHECKPOINTS, OZ_B_EXIT, OZ_B_W, terrainOzB } from './terrain';
+import { G, OZ_B_CHECKPOINTS, OZ_B_EXIT, OZ_B_OPENINGS, OZ_B_W, terrainOzB } from './terrain';
 
 /** Late dusk: darker, thicker fog; De Smulhoek's windows are the warm light (`lamps`: art-layout.ts). */
 export const OZ_B_LIGHT = defineSectionLight(OZ_SECTION.b, {
-  darkness: 0.48,
+  darkness: 0.52,
   tint: PAL_HD_OZ.night[1],
   lamps: OZ_B_LAMP_LIGHTS,
-  fog: { density: 0.8, color: PAL_HD_OZ.night[5], top: 146, drift: -0.12 },
+  fog: { density: 0.95, color: PAL_HD_OZ.night[6], top: 142, drift: -0.12 },
   heroLight: 24,
 });
 
@@ -37,13 +38,14 @@ export const sectionOzB: SectionDef = {
   terrain: terrainOzB(),
   terrainStyle: { ...OZ_STREET_STYLE, seed: 2 },
   decor: [...OZ_B_DECOR],
-  // Tier 4: the corner's decor, the possessed of the street, Meneer Wu, the meal, the blast.
-  art: [...decorArt(OZ_B_DECOR), ...OZ_STREET_ART, ...OZ_WUGHOST_ART],
+  // Tier 4: the corner's decor, the openings, the dead soldiers, Meneer Wu, the meal, the blast.
+  art: [...decorArt(OZ_B_DECOR), ...OZ_RUIN_ART, ...OZ_ZOMBIE_ART, ...OZ_WUGHOST_ART],
   playerStart: { x: 48, y: G },
   checkpoints: [...OZ_B_CHECKPOINTS],
   exits: [{ id: 'oz-b-end', rect: { ...OZ_B_EXIT }, to: OZ_SECTION.c }],
   music: OZ_SONG.theme,
   ambience: OZ_AMBIENCE.street,
   // The approach, the corner and MENEER WU's scene, the way to the square (INTEGRATE: script-oz-b.ts).
-  script: scriptOzB,
+  // RUIN places the openings (terrain.ts `OZ_B_OPENINGS`) first.
+  script: withRuin(OZ_B_OPENINGS, scriptOzB),
 };

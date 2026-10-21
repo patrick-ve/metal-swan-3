@@ -15,10 +15,17 @@
  *   dark backlit houses of two to four storeys with gable ends, eaves roofs, stepped gables and
  *   flat parapets, chimneys, dormers, aerials, dark windows with a rare warm one, the sun-side rim
  *   on the ridges.
+ *
+ * Revision 2 (RUIN, R2-7: the town abandoned after the outbreak; opt-in params, so oz-c keeps its
+ * look unless it asks): `oz-far` `smoke` (n columns of dark smoke rising from the far town,
+ * leaning with the wind `lean`, lit by the low sky at their edges) and `lit` (the share of lit
+ * windows, default 1 = wave A; 0.15 = nearly every window dark); `oz-roofs` `lit` (the same) and
+ * `ruin` (0 … 1: broken roofs: holes in the slates, a chimney stub, a sagging aerial).
  */
 import type { Color } from '../../../../engine/color';
 import { noise2x } from '../../../art/paint';
-import { dq, F, h2, ladder, num, ozLight, pick, regBg, snap, T, tones, type Dn, type OzLight } from './art-kit';
+import { fnoise } from '../../oldenzaal/ruin/paint';
+import { dq, F, h2, ladder, mx, num, ozLight, pick, regBg, snap, T, tones, type Dn, type OzLight, type Pen } from './art-kit';
 
 /** The sky ladder (zenith → horizon) of a mood. */
 function skyStops(light: OzLight, d: Dn): Color[] {
@@ -209,6 +216,9 @@ regBg('oz-far', (p, params, seed) => {
   const body = (k: number): Color => (light === 'night' ? pick(nsil, k + 1) : pick(sil, k));
   const rim = light === 'night' ? pick(nsil, 4) : pick(sil, light === 'late' ? 2.6 : 3.4);
   const win = light === 'night' ? T('candle', 3, d) : tones('candle', d, hz, 0.3)[4];
+  const litCut = 1 - (1 - 0.94) * num(params, 'lit', 1);
+  const nSmoke = num(params, 'smoke', 0);
+  for (let k = 0; k < nSmoke; k++) smokeColumn(p, (0.12 + k / nSmoke + h2(k, 1, seed + 50) * 0.3 / nSmoke) * p.w, base - 2, num(params, 'lean', 0.35), light, air, seed + k * 13);
   let x = -4;
   let i = 0;
   while (x < p.w) {
@@ -232,7 +242,7 @@ regBg('oz-far', (p, params, seed) => {
       // A few warm windows.
       for (let wy = top + 2; wy < base + 6; wy += 4) {
         for (let wx = x + 2; wx < x + w - 2; wx += 4) {
-          if (h2(Math.floor(wx), Math.floor(wy), seed + 13) > 0.94) p.rect(wx, wy, 1, 1, win);
+          if (h2(Math.floor(wx), Math.floor(wy), seed + 13) > litCut) p.rect(wx, wy, 1, 1, win);
         }
       }
     }
@@ -255,6 +265,8 @@ regBg('oz-roofs', (p, params, seed) => {
   const warm = tones('candle', d, hz, air * 0.4);
   const rim = light === 'night' ? T('night', 5, d) : light === 'late' ? T('dusk', 4, d) : T('dusk', 6, d);
   const rimDim = light === 'night' ? T('night', 4, d) : T('dusk', light === 'late' ? 3 : 5, d);
+  const litCut = 1 - (1 - 0.93) * num(params, 'lit', 1);
+  const ruin = num(params, 'ruin', 0);
   let x = -6;
   let i = 0;
   while (x < p.w) {
@@ -325,11 +337,19 @@ regBg('oz-roofs', (p, params, seed) => {
       const gap = (w - n * 3) / (n + 1);
       for (let j = 0; j < n; j++) {
         const wx = x + gap + j * (3 + gap);
-        const lit = h2(i * 7 + j, s, seed + 31) > 0.93;
+        const lit = h2(i * 7 + j, s, seed + 31) > litCut;
         p.rect(wx, wy, 3, 5, lit ? pick(warm, 3 + (h2(j, s, seed) > 0.5 ? 1 : 0)) : pick(glass, 1 + (d >= 2 ? 0.4 : 0)));
         if (d >= 2) p.rect(wx, wy + 5, 3, 0.5, pick(wall, 2.4));
         if (lit && d >= 2) p.rect(wx + 1.25, wy, 0.5, 5, pick(warm, 2));
       }
+    }
+    // Revision 2: a broken roof now and then: a hole in the slates (the rafters against the sky).
+    if (ruin > 0 && kind === 'eaves' && h2(i, 13, seed) < ruin) {
+      const hx = x + w * (0.25 + h2(i, 14, seed) * 0.4);
+      const hw = 5 + h2(i, 15, seed) * 6;
+      const hy = top - rise * 0.8;
+      p.poly([[hx, hy], [hx + hw, hy], [hx + hw * 0.8, hy + rise * 0.6], [hx + hw * 0.2, hy + rise * 0.7]], T('ink', 0, d));
+      for (let r = 1; r < 3; r++) p.rect(hx + (hw * r) / 3, hy, d === 1 ? 1 : 0.5, rise * 0.6, pick(roof, 0.4));
     }
     // The sun-side rim on the roofline (the light comes from behind the houses).
     if (d >= 2) for (let j = 1; j + 1 < poly.length - 1; j++) p.line(poly[j][0], poly[j][1], poly[j + 1][0], poly[j + 1][1], j === 1 ? rimDim : rim);
@@ -337,6 +357,36 @@ regBg('oz-roofs', (p, params, seed) => {
     i++;
   }
 });
+
+/**
+ * A column of dark smoke rising from the far town (revision 2: fires left burning after the
+ * outbreak): billows (smooth noise), widening and leaning as it rises, thinning out high up; the
+ * low sky lights its sun-side edge at dusk.
+ */
+function smokeColumn(p: Pen, x0: number, y0: number, lean: number, light: OzLight, air: number, seed: number): void {
+  const d = p.d;
+  const hz = horizon(light);
+  const body = ladder([mx(T('ink', 1, d), hz, 0.2, d), mx(T('stone', 1, d), hz, 0.3, d), mx(T('stone', 2, d), hz, 0.4, d), mx(T('stone', 3, d), hz, 0.45 + air * 0.2, d)], d === 1 ? 1 : 3, d);
+  const rim = light === 'dusk' ? T('dusk', 4, d) : light === 'late' ? T('dusk', 2, d) : T('night', 4, d);
+  const top = Math.max(4, y0 - p.h * 0.72);
+  const Y0 = Math.max(0, Math.floor(top * d));
+  const Y1 = Math.ceil(y0 * d);
+  for (let Y = Y0; Y < Y1; Y++) {
+    const y = (Y + 0.5) / d;
+    const t = (y0 - y) / (y0 - top); // 0 at the roofs, 1 at the top
+    const cx = x0 + lean * (y0 - y) + Math.sin(t * 5 + seed) * 2 * t;
+    const half = 2 + t * 13;
+    for (let X = Math.floor((cx - half - 3) * d); X <= Math.ceil((cx + half + 3) * d); X++) {
+      const x = (X + 0.5) / d;
+      const u = (x - cx) / half;
+      const n = fnoise(x - lean * y * 0.3, y + t * 9, 5 + t * 6, seed);
+      const dens = (1 - u * u) * (1.15 - t * 0.85) + (n - 0.5) * 0.9;
+      if (dens <= 0.12 || dq(dens * 1.6, X, Y, 0.9) < 1) continue;
+      const lit = u < -0.45 && light !== 'night' ? 1 : 0;
+      p.dot(X, Y, lit && dens < 0.5 ? rim : pick(body, dq((n - 0.2) * (body.length - 1) * 0.9 + t * 0.6, X, Y, 0.8)));
+    }
+  }
+}
 
 /** Re-export for the section backgrounds. */
 export { F };

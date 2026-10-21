@@ -25,8 +25,9 @@
  *   `decor/oz/bin`, `decor/oz/planter` (flowers on a low wall's top), `decor/oz/bollard` (front).
  */
 import type { Color } from '../../../../engine/color';
-import { SIGNPOST } from './lines';
-import { dq, F, h2, outlineC, pick, reg, snap, T, tinyText, tinyWidth, tones, type Dn, type FrameGeom, type Pen, type Rn } from './art-kit';
+import { boards, crack, damp, fnoise, note, r2tones, smashed, sootPlume, weed } from '../../oldenzaal/ruin/paint';
+import { RUIN_NOTES, SIGNPOST } from './lines';
+import { dim, dq, F, h2, outlineC, pick, reg, snap, T, tinyText, tinyWidth, tones, type Dn, type FrameGeom, type Pen, type Rn } from './art-kit';
 
 /** The street line (feet y) in the frames: the frames' bottom. */
 const COLD = T('night', 3, 2);
@@ -61,6 +62,11 @@ export interface ShopSpec {
   readonly bay?: boolean;
   /** The door on the left (default) or the right of the shop window. */
   readonly door?: 'l' | 'r';
+  /**
+   * Revision 2 (RUIN, R2-7: the town after the outbreak): the shop window boarded up, smashed or
+   * burnt out (the soot climbs the front); none = its shutter / grille, dented and grimy.
+   */
+  readonly ruin?: 'boarded' | 'smashed' | 'burnt';
 }
 
 /** Ground floor (the shop) and upper storey heights, the cornice (logical px). */
@@ -79,24 +85,24 @@ const WALL_RAMP: Readonly<Record<WallKind, readonly [Rn, number, boolean]>> = {
 
 /** The street's shop fronts (frame index = index here). Names are generic Dutch shop words. */
 export const SHOPS: readonly ShopSpec[] = [
-  { w: 56, floors: 3, wall: 'red', roof: 'eaves', sign: 'BAKKERIJ', board: 'green', shutter: 'half', seed: 1 },
+  { w: 56, floors: 3, wall: 'red', roof: 'eaves', sign: 'BAKKERIJ', board: 'green', shutter: 'half', seed: 1, ruin: 'boarded' },
   { w: 48, floors: 2, wall: 'dark', roof: 'step', sign: 'SLAGERIJ', board: 'red', shutter: 'down', seed: 2, door: 'r' },
-  { w: 64, floors: 3, wall: 'plaster', roof: 'flat', sign: 'BOEKHANDEL', board: 'navy', shutter: 'grille', seed: 3, bay: true },
-  { w: 52, floors: 3, wall: 'brown', roof: 'gable', sign: 'OPTIEK', board: 'black', shutter: 'dark', seed: 4, door: 'r' },
-  { w: 44, floors: 2, wall: 'red', roof: 'eaves', sign: 'KAPPER', board: 'navy', shutter: 'down', seed: 5 },
+  { w: 64, floors: 3, wall: 'plaster', roof: 'flat', sign: 'BOEKHANDEL', board: 'navy', shutter: 'grille', seed: 3, bay: true, ruin: 'smashed' },
+  { w: 52, floors: 3, wall: 'brown', roof: 'gable', sign: 'OPTIEK', board: 'black', shutter: 'dark', seed: 4, door: 'r', ruin: 'smashed' },
+  { w: 44, floors: 2, wall: 'red', roof: 'eaves', sign: 'KAPPER', board: 'navy', shutter: 'down', seed: 5, ruin: 'boarded' },
   { w: 60, floors: 3, wall: 'grey', roof: 'mansard', sign: 'DROGIST', board: 'green', shutter: 'half', seed: 6, door: 'r' },
-  { w: 56, floors: 2, wall: 'dark', roof: 'gable', sign: 'SCHOENEN', board: 'red', shutter: 'grille', seed: 7 },
+  { w: 56, floors: 2, wall: 'dark', roof: 'gable', sign: 'SCHOENEN', board: 'red', shutter: 'grille', seed: 7, ruin: 'burnt' },
   { w: 48, floors: 3, wall: 'red', roof: 'step', sign: 'BLOEMEN', board: 'green', shutter: 'down', seed: 8, door: 'r' },
-  { w: 60, floors: 3, wall: 'brown', roof: 'eaves', sign: 'IJZERWAREN', board: 'black', shutter: 'half', seed: 9, bay: true },
-  { w: 52, floors: 2, wall: 'cream', roof: 'flat', sign: 'JUWELIER', board: 'navy', shutter: 'grille', seed: 10, door: 'r' },
+  { w: 60, floors: 3, wall: 'brown', roof: 'eaves', sign: 'IJZERWAREN', board: 'black', shutter: 'half', seed: 9, bay: true, ruin: 'boarded' },
+  { w: 52, floors: 2, wall: 'cream', roof: 'flat', sign: 'JUWELIER', board: 'navy', shutter: 'grille', seed: 10, door: 'r', ruin: 'smashed' },
   { w: 56, floors: 3, wall: 'dark', roof: 'eaves', sign: 'SPEELGOED', board: 'red', shutter: 'down', seed: 11 },
-  { w: 44, floors: 2, wall: 'plaster', roof: 'gable', sign: 'KOFFIE', board: 'black', shutter: 'dark', seed: 12, door: 'r' },
+  { w: 44, floors: 2, wall: 'plaster', roof: 'gable', sign: 'KOFFIE', board: 'black', shutter: 'dark', seed: 12, door: 'r', ruin: 'boarded' },
   { w: 52, floors: 3, wall: 'red', roof: 'gable', sign: 'APOTHEEK', board: 'green', shutter: 'grille', seed: 13, door: 'r' },
-  { w: 48, floors: 2, wall: 'brown', roof: 'eaves', sign: 'MUZIEK', board: 'navy', shutter: 'down', seed: 14 },
-  { w: 56, floors: 3, wall: 'dark', roof: 'flat', sign: 'FOTO', board: 'black', shutter: 'half', seed: 15, door: 'r', bay: true },
+  { w: 48, floors: 2, wall: 'brown', roof: 'eaves', sign: 'MUZIEK', board: 'navy', shutter: 'down', seed: 14, ruin: 'boarded' },
+  { w: 56, floors: 3, wall: 'dark', roof: 'flat', sign: 'FOTO', board: 'black', shutter: 'half', seed: 15, door: 'r', bay: true, ruin: 'smashed' },
   { w: 44, floors: 3, wall: 'cream', roof: 'step', sign: 'SPORT', board: 'red', shutter: 'down', seed: 16 },
-  { w: 60, floors: 2, wall: 'grey', roof: 'eaves', sign: 'HOEDEN', board: 'red', shutter: 'dark', seed: 17, door: 'r' },
-  { w: 52, floors: 3, wall: 'red', roof: 'mansard', sign: 'KLOKKEN', board: 'black', shutter: 'grille', seed: 18 },
+  { w: 60, floors: 2, wall: 'grey', roof: 'eaves', sign: 'HOEDEN', board: 'red', shutter: 'dark', seed: 17, door: 'r', ruin: 'boarded' },
+  { w: 52, floors: 3, wall: 'red', roof: 'mansard', sign: 'KLOKKEN', board: 'black', shutter: 'grille', seed: 18, ruin: 'smashed' },
 ];
 
 /** Shop frame indices by name (layouts). */
@@ -157,10 +163,24 @@ export function shopBayTop(s: ShopSpec): { x0: number; w: number; up: number } |
 /** The top of the shop sign (y above the street line): awnings hang just under it. */
 export const SHOP_SIGN_UP = SHOP_GF - 2;
 
-/** A sash window with a white frame: (x, y) top-left, w × h, lit 0 (dark) … 2 (warm). */
-function sash(p: Pen, x: number, y: number, w: number, h: number, seed: number, lit: number, curtain: boolean): void {
+/**
+ * A sash window with a white frame: (x, y) top-left, w × h, lit 0 (dark) … 2 (warm); `state`
+ * (revision 2, the town after the outbreak): 0 dark glass, 1 smashed, 2 boarded up.
+ */
+function sash(p: Pen, x: number, y: number, w: number, h: number, seed: number, lit: number, curtain: boolean, state = 0): void {
   const d = p.d;
-  const frame = gt('cloth', d, 0.32);
+  const frame = gt('cloth', d, state ? 0.5 : 0.32);
+  if (state === 1 || state === 2) {
+    // The frame (paint flaking: greyer), then the hole or the planks inside it.
+    p.rect(x, y, w, h, pick(frame, 2.6));
+    if (d >= 2) p.rect(x, y, 1 / d, h, pick(frame, 4));
+    if (state === 1) {
+      smashed(p, x + 1, y + 1, w - 2, h - 2, seed, { blind: curtain });
+      // What is left of the meeting rail.
+      p.rect(x + 1, y + h * 0.48, Math.max(1, (w - 2) * 0.35), d === 1 ? 1 : 0.5, pick(frame, 3.4));
+    } else boards(p, x + 1, y + 1, w - 2, h - 2, seed, { n: 3, over: 0.6, diag: false });
+    return;
+  }
   const glass = gt('night', d, 0.05);
   const warm = tones('candle', d);
   const dusk = gt('dusk', d, 0.1);
@@ -253,6 +273,83 @@ function noise(X: number, Y: number, d: number, seed: number): number {
   return (h2(Math.floor(x / 5), Math.floor(y / 4), seed) * 0.6 + h2(Math.floor(x / 2), Math.floor(y / 2), seed + 3) * 0.4);
 }
 
+/** The shop window's rect in a front (logical, relative to the front's left / the street line). */
+export const SHOP_WIN_UP = SHOP_GF - 14;
+export const SHOP_WIN_H = SHOP_WIN_UP - 3;
+/** The shop door: 11 wide, from 28 above the street line down to the step (3 above it). */
+export const SHOP_DOOR_W = 11;
+export const SHOP_DOOR_UP = SHOP_WIN_UP + 2;
+export const SHOP_DOOR_H = SHOP_DOOR_UP - 3;
+
+/** The shop window's left x and width in a front `s` (the door takes the other side). */
+export function shopWindowX(s: ShopSpec): { x: number; w: number } {
+  const doorLeft = (s.door ?? 'l') === 'l';
+  return { x: doorLeft ? 4 + SHOP_DOOR_W + 2 : 4, w: s.w - 8 - SHOP_DOOR_W - 2 };
+}
+
+/** The shop door's left x in a front `s`. */
+export function shopDoorX(s: ShopSpec): number {
+  return (s.door ?? 'l') === 'l' ? 4 : s.w - 4 - SHOP_DOOR_W;
+}
+
+/**
+ * Revision 2 (R2-7): the wall after weeks of rain and no care: plaster peeling off the brick
+ * (plastered fronts), damp streaks under the cornice, rising damp over the plinth, cracks (2× /
+ * 4×).
+ */
+function wearWall(p: Pen, s: ShopSpec, wallTop: number, H: number): void {
+  const d = p.d;
+  const W = s.w;
+  const brick = !!WALL_RAMP[s.wall][2];
+  if (!brick) {
+    // Peeling plaster: blobs where the brick shows, a pale broken rim round each.
+    const under = gt('brickDark', d, 0.3);
+    const n = 2 + Math.floor(h2(s.seed, 1, 71) * 3);
+    for (let i = 0; i < n; i++) {
+      const cx = 4 + h2(i, 2, s.seed + 71) * (W - 8);
+      const cy = wallTop + 8 + h2(i, 3, s.seed + 71) * (H - wallTop - 52);
+      const rx = 3 + h2(i, 4, s.seed + 71) * 5;
+      const ry = 2 + h2(i, 5, s.seed + 71) * 4;
+      p.tint(cx - rx - 1, cy - ry - 1, rx * 2 + 2, ry * 2 + 2, (X, Y, old) => {
+        const u = ((X + 0.5) / d - cx) / rx;
+        const v = ((Y + 0.5) / d - cy) / ry;
+        const rr = u * u + v * v + (h2(X >> (d >> 1), Y >> (d >> 1), s.seed + i) - 0.5) * 0.5;
+        if (rr > 1.15) return 0;
+        if (rr > 0.85) return d === 1 ? 0 : dim(old, 1, d);
+        if (d === 1) return pick(under, 2);
+        const row = Math.floor(Y / (3 * d));
+        const xx = X + (row & 1 ? 3 * d : 0);
+        if (Y % (3 * d) === 3 * d - 1 || xx % (6 * d) === 0) return pick(under, 0.6);
+        return pick(under, 2.4 + (h2(xx / (6 * d) | 0, row, s.seed) - 0.5) * 1.2 - (v < -0.5 ? 0 : 0.6));
+      });
+    }
+  }
+  // A grime wash under the cornice (rain off a blocked gutter: a ragged lower edge), damp from the
+  // cornice down, spalled bricks, and the rising damp over the plinth (a ragged top).
+  p.tint(0, wallTop + CORNICE, W, 14, (X, Y, old) => {
+    const v = (Y + 0.5) / d - wallTop - CORNICE;
+    const edge = 5 + fnoise(X / d, 0, 4, s.seed) * 9;
+    return v < edge && dq(1.5 - v / edge, X, Y, 1) >= 1 ? dim(old, -1, d) : 0;
+  });
+  damp(p, 0, wallTop + CORNICE, W, 16, s.seed + 5);
+  if (brick && d >= 2) {
+    p.tint(0, wallTop + CORNICE, W, H - wallTop - CORNICE - SHOP_GF, (X, Y, old) => {
+      const bx = Math.floor((X + (Math.floor(Y / (3 * d)) & 1 ? 3 * d : 0)) / (6 * d));
+      const by = Math.floor(Y / (3 * d));
+      return h2(bx, by, s.seed + 23) > 0.965 ? dim(old, -2, d) : 0;
+    });
+  }
+  p.tint(0, H - SHOP_GF + 12, W, SHOP_GF - 12, (X, Y, old) => {
+    const up = H - (Y + 0.5) / d;
+    const top = 6 + Math.sin((X / d) * 0.4 + s.seed) * 1.5 + h2(X >> 2, 1, s.seed) * 2;
+    return up < top && dq(1.4 - up / top, X, Y, 1) >= 1 ? dim(old, -1, d) : 0;
+  });
+  if (d >= 2) {
+    const n = 1 + (s.seed % 2);
+    for (let i = 0; i < n; i++) crack(p, 3 + h2(i, 6, s.seed) * (W - 6), wallTop + CORNICE + 2 + h2(i, 7, s.seed) * 10, 10 + h2(i, 8, s.seed) * 14, s.seed * 5 + i);
+  }
+}
+
 /** Draw a shop front (frame of `shopGeom(s)`). */
 function drawShop(p: Pen, s: ShopSpec): void {
   const d = p.d;
@@ -267,8 +364,9 @@ function drawShop(p: Pen, s: ShopSpec): void {
   // ---- the roof (behind the walls' top)
   drawRoof(p, s, wallTop, shade, trim);
 
-  // ---- the walls
+  // ---- the walls (and their wear: revision 2)
   p.fill(0, wallTop, W, H - wallTop, shade);
+  wearWall(p, s, wallTop, H);
 
   // ---- the cornice: a moulded band with dentils, brackets at the ends
   const cy = wallTop;
@@ -290,9 +388,11 @@ function drawShop(p: Pen, s: ShopSpec): void {
       const wx = Math.round(gap + i * (ww + gap));
       const wy = fy + 5;
       const r = h2(i, f, s.seed + 40);
-      const lit = r > 0.9 ? 1 : 0;
+      // Revision 2: nobody lives here any more: no warm window; some smashed, some boarded up.
+      const st = r < 0.2 ? 1 : r < 0.36 ? 2 : 0;
       lintelSill(p, wx, wy, ww, wh, trim, (s.seed + f) % 3 === 0);
-      sash(p, wx, wy, ww, wh, s.seed + i + f, lit, r > 0.55 && r < 0.75);
+      sash(p, wx, wy, ww, wh, s.seed + i + f, 0, r > 0.55 && r < 0.75, st);
+      damp(p, wx - 1, wy + wh + 2.5, ww + 2, 7, s.seed + i * 3 + f);
     }
   }
   // A bay window on the first floor: a box of three windows, its flat lead roof a platform.
@@ -321,9 +421,16 @@ function drawShop(p: Pen, s: ShopSpec): void {
   p.rect(2, signY, W - 4, 9, pick(board, 1.2));
   p.rect(2, signY, W - 4, d === 1 ? 1 : 0.5, pick(board, 3));
   p.rect(2, signY + 8, W - 4, 1, pick(board, 0.3));
-  const letters = snap(T('sand', 6, d), d);
+  const letters = snap(T('sand', s.ruin === 'burnt' ? 3 : 5, d), d);
   const tw = tinyWidth(s.sign);
-  tinyText(p, s.sign, Math.round((W - tw) / 2), signY + 2, letters, { lit: T('sand', 7, d) });
+  // Revision 2: a letter fallen off some boards (the gap stays), grime run down from the board.
+  const gone = s.seed % 5 === 1 ? 1 + (s.seed % (s.sign.length - 2)) : -1;
+  const sign = gone < 0 ? s.sign : s.sign.slice(0, gone) + ' ' + s.sign.slice(gone + 1);
+  tinyText(p, sign, Math.round((W - tw) / 2), signY + 2, letters, { lit: T('sand', 6, d) });
+  if (s.ruin === 'burnt') {
+    const soot = r2tones('soot', d);
+    p.tint(2, signY, W - 4, 9, (X, Y, old) => (d === 1 || h2(X >> 1, Y >> 1, s.seed) > 0.3 ? pick(soot, dq(1.4 + (h2(X >> 2, 2, s.seed) - 0.5), X, Y, 0.7)) : old));
+  }
   // Pilasters.
   p.rect(0, gy + 12, 3, SHOP_GF - 12, pick(trim, 3.4));
   p.rect(W - 3, gy + 12, 3, SHOP_GF - 12, pick(trim, 2.2));
@@ -332,15 +439,16 @@ function drawShop(p: Pen, s: ShopSpec): void {
   p.rect(0, H - 3, W, 3, pick(gt('stone', d, 0.3), 1.6));
   p.rect(0, H - 3, W, d === 1 ? 1 : 0.5, pick(gt('stone', d, 0.3), 3));
   // Door and window.
-  const doorW = 11;
-  const doorLeft = (s.door ?? 'l') === 'l';
-  const dx = doorLeft ? 4 : W - 4 - doorW;
-  const sx0 = doorLeft ? dx + doorW + 2 : 4;
-  const sw = W - 8 - doorW - 2;
-  const top = gy + 14;
+  const doorW = SHOP_DOOR_W;
+  const dx = shopDoorX(s);
+  const { x: sx0, w: sw } = shopWindowX(s);
+  const top = H - SHOP_WIN_UP;
   const bottom = H - 3;
   shopWindow(p, s, sx0, top, sw, bottom - top);
   shopDoor(p, s, dx, top - 2, doorW, bottom - top + 2);
+  if (s.ruin === 'burnt') sootPlume(p, sx0 + sw / 2, top - 1, sw * 0.55, top - 1 - wallTop - CORNICE, s.seed);
+  // Weeds in the angle of the plinth and the pavement.
+  if (d >= 2) for (let i = 0; i < 2; i++) weed(p, 2 + h2(i, 1, s.seed + 3) * (W - 4), H - 0.5, 3 + h2(i, 2, s.seed) * 3, s.seed * 3 + i, 0.6);
   outlineC(p);
 }
 
@@ -351,15 +459,25 @@ function shopWindow(p: Pen, s: ShopSpec, x: number, y: number, w: number, h: num
   const steel = gt('steel', d, 0.2);
   const glass = gt('night', d, 0.05);
   p.rect(x - 1, y - 1, w + 2, h + 2, pick(frame, 0.8));
+  if (s.ruin) {
+    // Revision 2 (R2-7): boarded up (a note or sprayed letters), smashed, or burnt out.
+    if (s.ruin === 'boarded') boards(p, x, y, w, h, s.seed, { text: s.seed % 2 ? RUIN_NOTES[0] : undefined });
+    else smashed(p, x, y, w, h, s.seed, { soot: s.ruin === 'burnt' });
+    if (s.ruin === 'boarded' && s.seed % 2 === 0) note(p, x + w * 0.55, y + h * 0.2, 9, 7, [RUIN_NOTES[0]], s.seed);
+    if (d >= 2) p.rect(x - 1, y - 1, w + 2, 1 / d, pick(frame, 2.4));
+    return;
+  }
   // The glass behind: a dark shop, a faint cold display light low down, the street's reflection.
   p.fill(x, y, w, h, (X, Y) => {
     const v = (Y + 0.5) / d - y;
     const u = (X + 0.5) / d - x;
-    if (s.shutter === 'dark' && v > h * 0.62 && u > 2 && u < w - 2) return pick(gt('teal', d, 0.6), dq(1.2 + (v - h * 0.62) / h, X, Y, 0.7));
     const band = (u + v * 0.8) % 23;
     if (band > 14 && band < 15) return pick(gt('dusk', d, 0.1), 2);
     return pick(glass, dq(1.2 + v / h * 0.6, X, Y, 0.8));
   });
+  // Revision 2: the glass behind a half shutter or a grille is smashed.
+  if (s.shutter === 'half') smashed(p, x, y + Math.round(h * 0.62), w, h - Math.round(h * 0.62), s.seed, { blind: false });
+  if (s.shutter === 'grille') smashed(p, x, y, w, h, s.seed, { blind: false });
   if (s.shutter === 'down' || s.shutter === 'half') {
     // A rolling shutter: steel slats (the half shutter stops a third up).
     const sh = s.shutter === 'down' ? h : Math.round(h * 0.62);
@@ -373,11 +491,37 @@ function shopWindow(p: Pen, s: ShopSpec, x: number, y: number, w: number, h: num
     p.rect(x, y + sh - 1.5, w, 1.5, pick(steel, 1.2));
     if (d >= 2) p.rect(x + w / 2 - 1, y + sh - 2.5, 2, 1, pick(steel, 4));
     p.rect(x, y, w, 2, pick(steel, 1.4));
+    // Revision 2: a kicked-in dent (dark below, a lit rim above) and rust runs from the slats.
+    const ex = x + w * (0.25 + h2(s.seed, 1, 13) * 0.5);
+    const ey = y + sh * 0.62;
+    p.tint(ex - 6, ey - 4, 12, 8, (X, Y, old) => {
+      const u = ((X + 0.5) / d - ex) / 6;
+      const v = ((Y + 0.5) / d - ey) / 4;
+      const r = u * u + v * v;
+      if (r > 1) return 0;
+      return v > -0.2 ? dim(old, -1 - (r < 0.3 ? 1 : 0), d) : r > 0.55 ? dim(old, 1, d) : 0;
+    });
+    if (d >= 2) for (let k = 0; k < 3; k++) p.rect(x + 2 + h2(k, 4, s.seed) * (w - 4), y + 2 + h2(k, 5, s.seed) * sh * 0.4, 1 / d, 3 + h2(k, 6, s.seed) * 6, T('rust', 1, d));
+    if (s.shutter === 'half') {
+      // Bent: one corner forced up (a dark gap under it).
+      p.poly([[x + w * 0.62, y + sh - 0.2], [x + w, y + sh - 0.2], [x + w, y + sh - 3.5]], (X, Y) => pick(roomShade(d), dq(1, X, Y, 1)));
+    }
   } else if (s.shutter === 'grille') {
-    // A trellis grille over the dark glass.
+    // A trellis grille over the smashed glass, forced open low down (revision 2).
     const g = pick(steel, 3);
-    for (let gx = x; gx < x + w; gx += 3) p.rect(gx, y, d === 1 ? 1 : 0.5, h, g);
-    if (d >= 2) for (let gy = y; gy < y + h; gy += 3) p.rect(x, gy, w, 0.5, pick(steel, 2.2));
+    const rx0 = x + w * 0.3;
+    const rx1 = x + w * 0.62;
+    const ry = y + h * 0.45;
+    for (let gx = x; gx < x + w; gx += 3) {
+      if (gx > rx0 && gx < rx1) p.rect(gx, y, d === 1 ? 1 : 0.5, ry - y + (gx % 2) * 2, g);
+      else p.rect(gx, y, d === 1 ? 1 : 0.5, h, g);
+    }
+    if (d >= 2) for (let gy = y; gy < y + h; gy += 3) {
+      if (gy > ry) {
+        p.rect(x, gy, rx0 - x, 0.5, pick(steel, 2.2));
+        p.rect(rx1, gy, x + w - rx1, 0.5, pick(steel, 2.2));
+      } else p.rect(x, gy, w, 0.5, pick(steel, 2.2));
+    }
   }
   if (d >= 2) p.rect(x - 1, y - 1, w + 2, 1 / d, pick(frame, 2.4));
 }
@@ -396,9 +540,17 @@ function shopDoor(p: Pen, s: ShopSpec, x: number, y: number, w: number, h: numbe
     p.rect(x + 1, y + 6, 1 / d, h - 6, pick(wood, 2.4));
     p.rect(x + w - 3, y + h * 0.55, 1, 1, F('gold', 0.5, d));
   }
+  // Revision 2: boarded up with the shop, its glass smashed, or a note taped on.
+  if (s.ruin === 'boarded') boards(p, x + 1, y + 1, w - 2, h - 2, s.seed + 50, { over: 0.5, diag: true });
+  else if (s.ruin === 'smashed' || s.ruin === 'burnt') smashed(p, x + 2.5, y + 8, w - 5, h * 0.42, s.seed + 50, { blind: false, soot: s.ruin === 'burnt' });
+  else note(p, x + 1, y + 9, 9, 5, s.seed % 2 ? [RUIN_NOTES[0]] : RUIN_NOTES[1].split(' '), s.seed);
   // The step.
   p.rect(x - 1, y + h - 1.5, w + 2, 1.5, pick(gt('stone', d, 0.3), 3));
-  void s;
+}
+
+/** The dark gap under a bent shutter. */
+function roomShade(d: Dn): readonly Color[] {
+  return [T('ink', 0, d), T('ink', 1, d)];
 }
 
 /** The roof of a front, from the walls' top `top` upward. */
@@ -438,7 +590,7 @@ function drawRoof(p: Pen, s: ShopSpec, top: number, shade: (X: number, Y: number
       const dw = 12;
       const dy = rt + 7;
       p.rect(cx - dw / 2, dy, dw, 10, pick(trim, 3));
-      sash(p, cx - 4, dy + 2, 8, 7, s.seed + 30 + i, h2(i, 9, s.seed) > 0.8 ? 1 : 0, false);
+      sash(p, cx - 4, dy + 2, 8, 7, s.seed + 30 + i, 0, false, h2(i, 9, s.seed) > 0.6 ? 1 : 0);
       p.poly(
         [
           [cx - dw / 2 - 1, dy],
@@ -558,8 +710,11 @@ reg(
       const u = (x - k0 * sw) / sw;
       const bottom = 10.5 + Math.sqrt(Math.max(0, 1 - (2 * u - 1) * (2 * u - 1))) * 2.2;
       if (y > bottom) return 0;
+      // Revision 2: the canvas rotted: torn holes (the dark under it shows), a ragged hem, stains.
+      const torn = fnoise(x, y * 1.4, 4.5, 70 + i) + (y > 8 ? 0.1 : 0);
+      if (torn > 0.77) return y > bottom - 2.5 ? 0 : torn > 0.82 ? T('ink', 0, d) : 0;
       const stripe = k0 % 2 === 0 ? a : b;
-      let k = (stripe === a ? 2.8 : 3.8) - y * 0.11;
+      let k = (stripe === a ? 2.6 : 3.2) - y * 0.11 - (fnoise(x, y, 4, 90 + i) > 0.66 ? 0.8 : 0);
       if (y > 9.6 && y < 10.4) k -= 1.1; // the valance seam
       if (d >= 2 && (u < 0.5 / sw || u > 1 - 0.5 / sw)) k -= 0.5;
       if (d >= 4 && y < 9.6) k += Math.sin(u * Math.PI * 2) * 0.3;
@@ -658,9 +813,10 @@ reg(
       // The hood (a shallow dish), the glass bowl under it.
       p.disc(hx, 13, 7.5, 3.4, (_X, _Y, _u, v) => (v < 0.3 ? pick(iron, v < -0.5 ? 3.6 : 2) : 0));
       p.rect(hx - 7.5, 13, 15, 1, pick(iron, 1));
-      p.disc(hx, 14.5, 5.5, 3.2, (_X, _Y, u, v) => {
+      p.disc(hx, 14.5, 5.5, 3.2, (X, _Y, u, v) => {
         if (v < -0.2) return 0;
-        if (!lit) return pick(gt('steel', d, 0.3), 2 + (u < -0.2 ? 1 : 0));
+        // Unlit (revision 2: most lamps are dead): grimy glass; the right bowl smashed (a dark hole).
+        if (!lit) return side > 0 && v > 0.1 && u > -0.5 + h2(X >> 1, 3, 5) * 0.3 ? T('ink', 1, d) : pick(gt('steel', d, 0.3), 1.6 + (u < -0.2 ? 0.8 : 0));
         const r = u * u + v * v;
         return T('candle', r < 0.35 ? 6 : r < 0.7 ? 5 : 4, d);
       });
@@ -669,21 +825,22 @@ reg(
     // The finial over the pole.
     p.rect(cx - 1, 9, 2, 5, pick(iron, 2.6));
     p.disc(cx, 8.5, 1.4, 1.4, pick(iron, 3.4));
-    // The hanging flower basket: a bracket, the basket and a mound of geraniums.
+    // The hanging basket (revision 2: dead weeks ago): the bracket, the basket of dry soil and a
+    // tangle of dead stems, a few trailing down.
     const by = 50;
     p.rect(cx + 1, by - 6, 7, 1, pick(iron, 2));
     p.line(cx + 7.5, by - 6, cx + 7.5, by - 2, pick(iron, 1.4), d);
-    const leaf = gt('green', d, 0.35);
-    const red = gt('red', d, 0.2);
-    p.disc(cx + 7.5, by + 3, 7, 5.5, (X, Y, u, v) => {
-      const hh = h2(X >> (d >= 4 ? 1 : 0), Y >> (d >= 4 ? 1 : 0), 77);
-      if (v > 0.35 && hh > 0.5) return pick(leaf, 1 + hh);
-      if (hh > 0.78 && v < 0.6) return pick(red, v < -0.2 ? 5 : 4);
-      return pick(leaf, 2 + (u < -0.2 ? 1 : 0) + (v < -0.3 ? 0.6 : 0) - hh * 0.8);
-    });
-    // Trailing leaves under the basket.
-    for (let k = 0; k < 4; k++) p.rect(cx + 3 + k * 3, by + 8, 1, 2 + (k % 2) * 2, pick(leaf, 1.6));
-    p.rect(cx + 2, by + 1, 11, 1, pick(iron, 1.2));
+    const straw = gt('sand', d, 0.45);
+    const soil = gt('brown', d, 0.3);
+    p.disc(cx + 7.5, by + 4, 6.4, 3.6, (X, Y, u, v) => (v < -0.2 ? 0 : pick(soil, dq(1.6 - v * 0.6 - u * 0.3, X, Y, 0.6))));
+    for (let k = 0; k < 9; k++) {
+      const sx = cx + 2.4 + k * 1.3;
+      const tx = sx + (h2(k, 1, 77) - 0.5) * 5;
+      const ty = by + 2 - 2 - h2(k, 2, 77) * 5;
+      p.line(sx, by + 2.6, tx, ty, pick(straw, 1 + h2(k, 3, 77) * 2), 1);
+    }
+    for (let k = 0; k < 3; k++) p.line(cx + 3.5 + k * 3.4, by + 6.6, cx + 3 + k * 3.4 + (k - 1), by + 10 + (k % 2) * 3, pick(straw, 1.2), 1);
+    p.rect(cx + 2, by + 1.6, 11, 1, pick(iron, 1.2));
     outlineC(p);
   },
 );
@@ -817,18 +974,15 @@ reg(
   [{ w: 32, h: 8, ox: 0, oy: 8 }],
   (p) => {
     const d = p.d;
-    const leaf = gt('green', d, 0.4);
-    const red = gt('red', d, 0.25);
-    const pink = gt('pink', d, 0.35);
-    p.fill(0, 0, 32, 8, (X, Y) => {
-      const x = (X + 0.5) / d;
-      const y = (Y + 0.5) / d;
-      const top = 3 + Math.sin(x * 0.9) * 1.2 + h2(Math.floor(x / 2), 1, 5) * 1.5;
-      if (y < top) return 0;
-      const hh = h2(X >> (d >= 4 ? 1 : 0), Y >> (d >= 4 ? 1 : 0), 31);
-      if (hh > 0.86) return pick(Math.floor(x / 8) % 2 ? red : pink, 4);
-      return pick(leaf, 2.4 - (y - top) * 0.25 + hh * 0.6);
-    });
+    // Revision 2: the flowers died weeks ago: dry soil, dead stems, weeds coming up.
+    const soil = gt('brown', d, 0.3);
+    const straw = gt('sand', d, 0.45);
+    p.fill(0, 5, 32, 3, (X, Y) => pick(soil, dq(1.6 - ((Y + 0.5) / d - 5) * 0.4, X, Y, 0.6)));
+    for (let k = 0; k < 16; k++) {
+      const sx = 1 + k * 2 + h2(k, 1, 31) * 1.2;
+      p.line(sx, 5.4, sx + (h2(k, 2, 31) - 0.5) * 3, 5.4 - 1.5 - h2(k, 3, 31) * 3.5, pick(straw, 0.8 + h2(k, 4, 31) * 2), 1);
+    }
+    if (d >= 2) for (let k = 0; k < 3; k++) weed(p, 4 + k * 11 + h2(k, 5, 31) * 4, 6, 3 + h2(k, 6, 31) * 2, 90 + k, 0.2);
   },
 );
 

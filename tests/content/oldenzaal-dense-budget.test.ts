@@ -9,6 +9,10 @@
  * pixels, 4 bytes each), as in ams-dense-budget.test.ts, so no 4× art is built here. The set grows
  * as the builders add their art (hosts, souls, Meneer Wu, the statue in wave B): this test is the
  * gate.
+ *
+ * Revision 2 (RUIN): the town art grew (the worn fronts, the ruin decor `decor/oz-ruin/`, the
+ * openings `prop/oz-boarded/`, `prop/oz-manhole/`); the peaks (1P and 2P, the section and the
+ * heroes) are printed for the report and must stay under the budget with the margin.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { getFrames } from '../../src/engine/sprites';
@@ -25,6 +29,12 @@ beforeAll(async () => {
 
 const MARGIN = 2 * 1024 * 1024;
 const MB = (b: number): string => (b / 1048576).toFixed(1);
+
+/** The worst set seen per player count (printed once at the end). */
+const peak: Record<number, { b: number; what: string }> = { 1: { b: 0, what: '' }, 2: { b: 0, what: '' } };
+function note(n: 1 | 2, b: number, what: string): void {
+  if (b > peak[n].b) peak[n] = { b, what };
+}
 
 /** 4× bytes of `ids` from their 1× frames (shared buffers once per id). */
 function bytes(ids: readonly string[]): number {
@@ -54,6 +64,7 @@ describe('oldenzaal tier-4 working set', () => {
       for (const s of order) {
         const set = denseWorkingSet(m, [`char/${hero}/`], s, nextSections(m, order, s, order.indexOf(s)), 1);
         const b = bytes(set) + ozSceneryBytes(m.sections[s]);
+        note(1, b, `${hero} ${s}`);
         if (b > DENSE_BUDGET_BYTES - MARGIN) over.push(`${hero} ${s} ${MB(b)} MB`);
       }
     }
@@ -69,9 +80,16 @@ describe('oldenzaal tier-4 working set', () => {
       for (const s of order) {
         const set = denseWorkingSet(m, pair.map((h) => `char/${h}/`), s, nextSections(m, order, s, order.indexOf(s)), 2);
         const b = bytes(set) + ozSceneryBytes(m.sections[s]);
+        note(2, b, `${pair.join('+')} ${s}`);
         if (b > DENSE_BUDGET_BYTES - MARGIN) over.push(`${pair.join('+')} ${s} ${MB(b)} MB`);
       }
     }
     expect(over).toEqual([]);
+  });
+
+  it('prints the peaks (1P / 2P) for the report', () => {
+    expect(peak[1].b).toBeGreaterThan(0);
+    expect(peak[2].b).toBeGreaterThanOrEqual(peak[1].b);
+    console.info(`[oz budget] 1P peak ${MB(peak[1].b)} MB (${peak[1].what}); 2P peak ${MB(peak[2].b)} MB (${peak[2].what}); limit ${MB(DENSE_BUDGET_BYTES)} MB`);
   });
 });

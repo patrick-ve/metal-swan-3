@@ -6,13 +6,13 @@
 import { describe, expect, it } from 'vitest';
 import { hasSfx } from '../../src/engine/audio';
 import type { Damage } from '../../src/engine/entity';
-import { Entity } from '../../src/engine/entity';
+import type { Entity } from '../../src/engine/entity';
 import { buttonMask, VirtualPad } from '../../src/engine/input';
 import { getFrames, hasSprite, listSprites } from '../../src/engine/sprites';
 import { loadContent } from '../../src/game/content/index';
 import { eatMeal, FRIKANDEL, frikandelsLeft, holyMayoBlast, OZ_STATUS_FRIKANDEL, SNACK, splatReady } from '../../src/game/content/oldenzaal/items/index';
 import { OzWinkel, OzWu, WU_SCENE, wuScene } from '../../src/game/content/oldenzaal/npcs/index';
-import { OZ_POSSESSED, OZ_SPRITES, OZ_STATUS_SNACK, OZ_WUGHOST } from '../../src/game/content/missions/oldenzaal/ids';
+import { OZ_SPRITES, OZ_STATUS_SNACK, OZ_WUGHOST } from '../../src/game/content/missions/oldenzaal/ids';
 import { WU_LINES } from '../../src/game/content/missions/oldenzaal/lines';
 import type { SectionContext } from '../../src/game/mission/index';
 import { Player } from '../../src/game/player/player';
@@ -21,46 +21,6 @@ import { createHeadlessGame } from '../../src/sim/index';
 import { FLOOR, TestWorld } from './helpers';
 
 await loadContent();
-
-/** A stub possessed host (POSSESSED's contract: `ejectSoul(cause)`). */
-class StubHost extends Entity {
-  ejected = 0;
-  hurt = 0;
-  constructor(tw: TestWorld, x: number) {
-    super(tw.world, x, FLOOR);
-    this.type = 'stub-host';
-    this.team = 'enemy';
-    this.hitbox = { x: -7, y: -34, w: 14, h: 34 };
-    this.addTag('enemy');
-    this.addTag('shootable');
-  }
-  ejectSoul(): boolean {
-    this.ejected++;
-    return true;
-  }
-  override onHit(_d: Damage): boolean {
-    this.hurt++;
-    return true;
-  }
-}
-
-/** A stub free soul (type `oz-soul`). */
-class StubSoul extends Entity {
-  hits = 0;
-  constructor(tw: TestWorld, x: number, y: number) {
-    super(tw.world, x, y);
-    this.type = OZ_POSSESSED.soul;
-    this.team = 'enemy';
-    this.hitbox = { x: -5, y: -10, w: 10, h: 10 };
-    this.addTag('enemy');
-    this.addTag('shootable');
-  }
-  override onHit(_d: Damage): boolean {
-    this.hits++;
-    this.remove();
-    return true;
-  }
-}
 
 function playerAs(tw: TestWorld, character: string, x = 100): Player {
   const p = new Player(tw.world, x, FLOOR, { pad: tw.pad, index: 0, character });
@@ -181,15 +141,16 @@ describe('frikandel bombs', () => {
     expect(p.slot.bombs).toBe(bombs - 1);
   });
 
-  it('flies in a high arc and pops into the holy-mayo blast, which ejects every soul at once and hurts nobody else', () => {
+  it('flies in a high arc and pops into the explosion (R2-11), which hits every dead soldier in its radius at once', () => {
     const tw = new TestWorld({ playerX: null });
     const p = playerAs(tw, 'vincent');
     tw.run(130);
     eatMeal(p);
-    const hosts = [new StubHost(tw, 150), new StubHost(tw, 175), new StubHost(tw, 196)];
-    const far = new StubHost(tw, 400);
-    for (const h of [...hosts, far]) tw.world.add(h);
+    const near = [tw.spawn('oz-grunt', 150, { facing: -1 }), tw.spawn('oz-grunt', 175, { facing: -1 }), tw.spawn('oz-grunt', 196, { facing: -1 })];
+    const far = tw.spawn('oz-grunt', 400, { facing: -1 });
     tw.world.flush();
+    const hp0 = (e: Entity): number => (e as unknown as { hp: number }).hp;
+    const before = [...near, far].map(hp0);
     let peak = Infinity;
     tw.hold('bomb').run(1).hold();
     const bomb = tw.ofType(OZ_WUGHOST.frikandel)[0];
@@ -201,23 +162,23 @@ describe('frikandel bombs', () => {
     }, 200);
     expect(y0 - peak).toBeGreaterThan(20);
     tw.run(2);
-    for (const h of hosts) expect(h.ejected, `host at ${h.x}`).toBe(1);
-    for (const h of hosts) expect(h.hurt).toBe(0);
-    expect(far.ejected).toBe(0);
+    near.forEach((z, i) => expect(!z.alive || hp0(z) <= before[i] - 80, `grunt at ${z.x}`).toBe(true));
+    expect(hp0(far)).toBe(before[3]);
+    expect(p.state).not.toBe('dead');
   });
 
-  it('holyMayoBlast blasts free souls; plain enemies and players are not hurt', () => {
+  it('holyMayoBlast (the explosion) hurts only the dead soldiers: plain enemies and players are not hurt', () => {
     const tw = new TestWorld({ playerX: null });
     const p = playerAs(tw, 'vincent', 210);
     tw.run(130);
-    const soul = new StubSoul(tw, 200, FLOOR - 30);
-    tw.world.add(soul);
+    const z = tw.spawn('oz-grunt', 200, { facing: -1 });
     const rifle = tw.spawn('rifleman', 205);
     tw.world.flush();
     const hp = (rifle as unknown as { hp: number }).hp;
+    const zhp = (z as unknown as { hp: number }).hp;
     const n = holyMayoBlast(tw.world, 200, FLOOR - 8, 0);
     expect(n).toBe(1);
-    expect(soul.hits).toBe(1);
+    expect((z as unknown as { hp: number }).hp).toBeLessThan(zhp);
     expect((rifle as unknown as { hp: number }).hp).toBe(hp);
     expect(p.state).not.toBe('dead');
   });

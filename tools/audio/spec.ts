@@ -277,30 +277,43 @@ export const SFX: SfxSpec[] = [
   one('fps/shout-guard', FPS, 1, 0.6, `A nervous young soldier's short startled wordless yelp of alarm, close, dry, single one-shot, no music, no words, no speech`, { isNew: true }),
   one('fps/shout-officer', FPS, 1, 0.6, `A pompous older man's short indignant wordless bellow of outrage, a nasal harrumph, close, dry, single one-shot, no music, no words, no speech`, { isNew: true }),
   one('fps/shout-ss', FPS, 1, 0.5, `A cold soldier's short sharp wordless bark of command, one clipped grunt, close, dry, single one-shot, no music, no words, no speech`, { isNew: true }),
-  // --- Mission oldenzaal (docs/design/oldenzaal.md §11, group 'mission:oldenzaal'; ids:
-  //     docs/api/oldenzaal.md §10). A haunted old Dutch town at night: eerie, cold, bloodless (the
-  //     souls are pale mist). The synth fallbacks live with each owner (content/sfx/oldenzaal.ts for
-  //     'oz/env/', content/oldenzaal/{possessed,npcs,items}/ for the rest, wave B for 'oz/statue/'
-  //     and 'oz/swan/'), so every id is marked new. No prompt names a game, a film or a person;
-  //     the souls are described by their sound only (no uniform, no symbol).
-  // The possessed townspeople and the free souls (POSSESSED: content/sfx/oldenzaal-possessed.ts).
-  one('oz/possessed/groan', OZ, 2, 1.07, `A possessed man's low, hollow wordless moan through a closed mouth, doubled by a faint cold breathy echo, eerie, clean recording at a moderate level, close, ${ONE}`, { isNew: true }),
-  one('oz/possessed/grab-tell', OZ, 1, 0.3, `A raspy rising breath and a cloth rustle as two hands come up to grab, eerie, close, ${ONE}`, { timing: TELL, isNew: true }),
-  one('oz/possessed/claw', OZ, 2, 0.18, `A fast grabbing swipe: a short whoosh and a dull grab of cloth, close, dry, ${ONE}`, { isNew: true }),
-  one('oz/possessed/flinch', OZ, 1, 0.35, `A sharp frightened intake of breath and a cold ghostly shiver, close, ${ONE}`, { isNew: true }),
-  one('oz/possessed/rifle-tell', OZ, 1, 0.75, `A ghostly old rifle glowing up: a cold rising glassy shimmer with a faint metallic click, spectral, ${ONE}`, { timing: `the shimmer rises for the whole clip; ${TELL}`, isNew: true }),
-  one('oz/possessed/rifle', OZ, 2, 0.5, `A spectral rifle shot with no gunpowder crack: a hollow airy puff and a falling glassy ring, eerie, ${ONE}`, { isNew: true }),
-  one('oz/possessed/brute-tell', OZ, 1, 0.55, `A big heavy man's deep wordless snort and a boot scraping on brick pavers before a charge, close, ${ONE}`, { timing: TELL, isNew: true }),
-  one('oz/possessed/brute-charge', OZ, 1, 0.49, `Heavy running footsteps on brick pavers, a low rumble of feet, no voice, close, ${ONE}`, { isNew: true }),
-  one('oz/possessed/brute-thud', OZ, 1, 0.25, `A heavy body thumping into a brick wall, a dull thud, close, dry, ${ONE}`, { isNew: true }),
-  one('oz/possessed/wail', OZ, 2, 2.03, `A ghost's thin, falling, voice-like wail with a slow vibrato, wordless, airy and cold, eerie, ${ONE}`, { isNew: true }),
-  one('oz/possessed/eject', OZ, 2, 1.36, `A ghost torn out of a body: a breathy whoosh rising up and a cold glassy ring that fades, eerie, ${ONE}`, { isNew: true }),
-  one('oz/possessed/soul-burst', OZ, 2, 0.45, `A small ghost bursting into mist: a soft airy pop and a breathy sigh that fades, ${ONE}`, { isNew: true }),
-  one('oz/possessed/emerge', OZ, 1, 0.7, `A ghost rising out of a street drain: a hollow rising draught of cold air with a faint moan, eerie, ${ONE}`, { isNew: true }),
-  one('oz/possessed/swoop', OZ, 2, 0.4, `A ghost swooping past: a fast airy doppler whoosh with a thin cold whistle, close, ${ONE}`, { isNew: true }),
-  one('oz/possessed/circle', OZ, 1, 0.5, `A ghost circling a person: a low whispering swirl of cold air, wordless, eerie, ${ONE}`, { timing: 'it may repeat while the ghost circles', isNew: true }),
-  one('oz/possessed/dive', OZ, 1, 0.45, `A ghost diving down: a falling airy whistle, eerie, ${ONE}`, { isNew: true }),
-  one('oz/possessed/possess', OZ, 1, 0.5, `A ghost slipping into a person: a muffled hollow thump and a short gasp of breath, eerie, ${ONE}`, { isNew: true }),
+  // --- Mission oldenzaal (docs/design/oldenzaal.md §11, revision 2; group 'mission:oldenzaal';
+  //     ids: docs/api/oldenzaal.md). An abandoned old Dutch town at night, overrun by the risen dead
+  //     soldiers of the old war: eerie, cold, grim and BLOODLESS (rot, dust and bones; no screams,
+  //     no gore). The synth fallbacks live with each owner (content/sfx/oldenzaal.ts for 'oz/env/',
+  //     oldenzaal-zombies.ts, oldenzaal-church.ts, oldenzaal-tower.ts, content/oldenzaal/{npcs,items,
+  //     ruin}/ and bosses/oldenzaal/sfx.ts), so every id is marked new. No prompt names a game, a
+  //     film, a person, a real army unit or a symbol; the dead are described by their sound only.
+  //     Revision 2 dropped the possessed townspeople and the free souls (wave A's 'oz/possessed/').
+  // The dead soldiers (ZOMBIES: content/sfx/oldenzaal-zombies.ts; soldier.ts `ZSFX`).
+  one('oz/zombie/groan', OZ, 3, 1.3, `A rotting dead soldier's low, wet, wordless moan from a ruined throat, slow and hollow, eerie, clean recording at a moderate level, close, ${ONE}`, { isNew: true }),
+  one('oz/zombie/growl', OZ, 2, 0.75, `A legless dead man dragging himself along: a rasping, gurgling wordless snarl, close, ${ONE}`, { isNew: true }),
+  one('oz/zombie/drag', OZ, 2, 0.38, `A body dragged over brick pavers: a cloth scrape and a dull knock of bone, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/zombie/swing-tell', OZ, 1, 0.4, `A heavy trench shovel wound back over a shoulder: a rasping breath and an old leather strap creaking, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/zombie/swing', OZ, 2, 0.25, `A heavy shovel swung hard: a deep whoosh ending in a dull thud, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/zombie/rifle-tell', OZ, 1, 0.43, `An old rusty bolt-action rifle raised to the shoulder: a metallic click and a scrape of rust, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/zombie/rifle', OZ, 2, 0.98, `A single old bolt-action rifle shot outdoors: a dry crack with a long dull tail echoing between houses, ${ONE}`, { timing: 'the crack at 0.00 s', isNew: true }),
+  one('oz/zombie/bolt', OZ, 1, 0.28, `Working a rusty rifle bolt: two stiff metallic clacks, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/zombie/mg-plant', OZ, 1, 0.29, `A heavy old machine gun's bipod set down on stone: a solid metal clank, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/zombie/mg-tell', OZ, 1, 0.23, `An old machine gun's cocking handle racked: a hard metallic clack-clack, close, dry, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/zombie/mg', OZ, 3, 0.12, `One round of a fast old machine gun: a short hard rip, outdoors, dry, ${ONE}`, { timing: 'one round only; the game repeats it for the burst', isNew: true }),
+  one('oz/zombie/grab-tell', OZ, 1, 0.45, `A dead man rearing up from the ground to grab: a gurgling hiss, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/zombie/grab', OZ, 1, 0.18, `A bony hand lunging and gripping a leather boot: a quick slap and a creak of leather, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/zombie/bite', OZ, 1, 0.12, `A hard clack of teeth snapping shut, close, dry, no gore, ${ONE}`, { isNew: true }),
+  one('oz/zombie/let-go', OZ, 1, 0.4, `A grip torn loose: a cloth rip and an angry wordless hiss, close, ${ONE}`, { isNew: true }),
+  one('oz/zombie/hit', OZ, 3, 0.08, `A bullet hitting old rotten wool and dry flesh: a dull dusty puff, no splatter, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/zombie/helmet', OZ, 2, 0.35, `An old steel helmet knocked off a head and hitting brick pavers: a hollow metallic clang and a short roll, close, ${ONE}`, { isNew: true }),
+  one('oz/zombie/barrel', OZ, 1, 0.3, `A machine gun's metal barrel jacket shot off: a sharp metal snap and a small rattle, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/zombie/collapse', OZ, 2, 1.05, `A dead soldier collapsing into a pile of dry bones and dust: a brittle clatter of bones and a soft sigh of falling dust, no voice, close, ${ONE}`, { isNew: true }),
+  one('oz/zombie/ground', OZ, 2, 0.4, `The ground breaking open from below: a crunch of brick pavers and earth, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/zombie/burst', OZ, 2, 0.42, `Boarded-up planks bursting from behind: wood cracking and splintering, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/zombie/manhole', OZ, 1, 0.8, `A heavy cast-iron drain cover rattled from below and dragged across stone, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/zombie/flinch', OZ, 1, 0.22, `A dead man flinching back: a sharp rasping wordless hiss, close, ${ONE}`, { isNew: true }),
+  // The abandoned town's openings (RUIN: content/oldenzaal/ruin/index.ts).
+  one('oz/ruin/boards-rattle', OZ, 1, 0.5, `Planks nailed over a shop window banging and shaking from behind, nails creaking, close, ${ONE}`, { seconds: 0.7, timing: TELL, isNew: true }),
+  one('oz/ruin/boards-burst', OZ, 2, 0.7, `A boarded-up shop window bursting outward: planks splintering and broken glass falling on pavers, close, ${ONE}`, { seconds: 1.1, isNew: true }),
+  one('oz/ruin/cover-rattle', OZ, 1, 0.5, `A cast-iron manhole cover rattling in its frame, pushed from below, close, ${ONE}`, { seconds: 0.6, timing: TELL, isNew: true }),
+  one('oz/ruin/cover-slide', OZ, 1, 0.9, `A heavy cast-iron manhole cover lifted and slid across brick pavers with a scrape and a clank, close, ${ONE}`, { isNew: true }),
   // Meneer Wu, the meal and Mevrouw Winkel (WUGHOST: content/sfx/oldenzaal-wu.ts).
   one('oz/wu/fryer', OZ, 1, 1.18, `A deep-fat fryer in a small snack bar kitchen: a hot oil sizzle with a few pops, close, ${ONE}`, { isNew: true }),
   one('oz/wu/paper', OZ, 1, 0.17, `A paper food tray: a crisp rustle and a quick fold, close, dry, ${ONE}`, { isNew: true }),
@@ -309,7 +322,7 @@ export const SFX: SfxSpec[] = [
   one('oz/meal/eat', OZ, 1, 0.74, `Power-up eaten: three quick crunchy munches of fries and a bright rising sparkle, arcade, cheerful, close, ${STING}`, { isNew: true }),
   one('oz/meal/throw', OZ, 1, 0.22, `A soft sausage thrown hard in a high arc: a quick wobbly whoosh, comic, close, dry, ${ONE}`, { isNew: true }),
   one('oz/meal/splat', OZ, 2, 0.18, `A thick creamy splat that soaks up a hit: a wet slap and a squelch, comic, close, dry, ${ONE}`, { isNew: true }),
-  one('oz/meal/blast', OZ, 1, 1.07, `A big comic splat-blast: a soft wet whump that blooms into a bright, airy major chord with a shimmering sparkle on top, magical and silly, not violent, close, ${ONE}`, { isNew: true }),
+  one('oz/meal/blast', OZ, 1, 1.07, `A big warm explosion with a thick creamy splat at its start: a deep punchy boom that blooms into a bright airy chord with a sparkle on top, arcade, a little comic, no gore, ${ONE}`, { isNew: true }),
   one('oz/ghost/whisper', OZ, 2, 1.3, `A ghostly woman's soft breathy whisper with a slow flutter, no words, eerie, close, clean recording at a moderate level, single one-shot, no music`, { isNew: true }),
   one('oz/ghost/shriek', OZ, 2, 1.54, `A ghostly woman's single high wavering wordless shriek with a cold edge that fades into wind, one voice only, eerie, clean recording at a moderate level, single one-shot, no music, no words`, { isNew: true }),
   one('oz/ghost/laugh', OZ, 2, 1.66, `A middle-aged woman's soft, eerie ghostly laugh: four falling breathy "ha"s with a hollow echo, slow and cold, not cartoonish, clean recording at a moderate level, single one-shot, no music, no words`, { isNew: true }),
@@ -331,22 +344,48 @@ export const SFX: SfxSpec[] = [
   one('oz/env/candles-out', OZ, 1, 0.85, `A cold gust blowing out candles: a falling airy whoosh and small flame puffs, ${ONE}`, { isNew: true }),
   one('oz/env/lamp-flicker', OZ, 1, 0.43, `An old street lamp flickering: a short electric buzz and relay clicks, close, ${ONE}`, { isNew: true }),
   one('oz/env/crow', OZ, 1, 0.6, `A crow cawing twice from a rooftop at dusk, hoarse and harsh, outdoors, ${ONE}`, { isNew: true }),
-  // Wave B: the statue of St. Plechelmus (oz-c) and the jet Swan (oz-e). The statue is a victim
+  // St. Plechelmus, the statue mini-boss (STATUE: bosses/oldenzaal/sfx.ts). The statue is a victim
   // of the curse and is freed at the end: its sounds are stone and weight, nothing is mocked.
-  one('oz/statue/wake', OZ, 1, 2.0, `A huge stone statue awakening: deep grinding stone, cracking and a low rumble, dust trickling down, ${ONE}`, { isNew: true }),
-  one('oz/statue/crack', OZ, 2, 0.8, `Sharp cracks running through a large weathered stone statue, a dry splitting crunch with small stones falling, ${ONE}`, { isNew: true }),
-  one('oz/statue/crozier-tell', OZ, 1, 0.5, `A long heavy stone staff drawn back: a stone grind with a rising cold hum, ${ONE}`, { timing: TELL, isNew: true }),
-  one('oz/statue/crozier-sweep', OZ, 1, 0.8, `A long heavy stone staff swept low across a square: a deep heavy whoosh with a stone scrape, ${ONE}`, { isNew: true }),
-  one('oz/statue/throw', OZ, 1, 0.6, `A stone block broken off and hurled: a crack and a heavy whoosh, ${ONE}`, { isNew: true }),
-  one('oz/statue/shatter', OZ, 2, 0.7, `A thrown stone block shatters on brick pavers into small bouncing stones, ${ONE}`, { isNew: true }),
-  one('oz/statue/orb', OZ, 1, 1.0, `A slow cursed orb cast from a raised hand: a low wavering hum with a cold whispery shimmer, eerie, no words, ${ONE}`, { isNew: true }),
-  one('oz/statue/step', OZ, 2, 0.5, `One huge stone foot landing on brick pavers: a deep heavy thud with a short rumble and grit, ${ONE}`, { isNew: true }),
-  one('oz/statue/slam', OZ, 1, 1.0, `A huge stone fist slams the ground: a deep boom and a cracking shockwave running across brick pavers, ${ONE}`, { isNew: true }),
-  one('oz/statue/hook', OZ, 1, 0.6, `A curled stone staff hooks and pulls: a scraping stone swish and a heavy tug, ${ONE}`, { isNew: true }),
-  one('oz/statue/chip', OZ, 2, 0.25, `A bullet chipping weathered stone: a short dry crack with grit, close, dry, ${ONE}`, { isNew: true }),
-  one('oz/statue/freed', OZ, 1, 2.5, `A great stone statue settles back onto its plinth: a slow stone grind, a soft heavy thud, then a calm deep hum that fades, peaceful, ${ONE}`, { isNew: true }),
-  loop('oz/swan/jet', OZ, 8, 'Two small rocket engines hovering in a storm: a steady roaring hiss with a low throb', true),
-  one('oz/swan/flyby', OZ, 1, 2.0, `A rocket-powered flying machine takes off and flies away fast: a rising jet roar that passes and fades into the distance, ${ONE}`, { isNew: true }),
+  one('oz/statue/crack', OZ, 2, 0.67, `Sharp cracks running through a large weathered stone statue, a dry splitting crunch with a grinding tail and a low thump, ${ONE}`, { isNew: true }),
+  one('oz/statue/tell', OZ, 1, 0.7, `A cursed stone statue gathering for an attack: a cold rising shimmer over a stony rumble, eerie, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/statue/sweep', OZ, 1, 0.67, `A long heavy stone staff swept low across a square: a deep heavy whoosh with a stone scrape on brick pavers, ${ONE}`, { isNew: true }),
+  one('oz/statue/wrench', OZ, 1, 0.4, `A stone block torn off a plinth: a grinding crunch and a sharp crack, ${ONE}`, { isNew: true }),
+  one('oz/statue/throw', OZ, 1, 0.26, `A heavy stone block hurled through the air: a heavy airy whoosh, ${ONE}`, { isNew: true }),
+  one('oz/statue/shatter', OZ, 2, 0.25, `A thrown stone block shattering on brick pavers: a stone crash with rattling pieces, ${ONE}`, { isNew: true }),
+  one('oz/statue/bit', OZ, 3, 0.05, `A small stone bouncing on brick pavers: one short dry clack, close, ${ONE}`, { isNew: true }),
+  one('oz/statue/step', OZ, 2, 0.16, `One huge stone foot landing on brick pavers: a low short thud with grit, ${ONE}`, { isNew: true }),
+  one('oz/statue/slam', OZ, 1, 0.8, `A huge stone staff slams the ground: a deep boom and a cracking rumble running across brick pavers, ${ONE}`, { isNew: true }),
+  one('oz/statue/hook', OZ, 1, 0.34, `A curled stone staff shooting out: a stony whip-crack and a rising whirr, ${ONE}`, { isNew: true }),
+  one('oz/statue/caught', OZ, 1, 0.58, `Someone caught by a stone hook: a hollow knock and a grinding pull, ${ONE}`, { isNew: true }),
+  one('oz/statue/free', OZ, 1, 0.19, `Breaking free of a stone hook: a quick snap and a short scrape, close, ${ONE}`, { isNew: true }),
+  one('oz/statue/break', OZ, 1, 0.32, `A stone staff head breaking off: a sharp crack and pieces falling on pavers, ${ONE}`, { isNew: true }),
+  one('oz/statue/chip', OZ, 3, 0.05, `A bullet chipping weathered stone: a tiny dry tick of grit, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/statue/tear', OZ, 1, 1.25, `A ghost torn out of a stone statue: a deep stone wrench under a rushing cold airy whoosh, eerie, no voice, ${ONE}`, { isNew: true }),
+  one('oz/statue/heal', OZ, 1, 1.3, `Cracks in a stone statue closing: a soft, warm rising chime over a faint stone grind, calm and peaceful, never triumphant, ${ONE}`, { isNew: true }),
+  one('oz/statue/sit', OZ, 1, 0.75, `A great stone statue settling back onto its plinth: a heavy settling grind and a soft thud, ${ONE}`, { isNew: true }),
+  one('oz/statue/doors', OZ, 1, 1.6, `Tall old red wooden church doors creaking slowly open on iron hinges, then a low knock as they stop, ${ONE}`, { isNew: true }),
+  // The church interior (CHURCH: content/sfx/oldenzaal-church.ts). Plain and calm, respectful: the
+  // organ only moans (never a tune of a real hymn); only the old grave slabs break.
+  one('oz/church/doors-slam', OZ, 1, 1.8, `Heavy old wooden church doors slamming shut with an iron latch, the large stone nave answering in long echoes, ${ONE}`, { timing: 'the slam at 0.00 s', isNew: true }),
+  one('oz/church/organ-moan', OZ, 1, 2.7, `A church pipe organ moaning by itself in an empty dark church: one low wavering minor cluster on reedy pipes that swells and sighs away, wind in the pipes, no melody, eerie, ${ONE}`, { isNew: true }),
+  one('oz/church/candles', OZ, 1, 0.75, `A row of small candle flames fluttering in a cold draught in a stone church, soft, close, ${ONE}`, { isNew: true }),
+  one('oz/church/slab-crack', OZ, 1, 0.32, `A stone grave slab in a church floor cracking from below: stone ticks and a dull knock, close, ${ONE}`, { seconds: 0.6, timing: TELL, isNew: true }),
+  one('oz/church/slab-break', OZ, 2, 0.58, `A stone floor slab breaking up from below: a stony crunch and chips skittering on a stone floor, echoing, ${ONE}`, { seconds: 0.8, isNew: true }),
+  one('oz/church/lid-grind', OZ, 1, 0.65, `A heavy stone tomb lid grinding a little: stone dragging on stone in a low vaulted crypt, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/church/lid-fall', OZ, 1, 1.03, `A heavy stone tomb lid sliding off and dropping: a long stone grind and a heavy stone thud, echoing in a crypt, ${ONE}`, { isNew: true }),
+  one('oz/church/grille-rattle', OZ, 1, 0.51, `An old iron chapel grille rattling in its lock, shaken from behind, echoing in a stone church, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/church/gate-creak', OZ, 1, 1.05, `An old iron gate swinging open on rusty hinges in a low stone crypt, a long creak, ${ONE}`, { isNew: true }),
+  one('oz/church/drip', OZ, 2, 0.55, `A single drop of water falling into a puddle in a low stone crypt, with a soft echo, ${ONE}`, { isNew: true }),
+  // The tower climb (TOWER: content/sfx/oldenzaal-tower.ts). The small bells reuse 'oz/env/bell'.
+  loop('oz/tower/tide', OZ, 8, 'A mass of rotting dead soldiers climbing up inside a wooden church tower below: a low massed wordless groan that swells and sinks, boots and nails scraping on wood and stone, old helmets knocking, no screams', true),
+  one('oz/tower/tide-surge', OZ, 1, 2.0, `A mass of dead men surging upward: a rising wordless groan of many throats and a deep rumble of boots on wooden stairs, no screams, ${ONE}`, { isNew: true }),
+  one('oz/tower/tide-recoil', OZ, 1, 1.62, `A mass of dead men driven back down: a falling wordless groan and a hiss of grit and dust, ${ONE}`, { isNew: true }),
+  one('oz/tower/toll-last', OZ, 1, 2.86, `One very deep toll of a great church bell high in a stone spire in a storm: a heavy strike, a long humming ring with a bright shimmer on top, ${ONE}`, { isNew: true }),
+  one('oz/tower/creak', OZ, 3, 0.53, `An old wooden landing creaking under a heavy step: a short wood stick-slip groan, close, ${ONE}`, { isNew: true }),
+  // The jet Swan of the finale (TOWER: content/sfx/oldenzaal-tower.ts).
+  one('oz/swan/ignite', OZ, 1, 1.5, `Two small rocket engines lighting up: a soft thump and a rising turbine whine into a roaring hiss, ${ONE}`, { isNew: true }),
+  loop('oz/swan/jet', OZ, 8, 'Two small rocket engines hovering in a storm: a steady roaring hiss, a low throb and a steady whine', true),
+  one('oz/swan/flyby', OZ, 1, 2.35, `A rocket-powered flying machine turning and flying away fast: a jet roar that swells, passes and falls away into the distance with a doppler drop, ${ONE}`, { isNew: true }),
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -745,7 +784,7 @@ export const VOICES: VoiceSpec[] = [
     description:
       'An eerie, whispering middle-aged woman, a ghost from long ago: a soft, breathy, cold voice that lingers on the vowels, slow and calm, quietly menacing, with a hollow, distant quality. A native speaker from the Netherlands with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
     previewText:
-      'Welkom... in mijn stad. Do you hear the bells? They ring for me. The lamps go out, one by one, and the old souls are waking up. Stay a while, little birds. Nobody leaves this town before I say so.',
+      'So. You came for my little town. Do you hear the bells? They ring for me. The lamps go out, one by one, and the old dead are waking up. Stay a while, little birds. Nobody leaves this town before I say so.',
   },
   {
     speaker: 'plechelmus',
@@ -900,15 +939,18 @@ export const LINES: LineSpec[] = [
   line(A, 'SNACK POWER!', '[excited, punchy] Snack power!', 'en', OZ, 1.4),
   line('wu', 'HE! IN HERE!', '[calling out, urgent] Hé! In here!', 'nl', OZ, 1.5),
   line('wu', 'GOEDENAVOND! INSIDE,\nQUICK. MIND THE FLOOR.', '[brisk, warm] Goedenavond! Inside, quick. [busy] Mind the floor.', 'nl', OZ, 2.5),
-  line('wu', 'MEVROUW WINKEL IS BACK.\nWELL. HER GHOST IS.', '[lowering his voice] Mevrouw Winkel is back. [dry] Well. Her ghost is.', 'nl', OZ, 2.5),
-  line('wu', 'SHE WAKES THE SOULS OF\nOLD SOLDIERS.', '[serious, quiet] She wakes the souls of old soldiers.', 'en', OZ, 2.5),
-  line('wu', 'THEY CRAWL INTO PEOPLE.\nBAD FOR BUSINESS.', '[gruff, annoyed] They crawl into people. [dry] Bad for business.', 'en', OZ, 2.5),
+  line('wu', 'MEVROUW WINKEL CAME\nBACK. HER GHOST, I MEAN.', '[lowering his voice] Mevrouw Winkel came back. [dry] Her ghost, I mean.', 'en', OZ, 2.5),
+  line('wu', 'SINCE THEN THE DEAD\nSOLDIERS CLIMB OUT.', '[serious, quiet] Since then the dead soldiers climb out.', 'en', OZ, 2.5),
+  line('wu', 'THE TOWN FLED. I STAY.\nTHE FRYER IS STILL HOT.', '[gruff, proud] The town fled. I stay. [dry, busy] The fryer is still hot.', 'en', OZ, 2.5),
   line('wu', 'CLOSE? NEE. IK SLUIT\nPAS OM TIEN UUR.', '[indignant, proud] Close? Nee. Ik sluit pas om tien uur.', 'nl', OZ, 2.5),
   line('wu', 'HERE. EAT FIRST.\nTHEN SAVE MY TOWN.', '[warm, firm] Here. Eat first. [brisk] Then save my town.', 'en', OZ, 2.5),
-  line('winkel', 'WELKOM...\nIN MIJN STAD.', '[eerie whisper, slow] Welkom... in mijn stad.', 'nl', OZ, 3.0),
-  line('winkel', 'RISE, OLD STONE.', '[cold, commanding whisper] Rise, old stone.', 'en', OZ, 2.0),
+  // Mevrouw Winkel's one scene (oz-c, the wake; lines.ts WINKEL_LINES) and her flight at the end.
+  line('winkel', 'SO. YOU CAME FOR\nMY LITTLE TOWN.', '[eerie whisper, slow, amused] So. You came for my little town.', 'en', OZ, 2.5),
+  line('winkel', 'MY DEAD ARE TIRED.\nLET THE STONE WALK.', '[cold whisper, turning away] My dead are tired. [slow, commanding] Let the stone walk.', 'en', OZ, 2.5),
+  line('winkel', 'STA OP, OUDE STEEN.', '[cold, commanding whisper] Sta op, oude steen.', 'nl', OZ, 2.0),
   line('winkel', 'THIS IS NOT OVER...', '[hissing, retreating] This is not over...', 'en', OZ, 2.2),
-  line('winkel', 'NIEMAND GAAT WEG.', '[cold, menacing whisper] Niemand gaat weg.', 'nl', OZ, 2.0),
-  line('winkel', 'FLY, LITTLE BIRDS.\nFOR NOW.', '[amused, cold whisper] Fly, little birds. [slow] For now.', 'en', OZ, 2.5),
+  // St. Plechelmus (lines.ts PLECHELMUS_LINES): a victim of the curse; he groans, then thanks them.
+  { ...line('plechelmus', 'ZO... ZWAAR...', '[deep stony rumble, strained, slow] Zo... zwaar...', 'nl', OZ, 2.5), takes: 3 },
+  { ...line('plechelmus', 'VERGEEF MIJ...', '[deep stony rumble, sorrowful, slow] Vergeef mij...', 'nl', OZ, 2.5), takes: 3 },
   { ...line('plechelmus', 'DANK U, KINDEREN.', '[deep, slow, gentle] Dank u... kinderen.', 'nl', OZ, 3.0), takes: 3 },
 ];

@@ -1,36 +1,44 @@
 /**
- * Mission oldenzaal, wave A integration (INTEGRATE; docs/design/oldenzaal.md §2–§4, §14): oz-a and
- * oz-b play end to end with their scripts — the drop with Mevrouw Winkel on the roof, the waves of
- * the possessed (shamblers, gunners, a brute, free souls, townspeople), the golden record, Meneer
- * Wu's scene and the meal, the frikandels thrown at packs — 1P and 2P; the pacing (GDD 1.5: no
- * stretch of more than 4 s without an enemy on screen outside the scene); the holy-mayo blast
- * drives the souls out of real hosts; the mission def (art, preload, audio, reserve, ambience).
+ * Mission oldenzaal integration (INTEGRATE; docs/design/oldenzaal.md, revision 2, §2–§9, §14):
+ * oz-a and oz-b play end to end on the dead soldiers — every kind, every entrance (out of the
+ * boarded shops, the manholes, up through the pavers, a column marching in), the weapon crates,
+ * the golden record, Meneer Wu's scene and the meal, the frikandels thrown — 1P and 2P; the pacing
+ * (GDD 1.5: no stretch of more than 4 s without an enemy on screen outside the scene); no hit from
+ * off screen; NO wave-A ghosts (no souls, no possessed, no townspeople, no roof ghost: R2-6); the
+ * whole mission oz-a → oz-f completes; the mission def (art, preload, audio, reserve, ambience).
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Damage, Entity } from '../../src/engine/entity';
+import { listSprites } from '../../src/engine/sprites';
+import { hasSfx } from '../../src/engine/synth';
 import type { World } from '../../src/engine/world';
 import { frikandelsLeft } from '../../src/game/content/characters/snack-power';
 import { loadContent } from '../../src/game/content/index';
 import { OZ_SCENERY_RESERVE } from '../../src/game/content/missions/oldenzaal/art-layout';
-import { OLDENZAAL_ID, OZ_AMBIENCE, OZ_AUDIO_GROUP, OZ_SECTION, OZ_SONG } from '../../src/game/content/missions/oldenzaal/ids';
-import { OZ_STREET_ART, OZ_WUGHOST_ART } from '../../src/game/content/missions/oldenzaal/script-kit';
+import { OLDENZAAL_ID, OZ_AMBIENCE, OZ_AUDIO_GROUP, OZ_SECTION, OZ_SECTIONS, OZ_SONG, OZ_SPRITES, OZ_ZOMBIE_TAG } from '../../src/game/content/missions/oldenzaal/ids';
+import { OZ_WUGHOST_ART, OZ_ZOMBIE_ART } from '../../src/game/content/missions/oldenzaal/script-kit';
 import { OZ_A_RECORD } from '../../src/game/content/missions/oldenzaal/terrain';
-import { holyMayoBlast } from '../../src/game/content/oldenzaal/items/index';
-import { OZ_HOST_TAG } from '../../src/game/content/oldenzaal/possessed/index';
-import { getMission } from '../../src/game/registry';
+import { getEntityMeta, getMission } from '../../src/game/registry';
 import { createHeadlessGame } from '../../src/sim/index';
-import { FLOOR, TestWorld } from './helpers';
 
 beforeAll(async () => {
   await loadContent();
 }, 120_000);
 
+/** The wave-A ids revision 2 removed (R2-6). */
+const WAVE_A_IDS = ['oz-shambler', 'oz-gunner', 'oz-brute', 'oz-soul', 'oz-townsperson', 'oz-soul-eject', 'oz-ghost-shot'];
+const WAVE_A_SPRITES = ['enemy/oz-shambler/', 'enemy/oz-gunner/', 'enemy/oz-brute/', 'enemy/oz-soul/', 'enemy/oz-ghost-shot/', 'npc/oz-town/', 'fx/oz/soul/'];
+
 /** What a bot run of oz-a → oz-b saw. */
 interface Seen {
   types: Set<string>;
   kills: Record<string, number>;
+  /** The entrances of the dead soldiers that came in. */
+  entrances: Set<string>;
+  /** Openings (boarded doors / windows, manholes) that broke open. */
+  opened: Set<string>;
   record: boolean;
-  winkelAt: number;
+  winkel: boolean;
   mealTick: number;
   thrown: number;
   /** The longest stretch (ticks) without an enemy on screen, outside the scene (timer paused) and the walk to the exit. */
@@ -42,7 +50,7 @@ interface Seen {
 /** Run the bot from the mission start through oz-a and oz-b (until oz-c starts). */
 async function playStreet(players: 1 | 2, god: boolean, difficulty: 'easy' | 'normal' | 'hard' = 'normal'): Promise<Seen> {
   const g = await createHeadlessGame({ missionId: OLDENZAAL_ID, seed: 1, players, god, bot: true, difficulty, captureConsole: true });
-  const seen: Seen = { types: new Set(), kills: {}, record: false, winkelAt: -1, mealTick: -1, thrown: 0, maxGap: {}, offScreenHits: [], sections: [] };
+  const seen: Seen = { types: new Set(), kills: {}, entrances: new Set(), opened: new Set(), record: false, winkel: false, mealTick: -1, thrown: 0, maxGap: {}, offScreenHits: [], sections: [] };
   const wrapped = new WeakSet<World>();
   let gap = 0;
   let sec = '';
@@ -72,7 +80,9 @@ async function playStreet(players: 1 | 2, god: boolean, difficulty: 'easy' | 'no
     for (const e of w.entities) {
       seen.types.add(e.type);
       if (e.type === 'pickup-gem' && Math.abs(e.x - OZ_A_RECORD[0]) < 4) seen.record = true;
-      if (e.type === 'oz-winkel' && seen.winkelAt < 0) seen.winkelAt = t;
+      if (e.type === 'oz-winkel') seen.winkel = true;
+      if (e.hasTag(OZ_ZOMBIE_TAG)) seen.entrances.add((e as unknown as { entrance: string }).entrance);
+      if ((e.type === 'oz-boarded' || e.type === 'oz-manhole') && !(e as unknown as { closed: boolean }).closed) seen.opened.add(`${e.type}/${(e as unknown as { openingKind: string }).openingKind}`);
     }
     for (const p of w.players) {
       const left = frikandelsLeft(p as never);
@@ -98,73 +108,90 @@ async function playStreet(players: 1 | 2, god: boolean, difficulty: 'easy' | 'no
   return seen;
 }
 
-describe('oldenzaal wave A: oz-a and oz-b play end to end', () => {
-  it.each([1, 2] as const)('%iP god: the drop, Winkel, every kind of possessed, the record, the scene, the meal, the frikandels', async (players) => {
+describe('oldenzaal: oz-a and oz-b play end to end on the dead soldiers', () => {
+  it.each([1, 2] as const)('%iP god: every kind and entrance, the crates, the record, the scene, the meal, the frikandels; no ghosts', async (players) => {
     const seen = await playStreet(players, true);
     expect(seen.sections.slice(0, 3)).toEqual([OZ_SECTION.a, OZ_SECTION.b, OZ_SECTION.c]);
-    expect(seen.winkelAt).toBeGreaterThanOrEqual(0);
-    expect(seen.winkelAt).toBeLessThan(10);
     expect(seen.record).toBe(true);
-    for (const id of ['oz-shambler', 'oz-gunner', 'oz-brute', 'oz-soul', 'oz-townsperson', 'oz-soul-eject', 'oz-wu', 'pickup-oz-meal']) expect(seen.types.has(id), id).toBe(true);
-    for (const id of ['oz-shambler', 'oz-gunner', 'oz-brute', 'oz-soul']) expect(seen.kills[id] ?? 0, id).toBeGreaterThan(0);
+    for (const id of ['oz-grunt', 'oz-rifleman', 'oz-mg', 'oz-crawler']) expect(seen.kills[id] ?? 0, id).toBeGreaterThan(0);
+    for (const k of ['walk', 'rise', 'burst', 'manhole', 'march']) expect(seen.entrances.has(k), k).toBe(true);
+    for (const k of ['oz-boarded/window', 'oz-boarded/door', 'oz-manhole/manhole']) expect(seen.opened.has(k), k).toBe(true);
+    for (const id of ['crate', 'oz-wu', 'pickup-oz-meal', 'oz-bones']) expect(seen.types.has(id), id).toBe(true);
+    // R2-6: no souls, no possessed, no townspeople, and Mevrouw Winkel is not on the street.
+    for (const id of WAVE_A_IDS) expect(seen.types.has(id), id).toBe(false);
+    expect(seen.winkel).toBe(false);
     expect(seen.mealTick).toBeGreaterThan(0);
     expect(seen.thrown).toBeGreaterThanOrEqual(players);
-  }, 180_000);
+  }, 240_000);
 
   it('normal difficulty, mortal: pacing ≤ 4 s without an enemy on screen; no hit from off screen', async () => {
     const seen = await playStreet(1, false);
     expect(seen.maxGap[OZ_SECTION.a]).toBeLessThanOrEqual(240);
     expect(seen.maxGap[OZ_SECTION.b]).toBeLessThanOrEqual(240);
     expect(seen.offScreenHits).toEqual([]);
-  }, 180_000);
+  }, 240_000);
 });
 
-describe('oldenzaal wave A: the holy-mayo blast on real hosts', () => {
-  it('drives the soul out of every host in its radius at once; free souls burst; townspeople and far hosts are untouched', () => {
-    const tw = new TestWorld({ playerX: 60, god: true, seed: 4 });
-    const near = [tw.spawn('oz-shambler', 300), tw.spawn('oz-shambler', 316), tw.spawn('oz-brute', 330, { look: 'butcher' }), tw.spawn('oz-gunner', 290)];
-    const soul = tw.spawn('oz-soul', 310, {}, FLOOR - 30);
-    const town = tw.spawn('oz-townsperson', 305, { flee: false });
-    const far = tw.spawn('oz-shambler', 420);
-    tw.run(2);
-    const n = holyMayoBlast(tw.world, 310, FLOOR - 10, 0, 48);
-    tw.run(2);
-    expect(n).toBeGreaterThanOrEqual(near.length);
-    for (const h of near) expect(h.alive, h.type).toBe(false);
-    expect(soul.alive).toBe(false);
-    expect(town.alive).toBe(true);
-    expect(far.alive).toBe(true);
-    expect(tw.world.byTag(OZ_HOST_TAG).filter((e) => e.alive)).toEqual([far]);
-    // Each freed host became a dazed townsperson and an ejected soul.
-    expect(tw.ofType('oz-soul-eject').length).toBeGreaterThanOrEqual(near.length);
-    expect(tw.ofType('oz-townsperson').length).toBeGreaterThanOrEqual(near.length + 1);
+describe('oldenzaal: the whole mission', () => {
+  it('1P god: oz-a → oz-f in order, the mini-boss defeated, the tower, the Swan: MISSION COMPLETE', async () => {
+    const g = await createHeadlessGame({ missionId: OLDENZAAL_ID, seed: 1, players: 1, god: true, bot: true, difficulty: 'normal', captureConsole: true });
+    const order: string[] = [];
+    for (let t = 0; t < 40000 && !g.missionComplete; t++) {
+      g.step(1);
+      const id = g.runner?.section.id;
+      if (id && order[order.length - 1] !== id) order.push(id);
+    }
+    const rep = g.report();
+    expect(order).toEqual([...OZ_SECTIONS]);
+    expect(g.missionComplete).toBe(true);
+    expect(rep.bossDefeated).toBe(true);
+    expect(rep.errors).toEqual([]);
+    expect(rep.missingSfx).toEqual([]);
+    g.dispose();
+  }, 300_000);
+});
+
+describe('oldenzaal: revision 2 removed the wave-A ghosts (R2-6)', () => {
+  it('no possessed, souls or townspeople are registered; no sprites or sfx of theirs', () => {
+    for (const id of WAVE_A_IDS) expect(getEntityMeta(id), id).toBeUndefined();
+    for (const pre of WAVE_A_SPRITES) expect(listSprites(pre), pre).toEqual([]);
+    for (const id of ['oz/possessed/groan', 'oz/possessed/eject', 'oz/possessed/wail']) expect(hasSfx(id), id).toBe(false);
+    expect(Object.keys(OZ_SPRITES)).not.toContain('possessed');
   });
 });
 
-describe('oldenzaal wave A: the mission def', () => {
+describe('oldenzaal: the mission def', () => {
   it('audio group, songs, ambience per section, the scenery reserve', () => {
     const m = getMission(OLDENZAAL_ID)!;
     expect(m.audioGroup).toBe(OZ_AUDIO_GROUP);
     expect(m.denseReserve).toBe(OZ_SCENERY_RESERVE);
     expect(m.music).toBe(OZ_SONG.theme);
-    expect(m.sections[OZ_SECTION.e].music).toBe(OZ_SONG.tower);
-    expect(m.sections[OZ_SECTION.a].ambience).toBe(OZ_AMBIENCE.street);
-    expect(m.sections[OZ_SECTION.b].ambience).toBe(OZ_AMBIENCE.street);
+    expect(m.bossMusic).toBe(OZ_SONG.boss);
+    expect(m.bossSection).toBe(OZ_SECTION.c);
+    for (const s of [OZ_SECTION.a, OZ_SECTION.b, OZ_SECTION.c, OZ_SECTION.d, OZ_SECTION.e]) expect(m.sections[s].music, s).toBe(OZ_SONG.theme);
+    expect(m.sections[OZ_SECTION.f].music).toBe(OZ_SONG.tower);
+    for (const s of [OZ_SECTION.a, OZ_SECTION.b, OZ_SECTION.c]) expect(m.sections[s].ambience, s).toBe(OZ_AMBIENCE.street);
     expect(m.sections[OZ_SECTION.d].ambience).toBe(OZ_AMBIENCE.nave);
-    expect(m.sections[OZ_SECTION.e].ambience).toBe(OZ_AMBIENCE.storm);
+    expect(m.sections[OZ_SECTION.e].ambience).toBe(OZ_AMBIENCE.nave);
+    expect(m.sections[OZ_SECTION.f].ambience).toBe(OZ_AMBIENCE.storm);
   });
 
-  it('section art and preload: the street possessed and Meneer Wu / the meal; no churchgoer sets; the town decor only as section art', () => {
+  it('section art and preload: the dead soldiers everywhere, Meneer Wu / the meal on the street; the decor only as section art', () => {
     const m = getMission(OLDENZAAL_ID)!;
+    for (const s of OZ_SECTIONS) {
+      const art = m.sections[s].art ?? [];
+      for (const pre of OZ_ZOMBIE_ART) expect(art, `${s} ${pre}`).toContain(pre);
+      for (const pre of WAVE_A_SPRITES) expect(art, `${s} ${pre}`).not.toContain(pre);
+    }
     for (const s of [OZ_SECTION.a, OZ_SECTION.b]) {
       const art = m.sections[s].art ?? [];
-      for (const pre of [...OZ_STREET_ART, ...OZ_WUGHOST_ART]) expect(art, `${s} ${pre}`).toContain(pre);
-      expect(art.some((a) => a.includes('churchgoer'))).toBe(false);
+      for (const pre of OZ_WUGHOST_ART) expect(art, `${s} ${pre}`).toContain(pre);
       expect(art).toContain('decor/oz/shop');
+      expect(art).toContain('prop/oz-boarded/');
     }
     const first = m.preloadFirst ?? [];
-    expect(first.some((p) => p.startsWith('decor/oz/'))).toBe(false);
-    expect(first.some((p) => p.includes('churchgoer'))).toBe(false);
-    for (const pre of OZ_STREET_ART) expect(first).toContain(pre);
+    expect(first.some((p) => p.startsWith('decor/'))).toBe(false);
+    for (const pre of OZ_ZOMBIE_ART) expect(first).toContain(pre);
+    for (const pre of WAVE_A_SPRITES) expect(first).not.toContain(pre);
   });
 });

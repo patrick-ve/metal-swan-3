@@ -27,6 +27,7 @@ import { OZ_A_DECOR, OZ_A_LAMP_LIGHTS, OZ_B_DECOR, OZ_B_LAMP_LIGHTS } from '../.
 import { SMULHOEK_W } from '../../src/game/content/missions/oldenzaal/art-smulhoek';
 import { AWNING_H } from '../../src/game/content/missions/oldenzaal/art-street';
 import { OZ_SECTION } from '../../src/game/content/missions/oldenzaal/ids';
+import { OZ_RUIN_SPRITES } from '../../src/game/content/oldenzaal/ruin/art';
 import { OLDENZAAL } from '../../src/game/content/missions/oldenzaal/index';
 import {
   G,
@@ -34,7 +35,6 @@ import {
   OZ_A_BALCONIES,
   OZ_A_LEDGE,
   OZ_A_RECORD,
-  OZ_A_WINKEL_ROOF,
   OZ_B_DOOR_X,
   OZ_B_SMULHOEK_X,
   OZ_B_WU_ARENA,
@@ -187,10 +187,11 @@ describe('oldenzaal town: the layout of oz-a and oz-b', () => {
       expect(ex.rect.y + ex.rect.h).toBeGreaterThanOrEqual(G);
     }
     for (const dd of s.decor ?? []) {
-      expect(OZ_TOWN_SPRITES, dd.sprite).toContain(dd.sprite);
+      // The town's own sprites, or (revision 2) RUIN's worn-down extras.
+      expect([...OZ_TOWN_SPRITES, ...OZ_RUIN_SPRITES], dd.sprite).toContain(dd.sprite);
       expect(s.art, dd.sprite).toContain(dd.sprite);
-      // Our lettering is never mirrored.
-      expect(dd.flipX ?? false, dd.sprite).toBe(false);
+      // Our lettering is never mirrored (only a crow, which has none, may face the other way).
+      if (dd.sprite !== 'decor/oz-ruin/crow') expect(dd.flipX ?? false, dd.sprite).toBe(false);
     }
     // The street is covered by fronts from end to end (no hole to the sky at street level wider than an alley).
     const shops = (s.decor ?? []).filter((dd) => dd.sprite === 'decor/oz/shop' || dd.sprite === 'decor/oz/smulhoek');
@@ -219,10 +220,6 @@ describe('oldenzaal town: the layout of oz-a and oz-b', () => {
     expect(rx).toBeGreaterThanOrEqual(OZ_A_LEDGE[0]);
     expect(rx).toBeLessThanOrEqual(OZ_A_LEDGE[0] + OZ_A_LEDGE[2]);
     expect(ry).toBeLessThan(OZ_A_LEDGE[1]);
-    // Mevrouw Winkel's roof is in the opening view, above the street.
-    expect(OZ_A_WINKEL_ROOF[0]).toBeGreaterThan(0);
-    expect(OZ_A_WINKEL_ROOF[0]).toBeLessThan(384);
-    expect(OZ_A_WINKEL_ROOF[1]).toBeLessThan(G - 80);
   });
 
   it('De Smulhoek: Meneer Wu\'s door inside the building and the scene\'s lock; the warm lights', () => {
@@ -254,7 +251,9 @@ describe('oldenzaal town: the layout of oz-a and oz-b', () => {
         expect(inHdPalette(lamp.color)).toBe(true);
       }
     }
-    expect(OZ_A_DECOR.filter((d) => d.sprite === 'decor/oz/lamp').length * 2).toBe(OZ_A_LAMP_LIGHTS.length);
+    // Revision 2: only the lamps that still burn (frame 0) light up (both heads), plus the
+    // emergency sign's amber lamp.
+    expect(OZ_A_DECOR.filter((d) => d.sprite === 'decor/oz/lamp' && (d.frame ?? 0) === 0).length * 2 + 1).toBe(OZ_A_LAMP_LIGHTS.length);
     expect(OZ_B_DECOR.filter((d) => d.sprite === 'decor/oz/lamp').length).toBeGreaterThan(3);
   });
 });

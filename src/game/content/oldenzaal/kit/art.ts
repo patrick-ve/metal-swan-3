@@ -9,7 +9,7 @@
  * centre) at every density. No ink (light, never hit or picked up).
  *
  * - `fx/oz/light/glow`      32 × 32: the ghost glow (cold green) — `drawGhost`'s `glow` option for
- *   the souls and Mevrouw Winkel.
+ *   Mevrouw Winkel (and the TO BE CONTINUED face).
  * - `fx/oz/light/glow-warm` 32 × 32: a lamp / candle / window halo (amber).
  * - `fx/oz/light/glow-s`    12 × 12: a small pale glow (eyes, sparks); `tint` it any colour.
  */

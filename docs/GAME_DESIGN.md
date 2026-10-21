@@ -3707,30 +3707,35 @@ exception (real A10 names, the wagon likeness) is in `docs/ORIGINALITY.md`.
 By the user's decision (2026-10-21), level 4 follows the first-person floors: a typed story card,
 then the card `MISSION 4` — **A HAUNTING IN OTOWN** ("Otown" = Oldenzaal). The squad is
 parachuted over the town of Oldenzaal at dusk. The mood is **spooky, dark and grim**, the
-opposite of the sunny Amsterdam levels: dusk → night → storm, fog, cold desaturated greens, greys
-and blues; warm light only from lamps, candles and the snack bar De Smulhoek. A normal 2D mission
-(`defineMission`) with five sections, about 7 minutes, 2P co-op and the in-world continue.
+opposite of the sunny Amsterdam levels: dusk → night → candle light → storm, fog, cold
+desaturated greens, greys and blues; warm light only from lamps, candles and the snack bar De
+Smulhoek. A normal 2D mission (`defineMission`) with six sections, about 8 minutes, 2P co-op and
+the in-world continue. Revision 2 (the user's feedback after playing wave A) is what is built:
 
-- **The possessed** (the enemies): townspeople in daily clothes with a ghostly soldier helmet,
-  green glowing eyes and a see-through soldier soul over them (no insignia, no symbol anywhere in
-  this mission; bloodless: pale mist). Shamblers (a slow walk, a claw after a tell), gunners (the
-  soul raises a ghost rifle: a slow shot along the ground or a low arc, shootable), brutes (the
-  butcher, a bouncer: a heavy charge), free souls (flyers out of drains, chimneys and
-  chandeliers). At 0 HP the **soul is shot out**: it rises and fades, the person falls, sits dazed
-  and runs off (a thank-you line now and then). A free soul that is not shot can possess a
-  fleeing townsperson again (a 30-tick tell; at most 2 at once).
+- **The dead soldiers** (the enemies): risen WW2 soldiers, rotting, in field-grey uniforms and
+  steel helmets, a red swastika armband on the left upper arm (the user's decision; this mission
+  only, the villains only; a few torn, rotten banners in the town; nothing else). **Tanks**: slow
+  and many hits — the grunt (shovel or rifle butt), the rifleman (one slow visible shot: jump or
+  duck), the MG gunner (plants the bipod, a sweeping burst; one per big fight) and the crawler
+  (grabs the feet: tap to break free). They rise from the pavers, break out of boarded shops,
+  climb out of manholes and march in as a column out of the fog. Bloodless: at 0 HP they collapse
+  into bones and dust.
+- **Oldenzaal abandoned and worn down** after the outbreak; only De Smulhoek is still open. No
+  ghosts and no townspeople: **Mevrouw Winkel** (fictional) appears once, on Plechelmusplein,
+  where she wakes the statue; her face stays on the `TO BE CONTINUED` card.
 - **Meneer Wu and the meal:** the hard-working owner of De Smulhoek (our own design, no
-  stereotype) calls the squad in, tells them about the ghost of **Mevrouw Winkel** (fictional; she
-  cannot be hit in this level) and hands each living hero `PATAT MAYO MET 2 FRIKANDELLEN`:
-  **snack power** (20 s, Patrick 30 s: fire rate ×1.5, one hit absorbed by a mayo splat) and **2
-  frikandel bombs** in place of the grenades (a holy-mayo blast that drives every soul in it out
-  at once).
-- **Wave A (the town and the mechanism, 2026-10-21):** `oz-a` (the drop over the roofs, Mevrouw
-  Winkel on a roof, the shopping street with three camera locks, the golden record on a
-  second-floor ledge) and `oz-b` (the De Smulhoek corner, Meneer Wu's scene, the way to the
-  square) are playable; the mission light pass (darkness, lamps, fog, rain, lightning), the
-  weather and the y eviction are additive opt-ins. `oz-c` (the statue of St. Plechelmus), `oz-d`
-  (the nave) and `oz-e` (the tower and the Swan) are placeholders until wave B.
+  stereotype) keeps the fryer going while the dead walk; he hands each living hero `PATAT MAYO MET
+  2 FRIKANDELLEN`: **snack power** (20 s, Patrick 30 s: fire rate ×1.5, one hit absorbed by a mayo
+  splat) and **2 frikandel bombs** in place of the grenades (a big explosion: heavy damage and a
+  stagger to every dead soldier in a wide radius).
+- **The six sections:** `oz-a` the drop and the shopping street (three locks, a machine-gun crate
+  first), `oz-b` De Smulhoek (the scene, the meal, the way to the square), `oz-c` Plechelmusplein
+  (the wake, the **mini-boss St. Plechelmus**: 2 phases, about 45–60 s; freed, he sits back on his
+  plinth), `oz-d` the nave (a spooky Catholic church; nothing in it is mocked or damaged), `oz-e`
+  the crypt, `oz-f` the tower climb (the horde tide, the bells) and the **jet Swan** finale.
+- **Built:** wave A (2026-10-21, the town and the mechanism; the light pass, the weather and the y
+  eviction are additive opt-ins) and wave B (2026-10-21, revision 2: the zombies, the ruin, the
+  statue, the church, the tower; the bot finishes the mission 1P / 2P on every difficulty).
 - After the tally: the `TO BE CONTINUED` card, then today's ending (stage 2 plugs in later).
 
 **`docs/design/oldenzaal.md` is the spec of this mission and wins over this document for it**

@@ -192,7 +192,7 @@ export function hdTone(r: Ramp | HdRampName, t: number): Color {
  */
 export function inHdPalette(c: Color): boolean {
   const key = (c | 255) >>> 0;
-  return HD_SET.has(key) || HD_OZ_SET.has(key);
+  return HD_SET.has(key) || HD_OZ_SET.has(key) || HD_OZ_R2_SET.has(key);
 }
 const HD_SET = new Set<Color>(HD_PALETTE);
 
@@ -268,3 +268,51 @@ const HD_OZ_SET = new Set<Color>(HD_OZ_PALETTE);
 
 /** PAL_HD then PAL_HD_OZ (≤ 256 colours): the palette of the oldenzaal 2× / 4× art. */
 export const HD_FULL_PALETTE: readonly Color[] = [...HD_PALETTE, ...HD_OZ_PALETTE.filter((c) => !HD_SET.has(c))];
+
+// ---------------------------------------------------------------------------------------------
+// Oldenzaal revision 2 ramps (the dead soldiers and the ruined town, docs/design/oldenzaal.md §10.4)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The revision-2 HD ramps (2026-10-21, wave B), dark → light, 6–8 tones, strictly rising luma.
+ * ADDITIVE, like `PAL_HD_OZ`, and kept apart from it and from `PAL_HD` on purpose: `HD_PALETTE`,
+ * `HD_OZ_PALETTE` and `HD_FULL_PALETTE` stay exactly as they were, so no nearest-colour search (the
+ * particles, the fps effects, `nearestLab`, the wave-A oldenzaal art's `mx` snap) picks a new
+ * colour and no existing pixel changes.
+ *
+ * Only 9 colours are new (`HD_OZ_R2_NEW`); the other tones are existing `PAL_HD` colours, so the
+ * whole set stays inside 256 (PAL_HD 209 + PAL_HD_OZ 37 + 9 = 255; `HD_R2_FULL_PALETTE`). Use the
+ * ramps by name (`PAL_HD_OZ_R2.rot`, `hdTone(PAL_HD_OZ_R2.fieldGrey, 0.6)`); `inHdPalette`
+ * accepts the new colours. At 1× everything snaps to the 64-colour `PAL` as usual.
+ */
+export const PAL_HD_OZ_R2 = {
+  /** Rotting skin: a cool olive-black shade → grey-green → yellowed → pale bone at the top. */
+  rot: H('#151a16', '#232a1b', '#343c2b', '#465039', '#626b4e', '#80845f', '#a3a079', '#d5c9b8'),
+  /** Field grey: faded WW2 wool (green-grey), cool in the shade, a dusty warm grey on the light side. */
+  fieldGrey: H('#151925', '#252a3a', '#3c473f', '#566258', '#727d70', '#8e927f', '#beb1a2'),
+  /** Rust: rusted iron (rifles, the MG, helmets, railings, cars): `PAL_HD.rust`, by name here. */
+  rust: PAL_HD.rust,
+  /** Soot / burnt: the burned-out car, scorched walls, charred wood → ash grey. */
+  soot: H('#100b14', '#221a28', '#2f2725', '#3d3437', '#635857', '#8e827a'),
+} as const satisfies Record<string, Ramp>;
+
+export type HdOzR2RampName = keyof typeof PAL_HD_OZ_R2;
+export const HD_OZ_R2_RAMP_NAMES: readonly HdOzR2RampName[] = Object.keys(PAL_HD_OZ_R2) as HdOzR2RampName[];
+
+/** The colours revision 2 adds (in no earlier palette). */
+export const HD_OZ_R2_NEW: readonly Color[] = (() => {
+  const seen = new Set<Color>([...HD_PALETTE, ...HD_OZ_PALETTE]);
+  const out: Color[] = [];
+  for (const n of HD_OZ_R2_RAMP_NAMES) {
+    for (const c of PAL_HD_OZ_R2[n]) {
+      if (seen.has(c)) continue;
+      seen.add(c);
+      out.push(c);
+    }
+  }
+  return out;
+})();
+const HD_OZ_R2_SET = new Set<Color>(HD_OZ_R2_NEW);
+
+/** `HD_FULL_PALETTE` then the revision-2 colours (≤ 256): every colour the oldenzaal 2× / 4× art may use. */
+export const HD_R2_FULL_PALETTE: readonly Color[] = [...HD_FULL_PALETTE, ...HD_OZ_R2_NEW];

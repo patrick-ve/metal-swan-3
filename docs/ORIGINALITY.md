@@ -147,12 +147,13 @@ above is extended to mission `ring` (level 2). Rules for this exception:
   no cheering idle gag) and the hostage rule (a freed hostage bows; it never salutes).
 - The self-check question 2 below does not apply to these listed real names.
 
-## Exception: mission `oldenzaal` (2026-10-21)
+## Exception: mission `oldenzaal` (2026-10-21; revision 2 of the same evening)
 
 By the user's explicit decision (2026-10-21, `docs/design/oldenzaal.md` §0, §12), mission
 `oldenzaal` (level 4, `MISSION 4`, "A HAUNTING IN OTOWN") uses real names of the town of
-Oldenzaal, two characters with names the user chose, and generated audio. Rules for this
-exception:
+Oldenzaal, two characters with names the user chose, and generated audio. Revision 2 (the user's
+feedback after playing wave A, spec §0 R2-1 … R2-12) makes the enemies risen WW2 German soldiers
+(zombies) and allows two Nazi symbols in this mission only (below). Rules for this exception:
 
 - **Real names allowed:** Oldenzaal (and "Otown" in the card's subtitle), the Plechelmus Basilica
   (Sint-Plechelmusbasiliek), Plechelmusplein, St. Plechelmus and his statue, the snack bar
@@ -170,18 +171,28 @@ exception:
   His eyes are drawn with the same care as the squad's faces. His joke is his work ethic (the
   fryer keeps going, he will not close before ten o'clock).
 - **Mevrouw Winkel** is fictional (made up by the user): a middle-aged woman with dark grey hair,
-  a ghost. She is never a likeness of a real person.
-- **No Nazi symbol** anywhere in this mission: not on the souls, banners, flags, walls or props.
-  The soldiers' souls are WW2-style greatcoat and helmet silhouettes without insignia; they are
-  the villains, the townspeople are their victims.
-- **Bloodless:** the souls are pale green-grey mist; a freed host falls dazed, sits up and runs off.
-- The possessed are not the reference game's zombie gag: **no hero transformation, no vomit
+  a ghost. She is never a likeness of a real person. Revision 2: she appears once (she wakes the
+  statue on Plechelmusplein) and her face stays on the `TO BE CONTINUED` card.
+- **Nazi symbols (revision 2, the user's decision of 2026-10-21, spec R2-2):** in this mission
+  ONLY, the zombie soldiers wear a red **swastika armband** on the left upper arm, and a **few
+  torn, rotten swastika banners** hang in the town. **Nothing else:** no SS runes, no eagle, no
+  slogans, no real units or names, no uniform badges beyond the armband (collar tabs and shoulder
+  straps stay plain). The symbols are on the villains only and never shown in a positive light (no
+  salute, no cheering, nothing that makes them look heroic or attractive); no Holocaust imagery,
+  no real victims, no real quotes. Nowhere else in the game (the first-person mode keeps its own,
+  separate exception below); never in a menu, a card, the HUD, an icon or the title screen.
+- **Rotting, bloodless:** no red blood in this mission. Hits knock off dust, cloth and chunks of
+  rot; helmets fly off; at 0 HP a zombie collapses into bones and dust. (The first-person mode
+  keeps its own exception.)
+- The zombies are not the reference game's zombie gag: **no hero transformation, no vomit
   attack, no cure item.** `docs/research/mechanics.md` §23 applies in full: no laughing or
   pointing at a player's death, no mass scream, no cheering idle gag.
-- **Respect for the church:** nothing mocks the faith, its objects or its clergy. Nothing in the
-  basilica is broken or burned; shots never damage the altar, crosses or images; no enemy wears a
-  church vestment as a joke. The saint is a victim of the curse: the statue is freed and sits back
-  on its plinth, whole.
+- **Respect for the church:** nothing mocks the faith, its objects or its clergy. The basilica's
+  nave and crypt look like a real Catholic church (crucifix, altar, saints, Mary, the Stations of
+  the Cross, confessionals, votive candles, the red sanctuary lamp); nothing in it is mocked,
+  broken or burned on purpose; shots never damage the altar, the crucifix, statues or images; no
+  zombie (or other enemy) wears a church vestment. The saint is a victim of the curse: the statue
+  is freed and sits back on its plinth, whole.
 - **Generated audio:** mission oldenzaal may use ElevenLabs takes (music, sound effects and
   designed voices; sample group `mission:oldenzaal`, files under `public/audio/oldenzaal/`) under
   the same rules as the `ams` audio exception above. Prompts are our own words and never name a
@@ -215,7 +226,9 @@ the code, ids, comments, commit messages, prompts or other docs (in-game the mod
   stretch this exception to anything else.
 - **Historical Nazi symbols** are allowed in this mode only, on banners and flags only (the scope
   the user approved: "swastika banners and flags"; not on uniforms, not on the boss). The enemies
-  are the villains; the symbols are never shown in a positive light.
+  are the villains; the symbols are never shown in a positive light. (Mission `oldenzaal` has its
+  own, narrower exception since its revision 2: the zombies' armband and a few torn banners, see
+  above.)
 - **Red blood** is allowed in this mode only (`docs/ART_GUIDE.md` section 10). The rest of the
   game stays bloodless.
 - **MechaHitler** is a caricature of a historical figure with an original design (a walking
@@ -269,7 +282,8 @@ Self-check for the first-person mode:
    HUD, sound, tune or line? If yes, change it until they would not.
 3. Are all German lines our own and absent from the banned list above (also as close variants)?
 4. Does every voice come from a written design (no clone, no real person, no named speaker)?
-5. Is the blood only under `fps/` ids, and are the historical symbols only in this mode?
+5. Is the blood only under `fps/` ids, and are the historical symbols only in this mode (and,
+   since revision 2 of mission `oldenzaal`, its zombies' armband and its few torn banners only)?
 
 ## Self-check before you finish
 

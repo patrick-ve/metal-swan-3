@@ -1,7 +1,7 @@
 /**
  * THE LIGHT CONTRACT of mission `oldenzaal` (docs/design/oldenzaal.md §10; docs/api/oldenzaal.md
- * "Light"). CORE wrote it; the LIGHT builder implements the pass behind it; TOWN, POSSESSED and
- * WUGHOST use it. Keep it small: types, a section registry and three no-op-safe calls.
+ * "Light"). CORE wrote it; the LIGHT builder implements the pass behind it; the section and
+ * NPC builders use it. Keep it small: types, a section registry and three no-op-safe calls.
  *
  * 1. A SECTION OPTS IN: `defineSectionLight('oz-a', { darkness: 0.45, tint, fog, lamps, … })`
  *    (the section file does it at import time). A section without a config draws exactly as

@@ -368,6 +368,8 @@ describe('loops', () => {
         'env/ams-canal', 'env/ams-street', 'ams/tour-boat', 'swan/engine', 'env/title-lake', 'ams/mayor-babble',
         // 2026-10-20 (mission ring): the wagon's engine, the tunnel echo bed and the bridge rumble.
         'ring/wagon-engine', 'ring/tunnel-bed', 'ring/bridge-rumble',
+        // 2026-10-21 (mission oldenzaal, the tower): the horde tide and the jet Swan's rocket units.
+        'oz/tower/tide', 'oz/swan/jet',
       ].sort(),
     );
     for (const id of SFX_LOOPS) expect(sfxIsLoop(id), id).toBe(true);

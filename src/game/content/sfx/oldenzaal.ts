@@ -2,8 +2,9 @@
  * Sound effects of mission `oldenzaal` owned by AUDIO (docs/design/oldenzaal.md §11): the town
  * ('oz/env/…'): thunder, the rain and wind loops, the ambience loops of ids.ts `OZ_AMBIENCE`, the
  * church bell, the doors, the candles, a street lamp and a crow. The other owners register their
- * own prefixes in their folders (POSSESSED 'oz/possessed/', WUGHOST 'oz/wu/', 'oz/ghost/',
- * 'oz/meal/'; wave B 'oz/statue/', 'oz/swan/'). Manifest id 'sfx/oldenzaal'; registers at import
+ * own prefixes in their folders (WUGHOST 'oz/wu/', 'oz/ghost/', 'oz/meal/'; revision 2 ZOMBIES
+ * 'oz/zombie/', RUIN 'oz/ruin/', STATUE 'oz/statue/', CHURCH 'oz/church/', TOWER 'oz/tower/' and
+ * 'oz/swan/'). Manifest id 'sfx/oldenzaal'; registers at import
  * time. The ElevenLabs takes of the sample group 'mission:oldenzaal' (wave B) replace these when
  * loaded; these recipes stay the fallback.
  *

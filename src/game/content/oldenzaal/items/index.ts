@@ -1,25 +1,20 @@
 /**
- * Mission oldenzaal — the meal (docs/design/oldenzaal.md §4.3; docs/api/oldenzaal.md "WUGHOST").
- * Owner: WUGHOST. Art in ./art.ts; the statuses in characters/snack-power.ts.
+ * Mission oldenzaal — the meal (docs/design/oldenzaal.md §4.3; docs/api/oldenzaal.md "WUGHOST",
+ * "ZOMBIES"). Owner: WUGHOST → ZOMBIES (revision 2: the frikandel's blast is a big explosion, R2-11).
+ * Art in ./art.ts; the statuses in characters/snack-power.ts.
  *
  * | id | category | what |
  * |---|---|---|
  * | `pickup-oz-meal` | item | the paper tray `PATAT MAYO MET 2 FRIKANDELLEN`: snack power + 2 frikandels (`eatMeal`). A hero who has snack power already leaves it lying (2P: one meal per hero). Tossed by Meneer Wu (`tossTo`) |
- * | `oz-frikandel` | (weapon, kind 'bomb') + other | the bomb-button weapon of `snack-frikandel` AND its projectile: a frikandel in a high arc that flies through people and pops on its first floor contact (or on touching a possessed host / a free soul, or after 150 ticks) into a holy-mayo blast. Spawn params `vx`, `vy`, `owner` |
- * | `oz-frikandel-blast` | fx | the holy-mayo blast: on its first tick `holyMayoBlast` (radius `r`, default 48); then a cream-white burst with a soft additive glow, a light (`LIGHT_TAG`). Params `owner` (−1), `r` |
+ * | `oz-frikandel` | (weapon, kind 'bomb') + other | the bomb-button weapon of `snack-frikandel` AND its projectile: a frikandel in a high arc that flies through people and pops on its first floor contact (or on touching a dead soldier in sight, or after 150 ticks) into the holy-mayo explosion. Spawn params `vx`, `vy`, `owner` |
+ * | `oz-frikandel-blast` | fx | the holy-mayo explosion (R2-11): on its first tick `frikandelExplosion` (radius `r`, default `FRIKANDEL_BLAST.radius` 60); a fireball with a cream-white burst and a warm glow, a light (`LIGHT_TAG`). Params `owner` (−1), `r` |
  * | `oz-mayo-splat` | fx | the white splash when the mayo takes a hit (snack power). Param `facing` |
  *
- * THE SOUL CONTRACT (POSSESSED, and wave B's statue, implement it; duck-typed, no import needed):
- * ```ts
- * interface SoulHost { ejectSoul(cause: SoulEjectCause): boolean }   // drive the soul out NOW (as at 0 HP; score it as a kill for cause.owner); false = no soul in it
- * interface SoulEjectCause { owner: number; weapon: string; source: Entity | null; x: number; y: number }
- * ```
- * `holyMayoBlast(world, x, y, owner, r)` calls `ejectSoul` on every live entity with that method
- * whose hit box is within r, kills the free souls (`oz-soul`: `world.damage`, kind 'explosion',
- * weapon `oz-frikandel`) and dispels ghost shots (`oz-ghost-shot`); it hurts nobody else (no
- * other damage to people, spec §4.3). Returns the number of souls driven out or blasted.
+ * THE EXPLOSION (revision 2, R2-11; `frikandelExplosion(world, x, y, owner, r)`, also exported as
+ * `holyMayoBlast`): heavy damage to every dead soldier within r (`FRIKANDEL_BLAST.damage` 150 at the
+ * centre → `edge` 80 at r; `Zombie.blast`: damage + a heavy stagger). Revision 2 has no souls (R2-6):
+ * wave A's soul contract went with the possessed (INTEGRATE). Nobody else is hurt (heroes, neutrals, other enemies). Returns the number of enemies hit.
  */
-import type { Damage } from '../../../../engine/entity';
 import { Entity } from '../../../../engine/entity';
 import { distToRect, type Rect } from '../../../../engine/math';
 import { PAL } from '../../../../engine/palette';
@@ -33,7 +28,10 @@ import { isPlayer } from '../../../player/player';
 import { defineEntity, defineWeapon, paramNum } from '../../../registry';
 import { throwStart, type FireContext } from '../../../weapons';
 import { eatMeal } from '../../characters/snack-power';
-import { OZ_POSSESSED, OZ_STATUS_SNACK, OZ_WUGHOST } from '../../missions/oldenzaal/ids';
+import { OZ_STATUS_SNACK, OZ_WUGHOST } from '../../missions/oldenzaal/ids';
+import { isZombie } from '../zombies/api';
+import { FRIKANDEL_BLAST } from '../zombies/numbers';
+import { explosion } from '../../../fx';
 import { SNACK_POWER_CALLOUT } from '../../missions/oldenzaal/lines';
 import { LIGHT_TAG, type LightSource, type LightSpot } from '../kit/light-api';
 
@@ -52,87 +50,60 @@ export const FRIKANDEL = {
   fuse: 150,
   cooldown: 24,
   inAir: 2,
-  /** The blast: radius (px; a grenade's is 24) and the damage a free soul takes. */
-  radius: 48,
-  soulDamage: 999,
+  /** The explosion's radius (px; a grenade's is 24; R2-11: wide). */
+  radius: FRIKANDEL_BLAST.radius,
   /** Visual life of the blast fx (ticks). */
   blastTicks: 36,
   splatTicks: 24,
 } as const;
 
-// ---------------------------------------------------------------------------- the soul contract
+// ---------------------------------------------------------------------------- the explosion
 
-export interface SoulEjectCause {
-  /** The player slot that drove it out (−1 = nobody: a script). */
-  owner: number;
-  /** The weapon id (`oz-frikandel` for the holy mayo). */
-  weapon: string;
-  source: Entity | null;
-  /** Centre of the blast. */
-  x: number;
-  y: number;
-}
-
-/** A possessed host (POSSESSED) or anything else a soul can be driven out of. */
-export interface SoulHost {
-  ejectSoul(cause: SoulEjectCause): boolean;
-}
-
-export function isSoulHost(e: Entity): e is Entity & SoulHost {
-  return typeof (e as Partial<SoulHost>).ejectSoul === 'function';
-}
-
-const cause: SoulEjectCause = { owner: -1, weapon: OZ_WUGHOST.frikandel, source: null, x: 0, y: 0 };
+const zcause = { owner: -1, damage: 0, x: 0, y: 0, weapon: OZ_WUGHOST.frikandel as string, stagger: FRIKANDEL_BLAST.stagger };
 const area: Rect = { x: 0, y: 0, w: 0, h: 0 };
 const found: Entity[] = [];
-const soulHit: Damage = { amount: FRIKANDEL.soulDamage, kind: 'explosion', dirX: 1, weapon: OZ_WUGHOST.frikandel };
 
-/** The holy mayo at (x, y): drives every soul within r out at once (see the module comment). */
-export function holyMayoBlast(world: World, x: number, y: number, owner = -1, r: number = FRIKANDEL.radius, source: Entity | null = null): number {
+/**
+ * The holy-mayo explosion at (x, y) (R2-11; see the module comment): the dead soldiers take heavy
+ * damage and a stagger. Returns the hits.
+ */
+export function frikandelExplosion(world: World, x: number, y: number, owner = -1, r: number = FRIKANDEL.radius, _source: Entity | null = null): number {
   area.x = x - r;
   area.y = y - r;
   area.w = r * 2;
   area.h = r * 2;
   found.length = 0;
   world.query(area, undefined, found);
-  cause.owner = owner;
-  cause.source = source;
-  cause.x = x;
-  cause.y = y;
-  soulHit.owner = owner;
-  soulHit.source = source ?? undefined;
+  zcause.owner = owner;
+  zcause.x = x;
+  zcause.y = y;
   let n = 0;
   for (let i = 0; i < found.length; i++) {
     const e = found[i];
     if (!e.alive || e.removed || isPlayer(e)) continue;
-    if (distToRect(x, y, e.hitRect()) >= r) continue;
-    if (e.type === OZ_POSSESSED.ghostShot) {
-      e.remove();
-      continue;
-    }
-    if (e.type === OZ_POSSESSED.soul) {
-      soulHit.dirX = e.x < x ? -1 : 1;
-      if (world.damage(e, soulHit)) n++;
-      continue;
-    }
-    if (isSoulHost(e)) {
-      try {
-        if (e.ejectSoul(cause)) n++;
-      } catch (err) {
-        world.reportError(`${e.type}.ejectSoul`, err);
+    const dist = distToRect(x, y, e.hitRect());
+    if (dist >= r) continue;
+    try {
+      if (isZombie(e)) {
+        zcause.damage = FRIKANDEL_BLAST.damage + (FRIKANDEL_BLAST.edge - FRIKANDEL_BLAST.damage) * Math.min(1, dist / r);
+        if (e.blast(zcause)) n++;
       }
+    } catch (err) {
+      world.reportError(`${e.type}.frikandel`, err);
     }
   }
   found.length = 0;
-  cause.source = null;
   return n;
 }
 
+/** Wave A's name for the blast (kept: scripts and tests call it). */
+export const holyMayoBlast = frikandelExplosion;
+
 // ---------------------------------------------------------------------------- the frikandel
 
-/** Is `e` something the frikandel pops on (a host with a soul, a free soul)? */
+/** Is `e` something the frikandel pops on (a dead soldier in sight)? */
 function popsOn(e: Entity): boolean {
-  return e.alive && (e.type === OZ_POSSESSED.soul || isSoulHost(e));
+  return e.alive && isZombie(e) && !e.hidden;
 }
 
 const near: Entity[] = [];
@@ -140,8 +111,8 @@ const touch: Rect = { x: 0, y: 0, w: 0, h: 0 };
 
 /**
  * The thrown frikandel: a Grenade that flies THROUGH people (no 'shot' tag: no direct damage)
- * and pops on its first floor contact, on touching a host or a free soul, or when its fuse runs
- * out: the holy-mayo blast (`oz-frikandel-blast`).
+ * and pops on its first floor contact, on touching a dead soldier, or when
+ * its fuse runs out: the holy-mayo explosion (`oz-frikandel-blast`).
  */
 export class FrikandelBomb extends Grenade {
   private popped = false;
@@ -278,13 +249,13 @@ const SPARKLE: ParticlePreset = {
 const blastOpts: DrawOpts = {};
 const glowOpts: DrawOpts = { blend: 'add', alpha: 0.5 };
 
-/** The holy-mayo blast fx: runs `holyMayoBlast` on its first tick, then shows the burst. */
+/** The holy-mayo explosion fx: runs `frikandelExplosion` on its first tick, then shows the fireball and the burst. */
 export class OzFrikandelBlast extends Entity implements LightSource {
   t = 0;
   readonly owner: number;
   readonly r: number;
-  /** Souls the blast drove out (set on its first tick). */
-  souls = 0;
+  /** The dead soldiers the blast hit (set on its first tick). */
+  hits = 0;
 
   constructor(world: World, x: number, y: number, owner: number, r: number) {
     super(world, x, y);
@@ -301,11 +272,12 @@ export class OzFrikandelBlast extends Entity implements LightSource {
   override update(): void {
     if (this.t === 0) {
       const w = this.world;
-      this.souls = holyMayoBlast(w, this.x, this.y - 8, this.owner, this.r, this);
+      this.hits = frikandelExplosion(w, this.x, this.y - 8, this.owner, this.r, this);
+      // A real explosion (R2-11): the fireball, smoke and debris (no damage of its own: the hits are above).
+      explosion(w, this.x, this.y, 'm', { damage: 0, owner: this.owner, shake: 4, silent: false });
       w.audio.sfx('oz/meal/blast');
-      w.camera.shake(2, 10);
-      w.particles.burst(CREAM, this.x, this.y - 6, 18, 1, 3.2, -Math.PI / 2, 2.6);
-      w.particles.burst(SPARKLE, this.x, this.y - 12, 14, 0.4, 1.6);
+      w.particles.burst(CREAM, this.x, this.y - 6, 26, 1.2, 3.8, -Math.PI / 2, 2.8);
+      w.particles.burst(SPARKLE, this.x, this.y - 12, 18, 0.4, 1.9);
     }
     if (++this.t >= FRIKANDEL.blastTicks) this.remove();
   }
@@ -315,7 +287,7 @@ export class OzFrikandelBlast extends Entity implements LightSource {
     if (k <= 0) return false;
     out.x = this.x;
     out.y = this.y - 14;
-    out.r = 40 + 30 * (1 - k);
+    out.r = 52 + 40 * (1 - k);
     out.color = PAL_HD_OZ.candle[5];
     out.intensity = k;
     out.flicker = 0;
@@ -334,7 +306,7 @@ export class OzFrikandelBlast extends Entity implements LightSource {
 
 defineEntity(OZ_WUGHOST.blast, (w, x, y, p) => new OzFrikandelBlast(w, x, y, paramNum(p, 'owner', -1), Math.max(8, paramNum(p, 'r', FRIKANDEL.radius))), {
   category: 'fx',
-  description: 'oldenzaal: the holy-mayo blast (drives the souls out within r).',
+  description: 'oldenzaal: the holy-mayo explosion (R2-11): heavy damage and a stagger to every dead soldier within r.',
 });
 
 // ---------------------------------------------------------------------------- the splat

@@ -1,46 +1,51 @@
 /**
- * oz-e — the tower, scrolling up to the top (docs/design/oldenzaal.md §2, §8, §9: the storm; the
- * climb, the horde tide, the bells; at the top the Swan finale).
+ * oz-e — the crypt under the choir (docs/design/oldenzaal.md §2, §7.2, REVISION 2: almost dark;
+ * votive candles and a lantern glow). Owner: CHURCH.
  *
- * CORE STUB (wave A): a small vertical placeholder (384 × 648, `scroll: 'up'`): a zig-zag of
- * ledges (terrain.ts) and an exit at the top that completes the mission. Wave B (TOWER, FINALE)
- * builds the real climb (about 384 × 1,800) and the finale, whose last step is
- * `ctx.missionComplete()`. Keep `sectionOzE` and 'oz-e'.
+ * West → east: the stair down from the choir, squat columns under low round groin vaults, tombs
+ * whose lids slide off as the dead climb out (`oz-tomb` openings), old coffins on trestles (low
+ * platforms), the iron gate (a short locked fight), the narrow stair up to the tower door
+ * (→ oz-f). The back wall with its niches and coffins is the background. Layout:
+ * content/oldenzaal/church/layout.ts; art: church/art-crypt.ts; script: script-oz-e.ts.
  */
+import { PAL } from '../../../../engine/palette';
 import { PAL_HD_OZ } from '../../../../engine/palette-hd';
-import type { SectionDef } from '../../../mission/index';
+import type { BackgroundDef, SectionDef } from '../../../mission/index';
+import { CRYPT_DECOR, CRYPT_LAMPS, decorIds } from '../../oldenzaal/church/decor';
+import { CRYPT_CHECKPOINTS, CRYPT_STYLE, CRYPT_W, G, terrainCrypt } from '../../oldenzaal/church/layout';
 import { defineSectionLight } from '../../oldenzaal/kit/light-api';
-import { BG_OZ_E } from './backgrounds';
-import { OZ_AMBIENCE, OZ_SECTION, OZ_SONG } from './ids';
-import { OZ_E_FLOOR, OZ_E_H, OZ_E_W, terrainOzE } from './terrain';
+import { OZ_AMBIENCE, OZ_SECTION, OZ_SONG, OZ_SPRITES } from './ids';
+import { scriptOzE } from './script-oz-e';
 
-/** The storm: rain, frequent lightning that lights the whole tower. */
+/** Almost dark: the darkest section (≤ 0.7, the readability rule); candles, lanterns, the heroes' glow. */
 export const OZ_E_LIGHT = defineSectionLight(OZ_SECTION.e, {
-  darkness: 0.55,
-  tint: PAL_HD_OZ.night[1],
-  rain: { density: 0.8, slant: 0.3 },
-  lightning: { every: [240, 600], strength: 1, double: 0.4 },
-  heroLight: 32,
+  darkness: 0.66,
+  tint: PAL_HD_OZ.night[0],
+  lamps: CRYPT_LAMPS,
+  heroLight: 36,
 });
+
+/** The crypt's back wall (church/art-crypt.ts `oz-crypt-far`; 5 bays, tiles). */
+export const BG_CRYPT: BackgroundDef = {
+  sky: PAL.ink[0],
+  layers: [{ gen: 'oz-crypt-far', params: { air: 0.3 }, width: 480, factorX: 0.6 }],
+};
 
 export const sectionOzE: SectionDef = {
   id: OZ_SECTION.e,
-  name: 'The tower (storm)',
-  width: OZ_E_W,
-  height: OZ_E_H,
-  scroll: 'up',
-  background: BG_OZ_E,
-  terrain: terrainOzE(),
-  terrainStyle: { ground: 'klinker', edge: 'kerb', platform: 'wood', solid: 'brick' },
-  decor: [],
-  art: [],
-  playerStart: { x: 192, y: OZ_E_FLOOR },
-  checkpoints: [OZ_E_H - 324],
-  music: OZ_SONG.tower,
-  ambience: OZ_AMBIENCE.storm,
-  // The top ledge (k = 16, feet y 48) is inside the rect: the placeholder's mission end.
-  exits: [{ id: 'top', rect: { x: 24, y: 0, w: OZ_E_W - 48, h: 52 }, to: 'complete' }],
-  *script(ctx) {
-    ctx.showGo('up');
-  },
+  name: 'The crypt',
+  width: CRYPT_W,
+  height: 216,
+  scroll: 'right',
+  background: BG_CRYPT,
+  terrain: terrainCrypt(),
+  terrainStyle: CRYPT_STYLE,
+  decor: [...CRYPT_DECOR],
+  // Tier 4: the crypt's decor, the tombs, the gate, the dead soldiers.
+  art: [...decorIds(CRYPT_DECOR), 'decor/oz-crypt/gate', 'prop/oz-tomb/', ...OZ_SPRITES.zombies],
+  playerStart: { x: 48, y: G },
+  checkpoints: [...CRYPT_CHECKPOINTS],
+  music: OZ_SONG.theme,
+  ambience: OZ_AMBIENCE.nave,
+  script: scriptOzE,
 };
