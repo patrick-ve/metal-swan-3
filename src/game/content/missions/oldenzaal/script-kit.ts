@@ -82,6 +82,17 @@ function riseSpotsOf(ctx: SectionContext): readonly number[] {
   return ctx.section.id === 'oz-b' ? OZ_B_RISE : OZ_A_RISE;
 }
 
+/** Ticks before a rise spot can be used again (revision 3: more of the dead, never two in one hole). */
+const SPOT_REUSE = 150;
+const spotUse = new WeakMap<object, Map<number, number>>();
+
+/** The tick each rise spot of this world was last used. */
+function usedSpots(ctx: SectionContext): Map<number, number> {
+  let m = spotUse.get(ctx.world);
+  if (!m) spotUse.set(ctx.world, (m = new Map()));
+  return m;
+}
+
 /**
  * A dead soldier rises from the pavers at the rise spot in view nearest to `x` (the API keeps it
  * clear of the heroes; never a spot behind a low wall from them); with no spot in view, at `x`
@@ -89,14 +100,24 @@ function riseSpotsOf(ctx: SectionContext): readonly number[] {
  */
 export function zRise(ctx: SectionContext, kind: ZombieKind, x: number, o: ZOpts = {}): ZombieEntity {
   let best = NaN;
+  let fresh = NaN;
   const hx = heroX(ctx);
+  const used = usedSpots(ctx);
+  const now = ctx.world.tick;
   for (const s of riseSpotsOf(ctx)) {
     // Never behind a low wall from the heroes (a crawler there can neither reach them nor be hit).
     if (!inView(ctx, s, 32) || (Number.isFinite(hx) && wallBetween(ctx, s, hx))) continue;
     if (!(Math.abs(s - x) >= Math.abs(best - x))) best = s;
+    // Revision 3: a spot one of the dead came up at a moment ago is taken (no two in one hole).
+    if (now - (used.get(s) ?? -Infinity) >= SPOT_REUSE && !(Math.abs(s - x) >= Math.abs(fresh - x))) fresh = s;
   }
+  // Every spot in view was used a moment ago: the nearest one, once the last one is out of it.
+  let delay = o.delay ?? 0;
+  if (Number.isFinite(fresh)) best = fresh;
+  else if (Number.isFinite(best)) delay = Math.max(delay, (used.get(best) ?? now) + SPOT_REUSE - now);
   const sx = Number.isFinite(best) ? best : Math.max(ctx.camera.left + 40, Math.min(ctx.camera.right - 40, x));
-  return spawnZombie(ctx, kind, sx, G, { kind: 'rise', surface: 'pavers', delay: o.delay }, { tag: o.tag, drop: o.drop });
+  if (Number.isFinite(best)) used.set(best, now + delay);
+  return spawnZombie(ctx, kind, sx, G, { kind: 'rise', surface: 'pavers', delay: delay || undefined }, { tag: o.tag, drop: o.drop });
 }
 
 /** The closed, free opening of `kinds` in view nearest to x (RUIN's boarded doors / windows, manholes). */
@@ -144,6 +165,51 @@ export function zManhole(ctx: SectionContext, kind: ZombieKind, x: number, o: ZO
 /** A column of the dead MARCHING in out of the fog at the far (right) end of the view (spec §3.3). */
 export function zMarch(ctx: SectionContext, kinds: readonly ZombieKind[], tag?: string): ZombieEntity[] {
   return marchColumn(ctx, kinds, { from: 'right', tag });
+}
+
+// ------------------------------------------------------------------------------ revision 3: more of the dead
+
+/*
+ * Revision 3 (2026-10-21, the user after a play: "I want more zombies as it is very easy to play
+ * against them now"): more of the dead at a time, still the slow tanks (numbers.ts unchanged).
+ * Bigger, mixed groups (grunts in front, a rifleman or the MG behind, crawlers under the fire
+ * line), pincers from both view edges, more bursts, manholes and rises around the squad. EASY
+ * stays close to revision 2, NORMAL is clearly harder, HARD harder again; 2P gets more than 1P.
+ * The fairness rules stay the API's: every entrance tells, attacks only on screen, the attack
+ * tokens (3 / 4 / 6) cap how many attack at once.
+ */
+
+/** The difficulty step: 0 easy, 1 normal, 2 hard. */
+export function ozTier(ctx: SectionContext): 0 | 1 | 2 {
+  const d = ctx.session.difficulty;
+  return d === 'easy' ? 0 : d === 'hard' ? 2 : 1;
+}
+
+/** The value for the running difficulty. */
+export function byTier<T>(ctx: SectionContext, easy: T, normal: T, hard: T): T {
+  const t = ozTier(ctx);
+  return t === 0 ? easy : t === 1 ? normal : hard;
+}
+
+/** Px between two of a squad that walks in at a view edge (one behind the other). */
+export const SQUAD_GAP = 26;
+
+/**
+ * A squad walks in from just outside the right view edge, one behind the other (the first kind
+ * leads: put the grunts and the crawlers in front, the rifleman or the MG zombie behind them).
+ */
+export function zSquadRight(ctx: SectionContext, kinds: readonly ZombieKind[], o: ZOpts = {}): ZombieEntity[] {
+  return kinds.map((k, i) => zRight(ctx, k, o, 16 + SQUAD_GAP * i));
+}
+
+/** A squad walks in from just outside the left view edge (see `zSquadRight`; a wall there: from the right). */
+export function zSquadLeft(ctx: SectionContext, kinds: readonly ZombieKind[], o: ZOpts = {}): ZombieEntity[] {
+  return kinds.map((k, i) => zLeft(ctx, k, o, 16 + SQUAD_GAP * i));
+}
+
+/** A pincer: a squad from each view edge at once (the squad is caught between them). */
+export function zPincer(ctx: SectionContext, left: readonly ZombieKind[], right: readonly ZombieKind[], o: ZOpts = {}): ZombieEntity[] {
+  return [...zSquadLeft(ctx, left, o), ...zSquadRight(ctx, right, o)];
 }
 
 /** The drop spec of a weapon pickup (an enemy's `drop`). */

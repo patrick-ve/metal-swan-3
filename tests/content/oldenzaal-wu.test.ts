@@ -13,7 +13,6 @@ import { loadContent } from '../../src/game/content/index';
 import { eatMeal, FRIKANDEL, frikandelsLeft, holyMayoBlast, OZ_STATUS_FRIKANDEL, SNACK, splatReady } from '../../src/game/content/oldenzaal/items/index';
 import { OzWinkel, OzWu, WU_SCENE, wuScene } from '../../src/game/content/oldenzaal/npcs/index';
 import { OZ_SPRITES, OZ_STATUS_SNACK, OZ_WUGHOST } from '../../src/game/content/missions/oldenzaal/ids';
-import { WU_LINES } from '../../src/game/content/missions/oldenzaal/lines';
 import type { SectionContext } from '../../src/game/mission/index';
 import { Player } from '../../src/game/player/player';
 import { getEntityMeta, getStatus, getWeapon, hasEntity, hasWeapon } from '../../src/game/registry';
@@ -258,7 +257,7 @@ describe("Meneer Wu's scene", () => {
   it('1P: the full scene gives the hero the meal (snack power + 2 frikandels)', async () => {
     const { g, ticks, wu } = await scene(1, false);
     const p = g.player(0)!;
-    expect(ticks).toBeGreaterThan(WU_LINES.length * WU_SCENE.lineTicks);
+    expect(ticks).toBeGreaterThan(WU_SCENE.lineTicks.reduce((a, b) => a + b, 0));
     expect(wu.tossed).toBe(1);
     expect(p.status.has(OZ_STATUS_SNACK) || p.status.has(OZ_STATUS_FRIKANDEL)).toBe(true);
     expect(frikandelsLeft(p)).toBe(2);
@@ -269,7 +268,7 @@ describe("Meneer Wu's scene", () => {
 
   it('2P, skipped: both heroes still get one meal each, and it is much shorter', async () => {
     const { g, ticks } = await scene(2, true);
-    expect(ticks).toBeLessThan(WU_LINES.length * WU_SCENE.lineTicks);
+    expect(ticks).toBeLessThan(WU_SCENE.lineTicks.reduce((a, b) => a + b, 0));
     for (const slot of [0, 1] as const) {
       const p = g.player(slot)!;
       expect(frikandelsLeft(p), `P${slot + 1}`).toBe(2);

@@ -972,7 +972,7 @@ Clear the arena first (the scene does not wait for enemies).
 ### Statuses (`characters/snack-power.ts`)
 
 - `snack-power`: 1,200 ticks (Patrick 1,800), `fireRate: 1.5`, one hit absorbed (crushers still
-  kill; 60 invulnerable ticks, `oz-mayo-splat`, `SPLAT!`), a warm tint pulse, the HUD icon
+  kill; 60 invulnerable ticks, `oz-mayo-splat`, `PLETS!`), a warm tint pulse, the HUD icon
   `ui/icon-oz-meal` with a countdown ring (no bar). `eatMeal(p)`, `snackTicks(p)`, `splatReady(p)`.
 - `snack-frikandel` (`OZ_STATUS_FRIKANDEL`): `bomb` = the frikandel, 2 throws (`frikandelsLeft(p)`);
   the HUD bomb slot shows `ui/icon-oz-frikandel xN`; then the grenades are back.

@@ -70,6 +70,88 @@ says otherwise, revision 2 wins.
 | R2-11 | The frikandel blast is now a big **explosion** (heavy damage to the zombies in a wide radius) | lead default |
 | R2-12 | Meneer Wu is the last living soul in town who still works: his joke gets stronger (he keeps the fryer going while the dead walk) | lead default |
 
+### Revision 3a (2026-10-21, after the user's play of wave B): more zombies
+
+The user after a play: "I want more zombies as it is very easy to play against them now". The dead
+stay the slow tanks of R2-1 (numbers.ts unchanged: grunt 90 HP, rifleman 90, MG 260, crawler 40,
+walk ≤ 0.5 px/tick); there are just more of them at a time. On normal and hard: bigger, mixed
+groups (grunts in front, a rifleman or the MG zombie behind, crawlers under the fire line), squads
+and pincers from both view edges (script-kit.ts `zSquadLeft` / `zSquadRight` / `zPincer`), a third
+wave in the big locks, more bursts, manholes and rises (a rise spot is not reused within 150 ticks),
+more posts in the tower, and in the statue's phase 2 a few dead called up behind the heroes (they
+collapse when the saint is freed). Easy keeps the revision-2 numbers; 2P gets more than 1P. The
+fairness rules stay: every entrance tells, attacks only on screen, the attack tokens (3 / 4 / 6)
+cap how many attack at once, no new MG on easy and normal (hard: one more per big lock).
+
+Dead spawned per section (god bot, seed 1; revision 2 → revision 3):
+
+| | oz-a | oz-b | oz-c | oz-d | oz-e | oz-f | total | most on screen |
+|---|---|---|---|---|---|---|---|---|
+| easy 1P | 34 | 21 | 5 | 16 | 14 | 8 | 98 → 98 | 4 → 4 |
+| normal 1P | 40 → 78 | 27 → 50 | 5 → 12 | 20 → 44 | 16 → 29 | 10 → 19 | 118 → 232 | 5 → 10 |
+| normal 2P | 43 → 86 | 29 → 56 | 5 → 14 | 23 → 53 | 18 → 33 | 12 → 23 | 130 → 265 | 5 → 8 |
+| hard 1P | 43 → 87 | 28 → 55 | 5 → 16 | 22 → 52 | 17 → 32 | 10 → 23 | 125 → 265 | 6 → 11 |
+| hard 2P | 46 → 95 | 30 → 61 | 5 → 17 | 25 → 61 | 19 → 36 | 12 → 27 | 137 → 297 | 6 → 8 |
+
+The bot's deaths to the dead (all sections but the statue's, seeds 1–3) on normal 1P went from
+5–8 to 14–17; the run takes about 50 s longer. tests/content/oldenzaal-more-zombies.test.ts pins
+the scaling.
+
+### Revision 3b (2026-10-21): Twente wares
+
+The user: "the stores should have typical goods and wares from Twente. Research and implement".
+Eight of the 18 shop fronts are now Twente shops with their goods in the window (art-street.ts
+`SHOPS[].wares`, painted by art-wares.ts between the dark room and the planks / shards, so they
+read through the gaps; 1×, 2× and 4× from one drawer; frame sizes unchanged):
+
+| Sign (frame) | Was | What the window shows |
+|---|---|---|
+| BAKKERIJ (0) | — | one long **krentenwegge** on its board across the window (mould), krentenbroden, a roggebrood, a tipped basket of rolls; boarded, the top plank torn off |
+| SLAGERIJ (1) | shutter down | **metworsten**, grey **Twentse bakleverworsten** and droge worsten on hooks, grey blocks of **balkenbrij** on a tray; now smashed |
+| STOFFEN (2) | BOEKHANDEL | bolts and rolls of checked cotton (the Twente textile industry), a torn length, cones of yarn |
+| SLIJTERIJ (3) | OPTIEK | brown **beugelflessen** (swing-tops), stoneware kruiken, square bottles of a local kruidenbitter (blank labels), a beer crate |
+| KLOMPEN (6) | SCHOENEN | pairs of pale poplar **klompen** on shelves, one kicked over; now smashed (the burnt shop is SPEELGOED now) |
+| BANKET (9) | JUWELIER | **knieperkes** (rolled New Year wafers) in jars and round tins, a krentenwegge with a bow |
+| GROENTEN (14) | FOTO | heads of **boeskool** (white cabbage; Oldenzaal is "Boeskoolstad" at carnival), some rotting |
+| HOUTWAREN (17) | KLOKKEN | **midwinterhoorns** (long, slightly curved bare-wood horns, bands, an elder mouthpiece) on hooks, one fallen; a split trunk |
+
+Also: the torn **flag of Twente** (the white rearing horse, the Twentse Ros, on red; a black
+outline at 2× / 4×) pinned under a window sill of one BAKKERIJ front in oz-a (`decor/oz/flag`), and
+wares tipped out on the pavement before a few of these shops (`decor/oz/wares`: a beer crate,
+klompen on a crate, a crate of boeskool). Everything is grim: faded colours, mould, dust,
+cobwebs, things knocked over. Only De Smulhoek is lit and warm.
+
+Research (web, 2026-10-21; each item checked in at least one source): krentenwegge, the long
+Twente birth loaf (nl.wikipedia.org/wiki/Krentenwegge); knieperkes (also Drenthe, Groningen);
+Twentse bakleverworst (Slow Food Ark of Taste); balkenbrij, grey blocks (nl.wikipedia.org/wiki/
+Balkenbrij); klompen, Enter had more than 300 makers; the midwinterhoorn, alder / birch, about
+1.2–1.5 m, blown from Advent to 6 January, also from the basilica tower in Oldenzaal
+(immaterieelerfgoed.nl, nl.wikipedia.org/wiki/Midwinterhoorn); the Twente textile mills,
+Oldenzaal had its own (nl.wikipedia.org/wiki/Oldenzaal); boeskool and "Boeskoolstad"
+(nl.wikipedia.org/wiki/Oldenzaal); swing-top beer bottles and local bitters (en.wikipedia.org/
+wiki/Twente); the flag of Twente (nl.wikipedia.org/wiki/Vlag_van_Twente). Not verified, so drawn
+as generic Dutch only: a "Twente" check colour, the metworst's look, a Twente link for jenever
+kruiken, Twente paint colours on klompen.
+
+The no-brand rule holds: only generic Dutch shop words on the signs (all in our pixel lettering,
+no diacritics), no business names, no brand names, logos or label text on any product, no club
+crest.
+
+### Revision 3c (2026-10-21): Dutch bubbles and voices; the audio ships
+
+The user: "I am okay with the credits. You may generate audio. Note that all text bubbles and
+audio should be in Dutch". Every speech bubble and every voiced line of this mission is now plain,
+standard Dutch (`missions/oldenzaal/lines.ts`; no diacritics, the pixel font has none): Meneer Wu's
+scene, Mevrouw Winkel's wake and flight, the saint (already Dutch), the meal's callout
+`SNACKKRACHT!` and pop `PLETS!`, the announcer's `MISSIE VIER. BLIJF BIJ ELKAAR, ZWAANTJES!`, and the
+tower's two banners (`DE DODEN KLIMMEN! OMHOOG!`, `GEEN WEG TERUG!`). The story card, the TO BE
+CONTINUED card, the MISSION 4 card and the game's own HUD words (MINI-BOSS, TAP JUMP!, CHECKPOINT)
+stay English. The voice designs describe Dutch speakers. The ElevenLabs round ran on 2026-10-21
+(docs/api/audio-pipeline.md "Mission oldenzaal"): 3 voices, 91 sfx, 4 songs, 16 lines; about
+17,200 credits. Because a speaker's next bubble cuts off the playing line, Wu's lines and the wake
+got per-line beats that fit the shipped takes (`WU_SCENE.lineTicks`, `WAKE.lines`; the test
+`oldenzaal-voice-fit.test.ts`).
+
 Scope: the new mission `oldenzaal`, its flow changes and the engine opt-ins it needs. `ams`, `ring`
 and the first-person floors keep their content; `ams` (lower and upper), m0 and m2 keep their sims
 byte-identical, and the ring's sims stay byte-identical too.
@@ -187,7 +269,7 @@ byte-identical, and the ring's sims stay byte-identical too.
 
 ### 4.3 The meal (the power-up)
 - **Snack power** (a status like Helium Head, `player/status.ts`): 20 s (Patrick: 30 s); fire rate
-  ×1.5; one hit is absorbed by a mayo splat (a white splash, a `SPLAT!` pop); a HUD icon (a tray
+  ×1.5; one hit is absorbed by a mayo splat (a white splash, a `PLETS!` pop); a HUD icon (a tray
   of fries) with a countdown ring; a warm tint pulse on the hero.
 - **Frikandel bombs**: 2 per hero, a special throw (BOMB while you have them; then the normal
   grenades come back): a frikandel in a high arc, a **holy-mayo blast** on landing: a big
@@ -236,7 +318,7 @@ byte-identical, and the ring's sims stay byte-identical too.
 - **No more ghosts** (R2-6): she appears **once, in the middle of the level**: on Plechelmusplein
   she wakes the statue (§5.2). Her roof moment in `oz-a` goes. Her face and her laugh stay on the
   `TO BE CONTINUED` card (a teaser for stage 2, where she is fought).
-- Her lines: few and short, our own (English with Dutch flavour), voiced by an ElevenLabs designed
+- Her lines: few and short, our own (Dutch since revision 3c), voiced by an ElevenLabs designed
   voice (an eerie, whispering middle-aged woman; never a clone or an imitation).
 
 ## 7. The church interior: the nave (oz-d) and the crypt (oz-e) (revision 2)
@@ -345,6 +427,10 @@ toppled candle stands), never mocked.
   and blown newspapers, toppled bikes and bins, abandoned cars (doors open, flat tyres, a
   **burned-out car**), police tape and crowd barriers, an emergency sign, a few torn swastika
   banners hung by the dead (R2-2). Only **De Smulhoek** is still open: its windows glow warm.
+- **Twente shops** (revision 3, Twente wares, §0): eight fronts sell Twente goods that still read
+  through the boards and the broken glass (krentenwegge, metworst and bakleverworst, checked
+  cotton, swing-top bottles, klompen, knieperkes, boeskool, midwinterhoorns); the torn flag of
+  Twente hangs from one front.
 - **Plechelmusplein**: the open square in front of the basilica (§5.1).
 - Shop and brand names other than De Smulhoek are our own made-up names.
 
@@ -367,10 +453,10 @@ toppled candle stands), never mocked.
   rain and wind loops, the doors slamming, candles, the frikandel throw and the mayo splat, the
   jet Swan.
 - **Voices** (ElevenLabs Voice Design, from text descriptions; never a clone or an imitation):
-  `wu` (a warm, brisk, slightly gruff middle-aged man who sounds busy; plain Dutch-flavoured
-  English; never an imitated or caricatured accent), `winkel` (an
+  `wu` (a warm, brisk, slightly gruff middle-aged man who sounds busy; plain, standard Dutch;
+  never an imitated or caricatured accent), `winkel` (an
   eerie, whispering middle-aged woman), `plechelmus` (a deep, stony rumble; 1–3 lines). Lines are
-  our own text, short, English with Dutch flavour.
+  our own text, short, in Dutch (revision 3c).
 - Tooling: a new sample group for the mission (the group names are hard-coded in
   `tools/audio/spec-types.ts`, `lib.ts`, `ship.ts`, `review.ts` and `engine/samples.ts`). The
   AUDIO builder writes the spec and a **credit estimate** in wave A; the generation runs in wave B

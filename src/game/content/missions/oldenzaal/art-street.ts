@@ -21,11 +21,17 @@
  *   its foot; frame 0 lit, 1 unlit). `LAMP_HEADS`: the two lamp heads relative to the foot.
  * - `decor/oz/signpost` — the black signpost with four boards (MUSEUM, PLECHELMUSBASILIEK,
  *   STADHUIS, GANZENMARKT; lines.ts `SIGNPOST`), anchor at the pole's foot.
+ * - Revision 3 (2026-10-21, Twente wares; art-wares.ts): eight shops sell Twente goods
+ *   (BAKKERIJ, SLAGERIJ, STOFFEN, SLIJTERIJ, KLOMPEN, BANKET, GROENTEN, HOUTWAREN: `ShopSpec.wares`),
+ *   painted between the dark room and the planks / shards / grille, so they read through the
+ *   gaps. `decor/oz/flag` — the torn flag of Twente (anchor top-left, under a window sill:
+ *   `shopUpperWindow`); `decor/oz/wares` — wares tipped out on the pavement (anchor bottom-left).
  * - `decor/oz/bike-rack` (front decor: hoops and two parked bikes), `decor/oz/bench`,
  *   `decor/oz/bin`, `decor/oz/planter` (flowers on a low wall's top), `decor/oz/bollard` (front).
  */
 import type { Color } from '../../../../engine/color';
-import { boards, crack, damp, fnoise, note, r2tones, smashed, sootPlume, weed } from '../../oldenzaal/ruin/paint';
+import { boards, crack, damp, fnoise, note, r2tones, room, smashed, sootPlume, weed } from '../../oldenzaal/ruin/paint';
+import { FLAG_H, FLAG_W, paintWares, PAVE_WARES, paveWares, twenteFlag, type WareKind } from './art-wares';
 import { RUIN_NOTES, SIGNPOST } from './lines';
 import { dim, dq, F, h2, outlineC, pick, reg, snap, T, tinyText, tinyWidth, tones, type Dn, type FrameGeom, type Pen, type Rn } from './art-kit';
 
@@ -67,6 +73,11 @@ export interface ShopSpec {
    * burnt out (the soot climbs the front); none = its shutter / grille, dented and grimy.
    */
   readonly ruin?: 'boarded' | 'smashed' | 'burnt';
+  /**
+   * Revision 3 (2026-10-21, the Twente wares; art-wares.ts): the goods in the window, showing
+   * through the gaps of the planks, the smashed glass or the grille. None = an empty, dark shop.
+   */
+  readonly wares?: WareKind;
 }
 
 /** Ground floor (the shop) and upper storey heights, the cornice (logical px). */
@@ -83,48 +94,52 @@ const WALL_RAMP: Readonly<Record<WallKind, readonly [Rn, number, boolean]>> = {
   cream: ['sand', 3.6, false],
 };
 
-/** The street's shop fronts (frame index = index here). Names are generic Dutch shop words. */
+/**
+ * The street's shop fronts (frame index = index here). Names are generic Dutch shop words, never a
+ * real business or a brand. Revision 3 (Twente wares, docs/design/oldenzaal.md §10.3): eight of
+ * them are Twente shops with their goods in the window (`wares`).
+ */
 export const SHOPS: readonly ShopSpec[] = [
-  { w: 56, floors: 3, wall: 'red', roof: 'eaves', sign: 'BAKKERIJ', board: 'green', shutter: 'half', seed: 1, ruin: 'boarded' },
-  { w: 48, floors: 2, wall: 'dark', roof: 'step', sign: 'SLAGERIJ', board: 'red', shutter: 'down', seed: 2, door: 'r' },
-  { w: 64, floors: 3, wall: 'plaster', roof: 'flat', sign: 'BOEKHANDEL', board: 'navy', shutter: 'grille', seed: 3, bay: true, ruin: 'smashed' },
-  { w: 52, floors: 3, wall: 'brown', roof: 'gable', sign: 'OPTIEK', board: 'black', shutter: 'dark', seed: 4, door: 'r', ruin: 'smashed' },
+  { w: 56, floors: 3, wall: 'red', roof: 'eaves', sign: 'BAKKERIJ', board: 'green', shutter: 'half', seed: 1, ruin: 'boarded', wares: 'bread' },
+  { w: 48, floors: 2, wall: 'dark', roof: 'step', sign: 'SLAGERIJ', board: 'red', shutter: 'down', seed: 2, door: 'r', ruin: 'smashed', wares: 'sausage' },
+  { w: 64, floors: 3, wall: 'plaster', roof: 'flat', sign: 'STOFFEN', board: 'navy', shutter: 'grille', seed: 3, bay: true, ruin: 'smashed', wares: 'cloth' },
+  { w: 52, floors: 3, wall: 'brown', roof: 'gable', sign: 'SLIJTERIJ', board: 'black', shutter: 'dark', seed: 4, door: 'r', ruin: 'smashed', wares: 'drink' },
   { w: 44, floors: 2, wall: 'red', roof: 'eaves', sign: 'KAPPER', board: 'navy', shutter: 'down', seed: 5, ruin: 'boarded' },
   { w: 60, floors: 3, wall: 'grey', roof: 'mansard', sign: 'DROGIST', board: 'green', shutter: 'half', seed: 6, door: 'r' },
-  { w: 56, floors: 2, wall: 'dark', roof: 'gable', sign: 'SCHOENEN', board: 'red', shutter: 'grille', seed: 7, ruin: 'burnt' },
+  { w: 56, floors: 2, wall: 'dark', roof: 'gable', sign: 'KLOMPEN', board: 'red', shutter: 'grille', seed: 7, ruin: 'smashed', wares: 'klompen' },
   { w: 48, floors: 3, wall: 'red', roof: 'step', sign: 'BLOEMEN', board: 'green', shutter: 'down', seed: 8, door: 'r' },
   { w: 60, floors: 3, wall: 'brown', roof: 'eaves', sign: 'IJZERWAREN', board: 'black', shutter: 'half', seed: 9, bay: true, ruin: 'boarded' },
-  { w: 52, floors: 2, wall: 'cream', roof: 'flat', sign: 'JUWELIER', board: 'navy', shutter: 'grille', seed: 10, door: 'r', ruin: 'smashed' },
-  { w: 56, floors: 3, wall: 'dark', roof: 'eaves', sign: 'SPEELGOED', board: 'red', shutter: 'down', seed: 11 },
+  { w: 52, floors: 2, wall: 'cream', roof: 'flat', sign: 'BANKET', board: 'navy', shutter: 'grille', seed: 10, door: 'r', ruin: 'smashed', wares: 'banket' },
+  { w: 56, floors: 3, wall: 'dark', roof: 'eaves', sign: 'SPEELGOED', board: 'red', shutter: 'down', seed: 11, ruin: 'burnt' },
   { w: 44, floors: 2, wall: 'plaster', roof: 'gable', sign: 'KOFFIE', board: 'black', shutter: 'dark', seed: 12, door: 'r', ruin: 'boarded' },
   { w: 52, floors: 3, wall: 'red', roof: 'gable', sign: 'APOTHEEK', board: 'green', shutter: 'grille', seed: 13, door: 'r' },
   { w: 48, floors: 2, wall: 'brown', roof: 'eaves', sign: 'MUZIEK', board: 'navy', shutter: 'down', seed: 14, ruin: 'boarded' },
-  { w: 56, floors: 3, wall: 'dark', roof: 'flat', sign: 'FOTO', board: 'black', shutter: 'half', seed: 15, door: 'r', bay: true, ruin: 'smashed' },
+  { w: 56, floors: 3, wall: 'dark', roof: 'flat', sign: 'GROENTEN', board: 'green', shutter: 'half', seed: 15, door: 'r', bay: true, ruin: 'smashed', wares: 'kool' },
   { w: 44, floors: 3, wall: 'cream', roof: 'step', sign: 'SPORT', board: 'red', shutter: 'down', seed: 16 },
   { w: 60, floors: 2, wall: 'grey', roof: 'eaves', sign: 'HOEDEN', board: 'red', shutter: 'dark', seed: 17, door: 'r', ruin: 'boarded' },
-  { w: 52, floors: 3, wall: 'red', roof: 'mansard', sign: 'KLOKKEN', board: 'black', shutter: 'grille', seed: 18, ruin: 'smashed' },
+  { w: 52, floors: 3, wall: 'red', roof: 'mansard', sign: 'HOUTWAREN', board: 'black', shutter: 'grille', seed: 18, ruin: 'smashed', wares: 'horns' },
 ];
 
 /** Shop frame indices by name (layouts). */
 export const SHOP = {
   bakkerij: 0,
   slagerij: 1,
-  boekhandel: 2,
-  optiek: 3,
+  stoffen: 2,
+  slijterij: 3,
   kapper: 4,
   drogist: 5,
-  schoenen: 6,
+  klompen: 6,
   bloemen: 7,
   ijzerwaren: 8,
-  juwelier: 9,
+  banket: 9,
   speelgoed: 10,
   koffie: 11,
   apotheek: 12,
   muziek: 13,
-  foto: 14,
+  groenten: 14,
   sport: 15,
   hoeden: 16,
-  klokken: 17,
+  houtwaren: 17,
 } as const;
 
 function roofH(s: ShopSpec): number {
@@ -459,10 +474,17 @@ function shopWindow(p: Pen, s: ShopSpec, x: number, y: number, w: number, h: num
   const steel = gt('steel', d, 0.2);
   const glass = gt('night', d, 0.05);
   p.rect(x - 1, y - 1, w + 2, h + 2, pick(frame, 0.8));
+  // Revision 3: the Twente wares, painted over the dark room before what covers the window (the
+  // burnt shop's are charred and painted after its soot).
+  const wares = s.wares;
+  const burnt = s.ruin === 'burnt';
+  const inside = wares && !burnt ? (): void => paintWares(p, wares, { x, y, w, h }, s.seed) : undefined;
   if (s.ruin) {
     // Revision 2 (R2-7): boarded up (a note or sprayed letters), smashed, or burnt out.
-    if (s.ruin === 'boarded') boards(p, x, y, w, h, s.seed, { text: s.seed % 2 ? RUIN_NOTES[0] : undefined });
-    else smashed(p, x, y, w, h, s.seed, { soot: s.ruin === 'burnt' });
+    // Revision 3: a shop with wares has three thinner planks, the top one torn off, no blind.
+    if (s.ruin === 'boarded') boards(p, x, y, w, h, s.seed, inside ? { inside, n: 3, th: 3.4, gone: 0 } : { text: s.seed % 2 ? RUIN_NOTES[0] : undefined });
+    else smashed(p, x, y, w, h, s.seed, { soot: burnt, inside, blind: wares ? false : undefined });
+    if (wares && burnt) paintWares(p, wares, { x, y, w, h }, s.seed, { charred: true });
     if (s.ruin === 'boarded' && s.seed % 2 === 0) note(p, x + w * 0.55, y + h * 0.2, 9, 7, [RUIN_NOTES[0]], s.seed);
     if (d >= 2) p.rect(x - 1, y - 1, w + 2, 1 / d, pick(frame, 2.4));
     return;
@@ -475,9 +497,18 @@ function shopWindow(p: Pen, s: ShopSpec, x: number, y: number, w: number, h: num
     if (band > 14 && band < 15) return pick(gt('dusk', d, 0.1), 2);
     return pick(glass, dq(1.2 + v / h * 0.6, X, Y, 0.8));
   });
-  // Revision 2: the glass behind a half shutter or a grille is smashed.
-  if (s.shutter === 'half') smashed(p, x, y + Math.round(h * 0.62), w, h - Math.round(h * 0.62), s.seed, { blind: false });
-  if (s.shutter === 'grille') smashed(p, x, y, w, h, s.seed, { blind: false });
+  // Revision 2: the glass behind a half shutter or a grille is smashed (revision 3: the wares
+  // behind it; behind dark glass they show dimmed, the street's reflection over them).
+  if (s.shutter === 'half') smashed(p, x, y + Math.round(h * 0.62), w, h - Math.round(h * 0.62), s.seed, { blind: false, inside });
+  if (s.shutter === 'grille') smashed(p, x, y, w, h, s.seed, { blind: false, inside });
+  if (s.shutter === 'dark' && inside) {
+    room(p, x, y, w, h, s.seed);
+    inside();
+    p.tint(x, y, w, h, (X, Y, old) => {
+      const band = ((X + 0.5) / d - x + ((Y + 0.5) / d - y) * 0.8) % 23;
+      return band > 14 && band < 15 ? pick(gt('dusk', d, 0.1), 2) : dim(old, -1, d);
+    });
+  }
   if (s.shutter === 'down' || s.shutter === 'half') {
     // A rolling shutter: steel slats (the half shutter stops a third up).
     const sh = s.shutter === 'down' ? h : Math.round(h * 0.62);
@@ -662,6 +693,32 @@ reg(
   'decor/oz/shop',
   SHOPS.map((s) => shopGeom(s)),
   (p, i) => drawShop(p, SHOPS[i]),
+);
+
+/**
+ * An upper-storey window of a front (floor f ≥ 1, column i, as `drawShop` places them): its left
+ * x in the front, its width and the height of its sill's foot above the street line.
+ */
+export function shopUpperWindow(s: ShopSpec, f: number, i: number): { x: number; w: number; sillUp: number } {
+  const n = Math.max(1, Math.floor((s.w - 6) / 15));
+  const gap = (s.w - n * 9) / (n + 1);
+  return { x: Math.round(gap + Math.min(i, n - 1) * (9 + gap)), w: 9, sillUp: SHOP_GF + f * SHOP_FL - 22 };
+}
+
+/** Revision 3: the flag of Twente (the Twentse Ros), torn, pinned under a window sill (art-wares.ts). */
+reg('decor/oz/flag', [{ w: FLAG_W, h: FLAG_H, ox: 0, oy: 0 }], (p) => {
+  twenteFlag(p);
+  outlineC(p);
+});
+
+/** Revision 3: wares tipped out on the pavement before the Twente shops (art-wares.ts `paveWares`). */
+reg(
+  'decor/oz/wares',
+  PAVE_WARES.map((g) => ({ w: g.w, h: g.h, ox: 0, oy: g.h })),
+  (p, i) => {
+    paveWares(p, i);
+    outlineC(p);
+  },
 );
 
 /** Widths of a row of fronts. */

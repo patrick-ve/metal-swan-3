@@ -248,6 +248,23 @@ Level 4, the haunted town (docs/design/oldenzaal.md §11; docs/api/oldenzaal.md 
 - **Rules:** the same as for ams (ORIGINALITY.md, the dated `oldenzaal` exception): prompts in our
   own words, never a named song, artist, game or composer; designed voices only (never a clone or
   an imitation); Meneer Wu's voice has no accent play.
+- **Dutch (revision 3, the user 2026-10-21):** every bubble and every voiced line of the mission
+  is Dutch (`lang: 'nl'`; lines.ts, the announcer's `MISSIE VIER. …` and `SNACKKRACHT!`). The voice
+  designs `wu`, `winkel`, `plechelmus` describe Dutch speakers and have Dutch preview texts.
+- **Generated and shipped (2026-10-21, after the user's OK of the credit estimate):** 3 voice
+  designs (picked by measurement: `wu` preview 2, the lowest-pitched male; `winkel` preview 2, the
+  most breathy and slowest; `plechelmus` preview 3, the deepest), 279 sfx takes, 11 song takes,
+  40 line takes; about 17,200 credits in all (the estimate was 32,270). Picks: lines by a
+  speech-to-text check (ElevenLabs Scribe, `tmp/oz-audio/stt.ts`; the transcript must match the
+  text, then the shorter take); `SNACKKRACHT!` needed 7 takes (the announcer voice said "snack
+  rocked" until its `say` asked for the Dutch g); sfx and songs by the fps round's rules
+  (`tmp/oz-audio/pick.ts`: no near-silent raw, the least peak limiting, the length closest to the
+  spec; songs: no silent gap, take 1). `public/audio/oldenzaal/`: 124 sfx files (91 ids), the 4
+  songs, 16 lines; 7.8 MB. Re-pick on the review page (filter `mission:oldenzaal`) and ship again.
+- **Voice timing:** a speaker's next bubble cuts off the line that plays (`SpeechLane`), so Meneer
+  Wu's lines (`WU_SCENE.lineTicks`, one per line) and Mevrouw Winkel's wake (`WAKE.lines`) last as
+  long as their shipped takes plus a pause; `tests/content/oldenzaal-voice-fit.test.ts` checks it.
+  A longer re-pick needs a longer beat.
 
 ## A full round
 

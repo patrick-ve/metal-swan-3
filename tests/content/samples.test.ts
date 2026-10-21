@@ -37,8 +37,11 @@ import { DEFAULT_SETTINGS } from '../../src/game/settings';
 import { paths } from '../../tools/audio/lib';
 import { applyShip, type GroupData } from '../../tools/audio/ship';
 
-// 'fps/sound' registers the lazy synth fallbacks of the 'mode:fps' group (docs/design/fps.md §3.6).
-const report = await loadContent((id) => id === 'sfx' || id.startsWith('music') || id === 'samples' || id === 'fps/sound');
+// 'fps/sound' registers the lazy synth fallbacks of the 'mode:fps' group (docs/design/fps.md §3.6);
+// the mission oldenzaal owners register its 'oz/…' synth fallbacks (sfx/oldenzaal, the area
+// modules without their art, the boss).
+const ozSound = (id: string): boolean => id === 'sfx/oldenzaal' || id === 'bosses/oldenzaal' || (id.startsWith('oldenzaal/') && !id.endsWith('/art'));
+const report = await loadContent((id) => id === 'sfx' || id.startsWith('music') || id === 'samples' || id === 'fps/sound' || ozSound(id));
 const PUBLIC_AUDIO = new URL('../../public/audio/', import.meta.url);
 
 describe('voiceKey', () => {

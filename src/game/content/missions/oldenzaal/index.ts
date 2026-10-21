@@ -37,7 +37,7 @@ export const OLDENZAAL: MissionDef = {
   bossMusic: OZ_SONG.boss,
   start: OZ_SECTION.a,
   bossSection: OZ_SECTION.c,
-  announce: 'MISSION FOUR. STAY TOGETHER, CYGNETS!',
+  announce: 'MISSIE VIER. BLIJF BIJ ELKAAR, ZWAANTJES!',
   sections: {
     [OZ_SECTION.a]: sectionOzA,
     [OZ_SECTION.b]: sectionOzB,

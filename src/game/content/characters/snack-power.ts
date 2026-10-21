@@ -4,7 +4,7 @@
  *
  * - `snack-power` (ids.ts `OZ_STATUS_SNACK`): 1,200 ticks (20 s; Patrick, "master of eating
  *   frikandellen", 1,800 = 30 s); the main gun fires ×1.5 (`fireRate`, Gun.rate); ONE hit is
- *   absorbed by a mayo splat (`oz-mayo-splat`: a white splash and a `SPLAT!` pop, 60 invulnerable
+ *   absorbed by a mayo splat (`oz-mayo-splat`: a white splash and a `PLETS!` pop, 60 invulnerable
  *   ticks; crushers still kill); a warm tint pulse on the hero; the HUD icon `ui/icon-oz-meal`
  *   (a tray of fries) whose frames draw the countdown ring (`iconFrame`; no timer bar).
  * - `snack-frikandel` (`OZ_STATUS_FRIKANDEL`): while it lasts, BOMB throws a frikandel

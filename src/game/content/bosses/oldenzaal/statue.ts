@@ -276,7 +276,7 @@ export class Plechelmus extends Boss implements LightSource {
       yield;
     }
     this.shakeX = 0;
-    this.speak(PLECHELMUS_LINES.wake, 90);
+    this.speak(PLECHELMUS_LINES.wake, 140);
     for (let t = 0; t < W.fill; t++) {
       this.barFill = (t + 1) / W.fill;
       yield;
@@ -386,7 +386,7 @@ export class Plechelmus extends Boss implements LightSource {
     const w = this.world;
     this.stepping = true;
     this.intermission(S.rise + S.hop + S.land);
-    this.speak(PLECHELMUS_LINES.step, 100);
+    this.speak(PLECHELMUS_LINES.step, 135);
     w.audio.sfx('oz/statue/crack', { pitch: 0.75 });
     for (let t = 0; t < S.rise; t++) {
       this.shakeX = t % 4 < 2 ? 1 : -1;
@@ -682,7 +682,7 @@ export class Plechelmus extends Boss implements LightSource {
       const g = w.spawn(OZ_WUGHOST.winkel, self.eyeX(), self.eyeY() + 30, { visible: true, facing: 1 }) as OzWinkel;
       if (g && typeof g.shriek === 'function') {
         g.shriek(50);
-        g.say(WINKEL_LINES.flee, 100);
+        g.say(WINKEL_LINES.flee, 145);
       }
       self.eyes = 0.3;
       yield E.tear;

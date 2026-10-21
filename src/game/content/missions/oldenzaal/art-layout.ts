@@ -8,7 +8,8 @@
  * barriers and police tape, an emergency sign (its amber lamp is a light), toppled bikes and bins,
  * rubbish, blown newspapers, glass under the smashed windows, weeds, crows on the dead lamps and
  * a FEW torn, rotten banners (R2-2: two in oz-a, one in oz-b, high on the fronts). De Smulhoek
- * stays warm and whole: nothing of the ruin in front of it.
+ * stays warm and whole: nothing of the ruin in front of it. Revision 3 (Twente wares): the torn
+ * Twente flag on one front of oz-a, wares tipped out on the pavement before a few Twente shops.
  */
 import type { Color } from '../../../../engine/color';
 import { PAL_HD_OZ } from '../../../../engine/palette-hd';
@@ -18,7 +19,8 @@ import { CHUNK } from '../../../mission/view';
 import type { StaticLight } from '../../oldenzaal/kit/light-api';
 import '../../oldenzaal/ruin/art';
 import { SMULHOEK_LIGHTS, SMULHOEK_W } from './art-smulhoek';
-import { AWNING_WIDTHS, awningFrame, BALCONY_WIDTHS, LAMP_HEADS, SHOP_FL, SHOP_GF, SHOPS, shopWindowX } from './art-street';
+import { AWNING_WIDTHS, awningFrame, BALCONY_WIDTHS, LAMP_HEADS, SHOP_FL, SHOP_GF, SHOPS, shopUpperWindow, shopWindowX } from './art-street';
+import { FLAG_W } from './art-wares';
 import { h2 } from './art-kit';
 import {
   G,
@@ -134,6 +136,20 @@ function litterDecor(shops: ReadonlyArray<{ frame: number; x: number }>, w: numb
   return out;
 }
 
+/**
+ * Revision 3 (Twente wares): the flag of Twente pinned under a second-floor window sill of a
+ * three-storey front (window column i), hanging torn over the wall below it.
+ */
+function flagOn(s: { frame: number; x: number }, i: number): DecorDef {
+  const win = shopUpperWindow(SHOPS[s.frame], 2, i);
+  return { sprite: 'decor/oz/flag', x: s.x + win.x + Math.round((win.w - FLAG_W) / 2), y: G - win.sillUp };
+}
+
+/** Revision 3: wares tipped out on the pavement in front of a shop's window (frame of `decor/oz/wares`, dx into the window). */
+function waresBefore(s: { frame: number; x: number }, frame: number, dx: number): DecorDef {
+  return { sprite: 'decor/oz/wares', frame, x: s.x + shopWindowX(SHOPS[s.frame]).x + dx, y: G };
+}
+
 /** A torn banner on the upper floor of a three-storey front (its rod just under the cornice, at the front's left: clear of the lamps). */
 function bannerOn(s: { frame: number; x: number }, frame: number): DecorDef {
   const spec = SHOPS[s.frame];
@@ -161,6 +177,12 @@ export const OZ_A_DECOR: readonly DecorDef[] = [
   // Two torn banners (R2-2), high on three-storey fronts in the middle and the end fight.
   bannerOn(OZ_A_SHOPS[29], 0),
   bannerOn(OZ_A_SHOPS[49], 1),
+  // Revision 3 (Twente wares): the torn Twente flag over a BAKKERIJ front by the first checkpoint;
+  // klompen, boeskool and a crate of swing-tops tipped out before their shops.
+  flagOn(OZ_A_SHOPS[16], 1),
+  waresBefore(OZ_A_SHOPS[19], 1, 3),
+  waresBefore(OZ_A_SHOPS[11], 2, 2),
+  waresBefore(OZ_A_SHOPS[52], 0, 2),
   ...awningDecor(OZ_A_AWNINGS, 0),
   ...balconyDecor([...OZ_A_BALCONIES, OZ_A_LEDGE]),
   ...wallDecor(OZ_A_WALLS),
@@ -212,6 +234,7 @@ export const OZ_B_DECOR: readonly DecorDef[] = [
   { sprite: 'decor/oz/smulhoek', x: OZ_B_SMULHOEK_X, y: G },
   // One torn banner (R2-2), high on the fight's way to the square.
   bannerOn(OZ_B_SHOPS[24], 1),
+  waresBefore(OZ_B_SHOPS[14], 0, 3),
   ...awningDecor(OZ_B_AWNINGS, 1),
   ...balconyDecor(OZ_B_BALCONIES),
   ...wallDecor(OZ_B_WALLS),

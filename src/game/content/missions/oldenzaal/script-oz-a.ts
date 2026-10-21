@@ -8,11 +8,15 @@
  * darkening step by step, and the exit to the corner of De Smulhoek (oz-b). No ghosts here
  * (R2-6): Mevrouw Winkel appears only on the square.
  *
- * Tank pacing (R2-1, spec §16): fewer, tougher enemies; each lock has ONE MG zombie at most (the
- * threat of the fight), and the heroes get the firepower first: a machine-gun crate before the
+ * Tank pacing (R2-1, spec §16): tough, slow enemies; each lock has ONE MG zombie at most on easy
+ * and normal (the threat of the fight; hard adds one), and the heroes get the firepower first: a machine-gun crate before the
  * first lock, the MG zombie of the middle fight drops a machine gun, a shotgun crate on the
  * way to the last fight. The layout (openings, rise spots, arenas, cars) is RUIN's (terrain.ts);
  * the openings are placed by `withRuin` before this script runs; the dead are ZOMBIES'.
+ *
+ * Revision 3 (2026-10-21, the user: "I want more zombies as it is very easy to play against them
+ * now"): about twice the dead on normal — mixed squads, pincers, a third wave in the two big
+ * locks; easy stays close to revision 2 (script-kit.ts `byTier`).
  */
 import type { ScriptGen } from '../../../../engine/script';
 import type { SectionContext } from '../../../mission/index';
@@ -20,7 +24,7 @@ import { setDarkness } from '../../oldenzaal/kit/light-api';
 import { zombiesAlive, type ZombieKind } from '../../oldenzaal/zombies/api';
 import { hardOnly, normalUp, prewarm, twoPlayers } from './helpers';
 import { OZ_SECTION } from './ids';
-import { crateAt, OZ_ZOMBIE_ART, waitArena, weaponDrop, zBurst, zLeft, zManhole, zMarch, zRight, zRise } from './script-kit';
+import { byTier, crateAt, OZ_ZOMBIE_ART, SQUAD_GAP, waitArena, weaponDrop, zBurst, zLeft, zManhole, zMarch, zRight, zRise, zSquadLeft, zSquadRight } from './script-kit';
 import { OZ_A_ARENAS, OZ_A_RECORD, OZ_A_W } from './terrain';
 
 /** The weapon crates of the street (x on the pavement, contents). */
@@ -29,14 +33,24 @@ export const OZ_A_CRATES: ReadonlyArray<readonly [number, string]> = [
   [2210, 'S'],
 ];
 
-/** The column that marches in before the middle fight (normal and up / easy). */
+/** The column that marches in before the middle fight (revision 3: mixed, a crawler under the rifle's line). */
 function middleColumn(ctx: SectionContext): ZombieKind[] {
-  return normalUp(ctx) ? ['grunt', 'grunt', 'rifleman', 'grunt'] : ['grunt', 'rifleman', 'grunt'];
+  return byTier<ZombieKind[]>(
+    ctx,
+    ['grunt', 'rifleman', 'grunt'],
+    ['grunt', 'grunt', 'crawler', 'grunt', 'rifleman'],
+    ['grunt', 'grunt', 'crawler', 'grunt', 'rifleman', 'grunt'],
+  );
 }
 
 /** The column out of the fog at the end of the street: the MG zombie at its tail. */
 function endColumn(ctx: SectionContext): ZombieKind[] {
-  return normalUp(ctx) ? ['grunt', 'rifleman', 'grunt', 'grunt', 'gunner'] : ['grunt', 'grunt', 'gunner'];
+  return byTier<ZombieKind[]>(
+    ctx,
+    ['grunt', 'grunt', 'gunner'],
+    ['grunt', 'crawler', 'grunt', 'rifleman', 'grunt', 'gunner'],
+    ['grunt', 'crawler', 'grunt', 'rifleman', 'grunt', 'gunner'],
+  );
 }
 
 export function* scriptOzA(ctx: SectionContext): ScriptGen {
@@ -44,6 +58,9 @@ export function* scriptOzA(ctx: SectionContext): ScriptGen {
   // The golden record (ALL GOLDEN RECORDS): on the second-floor ledge, awning → balcony → ledge.
   ctx.spawn('pickup-gem', OZ_A_RECORD[0], OZ_A_RECORD[1], { kind: 'golden-record' });
   for (const [x, contains] of OZ_A_CRATES) crateAt(ctx, x, contains);
+  const N = normalUp(ctx);
+  const H = hardOnly(ctx);
+  const P2 = twoPlayers(ctx);
 
   // THE DROP (introDrop): the chutes over the dark roofs; the street below is empty and still.
   yield 110;
@@ -55,65 +72,92 @@ export function* scriptOzA(ctx: SectionContext): ScriptGen {
   zManhole(ctx, 'crawler', 300);
   yield ctx.waitCamera(150);
   zRise(ctx, 'grunt', 470);
+  if (N) zRise(ctx, 'grunt', 560, { delay: 40 });
   // The machine-gun crate stands at 520: the dead take many hits.
   yield ctx.waitCamera(330);
-  zRight(ctx, 'rifleman');
+  if (N) zSquadRight(ctx, ['grunt', 'rifleman']);
+  else zRight(ctx, 'rifleman');
   yield ctx.waitCamera(470);
   zRise(ctx, 'grunt', 735);
+  if (N) zRight(ctx, 'crawler');
 
   // @600: LOCK — the first fight: they break out of the ironmonger's window and the bakery's
-  // door, rise from the pavers, a rifleman walks in from the dark.
+  // door, rise from the pavers, a squad walks in from the dark; revision 3: from both sides.
   yield ctx.waitCamera(OZ_A_ARENAS.first[0]);
   ctx.lockCamera(OZ_A_ARENAS.first[0], OZ_A_ARENAS.first[1]);
   const A1 = 'oz-a1';
   zBurst(ctx, 'grunt', 669, { tag: A1 });
   yield 70;
   zBurst(ctx, 'grunt', 896, { tag: A1 });
+  if (N) zLeft(ctx, 'grunt', { tag: A1 });
   yield 100;
   zRise(ctx, 'grunt', 960, { tag: A1 });
-  if (normalUp(ctx)) zManhole(ctx, 'crawler', 1000, { tag: A1, delay: 40 });
+  if (N) zManhole(ctx, 'crawler', 1000, { tag: A1, delay: 40 });
   yield 120;
-  zRight(ctx, 'rifleman', { tag: A1 });
-  if (twoPlayers(ctx)) zLeft(ctx, 'grunt', { tag: A1 });
+  if (H) zSquadRight(ctx, ['grunt', 'crawler', 'rifleman', 'grunt'], { tag: A1 });
+  else if (N) zSquadRight(ctx, ['grunt', 'crawler', 'rifleman'], { tag: A1 });
+  else zRight(ctx, 'rifleman', { tag: A1 });
+  if (P2) zLeft(ctx, 'grunt', { tag: A1 });
   yield 60;
-  yield () => zombiesAlive(ctx.world, A1) <= 1;
+  yield () => zombiesAlive(ctx.world, A1) <= byTier(ctx, 1, 3, 4);
   zRise(ctx, 'grunt', 735, { tag: A1 });
-  if (hardOnly(ctx)) zRight(ctx, 'grunt', { tag: A1 });
+  if (N) {
+    zBurst(ctx, 'grunt', 800, { tag: A1, delay: 30 });
+    zSquadLeft(ctx, ['grunt', 'rifleman'], { tag: A1 });
+  }
+  if (P2 && N) zSquadRight(ctx, ['grunt', 'rifleman'], { tag: A1 });
+  if (H) zSquadRight(ctx, ['grunt', 'gunner'], { tag: A1 });
   yield* waitArena(ctx, A1);
   yield 20;
   ctx.unlockCamera();
 
-  // @1024 (checkpoint): the shopping street proper. They rise ahead, one walks in.
+  // @1024 (checkpoint): the shopping street proper. They rise ahead, a pair walks in.
   yield 30;
   zRise(ctx, 'grunt', ctx.camera.right - 70);
   yield ctx.waitCamera(960);
-  zRight(ctx, 'grunt');
+  if (N) zSquadRight(ctx, ['grunt', 'grunt']);
+  else zRight(ctx, 'grunt');
   yield ctx.waitCamera(1100);
   zRise(ctx, 'grunt', 1440);
+  if (N) zLeft(ctx, 'crawler');
   // The dusk deepens.
   setDarkness(ctx.world, 0.5, 600);
   yield ctx.waitCamera(1250);
   zRight(ctx, 'crawler');
+  if (N) zRise(ctx, 'grunt', 1560, { delay: 30 });
 
   // @1380: LOCK — the middle of the street: A COLUMN MARCHES IN OUT OF THE FOG, then the shops
-  // burst, the MG zombie walks in, the drains open.
+  // burst, the MG zombie walks in behind a grunt, the drains open, a pair comes from behind.
   yield ctx.waitCamera(OZ_A_ARENAS.middle[0]);
   ctx.lockCamera(OZ_A_ARENAS.middle[0], OZ_A_ARENAS.middle[1]);
   const A2 = 'oz-a2';
   zMarch(ctx, middleColumn(ctx), A2);
   yield 160;
   zBurst(ctx, 'grunt', 1481, { tag: A2 });
+  if (N) zSquadLeft(ctx, ['grunt', 'crawler'], { tag: A2 });
   yield 140;
-  zRight(ctx, 'gunner', { tag: A2, drop: weaponDrop('machine-gun') });
+  if (N) zRight(ctx, 'grunt', { tag: A2 });
+  zRight(ctx, 'gunner', { tag: A2, drop: weaponDrop('machine-gun') }, N ? 16 + SQUAD_GAP : 16);
   yield 120;
   zManhole(ctx, 'crawler', 1720, { tag: A2 });
   zBurst(ctx, 'grunt', 1593, { tag: A2, delay: 30 });
-  if (twoPlayers(ctx)) zLeft(ctx, 'grunt', { tag: A2 });
+  if (P2) zLeft(ctx, 'grunt', { tag: A2 });
+  if (P2 && N) zRight(ctx, 'rifleman', { tag: A2 });
   yield 60;
-  yield () => zombiesAlive(ctx.world, A2) <= 2;
+  yield () => zombiesAlive(ctx.world, A2) <= byTier(ctx, 2, 4, 5);
   zBurst(ctx, 'grunt', 1858, { tag: A2 });
-  if (normalUp(ctx)) zManhole(ctx, 'grunt', 1920, { tag: A2, delay: 50 });
-  if (hardOnly(ctx)) zRight(ctx, 'rifleman', { tag: A2 });
+  if (N) {
+    zManhole(ctx, 'grunt', 1920, { tag: A2, delay: 50 });
+    zRise(ctx, 'rifleman', 1830, { tag: A2, delay: 20 });
+    zSquadLeft(ctx, ['grunt', 'rifleman'], { tag: A2 });
+  }
+  if (H) zSquadRight(ctx, ['crawler', 'rifleman'], { tag: A2 });
+  if (N) {
+    // Revision 3: the last of the middle fight, a short column out of the fog.
+    yield 60;
+    yield () => zombiesAlive(ctx.world, A2) <= byTier(ctx, 0, 3, 4);
+    zMarch(ctx, H ? ['grunt', 'crawler', 'grunt', 'rifleman'] : ['grunt', 'grunt', 'rifleman'], A2);
+  }
   yield* waitArena(ctx, A2);
   yield 20;
   ctx.unlockCamera();
@@ -121,40 +165,60 @@ export function* scriptOzA(ctx: SectionContext): ScriptGen {
   // @1960: past the ledge of the golden record; the coffee bar's window, a drain, the shotgun crate.
   yield 30;
   zRise(ctx, 'grunt', ctx.camera.right - 70);
+  if (N) zRight(ctx, 'crawler');
   yield ctx.waitCamera(1760);
   zBurst(ctx, 'grunt', 2082);
+  if (N) zLeft(ctx, 'grunt');
   // @2048 (checkpoint).
   yield ctx.waitCamera(1960);
-  zRight(ctx, 'rifleman');
+  if (N) zSquadRight(ctx, ['grunt', 'rifleman']);
+  else zRight(ctx, 'rifleman');
   yield ctx.waitCamera(2080);
   zManhole(ctx, 'crawler', 2310);
+  if (N) zRise(ctx, 'grunt', 2200, { delay: 40 });
   yield ctx.waitCamera(2200);
   zRise(ctx, 'grunt', 2390);
+  if (N) zRight(ctx, 'grunt');
   setDarkness(ctx.world, 0.52, 600);
 
   // @2440: LOCK — the end of the street: the big column out of the fog (the MG zombie at its
-  // tail), the drains and the shops burst around it; then on to the corner.
+  // tail), the drains and the shops burst around it, the dead close in from behind; then on to
+  // the corner.
   yield ctx.waitCamera(OZ_A_ARENAS.end[0]);
   ctx.lockCamera(OZ_A_ARENAS.end[0], OZ_A_ARENAS.end[1]);
   const A3 = 'oz-a3';
   zMarch(ctx, endColumn(ctx), A3);
   yield 120;
   zManhole(ctx, 'crawler', 2580, { tag: A3 });
+  if (N) zSquadLeft(ctx, ['grunt', 'rifleman'], { tag: A3 });
   yield 150;
   zBurst(ctx, 'grunt', 2651, { tag: A3 });
   yield 60;
-  yield () => zombiesAlive(ctx.world, A3) <= 2;
+  yield () => zombiesAlive(ctx.world, A3) <= byTier(ctx, 2, 4, 5);
   zBurst(ctx, 'grunt', 2742, { tag: A3 });
-  if (normalUp(ctx)) zBurst(ctx, 'grunt', 2842, { tag: A3, delay: 50 });
-  if (twoPlayers(ctx)) zRise(ctx, 'grunt', 2700, { tag: A3, delay: 20 });
-  if (hardOnly(ctx)) zRight(ctx, 'gunner', { tag: A3 });
+  if (N) {
+    zBurst(ctx, 'grunt', 2842, { tag: A3, delay: 50 });
+    zManhole(ctx, 'crawler', 2900, { tag: A3, delay: 30 });
+    zSquadRight(ctx, ['grunt', 'rifleman'], { tag: A3 });
+  }
+  if (P2) zRise(ctx, 'grunt', 2700, { tag: A3, delay: 20 });
+  if (P2 && N) zLeft(ctx, 'rifleman', { tag: A3 }, 16 + 2 * SQUAD_GAP);
+  if (H) zRight(ctx, 'gunner', { tag: A3 }, 16 + 2 * SQUAD_GAP);
+  if (N) {
+    // Revision 3: the last column of the street.
+    yield 60;
+    yield () => zombiesAlive(ctx.world, A3) <= byTier(ctx, 0, 3, 4);
+    zMarch(ctx, H ? ['grunt', 'grunt', 'crawler', 'grunt', 'rifleman'] : ['grunt', 'grunt', 'crawler', 'grunt'], A3);
+    if (P2) zLeft(ctx, 'grunt', { tag: A3 });
+  }
   yield* waitArena(ctx, A3);
   yield 20;
   ctx.unlockCamera();
 
-  // The last stretch: one straggler, then round the corner.
+  // The last stretch: stragglers, then round the corner.
   yield 30;
   zRise(ctx, 'grunt', 2960);
+  if (N) zRight(ctx, 'grunt');
   yield ctx.waitPlayerX(OZ_A_W - 64);
   yield ctx.exitTo(OZ_SECTION.b);
 }

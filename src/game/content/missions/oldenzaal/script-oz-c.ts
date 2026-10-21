@@ -10,41 +10,92 @@
  *    lantern, says her three lines (`WINKEL_WAKE_LINES`, voiced as 'winkel'), laughs, and flies
  *    INTO the statue (`possessInto`); a lightning flash; the stone cracks, the eyes glow, the
  *    boss bar fills (`WARNING!` — ST. PLECHELMUS — MINI-BOSS, the boss song).
- * 4. The mini-boss (bosses/oldenzaal/statue.ts). At the end the saint is freed and sits back on
- *    his plinth, whole; a weapon drops; the basilica's red doors creak open; the exit → oz-d.
+ * 4. The mini-boss (bosses/oldenzaal/statue.ts); revision 3: in phase 2 the curse calls a few of
+ *    the dead up behind the heroes on normal and hard (`phaseTwoAdds`). At the end the saint is
+ *    freed and sits back on his plinth, whole; a weapon drops; the basilica's red doors creak open; the exit → oz-d.
  */
 import type { ScriptGen } from '../../../../engine/script';
 import type { SectionContext } from '../../../mission/index';
 import { Plechelmus } from '../../bosses/oldenzaal/statue';
 import { OzInputLock, type OzWinkel } from '../../oldenzaal/npcs/index';
 import { lightning } from '../../oldenzaal/kit/light-api';
-import { spawnZombie } from '../../oldenzaal/zombies/api';
+import { isZombie, marchColumn, spawnZombie, type ZombieKind } from '../../oldenzaal/zombies/api';
+import { hardOnly, normalUp, twoPlayers } from './helpers';
 import { ARENA_L, ARENA_R, squareDoors, STATUE_X } from './art-square';
 import { OZ_SONG, OZ_STATUE, OZ_WUGHOST } from './ids';
 import { STATUE_BOSS_NAME, WINKEL_WAKE_LINES } from './lines';
-import { waitArena } from './script-kit';
+import { byTier, waitArena } from './script-kit';
 import { G } from './terrain';
 
 /** The exit's id (enabled when the doors are open). */
 export const OZ_C_EXIT_ID = 'oz-c-doors';
 
-/** The wake's timings (ticks). */
-export const WAKE = { appear: 45, line: 112, laugh: 40, dive: 3.2, banner: 120 } as const;
+/**
+ * The wake's timings (ticks). `lines[i]`: how long her line i stays before the next beat. Revision 3
+ * (2026-10-21, the lines are Dutch and voiced): each fits its shipped voice take plus a pause,
+ * because her next line replaces the playing one (SpeechLane: same speaker) and the laugh follows
+ * the last one; tests/content/oldenzaal-voice-fit.test.ts checks the shipped durations.
+ */
+export const WAKE = { appear: 45, lines: [190, 310, 170] as readonly number[], laugh: 40, dive: 3.2, banner: 120 } as const;
 
 /** Where Mevrouw Winkel appears: beside the plinth, on the heroes' side, floating a little. */
 export const WINKEL_AT = { x: STATUE_X - 46, y: G - 6 } as const;
 
-/** The approach: the dead of the square (a few, they are tanks). */
+/** The approach: the dead of the square (tanks; revision 3: more of them on normal and hard). */
 function* approach(ctx: SectionContext): ScriptGen {
+  const N = normalUp(ctx);
+  const H = hardOnly(ctx);
   yield ctx.waitPlayerX(150);
   spawnZombie(ctx, 'grunt', ctx.camera.right - 70, 'ground', { kind: 'rise', surface: 'pavers' }, { tag: 'oz-c1' });
   spawnZombie(ctx, 'grunt', ctx.camera.right + 30, 'ground', 'walk', { tag: 'oz-c1', facing: -1 });
+  if (N) spawnZombie(ctx, 'grunt', ctx.camera.right - 150, 'ground', { kind: 'rise', surface: 'pavers', delay: 50 }, { tag: 'oz-c1' });
   yield ctx.waitPlayerX(340);
   spawnZombie(ctx, 'crawler', ctx.camera.right - 50, 'ground', { kind: 'rise', surface: 'pavers' }, { tag: 'oz-c1' });
+  if (N) spawnZombie(ctx, 'grunt', Math.max(8, ctx.camera.left - 16), 'ground', 'walk', { tag: 'oz-c1', facing: 1 });
   yield ctx.waitPlayerX(470);
-  spawnZombie(ctx, 'rifleman', ctx.camera.right + 20, 'ground', 'march', { tag: 'oz-c1', facing: -1 });
-  spawnZombie(ctx, 'grunt', ctx.camera.right + 50, 'ground', 'march', { tag: 'oz-c1', facing: -1 });
+  // A column out of the dark at the square's far end (grunts in front, the rifleman behind).
+  marchColumn(ctx, byTier<ZombieKind[]>(ctx, ['rifleman', 'grunt'], ['grunt', 'grunt', 'crawler', 'rifleman'], ['grunt', 'grunt', 'crawler', 'rifleman', 'grunt']), { tag: 'oz-c1' });
+  if (H || (N && twoPlayers(ctx))) spawnZombie(ctx, 'grunt', ctx.camera.right - 110, 'ground', { kind: 'rise', surface: 'pavers', delay: 60 }, { tag: 'oz-c1' });
   yield* waitArena(ctx, 'oz-c1');
+}
+
+/** The wave tag of the dead the curse calls up in the statue's phase 2 (revision 3). */
+export const OZ_C_ADDS = 'oz-c2';
+
+/**
+ * Revision 3 (2026-10-21, "more zombies"): in phase 2, after the saint steps down, the curse calls
+ * a few of the dead up out of the pavers behind the heroes and in from the dark (normal: 3, hard:
+ * 5, 2P one more; easy none), at most two or three at a time. They rise with the full tell, on the
+ * heroes' side of the arena; when the saint is freed they collapse (the curse is lifted).
+ */
+function* phaseTwoAdds(ctx: SectionContext, statue: Plechelmus): ScriptGen {
+  const N = normalUp(ctx);
+  const H = hardOnly(ctx);
+  if (!N) return;
+  const fighting = (): boolean => statue.alive && statue.state === 'fight';
+  yield () => statue.phase >= 1 || statue.state === 'dying' || statue.state === 'done';
+  // After the step down (and its line).
+  yield 200;
+  if (!fighting()) return;
+  spawnZombie(ctx, 'grunt', ARENA_L + 40, 'ground', { kind: 'rise', surface: 'pavers' }, { tag: OZ_C_ADDS });
+  if (twoPlayers(ctx)) spawnZombie(ctx, 'grunt', ARENA_L + 130, 'ground', { kind: 'rise', surface: 'pavers', delay: 60 }, { tag: OZ_C_ADDS });
+  yield 240;
+  if (!fighting()) return;
+  spawnZombie(ctx, 'crawler', Math.max(8, ctx.camera.left - 14), 'ground', 'walk', { tag: OZ_C_ADDS, facing: 1 });
+  if (H) spawnZombie(ctx, 'grunt', ARENA_L + 110, 'ground', { kind: 'rise', surface: 'pavers', delay: 40 }, { tag: OZ_C_ADDS });
+  // The second call when the first are down and the saint is weak.
+  yield () => !fighting() || (ctx.world.countAlive(OZ_C_ADDS) === 0 && statue.healthFrac < 0.3);
+  if (!fighting()) return;
+  spawnZombie(ctx, 'grunt', ARENA_L + 60, 'ground', { kind: 'rise', surface: 'pavers' }, { tag: OZ_C_ADDS });
+  if (H) spawnZombie(ctx, 'grunt', Math.max(8, ctx.camera.left - 16), 'ground', 'walk', { tag: OZ_C_ADDS, facing: 1 });
+}
+
+/** The saint is freed: the dead the curse called up collapse into bones. */
+function freeAdds(ctx: SectionContext): void {
+  for (const e of ctx.world.byTag(OZ_C_ADDS).slice()) {
+    if (!e.alive || !isZombie(e)) continue;
+    e.onHit({ amount: 99999, kind: 'explosion', dirX: 0, tags: ['heavy'] });
+  }
 }
 
 /** Mevrouw Winkel's wake scene; resolves when she is inside the stone. */
@@ -59,15 +110,15 @@ function* wake(ctx: SectionContext, statue: Plechelmus): ScriptGen {
   yield WAKE.appear + 5;
   w.raiseLantern();
   w.whisper();
-  w.say(WINKEL_WAKE_LINES[0], WAKE.line - 8);
-  yield WAKE.line;
+  w.say(WINKEL_WAKE_LINES[0], WAKE.lines[0] - 8);
+  yield WAKE.lines[0];
   // She turns to the statue.
   w.facing = 1;
   w.glideTo(WINKEL_AT.x + 8, WINKEL_AT.y - 6, 0.6, 'raise');
-  w.say(WINKEL_WAKE_LINES[1], WAKE.line - 8);
-  yield WAKE.line;
-  w.say(WINKEL_WAKE_LINES[2], WAKE.line - 20);
-  yield WAKE.line - 30;
+  w.say(WINKEL_WAKE_LINES[1], WAKE.lines[1] - 8);
+  yield WAKE.lines[1];
+  w.say(WINKEL_WAKE_LINES[2], WAKE.lines[2] - 20);
+  yield WAKE.lines[2] - 30;
   w.laugh();
   yield WAKE.laugh;
   lightning(ctx.world, 1);
@@ -119,7 +170,11 @@ export function* scriptOzC(ctx: SectionContext): ScriptGen {
     } finally {
       lock.restore();
     }
+    ctx.world.scripts.run(phaseTwoAdds(ctx, statue), { name: 'oz-c phase 2 adds' });
+    yield () => statue.defeated || statue.state === 'dying';
+    freeAdds(ctx);
     yield () => statue.defeated;
+    freeAdds(ctx);
   }
   // Freed. A weapon drop by the plinth, the music calms, the doors creak open.
   ctx.spawn('pickup-weapon', STATUE_X - 40, G - 24, { weapon: 'S' });

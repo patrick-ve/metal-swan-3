@@ -1,8 +1,10 @@
 /**
  * ALL the text of mission `oldenzaal` (docs/design/oldenzaal.md §1, §4.2, §5.2, §6; REVISION 2):
  * the story card, Meneer Wu's scene, the meal's name, Mevrouw Winkel's wake lines on
- * Plechelmusplein, the statue's stony lines, the signs. Our own text: short, English with Dutch
- * flavour, grim with dry humour. Builders take their lines from here (never inline text) so the
+ * Plechelmusplein, the statue's stony lines, the signs. Our own text: short, grim with dry humour.
+ * Revision 3 (the user, 2026-10-21): every speech bubble and every voiced line of this mission is
+ * DUTCH (plain, standard Dutch; no diacritics, the pixel font has none: 'HE' for 'hé'). The story
+ * card, the TO BE CONTINUED card and the game's own HUD words (MINI-BOSS, TAP JUMP!) stay English. Builders take their lines from here (never inline text) so the
  * AUDIO spec, the voice keys and the tests see one list.
  *
  * Revision 2 (the user's feedback after wave A): the enemies are the dead soldiers of the old war
@@ -17,8 +19,8 @@
  *   lines; a two-line bubble has its own '\n' (the voice key folds it to a space).
  * - Story card lines: one row of the small font, at most 352 px (the glitch bridge's rule).
  *
- * The rules (spec §4.2, §7, docs/ORIGINALITY.md): Meneer Wu speaks plain, correct Dutch and
- * English (no accent, no broken language, no joke about his origin); his joke is his work ethic.
+ * The rules (spec §4.2, §7, docs/ORIGINALITY.md): Meneer Wu speaks plain, correct Dutch (no
+ * accent, no broken language, no joke about his origin); his joke is his work ethic.
  * Mevrouw Winkel is eerie and brief. Nothing mocks the church or the saint (he is a victim and is
  * freed). No real units, names, slogans or quotes of the war. Pure data: no imports.
  */
@@ -46,25 +48,25 @@ export const TBC_SUB = 'MEVROUW WINKEL IS NOT DONE WITH OLDENZAAL.';
  * who still works and keeps the fryer going (R2-12).
  */
 export const WU_LINES: readonly string[] = [
-  'GOEDENAVOND! INSIDE,\nQUICK. MIND THE FLOOR.',
-  'MEVROUW WINKEL CAME\nBACK. HER GHOST, I MEAN.',
-  'SINCE THEN THE DEAD\nSOLDIERS CLIMB OUT.',
-  'THE TOWN FLED. I STAY.\nTHE FRYER IS STILL HOT.',
-  'CLOSE? NEE. IK SLUIT\nPAS OM TIEN UUR.',
-  'HERE. EAT FIRST.\nTHEN SAVE MY TOWN.',
+  'GOEDENAVOND! GAUW\nBINNEN. PAS OP DE VLOER.',
+  'MEVROUW WINKEL IS TERUG.\nHAAR GEEST, BEDOEL IK.',
+  'SINDSDIEN STAAN DE\nDODE SOLDATEN OP.',
+  'DE STAD IS LEEG. IK\nBLIJF: HET VET IS HEET.',
+  'DICHT? NEE. IK SLUIT\nPAS OM TIEN UUR.',
+  'HIER. EERST ETEN.\nDAN MIJN STAD REDDEN.',
 ];
 
 /** Wu's waves from the door before the scene (a short call; optional). */
-export const WU_CALL = 'HE! IN HERE!';
+export const WU_CALL = 'HE! HIER BINNEN!';
 
 /** The meal's name (the toss callout, the HUD, the spec): spelled exactly like this. */
 export const MEAL_NAME = 'PATAT MAYO MET 2 FRIKANDELLEN';
 
-/** The callout when a hero catches the meal (SNACK POWER!). */
-export const SNACK_POWER_CALLOUT = 'SNACK POWER!';
+/** The callout when a hero catches the meal (SNACK POWER, in Dutch). */
+export const SNACK_POWER_CALLOUT = 'SNACKKRACHT!';
 
 /** The mayo splat's pop when it absorbs a hit. */
-export const SPLAT_POP = 'SPLAT!';
+export const SPLAT_POP = 'PLETS!';
 
 // ---------------------------------------------------------------------------------------------
 // Mevrouw Winkel (STATUE plays her ONE scene with WUGHOST's `oz-winkel`; speaker 'winkel'; §5.2, §6)
@@ -72,13 +74,13 @@ export const SPLAT_POP = 'SPLAT!';
 
 export const WINKEL_LINES = {
   /** oz-c, the wake: she fades in beside the plinth and looks at the heroes. */
-  wake: 'SO. YOU CAME FOR\nMY LITTLE TOWN.',
+  wake: 'ZO. JULLIE KOMEN VOOR\nMIJN STADJE.',
   /** oz-c, the wake: she turns to the statue. */
-  call: 'MY DEAD ARE TIRED.\nLET THE STONE WALK.',
+  call: 'MIJN DODEN ZIJN MOE.\nLAAT DE STEEN LOPEN.',
   /** oz-c, the wake: she laughs and flies into the statue. */
   statue: 'STA OP, OUDE STEEN.',
   /** oz-c, the end: torn out of the stone, she flees with a shriek (not seen again in this level). */
-  flee: 'THIS IS NOT OVER...',
+  flee: 'DIT IS NOG NIET\nVOORBIJ...',
 } as const;
 
 /** The wake scene's lines in order (STATUE: one bubble each, then `laugh()`, then `possessInto`). */

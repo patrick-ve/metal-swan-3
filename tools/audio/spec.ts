@@ -774,25 +774,25 @@ export const VOICES: VoiceSpec[] = [
     speaker: 'wu',
     name: 'MS3 Snack Bar Owner',
     description:
-      'Warm, brisk, slightly gruff middle-aged man, the hard-working owner of a busy corner snack bar. He talks while he works: quick, practical and plain-spoken, a little tired, kind underneath, with a dry sense of humour. A native speaker from the Netherlands who speaks Dutch and plain English with a neutral Dutch accent. An original character voice: never an imitation of a real person and never a caricature of any accent. Studio quality, close microphone, no reverb.',
+      'Warm, brisk, slightly gruff middle-aged man, the hard-working owner of a busy corner snack bar. He talks while he works: quick, practical and plain-spoken, a little tired, kind underneath, with a dry sense of humour. A native speaker from the Netherlands who speaks plain, standard Dutch. An original character voice: never an imitation of a real person and never a caricature of any accent. Studio quality, close microphone, no reverb.',
     previewText:
-      'Goedenavond! Come in, come in, and mind the wet floor. Two portions of fries, one with mayo, coming right up. No, I am not closing early. The fryer is hot, the counter is clean, and the sign on the door says ten o\'clock. Here, eat first. Then we talk.',
+      'Goedenavond! Kom binnen, kom binnen, en pas op de natte vloer. Twee patat, een met mayo, komt eraan. Nee, ik ga niet eerder dicht. De frituur is heet, de toonbank is schoon, en op de deur staat tien uur. Hier, eerst eten. Dan praten we.',
   },
   {
     speaker: 'winkel',
     name: 'MS3 Town Ghost',
     description:
-      'An eerie, whispering middle-aged woman, a ghost from long ago: a soft, breathy, cold voice that lingers on the vowels, slow and calm, quietly menacing, with a hollow, distant quality. A native speaker from the Netherlands with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+      'An eerie, whispering middle-aged woman, a ghost from long ago: a soft, breathy, cold voice that lingers on the vowels, slow and calm, quietly menacing, with a hollow, distant quality. A native speaker from the Netherlands who speaks Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
     previewText:
-      'So. You came for my little town. Do you hear the bells? They ring for me. The lamps go out, one by one, and the old dead are waking up. Stay a while, little birds. Nobody leaves this town before I say so.',
+      'Zo. Jullie komen voor mijn stadje. Horen jullie de klokken? Ze luiden voor mij. De lampen gaan uit, een voor een, en de oude doden worden wakker. Blijf nog even, kleine vogeltjes. Niemand verlaat deze stad voordat ik het zeg.',
   },
   {
     speaker: 'plechelmus',
     name: 'MS3 Stone Saint',
     description:
-      "A very deep, slow, stony rumble of an old man's voice, as if a stone statue speaks after a thousand years of silence: low, gravelly, calm and gentle, warm and grateful, with long pauses. A native speaker from the Netherlands. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.",
+      "A very deep, slow, stony rumble of an old man's voice, as if a stone statue speaks after a thousand years of silence: low, gravelly, calm and gentle, warm and grateful, with long pauses. A native speaker from the Netherlands who speaks Dutch. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.",
     previewText:
-      'Dank u, kinderen. For a long time I sat in the cold and the dark, and the curse held me like iron. Now the stone is warm again. Go in peace, and look after this town. I will watch over the square for you.',
+      'Dank u, kinderen. Lange tijd zat ik in de kou en het donker, en de vloek hield mij vast als ijzer. Nu is de steen weer warm. Ga in vrede, en zorg goed voor deze stad. Ik waak over het plein, voor jullie.',
   },
 ];
 
@@ -931,24 +931,25 @@ export const LINES: LineSpec[] = [
   { ...line('mechahitler', 'DAS... STAND NICHT... IM PLAN...', '[weak, gasping, overly dramatic] Das... stand nicht... im Plan...', 'de', FPS, 5), takes: 3 },
   // --- Mission oldenzaal (missions/oldenzaal/lines.ts `voicedLines()`, index.ts `announce`;
   //     group 'mission:oldenzaal'). Bubbles are ≤ 24 characters × 2 lines; `maxSeconds` follows
-  //     the ams briefing's bubble life (150 ticks) for Wu's scene. Meneer Wu speaks plain, correct
-  //     Dutch and English (no accent play, no broken language).
-  line(A, 'MISSION FOUR. STAY TOGETHER, CYGNETS!', '[booming, theatrical] Mission four. [ominous, lower] Stay together, cygnets!', 'en', OZ, 3.0),
+  //     the ams briefing's bubble life (150 ticks) for Wu's scene. Revision 3 (the user,
+  //     2026-10-21): every line of this mission is Dutch ('nl'). Meneer Wu speaks plain, correct
+  //     Dutch (no accent play, no broken language).
+  line(A, 'MISSIE VIER. BLIJF BIJ ELKAAR, ZWAANTJES!', '[booming, theatrical] Missie vier. [ominous, lower] Blijf bij elkaar, zwaantjes!', 'nl', OZ, 3.5),
   // The pickup callout of the meal (lines.ts SNACK_POWER_CALLOUT): the announcer says it like a weapon
   // name when the meal is caught (`audio.voice(SNACK_POWER_CALLOUT)`, requested from WUGHOST / INTEGRATE).
-  line(A, 'SNACK POWER!', '[excited, punchy] Snack power!', 'en', OZ, 1.4),
-  line('wu', 'HE! IN HERE!', '[calling out, urgent] Hé! In here!', 'nl', OZ, 1.5),
-  line('wu', 'GOEDENAVOND! INSIDE,\nQUICK. MIND THE FLOOR.', '[brisk, warm] Goedenavond! Inside, quick. [busy] Mind the floor.', 'nl', OZ, 2.5),
-  line('wu', 'MEVROUW WINKEL CAME\nBACK. HER GHOST, I MEAN.', '[lowering his voice] Mevrouw Winkel came back. [dry] Her ghost, I mean.', 'en', OZ, 2.5),
-  line('wu', 'SINCE THEN THE DEAD\nSOLDIERS CLIMB OUT.', '[serious, quiet] Since then the dead soldiers climb out.', 'en', OZ, 2.5),
-  line('wu', 'THE TOWN FLED. I STAY.\nTHE FRYER IS STILL HOT.', '[gruff, proud] The town fled. I stay. [dry, busy] The fryer is still hot.', 'en', OZ, 2.5),
-  line('wu', 'CLOSE? NEE. IK SLUIT\nPAS OM TIEN UUR.', '[indignant, proud] Close? Nee. Ik sluit pas om tien uur.', 'nl', OZ, 2.5),
-  line('wu', 'HERE. EAT FIRST.\nTHEN SAVE MY TOWN.', '[warm, firm] Here. Eat first. [brisk] Then save my town.', 'en', OZ, 2.5),
+  line(A, 'SNACKKRACHT!', '[excited, punchy, in Dutch, with a guttural Dutch g sound] Snack-kracht!', 'nl', OZ, 2.3),
+  line('wu', 'HE! HIER BINNEN!', '[calling out, urgent] Hé! Hier binnen!', 'nl', OZ, 1.5),
+  line('wu', 'GOEDENAVOND! GAUW\nBINNEN. PAS OP DE VLOER.', '[brisk, warm] Goedenavond! Gauw binnen. [busy] Pas op de vloer.', 'nl', OZ, 2.5),
+  line('wu', 'MEVROUW WINKEL IS TERUG.\nHAAR GEEST, BEDOEL IK.', '[lowering his voice] Mevrouw Winkel is terug. [dry] Haar geest, bedoel ik.', 'nl', OZ, 2.5),
+  line('wu', 'SINDSDIEN STAAN DE\nDODE SOLDATEN OP.', '[serious, quiet] Sindsdien staan de dode soldaten op.', 'nl', OZ, 2.5),
+  line('wu', 'DE STAD IS LEEG. IK\nBLIJF: HET VET IS HEET.', '[gruff, proud] De stad is leeg. Ik blijf: [dry, busy] het vet is heet.', 'nl', OZ, 2.5),
+  line('wu', 'DICHT? NEE. IK SLUIT\nPAS OM TIEN UUR.', '[indignant, proud] Dicht? Nee. Ik sluit pas om tien uur.', 'nl', OZ, 2.5),
+  line('wu', 'HIER. EERST ETEN.\nDAN MIJN STAD REDDEN.', '[warm, firm] Hier. Eerst eten. [brisk] Dan mijn stad redden.', 'nl', OZ, 2.5),
   // Mevrouw Winkel's one scene (oz-c, the wake; lines.ts WINKEL_LINES) and her flight at the end.
-  line('winkel', 'SO. YOU CAME FOR\nMY LITTLE TOWN.', '[eerie whisper, slow, amused] So. You came for my little town.', 'en', OZ, 2.5),
-  line('winkel', 'MY DEAD ARE TIRED.\nLET THE STONE WALK.', '[cold whisper, turning away] My dead are tired. [slow, commanding] Let the stone walk.', 'en', OZ, 2.5),
+  line('winkel', 'ZO. JULLIE KOMEN VOOR\nMIJN STADJE.', '[eerie whisper, slow, amused] Zo. Jullie komen voor mijn stadje.', 'nl', OZ, 2.5),
+  line('winkel', 'MIJN DODEN ZIJN MOE.\nLAAT DE STEEN LOPEN.', '[cold whisper, turning away] Mijn doden zijn moe. [slow, commanding] Laat de steen lopen.', 'nl', OZ, 2.5),
   line('winkel', 'STA OP, OUDE STEEN.', '[cold, commanding whisper] Sta op, oude steen.', 'nl', OZ, 2.0),
-  line('winkel', 'THIS IS NOT OVER...', '[hissing, retreating] This is not over...', 'en', OZ, 2.2),
+  line('winkel', 'DIT IS NOG NIET\nVOORBIJ...', '[hissing, retreating] Dit is nog niet voorbij...', 'nl', OZ, 2.2),
   // St. Plechelmus (lines.ts PLECHELMUS_LINES): a victim of the curse; he groans, then thanks them.
   { ...line('plechelmus', 'ZO... ZWAAR...', '[deep stony rumble, strained, slow] Zo... zwaar...', 'nl', OZ, 2.5), takes: 3 },
   { ...line('plechelmus', 'VERGEEF MIJ...', '[deep stony rumble, sorrowful, slow] Vergeef mij...', 'nl', OZ, 2.5), takes: 3 },

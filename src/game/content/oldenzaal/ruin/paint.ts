@@ -6,9 +6,10 @@
  *
  * - `plank` — one weathered plank (grey-brown, lit top arris, a shaded under edge, grain and knots
  *   at 4×, a nail at each end) between two logical points.
- * - `boards` — planks nailed across an opening (a dark gap between them), optional sprayed text.
+ * - `boards` — planks nailed across an opening (a dark gap between them), optional sprayed text;
+ *   revision 3: what is in the window (`inside`) shows between the planks, one may be torn off.
  * - `smashed` — a window with its glass smashed out: a dark room, jagged shards at the frame, a
- *   torn blind; `soot` makes it a burnt-out one.
+ *   torn blind; `soot` makes it a burnt-out one; revision 3: the window's goods (`inside`).
  * - `hole` — a burst opening: the dark room, splinters, a plank hanging from one nail.
  * - `note` — a paper note taped up (`GESLOTEN` / `NIET BETREDEN`; lines.ts `RUIN_NOTES`): typed
  *   at 4× (one art px per glyph px), a scribble at 1× / 2×.
@@ -189,10 +190,15 @@ export function shards(p: Pen, x: number, y: number, w: number, h: number, seed:
 
 const SHARD_SIDES = [0, 1, 3, 0, 2, 3, 1, 0] as const;
 
-/** A smashed window (glass gone, the dark room, shards, maybe a torn blind); `soot`: burnt out. */
-export function smashed(p: Pen, x: number, y: number, w: number, h: number, seed: number, o: { soot?: boolean; blind?: boolean } = {}): void {
+/**
+ * A smashed window (glass gone, the dark room, shards, maybe a torn blind); `soot`: burnt out.
+ * `inside` (revision 3, the Twente wares) paints what is in the window over the dark room, before
+ * the blind and the shards.
+ */
+export function smashed(p: Pen, x: number, y: number, w: number, h: number, seed: number, o: { soot?: boolean; blind?: boolean; inside?: () => void } = {}): void {
   const d = p.d;
   room(p, x, y, w, h, seed);
+  o.inside?.();
   if (o.blind ?? h2(seed, 7, 3) > 0.5) {
     // A torn roller blind hanging from the top: a ragged lower edge.
     const cloth = tones('cloth', d, COLD, 0.45);
@@ -215,19 +221,28 @@ export function smashed(p: Pen, x: number, y: number, w: number, h: number, seed
 /**
  * Planks nailed across an opening (x, y, w, h): `n` planks (default by height), a dark gap
  * between them (the room behind), slightly crooked, overhanging the frame by `over`; optional
- * sprayed `text` across them.
+ * sprayed `text` across them. Revision 3 (the Twente wares): `inside` paints what is in the
+ * window over the dark room before the planks; `gone` is the index of a plank torn off (only
+ * splintered stubs at the nails stay), `th` a thinner plank (wider gaps).
  */
-export function boards(p: Pen, x: number, y: number, w: number, h: number, seed: number, o: { n?: number; over?: number; text?: string; diag?: boolean; char?: number } = {}): void {
+export function boards(p: Pen, x: number, y: number, w: number, h: number, seed: number, o: { n?: number; over?: number; text?: string; diag?: boolean; char?: number; inside?: () => void; gone?: number; th?: number } = {}): void {
   const d = p.d;
   room(p, x, y, w, h, seed);
+  o.inside?.();
   const n = o.n ?? Math.max(2, Math.round(h / 5.5));
   const over = o.over ?? 1;
-  const th = Math.min(4.5, (h / n) * 0.82);
+  const th = o.th ?? Math.min(4.5, (h / n) * 0.82);
   for (let i = 0; i < n; i++) {
     const cy = y + (h * (i + 0.5)) / n;
     const tilt = (h2(i, 1, seed) - 0.5) * Math.min(3, h * 0.12);
     const l = x - over + h2(i, 2, seed) * 0.8;
     const r = x + w + over - h2(i, 3, seed) * 0.8;
+    if (i === o.gone) {
+      // Torn off: a splintered stub at each end, still nailed.
+      plank(p, l, cy, l + 2.5 + h2(i, 4, seed) * 1.5, cy + 0.4, th, seed * 7 + i, { nails: false, char: o.char });
+      plank(p, r - 2 - h2(i, 5, seed) * 2, cy - 0.3, r, cy, th, seed * 7 + i + 40, { nails: false, char: o.char });
+      continue;
+    }
     plank(p, l, cy - tilt / 2, r, cy + tilt / 2, th, seed * 7 + i, { char: o.char });
   }
   if (o.diag ?? h > w * 1.2) {

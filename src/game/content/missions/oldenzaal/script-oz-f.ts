@@ -25,36 +25,62 @@ import { Tide } from '../../oldenzaal/tower/tide';
 import { isZombie, spawnZombie, type ZombieKind } from '../../oldenzaal/zombies/api';
 import { OZ_SECTION, OZ_TOWER } from './ids';
 
-/** The HUD text of the tower (not voiced). */
+/** The HUD text of the tower (not voiced; Dutch since revision 3, like the mission's bubbles). */
 export const OZ_F_TEXT = {
-  tide: 'THE DEAD ARE CLIMBING! UP!',
-  trapped: 'NO WAY DOWN!',
+  tide: 'DE DODEN KLIMMEN! OMHOOG!',
+  trapped: 'GEEN WEG TERUG!',
 } as const;
 
 /** The rain inside (blown in through the openings) and on the open roof (the light pass reads it). */
 export const OZ_F_RAIN = { inside: 0.35, roof: 0.9 } as const;
 
-/** One standing dead soldier on a landing: landing k, x, kind; `n` NORMAL and HARD only, `p2` 2P only. */
+/**
+ * One standing dead soldier on a landing: landing k, x, kind; `n` NORMAL and HARD only, `h` HARD
+ * only, `p2` 2P only.
+ */
 interface Post {
   k: number;
   x: number;
   kind: ZombieKind;
   n?: boolean;
+  h?: boolean;
   p2?: boolean;
 }
 
-/** The dead on the landings (riflemen on the outer ends, off the climb column; a few grunts). */
+/**
+ * The dead on the landings (riflemen on the outer ends, off the climb column; grunts on the outer
+ * halves, so they walk at the heroes but never stand in the column for long; crawlers only below
+ * the tide's start, where a grab does not meet the tide).
+ *
+ * Revision 3 (2026-10-21, the user: "I want more zombies as it is very easy to play against them
+ * now"): about twice the dead on normal (19 against 10), hard 23, 2P two more; easy unchanged (8).
+ */
 export const OZ_F_POSTS: readonly Post[] = [
+  { k: 3, x: 330, kind: 'grunt', n: true },
   { k: 6, x: 318, kind: 'rifleman' },
+  { k: 8, x: 326, kind: 'rifleman', n: true },
+  { k: 9, x: 70, kind: 'crawler', n: true },
   { k: 11, x: 64, kind: 'rifleman' },
+  { k: 12, x: 322, kind: 'rifleman', h: true },
+  { k: 13, x: 80, kind: 'crawler', n: true },
+  { k: 14, x: 316, kind: 'grunt', n: true, p2: true },
   { k: 15, x: 72, kind: 'grunt', n: true },
   { k: 18, x: 318, kind: 'rifleman' },
+  { k: 20, x: 324, kind: 'rifleman', n: true },
+  { k: 21, x: 60, kind: 'rifleman', h: true },
   { k: 23, x: 60, kind: 'rifleman' },
   { k: 26, x: 322, kind: 'rifleman', p2: true },
+  { k: 27, x: 72, kind: 'grunt', n: true },
   { k: 29, x: 66, kind: 'grunt' },
+  { k: 30, x: 316, kind: 'grunt', h: true },
   { k: 32, x: 326, kind: 'rifleman' },
+  { k: 33, x: 70, kind: 'grunt', n: true, p2: true },
+  { k: 34, x: 324, kind: 'rifleman', n: true },
   { k: 35, x: 60, kind: 'rifleman', n: true },
+  { k: 37, x: 66, kind: 'grunt', n: true },
   { k: 38, x: 320, kind: 'rifleman' },
+  { k: 39, x: 72, kind: 'grunt', h: true },
+  { k: 40, x: 310, kind: 'grunt', n: true },
   { k: 41, x: 104, kind: 'rifleman' },
   { k: 43, x: 70, kind: 'grunt', p2: true },
 ];
@@ -118,6 +144,7 @@ export function* scriptOzF(ctx: SectionContext): ScriptGen {
   const normal = ctx.session.difficulty !== 'easy';
   for (const post of OZ_F_POSTS) {
     if (post.n && !normal) continue;
+    if (post.h && ctx.session.difficulty !== 'hard') continue;
     if (post.p2 && ctx.playerCount < 2) continue;
     const y = ledgeY(post.k);
     stageY(ctx, y - 40, () => {

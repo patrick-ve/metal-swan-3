@@ -297,16 +297,21 @@ export class OzInputLock {
 
 /** Scene timing (ticks). */
 export const WU_SCENE = {
-  /** A line stays up this long (auto-advance) and cannot be skipped in its first ticks. */
-  lineTicks: 150,
+  /**
+   * Line i stays up `lineTicks[i]` ticks (auto-advance) and cannot be skipped in its first ticks.
+   * Revision 3 (2026-10-21, the lines are Dutch and voiced): each fits its shipped voice take plus
+   * a short pause, because his next line replaces the playing one (SpeechLane: same speaker);
+   * tests/content/oldenzaal-voice-fit.test.ts checks the shipped durations against these.
+   */
+  lineTicks: [175, 250, 170, 250, 180, 195] as readonly number[],
   skipAfter: 20,
   /** The heroes stand this far left of Meneer Wu (P2 another 22 px further). */
   standOff: 34,
   standGap: 22,
   /** Most ticks the heroes walk to him. */
   walkTicks: 150,
-  /** The call from the door (with the wave) before the lines. */
-  callTicks: 70,
+  /** The call from the door (with the wave) before the lines; the walk lasts at least this long, so line 1 never cuts the call's voice. */
+  callTicks: 90,
   /** After the toss: the trays fly to their catchers. */
   catchTicks: 90,
 } as const;
@@ -351,7 +356,7 @@ export function* wuScene(ctx: SectionContext, o: WuSceneOpts): ScriptGen {
         busy = true;
         return dx > 0 ? RIGHT : LEFT;
       });
-      return (!busy && steps >= 24) || steps > WU_SCENE.walkTicks + 4;
+      return (!busy && steps >= WU_SCENE.callTicks) || steps > WU_SCENE.walkTicks + 4;
     };
     call.ticks = 0;
     // Everyone turns to him (one tick toward him).
@@ -363,15 +368,16 @@ export function* wuScene(ctx: SectionContext, o: WuSceneOpts): ScriptGen {
     // The lines: he works while he talks.
     for (let i = 0; i < WU_LINES.length; i++) {
       const mode = LINE_MODES[i % LINE_MODES.length];
-      if (mode === 'talk') wu.talk(WU_SCENE.lineTicks - 10);
-      else if (mode === 'wipe') wu.wipe(WU_SCENE.lineTicks - 10);
-      else wu.scoop(WU_SCENE.lineTicks - 10);
-      const bubble = wu.say(WU_LINES[i], WU_SCENE.lineTicks, 'hint');
+      const ticks = WU_SCENE.lineTicks[i % WU_SCENE.lineTicks.length];
+      if (mode === 'talk') wu.talk(ticks - 10);
+      else if (mode === 'wipe') wu.wipe(ticks - 10);
+      else wu.scoop(ticks - 10);
+      const bubble = wu.say(WU_LINES[i], ticks, 'hint');
       let t = 0;
       yield () => {
         lock.apply();
         t++;
-        return t >= WU_SCENE.lineTicks || (t > WU_SCENE.skipAfter && lock.fire());
+        return t >= ticks || (t > WU_SCENE.skipAfter && lock.fire());
       };
       bubble.ticks = 0;
     }
