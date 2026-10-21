@@ -156,8 +156,9 @@ describe('planRing: the invariants hold for every seed', () => {
       expect(count(p, RING_ENTITY.gantry)).toBeGreaterThan(4);
       expect(count(p, RING_ENTITY.closure)).toBeGreaterThan(0);
       expect(count(p, RING_ENTITY.speedcam) + count(p, RING_ENTITY.closure)).toBeGreaterThan(2);
-      // Civilian cover and the scooter gang everywhere.
-      expect(count(p, RING_ENTITY.car)).toBeGreaterThan(80);
+      // Civilian cover and the scooter gang everywhere (the traffic about halved after the user's
+      // play-test, 2026-10-21).
+      expect(count(p, RING_ENTITY.car)).toBeGreaterThan(40);
       expect(count(p, RING_ENTITY.scooter)).toBeGreaterThan(100);
     }
   });

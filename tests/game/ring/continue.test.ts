@@ -6,6 +6,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { Damage } from '../../../src/engine/entity';
+import '../../../src/game/content/ring/traffic/index';
+import type { RingCar } from '../../../src/game/content/ring/traffic/car';
 import { RING } from '../../../src/game/ring/types';
 import { laneY } from '../../../src/game/ring/lanes';
 import { TUNING } from '../../../src/game/tuning';
@@ -62,6 +64,43 @@ describe('ring continue', () => {
     rig.run(120);
     expect(rig.runner.roadSpeed).toBeGreaterThan(2);
     expect(rig.runner.planDist).toBeGreaterThan(d);
+  });
+
+  it('the traffic drives on while every player is out: no standstill, new cars come from behind', () => {
+    const rig = new RingRig({ plan: tinyPlan({ length: 20000 }), lives: 1 });
+    rig.run(2);
+    const near = rig.spawnAt<RingCar>('ring-car', 300, laneY(4), { model: 'hatch', rel: -0.75 });
+    const far = rig.spawnAt<RingCar>('ring-car', 100, laneY(1), { model: 'estate', rel: 0.7 });
+    wreck(rig);
+    rig.run(RING.respawnTicks + 1);
+    expect(rig.runner.countdownHeld).toBe(true);
+    rig.run(60);
+    // The camera stands at the crash; the traffic keeps the road's free speed.
+    expect(rig.runner.roadSpeed).toBe(0);
+    expect(rig.runner.flowSpeed).toBeCloseTo(RING.cruiseSpeed, 5);
+    expect(near.vx).toBeGreaterThan(2);
+    expect(far.vx).toBeGreaterThan(3);
+    // Over the countdown fresh civilians enter from the left edge and pass the screen.
+    const seen = new Set<RingCar>();
+    let moving = 0;
+    let samples = 0;
+    for (let t = 0; t < 480; t++) {
+      rig.run(1);
+      for (const e of rig.world.entities) {
+        if (e.type !== 'ring-car' || !e.alive) continue;
+        if (e !== near && e !== far) seen.add(e as RingCar);
+        samples++;
+        if (e.vx > 1.5) moving++;
+      }
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(3);
+    expect(moving / samples).toBeGreaterThan(0.9);
+    // START: a fresh wagon; the traffic stays at speed while the camera speeds up, then follows it.
+    rig.tap(['start']);
+    rig.until(() => rig.hero.state === 'mounted', RING.driveInTicks + 5);
+    rig.run(200);
+    expect(rig.runner.countdownHeld).toBe(false);
+    expect(rig.runner.flowSpeed).toBe(rig.runner.roadSpeed);
   });
 
   it('is GAME OVER when the countdown runs out', () => {

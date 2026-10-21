@@ -36,7 +36,7 @@ import { EventBus } from '../../engine/events';
 import type { VirtualPad } from '../../engine/input';
 import { approach } from '../../engine/math';
 import type { Renderer } from '../../engine/render';
-import { hashString } from '../../engine/rng';
+import { hashString, Rng } from '../../engine/rng';
 import { artTier, toArtDensity, withArtDensity, type ArtDensity } from '../../engine/sprites';
 import { Terrain } from '../../engine/terrain';
 import { World, type WorldError } from '../../engine/world';
@@ -54,7 +54,7 @@ import { RING_ENTITY, type RingLandmarkId } from './ids';
 import { GROUND_Y, inRoadBand, laneY } from './lanes';
 import { ringMission, ringSong, type RingMission } from './mission';
 import { planRing } from './plan';
-import { chunkIndexAt } from './director';
+import { CAR_COLOURS, carRelOf, chunkIndexAt, pickCarModel } from './director';
 import { RING, type RingBossSlot, type RingChunk, type RingPlan, type RingSpawn, type RingStretch, type RingViewHost } from './types';
 import { RingView } from './view';
 import { RingXray } from './xray';
@@ -172,6 +172,14 @@ export class RingRunner implements RingHost, RingViewHost {
   ticks = 0;
   /** Camera speed (px/tick). */
   roadSpeed = 0;
+  /**
+   * The traffic's speed while the continue holds the camera and until the road is back up to it
+   * (−1: the traffic follows `roadSpeed`; see `flowSpeed`).
+   */
+  private flowHold = -1;
+  /** Ticks to the next car of the hold's traffic, and its rng (cars come from behind; see `holdTraffic`). */
+  private holdCarT = 0;
+  private readonly holdRng: Rng;
   /** Plan distance of the view's left edge. */
   planDist = 0;
   /** Index of the current stretch (−1 before the start). */
@@ -215,6 +223,7 @@ export class RingRunner implements RingHost, RingViewHost {
     this.audio = o.audio ?? new NullAudio();
     this.settings = o.settings ?? { ...DEFAULT_SETTINGS };
     this.seed = (o.seed ?? o.session.seed) >>> 0;
+    this.holdRng = new Rng((this.seed ^ hashString('ring/hold-traffic')) >>> 0);
     this.plan = o.plan ?? planRing(this.seed, o.difficulty ?? o.session.difficulty);
     this.mission = ringMission(this.plan);
     this.startSection = o.section;
@@ -418,6 +427,15 @@ export class RingRunner implements RingHost, RingViewHost {
     return this.cont.held;
   }
 
+  /**
+   * RingHost: the traffic's road speed. User 2026-10-21: "when the player loses all their lives,
+   * the traffic shouldn't come to a standstill": the camera stops at the crash (the wreck and the
+   * enemies' gloat stay on screen) while the civilians drive past at the road's free speed.
+   */
+  get flowSpeed(): number {
+    return this.flowHold >= 0 ? this.flowHold : this.roadSpeed;
+  }
+
   /** The countdown number on show (9 … 0) while held; −1 when none runs. */
   get countdownNumber(): number {
     return this.cont.countdownNumber;
@@ -455,12 +473,15 @@ export class RingRunner implements RingHost, RingViewHost {
   /** The road speed, the camera, the plan cursor (spawns, stretches, boss slots, the end). */
   private advance(): void {
     const held = this.cont.held;
+    const before = this.roadSpeed;
     let target = this.state === 'victory' ? RING.cruiseSpeed : held ? 0 : RING.cruiseSpeed;
     if (!held) for (const v of this.caps.values()) if (v < target) target = v;
     this.roadSpeed = approach(this.roadSpeed, Math.max(0, target), held ? RING.holdDecel : RING.speedAccel);
+    this.advanceFlow(held, before);
     this.world.camera.x += this.roadSpeed;
     this.view.update(this);
     this.updateBosses();
+    if (held && this.state === 'playing') this.holdTraffic();
     if (held || this.state !== 'playing') return;
     if (this.locks.size === 0 && !this.planEnded) this.planDist = Math.min(this.plan.length, this.planDist + this.roadSpeed);
     while (this.cursor < this.queue.length && this.triggers[this.cursor] <= this.planDist) this.spawnEntry(this.queue[this.cursor++]);
@@ -472,6 +493,49 @@ export class RingRunner implements RingHost, RingViewHost {
       if (RING_HOOKS.planEnd) RING_HOOKS.planEnd(this);
       else this.completeMission();
     }
+  }
+
+  /** The road's free speed: cruise under the caps (the jam), the hold not counted. */
+  private freeSpeed(): number {
+    let v: number = RING.cruiseSpeed;
+    for (const c of this.caps.values()) if (c < v) v = c;
+    return Math.max(0, v);
+  }
+
+  /** `flowSpeed` (see there): the hold's traffic speed, back to the road speed once it caught up. */
+  private advanceFlow(held: boolean, before: number): void {
+    if (held) this.flowHold = approach(this.flowHold >= 0 ? this.flowHold : before, this.freeSpeed(), RING.speedAccel);
+    else if (this.flowHold >= 0) {
+      this.flowHold = approach(this.flowHold, this.freeSpeed(), RING.speedAccel);
+      if (this.roadSpeed >= this.flowHold) this.flowHold = -1;
+    }
+  }
+
+  /**
+   * While every player is out the traffic keeps coming: a civilian from behind every 50–110 ticks
+   * in a random open lane whose entry is free (none while the road is jammed: the jam stands).
+   */
+  private holdTraffic(): void {
+    if (this.holdCarT > 0) {
+      this.holdCarT--;
+      return;
+    }
+    const rng = this.holdRng;
+    this.holdCarT = rng.int(50, 110);
+    if (this.freeSpeed() < RING.cruiseSpeed * 0.9) return;
+    const cam = this.world.camera;
+    const l = rng.int(1, this.lanesOpenAt(cam.x));
+    const model = pickCarModel(rng, l);
+    const colour = rng.int(0, CAR_COLOURS - 1);
+    const y = laneY(l);
+    for (const tag of [RING_ENTITY.car, 'ring-closure', 'ring-block', 'ring-wagon']) {
+      const list = this.world.byTag(tag);
+      for (let i = 0; i < list.length; i++) {
+        const e = list[i];
+        if (e.alive && Math.abs(e.y - y) <= 11 && e.x < cam.x + 200) return;
+      }
+    }
+    this.world.spawn(RING_ENTITY.car, cam.x - RING.spawnBehind, y, { model, colour, rel: carRelOf(l, model) });
   }
 
   /** Shots that left the road band are gone (spec §3). */

@@ -5,7 +5,7 @@
  * release (after the jackknife), also through the westpoort-style boss slot; every attack after its
  * tell (≥ 18 ticks, on screen); a free lane in every cargo dump; the parts (doors, wheels, cab);
  * the continue's stagger holding the pattern; the cargo and the forklift's charge on a wagon; the
- * forklift's gloat and cower; the time to kill with the bot on normal (45–90 s); its death never
+ * forklift's gloat and cower; the time to kill with the bot on normal (25–90 s by gun); its death never
  * ends the mission.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -322,23 +322,34 @@ describe('ring-lorry: the fight', () => {
 });
 
 describe('ring-lorry: time to kill with the bot (normal)', () => {
-  it('the bot kills it in 45–90 s from the start of the fight', async () => {
-    const h = await createHeadlessRing({ seed: 1, section: 'westpoort', difficulty: 'normal', bot: true });
-    let lorry: RingLorry | null = null;
-    let fight = -1;
-    let death = -1;
-    for (let t = 0; t < 12000 && !h.done && death < 0; t++) {
-      h.step(1);
-      if (!lorry) lorry = (h.world?.entities.find((e) => e instanceof RingLorry) as RingLorry | undefined) ?? null;
-      else {
-        if (fight < 0 && lorry.state === 'fight') fight = h.ticks;
-        if (lorry.dead) death = h.ticks;
+  // The time depends on the gun the bot brings (the damage-rate cap, fixer B: about 28–30 s with
+  // the spread gun, 38–46 s with the machine gun, 45–60 s with the pistol). Since the 2026-10-21
+  // tuning (fewer enemies) the bot wrecks less on the way and keeps its pickups more often: every
+  // seed 25–90 s, and the three never all short.
+  it('the bot kills it in 25–90 s from the start of the fight (seeds 1–3; the median ≥ 35 s)', async () => {
+    const times: number[] = [];
+    for (const seed of [1, 2, 3]) {
+      const h = await createHeadlessRing({ seed, section: 'westpoort', difficulty: 'normal', bot: true });
+      let lorry: RingLorry | null = null;
+      let fight = -1;
+      let death = -1;
+      for (let t = 0; t < 12000 && !h.done && death < 0; t++) {
+        h.step(1);
+        if (!lorry) lorry = (h.world?.entities.find((e) => e instanceof RingLorry) as RingLorry | undefined) ?? null;
+        else {
+          if (fight < 0 && lorry.state === 'fight') fight = h.ticks;
+          if (lorry.dead) death = h.ticks;
+        }
       }
+      h.dispose();
+      expect(fight).toBeGreaterThan(0);
+      expect(death).toBeGreaterThan(fight);
+      times.push((death - fight) / 60);
     }
-    h.dispose();
-    expect(fight).toBeGreaterThan(0);
-    const secs = (death - fight) / 60;
-    expect(secs).toBeGreaterThanOrEqual(45);
-    expect(secs).toBeLessThanOrEqual(90);
-  }, 60_000);
+    for (const secs of times) {
+      expect(secs, JSON.stringify(times)).toBeGreaterThanOrEqual(25);
+      expect(secs, JSON.stringify(times)).toBeLessThanOrEqual(90);
+    }
+    expect([...times].sort((a, b) => a - b)[1], JSON.stringify(times)).toBeGreaterThanOrEqual(35);
+  }, 120_000);
 });

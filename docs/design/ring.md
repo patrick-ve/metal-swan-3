@@ -139,9 +139,11 @@ byte-identical; m0–m5 keep working passively (their sims stay byte-identical).
   out, the driver and the hero tumble onto the hard shoulder (no harm shown), the hero loses a
   life; after about 60 ticks a fresh wagon with the same driver drives in from the left, with
   120 ticks of blink. `pickup-repair` gives +1 cell.
-- **Driver lines:** each driver has own short lines (bubbles ≤ 24 characters per line, 2 lines):
-  on the boarding, a bump, a speed camera flash, a hostage on the roof, low armour, a tunnel,
-  the boss. Example: `HOU JE VAST!`, `NIET WEER EEN FLITSER!`, `WIE PARKEERT ER EEN CARAVAN?!`.
+- **Driver lines:** OFF (user 2026-10-21: "I don't want the driver to say anything"; `Wagon.talk`
+  is false, so no bubble and no line). The lines stay in `content/ring/wagon/lines.ts` for a later
+  story: each driver has own short lines (bubbles ≤ 24 characters per line, 2 lines) on the
+  boarding, a bump, a speed camera flash, a hostage on the roof, low armour, a tunnel, the boss.
+  Example: `HOU JE VAST!`, `NIET WEER EEN FLITSER!`, `WIE PARKEERT ER EEN CARAVAN?!`.
 
 ## 4. The ring generator
 
@@ -181,7 +183,8 @@ byte-identical; m0–m5 keep working passively (their sims stay byte-identical).
 
 ## 5. Enemies (all mobile; all bloodless; riders tumble onto the hard shoulder)
 
-1. **Scooter gang** (`ring-scooter`): two-up scooters in groups of 3–5, from behind or ahead.
+1. **Scooter gang** (`ring-scooter`): two-up scooters in groups of 2–4 (EASY 2, NORMAL 3, HARD 4;
+   at most 4 on screen; user play-test 2026-10-21, was 3–5), from behind or ahead.
    They weave between lanes. The pillion lobs bottles into your lane or fires a pistol along the
    lane. Light; a swerve ram knocks them off. (Scooters are not allowed on a motorway; the
    parody keeps them.)
@@ -246,7 +249,9 @@ A temporary boss that proves the boss hook on a moving road. The real bosses rep
 
 - **Civilian traffic** (`ring-traffic`): hatchbacks, vans, a taxi, a camper (one parametric car
   drawer: length, height, roof, colour). Slower cars in the near lanes (you overtake them),
-  faster ones in the far lanes. A bump costs ½–1 cell and pushes. They stop bullets from both
+  faster ones in the far lanes. Light traffic (user play-test 2026-10-21: about half the first
+  build's cars) and never a wall: at most two lanes hold cars abreast (one in a tunnel or beside a
+  closure), so two open lanes always stay free. A bump costs ½–1 cell and pushes. They stop bullets from both
   sides (cover); shots dent them (3 states) but never destroy them; no penalty.
 - **Crates** fall from wrecked enemy vehicles and lie on the road (they move back at road speed).
   Drive over one (x and z overlap) to pick it up: weapons, bombs, `pickup-repair` (more often
@@ -261,7 +266,10 @@ A temporary boss that proves the boss hook on a moving road. The real bosses rep
   plays). P2 joins at any time: the wagon drives in from the left. The two wagons bump (a push, no
   damage); a lob flies over the other wagon.
 - The in-world continue (GDD 4.6) applies: while every player is out, the generator and the
-  scroll hold, and the enemies on screen **gloat** with ring gags (no pointing, no laughing):
+  scroll hold (the camera stops at the crash), but the **traffic drives on** (user 2026-10-21):
+  the civilians keep the road's free speed (`RingHost.flowSpeed`), fresh ones come from behind,
+  and a car held back by a standing thing changes lanes around it. The enemies on screen
+  **gloat** with ring gags (no pointing, no laughing):
   the parcel courier sticks a `NIET THUIS` card on the wreck, the tow truck hooks the wreck, a
   handhaver writes a fine for parking on the hard shoulder, the scooter gang does slow wheelies.
   START → a fresh wagon drives in; on its arrival every non-boss enemy on screen cowers (`!`)

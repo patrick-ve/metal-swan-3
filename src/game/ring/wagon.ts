@@ -682,9 +682,16 @@ export class Wagon extends Vehicle implements RingDrawable {
 
   // ------------------------------------------------------------------------------- the driver
 
+  /**
+   * The drivers keep quiet (user 2026-10-21: "I don't want the driver to say anything"): `say`
+   * shows no bubble and plays no line. The lines (lines.ts) and the turn-taking stay for a later
+   * story; `true` brings them back.
+   */
+  static talk = false;
+
   /** The driver says his line for an event (a bubble over the front glass), unless he just spoke. */
   say(event: DriverEvent, ticks = 110): boolean {
-    if (!this.driverId || this.state === 'wreck') return false;
+    if (!Wagon.talk || !this.driverId || this.state === 'wreck') return false;
     if (this.lineCool > 0 && !ALWAYS.has(event)) return false;
     // The drivers take turns (2P, fix 2026-10-21: both spoke at once and the bubbles covered each
     // other): while the other driver talks, this line waits for its turn (`sayQueued`).

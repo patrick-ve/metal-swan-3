@@ -53,6 +53,13 @@ export const FOLLOW_GAP = 16;
 /** Ticks between two bumps of one car (the wagon's own hit invulnerability spaces them too). */
 export const BUMP_COOL = 20;
 /**
+ * Held back below this share of its own speed by a thing ahead in its lane for `STUCK_TICKS`, a
+ * car changes lanes around it (an enemy van that stands and gloats while every player is out;
+ * user 2026-10-21: "the traffic shouldn't come to a standstill").
+ */
+export const STUCK_SHARE = 0.4;
+export const STUCK_TICKS = 30;
+/**
  * A wagon wedged beside a car while its own lane closes (a tunnel's near lane): the car moves on
  * along its lane at this many px/tick and the wagon eases the other way at `WEDGE_EASE`.
  */
@@ -88,6 +95,8 @@ export class RingCar extends RingEntity implements HostageCarrier {
   readonly hostageVan: boolean;
   /** Lane it merges to (0 = none). */
   private mergeTo = 0;
+  /** Ticks it has been held back behind a slow thing ahead in its lane (see `STUCK_SHARE`). */
+  private stuckT = 0;
   /** Wheel turn (px of road driven). */
   private roll = 0;
   private readonly wheelId: string;
@@ -133,13 +142,22 @@ export class RingCar extends RingEntity implements HostageCarrier {
     const ring = ringOf(this.world);
     const road = ring?.roadSpeed ?? 0;
     const jam = jamOf(this.world).level;
+    // Its own road speed: the traffic drives on while every player is out (the continue holds the
+    // camera, `flowSpeed`; user 2026-10-21). A jam's queue car keeps to the camera's road.
+    let base = ring?.flowSpeed ?? road;
     let rel = this.rel * (1 - jam);
-    if (!Number.isNaN(this.stopAt)) rel = this.jamRel(road, jam);
-    // Every player out (the continue holds the road): the traffic stands too; at a held road
-    // speed of 0 a car's own negative `rel` would drive it backwards into the cars behind.
-    if (ring?.held) rel = 0;
-    let target = road + rel;
-    target = Math.min(target, this.followSpeed(target));
+    if (!Number.isNaN(this.stopAt)) {
+      rel = this.jamRel(road, jam);
+      base = road;
+      // At a held road speed of 0 a queue car's negative `rel` would drive it backwards into the
+      // cars behind: it stands while every player is out.
+      if (ring?.held) rel = 0;
+    }
+    let target = base + rel;
+    const follow = this.followSpeed(target);
+    if (Number.isNaN(this.stopAt) && jam <= 0.05 && target > 1 && follow < target * STUCK_SHARE) this.stuckT++;
+    else this.stuckT = 0;
+    target = Math.min(target, follow);
     const accel = target < this.vx ? 0.12 : 0.05;
     this.vx += Math.max(-accel, Math.min(accel, target - this.vx));
     // Never back into a wagon right behind it (a slow car does not push the player off the screen).
@@ -162,7 +180,8 @@ export class RingCar extends RingEntity implements HostageCarrier {
     }
     if (this.hostageVan) this.world.spawn(RING_ENTITY.hostage, this.x + HOSTAGE_VAN.seat, this.y, { carrier: this, item: this.params.item });
     // It comes in at speed.
-    this.vx = (ringOf(this.world)?.roadSpeed ?? 0) + this.rel * (1 - jamOf(this.world).level);
+    const ring = ringOf(this.world);
+    this.vx = (ring?.flowSpeed ?? ring?.roadSpeed ?? 0) + this.rel * (1 - jamOf(this.world).level);
   }
 
   /** A jam car drives in to its stand (`stopAt`, screen x), stands while the jam holds, then goes. */
@@ -226,7 +245,7 @@ export class RingCar extends RingEntity implements HostageCarrier {
     if (this.mergeTo === 0) {
       let want = 0;
       if (lane > openAhead) want = clampLane(openAhead, openAhead);
-      else if (this.closureAhead(lane)) {
+      else if (this.closureAhead(lane) || this.stuckT >= STUCK_TICKS) {
         for (const l of [lane - 1, lane + 1]) {
           if (l < 1 || l > openAhead || this.closureAhead(l) || this.laneBusy(l)) continue;
           want = l;

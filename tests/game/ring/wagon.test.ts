@@ -304,13 +304,27 @@ describe('drivers', () => {
     for (const id of ['vincent', 'thom', 'dirk', 'bob', 'patrick']) expect(driverLine(id, 'board')).toContain('STAP IN!');
   });
 
-  it('the driver talks (a bubble), then keeps quiet for a while except for the big moments', () => {
+  it('the driver says nothing (user 2026-10-21): no line, no bubble', () => {
     const rig = playing();
     const w = rig.wagon;
-    expect(w.say('bump')).toBe(true);
-    expect(rig.runner.hud.bubbles.some((b) => b.target === w)).toBe(true);
-    expect(w.say('tunnel')).toBe(false);
-    expect(w.say('boss')).toBe(true);
+    expect(Wagon.talk).toBe(false);
+    for (const ev of DRIVER_EVENTS) expect(w.say(ev)).toBe(false);
+    rig.run(5);
+    expect(rig.runner.hud.bubbles.some((b) => b.target === w)).toBe(false);
+  });
+
+  it('with the lines on: the driver talks (a bubble), then keeps quiet for a while except for the big moments', () => {
+    Wagon.talk = true;
+    try {
+      const rig = playing();
+      const w = rig.wagon;
+      expect(w.say('bump')).toBe(true);
+      expect(rig.runner.hud.bubbles.some((b) => b.target === w)).toBe(true);
+      expect(w.say('tunnel')).toBe(false);
+      expect(w.say('boss')).toBe(true);
+    } finally {
+      Wagon.talk = false;
+    }
   });
 });
 

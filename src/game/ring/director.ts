@@ -66,8 +66,9 @@ export const RING_PLAN = Object.freeze({
    * Threat points per 512 px of road at budget 1.0 (the bank's income, above the 4-second floor).
    * Integrator 2026-10-20: 0.55 → 0.45 once the forced floor came at 120 ticks and scooters leave
    * after their stay (seeds 1-3 with the bot: scooters on screen p50 3-4, p90 6-8, max 13).
+   * User play-test 2026-10-21 ("too many enemies, I get stuck"): 0.45 → 0.28.
    */
-  threat: 0.45,
+  threat: 0.28,
   /** The bank never holds more than this (no huge burst after a calm part). */
   bankMax: 1.0,
   /** GDD §1.5 rule 1: no more than this many ticks without an enemy on screen (estimate). */
@@ -76,14 +77,16 @@ export const RING_PLAN = Object.freeze({
    * A forced wave comes when the estimate passes this many ticks without an enemy (integrator,
    * 2026-10-20: the bot kills a gang well inside its estimate; placed at the 210-tick mark the
    * play had gaps of 5-10 s, at 150 up to 5 s, at 120 the longest is 198-250 ticks, seeds 1-5).
+   * User play-test 2026-10-21 (too many enemies): 90 → 130, with the smaller gangs (at 170 the bot's
+   * 1P runs went 5 s without an enemy; at 130 the longest is 227-260 ticks, seeds 1-3).
    */
-  gapPlace: 90,
+  gapPlace: 130,
   /** The same mark in a jam chunk (its gangs stay longer: the stopped cars are cover). */
-  gapJam: 100,
+  gapJam: 130,
   /** The director forces a wave this many ticks before the gap limit. */
   gapMargin: 30,
-  /** Voluntary waves start at least this far (px) apart … */
-  waveSpacing: 224,
+  /** Voluntary waves start at least this far (px) apart (user play-test 2026-10-21: 224 → 384) … */
+  waveSpacing: 384,
   /** … and not this close before a rest or a scene. */
   quietBefore: 160,
   /** A repair chance at least every ~60 s (the invariant) … */
@@ -121,8 +124,14 @@ export const RING_PLAN = Object.freeze({
   laneRel: [0.7, 0.3, -0.35, -0.75] as readonly number[],
   /** Share of the civilians per lane (1 far … 4 near). */
   laneShare: [0.2, 0.25, 0.3, 0.25] as readonly number[],
-  /** Minimum distance between two civilians in a lane while both are on screen (px). */
-  carGap: 150,
+  /** Minimum distance between two civilians in a lane while both are on screen (px; 2026-10-21: 150 → 220). */
+  carGap: 220,
+  /**
+   * Two cars in different lanes closer than this (px, along the road) run abreast. A new car never
+   * makes a wall: at least two open lanes stay free of abreast cars (`wallFree`; user play-test
+   * 2026-10-21: "more often I get stuck" — boxed in by traffic).
+   */
+  abreast: 170,
   /** A civilian's lane is open this far (plan px) past its entry (further on it merges out). */
   carClearAhead: 640,
   /** Stretch run-in: the calm last chunk of each stretch (≥ `RING.runIn`). */
@@ -163,21 +172,24 @@ export interface ChunkRule {
   readonly noRepeat?: boolean;
 }
 
+// User play-test 2026-10-21 ("the traffic is too much, more often I get stuck"): every chunk's
+// traffic about halved (was cruise 2.5, traffic 7.5, merge / gantry / roadworks / bridge 3,
+// speedcam / parcel / caravan 2.5, avgzone / tunnel 3.5, convoy 2, rest 1.5).
 export const CHUNK_RULES: Readonly<Record<RingChunkType, ChunkRule>> = {
-  cruise: { type: 'cruise', len: [384, 640], cost: 0, minTier: 0, weight: 3, wave: 'A', enemies: true, traffic: 2.5 },
-  traffic: { type: 'traffic', len: [512, 768], cost: 0.05, minTier: 0, weight: 3, wave: 'A', enemies: true, traffic: 7.5 },
-  merge: { type: 'merge', len: [512, 640], cost: 0.1, minTier: 0, weight: 1.2, wave: 'A', enemies: true, traffic: 3, noRepeat: true },
-  gantry: { type: 'gantry', len: [896, 1152], cost: 0.1, minTier: 0, weight: 1.2, wave: 'A', enemies: true, traffic: 3, closes: true, maxPerStretch: 2, noRepeat: true, minTicks: 900 },
-  roadworks: { type: 'roadworks', len: [640, 1024], cost: 0.15, minTier: 1, weight: 1, wave: 'A', enemies: true, traffic: 3, closes: true, maxPerStretch: 1, noRepeat: true },
-  speedcam: { type: 'speedcam', len: [384, 512], cost: 0.05, minTier: 0, weight: 1, wave: 'A', enemies: true, traffic: 2.5, maxPerStretch: 2, noRepeat: true, minTicks: 600 },
-  avgzone: { type: 'avgzone', len: [1536, 2048], cost: 0.05, minTier: 0, weight: 0, wave: 'A', enemies: true, traffic: 3.5, maxPerStretch: 1 },
+  cruise: { type: 'cruise', len: [384, 640], cost: 0, minTier: 0, weight: 3, wave: 'A', enemies: true, traffic: 1.5 },
+  traffic: { type: 'traffic', len: [512, 768], cost: 0.05, minTier: 0, weight: 3, wave: 'A', enemies: true, traffic: 4 },
+  merge: { type: 'merge', len: [512, 640], cost: 0.1, minTier: 0, weight: 1.2, wave: 'A', enemies: true, traffic: 2, noRepeat: true },
+  gantry: { type: 'gantry', len: [896, 1152], cost: 0.1, minTier: 0, weight: 1.2, wave: 'A', enemies: true, traffic: 1.5, closes: true, maxPerStretch: 2, noRepeat: true, minTicks: 900 },
+  roadworks: { type: 'roadworks', len: [640, 1024], cost: 0.15, minTier: 1, weight: 1, wave: 'A', enemies: true, traffic: 1.5, closes: true, maxPerStretch: 1, noRepeat: true },
+  speedcam: { type: 'speedcam', len: [384, 512], cost: 0.05, minTier: 0, weight: 1, wave: 'A', enemies: true, traffic: 1.5, maxPerStretch: 2, noRepeat: true, minTicks: 600 },
+  avgzone: { type: 'avgzone', len: [1536, 2048], cost: 0.05, minTier: 0, weight: 0, wave: 'A', enemies: true, traffic: 2, maxPerStretch: 1 },
   jam: { type: 'jam', len: [640, 896], cost: 0.2, minTier: 1, weight: 0, wave: 'A', enemies: true, traffic: 0, maxPerStretch: 1 },
-  rest: { type: 'rest', len: [384, 512], cost: 0, minTier: 0, weight: 0, wave: 'A', enemies: false, traffic: 1.5 },
-  parcel: { type: 'parcel', len: [512, 768], cost: 0.4, minTier: 0, weight: 1.5, wave: 'B', enemies: true, traffic: 2.5, noRepeat: true },
-  caravan: { type: 'caravan', len: [512, 768], cost: 0.5, minTier: 1, weight: 1, wave: 'B', enemies: true, traffic: 2.5, noRepeat: true },
-  convoy: { type: 'convoy', len: [768, 1024], cost: 0.8, minTier: 2, weight: 1, wave: 'B', enemies: true, traffic: 2, maxPerStretch: 1, noRepeat: true },
-  bridge: { type: 'bridge', len: [512, 512], cost: 0, minTier: 0, weight: 0, wave: 'A', enemies: true, traffic: 3 },
-  tunnel: { type: 'tunnel', len: [1024, 1280], cost: 0, minTier: 0, weight: 0, wave: 'A', enemies: true, traffic: 3.5 },
+  rest: { type: 'rest', len: [384, 512], cost: 0, minTier: 0, weight: 0, wave: 'A', enemies: false, traffic: 1 },
+  parcel: { type: 'parcel', len: [512, 768], cost: 0.4, minTier: 0, weight: 1.5, wave: 'B', enemies: true, traffic: 1.5, noRepeat: true },
+  caravan: { type: 'caravan', len: [512, 768], cost: 0.5, minTier: 1, weight: 1, wave: 'B', enemies: true, traffic: 1.5, noRepeat: true },
+  convoy: { type: 'convoy', len: [768, 1024], cost: 0.8, minTier: 2, weight: 1, wave: 'B', enemies: true, traffic: 1, maxPerStretch: 1, noRepeat: true },
+  bridge: { type: 'bridge', len: [512, 512], cost: 0, minTier: 0, weight: 0, wave: 'A', enemies: true, traffic: 2 },
+  tunnel: { type: 'tunnel', len: [1024, 1280], cost: 0, minTier: 0, weight: 0, wave: 'A', enemies: true, traffic: 2 },
 };
 
 /** The budget curve over the loop (spec §13: 0.2 → 1.0); `p` = planned-time progress 0 … 1. */
@@ -354,7 +366,11 @@ function gang(rng: Rng, tier: number, side: WaveMember['side'], rows: readonly W
   return out;
 }
 
-/** The wave templates (wave A: the scooter gang; wave B: the gangs and the convoy). */
+/**
+ * The wave templates (wave A: the scooter gang; wave B: the gangs and the convoy). User play-test
+ * 2026-10-21 (too many enemies): every scooter gang one base member less (EASY 2, NORMAL 3, HARD 4;
+ * the pincer 2 / 3 / 4).
+ */
 export const WAVE_TEMPLATES: readonly WaveTemplate[] = [
   {
     id: 'gang-behind',
@@ -362,7 +378,7 @@ export const WAVE_TEMPLATES: readonly WaveTemplate[] = [
     minTier: 0,
     cost: 0.4,
     weight: [3, 3, 2, 2],
-    build: (rng, tier) => gang(rng, tier, 'behind', ['', '', '', 'N', 'H'], 20),
+    build: (rng, tier) => gang(rng, tier, 'behind', ['', '', 'N', 'H'], 20),
   },
   {
     id: 'gang-ahead',
@@ -370,7 +386,7 @@ export const WAVE_TEMPLATES: readonly WaveTemplate[] = [
     minTier: 0,
     cost: 0.4,
     weight: [2, 2, 2, 2],
-    build: (rng, tier) => gang(rng, tier, 'ahead', ['', '', '', 'N', 'H'], 56),
+    build: (rng, tier) => gang(rng, tier, 'ahead', ['', '', 'N', 'H'], 56),
   },
   {
     id: 'gang-weave',
@@ -378,7 +394,7 @@ export const WAVE_TEMPLATES: readonly WaveTemplate[] = [
     minTier: 1,
     cost: 0.5,
     weight: [0, 1.5, 2, 2],
-    build: (rng, tier) => gang(rng, tier, 'behind', ['', '', '', '', 'H'], 24, { weave: 'wide' }),
+    build: (rng, tier) => gang(rng, tier, 'behind', ['', '', 'N', 'H'], 24, { weave: 'wide' }),
   },
   {
     id: 'gang-pincer',
@@ -387,8 +403,8 @@ export const WAVE_TEMPLATES: readonly WaveTemplate[] = [
     cost: 0.5,
     weight: [0, 0, 1.5, 2],
     build: (rng, tier) => {
-      const a = gang(rng, tier, 'behind', ['', '', 'N'], 20, { pincer: true });
-      const b = gang(rng, tier, 'ahead', ['', '', 'H'], 56, { pincer: true });
+      const a = gang(rng, tier, 'behind', ['', 'N'], 20, { pincer: true });
+      const b = gang(rng, tier, 'ahead', ['', 'H'], 56, { pincer: true });
       return [...a, ...b.map((m) => ({ ...m, lane: -m.lane + 1, params: { ...m.params, lead: false } }))];
     },
   },
@@ -399,7 +415,7 @@ export const WAVE_TEMPLATES: readonly WaveTemplate[] = [
     cost: 0.35,
     weight: [0.3, 0.3, 0.3, 0.3],
     prefer: { types: ['merge'], weight: 12 },
-    build: (rng, tier) => gang(rng, tier, 'near', ['', '', '', 'N'], 40, { merge: true }).map((m) => ({ ...m, lane: 4, fixedLane: true })),
+    build: (rng, tier) => gang(rng, tier, 'near', ['', '', 'N'], 40, { merge: true }).map((m) => ({ ...m, lane: 4, fixedLane: true })),
   },
   // ---- wave B (CONVOY / GANGS builders; the plan names them when made with wave 'B') --------
   {
@@ -497,6 +513,17 @@ const NEAR_WEIGHTS = [3, 3, 2, 1, 1, 1];
 const MODEL_REL: Readonly<Record<RingCarModel, number>> = { hatch: 0, estate: 0, taxi: 0.1, van: -0.1, camper: -0.15, 'box-truck': -0.2 };
 /** Civilian colours (`ring-car` param `colour`, 0 … 7). */
 export const CAR_COLOURS = 8;
+
+/** A civilian's model for lane `l` (camper and box truck keep right). */
+export function pickCarModel(rng: Rng, l: number): RingCarModel {
+  return l <= 2 ? FAR_MODELS[rng.weighted(FAR_WEIGHTS)] : NEAR_MODELS[rng.weighted(NEAR_WEIGHTS)];
+}
+
+/** A civilian's `rel` (screen speed at cruise) in lane `l`: never near 0 (it must come and go). */
+export function carRelOf(l: number, model: RingCarModel): number {
+  const r = RING_PLAN.laneRel[l - 1] + MODEL_REL[model];
+  return round2(r >= 0 ? Math.max(0.2, r) : Math.min(-0.2, r));
+}
 
 // =============================================================================================
 // The director
@@ -910,6 +937,62 @@ class Director {
       const db = o.p0 + (b - o.t0) * o.rate - (win.p0 + (b - win.t0) * win.rate);
       if (Math.sign(da) !== Math.sign(db) || Math.min(Math.abs(da), Math.abs(db)) < RING_PLAN.carGap) return false;
     }
+    return this.wallFree(l, win, this.minOpen(win.p0 - 64, win.p0 + reach));
+  }
+
+  /** The fewest open lanes over the plan range [p0, p1]. */
+  private minOpen(p0: number, p1: number): number {
+    const a = Math.max(0, Math.min(p0, p1));
+    const b = Math.min(this.d - 1, Math.max(p0, p1));
+    let i = chunkIndexAt(this.chunks, a);
+    if (i < 0) return 4;
+    let n = 4;
+    for (; i < this.chunks.length && this.chunks[i].start <= b; i++) {
+      const c = this.chunks[i];
+      n = Math.min(n, (c.lanes ?? 4) - (c.closed?.length ?? 0));
+    }
+    return n;
+  }
+
+  /**
+   * A new car in lane `l` with `win` never makes a wall: while it is on screen, the lanes with a
+   * car abreast of it (within `RING_PLAN.abreast` px), its own lane counted, stay at most `open`
+   * − 2 (at least 1), so two open lanes stay free beside every car (four lanes: pairs at most;
+   * a tunnel or a closure: one car at a time).
+   */
+  private wallFree(l: number, win: LaneCar, open: number): boolean {
+    const others = Math.max(1, open - 2) - 1;
+    const w = RING_PLAN.abreast;
+    const spans: [number, number, number][] = [];
+    for (let m = 1; m <= 4; m++) {
+      if (m === l) continue;
+      for (const o of this.laneCars[m - 1]) {
+        const a = Math.max(o.t0, win.t0);
+        const b = Math.min(o.t1, win.t1);
+        if (a > b) continue;
+        // The gap along the road is linear in view time: the span where it is under `w`.
+        const da = o.p0 + (a - o.t0) * o.rate - (win.p0 + (a - win.t0) * win.rate);
+        const db = o.p0 + (b - o.t0) * o.rate - (win.p0 + (b - win.t0) * win.rate);
+        let lo = a;
+        let hi = b;
+        if (b > a && da !== db) {
+          const k = (db - da) / (b - a);
+          const t1 = a + (-w - da) / k;
+          const t2 = a + (w - da) / k;
+          lo = Math.max(a, Math.min(t1, t2));
+          hi = Math.min(b, Math.max(t1, t2));
+        } else if (Math.abs(da) >= w) continue;
+        if (lo >= hi && !(lo === hi && Math.abs(da) < w)) continue;
+        if (others === 0) return false;
+        spans.push([m, lo, hi]);
+      }
+    }
+    // Two other lanes abreast at the same time make a wall of three.
+    for (let i = 0; i < spans.length; i++) {
+      for (let j = i + 1; j < spans.length; j++) {
+        if (spans[i][0] !== spans[j][0] && spans[i][1] < spans[j][2] && spans[j][1] < spans[i][2]) return false;
+      }
+    }
     return true;
   }
 
@@ -929,12 +1012,11 @@ class Director {
 
   /** A civilian's `rel` (screen speed at cruise) in lane `l`: never near 0 (it must come and go). */
   private carRel(l: number, model: RingCarModel): number {
-    const r = RING_PLAN.laneRel[l - 1] + MODEL_REL[model];
-    return round2(r >= 0 ? Math.max(0.2, r) : Math.min(-0.2, r));
+    return carRelOf(l, model);
   }
 
   private pickModel(rng: Rng, l: number): RingCarModel {
-    return l <= 2 ? FAR_MODELS[rng.weighted(FAR_WEIGHTS)] : NEAR_MODELS[rng.weighted(NEAR_WEIGHTS)];
+    return pickCarModel(rng, l);
   }
 
   /** Target civilians on screen while the view is in chunk `c`. */

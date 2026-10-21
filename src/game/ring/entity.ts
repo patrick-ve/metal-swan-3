@@ -40,6 +40,12 @@ export interface RingHost {
   readonly isRing: true;
   /** Camera speed (px/tick). */
   readonly roadSpeed: number;
+  /**
+   * The traffic's road speed (px/tick): `roadSpeed` while somebody plays. While every player is
+   * out the camera stops at the crash, but the civilians drive on at the road's free speed (and
+   * stay at it after the continue until the camera is back up to it).
+   */
+  readonly flowSpeed: number;
   /** Plan distance of the view's left edge. */
   readonly planDist: number;
   /** Runner ticks. */

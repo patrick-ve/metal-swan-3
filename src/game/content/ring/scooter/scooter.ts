@@ -43,8 +43,11 @@ export const SCOOTER_AI = {
   score: 200,
   /** Telegraph base (scaled by difficulty, never below 18). */
   tell: 26,
-  /** Attack interval base and jitter (a gang of 4–5 is on screen at once: keep it a hail, not a wall). */
-  every: 170,
+  /**
+   * Attack interval base and jitter (a gang of 3–4 is on screen at once: keep it a hail, not a
+   * wall). User play-test 2026-10-21 (too many enemies): 170 → 200.
+   */
+  every: 200,
   jitter: 40,
   /** First attack after it is in play. */
   firstDelay: 70,
@@ -78,8 +81,11 @@ export const SCOOTER_AI = {
   leaveRel: 3,
   /** Depth half of its hurt slab while it filters between the lanes of a standing jam. */
   filterHalf: 12,
-  /** More riding scooters than this: the one in play longest leaves (the road stays readable). */
-  crowd: 5,
+  /**
+   * More riding scooters than this: the one in play longest leaves (the road stays readable).
+   * User play-test 2026-10-21: 5 → 4.
+   */
+  crowd: 4,
 } as const;
 
 const NO_BOXES: readonly Rect[] = [];

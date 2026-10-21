@@ -4,12 +4,13 @@
  * hero jumps into the window and the wagon merges into lane 4; START skips it after the first
  * play; at the plan's end the wagons take the off-ramp and the mission completes.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import '../../../src/game/content/characters/art';
 import { BOARDING, ringBoarding, setBoardingSeen } from '../../../src/game/ring/boarding';
 import { driverLine } from '../../../src/game/content/ring/wagon/lines';
 import { laneY } from '../../../src/game/ring/lanes';
 import { RING } from '../../../src/game/ring/types';
+import { Wagon } from '../../../src/game/ring/wagon';
 import { RingRig, tinyPlan } from './ring-helpers';
 
 afterEach(() => setBoardingSeen(false));
@@ -38,7 +39,9 @@ describe('the boarding scene', () => {
       if (hero.boarding) expect(rig.runner.planDist).toBe(0);
       return hero.state === 'mounted';
     }, 400);
-    expect(left && spun && shout).toBe(true);
+    expect(left && spun).toBe(true);
+    // The driver says nothing (user 2026-10-21).
+    expect(shout).toBe(false);
     expect(w.screenX).toBeCloseTo(BOARDING.heroX[0] - (-13), 0);
     rig.until(() => !ringBoarding(rig.world), 200);
     expect(w.laneTarget).toBe(4);
@@ -77,7 +80,24 @@ describe('the boarding scene', () => {
 });
 
 describe('the drivers talk', () => {
-  it('a speed fine and a spawned boss make the driver speak (his own line)', () => {
+  it('they keep quiet: a speed fine and a spawned boss show no bubble (user 2026-10-21)', () => {
+    setBoardingSeen(true);
+    const rig = new RingRig();
+    rig.run(2);
+    rig.tap(['start']);
+    rig.run(10);
+    const w = rig.wagon;
+    rig.runner.fine(0);
+    rig.runner.events.emit('bossSlot', { id: 'x', at: 0, spawned: true });
+    rig.run(2);
+    expect(rig.runner.hud.bubbles.some((b) => b.target === w)).toBe(false);
+  });
+
+  it('with the lines on: a speed fine and a spawned boss make the driver speak (his own line)', () => {
+    Wagon.talk = true;
+    onTestFinished(() => {
+      Wagon.talk = false;
+    });
     setBoardingSeen(true);
     const rig = new RingRig();
     rig.run(2);
