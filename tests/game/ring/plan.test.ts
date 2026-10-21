@@ -272,7 +272,8 @@ describe('planRing: the grammar and the director', () => {
       expect(h.chunks).toEqual(n.chunks);
       // The jam's own waves (its `waves` param: a scooter gang and the boarders in its stand) are
       // wave rows too; every wave member carries its `gang` number (hostage carriers do not).
-      const noWaves = (s: RingPlan['spawns'][number]): unknown => (s.id === RING_ENTITY.jam ? { ...s, params: { ...s.params, waves: undefined } } : s);
+      // (EASY adds `after`: a small gang when the stand ends, the floor for the crawl after it.)
+      const noWaves = (s: RingPlan['spawns'][number]): unknown => (s.id === RING_ENTITY.jam ? { ...s, params: { ...s.params, waves: undefined, after: undefined } } : s);
       const calm = (p: RingPlan): string => JSON.stringify(p.spawns.filter((s) => s.params?.gang === undefined).map(noWaves));
       expect(calm(e)).toBe(calm(n));
       expect(calm(h)).toBe(calm(n));
@@ -283,6 +284,22 @@ describe('planRing: the grammar and the director', () => {
       expect(sc(n)).toBeLessThan(sc(h));
       expect(jamScooters(e)).toBeLessThanOrEqual(jamScooters(n));
       expect(jamScooters(n)).toBeLessThanOrEqual(jamScooters(h));
+    }
+  });
+
+  it("EASY jams get an `after` gang for the crawl after the stand (GDD 1.5); NORMAL and HARD none, the same layout", () => {
+    for (const seed of [2, 31, 404]) {
+      const [e, n, h] = DIFFS.map((d) => planRing(seed, d));
+      const jams = (p: RingPlan): RingPlan['spawns'] => p.spawns.filter((s) => s.id === RING_ENTITY.jam);
+      expect(jams(e).length).toBeGreaterThan(0);
+      for (const j of jams(e)) {
+        const after = j.params?.after as Array<{ id: string; from: string }>;
+        expect(after.length).toBe(2);
+        for (const m of after) expect([m.id, m.from]).toEqual([RING_ENTITY.scooter, 'behind']);
+      }
+      for (const j of [...jams(n), ...jams(h)]) expect(j.params?.after).toBeUndefined();
+      // The rest of the jam's params (its own waves on the same rows) and every position stay.
+      expect(jams(e).map((j) => j.at)).toEqual(jams(n).map((j) => j.at));
     }
   });
 

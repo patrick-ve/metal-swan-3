@@ -12,16 +12,18 @@
  *   hostage variant); `ring/caravan/grille` (2: shut, dented): the barred grille over it.
  * - `ring/caravan/drawbar` (3, the caravan anchor): 0 hitched to the tow car's ball · 1 strained
  *   (the tell: bent at the head, a crack glint) · 2 dropped (the head scraping on the road).
- * - `ring/caravan/tip` (4, deferred): tipping over toward the camera (25°, 55°, 80°) and lying on
- *   its side (the roof faces us: the hatch, the skylight, the vent).
+ * - `ring/caravan/tip` (4, deferred): tipping over away from the camera (18°, 42°, 66°) and lying
+ *   on its far side (84°): the livery (windows, band, line, TOERTJE) stays in view, foreshortened,
+ *   and the underside turns toward us (rails, axle, both wheels, the A-frame).
  */
 import type { Frame } from '../../../../engine/render';
 import { INK } from '../../../../engine/palette';
 import { HdCanvas, inPoly, polyDist } from '../../../art/hd';
 import { finishA, mat, top, type Dn } from '../../stag/kit.art';
-import { field, frac, frameOf, lettering, lineW, mats, paintMat, polyBox, roll, volume, wells, type VolumeGeo } from './art-kit';
+import { field, frac, frameOf, letterAt, lettering, lineW, mats, paintMat, polyBox, roll, volume, wells, type VolumeGeo } from './art-kit';
+import { textWidth } from '../traffic/lettering';
 import { grilleBuf } from './art-van';
-import { CARAVAN, type Pt } from './geometry';
+import { CARAVAN, CARAVAN_DOOR, type Pt } from './geometry';
 
 /** Caravan canvas: x −39 … 38, y −52 … +1 (room for the propped lid). */
 const BX0 = -39;
@@ -177,7 +179,7 @@ export function caravanOpenFrame(d: Dn): Frame {
 /** The barred grille over the doorway (0 shut, 1 dented). */
 export function caravanGrilleFrame(state: number, d: Dn): Frame {
   const c = new HdCanvas(DW, DH, d);
-  grilleBuf(c, [CARAVAN.doorX[0], CARAVAN.doorY[0], CARAVAN.doorX[1], CARAVAN.doorY[1]], DX0, DY0, state);
+  grilleBuf(c, CARAVAN_DOOR, DX0, DY0, state);
   const buf = c.render({ outline: 'none', ink: INK, ao: 0.2, rimLight: d === 1 ? 0 : 2, sep: false });
   return frameOf(buf, -DX0, -DY0, d);
 }
@@ -231,81 +233,219 @@ export function drawbarFrame(f: number, d: Dn): Frame {
 // Tipping over
 // ---------------------------------------------------------------------------------------------
 
-/** Tip angles (deg) of the frames: the side face shrinks by cos, the roof grows by sin. */
-const TIP = [25, 55, 80, 90];
-/** The caravan's width (the roof face's height when it lies on its side). */
+/**
+ * Tip angles (deg) of the frames: the caravan tips AWAY from us about its far bottom edge, so the
+ * near wall (the livery) turns up toward the sky and stays in view, and the underside with the
+ * axle, both wheels and the A-frame turns toward us. The last angle is the lying pose (its
+ * rounded roof lip keeps it a little short of flat).
+ */
+const TIP = [18, 42, 66, 84];
+/** The caravan's width (the depth of the floor) and the view: a depth shows TK as much as a height. */
 const WIDTH = 24;
+const TK = 0.42;
+/** The floor's height over the road (the body's bottom edge). */
+const FLOOR = 7.6;
 
-/** Tipping toward the camera (frames 0–2) and lying on its side (3): the roof faces us. */
+/**
+ * The tip's projection at angle `a` (rad): a body point (x, dz = depth from the near wall, ≤ 0
+ * inside, h = height) → screen y, shifted down by TK·W·sin a so the lying caravan's road contact
+ * stays on the plane y (the runner's shadow). `s`: the near wall's vertical scale.
+ */
+function tipView(a: number): { sy: (dz: number, h: number) => number; s: number; sy0: number; dsDz: number } {
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  const shift = TK * WIDTH * sa;
+  const sy = (dz: number, h: number): number => {
+    const rd = dz + WIDTH;
+    const dep = -WIDTH + rd * ca - h * sa;
+    const hei = rd * sa + h * ca;
+    return -hei + TK * dep + shift;
+  };
+  return { sy, s: ca + TK * sa, sy0: sy(0, 0), dsDz: -sa + TK * ca };
+}
+
+/**
+ * Tipping away from us (frames 0–2) and lying on its far side (3). Frame 0: the near side lifts
+ * (the near wheel leaves the road, the far wheel still under it, a sliver of roof); 1–2: the wall
+ * leans back, the floor turns toward us; 3: the livery lies foreshortened on top, under it the
+ * chassis: the rails, the axle with both wheels sticking out toward us and the A-frame drawbar.
+ */
 export function caravanTipFrame(f: number, d: Dn): Frame {
-  const c = new HdCanvas(90, 41, d);
   const ox = -40;
-  const oy = -40;
-  const a = ((TIP[f] ?? 90) * Math.PI) / 180;
-  const H = 31.4;
-  const sideH = H * Math.cos(a);
-  const roofH = WIDTH * Math.sin(a);
-  const paint = paintMat(c, 'cream');
-  const brown = mat(c, 'brown', { spec: 0.8, shine: 40, lo1: 0, hi1: 3, lo: 2, hi: 5 });
-  const orange = mat(c, 'orange', { spec: 0.8, shine: 40, lo1: 1, hi1: 3, lo: 3, hi: 6 });
-  const roofMat = mat(c, 'gable', { spec: 0.6, shine: 36, lo1: 1, hi1: 3, lo: 2, hi: 5 });
+  const oy = -58;
+  const c = new HdCanvas(98, 61, d);
+  const a = ((TIP[f] ?? 84) * Math.PI) / 180;
+  const v = tipView(a);
   const m = mats(c);
-  const y0 = -1.4;
-  // The side face, squashed by cos(a) (its bottom edge on the road), with its band and line.
-  if (sideH > 1) {
-    const prof: Pt[] = [[-36, y0], [-36, y0 - sideH + 1], [-34, y0 - sideH], [26, y0 - sideH], [34, y0 - sideH * 0.7], [36, y0 - sideH * 0.35], [35, y0]];
-    field(c, ox, oy, -37, y0 - sideH - 1, 74, sideH + 1.6, (x, y) => (inPoly(x, y, prof) ? roll(polyDist(x, y, prof), 1.6) : NaN), {
-      mat: paint,
-      z: 1,
+  const paint = paintMat(c, 'cream');
+  const brown = mat(c, 'brown', { spec: 0.8, shine: 40, lo1: 0, hi1: 3, lo: 2, hi: 5, rim: 0.3 });
+  const orange = mat(c, 'orange', { spec: 0.8, shine: 40, lo1: 1, hi1: 3, lo: 3, hi: 6 });
+  const frameMat = mat(c, 'gable', { spec: 0.5, shine: 30, lo1: 1, hi1: 3, lo: 2, hi: 5 });
+  const curtain = mat(c, 'orange', { spec: 0.1, lo1: 0, hi1: 2, lo: 2, hi: 5 });
+  const roofMat = mat(c, 'gable', { spec: 0.6, shine: 36, lo1: 1, hi1: 3, lo: 2, hi: 5 });
+  const pan = mat(c, 'stone', { spec: 0.2, shine: 14, lo1: 0, hi1: 1, lo: 1, hi: 3 });
+  const zinc = mat(c, 'steel', { spec: 0.6, shine: 24, lo1: 0, hi1: 2, lo: 1, hi: 4 });
+  const steel = mat(c, 'steel', { spec: 1, shine: 40, lo1: 1, hi1: 3, lo: 2, hi: 6, rim: 0.3 });
+  const hw = lineW(d);
+  // The near wall's mapping: body y (−h) → screen y = sy0 + s·y; back: y = (sy − sy0) / s.
+  const s = v.s;
+  const by = (sy: number): number => (sy - v.sy0) / s;
+  const Y = (y: number): number => v.sy0 + s * y;
+  /** A field over a body box of the near wall (x0, y0, w, h in body px), evaluated at body coords. */
+  const wall = (x0: number, y0: number, w: number, h: number, fn: (x: number, y: number) => number, o: Parameters<HdCanvas['heightField']>[5]): void => {
+    field(c, ox, oy, x0, Y(y0) - 0.5, w, h * s + 1, (x, sy) => fn(x, by(sy)), o);
+  };
+  /** A box on the near wall (body px). */
+  const wbox = (x: number, y: number, w: number, h: number, o: Parameters<HdCanvas['box']>[4]): void => {
+    c.box(x - ox, Y(y) - oy, w, Math.max(0.6, h * s), o);
+  };
+  const P = (x: number, dz: number, h: number): [number, number] => [x - ox, v.sy(dz, h) - oy];
+  const seg = (x0: number, dz0: number, h0: number, x1: number, dz1: number, h1: number, r0: number, r1: number, o: Parameters<HdCanvas['capsule']>[6]): void => {
+    const [ax, ay] = P(x0, dz0, h0);
+    const [bx, bb] = P(x1, dz1, h1);
+    c.capsule(ax, ay, bx, bb, r0, r1, o);
+  };
+  /** A wheel (one axle: x −1.5) at depth dz0 … dz1 (outer face first): a drum of stacked discs. */
+  const wx = CARAVAN.wheel + 0.5;
+  const wr = CARAVAN.wheelR;
+  const wheel = (dzFace: number, dzIn: number, z: number, hub: boolean): void => {
+    const [cx, yF] = P(wx, dzFace, wr);
+    const yI = v.sy(dzIn, wr) - oy;
+    const ry = wr * s;
+    const lo = Math.min(yF, yI);
+    const hi = Math.max(yF, yI);
+    // The tread: every disc between the faces (a drum), shaded round across x.
+    field(c, ox, oy, cx + ox - wr - 0.5, lo + oy - ry - 0.5, wr * 2 + 1, hi - lo + ry * 2 + 1, (x, sy) => {
+      const u = (x - (cx + ox)) / wr;
+      if (u * u >= 1) return NaN;
+      const e = ry * Math.sqrt(1 - u * u);
+      const y = sy - oy;
+      return y >= lo - e && y <= hi + e ? Math.sqrt(1 - u * u) * 1.2 : NaN;
+    }, { mat: m.black, z, tex: (t) => void (t.tone += Math.abs(t.y - (yF + yI) / 2) < 0.6 ? 0 : -0.1) });
+    // The face toward us: the tyre's sidewall ring, the steel rim and the hub (the far wheel: its
+    // inner side, a dull brake drum where the axle goes in).
+    field(c, ox, oy, cx + ox - wr, yF + oy - ry, wr * 2, ry * 2, (x, sy) => {
+      const q = Math.hypot((x - (cx + ox)) / wr, (sy - (yF + oy)) / ry);
+      return q < 1 ? 1.6 - q * 0.4 : NaN;
+    }, {
+      mat: m.black,
+      z: z + 0.6,
       tex: (t) => {
-        const v = (y0 - (t.y + oy)) / Math.max(1, sideH);
-        // Heights over the bottom edge (y −7.6) of the band, the line and the rear window.
-        const u = v * H;
-        const hy = (yy: number): number => -yy - 7.6;
-        if (u > hy(CARAVAN.stripe[1]) && u < hy(CARAVAN.stripe[0])) t.mat = brown;
-        else if (u > hy(CARAVAN.stripe2[1]) && u < hy(CARAVAN.stripe2[0])) t.mat = orange;
-        const w0 = CARAVAN.windows[0];
-        if (u > hy(w0[3]) && u < hy(w0[1]) && t.x + ox > w0[0] && t.x + ox < w0[2]) t.mat = m.glass;
+        const q = Math.hypot((t.x - cx) / wr, (t.y - yF) / ry);
+        if (q < 0.62) t.mat = hub ? steel : zinc;
+        if (hub && q < 0.22) t.mat = m.black;
+        if (!hub && q < 0.62) t.tone -= 0.25;
+        if (q > 0.62 && q < 0.7) t.tone -= 0.3;
       },
     });
-  }
-  // The roof face above it: cream-white, rounded at the front, the hatch, the skylight, a vent.
-  const rTop = y0 - sideH - roofH;
-  const roof: Pt[] = [[-36, y0 - sideH], [-36, rTop + 1.6], [-34.4, rTop], [25, rTop], [33, rTop + roofH * 0.15], [36, rTop + roofH * 0.5], [34, y0 - sideH]];
-  if (roofH > 1) {
-    field(c, ox, oy, -37, rTop - 1, 74, roofH + 1.6, (x, y) => (inPoly(x, y, roof) ? roll(polyDist(x, y, roof), 2) + 0.4 : NaN), {
-      mat: roofMat,
+  };
+  const W = WIDTH;
+  const floorOn = v.dsDz < -0.05;
+  // 1. The far wheel (still on the road under the lifting side; later the bottom of the chassis).
+  wheel(-W - 2.5, -W + 1.5, 0.5, false);
+  // 2. The underside, once it turns toward us: the floor pan, two rails, cross members, the
+  //    axle, the corner steadies and the A-frame to the coupling head.
+  if (floorOn) {
+    const yn = v.sy(0, FLOOR);
+    const yf = v.sy(-W, FLOOR);
+    const x0 = -34.6;
+    const x1 = 33.6;
+    field(c, ox, oy, x0 - 1, yn - 1, x1 - x0 + 2, yf - yn + 2, (x, sy) => {
+      if (x < x0 || x > x1 || sy < yn || sy > yf) return NaN;
+      const e = Math.min(x - x0, x1 - x, (sy - yn) * 2, (yf - sy) * 2);
+      return roll(e, 1.2) * 0.6;
+    }, {
+      mat: pan,
       z: 1.2,
       tex: (t) => {
         const x = t.x + ox;
-        const v = (t.y + oy - rTop) / roofH;
-        // A rain gutter along each long edge, the roof's seams.
-        if (v < 0.08 || v > 0.92) t.tone -= 0.2;
-        if (d > 1 && frac((x + 36) / 12) < 0.04) t.tone -= 0.18;
+        // Pressed ribs across the pan, a grimy edge.
+        if (frac((x + 34.6) / 7.4) < (d === 1 ? 0.14 : 0.08)) t.tone -= 0.3;
+        if (t.y + oy > yf - 1.2) t.tone -= 0.25;
       },
     });
-    const mid = rTop + roofH / 2;
-    const s = Math.max(0.2, roofH / WIDTH);
-    c.box(-20 - ox, mid - 4 * s - oy, 12, 8 * s, { mat: roofMat, z: 2.4, r: 0.8, bevel: 0.8, tone: -0.15 });
-    c.ellipsoid(6 - ox, mid - oy, 4.6, 3.2 * s, { mat: m.glass, z: 2.4, round: 0.8 });
-    c.box(14 - ox, mid - 1.4 * s - oy, 5, 2.8 * s, { mat: m.plastic, z: 2.4, r: 0.4 });
+    for (const dz of [-5, -W + 5]) seg(-33, dz, FLOOR - 0.6, 33, dz, FLOOR - 0.6, 0.9, 0.9, { mat: m.black, z: 1.6 });
+    for (const x of [-24, 14, 26]) seg(x, -3, FLOOR - 0.4, x, -W + 3, FLOOR - 0.4, 0.5, 0.5, { mat: zinc, z: 1.5 });
+    for (const x of [-32.6, 30.4]) for (const dz of [-1.4, -W + 1.4]) seg(x, dz, FLOOR, x - 0.4, dz, 4.6, 0.6, 0.5, { mat: m.black, z: 1.9 });
+    // The A-frame: from the front corners of the chassis to the coupling head in the middle.
+    const [hx] = CARAVAN.hitch;
+    for (const dz of [-5, -W + 5]) seg(33, dz, FLOOR + 0.4, hx - 2.4, -W / 2, 9.6, 1.1, 0.9, { mat: zinc, z: 2 });
+    const [kx, ky] = P(hx, -W / 2, 9.6);
+    c.ellipsoid(kx, ky, 2.6, 2.2, { mat: steel, z: 2.6 });
+    // The axle between the wheels.
+    seg(wx, -1.5, wr, wx, -W + 1.5, wr, 1, 1, { mat: zinc, z: 1.8 });
   }
-  if (f >= 2) {
-    // Lying: the far side faces up (a cream strip with its brown band over the roof's top edge),
-    // the drawbar sticks out of the front end, a dark seam where it lies on the road.
-    const top0 = rTop - 3;
-    field(c, ox, oy, -35.5, top0 - 0.5, 68, 4, (x, y) => (x > -35 && x < 31 - (y - top0) && y > top0 && y < rTop + 0.4 ? 0.6 : NaN), {
-      mat: paint,
-      z: 1.1,
+  // 3. A sliver of the roof while it still faces up a little (frame 0).
+  if (v.dsDz > 0.05) {
+    const yt = v.sy(0, -CARAVAN.roof);
+    const yb = v.sy(-W, -CARAVAN.roof);
+    field(c, ox, oy, -34, yb - 1, 60, yt - yb + 2, (x, sy) => (x > -33.6 && x < 25 && sy > yb && sy < yt + 0.5 ? 0.4 : NaN), { mat: roofMat, z: 2.4 });
+  }
+  // 4. The near wall, foreshortened: the shell with the band, the line and the door, the windows
+  //    (curtains, cracks), the lamps, TOERTJE. It faces the sky more as it tips: a little lighter.
+  const lift = 0.12 * Math.sin(a);
+  const ar = wr + 1.2;
+  const poly = CARAVAN.profile;
+  const [dx0, dx1] = CARAVAN.doorX;
+  const [dy0, dy1] = CARAVAN.doorY;
+  wall(-37, -40, 75, 33, (x, y) => {
+    if (!inPoly(x, y, poly)) return NaN;
+    const wd = Math.hypot(x - wx, y + wr);
+    if (wd < ar) return NaN;
+    const e = Math.min(polyDist(x, y, poly), wd - ar + 0.5);
+    return roll(e, 2.2) * Math.min(1, s);
+  }, {
+    mat: paint,
+    z: 3,
+    tex: (t) => {
+      const x = t.x + ox;
+      const y = by(t.y + oy);
+      t.tone += lift;
+      if (y > CARAVAN.stripe[0] && y < CARAVAN.stripe[1]) t.mat = x > 18 && x < 30 && frac(x * 0.3) < 0.5 ? paint : brown;
+      else if (y > CARAVAN.stripe2[0] && y < CARAVAN.stripe2[1]) t.mat = orange;
+      const onDoor = x > dx0 - hw && x < dx1 + hw && y > dy0 - hw / s && y < dy1 + hw / s;
+      if (onDoor && (Math.abs(x - dx0) < hw || Math.abs(x - dx1) < hw || Math.abs(y - dy0) < hw / s)) t.tone -= 0.75;
+      if (y < -37.2 && y > -38.4) t.tone += 0.12;
+      // Road grime and scrapes along the bottom edge.
+      if (y > -10.4 && frac(x * 0.37 + y * 0.2) < 0.3) t.tone -= 0.3;
+    },
+  });
+  CARAVAN.windows.forEach((w, i) => {
+    const [x0, y0, x1, y1] = w;
+    const r = i === 2 ? 2.4 : 1.6;
+    wall(x0 - 1, y0 - 1, x1 - x0 + 2, y1 - y0 + 2, (x, y) => (inBox(x, y, [x0 - 0.9, y0 - 0.9, x1 + 0.9, y1 + 0.9], r + 0.8) && !inBox(x, y, w, r) ? 0.5 : NaN), { mat: frameMat, z: 7 });
+    wall(x0, y0, x1 - x0, y1 - y0, (x, y) => (inBox(x, y, w, r) ? (y - y0) * 0.12 * s : NaN), {
+      mat: m.glass,
+      z: 6.6,
       tex: (t) => {
-        if (t.y + oy > top0 + 1.6) t.mat = brown;
+        const x = t.x + ox;
+        const y = by(t.y + oy);
+        const ch = (y1 - y0) * (i === 1 ? 0.45 : 0.55);
+        if (y < y0 + ch) {
+          t.mat = curtain;
+          t.tone += Math.sin((x - x0) * (d === 1 ? 1.6 : 1.9)) * 0.25 - 0.1;
+          if (d > 1 && frac((x - x0) / 3.1) < 0.18 && frac((y - y0) / 2.6) < 0.25) t.tone += 0.55;
+          return;
+        }
+        // The sky in the glass (it faces up now) and a crack star.
+        t.tone += 0.25 * Math.sin(a);
+        const u = frac((x + (y - y1) * 0.8) / 9);
+        if (u < 0.12) t.tone += 0.85;
+        const rr = Math.hypot(x - (x0 + (x1 - x0) * 0.4), (y - (y1 - 2)) * s);
+        const ang = Math.atan2(y - (y1 - 2), x - (x0 + (x1 - x0) * 0.4));
+        if (i !== 1 && rr < 5 && frac(ang * 1.1) < (d === 1 ? 0.14 : 0.08)) t.tone += 1.1;
       },
     });
-    const zinc = mat(c, 'steel', { spec: 0.6, shine: 24, lo1: 0, hi1: 2, lo: 1, hi: 4 });
-    const by = rTop + roofH * 0.55;
-    c.capsule(35 - ox, by - oy, 46 - ox, by + 1 - oy, 1, 0.8, { mat: zinc, z: 1.4 });
-    c.ellipsoid(47 - ox, by + 1 - oy, 2, 1.6, { mat: m.chrome, z: 1.6 });
-  }
+  });
+  wbox(dx1 - 2.4, -20.6, 1.6, d === 1 ? 1 : 0.8, { mat: m.black, z: 7, r: 0.3 });
+  wbox(-36.8, -15.6, 1.6, 5, { mat: m.tail, z: 7, r: 0.4, bevel: 0.4 });
+  wbox(-36.8, -10.4, 1.6, 1.6, { mat: m.amber, z: 7, r: 0.3 });
+  // TOERTJE on the band (the letters foreshortened with the wall: read in the bits at 1×, strokes at 2× / 4×).
+  const ink = top('sand', d, d === 1 ? 0 : 1);
+  const tw = textWidth('TOERTJE', 1, 1) + 2;
+  c.paint(-21.4 - tw / 2 - ox, Y(-17) - oy, tw + 1, 7 * s + 2, (x, sy) => (letterAt(d, 'TOERTJE', -21.4, -13.5, 1, x + ox, by(sy + oy)) ? ink : 0));
+  // 5. The near wheel last: it sticks out of the wall (its hub toward us), in the arch.
+  wheel(2.5, -1.5, 9, true);
   const buf = finishA(c, 0.3);
   return frameOf(buf, -ox, -oy, d);
 }

@@ -21,6 +21,17 @@ export interface SeatOut {
   lift: number;
 }
 
+/** The shot-off door's fall (traffic/art.ts `doorFallFrame`): its strip and where it starts. */
+export interface DoorFallOut {
+  /** The falling door's strip (frame 0: upright in the opening). */
+  sprite: string;
+  /** Its anchor in carrier-local px (`doorFallAnchor`): x mid door, y under the flat door's middle. */
+  ax: number;
+  ay: number;
+  /** The door's height (px): the flat door reaches `DOOR_FALL.k × h` toward us. */
+  h: number;
+}
+
 export interface HostageCarrier extends Entity {
   /** The hostage's seat now (it rides there while tied and during its hop out). */
   hostageSeat(out: SeatOut): void;
@@ -32,6 +43,8 @@ export interface HostageCarrier extends Entity {
   hostageOpened(slot: number): void;
   /** Draw the door over the hostage (nothing once it is open). */
   drawHostageDoor?(r: Renderer): void;
+  /** The door's fall when it is shot open (default: the hostage van's cage door). */
+  hostageDoorFall?(out: DoorFallOut): void;
 }
 
 /** Is `e` a hostage carrier? */

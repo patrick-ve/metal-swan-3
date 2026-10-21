@@ -24,7 +24,7 @@ import { defineEntity, NO_PARAMS, paramNum, type SpawnParams } from '../../../re
 import { ringOf, RingEntity } from '../../../ring/entity';
 import { RING_ENTITY } from '../../../ring/ids';
 import { LANE_SPLIT, laneY, nearestLane, ROAD_TOP } from '../../../ring/lanes';
-import { WAGON_W, type Wagon } from '../../../ring/wagon';
+import { wagonBandEnd, WAGON_W, type Wagon } from '../../../ring/wagon';
 import { drivenWagons, RingLayer, tumbleOff, wagonSlab, type Layered } from '../traffic/road-kit';
 import { BOARD_AT, CLOSURE } from './geometry';
 
@@ -111,7 +111,10 @@ export class RingClosure extends RingEntity implements Layered {
   /** The wagon hit the head: a ram's cost, a stop, a bounce toward the open lane. */
   private hitHead(w: Wagon): void {
     const head0 = this.x + CLOSURE.head[0];
-    if (w.x < head0) w.x = head0 - WAGON_W / 2 - 1;
+    // Pushed back behind the head, but never past the left end of its band (polish 2026-10-21:
+    // at the band end it went up to 23 px off the screen while it bounced out): the head cannot
+    // move, so there the nose stays in the cones until the lane change takes it out.
+    if (w.x < head0) w.x = Math.max(head0 - WAGON_W / 2 - 1, Math.min(w.x, wagonBandEnd(w) - 2));
     const road = ringOf(this.world)?.roadSpeed ?? 0;
     const open = this.openLane;
     if (w.invulnTicks <= 0) {

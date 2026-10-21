@@ -42,7 +42,8 @@ import { ringOf, type RingDrawable } from '../../../ring/entity';
 import { RING_ENTITY, RING_ENTITY_B } from '../../../ring/ids';
 import { clampLane, LANE_GAP, laneY, nearestLane, SHOULDER_TOP } from '../../../ring/lanes';
 import { WAGON_W, type Wagon } from '../../../ring/wagon';
-import type { HostageCarrier, SeatOut } from '../items/carrier';
+import type { DoorFallOut, HostageCarrier, SeatOut } from '../items/carrier';
+import { doorBox, doorFallAnchor } from '../traffic/geometry';
 import type { RingHostage } from '../items/hostage';
 import { drivenWagons, ENTER_GIVE_UP, nearestWagon } from '../traffic/road-kit';
 import { RingCourier } from './courier';
@@ -591,6 +592,15 @@ export class RingParcelVan extends Enemy implements HostageCarrier, RingDrawable
     if (this.grille < 0) return;
     drawOpts.flipX = false;
     r.sprite(`${VAN_ART}/grille`, this.grille, Math.round(this.x), Math.round(this.y - this.lift), drawOpts);
+  }
+
+  hostageDoorFall(out: DoorFallOut): void {
+    const b = doorBox(VAN.hold);
+    const a = doorFallAnchor(b);
+    out.sprite = `${VAN_ART}/grille-fall`;
+    out.ax = a.ax;
+    out.ay = a.ay;
+    out.h = b[3] - b[1];
   }
 
   // ------------------------------------------------------------------------------- death

@@ -42,8 +42,7 @@ import { defineEntity, NO_PARAMS, paramNum, type SpawnParams } from '../../../re
 import { ringOf, slabBoxes, slabCache, type RingDrawable } from '../../../ring/entity';
 import { RING_ENTITY, RING_ENTITY_B } from '../../../ring/ids';
 import { LANE_COUNT, laneY, nearestLane, SHOULDER_TOP } from '../../../ring/lanes';
-import { RING } from '../../../ring/types';
-import { WAGON_W } from '../../../ring/wagon';
+import { wagonBandEnd, WAGON_W } from '../../../ring/wagon';
 import { BOARD_AT } from '../hazards/geometry';
 import { drivenWagons, nearestWagon, RingLayer, tumbleOff, wagonSlab, type Layered } from '../traffic/road-kit';
 import { TRUCK, TRUCK_FRAME, TRUCK_ID, WORKER_LOOKS, workerArt } from './geometry';
@@ -284,7 +283,7 @@ export class RingRoadworks extends Enemy implements RingDrawable, Layered {
       const behind = w.x < this.x;
       const overlap = behind ? s.x + s.w - x0 : x1 - s.x;
       let close: number;
-      if (behind && rel < 0 && overlap <= ROADWORKS.noseDepth && w.x <= this.world.camera.x + RING.screenMinX + 2) {
+      if (behind && rel < 0 && overlap <= ROADWORKS.noseDepth && w.x <= wagonBandEnd(w)) {
         // It drops back onto a wagon at the left end of its band, which cannot give way: the wagon
         // bounces into the next lane instead of being pushed off the screen (fixer B).
         const open = ringOf(this.world)?.lanesOpenAt(w.x) ?? LANE_COUNT;

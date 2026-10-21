@@ -515,6 +515,33 @@ describe('speech bubbles are voiced through AudioOut.say (audio only)', () => {
     const plain = new GameAudio(new NullAudio(), settings);
     plain.say('HALLO DAAR!');
     await plain.loadSamples('mission:ams');
+    plain.releaseSamples('mission:ams');
     expect((plain.inner as NullAudio).log).toEqual([]);
+  });
+
+  it('GameAudio forwards releaseSamples to an output that has it (the ring drops the ams group)', () => {
+    const released: string[] = [];
+    const inner = Object.assign(new NullAudio(), { releaseSamples: (g: string) => void released.push(g) });
+    new GameAudio(inner, { ...DEFAULT_SETTINGS }).releaseSamples('mission:ams');
+    expect(released).toEqual(['mission:ams']);
+  });
+
+  it('releasing the ams group keeps the effects and voices the ring group shares, and drops its songs', async () => {
+    const bank = new SampleBank(() => Promise.reject(new Error('unused')), {
+      baseUrl: 'http://game.test/index.html',
+      fetch: () => Promise.resolve({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) }),
+      decode: () => Promise.resolve({ duration: 1 } as unknown as AudioBuffer),
+    });
+    await import('../../src/game/scenes/ring-route');
+    await bank.load('mission:ams');
+    await bank.load('mission:ring');
+    const ams = getSampleGroup('mission:ams')!;
+    const sfxKey = Object.keys(ams.sfx ?? {})[0];
+    const songKey = Object.keys(ams.music ?? {})[0];
+    expect(sfxKey && songKey).toBeTruthy();
+    expect(bank.state('music', songKey)).toBe('ready');
+    bank.release('mission:ams');
+    expect(bank.state('sfx', sfxKey)).toBe('ready');
+    expect(bank.state('music', songKey)).toBe(null);
   });
 });

@@ -16,7 +16,8 @@
  * About 400 HP (big). Beaten: smoke, the cab's glass cracks, it coasts onto the hard shoulder and
  * falls back out of view; a ring crate drops. Gloat: it backs its boom over the spot where the last
  * wagon went and lowers the hook onto the wreck (`WEGSLEPEN!`); cower: it shakes, the beacon
- * flashes fast.
+ * flashes fast and the driver ducks below the sill, hands over his head, and peeks
+ * (`ring/tow-truck/cower`).
  *
  * Params: `hp`, `drop`. Inert-safe in a plain world.
  */
@@ -31,8 +32,7 @@ import { debris, dust, explosion, hitSpark, smokeTrail } from '../../../fx';
 import { defineEntity, NO_PARAMS, type SpawnParams } from '../../../registry';
 import { ringOf } from '../../../ring/entity';
 import { DEPTH_HALF, laneY, nearestLane, SHOULDER_TOP } from '../../../ring/lanes';
-import { RING } from '../../../ring/types';
-import { WAGON_W, type Wagon } from '../../../ring/wagon';
+import { wagonBandEnd, WAGON_W, type Wagon } from '../../../ring/wagon';
 import { ENTER_GIVE_UP } from '../traffic/road-kit';
 import { CONVOY_ID, CONVOY_TAG, TOW, TOW_AI, TOW_TRUCK_ID } from './geometry';
 import { ConvoyEnemy } from './kit';
@@ -40,6 +40,8 @@ import { ConvoyEnemy } from './kit';
 const drawOpts: DrawOpts = {};
 const NO_BOXES: readonly Rect[] = [];
 const ORANGE_INK = 0x2a1a10ff;
+/** The cower overlay's frames in turn (`ring/tow-truck/cower`: 0 duck, 1 tremble, 2 peek). */
+const COWER_SEQ = [0, 1, 0, 1, 0, 1, 2, 2, 2] as const;
 
 /** Why a tow ended. */
 export type TowEnd = 'swerve' | 'snap' | 'done' | 'lost';
@@ -308,7 +310,6 @@ export class RingTowTruck extends ConvoyEnemy {
   /** On the hook: brake and drag the wagon back; pinned, the winch hauls it in. */
   private tow(): void {
     const w = this.hooked;
-    const cam = this.world.camera;
     if (!w || !w.alive || w.state !== 'driven' || w.arriving || w.scripted) {
       this.release('lost');
       return;
@@ -325,14 +326,16 @@ export class RingTowTruck extends ConvoyEnemy {
     this.towT++;
     const road = this.road;
     // The truck brakes; the wagon follows at the cable's length (it cannot pull away or close in).
-    const pinned = w.x - cam.x <= RING.screenMinX + 0.5;
+    // Pinned: at the left end of its band (or queued in front of the other wagon there).
+    const end = wagonBandEnd(w) - 2;
+    const pinned = w.x <= end + 0.5;
     const rel = pinned ? 0 : TOW_AI.drag;
     this.vx = road + rel;
     this.x += this.vx;
     this.wheelDist += this.vx;
     let wx = this.x + TOW.rear - TOW_AI.towGap - WAGON_W / 2;
-    if (ringOf(this.world) && wx - cam.x < RING.screenMinX) {
-      wx = cam.x + RING.screenMinX;
+    if (ringOf(this.world) && wx < end) {
+      wx = end;
       this.x = wx + WAGON_W / 2 + TOW_AI.towGap - TOW.rear;
     }
     w.x = wx;
@@ -505,6 +508,11 @@ export class RingTowTruck extends ConvoyEnemy {
     const f = ((Math.floor(this.wheelDist / 1.9) % 4) + 4) % 4;
     for (let i = 0; i < TOW.wheelX.length; i++) r.sprite(TOW_TRUCK_ID.wheel, f, x + TOW.wheelX[i], y + TOW.wheelY, drawOpts);
     if (dead) return;
+    // The cower: the driver ducks below the sill, hands over his head, trembles, peeks.
+    if (this.reaction === 'cower') {
+      const f = COWER_SEQ[Math.floor(this.world.tick / 6) % COWER_SEQ.length];
+      r.sprite(TOW_TRUCK_ID.cower, (this.hp <= this.maxHp / 2 ? 3 : 0) + f, x, y, drawOpts);
+    }
     // The beacon: slow, fast while it hooks, tows or cowers.
     const fast = this.mode === 'tell-hook' || this.mode === 'hook' || this.mode === 'tow' || this.reaction === 'cower';
     const period = fast ? 4 : 14;

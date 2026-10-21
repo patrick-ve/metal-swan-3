@@ -166,6 +166,9 @@ export const CARAVAN = {
 } as const;
 
 /** Tow car models and paint colours (existing `ring/car/<model>-<colour>` sprites, unchanged). */
+/** The caravan's doorway as a box (x0, y0, x1, y1): the grille and its fall cover it. */
+export const CARAVAN_DOOR = [CARAVAN.doorX[0], CARAVAN.doorY[0], CARAVAN.doorX[1], CARAVAN.doorY[1]] as const;
+
 export const TOW_CARS: ReadonlyArray<readonly [model: 'hatch' | 'estate', colour: string]> = [
   ['estate', 'steel'],
   ['hatch', 'red'],

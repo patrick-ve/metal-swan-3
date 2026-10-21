@@ -14,7 +14,8 @@
  *   no wagon in the strip for `SCAN_AI.grace` ticks the lock ends; it ends anyway after
  *   `lockTicks`, and when the car is beaten.
  * About 300 HP (big: scales with difficulty and co-op). Beaten, it BREAKS DOWN: the airbag pops
- * (`AIRBAG!`), the hazard lights blink, smoke rises from the bonnet, it coasts onto the hard
+ * (`AIRBAG!`), the roof box is knocked askew (its front foot tears, it slumps onto the windscreen
+ * with a loose cable), the hazard lights blink, smoke rises from the bonnet, it coasts onto the hard
  * shoulder and falls back out of view; a ring crate drops (the `drop` param, else the ring roll).
  * Gloat: it scans the spot where the last wagon went (`KENTEKEN GESCAND.`); cower: the handhaver
  * behind the glass ducks (the cabin's shock frame) and the car shakes.
@@ -31,11 +32,10 @@ import { debris, dust, smokeTrail } from '../../../fx';
 import { defineEntity, NO_PARAMS, type SpawnParams } from '../../../registry';
 import { ringOf } from '../../../ring/entity';
 import { LANE_SPLIT, laneY, nearestLane, ROAD_BOTTOM, ROAD_TOP, SHOULDER_TOP } from '../../../ring/lanes';
-import { RING } from '../../../ring/types';
-import { WAGON_W, type Wagon } from '../../../ring/wagon';
+import { wagonBandEnd, WAGON_W, type Wagon } from '../../../ring/wagon';
 import { SCAN as AMS_SCAN } from '../../bosses/ams-scan/geometry';
 import { drivenWagons, ENTER_GIVE_UP } from '../traffic/road-kit';
-import { CABIN, CONVOY_ID, CONVOY_TAG, SCAN_AI, SCAN_CAR, SCAN_CAR_ID } from './geometry';
+import { BOX_BROKEN, CABIN, CONVOY_ID, CONVOY_TAG, SCAN_AI, SCAN_CAR, SCAN_CAR_ID } from './geometry';
 import { ConvoyEnemy } from './kit';
 
 const drawOpts: DrawOpts = {};
@@ -151,7 +151,6 @@ export class ScanStrip extends Entity {
   /** The lock: every wagon inside drifts back and cannot push forward. */
   private hold(): void {
     const ring = ringOf(this.world);
-    const cam = this.world.camera;
     const list = drivenWagons(this.world);
     let any = false;
     for (let i = 0; i < list.length; i++) {
@@ -163,7 +162,7 @@ export class ScanStrip extends Entity {
         w.say('scan');
         if (w.driver) hudOf(this.world).message(w.driver.index, 'SCAN LOCK!', 70, RED_HOT);
       }
-      if (ring && w.x - cam.x > RING.screenMinX + SCAN_AI.drag) w.x -= SCAN_AI.drag;
+      if (ring && w.x > wagonBandEnd(w) - 2 + SCAN_AI.drag) w.x -= SCAN_AI.drag;
       if (w.sideV > SCAN_AI.capSide) w.sideV = SCAN_AI.capSide;
     }
     if (any) this.emptyT = 0;
@@ -479,7 +478,9 @@ export class RingScanCar extends ConvoyEnemy {
     const f = ((Math.floor(this.wheelDist / 1.9) % 4) + 4) % 4;
     for (let i = 0; i < AMS_SCAN.wheelX.length; i++) r.sprite(SCAN_CAR_ID.wheel, dead ? 0 : f, x + AMS_SCAN.wheelX[i], Math.round(this.y) + AMS_SCAN.wheelY, drawOpts);
     drawOpts.flash = !dead && this.flashTicks > 0;
-    r.sprite(SCAN_CAR_ID.box, dead ? 0 : this.boxFrame, x, y, drawOpts);
+    // Broken down, the box is knocked askew: the front foot tears, then it slumps onto the windscreen.
+    const box = dead ? (this.breakT < BOX_BROKEN.slumpAt ? BOX_BROKEN.askew : BOX_BROKEN.slumped) : this.boxFrame;
+    r.sprite(SCAN_CAR_ID.box, box, x, y, drawOpts);
     drawOpts.flash = false;
     // Hazard lights: while it breaks down, and a fast blink while it cowers.
     const fast = this.reaction === 'cower';

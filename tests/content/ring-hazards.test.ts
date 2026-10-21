@@ -11,6 +11,7 @@ import { gantryFaces, RingGantry } from '../../src/game/content/ring/hazards/gan
 import '../../src/game/content/ring/hazards/index';
 import { RingJam } from '../../src/game/content/ring/hazards/jam';
 import '../../src/game/content/ring/items/index';
+import '../../src/game/content/ring/scooter/index';
 import '../../src/game/content/ring/traffic/index';
 import { jamOf } from '../../src/game/content/ring/traffic/road-kit';
 import { laneY } from '../../src/game/ring/lanes';
@@ -171,6 +172,21 @@ describe('ring hazards', () => {
     r.until(() => !jam.alive, 300);
     r.run(90);
     expect(r.runner.roadSpeed).toBeGreaterThan(RING.cruiseSpeed - 0.2);
+  });
+
+  it("the plan's jam spawns its `after` wave when the stand ends (the EASY floor)", () => {
+    const r = rig();
+    const after = [
+      { id: 'ring-scooter', from: 'behind', dx: 0, lane: 2, params: { side: 'behind', lead: true } },
+      { id: 'ring-scooter', from: 'behind', dx: 44, lane: 3, params: { side: 'behind' } },
+    ];
+    const jam = r.spawnAt<RingJam>('ring-jam', -40, laneY(2), { length: 900, crawl: 1.2, hold: 150, holdAt: 300, seed: 7, after });
+    r.until(() => jam.phase === 'hold', 600);
+    const scooters = (): number => r.world.entities.filter((e) => e.type === 'ring-scooter' && !e.removed).length;
+    expect(scooters()).toBe(0);
+    r.until(() => jam.phase === 'crawl', 400);
+    r.run(1);
+    expect(scooters()).toBe(2);
   });
 
   it("a plan's closure without a truck has cones only; a plan's end entry of a zone is empty", () => {

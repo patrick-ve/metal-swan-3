@@ -22,7 +22,8 @@
  *
  * Params: `ticks` (hold timeout, default `JAM.hold`), `cars` (default 8; 0 with `length`), `waves`
  * (an array of waves; a wave is an array of `{ id, dx?, lane?, from?: 'ahead' | 'behind', params? }`;
- * unknown ids are skipped), `seed`; the plan's `length`, `crawl`, `hold`, `holdAt`.
+ * unknown ids are skipped), `after` (one more wave, spawned when the plan's stand ends: the
+ * director's EASY floor for the crawl after it), `seed`; the plan's `length`, `crawl`, `hold`, `holdAt`.
  */
 import { Entity } from '../../../../engine/entity';
 import type { World } from '../../../../engine/world';
@@ -71,6 +72,8 @@ export class RingJam extends Entity {
   readonly holdTicks: number;
   readonly carCount: number;
   readonly waves: JamWaveEntry[][];
+  /** The wave spawned when the plan's stand ends (param `after`; empty = none). */
+  readonly after: JamWaveEntry[];
   readonly seed: number;
   /** The cars of the jam's tail and the wave entities alive. */
   readonly cars: Entity[] = [];
@@ -101,6 +104,7 @@ export class RingJam extends Entity {
     const planned = !Number.isNaN(this.planLength);
     this.carCount = Math.max(0, Math.min(12, Math.round(paramNum(p, 'cars', planned ? 0 : 8))));
     this.waves = Array.isArray(p.waves) ? (p.waves as unknown[]).filter(Array.isArray).map((w) => (w as JamWaveEntry[]).filter((e) => e && typeof e.id === 'string')) : [];
+    this.after = Array.isArray(p.after) ? (p.after as JamWaveEntry[]).filter((e) => e && typeof e.id === 'string') : [];
     this.seed = paramNum(p, 'seed', Math.round(x));
     this.addTag(RING_ENTITY.jam);
   }
@@ -190,7 +194,10 @@ export class RingJam extends Entity {
         this.cap(0);
         this.runWaves();
         // The stand lasts the plan's ticks (and as long as a wave is alive, up to the timeout).
-        if ((this.t >= this.planHold && this.wavesDone()) || this.t >= Math.max(this.planHold, this.holdTicks) * 2) this.set('crawl');
+        if ((this.t >= this.planHold && this.wavesDone()) || this.t >= Math.max(this.planHold, this.holdTicks) * 2) {
+          this.set('crawl');
+          this.spawnWave(this.after);
+        }
         break;
       case 'clear':
         this.cap(null);
@@ -280,14 +287,20 @@ export class RingJam extends Entity {
     if (this.waveIdx >= this.waves.length) return;
     if (this.waveHolds()) return;
     const wave = this.waves[this.waveIdx++];
-    this.waveLive = [];
+    this.waveLive = this.spawnWave(wave);
     this.offT = 0;
+  }
+
+  /** Spawn the members of a wave (from behind the left edge or ahead of the right one). */
+  private spawnWave(wave: readonly JamWaveEntry[]): Entity[] {
+    const out: Entity[] = [];
     const cam = this.world.camera;
     for (const s of wave) {
       if (!hasEntity(s.id)) continue;
       const x = s.from === 'behind' ? cam.x - 32 - (s.dx ?? 0) : cam.right + 32 + (s.dx ?? 0);
-      this.waveLive.push(this.world.spawn(s.id, x, laneY(s.lane ?? 3), s.params ?? NO_PARAMS));
+      out.push(this.world.spawn(s.id, x, laneY(s.lane ?? 3), s.params ?? NO_PARAMS));
     }
+    return out;
   }
 
   override onRemove(): void {

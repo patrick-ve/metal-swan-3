@@ -879,7 +879,11 @@ export class RingLorryBox extends RingEntity implements RingDrawable {
   private t = 0;
   private landed = false;
   private readonly y0: number;
-  /** The plane y it is drawn at while it slides (its sort y stays the lorry's lane until it lands: the wagons it crosses stay in front). */
+  /**
+   * The plane y it is drawn at while it slides. Its `y` (the draw order's depth key) follows it
+   * (polish 2026-10-21): in front of what is farther away, behind what is nearer, lane by lane as
+   * it slides toward the camera onto the hard shoulder.
+   */
   private drawY: number;
   private readonly lorry: RingLorry;
 
@@ -903,6 +907,7 @@ export class RingLorryBox extends RingEntity implements RingDrawable {
     if (!this.landed) {
       const k = Math.min(1, this.t / T);
       this.drawY = this.y0 + (SHOULDER_TOP + 2 - this.y0) * k * k;
+      this.y = this.drawY;
       this.lift = LORRY.deck * (1 - k);
       this.vx = Math.max(0, this.vx - road * 0.02);
       this.x += this.vx;

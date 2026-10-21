@@ -21,7 +21,8 @@
  * - `ring/car/van-open` (1, the van anchor): the hostage van's open rear: the near rear door
  *   swung out behind the van, the dark cargo hold with its floor and far wall.
  * - `ring/car/cage` (2: shut, dented) — the steel cage door over the hold (the hostage's door,
- *   items/hostage.ts); `ring/car/cage-fall` (4, centre anchor): the shot-off cage door tumbling.
+ *   items/hostage.ts); `ring/car/cage-fall` (5, `doorFallFrame`, anchor under the flat door's
+ *   middle): the shot-off cage door tipping out of its opening toward us and landing flat.
  */
 import { INK } from '../../../../engine/palette';
 import type { PixelBuffer } from '../../../../engine/pixel';
@@ -29,7 +30,7 @@ import type { Frame } from '../../../../engine/render';
 import { defineSprite } from '../../../../engine/sprites';
 import { HdCanvas, inPoly, polyDist, type TexSample } from '../../../art/hd';
 import { bot, finishA, mat, top, type Dn } from '../../stag/kit.art';
-import { CAR_GEO, carSprite, HOSTAGE_VAN, WHEEL_R, type CarGeo, type Pt, type WheelSize } from './geometry';
+import { CAR_GEO, carSprite, doorBox, doorFallAnchor, DOOR_FALL, HOSTAGE_VAN, WHEEL_R, type CarGeo, type Pt, type WheelSize } from './geometry';
 import { glyphHitC } from './lettering';
 
 const frac = (v: number): number => v - Math.floor(v);
@@ -617,30 +618,66 @@ export function cageFrame(state: number, d: Dn): Frame {
   return frameOf(buf, -ox, -oy, d);
 }
 
-/** The shot-off cage door tumbling (4: 0°, 30°, 60°, 90°), centre anchor, its own small canvas. */
-export function cageFallFrame(f: number, d: Dn): Frame {
-  const n = 33;
-  const k = 16;
-  const c = new HdCanvas(n, n, d);
+/**
+ * The shot-off barred door falling (DOOR_FALL frames): it tips over toward the camera about its
+ * sill (the hinges and the lock are shot off) and lands flat on the road. Frame 0 is the door
+ * upright in its opening, exactly where the carrier drew it; then 24°, 48° (foreshortened, the
+ * hinge side dropping first), 78° (past edge-on: nearly flat) and flat (90°: a low slab).
+ * `box` is the bars' outer box in carrier-local px (tube centres: x0, y0, x1, y1), `n` the bar
+ * divisions (n − 1 bars, as the door in place), `bend` the dented bar's x (local). The anchor is
+ * `doorFallAnchor(box)`: under the middle of the door once it lies flat.
+ */
+export function doorFallFrame(box: readonly [number, number, number, number], n: number, bend: number, f: number, d: Dn): Frame {
+  const [x0, y0, x1, y1] = box;
+  const { ax, ay } = doorFallAnchor(box);
+  const cx = (x0 + x1) / 2;
+  const h = y1 - y0;
+  const ox = Math.floor(x0) - 6;
+  const oy = Math.floor(y0) - 4;
+  const c = new HdCanvas(Math.ceil(x1) + 6 - ox, Math.ceil(y1 + DOOR_FALL.k * h) + 5 - oy, d);
   const steel = mat(c, 'steel', { spec: 1, shine: 40, lo1: 1, hi1: 3, lo: 2, hi: 6, rim: 0.3 });
-  const a = (f * 30 * Math.PI) / 180;
-  const cs = Math.cos(a);
-  const sn = Math.sin(a);
-  const P = (u: number, v: number): [number, number] => [k + 0.5 + u * cs - v * sn, k + 0.5 + u * sn + v * cs];
-  const w = 10.5;
-  const h = 14.5;
-  const seg = (u0: number, v0: number, u1: number, v1: number, r: number): void => {
-    const [ax, ay] = P(u0, v0);
-    const [bx, by] = P(u1, v1);
-    c.capsule(ax, ay, bx, by, r, r, { mat: steel, z: 2 });
+  const dark = mat(c, 'steel', { spec: 0.6, shine: 30, lo1: 0, hi1: 2, lo: 1, hi: 4 });
+  const th = (DOOR_FALL.deg[f] * Math.PI) / 180;
+  const ro = (DOOR_FALL.roll[f] * Math.PI) / 180;
+  const ct = Math.cos(th);
+  const st = Math.sin(th);
+  const cr = Math.cos(ro);
+  const sr = Math.sin(ro);
+  // A door point (local x, height v over the sill) → canvas px: tipped toward us by th about the
+  // sill (the depth it gains shows k as much as a height), then rolled by ro about the sill's middle.
+  const P = (x: number, v: number): [number, number] => {
+    const sx = x - cx;
+    const sy = -v * ct + DOOR_FALL.k * v * st;
+    return [cx + sx * cr - sy * sr - ox, y1 + sx * sr + sy * cr - oy];
   };
-  seg(-w, -h, w, -h, 0.75);
-  seg(-w, h, w, h, 0.75);
-  seg(-w, -h, -w, h, 0.75);
-  seg(w, -h, w, h, 0.75);
-  for (let u = -w + 3.4; u < w - 1; u += 3.4) seg(u, -h, u + (f % 2 ? 0.8 : 0), h, 0.45);
+  const seg = (xa: number, va: number, xb: number, vb: number, r: number, z: number, m = steel): void => {
+    const [px, py] = P(xa, va);
+    const [qx, qy] = P(xb, vb);
+    c.capsule(px, py, qx, qy, r, r, { mat: m, z });
+  };
+  // The frame, the low cross bar and the bars (one bent where the shots dented it).
+  const vm = h * 0.38;
+  seg(x0, h, x1, h, 0.7, 3);
+  seg(x0, 0, x1, 0, 0.7, 3);
+  seg(x0, 0, x0, h, 0.7, 3);
+  seg(x1, 0, x1, h, 0.7, 3);
+  seg(x0, vm, x1, vm, 0.5, 3);
+  for (let i = 1; i < n; i++) {
+    const bx = x0 + ((x1 - x0) * i) / n;
+    const kx = Math.exp(-(((bx - bend) / 2.5) ** 2)) * 1.6;
+    seg(bx, h, bx + kx, vm, 0.4, 2.8);
+    seg(bx + kx, vm, bx, 0, 0.4, 2.8);
+  }
+  // The torn hinge plates on the hinge side and the broken hasp on the lock side: it reads as a door.
+  for (const v of [h * 0.18, h * 0.82]) seg(x0 - 0.6, v - 1.1, x0 - 0.6, v + 1.1, 0.75, 3.2, dark);
+  seg(x1 - 1.2, vm - 1.4, x1 - 1.2, vm - 3.6, 0.55, 3.3, dark);
   const buf = finishA(c, 0.25);
-  return frameOf(buf, k, k, d);
+  return frameOf(buf, ax - ox, ay - oy, d);
+}
+
+/** The shot-off cage door of the hostage van falling (5, DOOR_FALL; its dented bar as `cageFrame`'s). */
+export function cageFallFrame(f: number, d: Dn): Frame {
+  return doorFallFrame(doorBox(HOSTAGE_VAN.hold), 4, HOSTAGE_VAN.hold[0] + 9, f, d);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -663,4 +700,5 @@ for (const colour of CAR_GEO.van.colours) {
   defineSprite(`ring/car/van-open-${colour}`, () => [vanOpenFrame(colour, 1)], { hd: (d) => [vanOpenFrame(colour, d)] });
 }
 defineSprite('ring/car/cage', () => [0, 1].map((s) => cageFrame(s, 1)), { hd: (d) => [0, 1].map((s) => cageFrame(s, d)) });
-defineSprite('ring/car/cage-fall', () => F4.map((f) => cageFallFrame(f, 1)), { ticksPerFrame: 4, defer: true, hd: (d) => F4.map((f) => cageFallFrame(f, d)) });
+const F5 = [0, 1, 2, 3, 4];
+defineSprite('ring/car/cage-fall', () => F5.map((f) => cageFallFrame(f, 1)), { ticksPerFrame: 3, loop: false, defer: true, hd: (d) => F5.map((f) => cageFallFrame(f, d)) });

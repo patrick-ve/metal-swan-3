@@ -20,6 +20,7 @@ import type { DrawOpts, Renderer } from '../../../../engine/render';
 import { Rng } from '../../../../engine/rng';
 import { frameCount, hasSprite } from '../../../../engine/sprites';
 import type { World } from '../../../../engine/world';
+import { FX_SPARK } from '../../../fx';
 import type { RingDrawable } from '../../../ring/entity';
 import { GROUND_Y } from '../../../ring/lanes';
 import type { Wagon } from '../../../ring/wagon';
@@ -150,6 +151,12 @@ export interface TumbleSpec {
   restSprite?: string;
   /** Ticks per frame of the tumble (loops) while airborne. */
   tpf?: number;
+  /** Play the strip once while airborne and hold its last frame (a door tipping flat), not loop. */
+  once?: boolean;
+  /** A sound on the first touchdown (a door's clang). */
+  landSfx?: string;
+  /** Sparks while it slides on the road after landing (a steel door): the spark x offset. */
+  scrapeAt?: number;
   /** Stop on the hard shoulder (riders) instead of anywhere on the road. */
   shoulder?: boolean;
   /** Draw order tie-break and a road shadow width. */
@@ -173,6 +180,7 @@ export class PlaneTumbler extends Entity implements RingDrawable {
   private restT = 0;
   private t = 0;
   private landed = false;
+  private touched = false;
 
   constructor(world: World, x: number, y: number, s: TumbleSpec) {
     super(world, x, y);
@@ -203,6 +211,8 @@ export class PlaneTumbler extends Entity implements RingDrawable {
       this.lift += this.vlift;
       if (this.lift <= 0) {
         this.lift = 0;
+        if (s.landSfx && !this.touched) this.world.audio.sfx(s.landSfx, { vol: 0.7 });
+        this.touched = true;
         if (this.bounces-- > 0 && Math.abs(this.vlift) > 0.8) {
           this.vlift = -this.vlift * (s.bounce ?? 0.4);
           this.vx *= 0.6;
@@ -220,6 +230,7 @@ export class PlaneTumbler extends Entity implements RingDrawable {
     if (s.shoulder && this.y < GROUND_Y - 3) this.vy = 0.6;
     this.x += this.vx;
     this.y += this.vy;
+    if (s.scrapeAt !== undefined && this.vx > 0.5 && this.restT % 2 === 0) this.world.particles.burst(FX_SPARK, this.x + s.scrapeAt, this.y - 1, 3, 0.6, 2.2, Math.PI + 0.35, 0.9);
     if (++this.restT > (s.rest ?? 60) + 16) this.remove();
   }
 
@@ -231,7 +242,8 @@ export class PlaneTumbler extends Entity implements RingDrawable {
     const n = frameCount(id);
     let f: number;
     if (id !== s.sprite) f = Math.floor(this.restT / 30) % n;
-    else f = this.landed ? Math.min(n - 1, s.restFrame ?? 0) : Math.floor(this.t / (s.tpf ?? 4)) % n;
+    else if (this.landed) f = Math.min(n - 1, s.restFrame ?? 0);
+    else f = s.once ? Math.min(n - 1, Math.floor(this.t / (s.tpf ?? 4))) : Math.floor(this.t / (s.tpf ?? 4)) % n;
     tumbleOpts.flipX = s.flipX === true;
     r.sprite(id, f, Math.round(this.x), Math.round(this.y - this.lift), tumbleOpts);
   }

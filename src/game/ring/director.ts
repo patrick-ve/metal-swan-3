@@ -848,7 +848,7 @@ class Director {
           id: RING_ENTITY.jam,
           y: Y,
           from: 'behind',
-          params: { length: c.length, crawl: c.speed ?? RING_PLAN.jamCrawl, hold: c.hold ?? 0, holdAt: c.holdAt ?? 0, waves: this.jamWaves(rng, c) },
+          params: { length: c.length, crawl: c.speed ?? RING_PLAN.jamCrawl, hold: c.hold ?? 0, holdAt: c.holdAt ?? 0, ...this.jamWaveParams(rng, c) },
         });
       }
       if (c.type === 'roadworks') {
@@ -1083,8 +1083,29 @@ class Director {
    * the foot boarders). A fork of the layer's rng (the other draws stay as they are); every row is
    * drawn on every difficulty, then the difficulty's rows are kept.
    */
-  private jamWaves(rng: Rng, c: WorkChunk): Record<string, unknown>[][] {
+  private jamWaveParams(rng: Rng, c: WorkChunk): Record<string, unknown> {
     const r = rng.fork(`ring/jam-waves:${c.start}`);
+    const waves = this.jamWaves(r, c);
+    // EASY: a small gang filters in when the stand ends (the jam controller's `after`). Its thin
+    // stand waves are shot fast, and the plan's floor after the stand counts the gangs that came
+    // in during the stand as if they came after it: the crawl went 270 ticks without an enemy
+    // (polish 2026-10-21, GDD 1.5). Drawn last from the jam's own fork, on EASY only: the other
+    // draws and the NORMAL / HARD plans stay as they are.
+    if (this.difficulty !== 'easy' || !c.hold) return { waves };
+    const lanes = c.lanes ?? 4;
+    const base = r.int(1, lanes);
+    const gangNo = ++this.gangs;
+    const after = gang(r, c.tier ?? 0, 'behind', ['', ''], 44).map((m, index) => ({
+      id: m.id,
+      from: 'behind',
+      dx: m.dx,
+      lane: Math.max(1, Math.min(lanes, base + m.lane)),
+      params: { ...m.params, gang: gangNo, size: 2, index },
+    }));
+    return { waves, after };
+  }
+
+  private jamWaves(r: Rng, c: WorkChunk): Record<string, unknown>[][] {
     const keep = (row: WaveRow): boolean => row === '' || (row === 'N' && this.difficulty !== 'easy') || (row === 'H' && this.difficulty === 'hard');
     const members = gang(r, c.tier ?? 0, 'behind', ['', '', 'N', 'H'], 28);
     const lanes = c.lanes ?? 4;

@@ -55,12 +55,34 @@ import { ringOf, slabBoxes, slabCache, type RingDrawable } from './entity';
 import { clampLane, DEPTH_HALF, LANE_GAP, laneY, nearestLane, SHOULDER_TOP } from './lanes';
 import { RING } from './types';
 
+/**
+ * The world x at or below which a driven wagon cannot give way to a road thing that pushes it
+ * back: the left end of its band (`RING.screenMinX`, 2 px slack), or, queued in its lane in front
+ * of a wagon that is already at that end (2P: both behind one car), one queue gap ahead of that
+ * wagon. A road thing that would push it further back is shoved ahead of it instead (wave B's
+ * rule), so every wagon stays fully on screen. With one wagon: the band end.
+ */
+export function wagonBandEnd(w: Wagon): number {
+  const end = w.world.camera.x + RING.screenMinX + 2;
+  let out = end;
+  const list = w.world.byTag('ring-wagon');
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    if (o === w || !(o instanceof Wagon) || !o.alive || o.state !== 'driven' || o.scripted) continue;
+    if (Math.abs(o.y - w.y) >= DEPTH_HALF * 2 || o.x > end || o.x > w.x || (o.x === w.x && o.slot > w.slot)) continue;
+    out = Math.max(out, o.x + QUEUE_GAP + 2);
+  }
+  return out;
+}
+
 /** How a wagon comes into play. */
 export type WagonMode = 'start' | 'respawn' | 'continue' | 'join';
 
 /** Body size (spec §3: about 92 × 28, wheelbase 52). */
 export const WAGON_W = 92;
 export const WAGON_H = 28;
+/** Centre to centre of two wagons queued in one lane (they push apart to this). */
+export const QUEUE_GAP = WAGON_W - 2;
 /** The hero's window (the near rear door): his anchor sits this far from the wagon's centre … */
 export const WINDOW_DX = SEAT.heroX;
 /** … and his hip this high above the road (drawn only). */
@@ -483,19 +505,27 @@ export class Wagon extends Vehicle implements RingDrawable {
     }
   }
 
-  /** Two wagons in the same lane that overlap push each other apart (no damage, spec §9). */
+  /**
+   * Two wagons in the same lane that overlap push each other apart (no damage, spec §9). Each takes
+   * half the overlap; the one behind never goes past the left end of its band (2P polish
+   * 2026-10-21: queued behind one car, the rear wagon sat up to half off the screen): then the one
+   * in front takes the rest, and road things shove ahead of it (`wagonBandEnd`). Two wagons on the
+   * same x part by slot (the lower slot in front).
+   */
   private bumpWagons(): void {
     const list = this.world.byTag('ring-wagon');
+    const minX = this.world.camera.x + RING.screenMinX;
     for (let i = 0; i < list.length; i++) {
       const o = list[i];
       if (o === this || !o.alive || !(o instanceof Wagon) || o.state !== 'driven' || o.scripted) continue;
       if (Math.abs(o.y - this.y) >= DEPTH_HALF * 2) continue;
       const dx = this.x - o.x;
-      const gap = WAGON_W - 2 - Math.abs(dx);
+      const gap = QUEUE_GAP - Math.abs(dx);
       if (gap <= 0) continue;
-      // Each takes half the overlap; the faster one bounces back a little.
-      const s = dx >= 0 ? 1 : -1;
-      this.x += (s * gap) / 2;
+      // The faster one bounces back a little.
+      const s = dx > 0 ? 1 : dx < 0 ? -1 : this.slot < o.slot ? 1 : -1;
+      if (s < 0) this.x = Math.max(Math.min(this.x, minX), this.x - gap / 2);
+      else this.x += o.x <= minX + 0.5 ? gap : gap / 2;
       this.sideV = s * Math.max(0.6, Math.abs(this.sideV) * 0.5);
       if (this.slot < o.slot) {
         this.world.audio.sfx('ring/wagon-bump');

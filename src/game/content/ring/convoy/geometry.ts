@@ -61,11 +61,17 @@ export const SCAN_CAR_ID = {
   text: `${SC}/text`,
   /** The amber hazard lamp glow (centre anchor). */
   blink: `${SC}/blink`,
-  /** The SMALLER ring roof box on its rack (car anchor): 0 idle, 1 scanning (red cast, lit lens), 2 the lens flares. */
+  /**
+   * The SMALLER ring roof box on its rack (car anchor): 0 idle, 1 scanning (red cast, lit lens), 2 the
+   * lens flares; 3, 4 the breakdown knocks it askew (the front foot torn: tipped 9°, then 22°).
+   */
   box: `${SC}/box`,
 } as const;
 
 /** Cabin frames (the ams order). */
+/** Frames of the box while the car breaks down: askew, then slumped (after `BOX_SLUMP_AT` ticks). */
+export const BOX_BROKEN = { askew: 3, slumped: 4, slumpAt: 14 } as const;
+
 export const CABIN = { calm: 0, shout: 1, shock: 2, airbag: 3, empty: 4 } as const;
 
 export const TOW_TRUCK_ID = {
@@ -74,6 +80,8 @@ export const TOW_TRUCK_ID = {
   hook: `${TT}/hook`,
   wheel: `${TT}/wheel`,
   blink: `${TT}/blink`,
+  /** The cower: an overlay over the cab window (6: duck, tremble, peek × clean, damaged body). */
+  cower: `${TT}/cower`,
 } as const;
 
 export const MOTO_ID = {

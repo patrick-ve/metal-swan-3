@@ -5,14 +5,15 @@
  *
  * - `ring/scan-car/{body-0..2, cabin, wheel, text, blink}`: the ams scan car's own drawers
  *   (art-car.ts); `ring/scan-car/box` the smaller ring roof box (new).
- * - `ring/tow-truck/{body, hook, wheel, blink}`: the ams tow truck's drawers.
+ * - `ring/tow-truck/{body, hook, wheel, blink}`: the ams tow truck's drawers; `cower` (deferred):
+ *   the driver ducking below the window sill (art-car.ts `towCower`).
  * - `ring/handhaver-moto/*`: the handhaver on his motorbike (art-moto.ts), the fine sticker and
  *   its HUD icon. `gloat` / `cower` are deferred (the continue only).
  */
 import type { Frame } from '../../../../engine/render';
 import { defineSprite } from '../../../../engine/sprites';
 import type { Dn } from '../../stag/kit.art';
-import { boxFrame, scanBlink, scanBody, scanCabin, scanText, scanWheel, towBody, towHook } from './art-car';
+import { boxBrokenFrame, boxFrame, scanBlink, scanBody, scanCabin, scanText, scanWheel, towBody, towCower, towHook } from './art-car';
 import {
   batonFrames,
   cowerFrames,
@@ -49,7 +50,7 @@ def(SCAN_CAR_ID.cabin, (d) => [0, 1, 2, 3, 4].map((f) => scanCabin(f, d)));
 def(SCAN_CAR_ID.wheel, (d) => F4.map((f) => scanWheel(f, d)));
 def(SCAN_CAR_ID.text, (d) => [scanText(0, d), scanText(1, d)]);
 def(SCAN_CAR_ID.blink, (d) => [scanBlink(d)]);
-def(SCAN_CAR_ID.box, (d) => S3.map((f) => boxFrame(f, d)));
+def(SCAN_CAR_ID.box, (d) => [...S3.map((f) => boxFrame(f, d)), boxBrokenFrame(3, d), boxBrokenFrame(4, d)]);
 
 // ---------------------------------------------------------------------------------------------
 // The tow truck
@@ -59,6 +60,8 @@ def(TOW_TRUCK_ID.body, (d) => [towBody(false, d), towBody(true, d)]);
 def(TOW_TRUCK_ID.hook, (d) => [towHook(d)]);
 def(TOW_TRUCK_ID.wheel, (d) => F4.map((f) => scanWheel(f, d)));
 def(TOW_TRUCK_ID.blink, (d) => [scanBlink(d)]);
+// The cower (the continue only): 0–2 over the clean body, 3–5 over the damaged one.
+def(TOW_TRUCK_ID.cower, (d) => [0, 1, 2, 3, 4, 5].map((f) => towCower(f % 3, f >= 3, d)), { ticksPerFrame: 6, defer: true });
 
 // ---------------------------------------------------------------------------------------------
 // The handhaver motorbike (cropped to each 1× frame's opaque box + 1 px, the same logical
@@ -119,5 +122,6 @@ export const CONVOY_ART_IDS: readonly string[] = [
   TOW_TRUCK_ID.hook,
   TOW_TRUCK_ID.wheel,
   TOW_TRUCK_ID.blink,
+  TOW_TRUCK_ID.cower,
   ...Object.values(MOTO_ID),
 ];

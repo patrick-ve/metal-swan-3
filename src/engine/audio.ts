@@ -79,6 +79,11 @@ export interface AudioOut {
    */
   loadSamples?(group: string, onProgress?: (done: number, total: number) => void): Promise<void>;
   /**
+   * Drop the decoded buffers of a sample group (keys another loaded group lists stay; a song that
+   * plays keeps its buffer). Optional: headless outputs have none.
+   */
+  releaseSamples?(group: string): void;
+  /**
    * A speech bubble line, spoken by its voice sample (`voiceKey(text)`) when one is loaded,
    * else nothing (no synth or speech fallback). `speaker` and `o.important` set what the line may
    * cut off (see `SpeechLane`): the same speaker replaces their own line, an important line (a

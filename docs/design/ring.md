@@ -471,6 +471,14 @@ Fixer B (2026-10-21, after the review; `tmp/ring-b-report.md`):
 | sound effects in a tunnel (§7.3) | dry | an echo (0.11 s, feedback 0.3, mix 0.32) through the opt-in `AudioOut.setEcho` | spec §7.3: sounds echo |
 | the container code | `ZWNU 619072` | `ZWAU 619072` | the 3-wide N reads as an M at 4× |
 
+Polish (2026-10-21; `tmp/ring-polish-report.md`):
+
+| Value | Before | Now | Why |
+|---|---|---|---|
+| EASY jams | the stand's thin waves, then nothing until the plan's floor | `after`: a gang of 2 scooters from behind when the stand ends (EASY only; drawn last from the jam's own fork, so NORMAL / HARD plans stay byte-identical) | EASY seed 2: 270 ticks without an enemy in the Coentunnel crawl (the plan's floor counted the gangs that came in during the stand as if they came after it) |
+| a wagon at the band's left end in 2P | the rear wagon of a queue pushed to half off the screen | `wagonBandEnd`: a wagon queued in front of the other wagon at the band end cannot give way either; road things shove ahead of it; a push never takes a wagon past that end; a jam car standing in the stand is shoved too | wagons up to 55 px past the left edge in 2P bot runs |
+| the caravan's tip | toward us (the roof faces us) | away from us (the livery stays in view, the underside and both wheels toward us), a dust puff, slide sparks | the tipped caravan read as a white roof slab |
+
 ## 15. Gates
 
 - New tests under `tests/game/ring/`: `plan` (the same seed gives a deep-equal plan; 50 seeds

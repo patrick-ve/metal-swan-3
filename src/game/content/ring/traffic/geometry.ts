@@ -224,5 +224,23 @@ export const HOSTAGE_VAN = {
   door: [-45.5, -21] as const,
 } as const;
 
+/**
+ * A shot-off barred door falling (art.ts `doorFallFrame`; items/hostage.ts throws it): it tips
+ * over toward the camera about its sill and lands flat. `deg` / `roll` per frame; `k` how much a
+ * depth shows against a height (a flat door of height h reaches k·h px toward us).
+ */
+export const DOOR_FALL = { deg: [0, 24, 48, 78, 90], roll: [0, -2, -3, -1, 0], k: 0.36 } as const;
+
+/** The anchor of a falling door in carrier-local px (integer): x mid door, y under the flat door's middle. */
+export function doorFallAnchor(box: readonly [number, number, number, number]): { ax: number; ay: number } {
+  const [x0, y0, x1, y1] = box;
+  return { ax: Math.round((x0 + x1) / 2), ay: Math.round(y1 + (DOOR_FALL.k * (y1 - y0)) / 2) };
+}
+
+/** The bars' outer box (tube centres) of a door filling the opening `hold` (x0, y0, x1, y1). */
+export function doorBox(hold: readonly [number, number, number, number]): [number, number, number, number] {
+  return [hold[0] + 0.6, hold[1] + 0.6, hold[2] - 0.6, hold[3] - 0.4];
+}
+
 /** All models (the `model` param). */
 export const CAR_MODELS = Object.keys(CAR_GEO) as RingCarModel[];

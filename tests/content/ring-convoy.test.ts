@@ -18,7 +18,7 @@ import '../../src/game/content/ring/hazards/index';
 import '../../src/game/content/ring/items/index';
 import '../../src/game/content/ring/traffic/index';
 import { CONVOY_ART_IDS } from '../../src/game/content/ring/convoy/art';
-import { CONVOY_ID, MOTO_ID, SCAN_AI, SCAN_CAR_ID, STICKER_STATUS, TOW_AI } from '../../src/game/content/ring/convoy/geometry';
+import { CONVOY_ID, MOTO_ID, SCAN_AI, SCAN_CAR_ID, STICKER_STATUS, TOW_AI, TOW_TRUCK_ID } from '../../src/game/content/ring/convoy/geometry';
 import { RingHandhaverMoto, RingSticker } from '../../src/game/content/ring/convoy/moto';
 import { RingScanCar, ScanStrip } from '../../src/game/content/ring/convoy/scan-car';
 import { RingTowTruck } from '../../src/game/content/ring/convoy/tow-truck';
@@ -28,6 +28,7 @@ import { laneY, nearestLane, SHOULDER_TOP } from '../../src/game/ring/lanes';
 import { RING_ENTITY_B } from '../../src/game/ring/ids';
 import { RingRig } from '../game/ring/ring-helpers';
 import { TestWorld, watchFairness, type TestWorld as TW } from './helpers';
+import { RecordingRenderer } from '../engine/helpers';
 
 function rig(o: { god?: boolean } = {}): RingRig {
   const r = new RingRig({ god: o.god });
@@ -73,11 +74,13 @@ describe('ring convoy: registration and art', () => {
       }
     }
     // The new art (the ring roof box, the motorbike strips, the sticker): only PAL_HD colours at 4×.
-    for (const id of [SCAN_CAR_ID.box, MOTO_ID.ride, MOTO_ID.tellBaton, MOTO_ID.tellSticker, MOTO_ID.fine]) {
+    for (const id of [SCAN_CAR_ID.box, MOTO_ID.ride, MOTO_ID.tellBaton, MOTO_ID.tellSticker, MOTO_ID.fine, TOW_TRUCK_ID.cower]) {
       for (const f of getFrames(id, 4)) for (const c of f.buf.data) if ((c & 255) !== 0 && !inHdPalette(c)) expect.fail(`${id}: colour ${c.toString(16)} not in PAL_HD`);
     }
     expect(spriteErrors().filter((e) => CONVOY_ART_IDS.some((id) => e.id === id || e.id.startsWith(`${id}@`)))).toEqual([]);
-    for (const id of [MOTO_ID.gloat, MOTO_ID.cower]) expect(isDeferredSprite(id), id).toBe(true);
+    for (const id of [MOTO_ID.gloat, MOTO_ID.cower, TOW_TRUCK_ID.cower]) expect(isDeferredSprite(id), id).toBe(true);
+    // The tow truck's cower: duck, tremble, peek over the clean body and over the damaged one.
+    expect(getFrames(TOW_TRUCK_ID.cower, 1).length).toBe(6);
   });
 });
 
@@ -316,5 +319,15 @@ describe('ring convoy: the gloat and the cower', () => {
     for (const e of [m, t, c]) expect(e.react('cower', 60, spot)).toBe(true);
     r.run(2);
     expect(m.anim.id).toBe(MOTO_ID.cower);
+    // The tow truck's driver ducks below the sill (its cower overlay over the body), only then.
+    const cowerDraws = (): number => {
+      const rr = new RecordingRenderer();
+      t.draw(rr);
+      return rr.calls.filter((k) => k.op === 'sprite' && k.args[0] === TOW_TRUCK_ID.cower).length;
+    };
+    expect(cowerDraws()).toBe(1);
+    r.run(70);
+    expect(t.reaction).toBe(null);
+    expect(cowerDraws()).toBe(0);
   });
 });

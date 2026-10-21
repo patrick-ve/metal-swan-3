@@ -10,9 +10,10 @@
  *   screen: the drawbar strains, sparks and a metal groan; the nearest driver shouts his 'caravan'
  *   line) → `loose`: the hitch snaps, the tow car flees ahead, the caravan drops back and swerves
  *   one lane toward the median and back (it never covers more than two lanes: never every lane),
- *   then `tip`: it tips over toward us and `slide`s onto the hard shoulder, where it lies (a wreck,
- *   out of play). A wagon it touches while loose or tipping is rammed (2 cells; sliding onto the
- *   shoulder it only shoves); a swerve dodges. The gunner tumbles off onto the shoulder (bloodless).
+ *   then `tip`: it tips over away from us (the livery stays in view, the underside and the wheels
+ *   turn toward us) and `slide`s onto the hard shoulder, where it lies (a wreck, out of play). A
+ *   wagon it touches while loose or tipping is rammed (2 cells; sliding onto the shoulder it only
+ *   shoves); a swerve dodges. The gunner tumbles off onto the shoulder (bloodless).
  * - BEATEN: score, a crate (`drop`, else the ring roll), the gunner tumbles off, the tow car flees
  *   and the caravan comes loose and tips at once.
  * - HOSTAGE (`hostage: true`, `item`): the door stands open with a barred grille over the doorway
@@ -30,16 +31,17 @@ import type { Rect } from '../../../../engine/math';
 import type { DrawOpts, Renderer } from '../../../../engine/render';
 import type { World } from '../../../../engine/world';
 import { Enemy, releaseAttackToken, takeAttackToken, telegraphTicks, type ReactionKind } from '../../../enemy';
-import { debris, dust, hitSpark, muzzleFlash, smokeTrail } from '../../../fx';
+import { debris, dust, FX_SPARK, hitSpark, muzzleFlash, smokeTrail } from '../../../fx';
 import { defineEntity, NO_PARAMS, paramBool, paramNum, type SpawnParams } from '../../../registry';
 import { ringOf, type RingDrawable } from '../../../ring/entity';
 import { RING_ENTITY, RING_ENTITY_B } from '../../../ring/ids';
 import { clampLane, LANE_GAP, laneY, nearestLane, SHOULDER_TOP } from '../../../ring/lanes';
 import type { Wagon } from '../../../ring/wagon';
-import type { HostageCarrier, SeatOut } from '../items/carrier';
+import type { DoorFallOut, HostageCarrier, SeatOut } from '../items/carrier';
+import { doorBox, doorFallAnchor } from '../traffic/geometry';
 import type { RingHostage } from '../items/hostage';
 import { ENTER_GIVE_UP, nearestWagon } from '../traffic/road-kit';
-import { CARAVAN, CARAVAN_ART, GANG_IDS, TOW_CAR_HALF, TOW_CAR_WHEELS, TOW_CARS } from './geometry';
+import { CARAVAN, CARAVAN_ART, CARAVAN_DOOR, GANG_IDS, TOW_CAR_HALF, TOW_CAR_WHEELS, TOW_CARS } from './geometry';
 import { BumpCooldown, dropCrate, flingPerson, followRel, gapAhead, gapBehind, laneFree, openAt, pushWagons, slotOf, type ContactRule } from './kit';
 
 export type CaravanMode = 'enter' | 'ride' | 'tell-shoot' | 'shoot' | 'recover' | 'tell-loose' | 'loose' | 'tip' | 'slide' | 'wreck' | 'leave';
@@ -484,12 +486,18 @@ export class RingCaravan extends Enemy implements HostageCarrier, RingDrawable {
         this.rel += (-road * 0.6 - this.rel) * 0.06;
         this.y += Math.min(1, Math.max(0, SHOULDER_TOP + 5 - this.y) * 0.08);
         if (this.modeT % 3 === 0) dust(this.world, this.x + this.world.fxRng.range(-30, 30), this.y, 2);
+        // It lands on its far side (the last tip frame): a puff of dust along the whole length.
+        if (this.modeT === 18) for (let dx = -30; dx <= 30; dx += 15) dust(this.world, this.x + dx, this.y, 3);
         if (this.modeT >= CARAVAN_AI.tip) this.setMode('slide');
         break;
       case 'slide':
         this.rel += (-road - this.rel) * 0.05;
         this.y += Math.min(1, Math.max(0, SHOULDER_TOP + 5 - this.y));
         if (this.modeT % 4 === 0) hitSpark(this.world, this.x - 20 + this.world.fxRng.range(0, 40), this.y - 1, -1);
+        // The scrape: sparks fly back off the chassis and the drawbar head, dust trails the rear.
+        if (this.modeT % 2 === 0) this.world.particles.burst(FX_SPARK, this.x + this.world.fxRng.range(-34, 34), this.y - 1, 2, 0.8, 2.6, Math.PI + 0.3, 0.8);
+        if (this.modeT % 3 === 0) this.world.particles.burst(FX_SPARK, this.x + CARAVAN.hitch[0], this.y - 2, 2, 0.6, 2, Math.PI + 0.4, 0.8);
+        if (this.modeT % 3 === 1) dust(this.world, this.x - CARAVAN.len / 2 - 2, this.y, 2);
         if (this.y >= SHOULDER_TOP + 5 && this.modeT > 12) {
           this.setMode('wreck');
           this.world.audio.sfx('ring/caravan-tip');
@@ -578,6 +586,15 @@ export class RingCaravan extends Enemy implements HostageCarrier, RingDrawable {
     if (this.grille < 0 || this.mode === 'tip' || this.mode === 'slide' || this.mode === 'wreck') return;
     drawOpts.flipX = false;
     r.sprite(`${CARAVAN_ART}/grille`, this.grille, Math.round(this.x), Math.round(this.y - this.lift), drawOpts);
+  }
+
+  hostageDoorFall(out: DoorFallOut): void {
+    const b = doorBox(CARAVAN_DOOR);
+    const a = doorFallAnchor(b);
+    out.sprite = `${CARAVAN_ART}/grille-fall`;
+    out.ax = a.ax;
+    out.ay = a.ay;
+    out.h = b[3] - b[1];
   }
 
   // ------------------------------------------------------------------------------- death

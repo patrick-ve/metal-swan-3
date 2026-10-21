@@ -33,13 +33,14 @@ import { awardScore } from '../../../events';
 import { hitSpark } from '../../../fx';
 import { HOSTAGE_FREE_SCORE } from '../../../hostage';
 import { defineEntity, NO_PARAMS, paramNum, paramStr, type SpawnParams, type SpawnSpec } from '../../../registry';
-import { RingEntity } from '../../../ring/entity';
+import { liftOf, RingEntity } from '../../../ring/entity';
 import { RING_ENTITY } from '../../../ring/ids';
 import { laneY, SHOULDER_TOP } from '../../../ring/lanes';
 import { WAGON_H, type Wagon } from '../../../ring/wagon';
 import { makeCar } from '../traffic/car';
+import { doorBox, doorFallAnchor, DOOR_FALL, HOSTAGE_VAN } from '../traffic/geometry';
 import { drivenWagons, nearestWagon, tumbleOff } from '../traffic/road-kit';
-import { isCarrier, type HostageCarrier, type SeatOut } from './carrier';
+import { isCarrier, type DoorFallOut, type HostageCarrier, type SeatOut } from './carrier';
 import { armourLow, giveItem, pickupOf, ringContents, RING_WEAPONS } from './crate';
 import { roll } from '../../items/drops';
 
@@ -85,6 +86,17 @@ const drawOpts: DrawOpts = {};
 const NO_BOXES: readonly Rect[] = [];
 const seat: SeatOut = { x: 0, y: 0, lift: 0 };
 const door = { x0: 0, x1: 0 };
+const fall: DoorFallOut = { sprite: '', ax: 0, ay: 0, h: 0 };
+
+/** The hostage van's cage door fall (a carrier without `hostageDoorFall`). */
+function defaultFall(out: DoorFallOut): void {
+  const b = doorBox(HOSTAGE_VAN.hold);
+  const a = doorFallAnchor(b);
+  out.sprite = 'ring/car/cage-fall';
+  out.ax = a.ax;
+  out.ay = a.ay;
+  out.h = b[3] - b[1];
+}
 const hand: [number, number] = [0, 0];
 
 export class RingHostage extends RingEntity {
@@ -183,8 +195,28 @@ export class RingHostage extends RingEntity {
     hudOf(this.world).clearBubble(this);
     const c = this.carrier;
     if (c) {
-      c.hostageDoor(door);
-      tumbleOff(this.world, door.x0 + 6, c.y + 1, { sprite: 'ring/car/cage-fall', vx: c.vx * 0.6 - 0.6, vy: 0.3, lift: 22, vlift: 1.6, rest: 30, tpf: 4, restFrame: 3, z: 32, shadowW: 18 });
+      // The door falls as a door: it starts upright in the opening (frame 0 lands on the door the
+      // carrier drew), tips over toward us about its sill, clangs flat on the road and scrapes to
+      // a stop while the carrier drives on (traffic/art.ts `doorFallFrame`).
+      fall.sprite = '';
+      c.hostageDoorFall?.(fall);
+      if (!fall.sprite) defaultFall(fall);
+      const q = Math.round(DOOR_FALL.k * fall.h * 0.5);
+      tumbleOff(this.world, c.x + fall.ax, c.y + q, {
+        sprite: fall.sprite,
+        vx: c.vx,
+        vy: 0.12,
+        lift: liftOf(c) + q - fall.ay,
+        vlift: 0.6,
+        once: true,
+        tpf: 3,
+        restFrame: 4,
+        rest: 40,
+        landSfx: 'ring/cage-hit',
+        scrapeAt: -Math.round(fall.h * 0.35),
+        z: 32,
+        shadowW: Math.round(fall.h * 0.6),
+      });
       c.hostageOpened(slot);
     }
     this.set('freed');

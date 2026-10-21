@@ -20,8 +20,7 @@ import { NO_PARAMS, type SpawnParams } from '../../../registry';
 import { ringOf, slabBoxes, slabCache, type RingDrawable } from '../../../ring/entity';
 import { RING_ENTITY } from '../../../ring/ids';
 import { clampLane, LANE_COUNT, laneY, nearestLane } from '../../../ring/lanes';
-import { RING } from '../../../ring/types';
-import { WAGON_W, type Wagon } from '../../../ring/wagon';
+import { wagonBandEnd, WAGON_W, type Wagon } from '../../../ring/wagon';
 import { drivenWagons, nearestWagon, slabsTouch, wagonSlab } from '../traffic/road-kit';
 import { CONVOY_TAG } from './geometry';
 
@@ -179,9 +178,12 @@ export abstract class ConvoyEnemy extends Enemy implements RingDrawable {
       let hard = w.swerveT > 0;
       if (Math.abs(dy) < 7) {
         hard = hard || closing > BUMP_HARD;
-        if (w.x < this.x && w.x <= this.world.camera.x + RING.screenMinX + 2) {
+        const end = wagonBandEnd(w);
+        if (w.x < this.x && (w.x <= end || this.x - (len / 2 + WAGON_W / 2 + 0.5) < end - 2)) {
           // At the left end of its band the wagon cannot give way: the vehicle is shoved ahead of
-          // it (fixer B: wagons were pushed off the screen).
+          // it (fixer B: wagons were pushed off the screen); a push that would take it past that
+          // end takes it only down to it (polish 2026-10-21).
+          if (w.x > end) w.x = end - 2;
           this.x = w.x + len / 2 + WAGON_W / 2 + 0.5;
           if (w.sideV > 0) w.sideV = 0;
         } else if (w.x < this.x) {

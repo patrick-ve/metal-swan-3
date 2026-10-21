@@ -274,6 +274,14 @@ export class GameAudio implements AudioOut {
   }
 
   /**
+   * Drop the decoded buffers of a sample group (keys another loaded group lists stay). A no-op
+   * when the output has no samples (NullAudio, tests, sims).
+   */
+  releaseSamples(group: string): void {
+    this.inner.releaseSamples?.(group);
+  }
+
+  /**
    * A speech bubble line, voiced when its sample is loaded. The runner calls it only for bubbles
    * that show (gag bubbles hide with SPEECH BUBBLES OFF); ANNOUNCER does not gate it (it is for
    * the announcer); VOICE VOLUME 0 silences it.

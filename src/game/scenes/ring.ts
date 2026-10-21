@@ -42,7 +42,7 @@ import { VOICE } from './flow-data';
 import { GameOverScene } from './game-over';
 import { missionArtSection, preloadMissionArt, preloadMissionAudio, stopDense } from './gameplay';
 import { PlayControls, type PlayHost } from './play-host';
-import { prepareRing, RING_AUDIO_GROUP, ringDone, type RingStart } from './ring-route';
+import { AMS_AUDIO_GROUP, prepareRing, RING_AUDIO_GROUP, ringDone, type RingStart } from './ring-route';
 import { RumbleWatch } from './rumble';
 
 export interface RingSceneOpts {
@@ -128,9 +128,12 @@ export class RingScene implements Scene, PlayHost {
     // The card's start banner shows for 120 ticks (GDD §13.6).
     const b = runner.hud.banner;
     if (b && b.style === 'mission') b.ticks = b.total = Math.min(b.total, START_BANNER_TICKS);
-    // A direct start (?mission=ring): the intro card did not run. Its sampled songs (the ams group).
+    // A direct start (?mission=ring): the intro card did not run. Its samples (the ring group).
     this.preloadArtNow();
     preloadMissionAudio(app, { audioGroup: RING_AUDIO_GROUP });
+    // The ams group is done with: its two songs (about 60 MB decoded) go; its effects and voices
+    // stay, the ring group above lists the same entries (the bank keeps a key another group owns).
+    app.audio.releaseSamples?.(AMS_AUDIO_GROUP);
     const weapon = app.params.weapon;
     if (weapon) for (const p of runner.players) p.giveWeapon(weapon, undefined, false);
     app.debug.on('skip', () => runner.skip());

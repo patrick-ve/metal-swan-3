@@ -39,7 +39,9 @@ export { RING_ID };
  * both groups (samples.browser.ts shares an entry whose `def` is the same object).
  */
 export const RING_AUDIO_GROUP = 'mission:ring';
-const AMS_SAMPLES = SAMPLE_MANIFEST['mission:ams'];
+/** The ams group: RingScene releases it (its songs) once the ring's group is on its way. */
+export const AMS_AUDIO_GROUP = 'mission:ams';
+const AMS_SAMPLES = SAMPLE_MANIFEST[AMS_AUDIO_GROUP];
 if (AMS_SAMPLES) defineSampleGroup(RING_AUDIO_GROUP, { sfx: AMS_SAMPLES.sfx, voice: AMS_SAMPLES.voice });
 
 /**

@@ -11,8 +11,7 @@ import type { SpawnSpec } from '../../../registry';
 import { ringOf } from '../../../ring/entity';
 import { RING_ENTITY } from '../../../ring/ids';
 import { LANE_COUNT, laneY, SHOULDER_TOP } from '../../../ring/lanes';
-import { RING } from '../../../ring/types';
-import { WAGON_W, type Wagon } from '../../../ring/wagon';
+import { wagonBandEnd, WAGON_W, type Wagon } from '../../../ring/wagon';
 import { drivenWagons, slabsTouch, tumbleOff, wagonSlab } from '../traffic/road-kit';
 
 /** Road things a gang vehicle keeps its gap to and will not change lanes into. */
@@ -140,7 +139,8 @@ export interface ContactRule {
  * line behind is pushed out behind the rear (a bump by the closing speed, or the ram), a wagon in
  * line ahead pushes the vehicle back (returns the x correction, < 0), a wagon touching from the side
  * (a lane change) bounces back a lane (½ cell). A swerving wagon dodges (no cost). A wagon in line
- * behind at the left end of its band (`RING.screenMinX`) cannot give way: it stays and the vehicle
+ * behind at the left end of its band (`wagonBandEnd`: `RING.screenMinX`, or queued in front of the
+ * other wagon there) cannot give way: it stays and the vehicle
  * is shoved ahead of it (returns the correction, > 0; fixer B: vans dropping back pushed wagons off
  * the screen). Returns the wagons hit by the ram this call (for the driver lines) in `rammed`.
  */
@@ -148,7 +148,6 @@ export function pushWagons(world: World, self: Entity, slab: Rect, rule: Contact
   rammed.length = 0;
   let back = 0;
   let fwd = 0;
-  const bandEnd = world.camera.x + RING.screenMinX + 2;
   const list = drivenWagons(world);
   const rear = slab.x;
   const front = slab.x + slab.w;
@@ -161,9 +160,13 @@ export function pushWagons(world: World, self: Entity, slab: Rect, rule: Contact
     const ready = cool.ready(w, world.tick);
     if (Math.abs(dy) < 7) {
       if (w.x < self.x) {
-        // In line behind the vehicle: out behind its rear (at the band's end: the vehicle moves).
-        if (w.x <= bandEnd) fwd = Math.max(fwd, w.x + WAGON_W / 2 + 0.5 - rear);
-        else w.x = Math.min(w.x, rear - WAGON_W / 2 - 0.5);
+        // In line behind the vehicle: out behind its rear (at the band's end: the vehicle moves; a
+        // push that would take the wagon past that end takes it only down to it, polish 2026-10-21).
+        const end = wagonBandEnd(w);
+        if (w.x <= end || rear - WAGON_W / 2 - 0.5 < end - 2) {
+          if (w.x > end) w.x = end - 2;
+          fwd = Math.max(fwd, w.x + WAGON_W / 2 + 0.5 - rear);
+        } else w.x = Math.min(w.x, rear - WAGON_W / 2 - 0.5);
         if (w.sideV > 0) w.sideV = 0;
         if (w.swerveT > 0) continue;
         if (rule.ram) {

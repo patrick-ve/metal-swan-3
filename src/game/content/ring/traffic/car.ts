@@ -36,8 +36,7 @@ import { defineEntity, NO_PARAMS, paramNum, type SpawnParams } from '../../../re
 import { ringOf, RingEntity } from '../../../ring/entity';
 import { RING_CAR_MODELS, RING_ENTITY, type RingCarModel } from '../../../ring/ids';
 import { clampLane, LANE_GAP, lastLane, laneY, nearestLane } from '../../../ring/lanes';
-import { RING } from '../../../ring/types';
-import { WAGON_W } from '../../../ring/wagon';
+import { wagonBandEnd, WAGON_W } from '../../../ring/wagon';
 import type { HostageCarrier, SeatOut } from '../items/carrier';
 import { CAR_GEO, carColour, carSprite, HOSTAGE_VAN, WHEEL_R, type CarGeo } from './geometry';
 import { drivenWagons, jamOf, slabsTouch, wagonSlab } from './road-kit';
@@ -206,10 +205,10 @@ export class RingCar extends RingEntity implements HostageCarrier {
   private wagonFloor(): number {
     const rear = this.x - this.geo.len / 2;
     const list = drivenWagons(this.world);
-    const minX = this.world.camera.x + RING.screenMinX + 2;
     let floor = -Infinity;
     for (let i = 0; i < list.length; i++) {
       const w = list[i];
+      const minX = wagonBandEnd(w);
       // Only a wagon that holds back: one that drives into the car bumps it (its own doing). A
       // wagon at the left end of its band cannot give way: the car never pushes it off the screen
       // (fixer B: wagons pushed out behind slow or jam-bound cars ended up past the left edge).
@@ -302,9 +301,13 @@ export class RingCar extends RingEntity implements HostageCarrier {
       let lane = 0;
       if (Math.abs(dy) < 7) {
         // In line: push the wagon out behind (or in front of) the car.
-        if (w.x < this.x && !this.parked && w.x <= this.world.camera.x + RING.screenMinX + 2) {
-          // The wagon at the left end of its band cannot give way: the car is shoved ahead of it
-          // (a stand in a jam keeps its place: the camera stands there too).
+        const end = wagonBandEnd(w);
+        if (w.x < this.x && (w.x <= end || this.x - (this.geo.len / 2 + WAGON_W / 2 + 0.5) < end - 2)) {
+          // The wagon at the left end of its band (or queued in front of the other wagon there)
+          // cannot give way: the car is shoved ahead of it. Polish 2026-10-21: a car standing in a
+          // jam too (while the road still rolls, a parked car pushed both wagons off the screen),
+          // and a push that would take the wagon past that end takes it only down to it.
+          if (w.x > end) w.x = end - 2;
           this.x = w.x + this.geo.len / 2 + WAGON_W / 2 + 0.5;
           this.vx = Math.max(this.vx, w.vx);
           this.syncBox();

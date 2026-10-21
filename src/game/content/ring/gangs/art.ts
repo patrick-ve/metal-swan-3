@@ -41,7 +41,9 @@ import {
   tumbleFrames,
 } from './art-people';
 import { brakeFrame, vanBodyFrame, vanGrilleFrame, vanRearFrame } from './art-van';
-import { CARAVAN_ART, CARD, PARCEL, VAN_ART } from './geometry';
+import { CARAVAN_ART, CARAVAN_DOOR, CARD, PARCEL, VAN, VAN_ART } from './geometry';
+import { doorFallFrame } from '../traffic/art';
+import { doorBox } from '../traffic/geometry';
 
 // ---------------------------------------------------------------------------------------------
 // The parcel and the card
@@ -77,6 +79,13 @@ export function cardFrame(d: Dn): Frame {
 // Registration
 // ---------------------------------------------------------------------------------------------
 
+/** A grille shot off its opening falling (5, traffic/art.ts `doorFallFrame`; bars as `grilleBuf`). */
+function grilleFallFrames(hold: readonly [number, number, number, number], d: Dn): Frame[] {
+  const b = doorBox(hold);
+  const n = Math.max(3, Math.round((b[2] - b[0]) / 5.6));
+  return [0, 1, 2, 3, 4].map((f) => doorFallFrame(b, n, b[0] + (b[2] - b[0]) * 0.4, f, d));
+}
+
 type Gen = (d: Dn) => Frame[];
 const def = (id: string, gen: Gen, o: { ticksPerFrame?: number; loop?: boolean; defer?: boolean } = {}): void => defineSprite(id, () => gen(1), { ...o, hd: (d) => gen(d as Dn) });
 
@@ -88,6 +97,7 @@ def(V + 'body', (d) => [0, 1].map((s) => vanBodyFrame(s, d)));
 def(V + 'rear', (d) => [0, 1, 2].map((f) => vanRearFrame(f, d)), { ticksPerFrame: 7, loop: false });
 def(V + 'brake', (d) => [0, 1].map((f) => brakeFrame(f, d)));
 def(V + 'grille', (d) => [0, 1].map((s) => vanGrilleFrame(s, d)));
+def(V + 'grille-fall', (d) => grilleFallFrames(VAN.hold, d), { ticksPerFrame: 3, loop: false, defer: true });
 def(V + 'crew/idle', crewIdleFrames, { ticksPerFrame: 18 });
 def(V + 'crew/tell-throw', crewTellThrowFrames, { ticksPerFrame: 7, loop: false });
 def(V + 'crew/throw', crewThrowFrames, { ticksPerFrame: 5, loop: false });
@@ -109,6 +119,7 @@ def(V + 'card', (d) => [cardFrame(d)], { defer: true });
 def(C + 'body', (d) => [caravanBodyFrame(false, false, d), caravanBodyFrame(true, false, d), caravanBodyFrame(false, true, d), caravanBodyFrame(true, true, d)]);
 def(C + 'open', (d) => [caravanOpenFrame(d)]);
 def(C + 'grille', (d) => [0, 1].map((s) => caravanGrilleFrame(s, d)));
+def(C + 'grille-fall', (d) => grilleFallFrames(CARAVAN_DOOR, d), { ticksPerFrame: 3, loop: false, defer: true });
 def(C + 'drawbar', (d) => [0, 1, 2].map((f) => drawbarFrame(f, d)));
 def(C + 'tip', (d) => [0, 1, 2, 3].map((f) => caravanTipFrame(f, d)), { ticksPerFrame: 6, loop: false, defer: true });
 def(C + 'gunner/ride', gunnerRideFrames, { ticksPerFrame: 20 });

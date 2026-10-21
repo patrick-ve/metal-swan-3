@@ -17,7 +17,8 @@
  * FpsScene. `--route` (on by default for `mission=ams` with `boss=1&debug=1`) plays the normal
  * script, then presses F4 (the boss dies), expects the ams tally (the newspaper), the ring's
  * intro card and the RingScene (docs/design/ring.md §1), drives a little, skips the ring with F4
- * (stretch by stretch to the exit), expects the bridge and follows it into FpsScene, then
+ * (stretch by stretch to the exit), expects the ring's own MISSION COMPLETE page (a shot of the
+ * ring tally, then Enter), expects the bridge and follows it into FpsScene, then
  * plays the rest of the route with F4: floor-1 tally → floor 2 → the suit breaks → the boss dies →
  * floor-2 tally → the fps ending → the final tally → the name entry. The route adds `god=1` to
  * the query when it is missing (the scripted 2D part would lose its lives before F4).
@@ -146,19 +147,20 @@ async function gameState(page: Page): Promise<GameState> {
       scenes: { top: { constructor: { name: string }; runner?: AnyRunner } | null };
       session: { slots: Array<{ score: number; joined: boolean; stats: { kills: number } }> } | null;
     };
-    type AnyRunner = { mission: { id: string }; section: { id: string }; ticks: number; players: Array<{ x: number }> };
+    // A tally page's runner (the ring's `ringTally`) has no section, ticks or players.
+    type AnyRunner = { mission?: { id: string }; section?: { id: string }; ticks?: number; players?: Array<{ x: number }> };
     const app = (window as unknown as { __ms3?: { app: AnyApp } }).__ms3?.app;
     const top = app?.scenes.top ?? null;
     const runner = top && 'runner' in top ? (top.runner ?? null) : null;
     const slot = app?.session?.slots[0];
     return {
       scene: top ? top.constructor.name : 'none',
-      mission: runner ? runner.mission.id : null,
-      section: runner ? runner.section.id : null,
-      x: runner && runner.players[0] ? Math.round(runner.players[0].x) : null,
+      mission: runner?.mission ? runner.mission.id : null,
+      section: runner?.section ? runner.section.id : null,
+      x: runner?.players?.[0] ? Math.round(runner.players[0].x) : null,
       score: slot ? slot.score : null,
       kills: slot ? slot.stats.kills : null,
-      ticks: runner ? runner.ticks : null,
+      ticks: runner?.ticks ?? null,
     };
   });
 }
@@ -329,7 +331,8 @@ async function main(): Promise<void> {
     };
     /**
      * --route after the ams boss: its tally (the newspaper) → the ring's intro card → the RingScene;
-     * a little driving, then F4 stretch by stretch to the exit; the victory drive; the bridge.
+     * a little driving, then F4 stretch by stretch to the exit; the victory drive; the ring's own
+     * MISSION COMPLETE page (hostages, FINES, `RING SEED n` in the footer); Enter → the bridge.
      */
     const followRing = async (): Promise<void> => {
       if (!(await waitForScene(page, ['MissionCompleteScene'], args.timeout))) throw new Error('the ams boss did not reach its tally');
@@ -343,10 +346,24 @@ async function main(): Promise<void> {
       await shot('ring-start');
       await holdAndTap(['ArrowRight'], 900, 'KeyZ');
       await shot('ring-play');
-      for (let i = 0; i < 40; i++) {
-        if (await waitForScene(page, ['GlitchBridgeScene'], 700)) return;
-        await page.keyboard.press('F4', { delay: 40 });
+      let tally = false;
+      for (let i = 0; i < 40 && !tally; i++) {
+        tally = await waitForScene(page, ['MissionCompleteScene'], 700);
+        if (!tally) await page.keyboard.press('F4', { delay: 40 });
       }
+      if (!tally) throw new Error('the ring did not reach its MISSION COMPLETE page');
+      // The ring's own page: its runner is the ring's tally (the seed in the footer).
+      const footer = await page.evaluate(() => {
+        const app = (window as unknown as { __ms3?: { app: { scenes: { top: { runner?: { tallyFooter?: string } } | null } } } }).__ms3?.app;
+        return app?.scenes.top?.runner?.tallyFooter ?? null;
+      });
+      if (!footer || !footer.startsWith('RING SEED')) throw new Error(`the page after the ring is not the ring's tally (footer: ${footer})`);
+      await wait(2500);
+      await shot('ring-tally');
+      await page.keyboard.press('Enter', { delay: 40 }); // the first press shows the whole page
+      await wait(500);
+      await shot('ring-tally-full');
+      if (!(await pressUntil(['GlitchBridgeScene'], 15000))) throw new Error('the ring tally did not move on to the bridge');
     };
 
     /** The title flow (unless `mission=`), then the side-scrolling script; with --route on into the fps mode. */

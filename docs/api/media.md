@@ -537,7 +537,7 @@ Guide levels: sfx peaks 0.4–0.9, RMS −24…−12 dB; a full song mix peaks b
 restart, from}), voice(line), setVolume('master'|'music'|'sfx'|'voice', v), stopAll(), update?(),
 pauseMusic?(), resumeMusic?(), sfxLoop?(key, id, {vol, pitch, pan}), stopSfx?(key, fadeTicks = 4),
 duckMusic?(factor), setMuted?(m), suspend?(), resume?(), loadSamples?(group, onProgress?),
-say?(text, speaker?, {important}), speaking?(), pauseLoops?(), resumeLoops?(), setEcho?({delay, feedback,
+releaseSamples?(group), say?(text, speaker?, {important}), speaking?(), pauseLoops?(), resumeLoops?(), setEcho?({delay, feedback,
 mix} | null) }` and `NullAudio`
 (headless, keeps a `log` such as `sfx:ui/move`, the last 256 entries; it has no `loadSamples` /
 `say` / `speaking` / `pauseLoops`, so samples and these calls never change a log). It also re-exports `defineSfx/hasSfx/listSfx/renderSfx`
