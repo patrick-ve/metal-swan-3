@@ -15,7 +15,10 @@
  *   mission intro card (`MissionDef.audioGroup`);
  * - `'mode:fps'`: the first-person mode after the ams boss (its `fps/*` sounds, songs and voice
  *   lines), loaded by `loadFpsContent` behind the FpsIntroScene / bridge progress bar, never at
- *   boot (docs/design/fps.md §1.5, §9).
+ *   boot (docs/design/fps.md §1.5, §9);
+ * - `'mission:oldenzaal'`: mission oldenzaal, level 4 (docs/design/oldenzaal.md §11), loaded on
+ *   its intro card like 'mission:ams' (`MissionDef.audioGroup`). The audio tool writes it to the
+ *   manifest only once something of it is picked (until then the synth plays everything).
  *
  * File paths are relative to `public/audio/` (e.g. `'ams/sfx/ams-bell-1.mp3'`). The data is
  * written by the audio tool into `src/game/content/samples/manifest.ts`.
@@ -69,8 +72,14 @@ export interface SampleGroup {
   voice?: Record<string, SampleVoice>;
 }
 
-/** The sample groups of the game. */
-export const SAMPLE_GROUPS = ['boot', 'mission:ams', 'mode:fps'] as const;
+/**
+ * The sample groups of the game (the audio tool's group names, tools/audio/spec-types.ts, come
+ * from this list). New groups are appended: the manifest keeps this order.
+ */
+export const SAMPLE_GROUPS = ['boot', 'mission:ams', 'mode:fps', 'mission:oldenzaal'] as const;
+
+/** One of `SAMPLE_GROUPS`. */
+export type SampleGroupId = (typeof SAMPLE_GROUPS)[number];
 
 const groups = new Map<string, SampleGroup>();
 

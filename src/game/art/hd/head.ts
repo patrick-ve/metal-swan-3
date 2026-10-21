@@ -780,6 +780,7 @@ function eye2x(expr: Expression, blue: boolean, shine: boolean): readonly string
   switch (expr) {
     case 'normal':
     case 'shout':
+    case 'smile':
       return blue ? ['kkk', 'Wls', 'lkw', 'll.'] : shine ? ['kkk', 'WWs', 'kkw', 'kk.'] : ['kkk', 'Wks', 'kkw', 'kk.'];
     case 'panic':
       return ['ss.', 'www', 'wkk', 'wkk'];
@@ -805,7 +806,7 @@ function drawBrows(k: Ctx): void {
   let tilt = 0;
   let arch = 0.3;
   if (expr === 'shout') lift = -0.35; // raised and flat: shouting, never angry (as the 2× brow)
-  if (expr === 'happy') lift = -0.3;
+  if (expr === 'happy' || expr === 'smile') lift = -0.3;
   if (expr === 'panic') {
     lift = -0.6;
     tilt = -0.45;
@@ -926,7 +927,7 @@ function drawMouth(k: Ctx): void {
   let wav = 0;
   let span = 2.15;
   let x0 = mx - 1.25;
-  if (expr === 'happy') smile = 0.45;
+  if (expr === 'happy' || expr === 'smile') smile = 0.45;
   if (expr === 'dazed') wav = 0.3;
   if (expr === 'chew') {
     span = 1.6;

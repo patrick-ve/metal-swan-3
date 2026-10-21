@@ -32,7 +32,7 @@ describe('the precache list', () => {
     const boot = groupFiles('boot');
     expect(boot.length).toBeGreaterThan(10);
     for (const f of boot) expect(precached(`audio/${f}`), f).toBe(true);
-    for (const g of ['mission:ams', 'mode:fps']) for (const f of groupFiles(g)) expect(precached(`audio/${f}`), f).toBe(false);
+    for (const g of ['mission:ams', 'mode:fps', 'mission:oldenzaal']) for (const f of groupFiles(g)) expect(precached(`audio/${f}`), f).toBe(false);
   });
 });
 

@@ -205,6 +205,13 @@ export interface MissionDef {
    * `?mission=` start. Without it the mission plays the synth only.
    */
   audioGroup?: string;
+  /**
+   * Bytes of the mission's own 4× buffers besides the sprites (its dense scenery: background
+   * layers and terrain chunks; mission `oldenzaal`). The tier-4 run keeps its sprites inside
+   * `DENSE_BUDGET_BYTES` minus this (gameplay.ts `MissionArtDef.denseReserve`, as the ring's).
+   * Optional and additive: missions without it keep the full budget.
+   */
+  denseReserve?: number;
 }
 
 export interface SpawnGroupOpts {

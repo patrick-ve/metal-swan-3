@@ -186,9 +186,13 @@ export function hdTone(r: Ramp | HdRampName, t: number): Color {
   return rr[i];
 }
 
-/** True when `c` (ignoring alpha) is an HD palette colour. */
+/**
+ * True when `c` (ignoring alpha) is an HD palette colour: a `PAL_HD` colour or (additive, the
+ * oldenzaal wave) a `PAL_HD_OZ` colour. Only art checks call it; no drawer depends on it.
+ */
 export function inHdPalette(c: Color): boolean {
-  return HD_SET.has(((c | 255) >>> 0));
+  const key = (c | 255) >>> 0;
+  return HD_SET.has(key) || HD_OZ_SET.has(key);
 }
 const HD_SET = new Set<Color>(HD_PALETTE);
 
@@ -225,3 +229,42 @@ export function hdHome(c: Color): { ramp: Ramp; i: number } | null {
   homeCache.set(key, res);
   return res;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Oldenzaal ramps (mission `oldenzaal`, docs/design/oldenzaal.md §10.4; docs/api/oldenzaal.md)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The HD ramps of the haunted town (2026-10-21), dark → light, 37 new colours (PAL_HD 209 + 37 =
+ * 246 of 256). ADDITIVE and kept APART from `PAL_HD` on purpose: `HD_PALETTE` (and so every
+ * nearest-colour search over it: the particles' HD tones, the fps effects, the ams / ring backdrop
+ * quantiser `nearestLab`) stays the 209 UHD-wave colours, so no existing sprite, layer or effect
+ * changes a pixel. None of these colours is a `PAL` or `PAL_HD` colour, so `hdRampOf`, `hdHome` and
+ * the font's text ramps never pick them either.
+ *
+ * Use them by name (`PAL_HD_OZ.sandstone`, `hdTone(PAL_HD_OZ.ghost, 0.8)`); a quantiser for the
+ * oldenzaal art searches `HD_FULL_PALETTE` (PAL_HD + PAL_HD_OZ). At 1× they snap to the 64-colour
+ * `PAL` like every HD ramp.
+ */
+export const PAL_HD_OZ = {
+  /** Bentheimer sandstone: the basilica's weathered grey-brown (dark streaks → sunlit block). */
+  sandstone: H('#1a1517', '#2f2725', '#473b33', '#605246', '#7a6b5a', '#938570', '#ada088', '#cfc4ab'),
+  /** The dusk sky: deep violet → purple-red → the low red-orange sun's glow (oz-a, oz-b). */
+  dusk: H('#1b0f25', '#2f1535', '#4b1d43', '#6b2549', '#8f3249', '#b54a47', '#d9714f', '#f3a167'),
+  /** Ghost green: the souls, Mevrouw Winkel, the possessed eyes (cold mist → pale glow). */
+  ghost: H('#0b1f1b', '#123a2f', '#1d5a43', '#2e7d57', '#4ea873', '#85d399', '#c7f5ce'),
+  /** Candle amber: lamps, candles, De Smulhoek's windows (the only warm light in town). */
+  candle: H('#3b1d0d', '#5f3011', '#8b4b15', '#b96b1b', '#e19529', '#f8c055', '#ffe7a9'),
+  /** Cold night blue: the night sky, the moonlit stone, the storm (desaturated, greyer than navy). */
+  night: H('#060915', '#0c1327', '#15203c', '#213151', '#32486a', '#4c6687', '#748fac'),
+} as const satisfies Record<string, Ramp>;
+
+export type HdOzRampName = keyof typeof PAL_HD_OZ;
+export const HD_OZ_RAMP_NAMES: readonly HdOzRampName[] = Object.keys(PAL_HD_OZ) as HdOzRampName[];
+
+/** Every PAL_HD_OZ colour, in ramp order. */
+export const HD_OZ_PALETTE: readonly Color[] = HD_OZ_RAMP_NAMES.flatMap((n) => [...PAL_HD_OZ[n]]);
+const HD_OZ_SET = new Set<Color>(HD_OZ_PALETTE);
+
+/** PAL_HD then PAL_HD_OZ (≤ 256 colours): the palette of the oldenzaal 2× / 4× art. */
+export const HD_FULL_PALETTE: readonly Color[] = [...HD_PALETTE, ...HD_OZ_PALETTE.filter((c) => !HD_SET.has(c))];

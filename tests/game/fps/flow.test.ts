@@ -13,12 +13,14 @@ import { MemoryStore } from '../../../src/engine/storage';
 import { createApp, newCampaign, type GameApp } from '../../../src/game/app';
 import { BRIDGE_LINES, FPS_ENDING_CAPTIONS, withCallsign } from '../../../src/game/content/fps/story';
 import { loadContent } from '../../../src/game/content/index';
+// Level 4 is registered for every test here (the last floor's tally leads to its story card).
+import '../../../src/game/content/missions/oldenzaal/index';
 import { DYING_TICKS } from '../../../src/game/fps/game';
 import { defineFpsFloor, fpsFloorByNumber, hasFpsFloor } from '../../../src/game/fps/registry';
 import { newFpsRun } from '../../../src/game/fps/run';
 import type { FloorResult, FpsRun } from '../../../src/game/fps/types';
 import { DEFAULT_PARAMS } from '../../../src/game/params';
-import { getCharacter, listCharacters } from '../../../src/game/registry';
+import { getCharacter, hasMission, listCharacters } from '../../../src/game/registry';
 import { ContinueScene } from '../../../src/game/scenes/continue';
 import { EndingScene } from '../../../src/game/scenes/ending';
 import { FinalTallyScene, finalTallyLines, FINAL_TALLY } from '../../../src/game/scenes/final-tally';
@@ -35,6 +37,7 @@ import { missionColumn } from '../../../src/game/scenes/high-scores';
 import { MissionCompleteScene } from '../../../src/game/scenes/mission-complete';
 import { MissionIntroScene } from '../../../src/game/scenes/mission-intro';
 import { RingScene } from '../../../src/game/scenes/ring';
+import { StoryCardScene } from '../../../src/game/scenes/story-card';
 import { missionBonusOf } from '../../../src/game/fps/run';
 import { PauseScene } from '../../../src/game/scenes/pause';
 import { TitleScene } from '../../../src/game/scenes/title';
@@ -250,7 +253,7 @@ describe('the route (headless)', () => {
     expect(h.until(FpsIntroScene, 3000)).toBe(true);
   });
 
-  it('floor 1 → tally → floor 2 → tally → fps ending (captions, credits, poses) → final tally', () => {
+  it('floor 1 → tally → floor 2 → tally → the story card (oldenzaal) | the fps ending (captions, credits, poses) → final tally', () => {
     ensureFloors();
     const h = harness();
     fpsSession(h.app);
@@ -264,6 +267,11 @@ describe('the route (headless)', () => {
     expect(run.floor).toBe(2);
     expect(run.entered).toBe(false);
     fpsTallyDone(h.app, run);
+    // Level 4 follows the floors (docs/design/oldenzaal.md §1): the story card, then MISSION 4.
+    // The fps ending now comes after oldenzaal's TO BE CONTINUED card (tests/game/oldenzaal-flow.test.ts).
+    expect(hasMission('oldenzaal')).toBe(true);
+    expect(h.until(StoryCardScene, 90)).toBe(true);
+    h.app.scenes.reset(new EndingScene(h.app, { variant: 'fps' }));
     expect(h.until(EndingScene, 90)).toBe(true);
     const end = h.app.scenes.top as EndingScene;
     expect(end).toBeInstanceOf(EndingScene);
@@ -387,14 +395,15 @@ describe('pause, continue and game over in the fps mode', () => {
 });
 
 describe('records, route lists and text', () => {
-  it('the golden-record route: ams + ring + fps-1 + fps-2 on the route, the six missions otherwise', () => {
+  it('the golden-record route: ams + ring + fps-1 + fps-2 + oldenzaal on the route, the six missions otherwise', () => {
     const c = newCampaign();
     expect(goldenRecordRoute(c)).toBe(CAMPAIGN_MISSIONS);
     expect(goldenRecordRoute(null)).toBe(CAMPAIGN_MISSIONS);
     c.missions.push('ams', 'fps-1');
     expect(goldenRecordRoute(c)).toBe(FPS_ROUTE);
     // The ring is level 2 (docs/design/ring.md §1): it is on the route too.
-    expect(FPS_ROUTE).toEqual(['ams', 'ring', 'fps-1', 'fps-2']);
+    // Level 4, the haunted town, follows the floors (docs/design/oldenzaal.md §1).
+    expect(FPS_ROUTE).toEqual(['ams', 'ring', 'fps-1', 'fps-2', 'oldenzaal']);
     expect(CAMPAIGN_MISSIONS).toEqual(['ams', 'm1', 'm2', 'm3', 'm4', 'm5']);
     const s = new GameSession({ characters: ['vincent', 'thom'] });
     for (const id of FPS_ROUTE) c.goldenRecords[0].add(id);

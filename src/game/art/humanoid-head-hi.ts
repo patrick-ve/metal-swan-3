@@ -79,6 +79,12 @@ export const EXPR_HI: Readonly<Record<Expression, HiExprTpl>> = {
     mouth: { at: [18, 16], rows: ['m..m', '.mm.'] },
     brow: { at: [16, 7], rows: ['hhhh'] },
   },
+  // Open eye (as normal) and the happy smile.
+  smile: {
+    eye: { at: [16, 10], rows: ['We', 'ee', 'ee', 'ee'] },
+    mouth: { at: [18, 16], rows: ['m..m', '.mm.'] },
+    brow: { at: [16, 7], rows: ['hhhh'] },
+  },
   blink: {
     eye: { at: [16, 10], rows: ['....', '....', 'eeee', '.ee.'] },
     mouth: { at: [18, 16], rows: ['mmmm', '.11.'] },

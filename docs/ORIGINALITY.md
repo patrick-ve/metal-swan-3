@@ -83,6 +83,8 @@ dialogue), shipped as MP3 files under `public/audio/`. Rules for this exception:
 - The first-person mode (2026-10-14) may use the same pipeline (sample group `mode:fps`), with the
   same rules and its own exception below. Its takes are generated only after the user's OK on the
   credit estimate.
+- Mission `oldenzaal` (2026-10-21) may use it too (sample group `mission:oldenzaal`), with the same
+  rules and its own exception below.
 - Prompts describe sounds, styles and moods in our own words. Music prompts never name an
   existing song, artist, game or composer to imitate; every cue must be original and must not
   quote an existing melody.
@@ -144,6 +146,53 @@ above is extended to mission `ring` (level 2). Rules for this exception:
   `docs/research/mechanics.md` §23 (no laughing or pointing at a player's death, no mass scream,
   no cheering idle gag) and the hostage rule (a freed hostage bows; it never salutes).
 - The self-check question 2 below does not apply to these listed real names.
+
+## Exception: mission `oldenzaal` (2026-10-21)
+
+By the user's explicit decision (2026-10-21, `docs/design/oldenzaal.md` §0, §12), mission
+`oldenzaal` (level 4, `MISSION 4`, "A HAUNTING IN OTOWN") uses real names of the town of
+Oldenzaal, two characters with names the user chose, and generated audio. Rules for this
+exception:
+
+- **Real names allowed:** Oldenzaal (and "Otown" in the card's subtitle), the Plechelmus Basilica
+  (Sint-Plechelmusbasiliek), Plechelmusplein, St. Plechelmus and his statue, the snack bar
+  **De Smulhoek** (always shown in a friendly light), and the signpost names Museum, Stadhuis and
+  Ganzenmarkt. Every other shop, brand or sign name in the town is our own made-up name.
+- **Likeness only:** the buildings and the statue are likenesses studied from the user's reference
+  photos. All art is drawn by this project's code; no photo is traced, sampled, colour-picked or
+  pixel-copied, and the photos (and their paths) never enter `src/`, `public/`, `docs/` or
+  `tests/`. No person is drawn from a photo. Signs and the statue's plaque (`ST. PLECHELMUS`
+  only) use our own pixel lettering.
+- **Meneer Wu** is our own design with the name the user chose: a hard-working owner of De
+  Smulhoek with a Chinese background. He is no likeness of a real person. No stereotype in his
+  look, sound or text: no slit-line eyes, no buck teeth, no conical hat, no queue, no
+  "Chinese-style" lettering, no accent and no broken Dutch or English, no joke about his origin.
+  His eyes are drawn with the same care as the squad's faces. His joke is his work ethic (the
+  fryer keeps going, he will not close before ten o'clock).
+- **Mevrouw Winkel** is fictional (made up by the user): a middle-aged woman with dark grey hair,
+  a ghost. She is never a likeness of a real person.
+- **No Nazi symbol** anywhere in this mission: not on the souls, banners, flags, walls or props.
+  The soldiers' souls are WW2-style greatcoat and helmet silhouettes without insignia; they are
+  the villains, the townspeople are their victims.
+- **Bloodless:** the souls are pale green-grey mist; a freed host falls dazed, sits up and runs off.
+- The possessed are not the reference game's zombie gag: **no hero transformation, no vomit
+  attack, no cure item.** `docs/research/mechanics.md` §23 applies in full: no laughing or
+  pointing at a player's death, no mass scream, no cheering idle gag.
+- **Respect for the church:** nothing mocks the faith, its objects or its clergy. Nothing in the
+  basilica is broken or burned; shots never damage the altar, crosses or images; no enemy wears a
+  church vestment as a joke. The saint is a victim of the curse: the statue is freed and sits back
+  on its plinth, whole.
+- **Generated audio:** mission oldenzaal may use ElevenLabs takes (music, sound effects and
+  designed voices; sample group `mission:oldenzaal`, files under `public/audio/oldenzaal/`) under
+  the same rules as the `ams` audio exception above. Prompts are our own words and never name a
+  song, artist, game or composer; every cue is original. The voices `wu`, `winkel` and
+  `plechelmus` are designed from text descriptions, never cloned or imitated; Meneer Wu's voice
+  is a plain Dutch voice with no imitated or caricatured accent. The synth recipes and songs stay
+  the fallback for every id. Takes are generated only after the user's OK on the credit estimate.
+- The rules above about other games (names, designs, music, text) still apply in full, and so does
+  the hostage rule (a freed hostage bows; it never salutes).
+- The self-check question 2 below does not apply to these listed real names or to the names
+  Meneer Wu and Mevrouw Winkel.
 
 ## Exception: the first-person mode (2026-10-14)
 

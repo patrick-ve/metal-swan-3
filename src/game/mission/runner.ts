@@ -56,6 +56,7 @@ import type {
   TransitionKind,
 } from './types';
 import { SectionView } from './view';
+import { MissionLight, REDUCED_FLASH } from './light/pass';
 
 export type RunnerState = 'playing' | 'exiting' | 'entering' | 'victory' | 'complete' | 'gameover';
 
@@ -112,6 +113,11 @@ export class MissionRunner {
   world!: World;
   section!: SectionDef;
   view!: SectionView;
+  /**
+   * OPT-IN: the light pass of the current section (light/pass.ts), only for a section with a light
+   * config (`defineSectionLight`, mission oldenzaal); null everywhere else (draws as before).
+   */
+  light: MissionLight | null = null;
   /** The game context of the current section's world. */
   game!: GameContext;
   players: Player[] = [];
@@ -232,6 +238,15 @@ export class MissionRunner {
     // The old view's queued 2× scenery jobs are of no use any more.
     this.view?.dispose();
     this.view = new SectionView(def, terrain, seed, this.density);
+    // Opt-in: a vertical section with dense art also releases its dense chunks by row.
+    if (this.density > 1 && (def.scroll === 'up' || def.scroll === 'down')) this.view.evictRows = true;
+    // Opt-in: the light pass of a section with a light config (none for every other section).
+    this.light?.dispose();
+    this.light = MissionLight.forSection(def, world, seed, this.settings.reduceFlashes ? REDUCED_FLASH : 1);
+    if (this.light) {
+      const light = this.light;
+      this.view.backHook = (r, tick) => light.drawBack(r, tick, this.artDensity);
+    }
     this.exitOn.clear();
     for (const ex of def.exits ?? []) this.exitOn.set(ex, !ex.disabled);
     this.nextCheckpoint = 0;
@@ -478,6 +493,7 @@ export class MissionRunner {
       case 'complete':
         break;
     }
+    this.light?.update(this.ticks);
   }
 
   /**
@@ -505,6 +521,7 @@ export class MissionRunner {
       this.view.drawBack(r, this.ticks);
       this.world.draw(r);
       this.view.drawFront(r, this.ticks);
+      this.light?.draw(r, this.ticks, this.artDensity);
       const a = this.fadeAlpha;
       if (a > 0) r.fade(0x000000ff, a);
     });

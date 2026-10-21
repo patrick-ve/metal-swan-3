@@ -10,6 +10,7 @@
 import type { CampaignRecord } from '../app';
 import type { Difficulty } from '../session';
 import { getMission } from '../registry';
+import { OLDENZAAL_ID } from '../content/missions/oldenzaal/ids';
 
 /** A polyline of the intro card's line map: x, y pairs in screen px (384 × 216). */
 export type MapLine = readonly number[];
@@ -64,11 +65,32 @@ export function hasMissionCard(id: string): boolean {
 export const CAMPAIGN_MISSIONS: readonly string[] = ['ams', 'm1', 'm2', 'm3', 'm4', 'm5'];
 
 /**
- * The normal route (docs/design/fps.md §1.9, docs/design/ring.md §1): ams (MISSION 1), the ring
- * road (MISSION 2), then the two fps floors (level 3). ALL GOLDEN RECORDS on this route needs the
- * record of each of them.
+ * The normal route (docs/design/fps.md §1.9, docs/design/ring.md §1, docs/design/oldenzaal.md §1):
+ * ams (MISSION 1), the ring road (MISSION 2), the two fps floors (level 3, `MISSION 3`), then the
+ * haunted town `oldenzaal` (MISSION 4). ALL GOLDEN RECORDS on this route needs the record of each
+ * of them.
  */
-export const FPS_ROUTE: readonly string[] = ['ams', 'ring', 'fps-1', 'fps-2'];
+export const FPS_ROUTE: readonly string[] = ['ams', 'ring', 'fps-1', 'fps-2', OLDENZAAL_ID];
+
+/**
+ * The level number of a 2D mission on the route: its place in FPS_ROUTE with the first-person
+ * floors counted as ONE level (MISSION 3), so ams = 1, ring = 2, oldenzaal = 4. 0 when it is not
+ * on the route (or is an fps floor).
+ */
+function routeNumber(id: string): number {
+  if (id.startsWith('fps-')) return 0;
+  let n = 0;
+  let fps = false;
+  for (const r of FPS_ROUTE) {
+    if (r.startsWith('fps-')) {
+      if (fps) continue;
+      fps = true;
+    }
+    n++;
+    if (r === id) return n;
+  }
+  return 0;
+}
 
 /**
  * The missions ALL GOLDEN RECORDS needs: FPS_ROUTE once the campaign played the ring or `fps-1`,
@@ -79,22 +101,21 @@ export function goldenRecordRoute(c: CampaignRecord | null): readonly string[] {
 }
 
 /**
- * The number of a mission: its place on the route (FPS_ROUTE; the 2D missions ams = 1, ring = 2),
- * else its place in CAMPAIGN_MISSIONS (the passive m1–m5 keep their old numbers); 0 when it is
- * neither. The fps floors are numbered by the high-score column (F1, F2), not here.
+ * The number of a mission: its level on the route (`routeNumber`: ams = 1, ring = 2, the fps
+ * floors together 3, oldenzaal = 4), else its place in CAMPAIGN_MISSIONS (the passive m1–m5 keep
+ * their old numbers); 0 when it is neither. The fps floors are numbered by the high-score column
+ * (F1, F2), not here.
  */
 export function missionNumber(id: string): number {
-  if (!id.startsWith('fps-')) {
-    const r = FPS_ROUTE.indexOf(id);
-    if (r >= 0) return r + 1;
-  }
+  const r = routeNumber(id);
+  if (r > 0) return r;
   return CAMPAIGN_MISSIONS.indexOf(id) + 1;
 }
 
 /**
- * 'ams' → 'MISSION 1', 'ring' → 'MISSION 2' (the route); 'm1' → 'MISSION 2' … 'm4' → 'MISSION 5'
- * (passive, their campaign place); the last campaign mission (m5) → 'FINAL MISSION'; other ids
- * `mN` → 'MISSION N' (m0), else their upper-case name.
+ * 'ams' → 'MISSION 1', 'ring' → 'MISSION 2', 'oldenzaal' → 'MISSION 4' (the route); 'm1' →
+ * 'MISSION 2' … 'm4' → 'MISSION 5' (passive, their campaign place); the last campaign mission
+ * (m5) → 'FINAL MISSION'; other ids `mN` → 'MISSION N' (m0), else their upper-case name.
  */
 export function missionLabel(id: string): string {
   const n = missionNumber(id);

@@ -172,6 +172,11 @@ export class Gun implements ShotTracker {
   live = 0;
   /** Pitch of the shot sound (a player status may raise it). */
   pitch = 1;
+  /**
+   * Fire-rate multiplier (opt-in, default 1 = unchanged): a player status (`fireRate`, the
+   * oldenzaal snack power) shortens the cooldown and the hold-repeat by it.
+   */
+  rate = 1;
   readonly ctx: FireContext;
 
   constructor(world: World, shooter: Entity, def: WeaponDef, team: Team = 'player', owner = -1) {
@@ -257,7 +262,7 @@ export class Gun implements ShotTracker {
     if (!held) return false;
     if (this.def.auto) return true;
     const repeat = this.def.holdRepeat === undefined ? TUNING.fire.tapHoldRepeat : this.def.holdRepeat;
-    return repeat !== null && this.sinceShot >= repeat;
+    return repeat !== null && (this.rate === 1 ? this.sinceShot : this.sinceShot * this.rate) >= repeat;
   }
 
   /** A buffered press is waiting (used to decide knife vs. shot before `wants`). */
@@ -300,6 +305,7 @@ export class Gun implements ShotTracker {
     }
     if (this.lastRound()) emptyPuff(this.world, c);
     this.cooldown = c.crouching ? (this.def.crouchCooldown ?? this.def.cooldown) : this.def.cooldown;
+    if (this.rate !== 1) this.cooldown = Math.max(1, Math.round(this.cooldown / this.rate));
     this.shotIndex++;
     this.sinceShot = 0;
   }

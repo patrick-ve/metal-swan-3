@@ -87,6 +87,19 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   'ring/crew/art': () => import('./ring/crew/art'),
   'ring/boss': () => import('./ring/boss/index'),
   'ring/boss/art': () => import('./ring/boss/art'),
+  // Mission `oldenzaal`, level 4 (docs/design/oldenzaal.md §13; docs/api/oldenzaal.md; not lazy):
+  // one entry per area and owner (ids: missions/oldenzaal/ids.ts).
+  'missions/oldenzaal': () => import('./missions/oldenzaal/index'),
+  'oldenzaal/kit': () => import('./oldenzaal/kit/index'),
+  'oldenzaal/kit/art': () => import('./oldenzaal/kit/art'),
+  'oldenzaal/possessed': () => import('./oldenzaal/possessed/index'),
+  'oldenzaal/possessed/art': () => import('./oldenzaal/possessed/art'),
+  'oldenzaal/npcs': () => import('./oldenzaal/npcs/index'),
+  'oldenzaal/npcs/art': () => import('./oldenzaal/npcs/art'),
+  'oldenzaal/items': () => import('./oldenzaal/items/index'),
+  'oldenzaal/items/art': () => import('./oldenzaal/items/art'),
+  'music/oldenzaal': () => import('./music/oldenzaal'),
+  'sfx/oldenzaal': () => import('./sfx/oldenzaal'),
   // The first-person mode (docs/design/fps.md §3.6): LAZY — the boot skips them (isLazyContent);
   // FpsIntroScene loads them behind its progress bar (loadFpsContent).
   fps: () => import('./fps/index'),

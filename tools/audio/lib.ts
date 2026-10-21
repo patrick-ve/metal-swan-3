@@ -12,7 +12,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { voiceKey } from '../../src/engine/samples';
+import { SAMPLE_GROUPS, voiceKey } from '../../src/engine/samples';
 import type { LineSpec, MusicSpec, SampleGroupName, SfxSpec, VoiceSpec } from './spec-types';
 
 export { voiceKey };
@@ -84,9 +84,23 @@ export function pickKey(kind: Kind, id: string): string {
   return `${kind}:${id}`;
 }
 
-/** Folder under public/audio/ of a sample group: boot, ams or fps. */
+/** Folder under public/audio/ of each sample group (the ship step writes and cleans only these). */
+export const GROUP_DIRS: Readonly<Record<SampleGroupName, string>> = {
+  boot: 'boot',
+  'mission:ams': 'ams',
+  'mode:fps': 'fps',
+  'mission:oldenzaal': 'oldenzaal',
+};
+
+/**
+ * Groups the manifest lists only once something of them is picked (the first-person mode and
+ * mission oldenzaal); 'boot' and 'mission:ams' are always written, empty or not.
+ */
+export const LAZY_GROUPS: ReadonlySet<SampleGroupName> = new Set<SampleGroupName>(['mode:fps', 'mission:oldenzaal']);
+
+/** Folder under public/audio/ of a sample group: boot, ams, fps or oldenzaal. */
 export function groupDir(group: SampleGroupName): string {
-  return group === 'boot' ? 'boot' : group === 'mode:fps' ? 'fps' : 'ams';
+  return GROUP_DIRS[group];
 }
 
 /** The mayor's lines stay text-only: no voice is ever designed or spoken for her. */
@@ -125,7 +139,8 @@ export function parseEnv(text: string): Record<string, string> {
 
 // ------------------------------------------------------------------------------------------ validation
 
-const GROUPS: readonly string[] = ['boot', 'mission:ams', 'mode:fps'];
+/** Every group name a spec item may use (src/engine/samples.ts `SAMPLE_GROUPS`). */
+const GROUPS: readonly string[] = SAMPLE_GROUPS;
 
 /** Every problem in the spec, as readable strings (empty when the spec is sound). */
 export function validateSpec(spec: Spec): string[] {
@@ -351,11 +366,33 @@ export function items(spec: Spec): Item[] {
   return out;
 }
 
-/** Filters by --kind and --only (ids, slugs or line keys, comma-separated). */
-export function selectItems(all: readonly Item[], kinds: readonly Kind[] | null, only: readonly string[] | null): Item[] {
+/**
+ * Filters by --kind and --only (ids, slugs or line keys, comma-separated) and, optionally, by
+ * sample group (`groups`: e.g. ['mission:oldenzaal']; a voice design has no group and passes when
+ * one of its speaker's lines is in those groups, see `itemsOfGroups`).
+ */
+export function selectItems(all: readonly Item[], kinds: readonly Kind[] | null, only: readonly string[] | null, groups: readonly SampleGroupName[] | null = null): Item[] {
+  const keep = groups ? itemsOfGroups(all, groups) : null;
   return all.filter((it) => {
+    if (keep && !keep.has(it)) return false;
     if (kinds && !kinds.includes(it.kind)) return false;
     if (only && !only.some((o) => o === it.id || o === slug(it.id) || o === pickKey(it.kind, it.id))) return false;
     return true;
   });
+}
+
+/**
+ * The items of some sample groups: their sfx, songs and lines, plus the voice designs of the
+ * speakers of those lines (a voice belongs to no group).
+ */
+export function itemsOfGroups(all: readonly Item[], groups: readonly SampleGroupName[]): Set<Item> {
+  const out = new Set<Item>();
+  const speakers = new Set<string>();
+  for (const it of all) {
+    if (it.group === null || !groups.includes(it.group)) continue;
+    out.add(it);
+    if (it.kind === 'line') speakers.add((it.spec as LineSpec).speaker);
+  }
+  for (const it of all) if (it.kind === 'voice' && speakers.has(it.id)) out.add(it);
+  return out;
 }

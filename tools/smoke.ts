@@ -20,7 +20,8 @@
  * (stretch by stretch to the exit), expects the ring's own MISSION COMPLETE page (a shot of the
  * ring tally, then Enter), expects the bridge and follows it into FpsScene, then
  * plays the rest of the route with F4: floor-1 tally → floor 2 → the suit breaks → the boss dies →
- * floor-2 tally → the fps ending → the final tally → the name entry. The route adds `god=1` to
+ * floor-2 tally → the story card → MISSION 4 (oldenzaal: F4 skips its sections) → its tally →
+ * the TO BE CONTINUED card → the fps ending → the final tally → the name entry. The route adds `god=1` to
  * the query when it is missing (the scripted 2D part would lose its lives before F4).
  *
  * The ring (`--query "mission=ring&god=1"`): the same script in the RingScene (FIRE / JUMP = swerve
@@ -445,8 +446,9 @@ async function main(): Promise<void> {
     };
     /**
      * --route after floor 1 (debug=1): F4 ends floor 1 (the elevator) → its tally → floor 2 →
-     * F4 breaks the suit → F4 kills him on foot (the death-cam) → the tally → the fps ending →
-     * the final tally → the name entry (or the high scores).
+     * F4 breaks the suit → F4 kills him on foot (the death-cam) → the tally → the story card →
+     * MISSION 4 (oldenzaal; F4 skips its sections) → its tally → TO BE CONTINUED → the fps ending
+     * → the final tally → the name entry (or the high scores).
      */
     const finishRoute = async (): Promise<void> => {
       await page.keyboard.press('F4', { delay: 40 });
@@ -476,7 +478,31 @@ async function main(): Promise<void> {
       await page.keyboard.press('Enter', { delay: 40 }); // the first press shows the whole page
       await wait(500);
       await shot('tally-2-full');
-      if (!(await pressUntil(['EndingScene'], 15000))) throw new Error('the floor-2 tally did not move on to the ending');
+      // Level 4 (docs/design/oldenzaal.md §1): the story card, the MISSION 4 card, the mission
+      // (F4 skips each section), its tally, the TO BE CONTINUED card, then the ending.
+      if (!(await pressUntil(['StoryCardScene'], 15000))) throw new Error('the floor-2 tally did not move on to the story card');
+      await wait(1500);
+      await shot('story-card');
+      if (!(await pressUntil(['MissionIntroScene'], 20000))) throw new Error('the story card did not move on to the MISSION 4 card');
+      await wait(1200);
+      await shot('oz-card');
+      if (!(await pressUntil(['GameplayScene'], 20000))) throw new Error('oldenzaal never started');
+      await wait(2500);
+      await shot('oz-start');
+      await holdAndTap(['ArrowRight'], 1200, 'KeyZ');
+      await shot('oz-play');
+      let ozDone = false;
+      for (let i = 0; i < 30 && !ozDone; i++) {
+        ozDone = await waitForScene(page, ['MissionCompleteScene'], 2000);
+        if (!ozDone) await page.keyboard.press('F4', { delay: 40 });
+      }
+      if (!ozDone) throw new Error('oldenzaal did not reach its MISSION COMPLETE tally');
+      await wait(2000);
+      await shot('oz-tally');
+      if (!(await pressUntil(['ToBeContinuedScene'], 30000, 1500))) throw new Error('the oldenzaal tally did not move on to the TO BE CONTINUED card');
+      await wait(1500);
+      await shot('to-be-continued');
+      if (!(await pressUntil(['EndingScene'], 15000))) throw new Error('the TO BE CONTINUED card did not move on to the ending');
       await wait(1500);
       await shot('ending');
       if (!(await pressUntil(['FinalTallyScene'], 60000, 1500))) throw new Error('the ending never reached the final tally');

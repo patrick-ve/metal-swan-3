@@ -231,13 +231,15 @@ describe('the route through the ring', () => {
 
 describe('numbering, the card and the bridge text', () => {
   it('the ring is MISSION 2 and M2 on the route; m1 keeps its old (passive) label', () => {
-    expect(FPS_ROUTE).toEqual(['ams', 'ring', 'fps-1', 'fps-2']);
+    expect(FPS_ROUTE).toEqual(['ams', 'ring', 'fps-1', 'fps-2', 'oldenzaal']);
     expect(missionNumber('ring')).toBe(2);
+    // The fps floors count as one level (MISSION 3): oldenzaal is MISSION 4 (docs/design/oldenzaal.md §1).
+    expect(missionNumber('oldenzaal')).toBe(4);
     expect(missionLabel('ring')).toBe('MISSION 2');
     expect(missionLabel('ams')).toBe('MISSION 1');
     expect(missionLabel('m1')).toBe('MISSION 2');
     const col = (mission: string): string => missionColumn({ name: 'AAA', score: 0, mission, character: '', continues: 0, difficulty: 'normal' });
-    expect(['ams', 'ring', 'fps-1', 'fps-2', 'all'].map(col)).toEqual(['M1', 'M2', 'F1', 'F2', 'ALL']);
+    expect(['ams', 'ring', 'fps-1', 'fps-2', 'oldenzaal', 'all'].map(col)).toEqual(['M1', 'M2', 'F1', 'F2', 'M4', 'ALL']);
     const c = newCampaign();
     c.missions.push('ams', 'ring');
     expect(goldenRecordRoute(c)).toBe(FPS_ROUTE);

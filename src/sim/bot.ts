@@ -55,6 +55,16 @@ import { SwanRider } from './bot-swan';
 
 export { steerOnto } from './bot-nav';
 
+/**
+ * A status that replaces the BOMB throw has throws left (oldenzaal: the frikandels, player.ts
+ * `StatusEffects.bomb`): the bot throws them like bombs. Null status bomb (every other mission):
+ * false, so the old condition decides alone.
+ */
+function statusBombLeft(p: Player): boolean {
+  const sb = p.status.bomb;
+  return sb !== null && sb.left(p) > 0;
+}
+
 export type BotRoute = 'upper' | 'lower';
 
 export interface BotOptions {
@@ -489,7 +499,7 @@ export class Bot implements InputSource {
     else if (this.t % 2 === 0) mask |= FIRE;
 
     // ---- bombs
-    if (this.opts.bombs && p.slot.bombs > 0 && this.t - this.lastBomb > 40 && this.wantsBomb(world, p)) {
+    if (this.opts.bombs && (p.slot.bombs > 0 || statusBombLeft(p)) && this.t - this.lastBomb > 40 && (this.wantsBomb(world, p) || (statusBombLeft(p) && this.packAhead(world, p)))) {
       this.lastBomb = this.t;
       mask |= BOMB;
     }
@@ -1231,6 +1241,21 @@ export class Bot implements InputSource {
       if (e.alive && dx > 20 && dx < 140 && Math.abs(e.y - p.y) < 40) n++;
     }
     return n >= 3;
+  }
+
+  /**
+   * Two enemies close together ahead at our height (a status bomb's target: the frikandel's
+   * holy-mayo blast, oldenzaal). Only asked while a status bomb has throws left.
+   */
+  packAhead(world: World, p: { x: number; y: number; facing: number }): boolean {
+    const foes = world.byTag('enemy');
+    let n = 0;
+    for (let i = 0; i < foes.length; i++) {
+      const e = foes[i];
+      const dx = (e.x - p.x) * p.facing;
+      if (e.alive && dx > 30 && dx < 280 && Math.abs(e.y - p.y) < 40 && world.onScreen(e, 0)) n++;
+    }
+    return n >= 2;
   }
 
   /** May the bot throw / fire a bomb now (option on, not too soon after the last one)? Marks it. */

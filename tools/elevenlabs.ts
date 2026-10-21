@@ -2,24 +2,31 @@
  * ElevenLabs generation tool for the start screens and mission ams (see docs/api/audio-pipeline.md).
  *
  *   npm run audio:gen                       dry run: every request and a credit estimate (= plan)
- *   npm run audio:gen -- plan [--kind sfx|music|voice|line] [--only id,...]
+ *   npm run audio:gen -- plan [--kind sfx|music|voice|line] [--only id,...] [--group mission:oldenzaal,...]
  *   npm run audio:gen -- credits            used / limit of the account
- *   npm run audio:gen -- gen   [--kind ..] [--only ..] [--takes n] [--force] [--regen] [--budget n]
+ *   npm run audio:gen -- gen   [--kind ..] [--only ..] [--group ..] [--takes n] [--force] [--regen] [--budget n]
  *   npm run audio:gen -- sfx | music | lines [--only ..] [--takes n] [--force] [--regen]
  *   npm run audio:gen -- design [--only SPEAKER,..] [--designs n]   Voice Design previews
  *   npm run audio:gen -- design-save <SPEAKER> [<preview n>]          keep one preview as a voice
  *
+ * --group keeps only the items of those sample groups (their sfx, songs and lines, plus the voice
+ * designs of the lines' speakers; tools/audio/lib.ts `itemsOfGroups`), e.g. `--group mission:oldenzaal`.
+ *
  * The API key comes from .env.local (ELEVENLABS_API_KEY). It is never printed or written out.
  * Raw takes land in tmp/audio/raw/<kind>/<id>/take-<n>.mp3; tools/audio/process.ts goes next.
  */
+import { SAMPLE_GROUPS } from '../src/engine/samples';
 import { createClient } from './audio/client';
 import { clearRegen, formatPlan, planJobs, readCredits, runJobs, saveDesign } from './audio/gen';
 import { items, isMayor, KINDS, paths, pickKey, readApiKey, readJson, selectItems, validateSpec, type Kind, type Picks, type Spec } from './audio/lib';
+import type { SampleGroupName } from './audio/spec-types';
 
 interface Args {
   cmd: string;
   kinds: Kind[] | null;
   only: string[] | null;
+  /** --group: only the items of these sample groups (null = all). */
+  groups: SampleGroupName[] | null;
   takes?: number;
   force: boolean;
   regen: boolean;
@@ -31,12 +38,13 @@ interface Args {
 const ALIASES: Record<string, Kind> = { sfx: 'sfx', music: 'music', lines: 'line', line: 'line', design: 'voice', voice: 'voice' };
 
 function parseArgs(argv: readonly string[]): Args {
-  const a: Args = { cmd: 'plan', kinds: null, only: null, force: false, regen: false, budget: 30000, rest: [] };
+  const a: Args = { cmd: 'plan', kinds: null, only: null, groups: null, force: false, regen: false, budget: 30000, rest: [] };
   let first = true;
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
     if (s === '--kind') a.kinds = (argv[++i] ?? '').split(',').map((k) => ALIASES[k] ?? (k as Kind));
     else if (s === '--only') a.only = (argv[++i] ?? '').split(',').filter(Boolean);
+    else if (s === '--group') a.groups = (argv[++i] ?? '').split(',').filter(Boolean) as SampleGroupName[];
     else if (s === '--takes') a.takes = Math.max(1, Number(argv[++i]) || 1);
     else if (s === '--designs') a.designs = Math.max(1, Number(argv[++i]) || 1);
     else if (s === '--budget') a.budget = Number(argv[++i]) || a.budget;
@@ -48,6 +56,7 @@ function parseArgs(argv: readonly string[]): Args {
     } else a.rest.push(s);
   }
   if (a.kinds) for (const k of a.kinds) if (!KINDS.includes(k)) throw new Error(`unknown --kind ${k}`);
+  if (a.groups) for (const g of a.groups) if (!(SAMPLE_GROUPS as readonly string[]).includes(g)) throw new Error(`unknown --group ${g} (one of ${SAMPLE_GROUPS.join(', ')})`);
   return a;
 }
 
@@ -89,7 +98,7 @@ async function main(): Promise<void> {
 
   const kindCmd = ALIASES[args.cmd];
   const kinds: Kind[] | null = kindCmd ? [kindCmd] : args.cmd === 'gen' && !args.kinds ? ['sfx', 'music', 'line'] : args.kinds;
-  const selected = selectItems(all, kinds, args.only);
+  const selected = selectItems(all, kinds, args.only, args.groups);
   const plan = planJobs(selected, p, { takes: args.takes, force: args.force, regen: args.regen, designs: args.designs });
   console.log(formatPlan(plan, p));
 

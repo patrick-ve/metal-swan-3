@@ -17,6 +17,13 @@
  * (headless tools, tests) they are built when first drawn. Dense chunks more than
  * EVICT_BEHIND_CHUNKS chunks left of the view are released (ams scrolls forward; a released
  * chunk is rebuilt if the camera comes back).
+ *
+ * Opt-ins (off by default; a view without them draws and builds exactly as before):
+ * - `evictRows` (vertical sections, e.g. the oldenzaal tower): dense chunks EVICT_ROWS_AWAY or more
+ *   chunk rows above or below the view are released too, and the rows just above and below the
+ *   view are prefetched (a tall section would otherwise keep every dense chunk it ever showed).
+ * - `backHook(r, tick)`: called in `drawBack` after the background layers, before the pits,
+ *   decor and terrain (the mission light pass draws its far fog and the backdrop flash there).
  */
 import { PAL } from '../../engine/palette';
 import { PixelBuffer } from '../../engine/pixel';
@@ -56,6 +63,8 @@ export const CHUNK = 256;
 const PREFETCH_PER_FRAME = 1;
 /** Dense chunks this many chunks (or more) left of the view are released. */
 export const EVICT_BEHIND_CHUNKS = 2;
+/** With `evictRows`: dense chunks this many chunk rows (or more) above or below the view are released. */
+export const EVICT_ROWS_AWAY = 2;
 
 interface Layer {
   readonly def: BgLayerDef;
@@ -139,6 +148,15 @@ export class SectionView {
   evicted = 0;
   /** The chunk column of the last eviction pass (one pass per column the camera enters). */
   private evictCol = -1;
+  /**
+   * OPT-IN (vertical sections): also release dense chunks far above / below the view and prefetch
+   * the rows next to it. Off by default.
+   */
+  evictRows = false;
+  /** The chunk row of the last row-eviction pass. */
+  private evictRow = -1e9;
+  /** OPT-IN: drawn after the background layers, before the terrain (null = nothing; default). */
+  backHook: ((r: Renderer, tick: number) => void) | null = null;
 
   constructor(section: SectionDef, terrain: Terrain, seed: number, density = 1) {
     this.section = section;
@@ -219,6 +237,7 @@ export class SectionView {
     for (let i = 0; i < this.layers.length; i++) {
       if (!this.layers[i].def.front) this.drawLayer(r, i, tick);
     }
+    if (this.backHook) this.backHook(r, tick);
     this.drawPits(r);
     this.drawDecor(r, this.back, tick);
     const camX = r.camX;
@@ -247,6 +266,10 @@ export class SectionView {
     }
     this.prefetch(camX, camY, td);
     if (td > 1) this.evictBehind(camX);
+    if (this.evictRows) {
+      this.prefetchRows(camX, camY, td);
+      if (td > 1) this.evictAwayRows(camY);
+    }
     // Without a running preload, this view runs its own queued dense jobs within the frame budget.
     if (this.density > 1 && hiArtDeferred() && !artPreloadActive()) runArtJobs(HI_ART_FRAME_BUDGET_MS);
   }
@@ -432,6 +455,55 @@ export class SectionView {
           map.delete(k);
           this.evicted++;
         }
+      }
+    }
+  }
+
+  /**
+   * `evictRows`: release the dense chunks EVICT_ROWS_AWAY or more chunk rows above or below the
+   * rows the view shows (and cancel their queued jobs); rebuilt if the camera comes back.
+   */
+  private evictAwayRows(camY: number): void {
+    const top = Math.floor(camY / CHUNK);
+    if (top === this.evictRow) return;
+    this.evictRow = top;
+    const bottom = Math.floor((camY + VIEW_H - 1) / CHUNK);
+    const lo = top - EVICT_ROWS_AWAY;
+    const hi = bottom + EVICT_ROWS_AWAY;
+    for (const d of [2, 4] as const) {
+      const map = this.hiChunkMaps[d];
+      if (map.size === 0) continue;
+      for (const k of map.keys()) {
+        const cy = Math.floor(k / 65536) - 64;
+        if (cy <= lo || cy >= hi) {
+          map.delete(k);
+          cancelArtJobs(`${this.jobKey}C${d}:${k}`);
+          this.evicted++;
+        }
+      }
+    }
+  }
+
+  /** `evictRows`: generate one chunk of the row just above or below the view (vertical scrolling). */
+  private prefetchRows(camX: number, camY: number, td: number): void {
+    const x0 = Math.floor(camX / CHUNK);
+    const x1 = Math.floor((camX + VIEW_W - 1) / CHUNK);
+    const rows = [Math.floor(camY / CHUNK) - 1, Math.floor((camY + VIEW_H - 1) / CHUNK) + 1];
+    for (const cy of rows) {
+      if (cy < 0 || cy * CHUNK >= this.section.height) continue;
+      for (let cx = x0; cx <= x1; cx++) {
+        const k = this.key(cx, cy);
+        if (!this.chunks.has(k)) {
+          this.chunk(cx, cy);
+          if (td > 1) this.hiChunk(cx, cy, td as SceneryDensity);
+          return;
+        }
+        if (td < 2) continue;
+        const map = this.hiChunkMaps[td as SceneryDensity];
+        if (map.has(k)) continue;
+        // Queued when deferred (cheap, run by the art jobs); built now otherwise (one per frame).
+        this.hiChunk(cx, cy, td as SceneryDensity);
+        if (map.has(k)) return;
       }
     }
   }

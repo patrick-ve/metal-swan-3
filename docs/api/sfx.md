@@ -114,6 +114,24 @@ the gain the ring passes included: engine `sfxLoop` 0.55, ambience 0.8):
 Boot share (every sfx renders at boot, scenes/boot.ts): the 29 wave-A ring sounds take about
 85–92 ms of the about 0.95 s sfx pre-render in node (9 %) and 2.25 MB of float32 samples.
 
+### 2.3 Mission `oldenzaal` (docs/design/oldenzaal.md §11, wave A 2026-10-21)
+
+Synth recipes only in wave A (the ElevenLabs takes of the sample group `'mission:oldenzaal'`
+replace them by id in wave B; every `oz/` id is listed in `tools/audio/spec.ts`). Telegraphs (§2):
+`oz/possessed/grab-tell` (the shambler, 24 ticks scaled by difficulty, never below 18),
+`oz/possessed/rifle-tell` (the gunner's ghost rifle glows, 48), `oz/possessed/brute-tell` (36),
+the free soul's swoop tell (30, `oz/possessed/swoop` follows) and the re-possession circle
+(`oz/possessed/circle`, 30, then `oz/possessed/dive`).
+
+| Table | Ids |
+|---|---|
+| `OZ_POSSESSED_SFX` (`oldenzaal-possessed.ts`, spread into `SFX`; POSSESSED) | `oz/possessed/groan`, `grab-tell` (tell), `claw`, `flinch` (the cower), `rifle-tell` (tell), `rifle` (the spectral shot: no gunpowder crack), `brute-tell` (tell), `brute-charge`, `brute-thud`, `wail` (the ejected soul rises), `eject`, `soul-burst` (a free soul or an eject shot), `emerge` (out of a drain / chimney), `swoop`, `circle` (re-possession tell), `dive`, `possess` |
+| `OZ_WU_SFX` (`oldenzaal-wu.ts`, spread into `SFX`; WUGHOST) | `oz/wu/fryer` (the scoop), `oz/wu/paper` (the tray), `oz/wu/toss`; `oz/meal/catch`, `oz/meal/eat`, `oz/meal/throw` (a frikandel), `oz/meal/splat` (the mayo absorbs a hit), `oz/meal/blast` (the holy-mayo blast); `oz/ghost/whisper`, `oz/ghost/shriek`, `oz/ghost/laugh`, `oz/ghost/appear`, `oz/ghost/vanish` (Mevrouw Winkel) |
+| `OZ_ENV_SFX` (`oldenzaal.ts`, `defineSfx` at import; AUDIO) | one-shots `oz/env/thunder` (the light pass plays it 20–70 ticks after a flash), `oz/env/thunder-far`, `oz/env/bell`, `oz/env/bell-creak`, `oz/env/door-slam`, `oz/env/door-creak`, `oz/env/candle-flare`, `oz/env/candles-out`, `oz/env/lamp-flicker`, `oz/env/crow`; loops `oz/env/rain`, `oz/env/wind`, and the section ambience `oz/env/street` (oz-a … oz-c), `oz/env/nave` (oz-d), `oz/env/storm` (oz-e), each at least 4 LU under the pistol and the enemy shot |
+
+The laugh of Mevrouw Winkel is a story beat (her roof moment, wave B's statue and tower), never a
+gloat at a player's death (`docs/research/mechanics.md` §23).
+
 ## 3. Aliases (`SFX_ALIASES`)
 
 Older or game-layer names that play the very same samples as their target (never delete one):

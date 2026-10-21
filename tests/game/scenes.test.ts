@@ -440,5 +440,8 @@ describe('campaign numbering (docs/design/amsterdam.md §8)', () => {
     // The ring road is level 2 on the route (docs/design/ring.md §1): MISSION 2, column M2.
     expect(missionLabel('ring')).toBe('MISSION 2');
     expect(col('ring')).toBe('M2');
+    // Level 4 (docs/design/oldenzaal.md §1): the fps floors count as level 3.
+    expect(missionLabel('oldenzaal')).toBe('MISSION 4');
+    expect(col('oldenzaal')).toBe('M4');
   });
 });

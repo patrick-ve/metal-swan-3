@@ -15,6 +15,7 @@
 import { PAL } from '../../../engine/palette';
 import { defineCharacter, type CharacterDef, type CharacterStats } from '../../registry';
 import './helium';
+import './snack-power';
 import { SQUEAK } from './squeak';
 
 /** The held prop of a hero's knife look (GDD §3, §6.2; drawn in `torso-<w>-knife`). */

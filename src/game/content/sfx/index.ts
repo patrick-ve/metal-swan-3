@@ -37,6 +37,8 @@ import { RING_GANGS } from './ring-gangs';
 import { RING_CONVOY } from './ring-convoy';
 import { RING_CREW } from './ring-crew';
 import { RING_BOSS } from './ring-boss';
+import { OZ_POSSESSED_SFX } from './oldenzaal-possessed';
+import { OZ_WU_SFX } from './oldenzaal-wu';
 import { UI } from './ui';
 import { FLEET, SWAN, VEHICLES } from './vehicles';
 import { EXPLOSIONS, HITS, WEAPONS } from './weapons';
@@ -108,6 +110,8 @@ export const SFX: Readonly<Record<string, SfxRecipe>> = pinSeeds({
   ...RING_CONVOY,
   ...RING_CREW,
   ...RING_BOSS,
+  ...OZ_POSSESSED_SFX,
+  ...OZ_WU_SFX,
 });
 
 /** Seamless loops: play them with `audio.sfxLoop(key, id)` and stop them with `stopSfx(key)`. */

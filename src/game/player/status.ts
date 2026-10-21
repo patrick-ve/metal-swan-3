@@ -51,6 +51,28 @@ export interface StatusEffectDef {
   /** Colour drawn over the player's sprites, with `tintAlpha` (default 0.4). */
   tint?: Color;
   tintAlpha?: number;
+  /**
+   * Opt-in (off when unset): fire-rate multiplier of the main gun while active (1.5 = 50 % more
+   * shots: the cooldown and the hold-repeat shrink by it; `Gun.rate`). Aggregates multiply.
+   */
+  fireRate?: number;
+  /**
+   * Opt-in (off when unset): while active and `left(p) > 0`, BOMB throws this weapon instead of
+   * the slot's bombs (no slot bomb is used; the HUD's bomb slot shows `icon` and the count). The
+   * newest effect with one wins. Mission oldenzaal's frikandel bombs.
+   */
+  bomb?: StatusBomb;
+  /**
+   * Opt-in (off when unset): the HUD status slot draws `icon` frame `iconFrame(p, ticksLeft)`
+   * (a countdown ring drawn in the icon's frames) and, with `hudBar: false`, no timer bar.
+   */
+  iconFrame?(player: Player, ticksLeft: number): number;
+  hudBar?: boolean;
+  /**
+   * Opt-in (off when unset): the effect survives a section change (the new section's Player of
+   * the same slot gets it back with the ticks it had left; death and `clear()` end it as usual).
+   */
+  carry?: boolean;
   /** Return true to absorb a hit (shield); the effect may remove itself. */
   onHit?(player: Player, d: Damage): boolean;
   onStart?(player: Player): void;
@@ -59,6 +81,24 @@ export interface StatusEffectDef {
   /** Extra drawing on top of the player (world space): a balloon head, a parachute … */
   onDraw?(player: Player, r: Renderer, ticksLeft: number): void;
 }
+
+/** A status' replacement of the BOMB throw (`StatusEffectDef.bomb`). */
+export interface StatusBomb {
+  /** The weapon id the BOMB button throws (a registered weapon, kind 'bomb'). */
+  readonly weapon: string;
+  /** HUD icon of the bomb slot while it is in use (default the weapon's icon). */
+  readonly icon?: string;
+  /** Throws left (the HUD count; 0 = the slot's own bombs again). */
+  left(player: Player): number;
+  /** One was thrown: count it down (the effect may remove itself). */
+  onThrow(player: Player): void;
+}
+
+/**
+ * Carried effects per player slot (`StatusEffectDef.carry`), keyed by the slot object of the
+ * session: a section change makes a new Player for the same slot, which picks them up.
+ */
+const carried = new WeakMap<object, ActiveStatus[]>();
 
 export interface ActiveStatus {
   readonly def: StatusEffectDef;
@@ -83,6 +123,10 @@ export class StatusEffects {
   noMount = false;
   noControl = false;
   sfxPitch = 1;
+  /** Fire-rate multiplier (`fireRate`; 1 = unchanged). */
+  fireRate = 1;
+  /** The newest active BOMB replacement (`bomb`), else null. */
+  bomb: StatusBomb | null = null;
   /** Sprite infix of the newest effect that has one ('' = none). */
   art = '';
   tint: Color = 0;
@@ -91,6 +135,22 @@ export class StatusEffects {
 
   constructor(owner: Player) {
     this.owner = owner;
+    // Carried effects of this slot (none unless a `carry` effect was active in the last section).
+    const slot = (owner as { slot?: object } | undefined)?.slot;
+    const keep = slot ? carried.get(slot) : undefined;
+    if (keep && keep.length) {
+      for (const s of keep) this.list.push(s);
+      this.refresh();
+    }
+  }
+
+  /** Keep the slot's list of carried effects in step with this list (only `carry` effects). */
+  private syncCarry(): void {
+    const slot = (this.owner as { slot?: object } | undefined)?.slot;
+    if (!slot) return;
+    const keep = this.list.filter((s) => s.def.carry === true);
+    if (keep.length) carried.set(slot, keep);
+    else carried.delete(slot);
   }
 
   /** Start an effect (or refresh its timer if it is already active). */
@@ -101,6 +161,7 @@ export class StatusEffects {
       this.list.push({ def, ticks });
       def.onStart?.(this.owner);
     }
+    if (def.carry) this.syncCarry();
     this.refresh();
   }
 
@@ -118,15 +179,19 @@ export class StatusEffects {
     if (i < 0) return;
     const [s] = this.list.splice(i, 1);
     s.def.onEnd?.(this.owner);
+    if (s.def.carry) this.syncCarry();
     this.refresh();
   }
 
   /** End every effect (death, section change). */
   clear(): void {
+    let carry = false;
     while (this.list.length) {
       const s = this.list.pop() as ActiveStatus;
+      if (s.def.carry) carry = true;
       s.def.onEnd?.(this.owner);
     }
+    if (carry) this.syncCarry();
     this.refresh();
   }
 
@@ -134,6 +199,7 @@ export class StatusEffects {
   update(): void {
     if (this.list.length === 0) return;
     let changed = false;
+    let carry = false;
     for (let i = this.list.length - 1; i >= 0; i--) {
       const s = this.list[i];
       if (s.ticks !== Infinity) s.ticks--;
@@ -142,8 +208,10 @@ export class StatusEffects {
         this.list.splice(i, 1);
         s.def.onEnd?.(this.owner);
         changed = true;
+        if (s.def.carry) carry = true;
       }
     }
+    if (carry) this.syncCarry();
     if (changed) this.refresh();
   }
 
@@ -173,6 +241,8 @@ export class StatusEffects {
     this.weapon = null;
     this.invert = this.noJump = this.noCrouch = this.noFire = this.noBomb = this.noMount = this.noControl = false;
     this.sfxPitch = 1;
+    this.fireRate = 1;
+    this.bomb = null;
     this.art = '';
     this.tint = 0;
     this.tintAlpha = 0;
@@ -192,6 +262,8 @@ export class StatusEffects {
       if (d.noMount) this.noMount = true;
       if (d.noControl) this.noControl = true;
       if (d.sfxPitch !== undefined) this.sfxPitch *= d.sfxPitch;
+      if (d.fireRate !== undefined) this.fireRate *= d.fireRate;
+      if (d.bomb) this.bomb = d.bomb;
       if (d.art) this.art = d.art;
       if (d.tint) {
         this.tint = d.tint;

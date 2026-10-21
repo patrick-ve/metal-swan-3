@@ -77,6 +77,8 @@ export type Expression =
   | 'panic'
   | 'hurt'
   | 'happy'
+  /** Open eyes and a smiling mouth (Meneer Wu: friendly, never the closed squint of 'happy'). */
+  | 'smile'
   | 'blink'
   | 'yawn'
   | 'chew'
@@ -525,6 +527,7 @@ const EXPR: Readonly<Record<Expression, ExprTpl>> = {
   panic: { eye: ['ww', 'we'], mouth: ['mm', 'rm', 'mm'], brow: ['h.h'] },
   hurt: { eye: ['e.', '.e'], mouth: ['mmm'], brow: ['hh'] },
   happy: { eye: ['.e', 'e.'], mouth: ['m.', '.m'], brow: ['hh'] },
+  smile: { eye: ['e', 'e'], mouth: ['m.', '.m'], brow: ['hh'] },
   blink: { eye: ['.', 'ee'], mouth: ['mm'], brow: ['hh'] },
   yawn: { eye: ['.', 'ee'], mouth: ['mm', 'rm', 'rm', 'mm'], brow: ['hh'] },
   chew: { eye: ['.', 'ee'], mouth: ['m', 'mm'], brow: ['hh'] },
@@ -590,7 +593,7 @@ function facePart(extras: readonly FaceExtra[], expr: Expression, part: FaceTrai
 }
 
 /** Expressions whose eye is a plain open pupil: the ones `eyeshine` brightens. */
-export const EYESHINE_EXPR: ReadonlySet<Expression> = new Set<Expression>(['normal', 'shout']);
+export const EYESHINE_EXPR: ReadonlySet<Expression> = new Set<Expression>(['normal', 'shout', 'smile']);
 
 export interface HeadStyle {
   skin: Ramp;

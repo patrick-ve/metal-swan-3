@@ -7,14 +7,17 @@
  * qualifies) → `HighScores` → `Title`. Every player out of continues: `GameOver` → `NameEntry`
  * → `HighScores` → `Title`.
  *
- * The normal route (docs/design/ring.md §1): `ams` (MISSION 1) → its tally → the ring's intro
- * card (MISSION 2, `RingScene`, ring-route.ts) → the glitch bridge (the ring's silent tally) →
- * the first-person floors → the ending. `ring` is not a registered mission: `missionDone` sends
- * its id to the intro card, which starts the RingScene.
+ * The normal route (docs/design/ring.md §1, docs/design/oldenzaal.md §1): `ams` (MISSION 1) → its
+ * tally → the ring's intro card (MISSION 2, `RingScene`, ring-route.ts) → the glitch bridge (the
+ * ring's silent tally) → the first-person floors (MISSION 3) → the story card (fps-route.ts) →
+ * `oldenzaal` (MISSION 4) → its tally → the TO BE CONTINUED card → the ending (fps variant).
+ * `ring` is not a registered mission: `missionDone` sends its id to the intro card, which starts
+ * the RingScene.
  *
  * Scenes call these helpers instead of building each other directly where a step is shared.
  */
 import { newCampaign, type GameApp } from '../app';
+import { OLDENZAAL_ID } from '../content/missions/oldenzaal/ids';
 import { hasMission } from '../registry';
 import { RING_ID } from '../ring/ids';
 import type { Difficulty, HighScoreEntry, PlayerSlot } from '../session';
@@ -25,6 +28,7 @@ import { tallyLines, type NextRunner, type TallyRunner } from './mission-complet
 import { MissionIntroScene } from './mission-intro';
 import { NameEntryScene } from './name-entry';
 import { TitleScene } from './title';
+import { ToBeContinuedScene } from './to-be-continued';
 
 export interface CampaignOpts {
   players: 1 | 2;
@@ -45,10 +49,20 @@ export function startCampaign(app: GameApp, o: CampaignOpts): void {
 
 /**
  * After a mission's tally: the next mission's intro card (the ring's too: it is not a registered
- * mission, its card starts the RingScene), or the ending after the last one.
+ * mission, its card starts the RingScene), or the ending after the last one. After `oldenzaal`:
+ * the TO BE CONTINUED card, then the ending (its first-person variant).
+ *
+ * The m5 trap (docs/design/oldenzaal.md §1): `listMissions` sorts ids, so `oldenzaal` comes after
+ * `m5` and `MissionRunner.nextMission()` of m5 names it. Only an explicit `next: 'oldenzaal'` may
+ * lead there; m0–m5 keep their old route (m5 → the campaign ending).
  */
 export function missionDone(app: GameApp, runner: NextRunner): void {
-  const next = runner.nextMission();
+  if (runner.mission.id === OLDENZAAL_ID) {
+    app.scenes.replace(new ToBeContinuedScene(app), { fade: 40 });
+    return;
+  }
+  let next = runner.nextMission();
+  if (next === OLDENZAAL_ID && (runner.mission as { next?: string }).next !== OLDENZAAL_ID) next = null;
   if (next && (hasMission(next) || next === RING_ID)) app.scenes.replace(new MissionIntroScene(app, next), { fade: 40 });
   else app.scenes.reset(new EndingScene(app), { fade: 60 });
 }

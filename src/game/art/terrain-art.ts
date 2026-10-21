@@ -16,6 +16,11 @@
  * - Amsterdam (mission `ams`): ground `klinker` (grey brick street pavement in perspective rows
  *   over a dark brick quay wall), edges `bikepath` (red bike path with a white kerb line) and
  *   `kerb` (grey granite kerb), platform `whitewood` (white painted drawbridge planks)
+ * - Oldenzaal (mission `oldenzaal`, added 2026-10-21; additive rows, no existing material
+ *   changed): ground `oz-pavers` (red-brown brick pavers in a herringbone, in perspective, with
+ *   cast-iron drains), platform `oz-ledge` (a dark iron awning rail / lead flashing with a lit
+ *   top), solid `oz-brick` (a low dark-red brick wall under a sandstone coping). The HD versions:
+ *   missions/oldenzaal/art-terrain.ts.
  *
  * HD terrain (UHD art, docs/ART_GUIDE.md "UHD art"): `defineHdTerrainMaterial(kind, id, paint)`
  * adds the density-generic version of one material for the 2× and the 4× tier:
@@ -167,7 +172,51 @@ const GROUND: Readonly<Record<string, Paint>> = {
     if (Math.abs(noise2(p.x, p.y, 13, p.seed + 3) - 0.5) < 0.02) v -= 1.2; // cracks
     return dz(r, v, p.x, p.y, 0.6);
   },
+  // --- Oldenzaal (2026-10-21, additive): red-brown brick pavers in a herringbone, in perspective.
+  'oz-pavers': (p) => {
+    const z0 = ozPaverZ(p.up);
+    const z1 = ozPaverZ(p.up + 1);
+    const c = ozPaverCell(p.x + 0.5, (z0 + z1) / 2);
+    if (ozDrainAt(p.x, p.up, p.seed)) return ((p.x + p.up) & 1) === 0 ? PAL.ink[0] : PAL.steel[1];
+    if (p.up === 0) return PAL.brown[0];
+    const zj = Math.floor(z1 / OZ_PAVER_A) > Math.floor(z0 / OZ_PAVER_A) && (c.m !== 2);
+    if (c.fx < 1 && c.m !== 1) return PAL.ink[1];
+    if (zj) return PAL.ink[1];
+    const h = hash2(c.bx, c.bz, p.seed + 91);
+    if (h > 0.9) return PAL.rust[0];
+    if (h > 0.84 && p.up >= 8) return PAL.red[1];
+    return PAL.brown[1];
+  },
 };
+
+/** Oldenzaal pavers: the herringbone's unit (plan units; a brick is 2 × 1 units). */
+export const OZ_PAVER_A = 4;
+
+/** Plan depth (units) of screen depth `up` below the street line (perspective: near rows are taller). */
+export function ozPaverZ(up: number): number {
+  return 80 * Math.log(1 + up / 40);
+}
+
+/**
+ * The herringbone cell at plan (x, z): m = (s − t) mod 4 (0, 1: the left and right half of a
+ * horizontal brick; 3, 2: the lower and upper half of a vertical brick), fx the offset in the
+ * cell (units), the brick's id (bx, bz).
+ */
+export function ozPaverCell(x: number, z: number): { m: number; fx: number; fz: number; bx: number; bz: number } {
+  const a = OZ_PAVER_A;
+  const s = Math.floor(x / a);
+  const t = Math.floor(z / a);
+  const m = (((s - t) % 4) + 4) % 4;
+  return { m, fx: x - s * a, fz: z - t * a, bx: m === 1 ? s - 1 : s, bz: m === 2 ? t - 1 : t };
+}
+
+/** Drains in the paver gutter: every 384 px (from x 196 + 37 × seed), 8 px wide, rows 3 … 5. */
+export function ozDrainAt(x: number, up: number, seed: number): boolean {
+  if (up < 3 || up > 5) return false;
+  const k = (((x - 196 - 37 * seed) % 384) + 384) % 384;
+  return k < 8;
+}
+
 
 /** Klinker pavement row boundaries (depth below the surface); the quay wall starts at the last. */
 export const KLINKER_ROWS: readonly number[] = [0, 3, 6, 9, 13, 17, 22, 28];
@@ -335,6 +384,11 @@ const PLATFORM: Readonly<Record<string, PlatMat>> = {
       return k < len ? (k === len - 1 ? PAL.snow[3] : PAL.sky[2]) : 0;
     },
   },
+  // --- Oldenzaal (additive): the dark iron rail on top of an awning, a balcony's or a bay's lead flashing.
+  'oz-ledge': {
+    paint: (p) => (p.up === 1 ? PAL.steel[2] : p.up === 2 ? PAL.steel[1] : p.down === 1 ? PAL.ink[0] : PAL.ink[1]),
+    hang: () => 0,
+  },
 };
 
 // ------------------------------------------------------------------------------------ solids
@@ -389,6 +443,16 @@ const SOLID: Readonly<Record<string, Paint>> = {
     if (by === 3 || bx === 7) return PAL.stone[1]; // mortar
     if (by === 0 || bx === 0) return r[3];
     return hash2(Math.floor((p.left - 1 + off) / 8), row, p.seed) > 0.6 ? r[1] : r[2];
+  },
+  // --- Oldenzaal (additive): a low dark-red brick wall under a sandstone coping.
+  'oz-brick': (p) => {
+    if (p.up <= 3) return p.up === 1 ? PAL.stone[3] : p.up === 2 ? PAL.stone[2] : PAL.stone[0];
+    if (p.down === 1) return PAL.ink[1];
+    const row = Math.floor((p.up - 4) / 3);
+    const off = row % 2 === 0 ? 0 : 3;
+    const bx = (((p.left - 1 + off) % 6) + 6) % 6;
+    if ((p.up - 4) % 3 === 2 || bx === 5) return PAL.ink[1];
+    return hash2(Math.floor((p.left - 1 + off) / 6), row, p.seed + 3) > 0.6 ? PAL.brown[1] : PAL.rust[0];
   },
 };
 

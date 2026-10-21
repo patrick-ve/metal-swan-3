@@ -3701,3 +3701,39 @@ playing hero sits in the passenger window and shoots.
 content and the tools are in `docs/api/ring.md`; the flow is §13 above; the originality
 exception (real A10 names, the wagon likeness) is in `docs/ORIGINALITY.md`.
 
+
+## 19. Mission `oldenzaal` (level 4, the haunted town) — see `docs/design/oldenzaal.md`
+
+By the user's decision (2026-10-21), level 4 follows the first-person floors: a typed story card,
+then the card `MISSION 4` — **A HAUNTING IN OTOWN** ("Otown" = Oldenzaal). The squad is
+parachuted over the town of Oldenzaal at dusk. The mood is **spooky, dark and grim**, the
+opposite of the sunny Amsterdam levels: dusk → night → storm, fog, cold desaturated greens, greys
+and blues; warm light only from lamps, candles and the snack bar De Smulhoek. A normal 2D mission
+(`defineMission`) with five sections, about 7 minutes, 2P co-op and the in-world continue.
+
+- **The possessed** (the enemies): townspeople in daily clothes with a ghostly soldier helmet,
+  green glowing eyes and a see-through soldier soul over them (no insignia, no symbol anywhere in
+  this mission; bloodless: pale mist). Shamblers (a slow walk, a claw after a tell), gunners (the
+  soul raises a ghost rifle: a slow shot along the ground or a low arc, shootable), brutes (the
+  butcher, a bouncer: a heavy charge), free souls (flyers out of drains, chimneys and
+  chandeliers). At 0 HP the **soul is shot out**: it rises and fades, the person falls, sits dazed
+  and runs off (a thank-you line now and then). A free soul that is not shot can possess a
+  fleeing townsperson again (a 30-tick tell; at most 2 at once).
+- **Meneer Wu and the meal:** the hard-working owner of De Smulhoek (our own design, no
+  stereotype) calls the squad in, tells them about the ghost of **Mevrouw Winkel** (fictional; she
+  cannot be hit in this level) and hands each living hero `PATAT MAYO MET 2 FRIKANDELLEN`:
+  **snack power** (20 s, Patrick 30 s: fire rate ×1.5, one hit absorbed by a mayo splat) and **2
+  frikandel bombs** in place of the grenades (a holy-mayo blast that drives every soul in it out
+  at once).
+- **Wave A (the town and the mechanism, 2026-10-21):** `oz-a` (the drop over the roofs, Mevrouw
+  Winkel on a roof, the shopping street with three camera locks, the golden record on a
+  second-floor ledge) and `oz-b` (the De Smulhoek corner, Meneer Wu's scene, the way to the
+  square) are playable; the mission light pass (darkness, lamps, fog, rain, lightning), the
+  weather and the y eviction are additive opt-ins. `oz-c` (the statue of St. Plechelmus), `oz-d`
+  (the nave) and `oz-e` (the tower and the Swan) are placeholders until wave B.
+- After the tally: the `TO BE CONTINUED` card, then today's ending (stage 2 plugs in later).
+
+**`docs/design/oldenzaal.md` is the spec of this mission and wins over this document for it**
+(numbers, sections, enemies, art, sound, tests). The contracts and the scripts are in
+`docs/api/oldenzaal.md`; the originality exception (real Oldenzaal names, Meneer Wu, Mevrouw
+Winkel, the respect rules, the generated audio) is in `docs/ORIGINALITY.md`.

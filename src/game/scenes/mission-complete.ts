@@ -77,6 +77,14 @@ export function hatsCollected(kills: Readonly<Record<string, number>>): number {
   return n;
 }
 
+/** Does the mission have no hostages at all (`hostages` set, every section 0 or none)? */
+function noHostages(runner: TallyRunner): boolean {
+  const per = runner.mission.hostages;
+  if (!per) return false;
+  for (const id in per) if ((per[id] ?? 0) > 0) return false;
+  return true;
+}
+
 /** Hostages on the route a slot took (MissionDef.hostages per section id; 0 when unknown). */
 function routeHostages(runner: TallyRunner, slot: PlayerSlot): number {
   const per = runner.mission.hostages;
@@ -104,13 +112,18 @@ export function tallyLines(runner: TallyRunner, session: GameSession, slot: Play
   const S = TUNING.score;
   const m = slot.mission;
   const lines: TallyLine[] = [];
-  lines.push({ label: `HOSTAGES ${slot.rescued} X ${S.hostageBonus}`, points: slot.rescued * S.hostageBonus });
-  // STANDING OVATION: 1P every hostage of the route; 2P the two tallies together, 25,000 each.
   const route = routeHostages(runner, slot);
-  const joined = session.slots.filter((s) => s.joined);
-  const together = joined.reduce((a, s) => a + s.rescued, 0);
-  const ovation = route > 0 && (joined.length > 1 ? together >= route : slot.rescued >= route);
-  lines.push({ label: 'STANDING OVATION', points: ovation ? (joined.length > 1 ? S.ovation / 2 : S.ovation) : null });
+  // A mission without hostages (`hostages: {}`, mission oldenzaal) shows neither hostage line, and
+  // its hostage star is free (below): a mission's star ceiling never depends on having hostages.
+  const none = noHostages(runner);
+  if (!none) {
+    lines.push({ label: `HOSTAGES ${slot.rescued} X ${S.hostageBonus}`, points: slot.rescued * S.hostageBonus });
+    // STANDING OVATION: 1P every hostage of the route; 2P the two tallies together, 25,000 each.
+    const joined = session.slots.filter((s) => s.joined);
+    const together = joined.reduce((a, s) => a + s.rescued, 0);
+    const ovation = route > 0 && (joined.length > 1 ? together >= route : slot.rescued >= route);
+    lines.push({ label: 'STANDING OVATION', points: ovation ? (joined.length > 1 ? S.ovation / 2 : S.ovation) : null });
+  }
   lines.push({ label: 'FLAWLESS PERFORMANCE', points: m.deaths === 0 ? S.flawless : null });
   const speed = bossSpeedBonus(runner.mission.id, m.bossStartTick, m.bossEndTick);
   lines.push({ label: 'BOSS SPEED BONUS', points: speed > 0 ? speed : null });
@@ -119,7 +132,7 @@ export function tallyLines(runner: TallyRunner, session: GameSession, slot: Play
   if (slot.character === 'pip') lines.push({ label: 'HATS COLLECTED', points: null, note: String(hatsCollected(m.kills)) });
   const raw = lines.reduce((a, l) => a + (l.points ?? 0), 0);
   let stars = 1;
-  if (route > 0 && slot.rescued >= Math.ceil(route * 0.75)) stars++;
+  if (none || (route > 0 && slot.rescued >= Math.ceil(route * 0.75))) stars++;
   if (m.deaths === 0) stars++;
   if (speed > 0) stars++;
   if (m.goldenRecord) stars++;

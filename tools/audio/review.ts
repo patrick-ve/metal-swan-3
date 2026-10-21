@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join, normalize, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SAMPLE_GROUPS } from '../../src/engine/samples';
 import { encodeWAV } from '../lib/wav';
 import type { CandMeta } from './process';
 import { candDir, isMayor, items, paths, pickKey, rawDir, readJson, slug, takesIn, type Item, type Paths, type Picks, type ReviewNotes, type Spec, type VoicesFile } from './lib';
@@ -274,7 +275,7 @@ textarea{flex:1;min-width:200px;font:inherit;color:inherit;background:var(--bg);
 </style></head><body>
 <header><h1>Audio Review</h1>
 <span id="tabs"></span>
-<select id="group"><option value="">all groups</option><option>boot</option><option>mission:ams</option><option>mode:fps</option></select>
+<select id="group"><option value="">all groups</option>${SAMPLE_GROUPS.map((g) => `<option>${g}</option>`).join('')}</select>
 <label><input type="checkbox" id="gen" checked> generated only</label>
 <label><input type="checkbox" id="open"> unpicked only</label>
 <input type="search" id="q" placeholder="filter">

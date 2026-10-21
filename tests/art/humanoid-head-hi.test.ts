@@ -22,7 +22,7 @@ import { EXPR_HI, EXTRAS_HI, GEAR_HI, HAIR_HI, SKULL_HI } from '../../src/game/a
 
 const HAIRS: HairStyle[] = ['short', 'buzz', 'spiky', 'mohawk', 'bald', 'long', 'ponytail', 'bob', 'parted', 'curly', 'puffs', 'tufts'];
 const GEARS: Headgear[] = ['none', 'helmet', 'cap', 'beret', 'beret-slouch', 'bandana', 'goggles', 'hood', 'shako', 'bobble', 'rainhat', 'headset', 'fur-hat'];
-const EXPRS: Expression[] = ['normal', 'shout', 'panic', 'hurt', 'happy', 'blink', 'yawn', 'chew', 'dazed', 'soot'];
+const EXPRS: Expression[] = ['normal', 'shout', 'panic', 'hurt', 'happy', 'smile', 'blink', 'yawn', 'chew', 'dazed', 'soot'];
 const EXTRAS: FaceExtra[] = ['moustache', 'beard', 'glasses', 'shades', 'freckles', 'stubble', 'blush', 'walrus', 'bushy-brows', 'eyeshine'];
 
 const BASE: HeadStyle = { skin: PAL.skinA, hair: PAL.hairB, hairStyle: 'short', headgear: 'none', gear: PAL.olive, accent: PAL.red, extras: [] };

@@ -28,7 +28,7 @@ import type { Ramp } from '../../src/engine/palette';
 const DS = [2, 4] as const;
 const HAIRS: HairStyle[] = ['short', 'buzz', 'spiky', 'mohawk', 'bald', 'long', 'ponytail', 'bob', 'parted', 'curly', 'puffs', 'tufts', 'short-crop', 'slick-back', 'spiky-messy', 'swept-up'];
 const GEARS: Headgear[] = ['none', 'helmet', 'cap', 'beret', 'beret-slouch', 'bandana', 'goggles', 'hood', 'shako', 'bobble', 'rainhat', 'headset', 'fur-hat', 'cap-back'];
-const EXPRS: Expression[] = ['normal', 'shout', 'panic', 'hurt', 'happy', 'blink', 'yawn', 'chew', 'dazed', 'soot'];
+const EXPRS: Expression[] = ['normal', 'shout', 'panic', 'hurt', 'happy', 'smile', 'blink', 'yawn', 'chew', 'dazed', 'soot'];
 const EXTRAS: FaceExtra[] = ['moustache', 'beard', 'glasses', 'shades', 'freckles', 'stubble', 'blush', 'walrus', 'bushy-brows', 'eyeshine', 'raised-brow', 'smirk', 'grin', 'beam', 'thick-mustache', 'heavy-stubble', 'thin-mustache', 'blue-eyes'];
 
 const BASE: HeadStyle = { skin: PAL.skinA, hair: PAL.hairB, hairStyle: 'short', headgear: 'none', gear: PAL.olive, accent: PAL.red, extras: [] };

@@ -36,7 +36,8 @@ const AFTER_GAME_TICKS = 600;
 
 /**
  * The mission column: 'ALL' for a finished game, else the mission number (`missionNumber`): on
- * the route 'ams' → 'M1', 'ring' → 'M2' (docs/design/ring.md §1); the passive campaign missions
+ * the route 'ams' → 'M1', 'ring' → 'M2' (docs/design/ring.md §1), 'oldenzaal' → 'M4' (the fps
+ * floors count as level 3; docs/design/oldenzaal.md §1); the passive campaign missions
  * by their old place ('m1' → 'M2' … 'm5' → 'M6'); the fps floors 'fps-N' → 'FN'; other `mN` ids →
  * 'MN'.
  */

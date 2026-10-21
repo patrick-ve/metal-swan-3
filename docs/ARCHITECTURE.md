@@ -31,7 +31,9 @@ multi-part bosses, and 2-player co-op.
   (user decision 2026-10-14): the start screens (with the REPORT FOR DUTY drill callouts), mission
   `ams` and the first-person mode (the `mode:fps` group, user approval 2026-10-16) also ship
   sampled sound effects, music and dialogue (MP3 under `public/audio/`, generated with
-  ElevenLabs); the synth stays the fallback for every id (§5.7).
+  ElevenLabs); the synth stays the fallback for every id (§5.7). Mission `oldenzaal` (user
+  decision 2026-10-21) has its own group `mission:oldenzaal` for the same pipeline; its takes are
+  generated after the user's OK on the credit estimate (synth only until then).
 - Content and design: `docs/GAME_DESIGN.md`. IP rules: `docs/ORIGINALITY.md` (mandatory reading).
 
 ## 2. Hard rules (all agents, all code)
@@ -45,7 +47,9 @@ multi-part bosses, and 2-player co-op.
    and mission `ams` (sample groups `boot`, `mission:ams`) and the first-person mode (sample
    group `mode:fps` under `public/audio/fps/`, generated after the user's OK on the credit
    estimate and shipped 2026-10-16; loaded by `loadFpsContent` behind the bridge / fps intro
-   progress bar, never at boot), listed in `src/game/content/samples/manifest.ts` (written by
+   progress bar, never at boot) and mission `oldenzaal` (sample group `mission:oldenzaal` under
+   `public/audio/oldenzaal/`, user decision 2026-10-21; generated after the user's OK on the
+   credit estimate), listed in `src/game/content/samples/manifest.ts` (written by
    `tools/audio/`). Every sampled id keeps its synth version as the fallback, and headless runs
    never load them. Files kept by hand
    (the tool never touches them) join the groups in `src/game/content/samples/index.ts`:
@@ -422,7 +426,11 @@ on an audio error.
   `samples.ts` (pure) holds the manifest types, `defineSampleGroup` and `voiceKey(text)`;
   `samples.browser.ts` fetches and decodes a group (`AudioOut.loadSamples?(group)`: 'boot' in the
   boot scene, `MissionDef.audioGroup` 'mission:ams' on the intro card, 'mode:fps' by
-  `loadFpsContent` with the fps mode only — never at boot). A loaded sample skins an
+  `loadFpsContent` with the fps mode only — never at boot; 'mission:oldenzaal' (2026-10-21) on
+  oldenzaal's intro card like 'mission:ams'). The groups are `SAMPLE_GROUPS` in `samples.ts`, the
+  one list the audio tools read (`tools/audio/lib.ts` `GROUP_DIRS`: one folder per group under
+  `public/audio/`; `LAZY_GROUPS` 'mode:fps' and 'mission:oldenzaal' appear in the manifest only
+  once something of them is picked). A loaded sample skins an
   existing sfx id, song id or spoken line; while it is missing, loading or failed the synth (or
   the speech announcer) plays. `say?(text)` voices speech bubble lines that have a sample (no
   fallback). Voice samples duck the music. NullAudio and the sim stats have no `loadSamples` /

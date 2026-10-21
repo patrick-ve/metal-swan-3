@@ -52,7 +52,7 @@ import {
   type WeaponPose,
 } from '../weapons';
 import { CHUTE_COLLAPSE_SPRITE, drawChute, INTRO_DROP, INTRO_DROP_ID } from './intro-drop';
-import { StatusEffects } from './status';
+import { StatusEffects, type StatusBomb } from './status';
 
 export type PlayerState = 'play' | 'spawn' | 'dead' | 'out' | 'mounted' | 'victory';
 
@@ -786,8 +786,11 @@ export class Player extends Entity {
     const st = this.status;
     const busy = this.actionTicks > 0;
     this.gun.setWeapon(this.weapon);
-    this.bombGun.setWeapon(this.bombDef);
+    // A status may replace the BOMB throw while it has throws left (opt-in; null by default).
+    const sb = st.bomb !== null && st.bomb.left(this) > 0 && hasWeapon(st.bomb.weapon) ? st.bomb : null;
+    this.bombGun.setWeapon(sb ? getWeapon(sb.weapon) : this.bombDef);
     this.gun.pitch = this.bombGun.pitch = this.meleeGun.pitch = st.sfxPitch;
+    this.gun.rate = st.fireRate;
     if (!st.noFire && pad.pressed('fire')) this.gun.press();
     if (!st.noBomb && pad.pressed('bomb')) this.bombGun.press();
     // Fire next to a knifeable target always means the knife (GDD §4.4): a press made during a
@@ -813,10 +816,10 @@ export class Player extends Entity {
       } else if (this.gun.wants(pad.held('fire'))) this.shoot();
     }
     if (this.bombGun.pending) {
-      if (this.slot.bombs <= 0) {
+      if (!sb && this.slot.bombs <= 0) {
         this.bombGun.buffer = 0;
         this.sfx('weapon/empty');
-      } else if (this.bombGun.wants(false)) this.throwBomb();
+      } else if (this.bombGun.wants(false)) this.throwBomb(sb);
     }
   }
 
@@ -869,12 +872,13 @@ export class Player extends Entity {
     this.torso.play(id, once(true, Math.max(1, Math.floor(TUNING.fire.knifeTicks / Math.max(1, frameCount(id))))));
   }
 
-  private throwBomb(): void {
+  private throwBomb(sb: StatusBomb | null = null): void {
     const h = this.handWorld(pt);
     // Bombs keep the high 'up' lob whenever up is held (also with up + forward, GDD §4.3).
     const elev = this.elevTarget < 0 ? -HALF_PI : this.elevTarget;
     this.bombGun.fire(this.fireArgs(h[0], h[1], aimAngle(this.facing, elev), aimDirOf(elev)));
-    this.slot.bombs--;
+    if (sb) sb.onThrow(this);
+    else this.slot.bombs--;
     this.slot.stats.bombsThrown++;
     this.action = 'throw';
     this.cancelCosmetic();

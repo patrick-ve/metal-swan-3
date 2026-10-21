@@ -1,4 +1,4 @@
-# Audio pipeline — ElevenLabs samples for the start screens, mission ams and the fps mode
+# Audio pipeline — ElevenLabs samples for the start screens, mission ams, the fps mode and mission oldenzaal
 
 Source files: `tools/elevenlabs.ts`, `tools/audio/{spec-types,spec,lib,client,gen,loudness,process,review,ship}.ts`.
 Tests: `tests/tools/audio-pipeline.test.ts`, `tests/content/samples.test.ts`. Runtime side: `src/engine/samples.ts` and
@@ -42,6 +42,8 @@ any file (error bodies are scrubbed). Never put it in `src/` or in a `VITE_` var
 | `design-save <SPEAKER> [<n>]` | Keeps preview `n` (default: the one picked on the review page) as an account voice and records its `voice_id` in `tools/audio/voices.json`. |
 
 - `--only` takes ids (`ui/confirm`), slugs (`ui-confirm`), line keys or pick keys (`sfx:ui/confirm`).
+- `--group` takes sample groups (`mission:oldenzaal`, comma list): only their sfx, songs and lines, plus
+  the voice designs of those lines' speakers. It combines with `--kind` and `--only`.
 - Idempotent: a take that already exists in `tmp/audio/raw` is skipped. `--takes n` changes the
   takes per item; `--force` makes them again; `--regen` adds fresh takes (after the existing
   numbers) to the items flagged "regenerate" on the review page, then clears the flags.
@@ -224,6 +226,28 @@ wrote the spec entries and generated the takes; group audio-ship ships them.
   `ik-ben-mecha-hofmans`, `pyramus-…`, `alle-mann-auf-posten`, `das-steht-nicht-im-handbuch`,
   `nicht-schon-wieder`); the last sound is complete in length and the 40 ms fade stops a click,
   but a listen on the review page is worth it.
+
+## Mission oldenzaal (group `'mission:oldenzaal'`, 2026-10-21)
+
+Level 4, the haunted town (docs/design/oldenzaal.md §11; docs/api/oldenzaal.md §10).
+
+- **Group:** `'mission:oldenzaal'` is in `SAMPLE_GROUPS` (`src/engine/samples.ts`); the mission def
+  sets `audioGroup: 'mission:oldenzaal'`, so the intro card (or the boot of a direct
+  `?mission=oldenzaal`) loads it. Until something of it is picked, `loadSamples` resolves at once
+  and the synth fallbacks play everything (`content/music/oldenzaal.ts`, the `oz/…` sfx recipes).
+- **Spec entries** (`tools/audio/spec.ts`, `group: 'mission:oldenzaal'`): the four songs
+  (`oldenzaal`, `oldenzaal-boss`, `oldenzaal-tower`, `oldenzaal-tbc`), the `oz/…` sfx of every
+  owner, the designed voices `wu`, `winkel`, `plechelmus` and their lines (`lines.ts`
+  `voicedLines()`, the mission's `announce` line and `SNACK POWER!`).
+- **Generate only this group:** `npm run audio:gen -- plan --group mission:oldenzaal` (the dry
+  run and the credit estimate), then `gen --group mission:oldenzaal` (with `--kind` / `--only` to
+  narrow it further). `--group` takes a comma list of groups; it keeps their sfx, songs and lines
+  plus the voice designs of the lines' speakers (`lib.ts` `itemsOfGroups`).
+- **Ship:** files go to `public/audio/oldenzaal/<sfx|music|voice>/`; the manifest lists the group
+  only once something of it is picked (`LAZY_GROUPS`, like `'mode:fps'`).
+- **Rules:** the same as for ams (ORIGINALITY.md, the dated `oldenzaal` exception): prompts in our
+  own words, never a named song, artist, game or composer; designed voices only (never a clone or
+  an imitation); Meneer Wu's voice has no accent play.
 
 ## A full round
 

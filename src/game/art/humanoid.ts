@@ -44,7 +44,8 @@ export type { HandShape, PropKind, WeaponPose } from './humanoid-gear';
 /** `tee` / `polo`: short sleeves over bare forearms (a polo adds a collar and a button placket). */
 export type TopType = 'vest' | 'jacket' | 'tank' | 'coat' | 'tunic' | 'sweater' | 'shirt' | 'tee' | 'polo';
 /** `stocky`: 2 px shorter legs, broad (short and sturdy); `lanky`: 1 px longer thighs, slim (tall). */
-export type Build = 'slim' | 'normal' | 'heavy' | 'stocky' | 'lanky';
+/** `brute`: a big man (about 6 px taller and wider than `heavy`; mission oldenzaal's brute). */
+export type Build = 'slim' | 'normal' | 'heavy' | 'stocky' | 'lanky' | 'brute';
 export type Accessory =
   | 'pouches'
   | 'armband'
@@ -232,6 +233,11 @@ const BUILDS: Readonly<Record<Build, Dims>> = {
     thigh: 7, shin: 6, ankle: 3, thighW: [5, 4], shinW: [4, 4], torsoH: 9,
     waistB: 3, waistF: 2, chestB: 3, chestF: 3, upper: 6, fore: 6, armW: [3, 3], foreW: [3, 3],
     shoulder: [-1, 2], farDx: 2,
+  },
+  brute: {
+    thigh: 8, shin: 7, ankle: 3, thighW: [8, 7], shinW: [7, 6], torsoH: 12,
+    waistB: 5, waistF: 6, chestB: 6, chestF: 7, upper: 7, fore: 7, armW: [6, 6], foreW: [6, 5],
+    shoulder: [-1, 2], farDx: 3,
   },
 };
 

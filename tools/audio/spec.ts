@@ -1,4 +1,5 @@
-// ElevenLabs generation spec for the start screens and mission `ams` (audio plan step 2).
+// ElevenLabs generation spec for the start screens, mission `ams`, the first-person mode and
+// mission `oldenzaal` (audio plan step 2; oldenzaal: docs/design/oldenzaal.md §11, wave A plan).
 // Tools only: src/ never imports this file. The inventory behind it is
 // tmp/audio/overview/critic.md (B1 sfx, B2 music, B3 dialogue) and sfx.md (PART 2).
 //
@@ -16,6 +17,7 @@ type Group = SfxSpec['group'];
 const BOOT: Group = 'boot';
 const AMS: Group = 'mission:ams';
 const FPS: Group = 'mode:fps';
+const OZ: Group = 'mission:oldenzaal';
 
 // ---------------------------------------------------------------------------------------------
 // SFX
@@ -275,6 +277,76 @@ export const SFX: SfxSpec[] = [
   one('fps/shout-guard', FPS, 1, 0.6, `A nervous young soldier's short startled wordless yelp of alarm, close, dry, single one-shot, no music, no words, no speech`, { isNew: true }),
   one('fps/shout-officer', FPS, 1, 0.6, `A pompous older man's short indignant wordless bellow of outrage, a nasal harrumph, close, dry, single one-shot, no music, no words, no speech`, { isNew: true }),
   one('fps/shout-ss', FPS, 1, 0.5, `A cold soldier's short sharp wordless bark of command, one clipped grunt, close, dry, single one-shot, no music, no words, no speech`, { isNew: true }),
+  // --- Mission oldenzaal (docs/design/oldenzaal.md §11, group 'mission:oldenzaal'; ids:
+  //     docs/api/oldenzaal.md §10). A haunted old Dutch town at night: eerie, cold, bloodless (the
+  //     souls are pale mist). The synth fallbacks live with each owner (content/sfx/oldenzaal.ts for
+  //     'oz/env/', content/oldenzaal/{possessed,npcs,items}/ for the rest, wave B for 'oz/statue/'
+  //     and 'oz/swan/'), so every id is marked new. No prompt names a game, a film or a person;
+  //     the souls are described by their sound only (no uniform, no symbol).
+  // The possessed townspeople and the free souls (POSSESSED: content/sfx/oldenzaal-possessed.ts).
+  one('oz/possessed/groan', OZ, 2, 1.07, `A possessed man's low, hollow wordless moan through a closed mouth, doubled by a faint cold breathy echo, eerie, clean recording at a moderate level, close, ${ONE}`, { isNew: true }),
+  one('oz/possessed/grab-tell', OZ, 1, 0.3, `A raspy rising breath and a cloth rustle as two hands come up to grab, eerie, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/possessed/claw', OZ, 2, 0.18, `A fast grabbing swipe: a short whoosh and a dull grab of cloth, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/possessed/flinch', OZ, 1, 0.35, `A sharp frightened intake of breath and a cold ghostly shiver, close, ${ONE}`, { isNew: true }),
+  one('oz/possessed/rifle-tell', OZ, 1, 0.75, `A ghostly old rifle glowing up: a cold rising glassy shimmer with a faint metallic click, spectral, ${ONE}`, { timing: `the shimmer rises for the whole clip; ${TELL}`, isNew: true }),
+  one('oz/possessed/rifle', OZ, 2, 0.5, `A spectral rifle shot with no gunpowder crack: a hollow airy puff and a falling glassy ring, eerie, ${ONE}`, { isNew: true }),
+  one('oz/possessed/brute-tell', OZ, 1, 0.55, `A big heavy man's deep wordless snort and a boot scraping on brick pavers before a charge, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/possessed/brute-charge', OZ, 1, 0.49, `Heavy running footsteps on brick pavers, a low rumble of feet, no voice, close, ${ONE}`, { isNew: true }),
+  one('oz/possessed/brute-thud', OZ, 1, 0.25, `A heavy body thumping into a brick wall, a dull thud, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/possessed/wail', OZ, 2, 2.03, `A ghost's thin, falling, voice-like wail with a slow vibrato, wordless, airy and cold, eerie, ${ONE}`, { isNew: true }),
+  one('oz/possessed/eject', OZ, 2, 1.36, `A ghost torn out of a body: a breathy whoosh rising up and a cold glassy ring that fades, eerie, ${ONE}`, { isNew: true }),
+  one('oz/possessed/soul-burst', OZ, 2, 0.45, `A small ghost bursting into mist: a soft airy pop and a breathy sigh that fades, ${ONE}`, { isNew: true }),
+  one('oz/possessed/emerge', OZ, 1, 0.7, `A ghost rising out of a street drain: a hollow rising draught of cold air with a faint moan, eerie, ${ONE}`, { isNew: true }),
+  one('oz/possessed/swoop', OZ, 2, 0.4, `A ghost swooping past: a fast airy doppler whoosh with a thin cold whistle, close, ${ONE}`, { isNew: true }),
+  one('oz/possessed/circle', OZ, 1, 0.5, `A ghost circling a person: a low whispering swirl of cold air, wordless, eerie, ${ONE}`, { timing: 'it may repeat while the ghost circles', isNew: true }),
+  one('oz/possessed/dive', OZ, 1, 0.45, `A ghost diving down: a falling airy whistle, eerie, ${ONE}`, { isNew: true }),
+  one('oz/possessed/possess', OZ, 1, 0.5, `A ghost slipping into a person: a muffled hollow thump and a short gasp of breath, eerie, ${ONE}`, { isNew: true }),
+  // Meneer Wu, the meal and Mevrouw Winkel (WUGHOST: content/sfx/oldenzaal-wu.ts).
+  one('oz/wu/fryer', OZ, 1, 1.18, `A deep-fat fryer in a small snack bar kitchen: a hot oil sizzle with a few pops, close, ${ONE}`, { isNew: true }),
+  one('oz/wu/paper', OZ, 1, 0.17, `A paper food tray: a crisp rustle and a quick fold, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/wu/toss', OZ, 1, 0.23, `A paper food tray tossed through the air: a soft airy whoosh, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/meal/catch', OZ, 1, 0.34, `A food tray caught: a paper rustle and a warm two-note chime, arcade, cheerful, close, ${ONE}`, { isNew: true }),
+  one('oz/meal/eat', OZ, 1, 0.74, `Power-up eaten: three quick crunchy munches of fries and a bright rising sparkle, arcade, cheerful, close, ${STING}`, { isNew: true }),
+  one('oz/meal/throw', OZ, 1, 0.22, `A soft sausage thrown hard in a high arc: a quick wobbly whoosh, comic, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/meal/splat', OZ, 2, 0.18, `A thick creamy splat that soaks up a hit: a wet slap and a squelch, comic, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/meal/blast', OZ, 1, 1.07, `A big comic splat-blast: a soft wet whump that blooms into a bright, airy major chord with a shimmering sparkle on top, magical and silly, not violent, close, ${ONE}`, { isNew: true }),
+  one('oz/ghost/whisper', OZ, 2, 1.3, `A ghostly woman's soft breathy whisper with a slow flutter, no words, eerie, close, clean recording at a moderate level, single one-shot, no music`, { isNew: true }),
+  one('oz/ghost/shriek', OZ, 2, 1.54, `A ghostly woman's single high wavering wordless shriek with a cold edge that fades into wind, one voice only, eerie, clean recording at a moderate level, single one-shot, no music, no words`, { isNew: true }),
+  one('oz/ghost/laugh', OZ, 2, 1.66, `A middle-aged woman's soft, eerie ghostly laugh: four falling breathy "ha"s with a hollow echo, slow and cold, not cartoonish, clean recording at a moderate level, single one-shot, no music, no words`, { isNew: true }),
+  one('oz/ghost/appear', OZ, 1, 0.85, `A ghost fades in: a cold rising swell like a reversed breath with faint glassy tones, eerie, quiet, ${ONE}`, { isNew: true }),
+  one('oz/ghost/vanish', OZ, 1, 0.62, `A ghost fades out: a falling airy sigh that thins to a hush, eerie, ${ONE}`, { isNew: true }),
+  // The town (AUDIO: content/sfx/oldenzaal.ts).
+  one('oz/env/thunder', OZ, 2, 2.7, `A close lightning strike over a town: a sharp dry crack, then a long rolling thunder rumble, ${ONE}`, { timing: 'the crack at 0.00 s', isNew: true }),
+  one('oz/env/thunder-far', OZ, 2, 2.25, `Distant rolling thunder far over a town at night, a soft low rumble without a crack, ${ONE}`, { isNew: true }),
+  loop('oz/env/rain', OZ, 8, 'Steady rain on brick pavers and roof tiles in a quiet town at night, a few close drops', true),
+  loop('oz/env/wind', OZ, 8, 'A cold night wind through narrow old streets: slow gusts and a faint whistle', true),
+  loop('oz/env/street', OZ, 12, 'A deserted old Dutch shopping street at dusk: a low wind, the hum of a street lamp, the far creak of a hanging sign, a far shutter rattling now and then, no people, no traffic, eerie and still', true),
+  loop('oz/env/nave', OZ, 12, 'Inside a large empty stone church at night: a dark, still room tone, a deep low hum under the vaults, small candle flames crackling, a far drip echoing, calm and eerie, no organ, no voices', true),
+  loop('oz/env/storm', OZ, 10, 'A heavy storm around a stone church tower: driving rain, wind howling through narrow openings, a low distant rumble', true),
+  one('oz/env/bell', OZ, 2, 3.3, `One deep toll of a large old church bell: a strong strike and a long humming ring that fades, outdoors, ${ONE}`, { isNew: true }),
+  one('oz/env/bell-creak', OZ, 1, 0.84, `A swinging church bell's heavy wooden beam and rope creaking under the weight, close, ${ONE}`, { isNew: true }),
+  one('oz/env/door-slam', OZ, 1, 1.45, `Heavy old wooden church doors slamming shut with an iron latch, echoing in a large stone hall, ${ONE}`, { timing: 'the slam at 0.00 s', isNew: true }),
+  one('oz/env/door-creak', OZ, 1, 1.6, `A heavy old wooden door slowly creaking open on iron hinges, long and eerie, ${ONE}`, { isNew: true }),
+  one('oz/env/candle-flare', OZ, 1, 0.55, `A row of candles flaring up at once: a soft fiery whoosh and small crackles, close, ${ONE}`, { isNew: true }),
+  one('oz/env/candles-out', OZ, 1, 0.85, `A cold gust blowing out candles: a falling airy whoosh and small flame puffs, ${ONE}`, { isNew: true }),
+  one('oz/env/lamp-flicker', OZ, 1, 0.43, `An old street lamp flickering: a short electric buzz and relay clicks, close, ${ONE}`, { isNew: true }),
+  one('oz/env/crow', OZ, 1, 0.6, `A crow cawing twice from a rooftop at dusk, hoarse and harsh, outdoors, ${ONE}`, { isNew: true }),
+  // Wave B: the statue of St. Plechelmus (oz-c) and the jet Swan (oz-e). The statue is a victim
+  // of the curse and is freed at the end: its sounds are stone and weight, nothing is mocked.
+  one('oz/statue/wake', OZ, 1, 2.0, `A huge stone statue awakening: deep grinding stone, cracking and a low rumble, dust trickling down, ${ONE}`, { isNew: true }),
+  one('oz/statue/crack', OZ, 2, 0.8, `Sharp cracks running through a large weathered stone statue, a dry splitting crunch with small stones falling, ${ONE}`, { isNew: true }),
+  one('oz/statue/crozier-tell', OZ, 1, 0.5, `A long heavy stone staff drawn back: a stone grind with a rising cold hum, ${ONE}`, { timing: TELL, isNew: true }),
+  one('oz/statue/crozier-sweep', OZ, 1, 0.8, `A long heavy stone staff swept low across a square: a deep heavy whoosh with a stone scrape, ${ONE}`, { isNew: true }),
+  one('oz/statue/throw', OZ, 1, 0.6, `A stone block broken off and hurled: a crack and a heavy whoosh, ${ONE}`, { isNew: true }),
+  one('oz/statue/shatter', OZ, 2, 0.7, `A thrown stone block shatters on brick pavers into small bouncing stones, ${ONE}`, { isNew: true }),
+  one('oz/statue/orb', OZ, 1, 1.0, `A slow cursed orb cast from a raised hand: a low wavering hum with a cold whispery shimmer, eerie, no words, ${ONE}`, { isNew: true }),
+  one('oz/statue/step', OZ, 2, 0.5, `One huge stone foot landing on brick pavers: a deep heavy thud with a short rumble and grit, ${ONE}`, { isNew: true }),
+  one('oz/statue/slam', OZ, 1, 1.0, `A huge stone fist slams the ground: a deep boom and a cracking shockwave running across brick pavers, ${ONE}`, { isNew: true }),
+  one('oz/statue/hook', OZ, 1, 0.6, `A curled stone staff hooks and pulls: a scraping stone swish and a heavy tug, ${ONE}`, { isNew: true }),
+  one('oz/statue/chip', OZ, 2, 0.25, `A bullet chipping weathered stone: a short dry crack with grit, close, dry, ${ONE}`, { isNew: true }),
+  one('oz/statue/freed', OZ, 1, 2.5, `A great stone statue settles back onto its plinth: a slow stone grind, a soft heavy thud, then a calm deep hum that fades, peaceful, ${ONE}`, { isNew: true }),
+  loop('oz/swan/jet', OZ, 8, 'Two small rocket engines hovering in a storm: a steady roaring hiss with a low throb', true),
+  one('oz/swan/flyby', OZ, 1, 2.0, `A rocket-powered flying machine takes off and flies away fast: a rising jet roar that passes and fades into the distance, ${ONE}`, { isNew: true }),
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -288,6 +360,8 @@ const LOOP_TAIL = 'Steady tempo throughout, no fade-out, no ending: the last bar
 /** The first-person mode's songs (docs/design/fps.md §9.2): darker than the cartoon score. */
 const FPS_STYLE = 'Instrumental only, no vocals, original composition. Gritty retro arcade action game score, cinematic and punchy, clean stereo mix.';
 
+/** Mission oldenzaal's songs (docs/design/oldenzaal.md §11): spooky, dark and grim. */
+const OZ_STYLE = 'Instrumental only, no vocals, no lyrics, original composition. Dark, grim and spooky arcade action game score for a haunted old town at night, cinematic, clean stereo mix.';
 /** The v1 prompts (takes 1-2 of `title` and `select`, shipped 2026-10-14), kept as a record. */
 export const TITLE_V1_PROMPT = `${MUSIC_STYLE} Heroic-comic title theme, 112 BPM, D major, 4/4. Bars 1-8: a gentle intro of bell arpeggios over a warm pad. Then a 32-bar loop: a calm, graceful legato lead (soft square-wave synth doubled by flute) that leaps up a sixth and walks down in a dotted rhythm, over a frantic running 16th-note filtered-saw bass like legs paddling under water; full drums with kick, snare and hats; a light counter-melody in the middle 8 bars. Dignified on top, furious underneath, a little funny. ${LOOP_TAIL}`;
 export const SELECT_V1_PROMPT = `${MUSIC_STYLE} Bouncy, eager menu music, 128 BPM, A major, 4/4, one 16-bar loop with no intro. A staccato 8th-note synth lead hopping up, a walking bass with chromatic steps, off-beat pulse chords, hi-hats only (no kick). In bars 9-12 a graceful 4-bar hook while the bass breaks into fast 16ths. Excited rookie energy. ${LOOP_TAIL}`;
@@ -447,6 +521,57 @@ export const MUSIC: MusicSpec[] = [
     takes: 2,
     prompt: `${FPS_STYLE} Glitchy transition cue, 60 BPM, 4/4. The first 4 seconds: a cheerful street-organ waltz phrase starts, then stutters, skips like a broken tape, slows down and pitch-drops into a deep low drone. Then a dark, steady low drone loop: a low string and synth pad on one note, a slow pulse, faint digital crackle and a distant metallic hum, no melody. Uneasy, mysterious. The drone stays steady with no ending. ${LOOP_TAIL}`,
   },
+  // --- Mission oldenzaal (docs/design/oldenzaal.md §11, group 'mission:oldenzaal'). Spooky,
+  //     dark and grim, in contrast to the bright Amsterdam score. Tempo, key and form match the
+  //     synth fallbacks in src/game/content/music/oldenzaal.ts. Original tunes only: never a quote
+  //     of an existing organ piece, hymn, horror theme or game tune.
+  {
+    id: 'oldenzaal',
+    group: OZ,
+    // intro 4 bars (12.6 s) + loop 24 bars (75.8 s) + 2 s
+    seconds: 91,
+    bpm: 76,
+    beatsPerBar: 4,
+    introBars: 4,
+    loop: true,
+    takes: 3,
+    prompt: `${OZ_STYLE} Slow haunted town theme, 76 BPM, F minor, 4/4. A 4-bar intro: a low organ pedal note, two distant church bell tolls and a soft low heartbeat drum (two thumps every two beats). Then a 24-bar loop. Bars 1-8: a hollow chapel organ holds slow minor chords; a thin, wavering, whistle-like lead plays a sparse sighing tune over the heartbeat. Bars 9-16: a wordless synth choir pad swells in, the bass climbs one semitone per bar and the heartbeat doubles: rising tension. Bars 17-24: the full organ with a bright upper register, the tune an octave higher, timpani on the beats; the last bar falls back down. Grim, cold and mysterious, never cheerful. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'oldenzaal-boss',
+    group: OZ,
+    // intro 2 bars (4.8 s) + loop 24 bars (57.6 s) + 2 s
+    seconds: 65,
+    bpm: 100,
+    beatsPerBar: 4,
+    introBars: 2,
+    loop: true,
+    takes: 3,
+    prompt: `${OZ_STYLE} Heavy boss battle against a living stone statue, 100 BPM, C minor, 4/4, half-time feel. A 2-bar intro: dry stone-on-stone knocks and a rolling timpani crescendo under a tense wordless choir cluster. Then a 24-bar loop. Bars 1-8: a growling low synth riff in a 3+3+2 rhythm, a heavy kick on beat 1 and a stone knock on beat 3, organ stabs on the off-beats, a slow menacing organ melody. Bars 9-16: a wordless synth choir holds dark chords while stone percussion runs in eighth notes and the organ melody climbs high and long. Bars 17-24: a breakdown of riff and stone knocks, then a rising arpeggio and a timpani roll back into the top. Massive, ancient, menacing. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'oldenzaal-tower',
+    group: OZ,
+    // intro 2 bars (2.9 s) + loop 32 bars (45.7 s) + 2 s
+    seconds: 51,
+    bpm: 168,
+    beatsPerBar: 4,
+    introBars: 2,
+    loop: true,
+    takes: 3,
+    prompt: `${OZ_STYLE} Fast chase up a church tower in a storm, 168 BPM, E minor, 4/4. A 2-bar intro: a deep bell toll and a drum pickup. Then a 32-bar loop. Small bright bells ring a constant 3+3+2 pattern of sixteenth notes that drives the rhythm all the way through. Bars 1-8: an urgent pulse-wave lead over a running eighth-note bass, fast drums and organ stabs. Bars 9-16: the same 8 bars a minor third higher, climbing. Bars 17-24: a new chase line over a wordless synth choir pad. Bars 25-32: half-time drums with the bells alone and a deep toll, then a fast run back up into the top of the loop. Breathless, frantic, spooky. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'oldenzaal-tbc',
+    group: OZ,
+    // the 5 s sting + 3 s of decay
+    seconds: 8,
+    bpm: 96,
+    beatsPerBar: 4,
+    loop: false,
+    takes: 2,
+    prompt: `${OZ_STYLE} Short 'to be continued' sting, 96 BPM, about 5 seconds. A deep church bell toll and a timpani hit; a wordless synth choir swells on an F minor chord over a low organ pedal while a thin wavering whistle-like lead sighs up a semitone and back; then everything moves to a held C major chord with the lead hanging on a B above it: unresolved and ominous, the story is not over. It decays naturally to silence. No fade-in.`,
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -602,6 +727,34 @@ export const VOICES: VoiceSpec[] = [
     previewText:
       'Nein, nein, nein! Das ist MEIN Spielzeug, und ich hatte es zuerst! Wer hat meine Kekse gegessen? Ich bin hier der Chef, ich, ich, ICH! Ich will einen neuen Anzug, einen größeren, mit mehr Knöpfen! Sofort, oder ich fange an zu weinen!',
   },
+  // --- Mission oldenzaal (docs/design/oldenzaal.md §4.2, §6, §11): designed voices only, never a
+  //     clone, never a real person. Meneer Wu's voice carries no accent other than a plain Dutch
+  //     one and no stereotype (docs/ORIGINALITY.md, the oldenzaal exception); his joke is his
+  //     work ethic. Mevrouw Winkel is fictional. The saint is kind and grateful.
+  {
+    speaker: 'wu',
+    name: 'MS3 Snack Bar Owner',
+    description:
+      'Warm, brisk, slightly gruff middle-aged man, the hard-working owner of a busy corner snack bar. He talks while he works: quick, practical and plain-spoken, a little tired, kind underneath, with a dry sense of humour. A native speaker from the Netherlands who speaks Dutch and plain English with a neutral Dutch accent. An original character voice: never an imitation of a real person and never a caricature of any accent. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Goedenavond! Come in, come in, and mind the wet floor. Two portions of fries, one with mayo, coming right up. No, I am not closing early. The fryer is hot, the counter is clean, and the sign on the door says ten o\'clock. Here, eat first. Then we talk.',
+  },
+  {
+    speaker: 'winkel',
+    name: 'MS3 Town Ghost',
+    description:
+      'An eerie, whispering middle-aged woman, a ghost from long ago: a soft, breathy, cold voice that lingers on the vowels, slow and calm, quietly menacing, with a hollow, distant quality. A native speaker from the Netherlands with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Welkom... in mijn stad. Do you hear the bells? They ring for me. The lamps go out, one by one, and the old souls are waking up. Stay a while, little birds. Nobody leaves this town before I say so.',
+  },
+  {
+    speaker: 'plechelmus',
+    name: 'MS3 Stone Saint',
+    description:
+      "A very deep, slow, stony rumble of an old man's voice, as if a stone statue speaks after a thousand years of silence: low, gravelly, calm and gentle, warm and grateful, with long pauses. A native speaker from the Netherlands. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.",
+    previewText:
+      'Dank u, kinderen. For a long time I sat in the cold and the dark, and the curse held me like iron. Now the stone is warm again. Go in peace, and look after this town. I will watch over the square for you.',
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -737,4 +890,25 @@ export const LINES: LineSpec[] = [
   { ...line('mechahitler', 'MEIN SCHÖNER ANZUG! DAS ZAHLT IHR MIR!', '[wailing] Mein schöner Anzug! [voice cracking into falsetto, tantrum] Das zahlt ihr mir!', 'de', FPS, 5), takes: 3 },
   { ...line('mechahitler', 'DAS IST NICHT FAIR! ICH HATTE VORTRITT!', '[sulky, whining] Das ist nicht fair! [squeaky, stamping his foot] Ich hatte Vortritt!', 'de', FPS, 5), takes: 3 },
   { ...line('mechahitler', 'DAS... STAND NICHT... IM PLAN...', '[weak, gasping, overly dramatic] Das... stand nicht... im Plan...', 'de', FPS, 5), takes: 3 },
+  // --- Mission oldenzaal (missions/oldenzaal/lines.ts `voicedLines()`, index.ts `announce`;
+  //     group 'mission:oldenzaal'). Bubbles are ≤ 24 characters × 2 lines; `maxSeconds` follows
+  //     the ams briefing's bubble life (150 ticks) for Wu's scene. Meneer Wu speaks plain, correct
+  //     Dutch and English (no accent play, no broken language).
+  line(A, 'MISSION FOUR. STAY TOGETHER, CYGNETS!', '[booming, theatrical] Mission four. [ominous, lower] Stay together, cygnets!', 'en', OZ, 3.0),
+  // The pickup callout of the meal (lines.ts SNACK_POWER_CALLOUT): the announcer says it like a weapon
+  // name when the meal is caught (`audio.voice(SNACK_POWER_CALLOUT)`, requested from WUGHOST / INTEGRATE).
+  line(A, 'SNACK POWER!', '[excited, punchy] Snack power!', 'en', OZ, 1.4),
+  line('wu', 'HE! IN HERE!', '[calling out, urgent] Hé! In here!', 'nl', OZ, 1.5),
+  line('wu', 'GOEDENAVOND! INSIDE,\nQUICK. MIND THE FLOOR.', '[brisk, warm] Goedenavond! Inside, quick. [busy] Mind the floor.', 'nl', OZ, 2.5),
+  line('wu', 'MEVROUW WINKEL IS BACK.\nWELL. HER GHOST IS.', '[lowering his voice] Mevrouw Winkel is back. [dry] Well. Her ghost is.', 'nl', OZ, 2.5),
+  line('wu', 'SHE WAKES THE SOULS OF\nOLD SOLDIERS.', '[serious, quiet] She wakes the souls of old soldiers.', 'en', OZ, 2.5),
+  line('wu', 'THEY CRAWL INTO PEOPLE.\nBAD FOR BUSINESS.', '[gruff, annoyed] They crawl into people. [dry] Bad for business.', 'en', OZ, 2.5),
+  line('wu', 'CLOSE? NEE. IK SLUIT\nPAS OM TIEN UUR.', '[indignant, proud] Close? Nee. Ik sluit pas om tien uur.', 'nl', OZ, 2.5),
+  line('wu', 'HERE. EAT FIRST.\nTHEN SAVE MY TOWN.', '[warm, firm] Here. Eat first. [brisk] Then save my town.', 'en', OZ, 2.5),
+  line('winkel', 'WELKOM...\nIN MIJN STAD.', '[eerie whisper, slow] Welkom... in mijn stad.', 'nl', OZ, 3.0),
+  line('winkel', 'RISE, OLD STONE.', '[cold, commanding whisper] Rise, old stone.', 'en', OZ, 2.0),
+  line('winkel', 'THIS IS NOT OVER...', '[hissing, retreating] This is not over...', 'en', OZ, 2.2),
+  line('winkel', 'NIEMAND GAAT WEG.', '[cold, menacing whisper] Niemand gaat weg.', 'nl', OZ, 2.0),
+  line('winkel', 'FLY, LITTLE BIRDS.\nFOR NOW.', '[amused, cold whisper] Fly, little birds. [slow] For now.', 'en', OZ, 2.5),
+  { ...line('plechelmus', 'DANK U, KINDEREN.', '[deep, slow, gentle] Dank u... kinderen.', 'nl', OZ, 3.0), takes: 3 },
 ];

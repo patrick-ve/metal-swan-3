@@ -4,7 +4,8 @@
  * newspaper headline of the tally. m0–m5 share one line map of Lowmere and Crescendia; each card
  * puts its blinking dot on its own region; ams has its own map of the Amsterdam canal ring; the
  * ring (MISSION 2, docs/design/ring.md §1) a map of the A10 ring road with its dot on the on-ramp
- * at A10 Oost.
+ * at A10 Oost; oldenzaal (MISSION 4, docs/design/oldenzaal.md §1) a map of the flight east to Twente
+ * with its dot on the town.
  *
  * Mission modules may replace a card with their own `defineMissionCard` (the last one wins).
  */
@@ -130,6 +131,44 @@ const RING_LABELS: readonly (readonly [string, number, number])[] = [
 ];
 
 // ---------------------------------------------------------------------------------------------
+// The oldenzaal map: the flight east to Twente (mission oldenzaal, docs/design/oldenzaal.md §1)
+// ---------------------------------------------------------------------------------------------
+
+/** A dashed polyline: two dashes per leg (the flight path, the border). */
+function dashed(pts: readonly number[]): MapLine[] {
+  const out: MapLine[] = [];
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    const [x0, y0, x1, y1] = [pts[i], pts[i + 1], pts[i + 2], pts[i + 3]];
+    out.push([x0, y0, Math.round(x0 + (x1 - x0) * 0.35), Math.round(y0 + (y1 - y0) * 0.35)]);
+    out.push([Math.round(x0 + (x1 - x0) * 0.6), Math.round(y0 + (y1 - y0) * 0.6), Math.round(x0 + (x1 - x0) * 0.9), Math.round(y0 + (y1 - y0) * 0.9)]);
+  }
+  return out;
+}
+
+/** Oldenzaal (the dot), east in Twente, near the border. */
+const OZ_DOT: readonly [number, number] = [290, 90];
+/** The A1 from the west to Twente (Hengelo, then up to Oldenzaal). */
+const OZ_A1: MapLine = [70, 84, 110, 86, 150, 90, 190, 92, 226, 96, 254, 98, 274, 96, 290, 90];
+/** The IJsselmeer's south shore in the west, the river IJssel crossing the A1. */
+const OZ_SHORE: MapLine = [60, 64, 74, 70, 92, 68, 104, 72, 112, 66];
+const OZ_IJSSEL: MapLine = [176, 62, 172, 74, 178, 86, 174, 100, 180, 114];
+/** The border east of the town (dashed). */
+const OZ_BORDER: readonly number[] = [340, 62, 334, 74, 338, 86, 332, 98, 336, 110];
+/** The Swan's flight path (dashed, a gentle arc over the land). */
+const OZ_FLIGHT: readonly number[] = [80, 78, 130, 70, 180, 68, 230, 72, 268, 80, 288, 88];
+/** Twente's towns: little squares (Hengelo, Enschede) south-west of the dot. */
+const OZ_TOWNS: readonly MapLine[] = [
+  [262, 100, 266, 100, 266, 104, 262, 104, 262, 100],
+  [280, 106, 285, 106, 285, 111, 280, 111, 280, 106],
+];
+const OZ_LINES: readonly MapLine[] = [OZ_A1, OZ_SHORE, OZ_IJSSEL, ...dashed(OZ_BORDER), ...dashed(OZ_FLIGHT), ...OZ_TOWNS];
+const OZ_LABELS: readonly (readonly [string, number, number])[] = [
+  ['AMSTERDAM', 82, 92],
+  ['TWENTE', 246, 110],
+  ['OLDENZAAL', 300, 70],
+];
+
+// ---------------------------------------------------------------------------------------------
 // The cards
 // ---------------------------------------------------------------------------------------------
 
@@ -158,6 +197,18 @@ export const MISSION_CARDS: readonly MissionCard[] = [
     announce: 'MISSION TWO. HOU JE VAST!',
     startSub: 'START!',
     map: { lines: RING_LINES, dot: [258, 92], labels: RING_LABELS },
+  },
+  {
+    // Level 4 (docs/design/oldenzaal.md §1): after the first-person floors and the story card.
+    id: 'oldenzaal',
+    label: 'MISSION 4',
+    name: 'A HAUNTING IN OTOWN',
+    place: 'OLDENZAAL, TWENTE - 2030 HOURS',
+    briefing: ['OLDENZAAL CALLED. SOMETHING WALKS THEIR STREETS AFTER DARK.', 'FIND DE SMULHOEK ON THE CORNER. THE OWNER KNOWS MORE. STAY TOGETHER.'],
+    headline: 'SAINT FREED! SOULS GONE! SNACK BAR NEVER CLOSED!',
+    announce: 'MISSION FOUR. STAY TOGETHER, CYGNETS!',
+    startSub: 'START!',
+    map: { lines: OZ_LINES, dot: OZ_DOT, labels: OZ_LABELS },
   },
   {
     id: 'm0',
@@ -227,7 +278,7 @@ export const MISSION_CARDS: readonly MissionCard[] = [
   },
 ];
 
-/** Register the eight cards. */
+/** Register the cards. */
 export function defineMissionCards(): void {
   for (const card of MISSION_CARDS) defineMissionCard(card);
 }

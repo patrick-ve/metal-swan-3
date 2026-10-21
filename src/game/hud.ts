@@ -277,9 +277,12 @@ function drawPanel(r: Renderer, h: HudInput, s: PlayerSlot): void {
   if (s.ammo !== Infinity) txt(r, String(Math.max(0, Math.floor(s.ammo))), left ? 4 + Math.max(16, iw) + 2 : VIEW_W - 4 - Math.max(16, iw) - 2, 12, WHITE, align);
 
   // Grenades (52, 12): icon + 'x10'; in a vehicle: the shell icon and the vehicle's shells.
-  const bombIcon = vehicle ? 'ui/icon-shell' : 'ui/icon-bomb';
+  // A status that replaces the BOMB throw (opt-in; the oldenzaal frikandels) shows its own icon
+  // and count while it has throws left.
+  const sb = !vehicle && p && p.status.bomb !== null && p.status.bomb.left(p) > 0 ? p.status.bomb : null;
+  const bombIcon = vehicle ? 'ui/icon-shell' : sb ? (sb.icon ?? getWeapon(sb.weapon).icon ?? 'ui/icon-bomb') : 'ui/icon-bomb';
   // GDD 13.7: grenades read 'x10'; in a vehicle the shell icon is followed by the bare count.
-  const bombs = vehicle ? String(Math.max(0, vehicle.shells)) : `x${s.bombs}`;
+  const bombs = vehicle ? String(Math.max(0, vehicle.shells)) : sb && p ? `x${sb.left(p)}` : `x${s.bombs}`;
   const bw = iconW(bombIcon);
   const bh = bw ? frameH(getFrame(bombIcon, 0)) : 0;
   const by = 15 - (bh >> 1);
@@ -379,7 +382,9 @@ function drawStatus(r: Renderer, p: Player, left: boolean): void {
     if (!s.def.icon) continue;
     const iw = iconW(s.def.icon) || 6;
     const ix = at(left, 80, iw);
-    if (!icon(r, s.def.icon, ix, 30)) r.rect(ix, 31, 5, 5, PAL.pink[2], iconOpts);
+    const fi = s.def.iconFrame ? s.def.iconFrame(p, s.ticks) : 0;
+    if (!icon(r, s.def.icon, ix, 30, fi)) r.rect(ix, 31, 5, 5, PAL.pink[2], iconOpts);
+    if (s.def.hudBar === false) return;
     const total = s.def.ticks === Infinity ? 1 : s.def.ticks;
     const frac = s.ticks === Infinity ? 1 : Math.max(0, Math.min(1, s.ticks / total));
     const bx = left ? ix + iw + 2 : ix - 26;

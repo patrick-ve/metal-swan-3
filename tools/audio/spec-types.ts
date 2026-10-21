@@ -1,7 +1,12 @@
 // Generation spec types for the ElevenLabs audio pipeline (tools only, never
 // imported by src/). The spec itself lives in tools/audio/spec.ts.
+import type { SampleGroupId } from '../../src/engine/samples';
 
-export type SampleGroupName = 'boot' | 'mission:ams' | 'mode:fps';
+/**
+ * A sample group of the game: 'boot', 'mission:ams', 'mode:fps', 'mission:oldenzaal' (the list
+ * is `SAMPLE_GROUPS` in src/engine/samples.ts, the one place that names them).
+ */
+export type SampleGroupName = SampleGroupId;
 
 /** One sound effect recipe (POST /v1/sound-generation). */
 export interface SfxSpec {
