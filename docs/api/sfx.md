@@ -74,7 +74,7 @@ Levels (2026-10-20, integrator): `ams/scan-up` vol 0.75, `ams/route-bell` 0.6 an
 `ams/route-creak` 0.8 (they were under the RMS / peak floor), `ams/rev` 0.5 (over −9 LUFS),
 `ams/airbag` 0.6 and `ams/clamp-clunk` 0.5 (their peaks went over 0.9).
 
-### 2.2 Mission `ring` (docs/design/ring.md §11, 2026-10-20)
+### 2.2 Mission `ring` (docs/design/ring.md §11, 2026-10-20; wave B 2026-10-21)
 
 Synth recipes only, one table per area (`src/game/content/sfx/ring-<area>.ts`, spread into `SFX`
 by `sfx/index.ts`). Telegraphs (§2): `ring/bottle-tell` and `ring/pistol-cock` (a scooter
@@ -87,9 +87,32 @@ warns a wagon in the front third).
 | `RING_ROAD` (`ring-road.ts`: traffic, hazards, items, the scooter gang, §5.1, §7, §8) | `ring/matrix-click` (a matrix sign switches), `ring/flash` (the speed camera), `ring/cam-beep` (above), `ring/horns` (the jam), `ring/cone`, `ring/crash` (the crash-absorber truck), `ring/dent` (a shot dents a car), `ring/crate` (a crate driven over), `ring/cage-hit` (a hostage door), `ring/hop` (a hostage's leap), `ring/scooter-whine`, `ring/scooter-honk`, `ring/pistol-cock` / `ring/bottle-tell` (above), `ring/throw`, `ring/bottle` (it smashes), `ring/scooter-crash` (knocked off), `ring/scooter-down` |
 | `RING_SCENERY` (`ring-scenery.ts`: the ambience, §7.3) | `ring/tunnel-bed` (loop, 2.4 s: the tunnels and the covered stretch at Bos en Lommer), `ring/bridge-rumble` (loop, 1.6 s: a bridge deck); the view picks one (`RingView.ambience`) and the runner plays it under the audio key `'ambience'` (`RingRunner.setAmbience`) |
 
+| `RING_GANGS` (`ring-gangs.ts`: the parcel vans and the caravan, §5.2, §5.4; wave B) | `ring/van-door` (the rear doors open), `ring/parcel-lift` (tell: a parcel lifted), `ring/parcel-thud`, `ring/parcel-tear` (a shot parcel), `ring/brake-tell` (tell: the brake lights), `ring/brake-squeal` (the brake check), `ring/van-limp` (a beaten van), `ring/hitch-creak` (tell: the caravan's hitch strains), `ring/hitch-snap`, `ring/caravan-scrape`, `ring/caravan-tip`, `ring/card-slap` (the NIET THUIS card) |
+| `RING_CONVOY` (`ring-convoy.ts`: the enforcement convoy, §5.3; wave B) | `ring/scan-beep` (tell: SCAN LOCK), `ring/scan-lock`, `ring/indicator` (the tow truck merges), `ring/hook-swing` (tell), `ring/hook-clank`, `ring/winch` (the tow), `ring/cable-snap` (swerved or shot free), `ring/moto-whine`, `ring/baton-draw` (tell), `ring/baton-swing`, `ring/sticker-slap`, `ring/sticker-peel` (a swerve shakes it off) |
+| `RING_CREW` (`ring-crew.ts`: the road-works crew and the jam boarders, §5.5, §7.2; wave B) | `ring/crew-beeper` (the truck), `ring/crew-cone-lift` (tell), `ring/crew-cone-throw`, `ring/crew-cone-hit`, `ring/crew-hop-tell` (tell: a boarder crouches), `ring/crew-hop`, `ring/crew-swing-tell` (tell: a blow on the bonnet), `ring/crew-boot`, `ring/crew-knocked`, `ring/crew-wreck` |
+| `RING_BOSS` (`ring-boss.ts`: the test lorry, §6; wave B) | `ring/lorry-horn` (the air horn), `ring/lorry-door`, `ring/lorry-brake`, `ring/lorry-blink` (tell: the indicator before a weave), `ring/lorry-roll`, `ring/lorry-thud`, `ring/lorry-barrel`, `ring/lorry-crate`, `ring/lorry-panel` (the side panel drops), `ring/lorry-slam`, `ring/lorry-scrape`, `ring/lorry-screech` (the jackknife), `ring/forklift-whine`, `ring/forklift-beep` |
+
 The loops (`ring/wagon-engine`, `ring/tunnel-bed`, `ring/bridge-rumble`) are in the loop list of
-`tests/content/sfx.test.ts`. The ring stage theme (`ring`, `ring-boss`) is wave B; until then
-`ringSong` (ring/mission.ts) plays the ams songs.
+`tests/content/sfx.test.ts`. The ring's songs are synth (`src/game/content/music/ring.ts`:
+`ring`, `ring-boss`; GDD §12.2); `ringSong` (ring/mission.ts) no longer falls back to the ams
+songs.
+
+**Mix pass (wave B, 2026-10-21; ids unchanged).** Levels as played (K-weighted momentary maximum,
+the gain the ring passes included: engine `sfxLoop` 0.55, ambience 0.8):
+
+| Sound | Before | After | Change |
+|---|---|---|---|
+| `ring/wagon-engine` | −27.5 | −28.9 | −1.3 dB RMS; −3 dB at 250 Hz–1 kHz, −7 dB at 1–5 kHz (less exhaust noise and square) |
+| `ring/tunnel-bed` | −26.4 | −27.9 | −1.3 dB, −3.5 dB at 1–5 kHz; each joint slap has two wall echoes (+0.11 s, +0.23 s) |
+| `ring/bottle-tell` / `ring/pistol-cock` | −24.0 / −27.2 | −19.1 / −22.2 | the telegraphs read over the hum, the tunnel and the music |
+| `ring/throw` / `ring/matrix-click` / `ring/cage-hit` | −27.3 / −28.0 / −26.1 | −23.7 / −25.2 / −23.2 | |
+| `ring/wagon-swerve` / `ring/wagon-hit` | −25.1 / −23.0 | −23.1 / −21.2 | the player's own feedback |
+| `ring/scooter-whine` | −17.8 | −20.8 | a gang of 3–5 no longer buries the shots |
+
+`tests/content/ring-sound.test.ts` keeps it: shots and `ring/wagon-hit` ≥ 5 LU over the engine and
+≥ 3 LU over the tunnel bed, the telegraphs ≥ 6 / ≥ 5 LU, a telegraph within 6 LU of its attack.
+Boot share (every sfx renders at boot, scenes/boot.ts): the 29 wave-A ring sounds take about
+85–92 ms of the about 0.95 s sfx pre-render in node (9 %) and 2.25 MB of float32 samples.
 
 ## 3. Aliases (`SFX_ALIASES`)
 

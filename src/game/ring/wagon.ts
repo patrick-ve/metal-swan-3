@@ -611,7 +611,12 @@ export class Wagon extends Vehicle implements RingDrawable {
     if (this.tumbleT >= 0) this.tumbleT++;
     if (this.spinT % 5 === 0) smokeTrail(this.world, this.x + this.world.fxRng.range(-12, 12), this.y - WAGON_H + 4, true);
     if (t < 30 && t % 3 === 0) dust(this.world, this.x + this.world.fxRng.range(-30, 30), this.y, 2);
-    if (--this.spinT <= 0) this.remove();
+    // While every player is out the wreck stays where it lies (the continue's gloat: the courier's
+    // NIET THUIS card, the tow truck's hook); the next tick after the hold it goes.
+    if (--this.spinT <= 0) {
+      if (ringOf(this.world)?.held) this.spinT = 1;
+      else this.remove();
+    }
   }
 
   /** Smoke (≤ 2.5 cells) and fire (≤ 1.5) from the bonnet while driven. */

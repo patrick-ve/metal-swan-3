@@ -73,6 +73,32 @@ describe('ring tier-4 working set', () => {
     expect(LIMIT).toBeGreaterThan(200 * 1048576);
   });
 
+  it('wave B: each stretch holds the families of the wave-B enemies it uses; the lorry is the boss art of westpoort', () => {
+    const fam: Record<string, string> = {
+      'ring-parcel-van': 'ring/parcel-van/',
+      'ring-caravan': 'ring/caravan/',
+      'ring-scan-car': 'ring/scan-car/',
+      'ring-tow-truck': 'ring/tow-truck/',
+      'ring-handhaver-moto': 'ring/handhaver-moto/',
+      'ring-roadworks': 'ring/roadworks/',
+    };
+    const seen = new Set<string>();
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const plan = planRing(seed);
+      const def = ringArtDef(plan, ['thom', null]);
+      for (const sp of plan.spawns) {
+        const want = fam[sp.id] ?? (sp.id === 'ring-jam' ? 'ring/boarder/' : undefined);
+        if (!want) continue;
+        const st = plan.stretches.find((x) => sp.at >= x.start && sp.at < x.end)!;
+        expect(def.sections?.[st.id]?.art, `seed ${seed} ${sp.id} in ${st.id}`).toContain(want);
+        seen.add(want);
+      }
+      expect(def.bossSection).toBe('westpoort');
+      expect(def.preloadLast).toContain('boss/ring-lorry/');
+    }
+    expect(seen.size).toBe(7);
+  });
+
   it('1P: every squad hero (and its driver) in every stretch of seeds 1-20 fits the budget minus the scenery reserve', () => {
     const over: string[] = [];
     let top = 0;

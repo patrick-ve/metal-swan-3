@@ -1,6 +1,6 @@
 /**
  * The route of the first-person mode (docs/design/fps.md §1, §10, group flow; docs/design/ring.md
- * §1): ams complete → its tally → the ring → bridge (the ring's silent tally, records) → intro →
+ * §1): ams complete → its tally → the ring → its own tally page → bridge (records) → intro →
  * floor 1; tally → floor 2 → fps ending → final tally;
  * pause / continue / game over from the mode; P2's slot waits; the golden-record route; the story
  * lines fit; the bridge waits in `freeze` while the lazy content is not registered.
@@ -163,7 +163,7 @@ describe('GlitchBridgeScene before the lazy content', () => {
 });
 
 describe('the route (headless)', () => {
-  it('ams complete → its tally → the ring → bridge (the ring\'s silent tally, records) → intro → floor 1', async () => {
+  it('ams complete → its tally → the ring → its tally → bridge (records) → intro → floor 1', async () => {
     await loadContent();
     await loadFpsContent(createApp({ input: new InputManager(), audio: new SimAudio(), store: new MemoryStore() }));
     ensureFloors();
@@ -191,24 +191,24 @@ describe('the route (headless)', () => {
     slot.rescued = 3;
     slot.mission.goldenRecord = true;
     const before = slot.score;
-    // F4 on the ring: stretch by stretch to the exit; the victory drive, then the bridge.
+    // F4 on the ring: stretch by stretch to the exit; the victory drive, then the ring's own
+    // MISSION COMPLETE page (docs/design/ring.md §1, §10), then the bridge.
     ok = false;
     for (let i = 0; i < 8000 && !ok; i++) {
       if (i % 60 === 0 && ring.runner.state === 'playing') ring.runner.skip();
       h.step(1);
-      ok = h.app.scenes.top instanceof GlitchBridgeScene;
+      ok = h.app.scenes.top instanceof MissionCompleteScene;
     }
     expect(ok).toBe(true);
+    expect((h.app.scenes.top as MissionCompleteScene).runner.mission.id).toBe('ring');
+    // The page pays the ring's tally (HOSTAGES 3 × 10,000 and the rest) and moves on by itself.
+    expect(h.until(GlitchBridgeScene, 900)).toBe(true);
     const bridge = h.app.scenes.top as GlitchBridgeScene;
     expect(bridge.snap.density).toBe(2);
-    // The silent tally of the ring: HOSTAGES 3 × 10,000 (+ whatever else) paid into the score.
-    const bonus = missionBonusOf(h.app.session!.records.get<unknown>(AMS_BONUS_KEY));
-    expect(bonus?.mission).toBe('ring');
-    expect(bonus?.seed).toBe(ring.runner.seed);
-    expect(bonus!.totals[0]).toBeGreaterThanOrEqual(30000);
-    expect(bonus!.totals[1]).toBe(0);
-    expect(slot.score - before).toBeGreaterThanOrEqual(bonus!.totals[0]);
+    expect(slot.score - before).toBeGreaterThanOrEqual(30000);
     expect(slot.rescued).toBe(0);
+    // The bridge pays nothing more: no bonus record, no MISSION 2 BONUS line on floor 1.
+    expect(missionBonusOf(h.app.session!.records.get<unknown>(AMS_BONUS_KEY))).toBeUndefined();
     expect(h.app.campaign!.missions).toEqual(['ams', 'ring']);
     expect(h.app.campaign!.goldenRecords[0].has('ams')).toBe(true);
     expect(h.app.campaign!.goldenRecords[0].has('ring')).toBe(true);

@@ -11,11 +11,12 @@
  * - tier-4 art: `preloadMissionArt` with `ringArtDef` (sections = stretches, the drivers' strips)
  *   at the start, after a join and on a rise to tier 4; `missionArtSection` at each stretch
  *   boundary (the runner's 'stretch'); `stopDense` when the play ends;
- * - the music placeholder (the ams songs until the ring theme exists, ring/mission.ts `ringSong`;
- *   the reused ams sample group, ring-route.ts `RING_AUDIO_GROUP`);
+ * - the music: the ring's synth songs (content/music/ring.ts: `ring`, `ring-boss`) and the cues
+ *   (ring/cues.ts: the boss song at the boss slot, the tunnel lift);
  * - rumble (rumble.ts), debug F4 (`runner.skip`: the next stretch / the boss) and F5 (weapons),
  *   the seed in the debug overlay;
- * - 'complete' → `ringDone`: the glitch bridge (the ring's silent tally) → the fps floors.
+ * - 'complete' → `ringDone`: the ring's MISSION COMPLETE page (hostages, fines, the seed) → the
+ *   glitch bridge → the fps floors.
  *
  * ```ts
  * app.scenes.reset(new RingScene(app, { seed: 42, section: 'west' }));   // ?mission=ring&seed=42&section=west
@@ -31,6 +32,7 @@ import { drawHud } from '../hud';
 import { getWeapon, listWeapons } from '../registry';
 import { ringArtDef } from '../ring/art-def';
 import { ringBoarding } from '../ring/boarding';
+import { attachRingCues, type RingCues } from '../ring/cues';
 import { RING_ID } from '../ring/ids';
 import { RingRunner } from '../ring/runner';
 import { GameSession } from '../session';
@@ -73,6 +75,8 @@ export class RingScene implements Scene, PlayHost {
   private rumble: RumbleWatch | null = null;
   /** Joins, pad claims, the pause, the lost-pad pause and the key-split notice (play-host.ts). */
   private readonly controls = new PlayControls(this);
+  /** The music cues (ring/cues.ts: the boss song, the tunnel lift). */
+  private cues: RingCues | null = null;
 
   constructor(app: GameApp, opts: RingSceneOpts = {}) {
     this.app = app;
@@ -106,6 +110,8 @@ export class RingScene implements Scene, PlayHost {
       settings: app.settings,
     });
     this.runner = runner;
+    // The music follows the road (the boss song, the tunnel lift; cosmetic, no rng).
+    this.cues = attachRingCues(runner);
     this.tierSeen = artTier();
     runner.events.on('complete', () => ringDone(app, this, runner));
     // The in-world continue (GDD §4.6): the countdown runs over the live (held) ring; no menu.
@@ -138,6 +144,8 @@ export class RingScene implements Scene, PlayHost {
     stopDense(RING_ID);
     app.debug.on('skip', () => {});
     app.debug.on('weapons', () => {});
+    this.cues?.detach();
+    this.cues = null;
     if (this.runner) {
       this.runner.stopLoops(this.loopsPaused ? 0 : 30);
       // The view's queued scenery jobs are of no use any more.

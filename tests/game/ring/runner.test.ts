@@ -168,10 +168,14 @@ describe('RingRunner', () => {
     rig.run(2);
     expect(r.planLocked).toBe(false);
     rig.until(() => r.state !== 'playing', 3000);
-    expect(r.report().bosses).toEqual([
-      { id: 'test-ring-boss', spawned: true },
-      { id: 'ring-end-marker', spawned: false },
+    const bosses = r.report().bosses;
+    expect(bosses.map((b) => [b.id, b.spawned])).toEqual([
+      ['test-ring-boss', true],
+      ['ring-end-marker', false],
     ]);
+    // The time to kill (spawn → gone) of the boss that came; −1 for the marker.
+    expect(bosses[0].ticks).toBeGreaterThan(0);
+    expect(bosses[1].ticks).toBe(-1);
   });
 
   it('the plan end calls the exit hook (default: MISSION COMPLETE)', () => {

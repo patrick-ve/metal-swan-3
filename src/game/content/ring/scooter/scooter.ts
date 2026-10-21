@@ -327,9 +327,14 @@ export class RingScooter extends Enemy implements RingDrawable {
     return seen >= SCOOTER_AI.crowd;
   }
 
-  /** In a standing jam (its level over half) it rides between the lanes (not while it wobbles). */
+  /**
+   * In a jam it rides between the lanes (not while it wobbles) — as long as the queue's cars are
+   * parked (jam level over 0.05, traffic/car.ts `jamRel`), so also while the jam clears
+   * (integrator, wave B: at the old ½ mark a new gang sat off screen behind the parked queue for
+   * 5 s).
+   */
   private filtering(): boolean {
-    return this.mode !== 'wobble' && jamOf(this.world).level > 0.5;
+    return this.mode !== 'wobble' && jamOf(this.world).level > 0.05;
   }
 
   /** Keep apart from the gang in the same lane: the one behind eases off, the one ahead pulls away. */
@@ -572,9 +577,14 @@ function filterY(lane: number): number {
 
 /** An attack starts only with the scooter's middle this far inside the view (px). */
 const ATTACK_INSET = 22;
-/** What blocks a lane beside it (`laneBlocked`) and its lane just ahead (`blockedAhead`). */
-const LANE_BLOCK_TAGS: readonly string[] = ['ring-car', 'ring-closure', 'ring-block', RING_ENTITY.scooter];
-const AHEAD_TAGS: readonly string[] = ['ring-car', 'ring-closure', 'ring-wagon'];
+/**
+ * What blocks a lane beside it (`laneBlocked`) and its lane just ahead (`blockedAhead`). The
+ * wave-B vehicles (`ring-block`: vans, caravans, the scan car, the tow truck, the lorry;
+ * `ring-big`: the road-works truck) count too (review B: scooters rode through the tow truck's cab
+ * and piled up over the road-works crew).
+ */
+const LANE_BLOCK_TAGS: readonly string[] = ['ring-car', 'ring-closure', 'ring-block', 'ring-big', RING_ENTITY.scooter];
+const AHEAD_TAGS: readonly string[] = ['ring-car', 'ring-closure', 'ring-wagon', 'ring-block', 'ring-big'];
 
 export class RingBottle extends Entity implements RingDrawable {
   lift: number;

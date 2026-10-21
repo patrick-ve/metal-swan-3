@@ -1,4 +1,4 @@
-import type { AudioOut, MusicOpts, SfxOpts, VolumeKind } from './audio';
+import type { AudioOut, EchoOpts, MusicOpts, SfxOpts, VolumeKind } from './audio';
 import type { InstrumentDef, InstrumentEnv, ParsedSong, ScheduledNote } from './music';
 import { getSong, midiToFreq, orderTime, songError, songEvents, songLength } from './music';
 import type { SampleBankDeps, SongTake } from './samples.browser';
@@ -126,6 +126,9 @@ export class WebAudioOut implements AudioOut {
   private dialogueDuck: GainNode | null = null;
   /** Every looping sound goes through this gain into the sfx bus (`pauseLoops` silences it). */
   private loopBus: GainNode | null = null;
+  /** The opt-in echo send of the sfx bus (`setEcho`; built on its first use) and the wanted one. */
+  private echo: { delay: DelayNode; fb: GainNode; wet: GainNode } | null = null;
+  private echoWanted: EchoOpts | null = null;
   private loopsPaused = false;
   /** The one speech channel of the voice samples and the line that sounds. */
   private readonly lane = new SpeechLane();
@@ -150,6 +153,34 @@ export class WebAudioOut implements AudioOut {
         else this.resume();
       });
     }
+  }
+
+  /**
+   * The opt-in echo of the sound effects (AudioOut.setEcho): the sfx bus feeds a delay with
+   * feedback into the master gain. Built on the first call; null fades the wet level to 0.
+   */
+  setEcho(o: EchoOpts | null): void {
+    this.echoWanted = o;
+    const ctx = this.ctx;
+    if (!ctx || !this.buses || !this.master || (!o && !this.echo)) return;
+    if (!this.echo) {
+      const delay = ctx.createDelay(1);
+      const fb = ctx.createGain();
+      const wet = ctx.createGain();
+      fb.gain.value = 0;
+      wet.gain.value = 0;
+      this.buses.sfx.connect(delay);
+      delay.connect(fb);
+      fb.connect(delay);
+      delay.connect(wet);
+      wet.connect(this.master);
+      this.echo = { delay, fb, wet };
+    }
+    const e = this.echo;
+    const now = ctx.currentTime;
+    if (o) e.delay.delayTime.setValueAtTime(Math.max(0.01, Math.min(1, o.delay)), now);
+    e.fb.gain.setTargetAtTime(o ? Math.max(0, Math.min(0.9, o.feedback)) : 0, now, 0.05);
+    e.wet.gain.setTargetAtTime(o ? clamp01(o.mix) : 0, now, 0.08);
   }
 
   /** True once the AudioContext exists and runs. */
@@ -190,6 +221,7 @@ export class WebAudioOut implements AudioOut {
     this.loopBus.gain.value = this.loopsPaused ? 0 : 1;
     this.loopBus.connect(this.buses.sfx);
     this.applyVolumes(true);
+    if (this.echoWanted) this.setEcho(this.echoWanted);
     // A song requested while the context was missing or suspended starts once it runs.
     ctx.addEventListener('statechange', this.flushWanted);
     this.flushWanted();

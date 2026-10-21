@@ -11,8 +11,8 @@
  *    `run-in` chunk ends every stretch (a clean start for `?section=`). The chunk GRAMMAR
  *    (`CHUNK_RULES`): length ranges, threat costs, minimum tiers, pick weights, the content wave
  *    whose ids a type needs, neighbour rules. Forced per ring: 1–2 jams (each behind a `50`
- *    gantry), the average-speed zone on A10 West. The total is normalised to 9:00 ± 2 % (the
- *    invariant allows ± 5 %) at the planned speeds (`chunkTicks`).
+ *    gantry), the average-speed zone on A10 West. The total is normalised to 8:45 ± 2 %
+ *    (`RING_PLAN.target`; the invariant allows 9:00 ± 5 %) at the planned speeds (`chunkTicks`).
  * 2. HAZARDS (`'hazards'`): gantries, closures, speed cameras, the zone signs, the jam controller.
  * 3. HOSTAGES (`'hostages'`): ≥ 1 per stretch (wave A: a civilian van with `hostage: true`).
  * 4. TRAFFIC (`'traffic'`): civilians per lane (far lanes fast from behind, near lanes slow
@@ -29,7 +29,7 @@
  */
 import type { Rng } from '../../engine/rng';
 import type { Difficulty } from '../session';
-import { RING_ENTITY, RING_ENTITY_B, type RingCarModel, type RingLandmarkId } from './ids';
+import { RING_ENTITY, RING_ENTITY_B, RING_ENTITY_B_PARTS, type RingCarModel, type RingLandmarkId } from './ids';
 import { fixedLength, RING_LANDMARK_DEFS, setPieceLength, wrapKm, type RingLandmarkDef, type RingSetPieceChunk } from './landmarks';
 import { SHOULDER_TOP } from './lanes';
 import { RING, type RingBossSlot, type RingChunk, type RingChunkType, type RingLandmark, type RingSpawn } from './types';
@@ -41,8 +41,8 @@ import { RING, type RingBossSlot, type RingChunk, type RingChunkType, type RingL
 /** The content wave a plan is made for: 'A' = wave-A ids only; 'B' adds the wave-B templates. */
 export type RingContentWave = 'A' | 'B';
 
-/** The content that exists today (the wave-B integrator flips it to 'B'). */
-export const RING_CONTENT_WAVE: RingContentWave = 'A';
+/** The content that exists today (wave B is in: the integrator flipped it, 2026-10-21). */
+export const RING_CONTENT_WAVE: RingContentWave = 'B';
 
 /** Width of the view (logical px) and the spawn point of road entries beyond its right edge. */
 const VIEW_W = 384;
@@ -52,6 +52,13 @@ export const AHEAD = VIEW_W + RING.spawnAhead;
 export const RING_PLAN = Object.freeze({
   /** 9:00 at the planned speeds (spec §13) … */
   ticks: 32_400,
+  /**
+   * … and the target each seed draws around (± `jitter`): 8:45. The plan part of a run; the test
+   * lorry's fight (35–55 s, the plan is locked) comes on top, so whole rings land at about
+   * 34,000–36,000 ticks (spec §15: 31,000–36,000). Fixer B, 2026-10-21: with the 9:00 target god and
+   * normal runs reached 36,600–36,900.
+   */
+  target: 31_500,
   /** … within ± 5 % (the invariant); each seed draws its target within ± `jitter`. */
   tolerance: 0.05,
   jitter: 0.02,
@@ -70,9 +77,9 @@ export const RING_PLAN = Object.freeze({
    * 2026-10-20: the bot kills a gang well inside its estimate; placed at the 210-tick mark the
    * play had gaps of 5-10 s, at 150 up to 5 s, at 120 the longest is 198-250 ticks, seeds 1-5).
    */
-  gapPlace: 120,
+  gapPlace: 90,
   /** The same mark in a jam chunk (its gangs stay longer: the stopped cars are cover). */
-  gapJam: 120,
+  gapJam: 100,
   /** The director forces a wave this many ticks before the gap limit. */
   gapMargin: 30,
   /** Voluntary waves start at least this far (px) apart … */
@@ -252,19 +259,39 @@ export function totalTicks(chunks: readonly RingChunk[]): number {
 // Wave templates
 // =============================================================================================
 
+/** The end slot's id: a marker (no entity yet; the runner skips it, so it locks nothing). */
+const END_BOSS_MARKER = 'ring-end-boss';
+
 /** Enemy entity ids (the 4-second estimate) and their estimated time on screen (ticks). */
 export const ENEMY_PRESENCE: Readonly<Record<string, number>> = {
   // Measured with the ring bot (integrator, 2026-10-20: 1,318 scooters, seeds 1-3 normal): the
   // median scooter is on screen 142-154 ticks (p25 about 60); 240 left gaps of 5-10 s in play.
   [RING_ENTITY.scooter]: 150,
-  [RING_ENTITY_B.handhaverMoto]: 240,
-  [RING_ENTITY_B.parcelVan]: 360,
-  [RING_ENTITY_B.caravan]: 420,
-  [RING_ENTITY_B.scanCar]: 420,
-  [RING_ENTITY_B.towTruck]: 300,
-  [RING_ENTITY_B.roadworks]: 360,
+  // Wave B (integrator, 2026-10-21: the wave-B bot on seeds 1-5 normal, time on screen alive;
+  // under the p10 mark, so a fast kill rarely leaves a gap behind the estimate; at the p25 mark
+  // god runs of seeds 6-15 showed 5-6 s gaps after a van shot early, and two players kill a van
+  // in about 150 ticks — the plan never depends on the player count): motos p25 60 / p50
+  // 113; vans p10 289 / p25 737 (hostage vans count the same); caravans p10 244 / p25 386; the scan car
+  // p10 230 / p25 497, the tow truck p10 99 / p25 224; the road-works truck 450 (it leaves on its
+  // own); boarders p25 78 / p50 188.
+  [RING_ENTITY_B.handhaverMoto]: 90,
+  [RING_ENTITY_B.parcelVan]: 240,
+  [RING_ENTITY_B.caravan]: 200,
+  [RING_ENTITY_B.scanCar]: 240,
+  [RING_ENTITY_B.towTruck]: 200,
+  [RING_ENTITY_B.roadworks]: 450,
   [RING_ENTITY_B.lorry]: 600,
+  [RING_ENTITY_B_PARTS.boarder]: 120,
 };
+
+/**
+ * The estimated time on screen of a spawn (ticks; undefined = not an enemy). A hostage carrier (a
+ * van or a caravan with `hostage`) counts like its plain twin: the estimate uses the same p10 mark,
+ * and a separate table with the same values was dead code (review B, 2026-10-21).
+ */
+export function presenceOf(s: Pick<RingSpawn, 'id' | 'params'>): number | undefined {
+  return ENEMY_PRESENCE[s.id];
+}
 
 /** Is `id` an enemy (for the 4-second estimate)? */
 export function isRingEnemy(id: string): boolean {
@@ -412,7 +439,8 @@ export const WAVE_TEMPLATES: readonly WaveTemplate[] = [
     cost: 0.5,
     weight: [0, 0, 0, 0],
     only: ['caravan'],
-    build: (rng) => [{ id: RING_ENTITY_B.caravan, side: 'ahead', dx: 0, lane: 0, row: '', params: { gunner: true, looseAfter: rng.int(240, 420) } }],
+    // Caravans keep to the two near lanes (spec §11): a fixed lane 3 or 4.
+    build: (rng) => [{ id: RING_ENTITY_B.caravan, side: 'ahead', dx: 0, lane: rng.chance(0.5) ? 3 : 4, fixedLane: true, row: '', params: { gunner: true, looseAfter: rng.int(240, 420) } }],
   },
   {
     id: 'convoy',
@@ -574,7 +602,7 @@ class Director {
 
   private structure(rng: Rng): void {
     const defs = RING_LANDMARK_DEFS;
-    this.total = Math.round(RING_PLAN.ticks * (1 + rng.range(-RING_PLAN.jitter, RING_PLAN.jitter)));
+    this.total = Math.round(RING_PLAN.target * (1 + rng.range(-RING_PLAN.jitter, RING_PLAN.jitter)));
     let fixed = 0;
     let shares = 0;
     for (const def of defs) {
@@ -1070,7 +1098,30 @@ class Director {
       lane: Math.max(1, Math.min(lanes, base + m.lane)),
       params: { ...m.params, gang: gangNo, size: kept.length, index },
     }));
-    return wave.length ? [wave] : [];
+    const waves: Record<string, unknown>[][] = wave.length ? [wave] : [];
+    if (this.wave !== 'B') return waves;
+    // Wave B: the foot boarders after the gang (spec §7.2: ams handhavers and stag partiers run
+    // between the stopped cars and hop onto a bonnet). The CREW builder's table; the looks swap
+    // now and then (a draw on every difficulty, so the other draws stay the same).
+    const swap = r.chance(0.5);
+    const look = (a: 'handhaver' | 'stag'): string => (swap ? (a === 'stag' ? 'handhaver' : 'stag') : a);
+    const rows: readonly (readonly [WaveRow, 'ahead' | 'behind', number, number, 'handhaver' | 'stag'])[] = [
+      ['', 'ahead', 0, 2, 'handhaver'],
+      ['', 'ahead', 40, 3, 'stag'],
+      ['N', 'behind', 0, 3, 'stag'],
+      ['H', 'ahead', 80, 1, 'handhaver'],
+    ];
+    const boarders = rows
+      .filter(([row]) => keep(row))
+      .map(([, from, dx, lane, kind], index) => ({
+        id: RING_ENTITY_B_PARTS.boarder,
+        from,
+        dx,
+        lane: Math.max(1, Math.min(lanes, lane)),
+        params: { look: look(kind), index },
+      }));
+    if (boarders.length) waves.push(boarders);
+    return waves;
   }
 
   private eligible(c: WorkChunk): boolean {
@@ -1082,12 +1133,24 @@ class Director {
     let bank = 0;
     let cover = 0;
     let lastWave = -1e9;
+    // The hostage carriers (placed before the waves) are enemies on screen too: their estimate
+    // counts toward the 4-second floor (no forced wave on top of a hostage van).
+    const carriers = this.spawns
+      .filter((s) => s.params?.hostage && presenceOf(s) !== undefined)
+      .map((s) => [appearTicks(this.chunks, s), appearTicks(this.chunks, s) + (presenceOf(s) ?? 0)] as const)
+      .sort((a, b) => a[0] - b[0]);
+    let ci = 0;
     let nextT = this.chooseWave(rng, 0, 'cruise');
+    // Boss slots that got their wave right after the fight (see below).
+    const bossWaved = new Set<RingBossSlot>();
     for (let i = 0; i < this.chunks.length; i++) {
       const c = this.chunks[i];
       const cEnd = c.start + c.length;
       if (!this.eligible(c)) {
-        cover = Math.max(cover, planTicksAt(this.chunks, cEnd));
+        // A rest or a scene: the estimate starts afresh at its end (integrator, wave B: a convoy
+        // or a van shot during the rest left 4-7 s without an enemy after it when its estimate
+        // carried over), so the next wave comes `gapPlace` ticks after it at the latest.
+        cover = planTicksAt(this.chunks, cEnd);
         continue;
       }
       const rule = CHUNK_RULES[c.type];
@@ -1113,9 +1176,20 @@ class Director {
         // gets the floor again. (`planTicksAt` at `holdAt` is the stand's end: it counts the hold.)
         if (s + 32 > standAt) cover = Math.max(cover, planTicksAt(this.chunks, standAt));
         const tNext = planTicksAt(this.chunks, s + 32);
-        const forced = tNext - cover > place;
+        while (ci < carriers.length && carriers[ci][0] <= tNext) cover = Math.max(cover, carriers[ci++][1]);
+        // Right after a boss slot's fight a wave rolls in (review B: the plan is locked at the
+        // slot during the fight, and in 2P the next wave came 260 ticks after the lorry died).
+        // (Only a boss that locks the plan: the end slot is a marker until the end boss exists.)
+        const afterBoss = boss !== undefined && boss.id !== END_BOSS_MARKER && !bossWaved.has(boss) && s >= calmUntil;
+        if (afterBoss) bossWaved.add(boss);
+        const forced = afterBoss || tNext - cover > place;
         const voluntary = !jam && bank >= nextT.cost && s - lastWave >= P.waveSpacing && s < quietFrom && s >= calmUntil;
         if (!forced && !voluntary) continue;
+        // In a jam and in the chunk after it the traffic still queues: only the scooter gangs
+        // filter between the stopped cars (integrator, wave B: a moto pair from behind waited off
+        // screen behind the queue for 5-6 s).
+        const queue = jam || this.chunks[i - 1]?.type === 'jam';
+        if (queue && !nextT.id.startsWith('gang-')) nextT = this.chooseWave(rng, c.tier ?? 0, c.type, true);
         cover = Math.max(cover, this.placeWave(rng, nextT, s, c));
         // The 4-second floor is free; the budget buys the threat above it.
         if (voluntary) bank -= nextT.cost;
@@ -1133,11 +1207,11 @@ class Director {
     return n && !this.eligible(n) ? end - RING_PLAN.quietBefore : end;
   }
 
-  private chooseWave(rng: Rng, tier: number, type: RingChunkType): WaveTemplate {
+  private chooseWave(rng: Rng, tier: number, type: RingChunkType, gangsOnly = false): WaveTemplate {
     const list: WaveTemplate[] = [];
     const weights: number[] = [];
     for (const t of WAVE_TEMPLATES) {
-      if (t.only || t.minTier > tier) continue;
+      if (t.only || t.minTier > tier || (gangsOnly && !t.id.startsWith('gang-'))) continue;
       if (t.wave === 'B' && this.wave !== 'B') continue;
       list.push(t);
       weights.push(t.weight[tier] * (t.prefer?.types.includes(type) ? t.prefer.weight : 1));
@@ -1338,7 +1412,7 @@ export function enemyGaps(plan: { readonly chunks: readonly RingChunk[]; readonl
       }
       continue;
     }
-    const p = ENEMY_PRESENCE[s.id];
+    const p = presenceOf(s);
     if (p === undefined) continue;
     const t = appearTicks(chunks, s);
     covers.push([t, t + p]);

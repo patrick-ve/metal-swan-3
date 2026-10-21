@@ -37,6 +37,20 @@ export const RING_ENTITY_B = {
   lorry: 'ring-lorry',
 } as const;
 
+/**
+ * The parts and adds of wave B (spawned by the wave-B entities or the jam controller, never by
+ * the plan's cursor; the jam's `waves` name the boarders).
+ */
+export const RING_ENTITY_B_PARTS = {
+  /** A parcel thrown out of a parcel van (content/ring/gangs/parcel.ts). */
+  parcel: 'ring-parcel',
+  /** A jam boarder (an ams handhaver or a stag partier; content/ring/crew/boarder.ts). */
+  boarder: 'ring-boarder',
+  /** The lorry's forklift add and its drums / crates (content/ring/boss/adds.ts). */
+  forklift: 'ring-forklift',
+  barrel: 'ring-barrel',
+} as const;
+
 /** Civilian car models (`ring-car` param `model`). */
 export const RING_CAR_MODELS = ['hatch', 'estate', 'van', 'taxi', 'camper', 'box-truck'] as const;
 export type RingCarModel = (typeof RING_CAR_MODELS)[number];

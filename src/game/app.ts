@@ -4,7 +4,7 @@
  * main.ts builds the browser versions; headless tools and tests can build an app with
  * MemoryStore + NullAudio + ScriptedSource input.
  */
-import type { AudioOut, MusicOpts, SayOpts, SfxOpts, VolumeKind } from '../engine/audio';
+import type { AudioOut, EchoOpts, MusicOpts, SayOpts, SfxOpts, VolumeKind } from '../engine/audio';
 import type { Color } from '../engine/color';
 import { Debug } from '../engine/debug';
 import { measure } from '../engine/font';
@@ -250,6 +250,11 @@ export class GameAudio implements AudioOut {
 
   setMuted(muted: boolean): void {
     this.inner.setMuted?.(muted);
+  }
+
+  /** The opt-in sfx echo (the ring's tunnels). */
+  setEcho(o: EchoOpts | null): void {
+    this.inner.setEcho?.(o);
   }
 
   suspend(): void {

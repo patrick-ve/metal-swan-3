@@ -107,6 +107,24 @@ describe('ring-car', () => {
     expect(BUMP_HARD).toBeGreaterThan(1);
   });
 
+  it('a slow car never pushes a wagon at the left end of its band off the screen', () => {
+    const r = rig();
+    const lane = r.wagon.laneTarget;
+    const w = r.wagon;
+    // A slow car right ahead; the wagon keeps driving forward into it (it drifts back to the
+    // band's left end behind the car).
+    r.spawnAt<RingCar>('ring-car', w.screenX + 80, laneY(lane), { model: 'estate', rel: -1.6 });
+    r.hold(['right']);
+    let minSx = Infinity;
+    for (let t = 0; t < 400; t++) {
+      r.run(1);
+      if (w.state === 'driven') minSx = Math.min(minSx, w.screenX);
+    }
+    r.release();
+    // The band's left end is RING.screenMinX (70): the wagon's rear stays on screen.
+    expect(minSx).toBeGreaterThanOrEqual(46);
+  });
+
   it('merges out of a lane that is closed ahead', () => {
     const r = rig();
     const car = r.spawnAt<RingCar>('ring-car', 330, laneY(4), { model: 'hatch', rel: 0 });

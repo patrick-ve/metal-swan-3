@@ -410,7 +410,7 @@ export function litBox(p: Pen, x: number, y: number, w: number, h: number, r: Hd
 
 // ------------------------------------------------------------------------------------ lettering
 
-/** Our 3 × 5 pixel capitals (M, N, W, Q 5 wide); rows top → bottom, '#' = ink. */
+/** Our 3 × 5 pixel capitals (M, N, W, Q 5 wide); rows top → bottom, '#' = ink (the comma has a 6th row: its tail). */
 const TINY_SRC: Readonly<Record<string, readonly string[]>> = {
   A: ['###', '#.#', '###', '#.#', '#.#'],
   B: ['##.', '#.#', '##.', '#.#', '##.'],
@@ -448,7 +448,9 @@ const TINY_SRC: Readonly<Record<string, readonly string[]>> = {
   '7': ['###', '..#', '..#', '.#.', '.#.'],
   '8': ['###', '#.#', '###', '#.#', '###'],
   '9': ['###', '#.#', '###', '..#', '###'],
-  ',': ['.', '.', '.', '#', '#'],
+  // A real comma (the Dutch decimal comma of the hectometre boards: `12,3`): a stroke with a tail
+  // that hangs one row below the line, so it never reads as a point.
+  ',': ['..', '..', '..', '.#', '.#', '#.'],
   '.': ['.', '.', '.', '.', '#'],
   '-': ['..', '..', '##', '..', '..'],
   '/': ['..#', '..#', '.#.', '#..', '#..'],
@@ -480,7 +482,7 @@ export function tinyText(p: Pen, s: string, x: number, y: number, c: Color, o: {
   let cx = x;
   for (const ch of s.toUpperCase()) {
     const g = TINY.get(ch) ?? TINY.get(' ') as Glyph;
-    for (let r = 0; r < 5; r++) {
+    for (let r = 0; r < g.rows.length; r++) {
       const row = g.rows[r];
       for (let i = 0; i < g.w; i++) {
         if (row[i] !== '#') continue;

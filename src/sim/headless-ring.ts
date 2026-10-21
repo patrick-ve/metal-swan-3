@@ -143,7 +143,9 @@ class RingWatch {
       const d = e.damage as Damage;
       this.lastHit.set(t, sourceName(d));
       const src = attacker(d);
-      if (src && !world.onScreen(src, 8) && !e.absorbed) this.offscreenHits++;
+      // A landed hit (the wagon absorbs every hit while driven) from an attacker more than 8 px
+      // off screen (review B: the old `!absorbed` test could never count one).
+      if (src && e.absorbed && !world.onScreen(src, 8)) this.offscreenHits++;
     });
   }
 

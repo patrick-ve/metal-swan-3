@@ -93,9 +93,27 @@ export interface FootPose {
   t: number;
 }
 
+/** The forward aim that mirrors a back aim (a blocked back aim turns to it). */
+const FORWARD_MIRROR: Readonly<Record<Aim8, Aim8>> = {
+  forward: 'forward',
+  'forward-far': 'forward-far',
+  far: 'far',
+  'back-far': 'forward-far',
+  back: 'forward',
+  'back-near': 'forward-near',
+  near: 'near',
+  'forward-near': 'forward-near',
+};
+
 export class RingHero extends Player implements RingDrawable {
   /** The 8-way aim of the steer lock (kept while FIRE is up). */
   aim8: Aim8 = 'forward';
+  /**
+   * The back aims (back, back-far, back-near) are blocked while this is above 0: a status sets it
+   * every tick (the fine sticker on the rear quarter glass behind him, docs/design/ring.md §5.3).
+   * He cannot turn to aim back then; a back aim he had turns to its forward mirror.
+   */
+  backAimBlock = 0;
   /** Drawn height of the hip above the road (the window sill), and of his gun (shots). */
   lift = WINDOW_LIFT;
   shotLift: number = RING.heroGunLift;
@@ -152,6 +170,7 @@ export class RingHero extends Player implements RingDrawable {
   // ------------------------------------------------------------------------------- tick
 
   override update(): void {
+    if (this.backAimBlock > 0) this.backAimBlock--;
     if (this.state !== 'out') this.status.update();
     if (this.shootT > 0) this.shootT--;
     if (this.knifeT > 0) this.knifeT--;
@@ -202,8 +221,9 @@ export class RingHero extends Player implements RingDrawable {
     this.facing = 1;
     if (pad.held('fire')) {
       const a = aimOf(pad.axisX(), pad.held('up') ? -1 : pad.held('down') ? 1 : 0);
-      if (a) this.aim8 = a;
+      if (a && !(this.backAimBlock > 0 && aimsBack(a))) this.aim8 = a;
     }
+    if (this.backAimBlock > 0 && aimsBack(this.aim8)) this.aim8 = FORWARD_MIRROR[this.aim8];
     this.gun.setWeapon(this.weapon);
     this.bombGun.setWeapon(this.bombDef);
     this.gun.pitch = st.sfxPitch;

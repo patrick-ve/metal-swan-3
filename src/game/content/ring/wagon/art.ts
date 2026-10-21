@@ -44,9 +44,11 @@ const r1 = (ramp: readonly Color[], base: number): Ramp1 => ({ ramp, base });
 function rampsOf(livery: Livery): Readonly<Record<number, Ramp1>> {
   const green = livery === 'green';
   return {
-    [M.PAINT]: green ? r1([PAL.teal[0], PAL.green[1], PAL.green[2], PAL.green[3]], 2) : r1([PAL.steel[3], PAL.snow[1], PAL.snow[2], PAL.snow[3]], 2),
-    [M.CAMO_D]: green ? r1([PAL.olive[0], PAL.green[1], PAL.olive[2]], 1) : r1([PAL.ink[1], PAL.olive[0], PAL.olive[1]], 1),
-    [M.CAMO_B]: r1([PAL.ink[0], PAL.ink[1], PAL.black[2]], 1),
+    // GREEN: a deep bottle green (integrator, wave B: the user's photos; it read too light), the
+    // camouflage blotches darker still and close to it (dark olive green, near black).
+    [M.PAINT]: green ? r1([PAL.ink[0], PAL.olive[0], PAL.green[1], PAL.green[2]], 2) : r1([PAL.steel[3], PAL.snow[1], PAL.snow[2], PAL.snow[3]], 2),
+    [M.CAMO_D]: green ? r1([PAL.ink[0], PAL.olive[0], PAL.teal[0]], 1) : r1([PAL.ink[1], PAL.olive[0], PAL.olive[1]], 1),
+    [M.CAMO_B]: green ? r1([PAL.ink[0], PAL.ink[1], PAL.olive[0]], 1) : r1([PAL.ink[0], PAL.ink[1], PAL.black[2]], 1),
     [M.LET_Y]: r1([PAL.gold[0], PAL.gold[1], PAL.gold[2], PAL.gold[3]], 2),
     [M.LET_P]: r1([PAL.pink[0], PAL.pink[1], PAL.pink[2]], 2),
     [M.BAND_O]: r1([PAL.rust[2], PAL.orange[1], PAL.orange[2]], 1),

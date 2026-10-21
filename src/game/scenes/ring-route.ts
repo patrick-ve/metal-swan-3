@@ -3,16 +3,19 @@
  *
  * `ams` → its tally (MissionCompleteScene) → `missionDone` → MissionIntroScene('ring') (the card:
  * `prepareRing` makes the seed and the plan, `preloadRing` starts the art and the audio) →
- * `RingScene` → 'complete' → `ringDone` → GlitchBridgeScene (the ring's silent tally, its seed) →
- * the fps floors → the ending. `?mission=ring` (boot, tools) → `startRing` (no card).
+ * `RingScene` → 'complete' → `ringDone` → the ring's MISSION COMPLETE page (`ringTally`: hostages,
+ * fines, the seed in the footer) → GlitchBridgeScene (it freezes the page) → the fps floors → the
+ * ending. `?mission=ring` (boot, tools) → `startRing` (no card).
  *
  * `ring` is NOT a registered mission (spec §13): the flow knows its id (`RING_ID`).
  *
  * Seeds (spec §4, §13): every play gets a fresh seed (`freshSeed`, ring/mission.ts); `?seed=` /
  * a tool's `--seed` wins (`app.params.seed`). The seed shows in the debug overlay (RingScene) and
- * the floor-1 tally's footer (fps-tally.ts).
+ * the footer of the ring's tally page.
  */
+import { defineSampleGroup } from '../../engine/audio';
 import { preloadSprites } from '../../engine/sprites';
+import { SAMPLE_MANIFEST } from '../content/samples/manifest';
 import { newCampaign, type GameApp } from '../app';
 import { hasCharacter } from '../registry';
 import { ringArtDef, type RingArtDef } from '../ring/art-def';
@@ -23,16 +26,21 @@ import { RING, type RingPlan } from '../ring/types';
 import type { Difficulty, GameSession } from '../session';
 import { newSession, preloadMissionArt, preloadMissionAudio } from './gameplay';
 import { GlitchBridgeScene, type BridgeRunner } from './glitch-bridge';
+import { MissionCompleteScene, type NextRunner } from './mission-complete';
 import { RingScene } from './ring';
 import type { Scene } from '../../engine/scene';
 
 export { RING_ID };
 
 /**
- * The ring's sampled audio group: it reuses the ams group (its songs fall back to the ams songs
- * until the ring theme exists, ring/mission.ts `ringSong`; wave B writes synth recipes only).
+ * The ring's sampled audio group: the ams group's sound effects and voices WITHOUT its two songs
+ * (the ring plays its own synth songs, content/music/ring.ts; the ams songs decode to about 60 MB).
+ * The entries are the ams group's own definitions, so the sample bank decodes each file once for
+ * both groups (samples.browser.ts shares an entry whose `def` is the same object).
  */
-export const RING_AUDIO_GROUP = 'mission:ams';
+export const RING_AUDIO_GROUP = 'mission:ring';
+const AMS_SAMPLES = SAMPLE_MANIFEST['mission:ams'];
+if (AMS_SAMPLES) defineSampleGroup(RING_AUDIO_GROUP, { sfx: AMS_SAMPLES.sfx, voice: AMS_SAMPLES.voice });
 
 /**
  * What the ring draws at 1× (the boot preloads it for `?mission=ring`; on the normal route the
@@ -103,7 +111,7 @@ export function ringArtFor(start: RingStart, session: Pick<GameSession, 'slots'>
 /**
  * The intro card's preload (browser only: `app.preloadArt`): the 2× set and, at tier 4, the
  * working set from the start stretch (`preloadMissionArt` with `ringArtDef`), the 1× ring art in
- * small slices (it is not in the boot's list on the normal route), the reused ams sample group.
+ * small slices (it is not in the boot's list on the normal route), the ring's sample group.
  */
 export function preloadRing(app: GameApp, start: RingStart): void {
   const def = ringArtFor(start, app.session);
@@ -140,10 +148,36 @@ export function startRing(app: GameApp, o: StartRingOpts = {}): RingScene {
 }
 
 /**
- * The ring is over (its 'complete' after the victory drive): the glitch bridge freezes its last
- * frame, records the clear, pays the tally silently (the floor-1 tally's `MISSION 2 BONUS`) and
- * goes on into the first-person floors.
+ * What the ring's MISSION COMPLETE page reads (docs/design/ring.md §1, §10): the newspaper of the
+ * other missions with the ring's hostages per stretch, a FINES info line (paid already during the
+ * play: −500 each), the seed in the footer, and the glitch bridge after it (`tallied`: the page
+ * paid, so the bridge does not; the floor-1 tally then has no MISSION 2 BONUS line).
  */
-export function ringDone(app: GameApp, from: Scene, runner: BridgeRunner): void {
-  app.scenes.replace(new GlitchBridgeScene(app, { from, runner }), { fade: 0 });
+export function ringTally(runner: RingTallyRunner): NextRunner {
+  return {
+    session: runner.session,
+    mission: runner.mission,
+    nextMission: () => null,
+    tallyNotes: (slot) => {
+      const n = runner.finesBySlot[slot.index] ?? 0;
+      return [{ label: `FINES ${n} X ${RING.finePoints}`, points: null, note: n > 0 ? `-${n * RING.finePoints}` : '0' }];
+    },
+    tallyFooter: `RING SEED ${runner.seed}`,
+    afterTally: (app, page) => app.scenes.replace(new GlitchBridgeScene(app, { from: page, runner, tallied: true }), { fade: 0 }),
+  };
+}
+
+/** What `ringTally` reads from the finished ring (a RingRunner). */
+export interface RingTallyRunner extends BridgeRunner {
+  readonly seed: number;
+  readonly finesBySlot: readonly number[];
+}
+
+/**
+ * The ring is over (its 'complete' after the victory drive): its own MISSION COMPLETE page (the
+ * tally: hostages, fines, the bonus lines; the seed in the footer), then the glitch bridge (it
+ * freezes the page, records the clear) and the first-person floors.
+ */
+export function ringDone(app: GameApp, _from: Scene, runner: RingTallyRunner): void {
+  app.scenes.replace(new MissionCompleteScene(app, ringTally(runner)), { fade: 30 });
 }

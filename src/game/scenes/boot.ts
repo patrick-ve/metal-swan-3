@@ -127,7 +127,8 @@ export class BootScene implements Scene {
     if (!audio.loadSamples) return;
     const groups = ['boot'];
     const id = this.app.params.mission;
-    // The ring reuses the ams group (its songs fall back to the ams ones until its theme exists).
+    // The ring loads its own group (RING_AUDIO_GROUP 'mission:ring': the ams effects and voices
+    // without the ams songs; its music is the synth ring theme).
     const direct = id ? (isRing(id) ? RING_AUDIO_GROUP : getMission(id)?.audioGroup) : undefined;
     if (direct) groups.push(direct);
     this.phase = 'samples';

@@ -5,7 +5,6 @@
  * would become m5's default next mission). It carries what the scenes, the HUD and the tally read
  * from `runner.mission` (`id`, `name`, `hostages` per stretch id …).
  */
-import { hasSong } from '../../engine/music';
 import { mix32 } from '../../engine/rng';
 import { RING_ID } from './ids';
 import type { RingPlan } from './types';
@@ -17,7 +16,7 @@ export interface RingMission {
   readonly subtitle: string;
   /** The intro card / banner label (spec §1: MISSION 2). */
   readonly label: string;
-  /** Stage song and boss song ids (synth; wave B writes the ring theme, see `ringSong`). */
+  /** Stage song and boss song ids (synth: content/music/ring.ts). */
   readonly music: string;
   readonly bossMusic: string;
   readonly announce: string;
@@ -47,13 +46,13 @@ export function ringMission(plan: RingPlan): RingMission {
   };
 }
 
-/** Songs the ring plays until its own exist (wave B): the stage theme falls back to the ams songs. */
-const SONG_FALLBACK: Readonly<Record<string, string>> = { ring: 'ams', 'ring-boss': 'ams-boss' };
-
-/** The song id to play for a ring song id (its fallback while it is not defined yet). */
+/**
+ * The song id to play for a ring song id. Since wave B the ring has its own synth songs
+ * (content/music/ring.ts: `ring`, `ring-boss`), so this is the id itself; the wave-A fallback to
+ * the ams songs is gone. Kept as the one place a future ring song could be mapped.
+ */
 export function ringSong(id: string | null): string | null {
-  if (!id || hasSong(id)) return id;
-  return SONG_FALLBACK[id] ?? id;
+  return id;
 }
 
 let fallbackCount = 0;

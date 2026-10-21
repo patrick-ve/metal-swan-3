@@ -429,6 +429,48 @@ plays. No push without the user's word.
 Estimates (from the extras wave: 10 agents, 5.7 M tokens, 5.5 h): wave A about 6–7 M tokens and
 6 h; wave B about 4–5 M tokens and 4–5 h.
 
+**Status.** Wave A done (2026-10-21, `tmp/ring-a-report.md`). **Wave B done (2026-10-21,
+integrator `tmp/ring-b-integrate-report.md`):** `RING_CONTENT_WAVE = 'B'`: parcel vans, the caravan
+car, the convoy, the road-works crew, the jam boarders, the test lorry in `westpoort`, the ring
+theme and boss song with their cues, the drivers' wave-B lines; hostages ride in parcel vans and
+caravans; the ring's own MISSION COMPLETE page; the green wagon's deep bottle green; the comma on
+the hectometre boards; the x-ray outline of a covered wagon. The fixer's pass (the review's
+findings, the tuning below) and the final gates: `tmp/ring-b-report.md`.
+
+Tuning in wave B (measured with the bot; the builders' reports list theirs):
+
+| Value | Spec / before | Now | Why |
+|---|---|---|---|
+| `ENEMY_PRESENCE` (the 4-second estimate) | moto 240, van 360, caravan 420, scan car 420, tow truck 300, road works 360 | moto 90, van 240 (hostage 240), caravan 200 (hostage 200), scan car 240, tow truck 200, road works 450, boarder 120 | measured time on screen with the bot (p10 … p25); two players kill a van in about 150 ticks and the plan never depends on the player count |
+| `RING_PLAN.gapPlace` (a forced wave after this many ticks without an enemy) | 120 | 90 | wave-B targets die faster than the estimate: 2P gaps up to 290 ticks at 120 |
+| the estimate after a rest or a scene | carried over | starts afresh at its end | a convoy shot during a rest left 6–7 s without an enemy after it |
+| hostage carriers in the estimate | not counted | counted | no forced wave on top of a hostage van |
+| waves in a jam and in the chunk after it | any template | scooter gangs only | motos from behind waited off screen behind the queue for 5 s |
+| the jam's waves | the scooter gang | the gang, then the boarders (2 / 3 / 4 by difficulty) | spec §7.2 |
+| caravans | any lane | lane 3 or 4 | spec §11 |
+| scooter filtering in a jam | jam level > ½ | > 0.05 (while the queue is parked) | a new gang sat off screen behind the parked queue as the jam cleared |
+| the lorry's push-out of a wagon beside it | away from it | away from it, always onto the road | a wagon in lane 1 was pushed over the median (y 108) and stuck there |
+| civilian cars while every player is out | their own speed | they stand with the held road | near-lane cars drove backwards into the cars behind |
+| the wagon wreck while every player is out | gone after 90 ticks | stays until the hold ends | the courier's NIET THUIS card and the tow truck's hook need it |
+| the bot's lob at a boss | every 2 s (any target) | every 6 s, when the landing spot is on the boss | 32–34 s fights at 2 s; now 48–61 s (spawn → gone) |
+
+Fixer B (2026-10-21, after the review; `tmp/ring-b-report.md`):
+
+| Value | Before | Now | Why |
+|---|---|---|---|
+| the lorry's damage rate | none | the pool loses at most 2 HP per tick (a bucket of 150; × difficulty × co-op) and holds at the phase-2 line until the side panel is down | the shotgun killed it in 9–12 s and phase 2 hardly showed; now 28–30 s with the shotgun, 38–46 s with the machine gun, the pistol (1.9 HP per tick at the cab) unchanged |
+| the fine sticker (§5.3) | the hero's fire rate halved (a builder's call) | the back aims (←, ↖, ↙) are blocked | back to the spec: it blocks a part of the hero's aim |
+| the loose caravan's ram | 2 cells every 30 ticks of contact | 2 cells once per wagon per crash | it dropped back onto the wagon behind it and rammed it again and again (6–20 cells per normal run) |
+| `RING_PLAN.gapJam` | 120 | 100 | jam gaps of 250–252 ticks (over the 4 s mark) |
+| the plan's target | 9:00 | 8:45 (`RING_PLAN.target`; the invariant stays 9:00 ± 5 %) | the lorry's fight comes on top: whole rings reached 36,600–36,900 ticks (§15: 31,000–36,000) |
+| a boss slot | no wave of its own after the fight | a forced wave right after the fight | in 2P the next enemy came 260 ticks after the lorry died |
+| an entrant boxed in off screen | waited (van 884 ticks, moto 339, tow truck 453) | gives up after 300 ticks fully off screen; a leaving one goes past either edge | the director counted it as present while nobody saw it; a hostage van lingered behind the left edge |
+| scooters and the big wave-B vehicles | rode through them | `ring-block` and `ring-big` block their lane | a scooter in the tow truck's cab, scooters piled over the road-works crew |
+| a slow civilian car ahead of a wagon at the band's left end | pushed the wagon off the screen | is shoved ahead of it (not in a jam stand) | the corrected off-screen-hit watch found bumps on wagons pushed past the left edge |
+| the x-ray's density | the art density | at most 2× | about 1.3 ms per covered wagon per frame at 4× |
+| sound effects in a tunnel (§7.3) | dry | an echo (0.11 s, feedback 0.3, mix 0.32) through the opt-in `AudioOut.setEcho` | spec §7.3: sounds echo |
+| the container code | `ZWNU 619072` | `ZWAU 619072` | the 3-wide N reads as an M at 4× |
+
 ## 15. Gates
 
 - New tests under `tests/game/ring/`: `plan` (the same seed gives a deep-equal plan; 50 seeds

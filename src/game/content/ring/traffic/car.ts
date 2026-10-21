@@ -36,6 +36,7 @@ import { defineEntity, NO_PARAMS, paramNum, type SpawnParams } from '../../../re
 import { ringOf, RingEntity } from '../../../ring/entity';
 import { RING_CAR_MODELS, RING_ENTITY, type RingCarModel } from '../../../ring/ids';
 import { clampLane, LANE_GAP, lastLane, laneY, nearestLane } from '../../../ring/lanes';
+import { RING } from '../../../ring/types';
 import { WAGON_W } from '../../../ring/wagon';
 import type { HostageCarrier, SeatOut } from '../items/carrier';
 import { CAR_GEO, carColour, carSprite, HOSTAGE_VAN, WHEEL_R, type CarGeo } from './geometry';
@@ -135,6 +136,9 @@ export class RingCar extends RingEntity implements HostageCarrier {
     const jam = jamOf(this.world).level;
     let rel = this.rel * (1 - jam);
     if (!Number.isNaN(this.stopAt)) rel = this.jamRel(road, jam);
+    // Every player out (the continue holds the road): the traffic stands too; at a held road
+    // speed of 0 a car's own negative `rel` would drive it backwards into the cars behind.
+    if (ring?.held) rel = 0;
     let target = road + rel;
     target = Math.min(target, this.followSpeed(target));
     const accel = target < this.vx ? 0.12 : 0.05;
@@ -202,13 +206,17 @@ export class RingCar extends RingEntity implements HostageCarrier {
   private wagonFloor(): number {
     const rear = this.x - this.geo.len / 2;
     const list = drivenWagons(this.world);
+    const minX = this.world.camera.x + RING.screenMinX + 2;
     let floor = -Infinity;
     for (let i = 0; i < list.length; i++) {
       const w = list[i];
-      // Only a wagon that holds back: one that drives into the car bumps it (its own doing).
-      if (Math.abs(w.y - this.y) > 11 || w.sideV > 0.2) continue;
+      // Only a wagon that holds back: one that drives into the car bumps it (its own doing). A
+      // wagon at the left end of its band cannot give way: the car never pushes it off the screen
+      // (fixer B: wagons pushed out behind slow or jam-bound cars ended up past the left edge).
+      const atEnd = w.x <= minX && w.x < this.x;
+      if (Math.abs(w.y - this.y) > 11 || (w.sideV > 0.2 && !atEnd)) continue;
       const gap = rear - (w.x + WAGON_W / 2);
-      if (gap > -6 && gap < 10 && w.vx > floor) floor = w.vx;
+      if (gap > (atEnd ? -WAGON_W : -6) && gap < 10 && w.vx > floor) floor = w.vx;
     }
     return floor;
   }
@@ -294,7 +302,14 @@ export class RingCar extends RingEntity implements HostageCarrier {
       let lane = 0;
       if (Math.abs(dy) < 7) {
         // In line: push the wagon out behind (or in front of) the car.
-        if (w.x < this.x) {
+        if (w.x < this.x && !this.parked && w.x <= this.world.camera.x + RING.screenMinX + 2) {
+          // The wagon at the left end of its band cannot give way: the car is shoved ahead of it
+          // (a stand in a jam keeps its place: the camera stands there too).
+          this.x = w.x + this.geo.len / 2 + WAGON_W / 2 + 0.5;
+          this.vx = Math.max(this.vx, w.vx);
+          this.syncBox();
+          if (soft && w.sideV > 0) w.sideV = 0;
+        } else if (w.x < this.x) {
           w.x = this.x - (this.geo.len / 2 + WAGON_W / 2 + 0.5);
           dx = -1.2;
           if (soft && w.sideV > 0) w.sideV = 0;

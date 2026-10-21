@@ -36,11 +36,20 @@ import { missionDone, recordMissionClear } from './flow';
 export interface TallyRunner {
   readonly session: GameSession;
   readonly mission: { readonly id: string; readonly hostages?: Readonly<Record<string, number>> };
+  /**
+   * Optional info lines after the bonus lines (shown, never paid: no `points`, a `note`; the
+   * ring's FINES). MissionRunner has none: its page is unchanged.
+   */
+  tallyNotes?(slot: PlayerSlot): readonly TallyLine[];
+  /** Optional small footer line on the page (the ring's seed). */
+  readonly tallyFooter?: string;
 }
 
 /** A tally runner that knows what comes next (the newspaper's `missionDone`). */
 export interface NextRunner extends TallyRunner {
   nextMission(): string | null;
+  /** Optional: what follows the page instead of `missionDone` (the ring: the glitch bridge). */
+  afterTally?(app: GameApp, page: Scene): void;
 }
 
 /** One tally line: points, or null for a missed bonus (`---`); `note` replaces the points (HATS). */
@@ -193,7 +202,8 @@ export class MissionCompleteScene implements Scene {
       .map((slot) => {
         const tally = tallyLines(this.runner, session, slot);
         const total = Math.round(tally.raw * this.mul);
-        const rows: TallyLine[] = [...tally.lines, { label: 'DIFFICULTY', points: null, note: `X${this.mul.toFixed(1)}` }, { label: 'TOTAL', points: total }];
+        const notes = this.runner.tallyNotes?.(slot) ?? [];
+        const rows: TallyLine[] = [...tally.lines, ...notes, { label: 'DIFFICULTY', points: null, note: `X${this.mul.toFixed(1)}` }, { label: 'TOTAL', points: total }];
         // The quote wraps to the column (2 players) or the right half of the page (1 player).
         const quote = wrapText(CRITIC_QUOTES[tally.stars - 1], QUOTE_CHARS, 3);
         return { slot, tally, rows, total, paid: 0, quote };
@@ -252,7 +262,8 @@ export class MissionCompleteScene implements Scene {
     this.leaving = true;
     this.payOut(true);
     for (const c of this.cols) c.slot.rescued = 0;
-    missionDone(this.app, this.runner);
+    if (this.runner.afterTally) this.runner.afterTally(this.app, this);
+    else missionDone(this.app, this.runner);
   }
 
   draw(r: Renderer): void {
@@ -272,6 +283,8 @@ export class MissionCompleteScene implements Scene {
     const shown = this.rowsShown;
     for (let i = 0; i < this.cols.length; i++) this.drawColumn(r, this.cols[i], i, shown);
     if (this.doneAt >= 0 && blinkOn(this.t - this.doneAt)) inkText(r, 'PRESS START', r.w >> 1, 200, PAL.red[1], 'center');
+    const footer = this.runner.tallyFooter;
+    if (footer) inkText(r, footer, COL_X[0], 200, PAL.stone[1]);
   }
 
   /** The stamp drops, thuds and lifts; the headline is printed where it hit. */

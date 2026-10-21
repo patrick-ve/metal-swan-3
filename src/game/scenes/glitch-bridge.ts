@@ -8,11 +8,12 @@
  * (120 ticks; the last 4 black) → `card` (typing, PRESS START, a 150-tick hold) → `fold` (60).
  *
  * The bridge follows the ring (docs/design/ring.md §1: ams → its tally → the ring → the bridge).
- * With a runner (the real route: the ring's RingRunner; any MissionRunner works the same) `enter`
- * records the clear (`recordMissionClear`) and pays the tally silently (`silentTally`); a
- * `MissionBonus` `{ mission, totals, seed }` goes to `session.records['fps/ams-bonus']` for the
- * floor-1 tally's `MISSION 2 BONUS` line (named after that mission; the ring's seed in its
- * footer). Without one (`?mode=bridge`) it shows a placeholder. The story card's first line is a
+ * With a runner `enter` records the clear (`recordMissionClear`). The real route (the ring) comes
+ * from the ring's own MISSION COMPLETE page (`tallied`: the page paid, its last frame is the
+ * snapshot; no bonus record, so the floor-1 tally has no bonus line). Without `tallied` (any
+ * MissionRunner) it pays the tally silently (`silentTally`) and a `MissionBonus`
+ * `{ mission, totals, seed }` goes to `session.records['fps/ams-bonus']` for the floor-1 tally's
+ * `MISSION n BONUS` info line. Without a runner (`?mode=bridge`) it shows a placeholder. The story card's first line is a
  * neutral one (`BRIDGE_OPENING`) until the ring's story exists.
  *
  * All corruption works on palette colours (copies, shifts, `stepShade`): it stays palette-only.
@@ -67,6 +68,12 @@ export interface BridgeOpts {
   from?: Scene;
   /** The finished mission's runner: its clear is recorded and its tally paid silently. */
   runner?: BridgeRunner;
+  /**
+   * The mission's own tally page already paid (the ring's MISSION COMPLETE page, docs/design/ring.md
+   * §1, §10): the clear is recorded, no silent tally and no bonus record (the floor-1 tally has no
+   * bonus line), no `MISSION COMPLETE!` over the snapshot (`from` is the page).
+   */
+  tallied?: boolean;
 }
 
 /**
@@ -183,6 +190,8 @@ export class GlitchBridgeScene implements Scene {
   private started = false;
   /** Top line of the banner's text (its rows jitter in the glitch). */
   private readonly bannerY: number;
+  /** The mission's own tally page paid already (`BridgeOpts.tallied`). */
+  private readonly tallied: boolean;
 
   constructor(app: GameApp, o: BridgeOpts = {}) {
     this.app = app;
@@ -191,7 +200,8 @@ export class GlitchBridgeScene implements Scene {
     this.runner = o.runner ?? null;
     const d = Math.max(1, Math.floor(o.runner?.artDensity ?? 1));
     // Before scenes.replace runs the gameplay scene's exit: its frame is still intact.
-    this.snap = snapshot(o.from, d, this.runner);
+    this.tallied = o.tallied === true;
+    this.snap = snapshot(o.from, d, this.tallied ? null : this.runner);
     this.bannerY = o.from ? BANNER_Y : PLACEHOLDER_BANNER_Y;
     const sd = this.snap.density ?? 1;
     this.g = sd >= 2 ? 2 : 1;
@@ -231,6 +241,8 @@ export class GlitchBridgeScene implements Scene {
     const runner = this.runner;
     if (runner && app.session) {
       recordMissionClear(app, runner);
+    }
+    if (runner && app.session && !this.tallied) {
       const totals = silentTally(app, runner);
       const mission = runner.mission.id;
       const bonus: MissionBonus = mission === RING_ID && runner.seed !== undefined ? { mission, totals, seed: runner.seed } : { mission, totals };

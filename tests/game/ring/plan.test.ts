@@ -18,7 +18,7 @@ import {
   totalTicks,
   weaponGaps,
 } from '../../../src/game/ring/director';
-import { RING_ENTITY, RING_ENTITY_B, RING_LANDMARKS } from '../../../src/game/ring/ids';
+import { RING_ENTITY, RING_ENTITY_B, RING_ENTITY_B_PARTS, RING_LANDMARKS } from '../../../src/game/ring/ids';
 import { formatKm, landmarkDef, RING_LANDMARK_DEFS, ringKmAt } from '../../../src/game/ring/landmarks';
 import { checkPlan, chunkAt, planRing } from '../../../src/game/ring/plan';
 import { RingRunner } from '../../../src/game/ring/runner';
@@ -64,22 +64,39 @@ describe('planRing: the invariants hold for every seed', () => {
     expect(problems).toEqual([]);
   });
 
-  it('wave-B plans (the integrator of wave B flips RING_CONTENT_WAVE) meet them too', () => {
-    expect(RING_CONTENT_WAVE).toBe('A');
+  it('wave-B plans (the default since the wave-B integration) meet them too', () => {
+    expect(RING_CONTENT_WAVE).toBe('B');
     const problems: string[] = [];
     const used = new Set<string>();
+    let boarders = 0;
     for (let seed = 1; seed <= 15; seed++) {
-      const p = planRing(seed, 'normal', { wave: 'B' });
+      const p = planRing(seed);
+      expect(p.wave).toBe('B');
       for (const x of checkPlan(p)) problems.push(`${seed}: ${x}`);
-      for (const s of p.spawns) used.add(s.id);
+      for (const s of p.spawns) {
+        used.add(s.id);
+        // Caravans keep to the two near lanes (spec §11); hostages ride in vans and caravans (§8).
+        if (s.id === RING_ENTITY_B.caravan) expect(s.lane, `${seed} caravan`).toBeGreaterThanOrEqual(3);
+        if (s.params?.hostage) expect([RING_ENTITY_B.parcelVan, RING_ENTITY_B.caravan]).toContain(s.id);
+        // The jam's stand: the scooter gang, then the foot boarders (spec §7.2).
+        if (s.id === RING_ENTITY.jam) {
+          const waves = (s.params?.waves ?? []) as { id: string; lane: number }[][];
+          expect(waves.length).toBe(2);
+          for (const m of waves[1]) {
+            expect(m.id).toBe(RING_ENTITY_B_PARTS.boarder);
+            boarders++;
+          }
+        }
+      }
     }
     expect(problems).toEqual([]);
-    for (const id of [RING_ENTITY_B.parcelVan, RING_ENTITY_B.caravan, RING_ENTITY_B.handhaverMoto, RING_ENTITY_B.scanCar]) expect(used).toContain(id);
+    expect(boarders).toBeGreaterThan(15);
+    for (const id of [RING_ENTITY_B.parcelVan, RING_ENTITY_B.caravan, RING_ENTITY_B.handhaverMoto, RING_ENTITY_B.scanCar, RING_ENTITY_B.towTruck, RING_ENTITY_B.roadworks]) expect(used).toContain(id);
   });
 
   it('wave-A plans name wave-A ids only (the boss slots name the lorry and the end marker)', () => {
     for (let seed = 1; seed <= 10; seed++) {
-      const p = planRing(seed);
+      const p = planRing(seed, 'normal', { wave: 'A' });
       expect(p.wave).toBe('A');
       for (const s of p.spawns) expect(WAVE_A.has(s.id), s.id).toBe(true);
       expect(p.bosses.map((b) => [b.landmark, b.id])).toEqual([
@@ -103,6 +120,9 @@ describe('planRing: the invariants hold for every seed', () => {
     }
     expect(lo).toBeGreaterThanOrEqual(RING_PLAN.ticks * 0.95);
     expect(hi).toBeLessThanOrEqual(RING_PLAN.ticks * 1.05);
+    // Each seed lands near its 8:45 target (the lorry's fight comes on top in play).
+    expect(lo).toBeGreaterThanOrEqual(RING_PLAN.target * 0.97);
+    expect(hi).toBeLessThanOrEqual(RING_PLAN.target * 1.03);
   });
 
   it('exactly one golden record, ≥ 1 hostage per stretch, repairs every ~60 s, weapons often', () => {
@@ -250,9 +270,10 @@ describe('planRing: the grammar and the director', () => {
       const [e, n, h] = DIFFS.map((d) => planRing(seed, d));
       expect(e.chunks).toEqual(n.chunks);
       expect(h.chunks).toEqual(n.chunks);
-      // The jam's own waves (its `waves` param: a scooter gang in its stand) are wave rows too.
+      // The jam's own waves (its `waves` param: a scooter gang and the boarders in its stand) are
+      // wave rows too; every wave member carries its `gang` number (hostage carriers do not).
       const noWaves = (s: RingPlan['spawns'][number]): unknown => (s.id === RING_ENTITY.jam ? { ...s, params: { ...s.params, waves: undefined } } : s);
-      const calm = (p: RingPlan): string => JSON.stringify(p.spawns.filter((s) => s.id !== RING_ENTITY.scooter).map(noWaves));
+      const calm = (p: RingPlan): string => JSON.stringify(p.spawns.filter((s) => s.params?.gang === undefined).map(noWaves));
       expect(calm(e)).toBe(calm(n));
       expect(calm(h)).toBe(calm(n));
       const jamScooters = (p: RingPlan): number =>
@@ -293,8 +314,8 @@ describe('planRing: the grammar and the director', () => {
         expect(['bottle', 'pistol']).toContain(params?.pillion);
       }
       if (params?.hostage) {
-        expect(s.id).toBe(RING_ENTITY.car);
-        expect(params.model).toBe('van');
+        // Wave B: the hostages ride in parcel vans and caravans (spec §8).
+        expect([RING_ENTITY_B.parcelVan, RING_ENTITY_B.caravan]).toContain(s.id);
         expect(typeof params.item).toBe('string');
         expect(s.lane).toBeGreaterThanOrEqual(3);
       }

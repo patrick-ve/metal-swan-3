@@ -152,7 +152,7 @@ describe('the route through the ring', () => {
     expect(ring.runner.players[0].state).not.toBe('out');
   }, 120000);
 
-  it('the ring completes → the bridge (silent tally, the ring and its seed recorded) → the fps floors', async () => {
+  it('the ring completes → its own MISSION COMPLETE page (hostages, fines, the seed) → the bridge → the fps floors', async () => {
     await loadFpsContent(createApp({ input: new InputManager(), audio: new SimAudio(), store: new MemoryStore() }));
     const h = harness();
     const scene = startRing(h.app, { characters: ['vincent'], seed: 4242 });
@@ -161,16 +161,35 @@ describe('the route through the ring', () => {
     const slot = h.app.session!.slots[0];
     slot.rescued = 2;
     slot.mission.goldenRecord = true;
+    scene.runner.fine(0);
     const before = slot.score;
-    expect(skipRing(h, GlitchBridgeScene)).toBe(true);
+    // The victory drive, then the ring's own tally page (spec §1, §10).
+    expect(skipRing(h, MissionCompleteScene)).toBe(true);
+    const page = h.app.scenes.top as MissionCompleteScene;
+    expect(page.runner.mission.id).toBe('ring');
+    expect(page.runner.tallyFooter).toBe('RING SEED 4242');
+    expect(page.runner.tallyNotes?.(slot)).toEqual([{ label: 'FINES 1 X 500', points: null, note: '-500' }]);
+    // A press shows the whole page and pays it; the page draws the FINES line and the seed.
+    h.step(30);
+    h.keys.tap('Enter');
+    h.step(2);
+    const r = new Recorder();
+    r.begin();
+    page.draw(r);
+    r.end();
+    expect(r.texts).toContain('FINES 1 X 500');
+    expect(r.texts).toContain('-500');
+    expect(r.texts).toContain('RING SEED 4242');
+    expect(slot.score - before).toBeGreaterThanOrEqual(20000);
+    const paid = slot.score;
+    // The next press: the bridge freezes the page; it records the clear and pays nothing more.
+    h.step(12);
+    h.keys.tap('Enter');
+    expect(h.until(GlitchBridgeScene, 30)).toBe(true);
     const bridge = h.app.scenes.top as GlitchBridgeScene;
-    const bonus = missionBonusOf(h.app.session!.records.get<unknown>(AMS_BONUS_KEY));
-    expect(bonus?.mission).toBe('ring');
-    expect(bonus?.seed).toBe(4242);
-    expect(bonus!.totals[0]).toBeGreaterThanOrEqual(20000);
-    expect(bonus!.totals[1]).toBe(0);
-    expect(slot.score - before).toBeGreaterThanOrEqual(bonus!.totals[0]);
+    expect(slot.score).toBe(paid);
     expect(slot.rescued).toBe(0);
+    expect(h.app.session!.records.has(AMS_BONUS_KEY)).toBe(false);
     expect(h.app.campaign!.missions).toEqual(['ring']);
     expect(h.app.campaign!.goldenRecords[0].has('ring')).toBe(true);
     // The story card opens with the neutral line (no ams boss any more).
@@ -184,16 +203,11 @@ describe('the route through the ring', () => {
     h.step(2);
     expect(h.until(FpsIntroScene, 120)).toBe(true);
     expect((h.app.scenes.top as FpsIntroScene).floor).toBe(1);
-    // The floor-1 tally names the ring's bonus MISSION 2 BONUS and shows its seed.
+    // The floor-1 tally does not pay or show the ring again (it had its own page).
     const run = newFpsRun(h.app.session!, 1);
     const tally = new FpsTallyScene(h.app, run, { floor: 1, ticks: 600, kills: 1, killsTotal: 2, secrets: 0, secretsTotal: 1, treasure: 0, treasureTotal: 1, goldenRecord: false });
-    expect(tally.tally.lines.find((l) => l.label === 'MISSION 2 BONUS')?.points).toBe(bonus!.totals[0]);
-    expect(tally.seed).toBe(4242);
-    const r = new Recorder();
-    r.begin();
-    tally.draw(r);
-    r.end();
-    expect(r.texts).toContain('RING SEED 4242');
+    expect(tally.tally.lines.some((l) => l.label.includes('BONUS'))).toBe(false);
+    expect(missionBonusOf(h.app.session!.records.get<unknown>(AMS_BONUS_KEY))).toBeUndefined();
   }, 120000);
 
   it('?mission=ring boots straight into the RingScene (section, seed); its boot art', () => {

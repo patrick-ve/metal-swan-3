@@ -13,6 +13,11 @@
 // rings), `ring/hop` (a hostage's leap), `ring/scooter-whine` (a two-stroke pass-by), `ring/scooter-
 // honk` (its squeaky horn), `ring/throw` (a bottle whooshes), `ring/bottle` (it smashes),
 // `ring/scooter-crash` / `ring/scooter-down` (knocked off / falling over: a scrape and a clatter).
+//
+// Mix pass (wave B, SOUND, 2026-10-21; ids unchanged): the telegraphs come up so they read over
+// the engine hum, the tunnel bed and the music (bottle-tell +5 dB, pistol-cock +5 dB, the throw
+// +3.5 dB), the matrix click +3 dB and the cage door +3 dB; the scooter whine goes down 3 dB (a gang
+// of 3–5 passing must not bury the shots).
 import { BP, clack, click, fmBell, hits, HP, LP, noise, scatter, tone, type Recipes } from './kit';
 
 /** A dual-tone car horn (two square tones a minor third apart through a horn band). */
@@ -28,7 +33,7 @@ const GLASS = scatter(10, 77);
 
 export const RING_ROAD: Recipes = {
   'ring/matrix-click': {
-    vol: 0.8,
+    vol: 1.1,
     voices: 2,
     gap: 0.05,
     layers: [...clack(900, 0.6, 0, 0.02), ...clack(1400, 0.35, 0.03, 0.015), { wave: 'square', freq: 100, env: { a: 0.002, d: 0.01, s: 0.5, hold: 0.06, r: 0.02 }, vol: 0.08, delay: 0.02, filter: BP(2400, undefined, 2) }],
@@ -87,7 +92,7 @@ export const RING_ROAD: Recipes = {
     layers: [tone('sine', 180, 110, 0.07, 0.6), noise(0.04, 0.3, BP(900, undefined, 1.2)), ...fmBell(1318, 0.18, 0.28, { delay: 0.04, ratio: 2, index: 2 }), ...fmBell(1976, 0.22, 0.25, { delay: 0.1, ratio: 2, index: 2 })],
   },
   'ring/cage-hit': {
-    vol: 0.45,
+    vol: 0.63,
     voices: 3,
     gap: 0.04,
     layers: [...fmBell(740, 0.18, 0.4, { ratio: 2.76, index: 3 }), noise(0.03, 0.3, HP(3000))],
@@ -99,7 +104,7 @@ export const RING_ROAD: Recipes = {
     layers: [noise(0.14, 0.8, BP(900, 2600, 1.4)), tone('sine', 300, 700, 0.12, 0.45)],
   },
   'ring/scooter-whine': {
-    vol: 0.8,
+    vol: 0.57,
     voices: 2,
     gap: 0.6,
     layers: [
@@ -114,19 +119,19 @@ export const RING_ROAD: Recipes = {
     layers: hits(2, 0, 0.12).map((t) => ({ wave: 'square' as const, freq: 880, env: { a: 0.004, d: 0.01, s: 0.8, hold: 0.07, r: 0.02 }, vol: 0.4, delay: t, filter: BP(1800, undefined, 1.1) })),
   },
   'ring/pistol-cock': {
-    vol: 0.8,
+    vol: 1.42,
     voices: 2,
     gap: 0.1,
     layers: [...clack(1700, 0.5, 0, 0.015), ...clack(1200, 0.55, 0.07, 0.02)],
   },
   'ring/bottle-tell': {
-    vol: 0.85,
+    vol: 1.5,
     voices: 2,
     gap: 0.1,
     layers: [...fmBell(2637, 0.08, 0.3, { ratio: 2.4, index: 2 }), ...fmBell(3136, 0.08, 0.2, { ratio: 2.4, index: 2, delay: 0.05 })],
   },
   'ring/throw': {
-    vol: 0.9,
+    vol: 1.35,
     voices: 2,
     gap: 0.08,
     layers: [noise(0.2, 1, BP(700, 2200, 1.6)), noise(0.12, 0.5, BP(1800, 3200, 2))],

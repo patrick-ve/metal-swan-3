@@ -16,7 +16,8 @@
  * - The plan's end: the exit hook (`RING_HOOKS.planEnd`, default: `completeMission()`); the victory
  *   drive; 'complete'.
  * - Drawing (spec §13): road (view) → shadow pass → entities sorted by `y · 100 + z` (shots raised
- *   by their shooter's `shotLift`) → particles → front layer → light; the scene draws the HUD.
+ *   by their shooter's `shotLift`) → particles → front layer → light → the x-ray outline of a
+ *   covered player wagon (xray.ts); the scene draws the HUD.
  * - It offers the members the HUD, the tally and the scenes read from a MissionRunner (`hud`,
  *   `players`, `player()`, `continueTicks`, `countdownNumber`, `timeLeft`, `mission`, `session`,
  *   `nextMission()`, `stopLoops()`, `artDensity`, `section` …) and `report()` for the sim.
@@ -56,6 +57,7 @@ import { planRing } from './plan';
 import { chunkIndexAt } from './director';
 import { RING, type RingBossSlot, type RingChunk, type RingPlan, type RingSpawn, type RingStretch, type RingViewHost } from './types';
 import { RingView } from './view';
+import { RingXray } from './xray';
 import { spawnWagon } from './wagon';
 
 export type RingState = 'playing' | 'victory' | 'complete' | 'gameover';
@@ -123,7 +125,8 @@ export interface RingReport {
   /** Plan entries spawned, and the skipped ones per unknown id. */
   spawned: number;
   skipped: Record<string, number>;
-  bosses: { id: string; spawned: boolean }[];
+  /** Boss slots reached; `ticks` = spawn → gone (the time to kill; −1 while it fights or never came). */
+  bosses: { id: string; spawned: boolean; ticks: number }[];
   errors: WorldError[];
   maxEntities: number;
 }
@@ -132,6 +135,9 @@ interface BossRun {
   slot: RingBossSlot;
   entity: Entity | null;
   key: string;
+  /** Runner ticks at the spawn and when the boss was gone (−1 = not yet). */
+  spawnTick: number;
+  endTick: number;
 }
 
 const warnedIds = new Set<string>();
@@ -192,11 +198,15 @@ export class RingRunner implements RingHost, RingViewHost {
   private spawned = 0;
   private wrecks = 0;
   private fines = 0;
+  /** Fines per slot (the ring's tally page: FINES). */
+  readonly finesBySlot: [number, number] = [0, 0];
   private hostages = 0;
   private maxEntities = 0;
   private readonly visited: string[] = [];
   private fightStart = -1;
   private readonly drawList: Entity[] = [];
+  /** The outline of a covered player wagon (readability; xray.ts). */
+  readonly xray = new RingXray();
   private readonly drawKeys: number[] = [];
 
   constructor(o: RingRunnerOptions) {
@@ -240,7 +250,7 @@ export class RingRunner implements RingHost, RingViewHost {
     const vw = cam.w;
     this.queue = [...this.plan.spawns].sort((a, b) => triggerOf(a, vw) - triggerOf(b, vw));
     this.triggers = Float64Array.from(this.queue, (s) => triggerOf(s, vw));
-    this.bossRuns = [...this.plan.bosses].sort((a, b) => a.at - b.at).map((slot, i) => ({ slot, entity: null, key: `boss:${i}:${slot.id}` }));
+    this.bossRuns = [...this.plan.bosses].sort((a, b) => a.at - b.at).map((slot, i) => ({ slot, entity: null, key: `boss:${i}:${slot.id}`, spawnTick: -1, endTick: -1 }));
     const lm = this.startSection ? this.plan.landmarks.find((l) => l.id === this.startSection) : undefined;
     this.startDist = lm ? Math.max(0, lm.start - RING.runIn) : 0;
     this.hud.onBubble = (text, kind, speaker) => {
@@ -518,6 +528,7 @@ export class RingRunner implements RingHost, RingViewHost {
       }
       const cam = this.world.camera;
       run.entity = this.world.spawn(id, cam.right + RING.spawnAhead, laneY(run.slot.lane ?? 1), run.slot.params);
+      run.spawnTick = this.ticks;
       this.lockPlan(run.key);
       this.events.emit('bossSlot', { id, at: run.slot.at, spawned: true });
     }
@@ -529,6 +540,7 @@ export class RingRunner implements RingHost, RingViewHost {
       const run = this.bossRuns[i];
       if (run.entity && !run.entity.alive) {
         run.entity = null;
+        run.endTick = this.ticks;
         this.unlockPlan(run.key);
       }
     }
@@ -603,6 +615,7 @@ export class RingRunner implements RingHost, RingViewHost {
     if (!s || !s.joined || this.state !== 'playing') return;
     s.addScore(-points);
     this.fines++;
+    this.finesBySlot[s.index]++;
     this.hud.message(s.index, reason, 90, 0xff5040ff);
     const p = this.player(slot);
     if (p) this.hud.popup(p.x, p.y - 44, `-${points}`);
@@ -749,6 +762,8 @@ export class RingRunner implements RingHost, RingViewHost {
       this.world.particles.draw(r);
       this.view.drawFront(r, this);
       this.view.drawLight(r, this);
+      // A player's wagon hidden behind nearer vehicles: its outline over the cover (xray.ts).
+      this.xray.draw(r, list, this.artDensity);
     });
   }
 
@@ -824,7 +839,9 @@ export class RingRunner implements RingHost, RingViewHost {
       gameOver: this.state === 'gameover',
       spawned: this.spawned,
       skipped,
-      bosses: this.bossRuns.filter((_, i) => i < this.bossCursor).map((b) => ({ id: b.slot.id, spawned: hasEntity(b.slot.id) })),
+      bosses: this.bossRuns
+        .filter((_, i) => i < this.bossCursor)
+        .map((b) => ({ id: b.slot.id, spawned: hasEntity(b.slot.id), ticks: b.spawnTick >= 0 && b.endTick >= 0 ? b.endTick - b.spawnTick : -1 })),
       errors: [...this.world.errors],
       maxEntities: this.maxEntities,
     };

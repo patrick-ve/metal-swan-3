@@ -12,7 +12,7 @@
  * their normals, the livery (camouflage, the waist band, the vinyl lettering) switches the
  * material per art px. Glass is a hole in the body frames (glints and cracks are fixed px over it).
  *
- * Look: glossy bottle-green paint with dark-green and black camouflage and lit yellow / pink vinyl
+ * Look: glossy deep bottle-green paint with subtle near-black camouflage and lit yellow / pink vinyl
  * capitals; glossy white paint with the fluorescent orange / yellow band, the navy box and white
  * capitals; dark grey textured bumpers and rubbing strip, black pillars and seals, chrome-rimmed
  * spot lamps with grilles, a silver rack, a lying spare tyre with a red strap, a red jerrycan, a
@@ -31,6 +31,11 @@ import { BODY_CANVAS, CABIN_CANVAS, ID, POSES, SPIN_CANVAS, WHEEL_HALF, type Bod
 import { LEFT_VIEW, M, PART, POSE_VIEW, sampleGrid, type Look, type SampleGrid } from './shape';
 
 const R = PAL_HD;
+/**
+ * The green wagon's deep bottle green (integrator, wave B, after the user's photos): near-black
+ * olive → dark moss → bottle green for the diffuse light, then the greens of the gloss.
+ */
+const BOTTLE = [R.olive[0], R.moss[1], R.green[2], R.green[3], R.green[5]] as const;
 
 /** Sprites: outline A, AO where parts meet, the thin cool rim. */
 const RENDER: RenderOpts = { outline: 'A', ao: 0.3, rimLight: 2 };
@@ -72,9 +77,11 @@ function materials(p: HdPiece, livery: Livery): Map<number, number> {
   const add = (k: number, id: number): void => {
     m.set(k, id);
   };
-  add(M.PAINT, green ? p.material({ ramp: R.green, lo: 1, hi: 3, spec: 0.75, shine: 44, wrap: 0.06, bounce: 0.3 }) : p.material({ ramp: R.gable, lo: 3, hi: 6, spec: 0.85, shine: 46, wrap: 0.06, rim: 0.3, bounce: 0.3 }));
-  add(M.CAMO_D, p.material({ ramp: R.moss, lo: 1, hi: 3, spec: 0.6, shine: 40, wrap: 0.06 }));
-  add(M.CAMO_B, p.material({ ramp: R.black, lo: 0, hi: 3, spec: 0.6, shine: 40, wrap: 0.06 }));
+  // GREEN: a deep bottle green with glossy highlights; the camouflage darker still and close to
+  // it in tone (integrator, wave B: the user's photos; the old paint read too light and mottled).
+  add(M.PAINT, green ? p.material({ ramp: BOTTLE, lo: 1, hi: 2, spec: 0.75, shine: 44, wrap: 0.06, bounce: 0.3 }) : p.material({ ramp: R.gable, lo: 3, hi: 6, spec: 0.85, shine: 46, wrap: 0.06, rim: 0.3, bounce: 0.3 }));
+  add(M.CAMO_D, green ? p.material({ ramp: R.moss, lo: 0, hi: 1, spec: 0.6, shine: 40, wrap: 0.06 }) : p.material({ ramp: R.moss, lo: 1, hi: 3, spec: 0.6, shine: 40, wrap: 0.06 }));
+  add(M.CAMO_B, green ? p.material({ ramp: R.black, lo: 0, hi: 1, spec: 0.6, shine: 40, wrap: 0.06 }) : p.material({ ramp: R.black, lo: 0, hi: 3, spec: 0.6, shine: 40, wrap: 0.06 }));
   add(M.LET_Y, p.material({ ramp: R.gold, lo: 3, hi: 6, spec: 0.5, shine: 30, wrap: 0.08 }));
   add(M.LET_P, p.material({ ramp: R.pink, lo: 3, hi: 6, spec: 0.5, shine: 30, wrap: 0.08 }));
   add(M.BAND_O, p.material({ ramp: R.orange, lo: 2, hi: 5, spec: 0.4, shine: 30, wrap: 0.08 }));

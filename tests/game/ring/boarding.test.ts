@@ -85,10 +85,12 @@ describe('the drivers talk', () => {
     rig.run(10);
     const w = rig.wagon;
     const said = (): string => rig.runner.hud.bubbles.find((b) => b.target === w)?.text ?? '';
+    // One of his own variants (lines.ts: `pick` 0 … 1 chooses among them).
+    const own = (ev: 'flash' | 'boss'): string[] => [0, 0.25, 0.5, 0.75, 0.99].map((k) => driverLine(w.driverId, ev, k));
     rig.runner.fine(0);
-    expect(said()).toBe(driverLine(w.driverId, 'flash'));
+    expect(own('flash')).toContain(said());
     rig.runner.events.emit('bossSlot', { id: 'x', at: 0, spawned: true });
-    expect(said()).toBe(driverLine(w.driverId, 'boss'));
+    expect(own('boss')).toContain(said());
   });
 });
 

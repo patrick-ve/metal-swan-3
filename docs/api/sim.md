@@ -312,7 +312,8 @@ Mission `ring` (docs/design/ring.md §15, docs/api/ring.md) runs in its own harn
   `timing` and `watch` (`RingWatchReport`: pacing — `longestGap`, `gaps` over `RING_GAP_TICKS` = 240 with
   their landmark and chunk, `paceTicks`, `enemyShare`, outside rests, scenes, the boarding, holds and the
   victory drive; fairness — `outsideShots` (enemy shots and bottles that appear off screen), `offscreenHits`
-  (wagon hits whose attacker is off screen), `attacks`, `minTell` / `minTellInView` (the shortest
+  (landed wagon hits — the wagon absorbed them — whose attacker is more than 8 px off screen; fixer
+  B: it counted only unabsorbed hits before, so it could never count one), `attacks`, `minTell` / `minTellInView` (the shortest
   `tell-x` → `x`), `minOpenLanes`; armour — `cellsLost` per source). `runRing(o)` runs it to the end. The
   seed is the ring's (`params.seed`).
 - `RingBot(host, slot, { swerve, bombs, pickups, screenX = 120 })` (`InputSource`): a lane safety map
@@ -325,13 +326,29 @@ Mission `ring` (docs/design/ring.md §15, docs/api/ring.md) runs in its own harn
   speed; when neither hits it lines up forward / back on screen, never into the front third or a car);
   hostage doors first; BOMB at a boss; the rear third at rest; START while its continue countdown runs.
   `aimMask(dx, dy)` stays the plain 8-way pick. `goal`, `targetLane`, `target` for traces and labels.
+  Wave B (2026-10-21; duck-typed fields, never the content classes): big vehicles (`ring-block`,
+  `ring-big`) are blocks like cars; a cone line (a `ring-closure`-tagged entity) closes its lane over its
+  extent; a parcel van in `tell-brake` / braking ahead, a tow truck in `tell-hook` ahead and a caravan
+  coming loose (`tell-loose`, `loose`, `tip`: its lane, the one above and every lane down to the
+  shoulder) make their lanes dangerous; a SCAN LOCK strip (`ring-scan-strip`) its lane over its x
+  range; parcels and the lorry's cargo land like bottles and then lie / roll in their lane (obstacles
+  by time to contact); the forklift's charge makes its lane dangerous. A swerve (`mustSwerve`) for a
+  tow hook or a sticker on its wagon, a boarder cocking a blow, a brake check / hook / charge / loose
+  caravan too close for a lane change; a moto in `tell-baton` / `tell-sticker` beside the window gets
+  the side ram (goal `ram`); a boarder on its bonnet gets the knife (goal `knife`: FIRE held at him);
+  an attack ahead with no lane free → back off on screen (goal `evade`). BOMB: FIRE + the aim + BOMB
+  every 6 s when a lob's landing spot (`LOB_AHEAD` 112 / across / `LOB_BEHIND` 72, its lane or the one
+  above) is on a boss (goal `lob`). The pull toward a far target's lane only while settled in a lane
+  (between lanes it flipped the lane every tick).
 - `npm run sim -- --mission ring [--god] [--seed n] [--players 2] [--section <landmark>] [--difficulty]
   [--char id] [--weapon id] [--no-bot] [--max-ticks 43200] [--expect-complete] [--expect-ticks min-max]
   [--out file] [--trace N] [--quiet]` → the JSON report and a one-line summary (`sim ring seed n god
   normal: COMPLETE in T ticks (…), landmarks oost→…, distance d/len, kills, deaths, wrecks, fines,
   hostages, continues, spawned (skipped id×n), max entities, errors`); exit 1 on errors, a failed
   `--expect-complete` or ticks outside `--expect-ticks` (the full ring's gate: 28800-39600). Wave A
-  (2026-10-20): seeds 1–5 god 32,777–33,562 ticks, 0.4 s wall; normal 6–8 wrecks a run.
+  (2026-10-20): seeds 1–5 god 32,777–33,562 ticks, 0.4 s wall; normal 6–8 wrecks a run. Wave B
+  (2026-10-21, docs/api/ring.md §23): god seeds 1–15 32,881–38,290 ticks (the lorry fight adds about
+  45–60 s), 0.5–0.8 s wall; normal 6–9 wrecks a run; the report's `bosses[].ticks` is the time to kill.
 - `npm run shot -- --mission ring [--seed n] [--section <landmark>] [--bot] [--god] [--players 2] [--ticks n]
   [--every N --count M] [--res 8 --art 4] [--spawn "<id>@+<dx>:<lane>[?k=v&k=v]"] [--hold up,fire]` →
   `tmp/shots/ring-<stretch>-t<tick>.png` / `ring-sheet.png`, frames labelled with the tick, the stretch, the

@@ -22,9 +22,21 @@
  *   when the wagon will be there; too late for a lane change (≤ `BOTTLE_SWERVE` ticks) → a swerve.
  * - JUMP = swerve when an enemy shot is about to reach the wagon in its lane (toward the safer
  *   neighbouring lane).
- * - BOMB (the lob) at a boss now and then.
+ * - BOMB (the lob) at a boss now and then: FIRE + the aim + BOMB when a lob's landing spot (ahead,
+ *   across or behind, its lane or the one above) is on the boss's box.
  * - The screen x: it keeps to the rear half (speed cameras fine the front third).
  * - The in-world continue: START while its slot's countdown runs.
+ * - Wave B (duck-typed fields; it reads what it sees): big vehicles (`ring-block`, `ring-big`) are
+ *   blocks like civilian cars; a cone line (`ring-closure` entities) closes its lane over its
+ *   extent; a parcel van in `tell-brake` / braking ahead and a caravan that comes loose
+ *   (`tell-loose`, `loose`, `tip`) make their lanes dangerous (a swerve when it is too late); a
+ *   SCAN LOCK strip (`ring-scan-strip`) makes its lane dangerous over its x range (it changes lanes
+ *   out of a lock); a tow truck's `tell-hook` ahead in the lane is danger and a hook on its wagon is
+ *   a swerve; a fine sticker on its wagon (`ring-sticker`) is shaken off with a swerve; a moto in
+ *   `tell-baton` / `tell-sticker` beside the window gets the side ram (a swerve into its lane);
+ *   parcels and the lorry's cargo land like bottles and then lie or roll in their lane
+ *   (obstacles by time to contact); the forklift's charge makes its lane dangerous; a boarder on
+ *   its bonnet gets the knife (FIRE held at him), or a swerve when he cocks a blow.
  *
  * No allocations per tick (fixed arrays); deterministic (no randomness).
  */
@@ -72,7 +84,10 @@ const SWERVE_REACH = 70;
 /** Ticks FIRE is held before a one-tick release (a fresh press). */
 const FIRE_HOLD = 40;
 /** Ticks between two lobs at a boss. */
-const BOMB_EVERY = 120;
+const BOMB_EVERY = 360;
+/** Where a lob lands on screen: ahead / behind the wagon (content/ring/wagon/lob.ts `LOB`). */
+const LOB_AHEAD = 112;
+const LOB_BEHIND = 72;
 /** Half the wagon's length (px; wagon.ts WAGON_W / 2) and the gap it keeps to a car beside it. */
 const WAGON_HALF = 46;
 const CAR_MARGIN = 14;
@@ -88,6 +103,36 @@ const CLOSURE_DANGER = [5000, 4000, 2000, 1200, 800] as const;
 const FINE_X = 256;
 /** Danger of a lane a car blocks beside the wagon (a lane change into it is a bump). */
 const BLOCKED = 3000;
+/** Danger of a lane an attack is about to sweep (a brake check, a loose caravan, a charge, a lock). */
+const ATTACK_LANE = 3600;
+/** A brake check / hook within this many px ahead of the wagon's nose is too close for a lane change. */
+const BRAKE_NEAR = 46;
+/** Modes of the wave-B attacks the bot reads (`mode` strings of the content). */
+const LOOSE_MODES: ReadonlySet<string> = new Set(['tell-loose', 'loose', 'tip']);
+const CHARGE_MODES: ReadonlySet<string> = new Set(['tell-charge', 'charge']);
+const MOTO_TELLS: ReadonlySet<string> = new Set(['tell-baton', 'tell-sticker']);
+
+/** The duck-typed fields the bot reads off wave-B entities (never their classes). */
+interface Lob extends Entity {
+  landX?: number;
+  landY?: number;
+  ticksLeft?: number;
+  lying?: boolean;
+  flying?: boolean;
+}
+interface Moded extends Entity {
+  mode?: string;
+  braking?: boolean;
+  hooked?: Entity | null;
+  wagon?: Entity | null;
+  aboard?: boolean;
+}
+interface Strip extends Entity {
+  lane: number;
+  state: string;
+  x0: number;
+  x1: number;
+}
 
 export class RingBot implements InputSource {
   readonly slot: PlayerSlot;
@@ -161,19 +206,45 @@ export class RingBot implements InputSource {
     const open = Math.max(1, Math.min(LANE_COUNT, r.lanesOpenAt(w.x)));
     this.assess(r, world, w, open);
     const here = nearestLane(w.y);
-    // Swerve: an enemy shot is about to reach the wagon in its lane, or a bottle lands on it now.
-    if (this.opts.swerve && w.swerveCool <= 0 && w.swerveT <= 0 && (this.incoming(world, w) || this.bottleNow(r, world, w))) {
-      const up = here > 1 ? this.danger[here - 1] : Infinity;
-      const down = here < open ? this.danger[here + 1] : Infinity;
-      if ((up < BLOCKED || down < BLOCKED) && (up < Infinity || down < Infinity)) {
-        this.goal = 'swerve';
-        this.targetLane = up <= down ? here - 1 : here + 1;
-        return JUMP | (up <= down ? UP : DOWN);
+    // Swerve: an enemy shot is about to reach the wagon in its lane, a lob lands on it now, a
+    // brake check / a charge / a hook is too close for a lane change, a tow hook or a sticker
+    // holds it, or a boarder on the bonnet cocks a blow.
+    if (this.opts.swerve && w.swerveCool <= 0 && w.swerveT <= 0) {
+      // A moto cocking at the window: the side ram into its lane (it knocks the rider off).
+      const moto = this.motoTell(world, w);
+      if (moto !== 0) {
+        this.goal = 'ram';
+        this.targetLane = here + moto;
+        return JUMP | (moto < 0 ? UP : DOWN);
+      }
+      if (this.incoming(world, w) || this.bottleNow(r, world, w) || this.mustSwerve(world, w)) {
+        const up = here > 1 ? this.danger[here - 1] : Infinity;
+        const down = here < open ? this.danger[here + 1] : Infinity;
+        if ((up < BLOCKED || down < BLOCKED) && (up < Infinity || down < Infinity)) {
+          this.goal = 'swerve';
+          this.targetLane = up <= down ? here - 1 : here + 1;
+          return JUMP | (up <= down ? UP : DOWN);
+        }
       }
     }
-    // A target far ahead in another lane (a diagonal would pass it): pull toward its lane.
+    // A boarder on its bonnet: the knife (FIRE held at him, the steer lock keeps the lane).
+    const boarder = this.boarderOn(world, w);
+    if (boarder) {
+      this.target = boarder;
+      this.goal = 'knife';
+      this.fireT++;
+      if (this.fireT > FIRE_HOLD) {
+        this.fireT = 0;
+        return 0;
+      }
+      return FIRE | (boarder.x >= p.x ? R : L);
+    }
+    // A target far ahead in another lane (a diagonal would pass it): pull toward its lane. Only
+    // with the wagon settled in a lane: between two lanes the nearest target changes with the
+    // wagon's y and the pull flipped the lane every tick (a stuck lorry fight, seed 5).
     const target = this.pickTarget(world, p);
-    if (target) {
+    const settled = Math.abs(w.y - laneY(w.laneTarget)) < 2;
+    if (target && settled) {
       const tl = laneAt(target.y);
       const dx = target.x - p.x;
       const dy = Math.abs(target.y - p.y);
@@ -202,6 +273,13 @@ export class RingBot implements InputSource {
       this.fireT = 0;
       return best < from ? UP : DOWN;
     }
+    // An attack sweeps its lane and no lane is free (a brake check, a loose caravan, a charge):
+    // back off on screen (more time, more room).
+    if (this.danger[from] >= ATTACK_LANE && w.screenX > RING.screenMinX + 10 && this.attackAhead(world, w)) {
+      this.goal = 'evade';
+      this.fireT = 0;
+      return L;
+    }
     // A bottle lands on the wagon and no lane is free: forward or back on screen, away from it.
     const dodge = this.bottleDodge(r, world, w);
     if (dodge !== 0) {
@@ -215,14 +293,20 @@ export class RingBot implements InputSource {
       this.fireT = 0;
       return L;
     }
+    // A boss on screen: a lob whose landing spot is on it (FIRE + the aim + BOMB in one tick).
+    if (this.opts.bombs && p.slot.bombs > 0 && this.t - this.lastBomb >= BOMB_EVERY) {
+      const m = this.lobAim(world, w);
+      if (m !== 0) {
+        this.lastBomb = this.t;
+        this.goal = 'lob';
+        this.fireT = 0;
+        return FIRE | BOMB | m;
+      }
+    }
     // Shoot the nearest hostile target on screen (the steer lock holds lane and x).
     if (target) {
       this.target = target;
       this.goal = 'aim';
-      if (this.opts.bombs && target.hasTag('boss') && this.t - this.lastBomb >= BOMB_EVERY) {
-        this.lastBomb = this.t;
-        return BOMB;
-      }
       // Where each aim meets the target's lane: fire the one that hits, else move on screen.
       const box = target.hurtboxes()[0];
       const tx = box ? box.x + box.w / 2 : target.x;
@@ -274,16 +358,35 @@ export class RingBot implements InputSource {
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       if (!e.alive || e === w || e === w.driver || e.hasTag('ring-hero') || e.hasTag('ring-wagon')) continue;
-      if (e.hasTag('ring-bottle')) {
-        // A bottle in flight (its y runs between lanes): where the wagon will be when it lands
-        // (the wagon holds its screen x).
-        const b = e as Entity & { landX?: number; landY?: number; ticksLeft?: number };
+      if (isLobInFlight(e)) {
+        // A bottle, cone, parcel or cargo in flight (its y runs between lanes): where the wagon
+        // will be when it lands (the wagon holds its screen x).
+        const b = e as Lob;
         if (b.landX === undefined || b.landY === undefined || b.ticksLeft === undefined) continue;
         const bl = laneAt(b.landY) || nearestLane(b.landY);
         if (bl < 1 || bl > LANE_COUNT || danger[bl] === Infinity) continue;
         const wx = w.x + r.roadSpeed * b.ticksLeft;
         // Worse the closer it is to landing (never steer back into it).
         if (Math.abs(b.landX - wx) < BOTTLE_REACH + 20) danger[bl] += 1500 + Math.max(0, 34 - b.ticksLeft) * 40;
+        continue;
+      }
+      if (e.hasTag('ring-scan-strip')) {
+        // SCAN LOCK: its lane over the strip's x range (fixed on screen); a lock is worse.
+        const st = e as Strip;
+        if (st.state === 'fade' || st.lane < 1 || st.lane > LANE_COUNT || danger[st.lane] === Infinity) continue;
+        if (st.x1 > w.x - WAGON_HALF - 24 && st.x0 < w.x + WAGON_HALF + 24) danger[st.lane] += st.state === 'lock' ? ATTACK_LANE + 600 : ATTACK_LANE;
+        continue;
+      }
+      if (e.hasTag('ring-closure') && e.type !== 'ring-closure') {
+        // A cone line behind a road-works truck: its lane is closed over its extent.
+        const l = laneAt(e.y);
+        if (l < 1 || l > LANE_COUNT || danger[l] === Infinity) continue;
+        const x0 = e.x + e.hitbox.x;
+        const x1 = x0 + e.hitbox.w;
+        const front = w.x + WAGON_HALF;
+        if (x1 < w.x - WAGON_HALF - 8) continue;
+        const ahead = Math.max(0, x0 - front);
+        if (ahead < 400) danger[l] += CLOSURE_DANGER[Math.min(4, Math.floor(ahead / 96))];
         continue;
       }
       const l = laneAt(e.y);
@@ -296,8 +399,23 @@ export class RingBot implements InputSource {
         if (Math.abs(dx) < 160 && (dx === 0 || Math.sign(rel) === -Math.sign(dx))) danger[l] += 260 - Math.abs(dx);
         continue;
       }
-      if (e.team === 'neutral' && e.hasTag('ring-car')) {
+      if ((e.team === 'neutral' && e.hasTag('ring-car')) || e.hasTag('ring-block') || e.hasTag('ring-big')) {
+        // Civilian cars and the big vehicles (vans, caravans, the convoy, the road-works truck,
+        // the lorry): a block beside, a danger by time to contact ahead or behind.
         danger[l] += this.carDanger(e, w);
+        this.attackDanger(e as Moded, w, l, open);
+        continue;
+      }
+      if (e.type === 'ring-parcel' || e.type === 'ring-barrel') {
+        // A parcel lying in the lane or a drum rolling back along it: an obstacle that closes in.
+        danger[l] += this.carDanger(e, w);
+        continue;
+      }
+      if (e.type === 'ring-forklift') {
+        const f = e as Moded;
+        // The charge runs back along its lane (2 cells): the lane is no place to be.
+        if (f.mode && CHARGE_MODES.has(f.mode) && dx > -WAGON_HALF && dx < 340) danger[l] += ATTACK_LANE;
+        else danger[l] += this.carDanger(e, w) * 0.5;
         continue;
       }
       if (dx < -LOOK_BEHIND || dx > LOOK_AHEAD) continue;
@@ -335,6 +453,116 @@ export class RingBot implements InputSource {
     return ahead >= 0 && ahead < LOOK_AHEAD ? 40 + (LOOK_AHEAD - ahead) * 0.4 : 0;
   }
 
+  /**
+   * The lanes a big vehicle's attack is about to sweep: a parcel van's brake check (its lane, ahead
+   * of the wagon), a caravan coming loose (its lane and the lanes beside it, over its reach), a tow
+   * truck's hook (its lane, ahead).
+   */
+  private attackDanger(e: Moded, w: Wagon, l: number, open: number): void {
+    const mode = e.mode;
+    if (!mode) return;
+    const danger = this.danger;
+    const gap = e.x + e.hitbox.x - (w.x + WAGON_HALF);
+    if ((mode === 'tell-brake' || mode === 'brake' || e.braking) && gap > -20 && gap < 240) danger[l] += ATTACK_LANE;
+    else if (mode === 'tell-hook' && gap > -20 && gap < 200) danger[l] += ATTACK_LANE;
+    else if (LOOSE_MODES.has(mode)) {
+      // A loose caravan drops back at the wagons, swerves one lane toward the median and back,
+      // then tips and slides across the near lanes onto the hard shoulder: every lane from the
+      // one above it down to the shoulder, while it is not yet behind the wagon.
+      const x0 = e.x + e.hitbox.x;
+      const x1 = x0 + e.hitbox.w;
+      if (x1 + 40 < w.x - WAGON_HALF || x0 - 320 > w.x + WAGON_HALF) return;
+      const top = mode === 'tip' ? l : Math.max(1, l - 1);
+      for (let k = top; k <= open; k++) if (danger[k] < Infinity) danger[k] += k === l ? ATTACK_LANE : ATTACK_LANE - 600;
+    }
+  }
+
+  /** Is a swerve the only way out now (a tow hook or a sticker on its wagon, a brake check, a charge or a blow right at it)? */
+  private mustSwerve(world: World, w: Wagon): boolean {
+    const lane = nearestLane(w.y);
+    const list = world.entities;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i] as Moded;
+      if (!e.alive) continue;
+      // The tow hook holds its wagon; a sticker on its glass blocks the back aims.
+      if (e.type === 'ring-tow-truck' && e.hooked === w) return true;
+      if (e.hasTag('ring-sticker') && e.wagon === w) return true;
+      // A boarder on its bonnet cocks a blow.
+      if (e.type === 'ring-boarder' && e.wagon === w && e.mode === 'tell-hit') return true;
+      if (laneAt(e.y) !== lane) continue;
+      const gap = e.x + e.hitbox.x - (w.x + WAGON_HALF);
+      const mode = e.mode;
+      if (!mode) continue;
+      if ((mode === 'brake' || e.braking || mode === 'tell-hook') && gap > -20 && gap < BRAKE_NEAR) return true;
+      if (e.type === 'ring-forklift' && mode === 'charge' && e.x + e.hitbox.x + e.hitbox.w > w.x - WAGON_HALF && gap < 70) return true;
+      if (LOOSE_MODES.has(mode) && gap < 60 && e.x + e.hitbox.x + e.hitbox.w > w.x - WAGON_HALF) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The D-pad of a lob that lands on a boss on screen (0: none fits). A lob lands `LOB_AHEAD`
+   * ahead (forward), `LOB_BEHIND` behind (back) or at the wagon's x (straight across), in its own
+   * lane or one lane toward the median (content/ring/wagon/lob.ts).
+   */
+  private lobAim(world: World, w: Wagon): number {
+    const list = world.byTag('boss');
+    const here = nearestLane(w.y);
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
+      if (!b.alive || !world.onScreen(b, -16)) continue;
+      const bl = laneAt(b.y);
+      const up = bl === here - 1;
+      if (bl !== here && !up) continue;
+      const x0 = b.x + b.hitbox.x + 12 - w.x;
+      const x1 = b.x + b.hitbox.x + b.hitbox.w - 12 - w.x;
+      const v = up ? UP : 0;
+      if (LOB_AHEAD >= x0 && LOB_AHEAD <= x1) return R | v;
+      if (up && x0 <= 0 && x1 >= 0) return UP;
+      if (-LOB_BEHIND >= x0 && -LOB_BEHIND <= x1) return L | v;
+    }
+    return 0;
+  }
+
+  /** A brake check, a loose caravan or a charge ahead of the wagon (backing off helps). */
+  private attackAhead(world: World, w: Wagon): boolean {
+    const list = world.entities;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i] as Moded;
+      const mode = e.mode;
+      if (!e.alive || !mode) continue;
+      const brake = mode === 'tell-brake' || mode === 'brake' || e.braking === true;
+      if (!brake && !LOOSE_MODES.has(mode) && !(e.type === 'ring-forklift' && CHARGE_MODES.has(mode))) continue;
+      const gap = e.x + e.hitbox.x - (w.x + WAGON_HALF);
+      if (gap > -WAGON_HALF && gap < 260) return true;
+    }
+    return false;
+  }
+
+  /** A moto cocking a blow (or a sticker) at the window beside: −1 (far side) / +1 (near side), 0 none. */
+  private motoTell(world: World, w: Wagon): number {
+    const list = world.byTag('ring-handhaver-moto');
+    const lane = nearestLane(w.y);
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i] as Moded;
+      if (!m.alive || !m.mode || !MOTO_TELLS.has(m.mode)) continue;
+      const ml = laneAt(m.y);
+      if (Math.abs(ml - lane) !== 1 || Math.abs(m.x - w.x) > WAGON_HALF + 20) continue;
+      return ml - lane;
+    }
+    return 0;
+  }
+
+  /** A boarder on its bonnet (perched, cocking or hitting). */
+  private boarderOn(world: World, w: Wagon): Entity | null {
+    const list = world.byTag('ring-boarder');
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i] as Moded;
+      if (b.alive && b.aboard && b.wagon === w) return b;
+    }
+    return null;
+  }
+
   /** A car ahead in `lane` the wagon closes in on within 40 ticks (or right on its bumper). */
   private carAhead(world: World, w: Wagon, lane: number): boolean {
     const list = world.byTag('ring-car');
@@ -349,12 +577,12 @@ export class RingBot implements InputSource {
     return false;
   }
 
-  /** L or R away from a bottle that lands on the wagon in its lane (0: none). */
+  /** L or R away from a bottle (or any lob) that lands on the wagon in its lane (0: none). */
   private bottleDodge(r: RingRunner, world: World, w: Wagon): number {
-    const list = world.byTag('ring-bottle');
+    const list = world.entities;
     for (let i = 0; i < list.length; i++) {
-      const b = list[i] as Entity & { landX?: number; landY?: number; ticksLeft?: number };
-      if (!b.alive || b.landX === undefined || b.landY === undefined || b.ticksLeft === undefined) continue;
+      const b = list[i] as Lob;
+      if (!b.alive || !isLobInFlight(b) || b.landX === undefined || b.landY === undefined || b.ticksLeft === undefined) continue;
       if (Math.abs(b.landY - laneY(w.laneTarget)) > 14) continue;
       const wx = w.x + r.roadSpeed * b.ticksLeft;
       const d = b.landX - wx;
@@ -388,12 +616,12 @@ export class RingBot implements InputSource {
     return false;
   }
 
-  /** A bottle about to land on the wagon in its lane (too late to change lanes: swerve). */
+  /** A bottle (or any lob) about to land on the wagon in its lane (too late to change lanes: swerve). */
   private bottleNow(r: RingRunner, world: World, w: Wagon): boolean {
-    const list = world.byTag('ring-bottle');
+    const list = world.entities;
     for (let i = 0; i < list.length; i++) {
-      const b = list[i] as Entity & { landX?: number; landY?: number; ticksLeft?: number };
-      if (!b.alive || b.landX === undefined || b.landY === undefined || b.ticksLeft === undefined) continue;
+      const b = list[i] as Lob;
+      if (!b.alive || !isLobInFlight(b) || b.landX === undefined || b.landY === undefined || b.ticksLeft === undefined) continue;
       if (b.ticksLeft > BOTTLE_SWERVE || Math.abs(b.landY - w.y) > 14) continue;
       if (Math.abs(b.landX - (w.x + r.roadSpeed * b.ticksLeft)) < BOTTLE_REACH) return true;
     }
@@ -434,6 +662,17 @@ export class RingBot implements InputSource {
     }
     return best;
   }
+}
+
+/**
+ * A lob in the air that lands in a lane: a bottle or a road-works cone (`ring-bottle`), a parcel
+ * in flight, the lorry's cargo in flight. Read through `landX`, `landY`, `ticksLeft`.
+ */
+function isLobInFlight(e: Entity): boolean {
+  if (e.hasTag('ring-bottle')) return true;
+  if (e.type === 'ring-parcel') return (e as Lob).ticksLeft! > 0;
+  if (e.type === 'ring-barrel') return (e as Lob).flying === true;
+  return false;
 }
 
 /** Shot speed the aim solver assumes (px/tick; the pistol's 8, the machine gun's 9). */

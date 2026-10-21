@@ -537,7 +537,8 @@ Guide levels: sfx peaks 0.4–0.9, RMS −24…−12 dB; a full song mix peaks b
 restart, from}), voice(line), setVolume('master'|'music'|'sfx'|'voice', v), stopAll(), update?(),
 pauseMusic?(), resumeMusic?(), sfxLoop?(key, id, {vol, pitch, pan}), stopSfx?(key, fadeTicks = 4),
 duckMusic?(factor), setMuted?(m), suspend?(), resume?(), loadSamples?(group, onProgress?),
-say?(text, speaker?, {important}), speaking?(), pauseLoops?(), resumeLoops?() }` and `NullAudio`
+say?(text, speaker?, {important}), speaking?(), pauseLoops?(), resumeLoops?(), setEcho?({delay, feedback,
+mix} | null) }` and `NullAudio`
 (headless, keeps a `log` such as `sfx:ui/move`, the last 256 entries; it has no `loadSamples` /
 `say` / `speaking` / `pauseLoops`, so samples and these calls never change a log). It also re-exports `defineSfx/hasSfx/listSfx/renderSfx`
 and `defineSong/hasSong/listSongs` for one-stop imports. Unknown sfx/song ids play nothing and
@@ -548,6 +549,10 @@ warn once; an unknown or broken song never silences the song that is playing (fa
   a new id replaces it. `stopSfx(key)` fades it out. Owners stop their loops when they die or leave
   (`onRemove`). Optional methods: call them as `audio.sfxLoop?.(…)`.
 - **Ducking**: `duckMusic(0.5)` lowers the music on top of its volume (the pause menu); `duckMusic(1)` restores.
+- **Echo** (opt-in, ring wave B fixer): `setEcho({ delay, feedback, mix })` feeds the sfx bus (the
+  loops too) through a delay with feedback into the master gain (`WebAudioOut` builds the nodes on its
+  first call and keeps the wish until the context exists); `setEcho(null)` fades the wet level to 0.
+  Only the ring's tunnels call it (`ring/cues.ts`, `TUNNEL_ECHO`); `GameAudio` forwards it.
 - **Loop pause**: `pauseLoops()` silences every `sfxLoop` (a gain between the loops and the sfx
   bus; the loops keep running) and `resumeLoops()` brings them back. `GameplayScene` calls them
   when a scene opens on top (pause menu, continue screen); leaving gameplay calls

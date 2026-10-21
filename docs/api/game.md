@@ -645,9 +645,12 @@ the card (tools, tests, `?mission=`); `firstMission()`.
   pushed), `watchKeySplit()`, `joinOpen()`; `JOIN_KEY`, `joinCharacter(other)`, `keySetLine(b, set, who)` (also
   re-exported by gameplay.ts). A `PlayHost` gives `app`, `session`, `demo`, `runner` (`PlayHostRunner`) and
   `preloadArtNow()`.
-- The bridge stores a `MissionBonus { mission, totals, seed? }` under `AMS_BONUS_KEY` (fps/run.ts;
-  `missionBonusOf(v)` also reads the older `[p1, p2]` as ams); the floor-1 tally labels it `<missionLabel>
-  BONUS` (`MISSION 2 BONUS`; `fpsTally(r, { …, amsBonus, bonusLabel })`) and shows `RING SEED n` in its footer.
+- On the normal route the ring shows its own MISSION COMPLETE page (`ringTally` in ring-route.ts: hostages,
+  FINES, the seed in the footer); the bridge then gets `tallied` and writes NO bonus record, so the floor-1
+  tally has no bonus line. Only a bridge that pays a tally silently (a `MissionRunner` before it, no
+  `tallied`) stores a `MissionBonus { mission, totals, seed? }` under `AMS_BONUS_KEY` (fps/run.ts;
+  `missionBonusOf(v)` also reads the older `[p1, p2]` as ams); the floor-1 tally then labels it
+  `<missionLabel> BONUS` (`fpsTally(r, { …, amsBonus, bonusLabel })`) and shows a ring seed in its footer.
   The bridge's story opens with `BRIDGE_OPENING` (`bridgeStory()`): one neutral line.
 - Numbering (`flow-data.ts`): `FPS_ROUTE = ['ams', 'ring', 'fps-1', 'fps-2']`; `missionNumber(id)` = the place
   on that route for ams / ring, else the place in `CAMPAIGN_MISSIONS` (m1 stays `MISSION 2`, passive);

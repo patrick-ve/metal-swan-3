@@ -79,6 +79,14 @@ export function nearestWagon(world: World, x: number, y: number): Wagon | null {
   return best;
 }
 
+/**
+ * An enemy vehicle still entering (mode `enter`) after this many ticks while it is fully off
+ * screen gives up and is removed (no score). Traffic boxed it in behind or ahead of the view, the
+ * player never saw it, and the director counted it as present (review B, 2026-10-21: vans, motos
+ * and tow trucks waited off screen for 5–15 s). A leaving one is removed past either edge.
+ */
+export const ENTER_GIVE_UP = 300;
+
 // ---------------------------------------------------------------------------------------------
 // Layers at another depth
 // ---------------------------------------------------------------------------------------------

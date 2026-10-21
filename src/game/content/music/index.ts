@@ -34,6 +34,8 @@
 import { defineSong } from '../../../engine/audio';
 import { noteToMidi, patternRows } from '../../../engine/music';
 import type { InstrumentDef, SongDef } from '../../../engine/music';
+// Mission ring's songs (`ring`, `ring-boss`); ring.ts imports only the engine (no cycle).
+import './ring';
 
 /** Rows per bar at 4 rows per beat in 4/4. */
 export const BAR = 16;

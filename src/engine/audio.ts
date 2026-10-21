@@ -29,6 +29,13 @@ export interface MusicOpts {
   from?: number;
 }
 
+/** A feedback echo on the sound effects (`AudioOut.setEcho`): seconds, 0 … 0.9, wet 0 … 1. */
+export interface EchoOpts {
+  delay: number;
+  feedback: number;
+  mix: number;
+}
+
 export interface AudioOut {
   sfx(id: string, o?: SfxOpts): void;
   /** Start a song by id, or stop music with null. */
@@ -57,6 +64,11 @@ export interface AudioOut {
   duckMusic?(factor: number): void;
   /** Silence everything without losing the volume settings. */
   setMuted?(muted: boolean): void;
+  /**
+   * A feedback echo on the sound-effect bus (a tunnel), or null to fade it out. Optional and
+   * opt-in (ring wave B, the tunnels): nothing else calls it; headless outputs have none.
+   */
+  setEcho?(o: EchoOpts | null): void;
   /** Suspend / resume all audio output (hidden tab). */
   suspend?(): void;
   resume?(): void;

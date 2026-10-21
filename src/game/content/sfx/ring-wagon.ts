@@ -3,21 +3,26 @@
 // screech of the handbrake turn, the swerve's chirp, the horn, armour hits (a thunk, a ram's crunch,
 // breaking glass), a bump and the wreck. Spread into SFX in sfx/index.ts. Synth recipes only
 // (no samples, no generated audio).
+//
+// Mix pass (wave B, SOUND, 2026-10-21; ids unchanged): the engine hum keeps its low burble
+// (−1.3 dB) but loses 3 dB at 250 Hz–1 kHz and 7 dB at 1–5 kHz (less exhaust noise and square),
+// so shots, tells and hits stay on top of it even with two wagons; the swerve and the armour hit
+// (the player's own feedback) come up 2 dB.
 import { BP, click, fmBell, HP, LP, loopRecipe, noise, tone, type Recipes } from './kit';
 
 export const RING_WAGON: Recipes = {
   // The five-cylinder burble (loop, 0.5 s): a low saw at 56 Hz pulsed by the firing order at
   // 22 Hz, a square an octave up, an exhaust rumble and a faint valve whine. 56 / 112 / 224 Hz and
   // the 22 Hz pulse make whole cycles in 0.5 s. `sfxLoop` pitch 0.6 … 1.4 follows the speed.
-  'ring/wagon-engine': loopRecipe(0.5, 0.5, [
+  'ring/wagon-engine': loopRecipe(0.5, 0.44, [
     { wave: 'saw', freq: 56, vol: 0.55, filter: LP(320), tremolo: { rate: 22, depth: 0.45 } },
-    { wave: 'square', freq: 112, vol: 0.14, filter: LP(520) },
-    { wave: 'noise', vol: 0.22, filter: LP(650), tremolo: { rate: 22, depth: 0.65, shape: 'saw' } },
-    { wave: 'sine', freq: 224, vol: 0.05 },
+    { wave: 'square', freq: 112, vol: 0.1, filter: LP(440) },
+    { wave: 'noise', vol: 0.13, filter: LP(520), tremolo: { rate: 22, depth: 0.65, shape: 'saw' } },
+    { wave: 'sine', freq: 224, vol: 0.04 },
   ]),
   // The swerve: a quick tyre chirp over a whoosh of air.
   'ring/wagon-swerve': {
-    vol: 0.62,
+    vol: 0.78,
     voices: 2,
     gap: 0.12,
     layers: [
@@ -51,7 +56,7 @@ export const RING_WAGON: Recipes = {
   },
   // An armour hit (a bullet, a thrown thing): a dull body-panel thunk with a short ring.
   'ring/wagon-hit': {
-    vol: 0.55,
+    vol: 0.68,
     voices: 3,
     gap: 0.05,
     layers: [

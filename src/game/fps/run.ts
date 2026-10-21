@@ -7,9 +7,11 @@ import type { FpsInput, FpsRun } from './types';
 
 /**
  * The session record of the silent tally at the glitch bridge (spec §1.2; docs/design/ring.md §1):
- * the bridge writes a `MissionBonus` for the mission before it (the ring on the normal route), the
- * floor-1 tally reads it (the `MISSION 2 BONUS` line, named after that mission). An older
- * `[p1, p2]` value still reads as the ams bonus (MISSION 1). One key for both.
+ * a bridge that pays the tally of the mission before it silently (a `MissionRunner` before it, no
+ * own tally page) writes a `MissionBonus`; the floor-1 tally reads it (the `<MISSION n> BONUS` line,
+ * named after that mission). On the normal route the ring shows its own tally page, so the bridge
+ * writes none and floor 1 has no bonus line. An older `[p1, p2]` value still reads as the ams bonus
+ * (MISSION 1). One key for both.
  */
 export const AMS_BONUS_KEY = 'fps/ams-bonus';
 

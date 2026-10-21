@@ -10,6 +10,10 @@
 //   of the expansion joints, the wind through the railing.
 //
 // The tremolo and LFO rates make whole cycles in the loop, so the seam is clean.
+//
+// Mix pass (wave B, SOUND, 2026-10-21; ids unchanged): the tunnel bed sits 1.3 dB lower, and
+// 3.5 dB lower at 1–5 kHz (less of the 700 Hz band, which masked the tells); each joint slap now
+// has two echoes off the walls (+0.11 s, +0.23 s), so the tube sounds hollow under the music.
 import { BP, HP, hits, LP, loopRecipe, noise, tone, type Recipes } from './kit';
 
 const TUNNEL_LEN = 2.4;
@@ -18,18 +22,22 @@ const BRIDGE_LEN = 1.6;
 export const RING_SCENERY: Recipes = {
   'ring/tunnel-bed': loopRecipe(
     TUNNEL_LEN,
-    0.7,
+    0.6,
     [
       // The roar of the tube: low noise, swelling as tyres pass.
       { wave: 'noise', vol: 0.55, filter: LP(260), tremolo: { rate: 2 / TUNNEL_LEN, depth: 0.35 } },
-      { wave: 'noise', vol: 0.18, filter: BP(700, undefined, 1.2), tremolo: { rate: 3 / TUNNEL_LEN, depth: 0.5 } },
+      { wave: 'noise', vol: 0.12, filter: BP(700, undefined, 1.2), tremolo: { rate: 3 / TUNNEL_LEN, depth: 0.5 } },
       // The jet fans' hum (two close tones beating).
       { wave: 'sine', freq: 55, vol: 0.12 },
       { wave: 'sine', freq: 55 + 5 / TUNNEL_LEN, vol: 0.08 },
       { wave: 'noise', vol: 0.05, filter: HP(3200), tremolo: { rate: 4 / TUNNEL_LEN, depth: 0.6 } },
     ],
     // Joint slaps with their echo off the walls.
-    hits(4, 0.2, TUNNEL_LEN / 4).flatMap((t) => [noise(0.05, 0.3, BP(520, undefined, 2), { delay: t }), noise(0.05, 0.12, BP(520, undefined, 2), { delay: t + 0.11 })]),
+    hits(4, 0.2, TUNNEL_LEN / 4).flatMap((t) => [
+      noise(0.05, 0.34, BP(520, undefined, 2), { delay: t }),
+      noise(0.05, 0.16, BP(480, undefined, 2), { delay: t + 0.11 }),
+      noise(0.06, 0.07, BP(440, undefined, 2), { delay: t + 0.23 }),
+    ]),
   ),
   'ring/bridge-rumble': loopRecipe(
     BRIDGE_LEN,

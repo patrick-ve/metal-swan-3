@@ -2790,6 +2790,8 @@ Instrument names are the engine presets (`pulse12`, `pulse25`, `pulse50`, `trian
 | `high-score` | name entry, high scores | perky | 132 | A major | short `pulse25` melody, `triangle` bass | 8-bar loop |
 | `ams` | mission `ams` (THE FRYING DUTCHMAN) | a cheerful Amsterdam street-organ waltz | 150 | F major, 3/4 (`rowsPerBeat: 3`, 9 rows per bar) | organ (`pad`) lead doubled by a `pulse12` piping rank an octave up, FM glockenspiel counter-line, `triangle` oom on 1, `pulse25` chords on 2 and 3, kick + rim | intro 4 → A 16 → B 16 (B♭ major) → A′ 16 (glockenspiel in thirds, a second organ voice) → loop to A |
 | `ams-boss` | ROBO-HALSEMA (`ams-mayor`) | driving, bossy, a little pompous | 160 | D minor | 16th-note `saw` bass ostinato, organ stabs in a 3+3+2 push, bold `pulse12` lead, snare rolls into each phrase | intro 4 → A 16 → B 16 ("rules are rules" call) → C 8 (organ break, rising build) → loop to A |
+| `ring` | mission `ring` (DE RING, the A10) | a highway drive: steady, bright, never tiring | 140 | A major (mixolydian G) | motorik pulse (`saw` bass in 8ths with an octave pop, kick on 1 and 3, a steady hat); a bright `pulse25` lead calls the hook (a syncopated leap up and a fall back), a brassy detuned `saw` answers two bars later (call and response); a `pulse12` 16th "streetlight" arpeggio and a dark `pad` in B; ride in B, open hats in C, rim "blinker" and shaker in D | intro 4 → A 16 (call / response, then the long phrase) → B 16 (the singing line over D–E–C♯m–F♯m, a climbing build onto F♯) → C 8 (`'C+2'`: THE LIFT, the hook a whole step up in B major, the lead doubled an octave up, 16th bass) → D 8 (breakdown in F♯m, a snare build) → loop to A (82.3 s). The tunnels jump to C (`ring/cues.ts`) |
+| `ring-boss` | the ring's test mid-boss (the container lorry) | heavy, urgent, the theme turned dark | 152 | F♯ minor | 16th-note `saw` "air-brake" ostinato, off-beat detuned `saw` stabs in a 3+3+2 push, the ring hook bent into minor on the `pulse25` lead, a `saw` double an octave down in B | intro 2 (snare roll) → A 8 → B 8 (long defiant notes) → C 8 (half-time, the major call returns, a build) → loop to A (37.9 s) |
 
 ### 12.3 Announcer lines (`audio.voice`; jingle fallback)
 
@@ -2849,11 +2851,13 @@ Debug: `?mode=bridge` starts at the bridge, `?mode=fps&floor=0|1|2` at a floor.
 (the ring's card: `MISSION 2`, `DE RING`, a line map of the A10 with its dot on the on-ramp at
 A10 Oost) → `Ring` (`RingScene`: the A10 in a station wagon; ⇄ `Pause`; player 2 joins at any
 time with START on a free pad or the key 2 and gets a wagon of their own; the in-world continue
-as in 13.9) → `GlitchBridge` (its first story line is a neutral one until the ring's story
-exists) → `FpsIntro` → `Fps` floor 1 (level 3) … → `Ending`. The bridge records the ring's clear
-and pays the ring's tally silently: the floor-1 tally shows it as `MISSION 2 BONUS`, with the
-ring's seed in the footer. Every play gets a fresh ring seed (`?seed=` fixes it; the debug
-overlay shows it). High scores: the ring is column `M2` (the passive m1 keeps its old `M2`).
+as in 13.9) → `MissionComplete` (the ring's own tally page: the newspaper with the ring's
+hostages, a FINES info line and the bonus lines; the ring's seed in the footer) → `GlitchBridge`
+(it freezes that page; its first story line is a neutral one until the ring's story exists) →
+`FpsIntro` → `Fps` floor 1 (level 3) … → `Ending`. The ring's page pays its tally; the bridge
+records the clear and pays nothing, and the floor-1 tally has no bonus line for the ring (wave B,
+2026-10-21). Every play gets a fresh ring seed (`?seed=` fixes it; the debug overlay and the
+ring's tally page show it). High scores: the ring is column `M2` (the passive m1 keeps its old `M2`).
 ALL GOLDEN RECORDS on this route needs ams, the ring, fps-1 and fps-2. Debug: `?mission=ring`
 (+ `section=<landmark>`, `seed`, `players`, `char`, `god`, `debug`, `art`, `res`, `difficulty`)
 starts the ring directly; F4 skips to the next stretch (or kills the boss on screen).
@@ -3356,7 +3360,19 @@ Mission `ring` (2026-10-20, docs/design/ring.md §11; synth tables `sfx/ring-<ar
 `ring/cam-beep`, `ring/horns`, `ring/cone`, `ring/crash`, `ring/dent`, `ring/crate`,
 `ring/cage-hit`, `ring/hop`, `ring/scooter-whine`, `ring/scooter-honk`, `ring/pistol-cock`,
 `ring/bottle-tell`, `ring/throw`, `ring/bottle`, `ring/scooter-crash`, `ring/scooter-down`; the
-ambience loops `ring/tunnel-bed` and `ring/bridge-rumble`.
+ambience loops `ring/tunnel-bed` and `ring/bridge-rumble`. Wave B (2026-10-21): the parcel vans and
+the caravan `ring/van-door`, `ring/parcel-lift`, `ring/parcel-thud`, `ring/parcel-tear`,
+`ring/brake-tell`, `ring/brake-squeal`, `ring/van-limp`, `ring/hitch-creak`, `ring/hitch-snap`,
+`ring/caravan-scrape`, `ring/caravan-tip`, `ring/card-slap`; the convoy `ring/scan-beep`,
+`ring/scan-lock`, `ring/indicator`, `ring/hook-swing`, `ring/hook-clank`, `ring/winch`,
+`ring/cable-snap`, `ring/moto-whine`, `ring/baton-draw`, `ring/baton-swing`, `ring/sticker-slap`,
+`ring/sticker-peel`; the road-works crew and the boarders `ring/crew-beeper`,
+`ring/crew-cone-lift`, `ring/crew-cone-throw`, `ring/crew-cone-hit`, `ring/crew-hop-tell`,
+`ring/crew-hop`, `ring/crew-swing-tell`, `ring/crew-boot`, `ring/crew-knocked`, `ring/crew-wreck`;
+the test lorry `ring/lorry-horn`, `ring/lorry-door`, `ring/lorry-brake`, `ring/lorry-blink`,
+`ring/lorry-roll`, `ring/lorry-thud`, `ring/lorry-barrel`, `ring/lorry-crate`, `ring/lorry-panel`,
+`ring/lorry-slam`, `ring/lorry-scrape`, `ring/lorry-screech`, `ring/forklift-whine`,
+`ring/forklift-beep`.
 
 Added 2026-10-14 with the sampled audio of ams and the start screens (each id has a quiet synth
 recipe as the fallback of its ElevenLabs take): `player/step` (footsteps in missions with
@@ -3663,9 +3679,22 @@ playing hero sits in the passenger window and shoots.
 - **Wave A (the mechanism, 2026-10-20):** the boarding scene, the scooter gang, civilian traffic
   (cover, never destroyed), matrix gantries and lane closures, speed cameras and the
   average-speed zone (fines), the traffic jam (a scooter gang filters in between the stopped
-  cars), tunnels, crates, hostage vans, 2P, the in-world continue, the exit. The parcel vans,
-  the enforcement convoy, the caravan car, the road-works crew, the jam's foot boarders and the
-  test mid-boss (the lorry) are wave B; their plan slots are skipped safely until then.
+  cars), tunnels, crates, hostage vans, 2P, the in-world continue, the exit.
+- **Wave B (the enemies, the test boss and the sound, 2026-10-21):** parcel vans (a parcel
+  thrower or a gunner, the brake check), the caravan car (the roof-hatch gunner; the caravan
+  comes loose, swerves, tips and slides onto the hard shoulder), the enforcement convoy (the scan
+  car's SCAN LOCK lane, the tow truck's hook, handhaver motorbikes with a baton or a fine sticker
+  that blocks the hero's back aims), the road-works crew (cone lobs, a cone line closes the lane behind
+  the truck), the jam's foot boarders (ams handhavers and stag partiers hop onto the bonnet: the
+  knife, a shot or a swerve), the test mid-boss in `westpoort` (the container lorry `ZWARE
+  JONGEN`: two phases, a forklift, a jackknife). Hostages ride in parcel vans and caravans (shoot
+  the grille). The gloat of every new enemy (no pointing, no laughing: the NIET THUIS card, the
+  fine for parking on the hard shoulder, the coffee break, the jam selfie) and its cower. The
+  synth stage theme `ring` and the boss song `ring-boss` (§12.2; the tunnel lift), the drivers'
+  lines for every event. The ring ends with its own MISSION COMPLETE page (hostages, FINES, the
+  bonus lines; the seed in the footer), then the glitch bridge; the floor-1 tally no longer
+  shows the ring. A player's wagon hidden behind a nearer vehicle shows its outline over the
+  cover (an x-ray in the player's colour).
 
 **`docs/design/ring.md` is the spec of this mission and wins over this document for it**
 (numbers, landmarks, enemies, hazards, art, sound, tests). The runtime, the generator, the

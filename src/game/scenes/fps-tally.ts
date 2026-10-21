@@ -5,9 +5,10 @@
  *
  * KILLS n% (10,000 at 100 %), SECRETS a/b (10,000 when all found), TREASURE n% (10,000 at 100 %),
  * TIME m:ss PAR m:ss ((par − seconds) × 500 under par), the bonus info lines of the mission before
- * the bridge on floor 1 (`MISSION 2 BONUS`: the ring, docs/design/ring.md §1; paid at the bridge;
- * not in TOTAL; the ring's seed in the footer), DIFFICULTY (× 0.5 / 1.0 / 1.5), TOTAL (counted
- * into the score; extends apply).
+ * the bridge on floor 1 (`<MISSION n> BONUS`, only when the bridge paid that mission's tally
+ * silently and wrote a bonus record; not in TOTAL; a ring seed in the footer; on the normal route
+ * the ring has its own tally page, so there is no such line), DIFFICULTY (× 0.5 / 1.0 / 1.5), TOTAL
+ * (counted into the score; extends apply).
  *
  * A line every 30 ticks with `ui/tally-tick`, TOTAL with `ui/tally-end`, `fps/tally-100` under a
  * 100 % ratio. PRESS START: the first press shows the page and pays out; it moves on by itself
@@ -83,7 +84,7 @@ export interface TallyOpts {
   slot: number;
   /** The bonus amounts [p1, p2] of the mission before the bridge (floor 1 only; undefined = no line). */
   amsBonus?: readonly [number, number];
-  /** The bonus line's label (default `MISSION 1 BONUS`; the ring's: `MISSION 2 BONUS`). */
+  /** The bonus line's label (default `MISSION 1 BONUS`; from the bonus record's mission). */
   bonusLabel?: string;
   /** The waiting slot is joined (its bonus info line follows). */
   otherJoined?: boolean;
