@@ -15,8 +15,8 @@
  * S114 and the Zeeburgerbrug) is in `after` — fixed set-piece chunks outside the landmark's range,
  * so the view's tunnel darkness and the 3 lanes end at the portal.
  */
-import type { RingLandmarkId } from './ids';
-import { RING_LANDMARKS } from './ids';
+import type { RingLandmarkId, RingRoute } from './ids';
+import { RING_FULL_ROUTE_BOSS, RING_LANDMARKS, RING_ROUTES, RING_ZWAAN } from './ids';
 import type { RingChunkType, RingPlan } from './types';
 
 /** One fixed chunk of a set piece. */
@@ -30,6 +30,8 @@ export interface RingSetPieceChunk {
   readonly scene?: boolean;
   /** Skyline district when it differs from the landmark's. */
   readonly district?: string;
+  /** Planned road speed (px/tick; default cruise): the final jam crawls (revision R). */
+  readonly speed?: number;
 }
 
 export interface RingLandmarkDef {
@@ -57,8 +59,16 @@ export interface RingLandmarkDef {
   readonly tunnelName?: string;
   /** Relative share of the generated road (0 = no road after it: the exit). */
   readonly share: number;
-  /** A boss slot `offset` px into the set piece (the plan's `bosses`). */
-  readonly boss?: { readonly id: string; readonly offset: number; readonly lane: number };
+  /**
+   * A boss slot `offset` px into the set piece (the plan's `bosses`); `inTail`: `offset` px into
+   * the `tail` instead (revision R: the short route's ZWAAN truck at the end of `zuid`).
+   */
+  readonly boss?: { readonly id: string; readonly offset: number; readonly lane: number; readonly inTail?: boolean };
+  /**
+   * Revision R: fixed chunks AFTER the stretch's generated road (`RingChunk.tail`), the last chunks
+   * of the plan on the short route: the boss chunk and the `final-jam` scene chunk.
+   */
+  readonly tail?: readonly RingSetPieceChunk[];
   /** Its road may hold a jam (the director picks 1–2 of these stretches). */
   readonly jam?: boolean;
   /** Flavour for the scenery and the docs (what its skyline shows). */
@@ -186,7 +196,7 @@ export const RING_LANDMARK_DEFS: readonly RingLandmarkDef[] = [
     ringKm: 28.6,
     limit: 100,
     share: 0.84,
-    boss: { id: 'ring-lorry', offset: 192, lane: 1 },
+    boss: { id: RING_FULL_ROUTE_BOSS, offset: 192, lane: 1 },
     places: ['S101 Hemhavens', 'the port cranes'],
   },
   {
@@ -265,6 +275,35 @@ export const RING_LANDMARK_DEFS: readonly RingLandmarkDef[] = [
 // The defs follow ids.ts exactly (a programming error otherwise).
 if (RING_LANDMARK_DEFS.map((d) => d.id).join() !== RING_LANDMARKS.join()) throw new Error('ring landmarks out of order');
 
+/**
+ * Revision R (docs/design/ring.md §R.2): the short route's tail at the Zuidas: the boss chunk (the
+ * ZWAAN truck's slot `ZWAAN_SLOT_OFFSET` px into it; the plan is locked while the train fights),
+ * then the final jam (a `jam` scene chunk: the road crawls into the standing queue, then the alight
+ * scene and the hand-over to the on-foot part).
+ */
+export const SHORT_BOSS_CHUNK = 384;
+export const ZWAAN_SLOT_OFFSET = 64;
+export const FINAL_JAM_CHUNK = 384;
+/** The final jam's planned crawl (px/tick). */
+export const FINAL_JAM_CRAWL = 1.2;
+
+/** `zuid` on the short route: the same set piece, then its road, then the tail with the truck. */
+const ZUID_SHORT: RingLandmarkDef = {
+  ...RING_LANDMARK_DEFS[RING_LANDMARKS.indexOf('zuid')],
+  jam: false,
+  boss: { id: RING_ZWAAN.controller, offset: ZWAAN_SLOT_OFFSET, lane: 1, inTail: true },
+  tail: [
+    { type: 'cruise', part: 'boss', length: SHORT_BOSS_CHUNK },
+    { type: 'jam', part: 'final-jam', length: FINAL_JAM_CHUNK, scene: true, speed: FINAL_JAM_CRAWL },
+  ],
+};
+
+/** The landmark defs of a route, in order (the director reads these; `full` = RING_LANDMARK_DEFS). */
+export function routeDefs(route: RingRoute): readonly RingLandmarkDef[] {
+  if (route === 'full') return RING_LANDMARK_DEFS;
+  return RING_ROUTES.short.map((id) => (id === 'zuid' ? ZUID_SHORT : landmarkDef(id)));
+}
+
 /** The def of a landmark id. */
 export function landmarkDef(id: RingLandmarkId): RingLandmarkDef {
   return RING_LANDMARK_DEFS[RING_LANDMARKS.indexOf(id)];
@@ -315,8 +354,12 @@ export function ringKmAt(plan: Pick<RingPlan, 'landmarks' | 'length'>, d: number
       if (b !== null) return b;
     }
   }
-  const e = step(plan.length, RING_KM_END);
-  return e !== null ? e : wrapKm(RING_KM_END);
+  // The plan end: back at S113 after the full loop; a shorter route ends before the next landmark.
+  const lastId = plan.landmarks[plan.landmarks.length - 1]?.id;
+  const nextDef = lastId ? RING_LANDMARK_DEFS[RING_LANDMARKS.indexOf(lastId) + 1] : undefined;
+  const endKm = nextDef && lastId !== 'exit' ? nextDef.ringKm : RING_KM_END;
+  const e = step(plan.length, endKm);
+  return e !== null ? e : wrapKm(endKm);
 }
 
 /** '12,3' (the Dutch decimal comma of the hectometre boards: `A10 12,3 Re`). */

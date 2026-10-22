@@ -12,7 +12,7 @@
  * changes the ring.
  */
 import type { Difficulty } from '../session';
-import type { RingLandmarkId } from './ids';
+import type { RingLandmarkId, RingRoute } from './ids';
 
 export type { RingLandmarkId } from './ids';
 
@@ -122,6 +122,13 @@ export interface RingChunk {
   readonly district?: string;
   /** Speed limit on its signs (km/h). */
   readonly limit?: 80 | 100;
+  // ---- Revision R (optional) -------------------------------------------------------------------
+  /**
+   * A fixed chunk AFTER the stretch's generated road (landmarks.ts `tail`; the short route's `zuid`:
+   * the boss chunk `part: 'boss'` and the `final-jam` scene chunk). Outside the 4-second rule, no
+   * plan waves, hostages or direction signs in it.
+   */
+  readonly tail?: boolean;
 }
 
 /** A direction sign spot (scenery): the S-shield of `exit` at plan distance `at`. */
@@ -193,6 +200,9 @@ export interface RingPlan {
   readonly exitSigns?: readonly RingExitSign[];
   /** The content wave the plan was made for ('A' = wave-A ids only, 'B' = wave-B templates too). */
   readonly wave?: 'A' | 'B';
+  // ---- Revision R (optional) -------------------------------------------------------------------
+  /** The route (docs/design/ring.md §R.2); absent = 'full' (plans made before revision R). */
+  readonly route?: RingRoute;
 }
 
 /**
@@ -263,3 +273,19 @@ export const RING = Object.freeze({
   startX: [150, 110] as readonly number[],
   startLane: [3, 4] as readonly number[],
 });
+
+// ---- Revision R: the world events of the ZWAAN train (content/ring/zwaan/, docs/api/ring.md) -----
+declare module '../../engine/world' {
+  interface WorldEvents {
+    /**
+     * A part of the ZWAAN train: its fight starts (`start`: its first phase) or it is beaten
+     * (`beaten`: its death sequence begins). Emitted by the controller (`ring-zwaan`).
+     */
+    ringTrainPart: { part: string; index: number; phase: 'start' | 'beaten' };
+    /**
+     * The whole train is beaten (the cab's death): the ring's boss end (`bossEndTick`), the music
+     * back to the stage theme, the boss speed bonus. Emitted once by the controller.
+     */
+    ringTrainDone: { controller: import('../../engine/entity').Entity };
+  }
+}

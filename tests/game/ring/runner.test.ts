@@ -11,6 +11,7 @@ import { SoftRenderer } from '../../../src/engine/render-soft';
 import type { Renderer } from '../../../src/engine/render';
 import type { World } from '../../../src/engine/world';
 import { defineEntity } from '../../../src/game/registry';
+import '../../../src/game/content/ring/foot/index';
 import { ringArtDef } from '../../../src/game/ring/art-def';
 import { RING_HOOKS } from '../../../src/game/ring/hooks';
 import { laneY } from '../../../src/game/ring/lanes';
@@ -49,10 +50,10 @@ class TestBoss extends Entity {
 defineEntity('test-ring-boss', (w, x, y) => new TestBoss(w, x, y), { category: 'boss' });
 
 describe('RingRunner', () => {
-  it('runs the stub plan (planRing) to complete with no errors, skipping unknown ids', () => {
+  it('runs the full route (planRing route full) to complete with no errors, skipping unknown ids', () => {
     const session = new GameSession({ characters: ['vincent'], seed: 9 });
     const pads: [VirtualPad, VirtualPad] = [new VirtualPad(), new VirtualPad()];
-    const runner = new RingRunner({ session, pads, seed: 9 });
+    const runner = new RingRunner({ session, pads, seed: 9, plan: planRing(9, 'normal', { route: 'full' }) });
     runner.world.god = true;
     let complete = 0;
     runner.events.on('complete', () => complete++);
@@ -235,10 +236,41 @@ describe('RingRunner', () => {
     expect(w.errors).toEqual([]);
   });
 
+  it('revision R: the short route (the default) ends in the alight and hands over: no victory, no tally, the stats stay', () => {
+    const session = new GameSession({ characters: ['vincent'], seed: 9 });
+    const pads: [VirtualPad, VirtualPad] = [new VirtualPad(), new VirtualPad()];
+    const runner = new RingRunner({ session, pads, seed: 9 });
+    expect(runner.plan.route).toBe('short');
+    runner.world.god = true;
+    let handover = 0;
+    let complete = 0;
+    runner.events.on('handover', () => handover++);
+    runner.events.on('complete', () => complete++);
+    runner.start();
+    const slot = session.slots[0];
+    slot.addScore(1234);
+    for (let i = 0; i < 20_000 && runner.state === 'playing'; i++) runner.update();
+    expect(runner.state).toBe('handover');
+    expect(runner.handedOver).toBe(true);
+    for (let i = 0; i < 30; i++) runner.update();
+    expect(handover).toBe(1);
+    expect(complete).toBe(0);
+    expect(session.completed).not.toContain('ring');
+    expect(slot.score).toBeGreaterThanOrEqual(1234);
+    expect(slot.mission.route).toEqual(['oost', 'amstel', 'zuid']);
+    const r = runner.report();
+    expect(r.errors).toEqual([]);
+    expect(r.route).toBe('short');
+    expect(r.handedOver).toBe(true);
+    expect(r.complete).toBe(false);
+    expect(r.distance).toBe(runner.plan.length);
+  });
+
   it('gives the art definition its stretches, the drivers and the always-resident art', () => {
     const plan = planRing(3, 'normal');
     const def = ringArtDef(plan, ['thom', null]);
-    expect(Object.keys(def.sections ?? {})).toEqual(plan.stretches.map((s) => s.id));
+    // Revision R: the stretches, the train's pseudo-sections after zuid, the foot sections.
+    expect(Object.keys(def.sections ?? {})).toEqual([...plan.stretches.map((s) => s.id), 'zwaan:0', 'zwaan:1', 'zwaan:2', 'zwaan:3', 'zwaan:4', 'rf-a', 'rf-b']);
     expect(def.extraChar).toEqual(['char/thom/ride-', 'char/thom/mount']);
     expect(def.preloadFirst).toContain('ring/wagon/');
     expect(def.start).toBe(plan.stretches[0].id);

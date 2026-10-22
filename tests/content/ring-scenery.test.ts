@@ -183,7 +183,7 @@ describe('ring scenery art', () => {
 });
 
 describe('ring scenery streaming', () => {
-  const plan = planRing(7, 'normal');
+  const plan = planRing(7, 'normal', { route: 'full' });
 
   it('makes chunks ahead and evicts them behind the camera', () => {
     const view = new RingView(plan, 7, 1);
@@ -226,7 +226,7 @@ describe('ring scenery streaming', () => {
 
   it('is deterministic per seed: the same seed paints the same chunks; another seed differs', () => {
     const paint = (seed: number): string[] => {
-      const p = planRing(seed, 'normal');
+      const p = planRing(seed, 'normal', { route: 'full' });
       const view = new RingView(p, seed, 1);
       const out: string[] = [];
       for (const st of p.stretches.slice(0, 4)) {
@@ -243,7 +243,7 @@ describe('ring scenery streaming', () => {
 });
 
 describe('ring tunnels, marks, boards and ambience', () => {
-  const plan = planRing(3, 'normal');
+  const plan = planRing(3, 'normal', { route: 'full' });
   const coen = plan.landmarks.find((l) => l.id === 'coentunnel');
 
   it('tunnels: darkness between the portals, none in the open; the portal piece, 3 lanes, the echo bed', () => {

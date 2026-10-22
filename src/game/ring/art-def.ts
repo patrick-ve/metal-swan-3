@@ -16,10 +16,21 @@
  * - `denseReserve`: the streamed scenery's 4× reserve (`RING_SCENERY_RESERVE`, view.ts); the
  *   tier-4 run keeps the sprites inside the budget minus it.
  * Builders register the art of their entity ids with `defineRingArt(id, prefixes)`.
+ *
+ * Revision R (docs/design/ring.md §R.10): ONE tier-4 run for the whole level —
+ * - the ZWAAN train's art goes per part: after the stretch of the truck's slot come the
+ *   pseudo-sections `zwaan:0` … `zwaan:4` (`zwaanArtSection(i)`: part i, the part after it, which
+ *   waits in front of it, and the part before it, whose wreck drops back); the RingScene enters them as the parts come in (the slot, each beaten
+ *   part), so the whole train is never resident at once (the parts' prefixes are not in
+ *   `preloadLast`);
+ * - the foot sections (`rf-a`, `rf-b`; content/ring/foot/) follow the stretches (same id `ring`:
+ *   `startDense` keeps the run at the hand-over), with their own reserve (`sectionReserve`).
  */
+import { RF_SCENERY_RESERVE } from '../content/ring/foot/ids';
 import type { SectionDef } from '../mission/types';
 import type { MissionArtDef } from '../scenes/gameplay';
-import { landmarkDecor, RING_ART, RING_ENTITY, RING_ENTITY_B, RING_ID } from './ids';
+import { RING_HOOKS } from './hooks';
+import { landmarkDecor, RING_ART, RING_ENTITY, RING_ENTITY_B, RING_ID, RING_ZWAAN, RING_ZWAAN_ORDER } from './ids';
 import type { RingPlan } from './types';
 import { RING_SCENERY_RESERVE } from './view';
 
@@ -67,7 +78,6 @@ const ENTITY_ART = new Map<string, readonly string[]>([
   [RING_ENTITY_B.towTruck, ['ring/tow-truck/']],
   [RING_ENTITY_B.handhaverMoto, ['ring/handhaver-moto/']],
   [RING_ENTITY_B.roadworks, ['ring/roadworks/']],
-  [RING_ENTITY_B.lorry, ['boss/ring-lorry/']],
 ]);
 
 /** Register (or replace) the sprite prefixes of a ring entity id. */
@@ -83,6 +93,11 @@ export function ringEntityArt(id: string): readonly string[] {
 /** The ring's art definition plus the additive `extraChar` field (gameplay.ts `MissionArtDef`). */
 export type RingArtDef = MissionArtDef & { readonly extraChar: readonly string[]; readonly denseReserve: number };
 
+/** The tier-4 pseudo-section of the ZWAAN train's part `i` (0 = the container … 4 = the cab). */
+export function zwaanArtSection(i: number): string {
+  return `zwaan:${i}`;
+}
+
 /** The drivers' strips that join the working set (`char/<id>/ride-*`, `char/<id>/mount`). */
 export function driverArt(drivers: readonly (string | null | undefined)[]): string[] {
   const out: string[] = [];
@@ -93,6 +108,9 @@ export function driverArt(drivers: readonly (string | null | undefined)[]): stri
 /** The MissionArtDef of a plan (sections = stretches); `drivers` = the drivers' hero ids. */
 export function ringArtDef(plan: RingPlan, drivers: readonly (string | null | undefined)[] = []): RingArtDef {
   const sections: Record<string, Pick<SectionDef, 'art'>> = {};
+  const reserve: Record<string, number> = {};
+  const trainAt = plan.bosses.find((b) => b.id === RING_ZWAAN.controller);
+  const trainParts = new Set<string>(RING_ZWAAN_ORDER);
   for (const st of plan.stretches) {
     // Every family the stretch uses (a family on many stretches stays in the set on each of them).
     const art: string[] = [landmarkDecor(st.id)];
@@ -106,6 +124,27 @@ export function ringArtDef(plan: RingPlan, drivers: readonly (string | null | un
       }
     }
     sections[st.id] = { art };
+    reserve[st.id] = RING_SCENERY_RESERVE;
+    // Revision R: the train's parts after the stretch of its slot (see the header).
+    if (trainAt && trainAt.at >= st.start && trainAt.at < st.end) {
+      RING_ZWAAN_ORDER.forEach((id, i) => {
+        // The part before too (integrator, wave A): its wreck drops back and its animals graze on
+        // the shoulder while the next part fights (else they fell back to 1× art). The peak stays
+        // far under the budget (zwaan:4 2P about 150 of 256 MB with the reserve).
+        const ids = [RING_ZWAAN_ORDER[i - 1], id, RING_ZWAAN_ORDER[i + 1]].filter((x): x is (typeof RING_ZWAAN_ORDER)[number] => !!x);
+        sections[zwaanArtSection(i)] = { art: [...new Set(ids.flatMap((x) => ringEntityArt(x)))] };
+        reserve[zwaanArtSection(i)] = RING_SCENERY_RESERVE;
+      });
+    }
+  }
+  // Revision R: the on-foot part (the same run; its own reserve).
+  // (The hook is set by the `ring/foot` content; without it, e.g. in a test without content, the
+  // def has the stretches only.)
+  const foot = RING_HOOKS.footDef?.(plan);
+  for (const id of Object.keys(foot?.sections ?? {})) {
+    if (!foot) break;
+    sections[id] = { art: [...(foot.sections[id].art ?? [])] };
+    reserve[id] = RF_SCENERY_RESERVE;
   }
   const last: string[] = [];
   let bossSection: string | undefined;
@@ -123,9 +162,12 @@ export function ringArtDef(plan: RingPlan, drivers: readonly (string | null | un
     sections: sections as unknown as Record<string, SectionDef>,
     bossSection,
     preloadFirst: RING_PRELOAD_FIRST,
-    preloadLast: [...new Set(last)],
+    // The train's parts are in their pseudo-sections, never all at once.
+    preloadLast: [...new Set(last)].filter((p) => ![...trainParts].some((id) => ringEntityArt(id).includes(p))),
     extraChar: driverArt(drivers),
-    // The streamed 4× scenery (view.ts) has its own reserve inside the same 256 MB.
+    // The streamed 4× scenery (view.ts) has its own reserve inside the same 256 MB …
     denseReserve: RING_SCENERY_RESERVE,
+    // … the foot sections their SectionView's (revision R).
+    sectionReserve: reserve,
   };
 }

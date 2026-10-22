@@ -423,6 +423,35 @@ function drawTimer(r: Renderer, runner: HudRunner, ticks: number): void {
   txt(r, String(Math.max(0, t)).padStart(2, '0'), 192, 6, col, 'center', 'big');
 }
 
+/**
+ * Revision R (docs/design/ring.md §R.3): an OPTIONAL field a Boss may carry (`barPips`, duck-typed;
+ * the Boss class itself is unchanged): `total` parts of a multi-part boss, `left` of them still to
+ * beat (the active one counts). Drawn only when present: a strip of pips under the boss bar
+ * (y 213, 2 px high, centred; gold = left, dark = beaten).
+ */
+export interface BossBarPips {
+  readonly total: number;
+  readonly left: number;
+}
+
+/** The pip strip of `drawBossBar` (see `BossBarPips`). */
+function drawBossPips(r: Renderer, pips: BossBarPips): void {
+  const n = Math.max(0, Math.min(12, Math.floor(pips.total)));
+  if (n <= 0) return;
+  const pw = 8;
+  const gap = 3;
+  const total = n * pw + (n - 1) * gap;
+  const x0 = (VIEW_W >> 1) - (total >> 1);
+  const y = 213;
+  r.rect(x0 - 1, y - 1, total + 2, 4, INK, iconOpts);
+  for (let i = 0; i < n; i++) {
+    const on = i < pips.left;
+    const x = x0 + i * (pw + gap);
+    r.rect(x, y, pw, 2, on ? PAL.gold[2] : PAL.stone[1], iconOpts);
+    if (on) r.rect(x, y, pw, 1, GOLD, iconOpts);
+  }
+}
+
 /** Destroyed-part counts seen per boss (a new break flashes the bar white). */
 const brokenSeen = new WeakMap<Boss, { parts: number; flash: number }>();
 
@@ -452,6 +481,9 @@ function drawBossBar(r: Renderer, runner: HudRunner, ticks: number): void {
   txt(r, boss.name, VIEW_W >> 1, 198, GOLD, 'center');
   const fill = Math.round(w * Math.max(0, Math.min(1, boss.healthFrac)));
   const d = hudDensity(r);
+  // Revision R (opt-in): a multi-part boss (the ring's ZWAAN train) shows the parts left as pips.
+  const pips = (boss as Boss & { barPips?: BossBarPips | null }).barPips;
+  if (pips) drawBossPips(r, pips);
   if (d > 1) {
     r.frame(widget(W_TROUGH, w + 2, 6, 1, d), x - 1, y - 1, iconOpts);
     drawBarHd(r, x, y, w, 4, fill, flash ? WHITE : PAL.red[2], d);

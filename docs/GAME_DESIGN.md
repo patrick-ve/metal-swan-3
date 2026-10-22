@@ -2851,7 +2851,9 @@ Debug: `?mode=bridge` starts at the bridge, `?mode=fps&floor=0|1|2` at a floor.
 (the ring's card: `MISSION 2`, `DE RING`, a line map of the A10 with its dot on the on-ramp at
 A10 Oost) → `Ring` (`RingScene`: the A10 in a station wagon; ⇄ `Pause`; player 2 joins at any
 time with START on a free pad or the key 2 and gets a wagon of their own; the in-world continue
-as in 13.9) → `MissionComplete` (the ring's own tally page: the newspaper with the ring's
+as in 13.9; revision R, 2026-10-22: the short drive and the ZWAAN truck, then a hand-over without a
+tally to an on-foot `Gameplay` with an unregistered def of the same id `ring` (`rf-a`, `rf-b`), whose
+end opens the one tally below) → `MissionComplete` (the ring's own tally page: the newspaper with the ring's
 hostages, a FINES info line and the bonus lines; the ring's seed in the footer) → `GlitchBridge`
 (it freezes that page; its first story line is a neutral one until the ring's story exists) →
 `FpsIntro` → `Fps` floor 1 (level 3) … → `Ending`. The ring's page pays its tally; the bridge
@@ -3695,6 +3697,32 @@ playing hero sits in the passenger window and shoots.
   bonus lines; the seed in the footer), then the glitch bridge; the floor-1 tally no longer
   shows the ring. A player's wagon hidden behind a nearer vehicle shows its outline over the
   cover (an x-ray in the player's colour).
+
+**Revision R (2026-10-22, `docs/design/ring.md` §R; the user: the full loop "is too long and takes
+away the momentum"). The level now (about 9 minutes, ≈ 32,400 ticks at the bot's pace):**
+- **A short drive (≈ 2:00):** the boarding at S113, then `oost` → `amstel` → `zuid` (no mid-drive
+  jam; one gantry closure, one speed camera). The rest of the ring stays in the code as a `full`
+  route for tests and sims (`?route=full`).
+- **The ZWAAN truck at the Zuidas (≈ 3:00): a sequential boss.** A made-up hauler's road train,
+  fought from the rear forward; each part is a mini-boss with its own bar (5 pips under it) and the
+  next part comes only after the previous one is beaten: the container trailer `ZWAAN CONTAINER`
+  (the cargo dump, the forklift), the car transporter `ZWAAN AUTOTRANSPORT` (cars roll off the ramp
+  and slide off the top deck), the tanker `ZWAAN TANKWAGEN` (`FRITUURVET`: fat slicks make the
+  wagon slide, the valves light a flame trail), the livestock trailer `ZWAAN VEETRANSPORT` (cows
+  and pigs trot across the lanes and are never hurt; a farmhand lobs hay bales and milk churns)
+  and the cab `ZWARE JONGEN` (the weave, the brake check, the gunner in the sleeper window, the air
+  horn; it jackknifes onto the shoulder). A beaten part uncouples, brakes, tips onto the shoulder
+  and drops back; the wagons catch up in 2–3 s while a small scooter gang keeps the road busy.
+  Each part lasts about 30–40 s; only the cab's end counts as the ring's boss end.
+- **The final jam and the alight:** a gantry shows a red X on every lane and `FILE` / `BLOKKADE`;
+  the road stands; the heroes climb out of the windows and jump down; the drivers stay at the wheel
+  (silent). A 40-tick fade, no tally page.
+- **On foot like `ams`** (an unregistered `MissionDef` with the id `ring`): `rf-a` DE FILE (≈ 1:15;
+  the ring gangs on foot — scooter riders, parcel couriers, the van crew — between the stopped
+  cars, which are cover and platforms; a tied hostage in an open parcel van; the police line),
+  then `rf-b` DE BLOKKADE (wave B: the climate blockade and the pink boat). ONE MISSION COMPLETE
+  tally for the whole level (the hostages of the drive and on foot, the FINES), then the glitch
+  bridge. New bubbles and signs are Dutch; HUD words stay English.
 
 **`docs/design/ring.md` is the spec of this mission and wins over this document for it**
 (numbers, landmarks, enemies, hazards, art, sound, tests). The runtime, the generator, the

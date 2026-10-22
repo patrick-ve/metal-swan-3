@@ -95,15 +95,23 @@ function routeHostages(runner: TallyRunner, slot: PlayerSlot): number {
 }
 
 /**
+ * Missions whose boss is several fights in a row (GDD §14.4: m5's three final stages; revision R:
+ * the ring's ZWAAN train, docs/design/ring.md §R.3) and their limit in seconds.
+ */
+export const LONG_BOSS_LIMITS: Readonly<Record<string, number>> = { m5: 240, ring: 240 };
+
+/**
  * BOSS SPEED BONUS (GDD §14.4): max(0, 90 − seconds from the end of the boss intro to its death)
- * × 200, at most 18,000; m5: max(0, 240 − seconds for all three final stages) × 200.
+ * × 200, at most 18,000; m5 and the ring (`LONG_BOSS_LIMITS`): max(0, 240 − seconds for the whole
+ * multi-part boss) × 200.
  */
 export function bossSpeedBonus(missionId: string, startTick: number, endTick: number): number {
   if (startTick < 0 || endTick < startTick) return 0;
   const S = TUNING.score;
-  const limit = missionId === 'm5' ? 240 : S.bossSpeedSeconds;
+  const long = LONG_BOSS_LIMITS[missionId];
+  const limit = long ?? S.bossSpeedSeconds;
   const seconds = Math.ceil((endTick - startTick) / 60);
-  const cap = missionId === 'm5' ? limit * S.bossSpeedPerSecond : S.bossSpeedMax;
+  const cap = long !== undefined ? limit * S.bossSpeedPerSecond : S.bossSpeedMax;
   return Math.min(cap, Math.max(0, limit - seconds) * S.bossSpeedPerSecond);
 }
 

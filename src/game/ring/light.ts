@@ -71,7 +71,7 @@ export const LIGHT = {
 } as const;
 
 /** Entities whose headlights shine in the dark (by type or tag). */
-const LIT_TYPES = new Set(['ring-wagon', 'ring-car', 'ring-scooter', 'ring-parcel-van', 'ring-caravan', 'ring-scan-car', 'ring-tow-truck', 'ring-handhaver-moto', 'ring-roadworks', 'ring-lorry']);
+const LIT_TYPES = new Set(['ring-wagon', 'ring-car', 'ring-scooter', 'ring-parcel-van', 'ring-caravan', 'ring-scan-car', 'ring-tow-truck', 'ring-handhaver-moto', 'ring-roadworks', 'ring-zwaan-cab']);
 
 export class RingLight {
   private readonly view: RingLightView;

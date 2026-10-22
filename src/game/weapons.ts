@@ -597,6 +597,11 @@ export interface GunMount {
   readonly aimAngle: number;
   /** 'play' while the shooter controls its gun (players); anything else ends a stream. */
   readonly state?: string;
+  /**
+   * Optional, additive (the ring hero, 2026-10-22): when set, it replaces the `state` check of
+   * `shooterReady` (a mounted ring hero holds his gun in the 'mounted' state). Unset everywhere else.
+   */
+  readonly gunReady?: boolean;
 }
 
 /** The shooter as a GunMount, or null (vehicles and scripted spawns keep their first aim). */
@@ -609,7 +614,9 @@ export function mountOf(e: Entity | null | undefined): GunMount | null {
 /** Is the shooter still holding the gun (alive, in the world, a player in 'play')? */
 export function shooterReady(e: Entity | null | undefined): boolean {
   if (!e || !e.alive || e.removed) return false;
-  const st = (e as Entity & Partial<GunMount>).state;
+  const m = e as Entity & Partial<GunMount>;
+  if (m.gunReady !== undefined) return m.gunReady;
+  const st = m.state;
   return st === undefined || st === 'play';
 }
 

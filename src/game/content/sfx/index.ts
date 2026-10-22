@@ -37,6 +37,9 @@ import { RING_GANGS } from './ring-gangs';
 import { RING_CONVOY } from './ring-convoy';
 import { RING_CREW } from './ring-crew';
 import { RING_BOSS } from './ring-boss';
+import { RING_ZWAAN_A } from './ring-zwaan-a';
+import { RING_ZWAAN_B } from './ring-zwaan-b';
+import { RING_FOOT } from './ring-foot';
 import { OZ_WU_SFX } from './oldenzaal-wu';
 import { OZ_ZOMBIE_SFX } from './oldenzaal-zombies';
 import { OZ_CHURCH_SFX_RECIPES } from './oldenzaal-church';
@@ -113,6 +116,9 @@ export const SFX: Readonly<Record<string, SfxRecipe>> = pinSeeds({
   ...RING_CONVOY,
   ...RING_CREW,
   ...RING_BOSS,
+  ...RING_ZWAAN_A,
+  ...RING_ZWAAN_B,
+  ...RING_FOOT,
   ...OZ_WU_SFX,
   ...OZ_ZOMBIE_SFX,
   ...OZ_CHURCH_SFX_RECIPES,

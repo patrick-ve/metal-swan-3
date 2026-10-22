@@ -564,6 +564,21 @@ particles + shake + sound, via a game-level helper; explosion damage goes throug
   module worker (`ring/scenery-worker.ts` via `ring/scenery-job.ts`; a second Vite worker chunk,
   precached like the art pool's) and never inside a frame; without Worker they fall back to the
   art-job queue above.
+  **The hand-over (revision R, 2026-10-22; `docs/design/ring.md` §R.10, `docs/api/ring.md` §R.5):**
+  the short drive ends with the alight scene, then `RingRunner.handOver()` (no victory banner, no
+  `completed.push`) emits `'handover'`; `ring-route.ringHandover()` replaces the RingScene (40-tick
+  fade) with a `GameplayScene` that runs an UNREGISTERED `MissionDef` with the same id `ring`
+  (`content/ring/foot/`, sections `rf-a`, `rf-b`; never `defineMission`). Two additive opt-ins carry
+  it: `GameplayOpts.handover = { def, artDef, onComplete }` and `RunnerOptions.continueMission`
+  (keeps the per-mission stats on the same `GameSession`: no `startMission`, no banner, no intro
+  drop; a joined slot out of lives gets a fresh continue countdown). `onComplete` opens ONE
+  `MissionCompleteScene` (`ringFinalTally`: the hostages of both parts, the drive's FINES, the seed),
+  whose `afterTally` opens the glitch bridge. One tier-4 run covers the level: `ringArtDef` lists the
+  stretches, the train's pseudo-sections `zwaan:0..4` and the foot sections (each with its own
+  reserve, `MissionArtDef.sectionReserve`), and the RingScene skips `stopDense` at the hand-over. The
+  scene modules reach the foot def through a hook (`ring/hooks.ts RING_HOOKS.footDef`,
+  `ringFootDefOf`), never by importing the foot content (it registers sprites and entities). The
+  sims follow the same chain (`headless-ring.ts`: both bots, one merged report).
 
 ### 6.1 Human sprite contract (shared by art and logic agents)
 

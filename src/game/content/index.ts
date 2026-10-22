@@ -87,6 +87,11 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   'ring/crew/art': () => import('./ring/crew/art'),
   'ring/boss': () => import('./ring/boss/index'),
   'ring/boss/art': () => import('./ring/boss/art'),
+  // Revision R (docs/design/ring.md §R): the ZWAAN truck (TRAIN-1 / TRAIN-2 add their `…/art` entries)
+  // and the on-foot part (the unregistered foot MissionDef; JAM+FOOT adds its entities and art).
+  'ring/zwaan': () => import('./ring/zwaan/index'),
+  'ring/foot': () => import('./ring/foot/index'),
+  'ring/foot/art': () => import('./ring/foot/art'),
   // Mission `oldenzaal`, level 4 (docs/design/oldenzaal.md §13; docs/api/oldenzaal.md; not lazy):
   // one entry per area and owner (ids: missions/oldenzaal/ids.ts).
   'missions/oldenzaal': () => import('./missions/oldenzaal/index'),

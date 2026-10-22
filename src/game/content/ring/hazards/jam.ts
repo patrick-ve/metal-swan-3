@@ -24,6 +24,13 @@
  * (an array of waves; a wave is an array of `{ id, dx?, lane?, from?: 'ahead' | 'behind', params? }`;
  * unknown ids are skipped), `after` (one more wave, spawned when the plan's stand ends: the
  * director's EASY floor for the crawl after it), `seed`; the plan's `length`, `crawl`, `hold`, `holdAt`.
+ *
+ * THE FINAL JAM (revision R, docs/design/ring.md §R.4; OPT-IN param `final: true`, off by default:
+ * every other jam is unchanged): the short route's last chunk. On its first tick a matrix gantry
+ * comes in with a red X on every lane and the `FILE` / `BLOKKADE` text panel (gantry param `drip:
+ * 'file'`); its tail (`cars`) drives in and stands; the road crawls at `crawl` to the chunk's end,
+ * then stands (phase 'hold', the cap 0). It NEVER clears and has no waves (`waves` / `after` are
+ * ignored): the alight scene (ring/alight.ts) takes over at the plan's end.
  */
 import { Entity } from '../../../../engine/entity';
 import type { World } from '../../../../engine/world';
@@ -89,6 +96,8 @@ export class RingJam extends Entity {
   /** Plan distance where it began (the plan's jam). */
   private start = NaN;
   private held = false;
+  /** Revision R: the short route's final jam (never clears, no waves; see the header). */
+  readonly final: boolean;
 
   constructor(world: World, x: number, y: number, p: SpawnParams = NO_PARAMS) {
     super(world, x, y);
@@ -106,6 +115,12 @@ export class RingJam extends Entity {
     this.waves = Array.isArray(p.waves) ? (p.waves as unknown[]).filter(Array.isArray).map((w) => (w as JamWaveEntry[]).filter((e) => e && typeof e.id === 'string')) : [];
     this.after = Array.isArray(p.after) ? (p.after as JamWaveEntry[]).filter((e) => e && typeof e.id === 'string') : [];
     this.seed = paramNum(p, 'seed', Math.round(x));
+    this.final = p.final === true;
+    if (this.final) {
+      // No waves in the final jam (spec §R.4).
+      this.waves.length = 0;
+      this.after.length = 0;
+    }
     this.addTag(RING_ENTITY.jam);
   }
 
@@ -127,6 +142,10 @@ export class RingJam extends Entity {
     this.t++;
     const ring = ringOf(this.world);
     const road = ring?.roadSpeed ?? 0;
+    if (this.final) {
+      this.finalJam(jam, ring?.planDist ?? 0);
+      return;
+    }
     if (!Number.isNaN(this.planLength)) {
       this.planned(jam, ring?.planDist ?? 0);
       return;
@@ -213,14 +232,40 @@ export class RingJam extends Entity {
     }
   }
 
+  /**
+   * The final jam (revision R): the FILE / BLOKKADE gantry and the tail on the first tick, the
+   * crawl to the chunk's end (or `JAM.brakeMax` ticks without a plan), then the stand for good.
+   */
+  private finalJam(jam: { level: number; owner: Entity | null }, d: number): void {
+    if (Number.isNaN(this.start)) {
+      this.start = d;
+      this.set('crawl');
+      const cam = this.world.camera;
+      this.world.spawn(RING_ENTITY.gantry, cam.right + 48, laneY(2), { signs: ['x', 'x', 'x', 'x'], drip: 'file' });
+      if (this.carCount > 0) this.spawnTail();
+    }
+    const into = d - this.start;
+    if (this.phase === 'crawl') {
+      jam.level = Math.min(0.85, jam.level + JAM.rise);
+      this.cap(this.crawl);
+      const end = Number.isNaN(this.planLength) ? into >= JAM.brakeMax * this.crawl : into >= this.planLength;
+      if (end) this.set('hold');
+    } else {
+      // The standing queue: it never clears.
+      this.phase = 'hold';
+      jam.level = Math.min(1, jam.level + JAM.rise);
+      this.cap(0);
+    }
+  }
+
   private set(p: JamPhase): void {
     this.phase = p;
     this.t = 0;
   }
 
-  /** End the hold now: the cap goes, the end-of-restrictions gantry comes in. */
+  /** End the hold now: the cap goes, the end-of-restrictions gantry comes in (never the final jam). */
   clear(): void {
-    if (this.phase === 'clear' || this.phase === 'done') return;
+    if (this.final || this.phase === 'clear' || this.phase === 'done') return;
     this.set('clear');
     this.cap(null);
     const cam = this.world.camera;
@@ -317,5 +362,5 @@ export class RingJam extends Entity {
 
 defineEntity(RING_ENTITY.jam, (w, x, y, p) => new RingJam(w, x, y, p), {
   category: 'hazard',
-  description: 'The traffic jam controller: 50 on the matrix, the traffic brakes, the road stops, waves, then it clears (params ticks, cars, waves, seed).',
+  description: 'The traffic jam controller: 50 on the matrix, the traffic brakes, the road stops, waves, then it clears (params ticks, cars, waves, seed; final: the short route\'s last jam, never clears).',
 });

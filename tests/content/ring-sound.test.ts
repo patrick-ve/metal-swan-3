@@ -23,6 +23,7 @@ import '../../src/game/content/sfx/index';
 import { attachRingCues, TUNNEL_BED, TUNNEL_ECHO } from '../../src/game/ring/cues';
 import { ringMission, ringSong } from '../../src/game/ring/mission';
 import { planRing } from '../../src/game/ring/plan';
+import { RING_ZWAAN, RING_ZWAAN_PART_TAG } from '../../src/game/ring/ids';
 import type { RingChunk } from '../../src/game/ring/types';
 import { RingRig, tinyPlan } from '../game/ring/ring-helpers';
 
@@ -145,23 +146,27 @@ describe('the ring plays its songs', () => {
     expect(log.some((l) => l.startsWith('music:ams'))).toBe(false);
   });
 
-  it('the cues: a boss slot plays ring-boss, the defeat brings the theme back at A', () => {
+  it('the cues: the ZWAAN slot plays ring-boss, the end of the train brings the theme back at A', () => {
     const rig = new RingRig({ god: true });
     const cues = attachRingCues(rig.runner);
     const log = (rig.runner.audio as NullAudio).log;
-    rig.runner.events.emit('bossSlot', { id: 'ring-lorry', at: 0, spawned: true });
+    rig.runner.events.emit('bossSlot', { id: RING_ZWAAN.controller, at: 0, spawned: true });
     expect(rig.runner.currentMusic).toBe('ring-boss');
     expect(log[log.length - 1]).toBe('music:ring-boss');
     // A skipped slot (an unknown boss id) changes nothing.
     rig.runner.playMusic('ring');
     rig.runner.events.emit('bossSlot', { id: 'end', at: 0, spawned: false });
     expect(rig.runner.currentMusic).toBe('ring');
-    rig.runner.events.emit('bossSlot', { id: 'ring-lorry', at: 0, spawned: true });
+    rig.runner.events.emit('bossSlot', { id: RING_ZWAAN.controller, at: 0, spawned: true });
+    // A beaten part (tag ring-zwaan-part) keeps the boss song; the train's end brings the theme.
+    rig.wagon.addTag(RING_ZWAAN_PART_TAG);
     rig.world.events.emit('bossDefeated', { boss: rig.wagon, player: 0 });
+    expect(rig.runner.currentMusic).toBe('ring-boss');
+    rig.world.events.emit('ringTrainDone', { controller: rig.wagon });
     expect(rig.runner.currentMusic).toBe('ring');
     expect(log[log.length - 1]).toBe('music:ring@1');
     cues.detach();
-    rig.runner.events.emit('bossSlot', { id: 'ring-lorry', at: 0, spawned: true });
+    rig.runner.events.emit('bossSlot', { id: RING_ZWAAN.controller, at: 0, spawned: true });
     expect(rig.runner.currentMusic).toBe('ring');
   });
 

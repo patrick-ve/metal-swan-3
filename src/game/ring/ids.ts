@@ -10,6 +10,47 @@ export const RING_ID = 'ring';
 export const RING_LANDMARKS = ['oost', 'amstel', 'zuid', 'nieuwe-meer', 'west', 'westpoort', 'coentunnel', 'noord', 'zeeburg', 'exit'] as const;
 export type RingLandmarkId = (typeof RING_LANDMARKS)[number];
 
+/**
+ * Revision R (docs/design/ring.md §R.2): the routes a plan can take. `short` (the level, the
+ * default): the boarding at S113, `oost` → `amstel` → `zuid`, the ZWAAN truck at the Zuidas, the
+ * final jam. `full`: the old compressed loop over all ten landmarks (tests and sims only).
+ */
+export type RingRoute = 'short' | 'full';
+export const RING_ROUTES: Readonly<Record<RingRoute, readonly RingLandmarkId[]>> = {
+  short: ['oost', 'amstel', 'zuid'],
+  full: RING_LANDMARKS,
+};
+/** The default route of `planRing` (and of `?mission=ring`). */
+export const RING_DEFAULT_ROUTE: RingRoute = 'short';
+
+/**
+ * The full route's mid-boss slot (`westpoort`). Revision R retired the test lorry: the slot spawns
+ * the ZWAAN train's controller (spec §R.1; TRAIN-1, 2026-10-22; was 'ring-lorry').
+ */
+export const RING_FULL_ROUTE_BOSS: string = 'ring-zwaan';
+
+/**
+ * The ZWAAN truck (docs/design/ring.md §R.3; contract: content/ring/zwaan/api.ts): the invisible
+ * controller (the boss slot's id) and its five parts in the fixed order rear → front (R-16).
+ */
+export const RING_ZWAAN = {
+  controller: 'ring-zwaan',
+  container: 'ring-zwaan-container',
+  autos: 'ring-zwaan-autos',
+  tank: 'ring-zwaan-tank',
+  vee: 'ring-zwaan-vee',
+  cab: 'ring-zwaan-cab',
+} as const;
+/** The tag every ZWAAN part carries (the runner and the cues tell a part's 'bossDefeated' from a boss's). */
+export const RING_ZWAAN_PART_TAG = 'ring-zwaan-part';
+/** The fixed order of the parts (rear → front; spec R-16): the controller's default `params.order`. */
+export const RING_ZWAAN_ORDER: readonly string[] = [RING_ZWAAN.container, RING_ZWAAN.autos, RING_ZWAAN.tank, RING_ZWAAN.vee, RING_ZWAAN.cab];
+
+/** `?section=` names of revision R that are not landmarks: the truck (a run-in) and the foot sections. */
+export const RING_SECTION_ZWAAN = 'zwaan';
+export const RING_FOOT_SECTIONS = ['rf-a', 'rf-b'] as const;
+export type RingFootSection = (typeof RING_FOOT_SECTIONS)[number];
+
 /** Entity ids of wave A (the mechanism). */
 export const RING_ENTITY = {
   /** The player vehicle (a 1990s station wagon; content/ring/wagon). */
@@ -34,7 +75,8 @@ export const RING_ENTITY_B = {
   towTruck: 'ring-tow-truck',
   handhaverMoto: 'ring-handhaver-moto',
   roadworks: 'ring-roadworks',
-  lorry: 'ring-lorry',
+  /** The full route's mid-boss slot: since revision R the ZWAAN train's controller (was 'ring-lorry'). */
+  lorry: 'ring-zwaan',
 } as const;
 
 /**

@@ -194,15 +194,19 @@ describe('the route (headless)', () => {
     slot.rescued = 3;
     slot.mission.goldenRecord = true;
     const before = slot.score;
-    // F4 on the ring: stretch by stretch to the exit; the victory drive, then the ring's own
-    // MISSION COMPLETE page (docs/design/ring.md §1, §10), then the bridge.
+    // F4 on the ring: stretch by stretch to the final jam, the hand-over to the on-foot part
+    // (revision R), F4 there section by section; then the level's ONE MISSION COMPLETE page
+    // (docs/design/ring.md §R.1, §R.10), then the bridge.
     ok = false;
     for (let i = 0; i < 8000 && !ok; i++) {
+      const top = h.app.scenes.top;
       if (i % 60 === 0 && ring.runner.state === 'playing') ring.runner.skip();
+      if (i % 60 === 0 && top instanceof GameplayScene && top !== game && top.runner.state === 'playing') top.runner.skip();
       h.step(1);
       ok = h.app.scenes.top instanceof MissionCompleteScene;
     }
     expect(ok).toBe(true);
+    expect(h.seen).toContain(GameplayScene.name);
     expect((h.app.scenes.top as MissionCompleteScene).runner.mission.id).toBe('ring');
     // The page pays the ring's tally (HOSTAGES 3 × 10,000 and the rest) and moves on by itself.
     expect(h.until(GlitchBridgeScene, 900)).toBe(true);

@@ -3,6 +3,8 @@
  * deep-equal plan; 50 seeds on every difficulty meet every invariant (`checkPlan`); different
  * seeds differ; difficulty changes only the wave rows; `?section=<landmark>` starts at the
  * landmark with a calm run-in; a P2 join never changes the plan and slot 1 always finds a driver.
+ * Revision R: these pin the FULL route (`{ route: 'full' }`); the short route (the level's default)
+ * is pinned in short-route.test.ts. Purity and variety hold for both routes.
  */
 import { describe, expect, it } from 'vitest';
 import { VirtualPad } from '../../../src/engine/input';
@@ -32,12 +34,15 @@ const WAVE_A = new Set<string>(Object.values(RING_ENTITY));
 const WAVE_B = new Set<string>(Object.values(RING_ENTITY_B));
 
 const kindOf = (p: unknown): unknown => (p as { kind?: unknown } | undefined)?.kind;
+/** The full loop (revision R: the old ring; the level drives the short route, short-route.test.ts). */
+const FULL = { route: 'full' } as const;
 
 describe('planRing: purity and variety', () => {
   it('the same seed gives a deep-equal plan (every difficulty)', () => {
     for (const d of DIFFS) {
       expect(planRing(77, d)).toEqual(planRing(77, d));
       expect(JSON.stringify(planRing(1234567, d))).toBe(JSON.stringify(planRing(1234567, d)));
+      expect(JSON.stringify(planRing(77, d, FULL))).toBe(JSON.stringify(planRing(77, d, FULL)));
     }
   });
 
@@ -45,12 +50,15 @@ describe('planRing: purity and variety', () => {
     const seen = new Set<string>();
     for (let seed = 1; seed <= 20; seed++) seen.add(JSON.stringify(planRing(seed).chunks.map((c) => [c.type, c.length, c.closed])));
     expect(seen.size).toBe(20);
+    const full = new Set<string>();
+    for (let seed = 1; seed <= 10; seed++) full.add(JSON.stringify(planRing(seed, 'normal', FULL).chunks.map((c) => [c.type, c.length, c.closed])));
+    expect(full.size).toBe(10);
     expect(JSON.stringify(planRing(5).spawns)).not.toBe(JSON.stringify(planRing(6).spawns));
   });
 
   it('is fast enough to make at the mission start', () => {
     const t0 = performance.now();
-    for (let seed = 1; seed <= 20; seed++) planRing(seed);
+    for (let seed = 1; seed <= 20; seed++) planRing(seed, 'normal', FULL);
     expect((performance.now() - t0) / 20).toBeLessThan(40);
   });
 });
@@ -59,7 +67,7 @@ describe('planRing: the invariants hold for every seed', () => {
   it('50 seeds × 3 difficulties: checkPlan finds nothing', () => {
     const problems: string[] = [];
     for (let seed = 1; seed <= 50; seed++) {
-      for (const d of DIFFS) for (const p of checkPlan(planRing(seed * 7919, d))) problems.push(`${seed}/${d}: ${p}`);
+      for (const d of DIFFS) for (const p of checkPlan(planRing(seed * 7919, d, FULL))) problems.push(`${seed}/${d}: ${p}`);
     }
     expect(problems).toEqual([]);
   });
@@ -70,7 +78,7 @@ describe('planRing: the invariants hold for every seed', () => {
     const used = new Set<string>();
     let boarders = 0;
     for (let seed = 1; seed <= 15; seed++) {
-      const p = planRing(seed);
+      const p = planRing(seed, 'normal', FULL);
       expect(p.wave).toBe('B');
       for (const x of checkPlan(p)) problems.push(`${seed}: ${x}`);
       for (const s of p.spawns) {
@@ -94,13 +102,13 @@ describe('planRing: the invariants hold for every seed', () => {
     for (const id of [RING_ENTITY_B.parcelVan, RING_ENTITY_B.caravan, RING_ENTITY_B.handhaverMoto, RING_ENTITY_B.scanCar, RING_ENTITY_B.towTruck, RING_ENTITY_B.roadworks]) expect(used).toContain(id);
   });
 
-  it('wave-A plans name wave-A ids only (the boss slots name the lorry and the end marker)', () => {
+  it('wave-A plans name wave-A ids only (the boss slots name the ZWAAN train and the end marker)', () => {
     for (let seed = 1; seed <= 10; seed++) {
-      const p = planRing(seed, 'normal', { wave: 'A' });
+      const p = planRing(seed, 'normal', { wave: 'A', route: 'full' });
       expect(p.wave).toBe('A');
       for (const s of p.spawns) expect(WAVE_A.has(s.id), s.id).toBe(true);
       expect(p.bosses.map((b) => [b.landmark, b.id])).toEqual([
-        ['westpoort', 'ring-lorry'],
+        ['westpoort', 'ring-zwaan'],
         ['exit', 'ring-end-boss'],
       ]);
       expect(WAVE_B.has(p.bosses[0].id)).toBe(true);
@@ -111,7 +119,7 @@ describe('planRing: the invariants hold for every seed', () => {
     let lo = Infinity;
     let hi = 0;
     for (let seed = 1; seed <= 60; seed++) {
-      const p = planRing(seed);
+      const p = planRing(seed, 'normal', FULL);
       const t = totalTicks(p.chunks);
       lo = Math.min(lo, t);
       hi = Math.max(hi, t);
@@ -127,7 +135,7 @@ describe('planRing: the invariants hold for every seed', () => {
 
   it('exactly one golden record, ≥ 1 hostage per stretch, repairs every ~60 s, weapons often', () => {
     for (let seed = 1; seed <= 20; seed++) {
-      const p = planRing(seed);
+      const p = planRing(seed, 'normal', FULL);
       const golden = p.spawns.filter((s) => kindOf(s.params) === 'golden-record');
       expect(golden).toHaveLength(1);
       expect(golden[0].id).toBe(RING_ENTITY.crate);
@@ -145,7 +153,7 @@ describe('planRing: the invariants hold for every seed', () => {
   it('every hazard of wave A shows up: closures, cameras, the West zone, 1–2 jams behind a 50', () => {
     const count = (p: RingPlan, id: string): number => p.spawns.filter((s) => s.id === id).length;
     for (let seed = 1; seed <= 20; seed++) {
-      const p = planRing(seed);
+      const p = planRing(seed, 'normal', FULL);
       const jams = p.chunks.filter((c) => c.type === 'jam');
       expect(jams.length).toBeGreaterThanOrEqual(1);
       expect(jams.length).toBeLessThanOrEqual(2);
@@ -165,7 +173,7 @@ describe('planRing: the invariants hold for every seed', () => {
 });
 
 describe('planRing: the landmarks', () => {
-  const plan = planRing(42);
+  const plan = planRing(42, 'normal', FULL);
 
   it('all ten, in the real clockwise order, the S-exits counting down', () => {
     expect(plan.landmarks.map((l) => l.id)).toEqual([...RING_LANDMARKS]);
@@ -178,7 +186,7 @@ describe('planRing: the landmarks', () => {
   });
 
   it('fixed set pieces: same lengths for every seed; tunnels 3 lanes; bridges only at landmarks', () => {
-    const other = planRing(9001);
+    const other = planRing(9001, 'normal', FULL);
     expect(other.landmarks.map((l) => [l.id, l.length, l.lanes, l.tunnel ?? false])).toEqual(plan.landmarks.map((l) => [l.id, l.length, l.lanes, l.tunnel ?? false]));
     expect(plan.landmarks.filter((l) => l.tunnel).map((l) => l.id)).toEqual(['coentunnel', 'zeeburg']);
     const bridges = plan.chunks.filter((c) => c.type === 'bridge').map((c) => c.part);
@@ -215,7 +223,7 @@ describe('planRing: the landmarks', () => {
 
   it('the boss slots: the test lorry in westpoort, the end marker at the exit, the off-ramp last', () => {
     const wp = plan.landmarks.find((l) => l.id === 'westpoort')!;
-    expect(plan.bosses[0]).toMatchObject({ id: 'ring-lorry', landmark: 'westpoort', at: wp.start + landmarkDef('westpoort').boss!.offset });
+    expect(plan.bosses[0]).toMatchObject({ id: 'ring-zwaan', landmark: 'westpoort', at: wp.start + landmarkDef('westpoort').boss!.offset });
     const last = plan.chunks[plan.chunks.length - 1];
     expect(last).toMatchObject({ part: 'offramp', scene: true, stretch: 'exit' });
     expect(plan.chunks[0]).toMatchObject({ part: 'boarding', scene: true, stretch: 'oost' });
@@ -231,7 +239,7 @@ describe('planRing: the grammar and the director', () => {
     expect(phraseBudget(0, 0, 4)).toBeLessThan(phraseBudget(0, 3, 4));
     expect(tierOf(0.2)).toBe(0);
     expect(tierOf(0.9)).toBe(3);
-    const p = planRing(3);
+    const p = planRing(3, 'normal', FULL);
     const gen = p.chunks.filter((c) => !c.setPiece && c.type !== 'rest');
     const firstHalf = gen.slice(0, gen.length / 2).reduce((n, c) => n + (c.budget ?? 0), 0) / (gen.length / 2);
     const secondHalf = gen.slice(gen.length / 2).reduce((n, c) => n + (c.budget ?? 0), 0) / (gen.length - gen.length / 2);
@@ -248,7 +256,7 @@ describe('planRing: the grammar and the director', () => {
 
   it('neighbour rules: no two closures in a row, no closure next to a jam, always an open lane', () => {
     for (let seed = 1; seed <= 30; seed++) {
-      const p = planRing(seed);
+      const p = planRing(seed, 'normal', FULL);
       p.chunks.forEach((c, i) => {
         const prev = p.chunks[i - 1];
         if (c.closed?.length && prev?.closed?.length) expect(prev.part === 'warn' || prev.type !== c.type, `${seed} @${c.start}`).toBe(true);
@@ -268,7 +276,7 @@ describe('planRing: the grammar and the director', () => {
 
   it('difficulty only changes the wave rows: the road, traffic, hazards and items stay', () => {
     for (const seed of [2, 31, 404]) {
-      const [e, n, h] = DIFFS.map((d) => planRing(seed, d));
+      const [e, n, h] = DIFFS.map((d) => planRing(seed, d, FULL));
       expect(e.chunks).toEqual(n.chunks);
       expect(h.chunks).toEqual(n.chunks);
       // The jam's own waves (its `waves` param: a scooter gang and the boarders in its stand) are
@@ -290,7 +298,7 @@ describe('planRing: the grammar and the director', () => {
 
   it("EASY jams get an `after` gang for the crawl after the stand (GDD 1.5); NORMAL and HARD none, the same layout", () => {
     for (const seed of [2, 31, 404]) {
-      const [e, n, h] = DIFFS.map((d) => planRing(seed, d));
+      const [e, n, h] = DIFFS.map((d) => planRing(seed, d, FULL));
       const jams = (p: RingPlan): RingPlan['spawns'] => p.spawns.filter((s) => s.id === RING_ENTITY.jam);
       expect(jams(e).length).toBeGreaterThan(0);
       for (const j of jams(e)) {
@@ -305,7 +313,7 @@ describe('planRing: the grammar and the director', () => {
   });
 
   it('spawn params: cars per lane (far fast from behind, near slow ahead), the jam queue, gangs numbered, hostages carry an item', () => {
-    const p = planRing(8);
+    const p = planRing(8, 'normal', FULL);
     for (const s of p.spawns) {
       const params = s.params as Record<string, unknown> | undefined;
       if (s.id === RING_ENTITY.car && params?.jam) {
@@ -345,7 +353,7 @@ describe('planRing: the grammar and the director', () => {
 
 describe('planRing in the runner', () => {
   it('?section=<landmark> starts at the landmark with a calm run-in', () => {
-    const plan = planRing(17);
+    const plan = planRing(17, 'normal', FULL);
     for (const lm of plan.landmarks) {
       const session = new GameSession({ characters: ['vincent'], seed: 17 });
       const runner = new RingRunner({ session, pads: [new VirtualPad(), new VirtualPad()], seed: 17, plan, section: lm.id });
@@ -366,7 +374,7 @@ describe('planRing in the runner', () => {
   });
 
   it('a P2 join never changes the plan; slot 1 always finds its own driver', () => {
-    const plan = planRing(23);
+    const plan = planRing(23, 'normal', FULL);
     const before = JSON.stringify(plan);
     for (const c1 of ROSTER) {
       for (const c2 of ROSTER) {
@@ -391,7 +399,7 @@ describe('planRing in the runner', () => {
     expect(JSON.stringify(plan)).toBe(before);
     // The drivers come from the plan rng: the whole roster, and not always in the same order.
     const orders = new Set<string>();
-    for (let seed = 1; seed <= 12; seed++) orders.add(planRing(seed).drivers.join());
+    for (let seed = 1; seed <= 12; seed++) orders.add(planRing(seed, 'normal', FULL).drivers.join());
     expect(orders.size).toBeGreaterThan(3);
     for (const o of orders) expect(o.split(',').sort()).toEqual([...ROSTER].sort());
   });

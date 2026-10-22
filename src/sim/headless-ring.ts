@@ -13,6 +13,13 @@
  * h.dispose();
  * ```
  * Pure TypeScript (no DOM, no node APIs): timing uses an injected `clock`.
+ *
+ * REVISION R (docs/design/ring.md §R.10): the short route hands over to the on-foot part (a
+ * `GameplayScene` with the unregistered foot MissionDef). The harness follows it: both bots are
+ * registered (the ring bot drives while the RingRunner plays, the 2D bot (bot.ts) walks the foot
+ * part; each idles while its runner is null), `complete` is the level's end (the foot part's
+ * MISSION COMPLETE; the full route: the ring's), and ONE merged report (`foot`: the on-foot part's
+ * numbers; the totals over both parts). `section: 'rf-a' | 'rf-b'` starts on foot.
  */
 import type { Damage, Entity } from '../engine/entity';
 import type { InputTimeline, ScriptedFn } from '../engine/input';
@@ -35,9 +42,15 @@ import { laneY } from '../game/ring/lanes';
 import { RING_ID } from '../game/ring/ids';
 import type { RingReport, RingRunner } from '../game/ring/runner';
 import type { RingPlan } from '../game/ring/types';
+import type { RingRoute } from '../game/ring/ids';
+import { ringAlighting } from '../game/ring/alight';
+import type { MissionRunner } from '../game/mission/runner';
 import { GameSession, type Difficulty } from '../game/session';
+import { GameplayScene } from '../game/scenes/gameplay';
 import { RingScene } from '../game/scenes/ring';
+import { isFootSection, prepareRing, ringFootScene } from '../game/scenes/ring-route';
 import { applyTuning } from '../game/tuning';
+import { Bot, type BotOptions } from './bot';
 import { RingBot, type RingBotOptions } from './bot-ring';
 import { captureConsole, releaseConsole, SimAudio, SimStats, type ConsoleCapture, type SimError, type SimTiming } from './stats';
 
@@ -51,8 +64,14 @@ export interface HeadlessRingOptions {
   bot?: boolean | RingBotOptions;
   characterId?: string;
   difficulty?: Difficulty;
-  /** Start at this landmark (`?section=`). */
+  /** Start at this landmark, `zwaan` (the truck) or a foot section `rf-a` / `rf-b` (`?section=`). */
   section?: string;
+  /** Revision R: the route (default: by the section, else short). */
+  route?: RingRoute;
+  /** `?boss=1`: the truck's run-in (or, with `rf-b`, the boat in wave B). */
+  boss?: boolean;
+  /** Options of the 2D bot on the foot part (default {}). */
+  footBot?: BotOptions;
   /** Start weapon for every player (like ?weapon=). */
   weapon?: string;
   /** A ready plan (tests); default `planRing(seed, difficulty)`. */
@@ -211,7 +230,7 @@ class RingWatch {
     }
     // Pacing: outside rests, scenes, the boarding, holds and the victory drive.
     const c = chunkAt(runner.plan, runner.planDist + cam.w / 2);
-    const excused = runner.state !== 'playing' || runner.held || ringBoarding(world) || !c || !!c.scene || c.type === 'rest';
+    const excused = runner.state !== 'playing' || runner.held || ringBoarding(world) || ringAlighting(world) || !c || !!c.scene || c.type === 'rest';
     if (excused || enemyOn) {
       this.closeGap(now);
       if (!excused) {
@@ -272,8 +291,43 @@ function sourceName(d: Damage): string {
   return by && by !== src ? `${by.type}/${own}` : `${own}${tag}`;
 }
 
+/** Revision R: the on-foot part's numbers in the merged report (null: the play never got there). */
+export interface RingFootReport {
+  /** Harness ticks on foot (from the hand-over to the end or the stop). */
+  ticks: number;
+  complete: boolean;
+  sectionsVisited: string[];
+  finalSection: string;
+  /** Kills and deaths on foot (session counters after − at the hand-over). */
+  kills: number;
+  deaths: number;
+  hostages: number;
+  bossDefeated: boolean;
+  gameOvers: number;
+  /** Harness ticks per foot section (the integrator's momentum numbers, wave A). */
+  sectionTicks: Record<string, number>;
+  /** The longest run of ticks on foot without a live enemy on screen, and where it ended. */
+  longestGap: number;
+  gapAt: string;
+  /** The longest such run per foot section. */
+  sectionGaps: Record<string, number>;
+  /** Every death on foot: `<section> x <player x> <cause>`. */
+  deathsAt: string[];
+}
+
 /** The sim's ring report: the runner's numbers plus the harness's. */
 export interface RingSimReport extends Omit<RingReport, 'errors'> {
+  /**
+   * Revision R (merged): `ticks` = every harness tick (the drive, the hand-over, the foot part);
+   * `driveTicks` = the RingRunner's; `complete` = the level's end; `kills` / `deaths` / `hostages` /
+   * `score` / `continues` = the session's totals over both parts; `sectionsVisited` = the stretches
+   * then the foot sections; `bossDefeated` = the ZWAAN train beaten (the full route: a boss slot's
+   * boss gone).
+   */
+  driveTicks: number;
+  sectionsVisited: string[];
+  bossDefeated: boolean;
+  foot: RingFootReport | null;
   /** Pacing, fairness and armour (`RingWatch`). */
   watch: RingWatchReport;
   god: boolean;
@@ -295,10 +349,17 @@ export interface HeadlessRing {
   readonly renderer: SoftRenderer;
   readonly audio: SimAudio;
   readonly bots: readonly RingBot[];
+  /** Revision R: the 2D bots of the foot part (idle while no foot runner plays). */
+  readonly footBots: readonly Bot[];
   readonly stats: SimStats;
   /** The RingScene (null when it failed to start or the play moved on). */
   readonly scene: RingScene | null;
+  /** The RingRunner while the drive plays (null once it handed over, or on a foot start). */
   readonly runner: RingRunner | null;
+  /** Revision R: the foot part's scene and runner (null before the hand-over). */
+  readonly footScene: GameplayScene | null;
+  readonly footRunner: MissionRunner | null;
+  /** The world being played (the ring's, then the foot section's). */
   readonly world: World | null;
   readonly ticks: number;
   /** The ring was won (the victory drive started). */
@@ -325,10 +386,28 @@ class HeadlessRingImpl implements HeadlessRing {
   readonly renderer: SoftRenderer;
   readonly audio = new SimAudio();
   readonly bots: RingBot[] = [];
+  readonly footBots: Bot[] = [];
   readonly stats = new SimStats();
   scene: RingScene | null = null;
+  footScene: GameplayScene | null = null;
   ticks = 0;
   complete = false;
+  /** Revision R: the hand-over tick and the session counters then (the foot part's numbers). */
+  private footFrom = -1;
+  private footBase = { kills: 0, deaths: 0, hostages: 0, gameOvers: 0 };
+  private footWorld: World | null = null;
+  private footLastHeld = false;
+  private footGameOvers = 0;
+  private readonly footSections: string[] = [];
+  private footBoss = false;
+  private readonly footSectionTicks: Record<string, number> = {};
+  private footGap = 0;
+  private footLongestGap = 0;
+  private footGapAt = '';
+  private footGapSection = '';
+  private readonly footSectionGaps: Record<string, number> = {};
+  private readonly footDeaths: string[] = [];
+  private lastRing: RingRunner | null = null;
   private readonly o: HeadlessRingOptions;
   private readonly clock: (() => number) | null;
   private readonly capture: ConsoleCapture | null;
@@ -348,6 +427,7 @@ class HeadlessRingImpl implements HeadlessRing {
       ...DEFAULT_PARAMS,
       mission: RING_ID,
       section: o.section ?? null,
+      boss: o.boss ?? false,
       god: o.god ?? false,
       seed,
       players,
@@ -365,13 +445,34 @@ class HeadlessRingImpl implements HeadlessRing {
         this.bots.push(b);
         this.input.addSource(b);
       }
+      // Revision R: the 2D bot for the foot part (idle while its runner is null).
+      const fhost = this.footBotHost();
+      for (let i = 0; i < players; i++) {
+        const b = new Bot(fhost, i as 0 | 1, o.footBot ?? {});
+        this.footBots.push(b);
+        this.input.addSource(b);
+      }
     }
     if (o.input) this.input.addSource(new ScriptedSource(o.input, 0));
     const char = o.characterId ?? 'recruit';
     this.session = new GameSession({ difficulty: o.difficulty ?? 'normal', characters: players === 2 ? [char, char] : [char], seed });
     this.app.session = this.session;
     this.app.campaign = newCampaign();
-    const scene = new RingScene(this.app, o.plan ? { start: { seed, plan: o.plan, section: o.section } } : { seed, section: o.section });
+    if (isFootSection(o.section)) {
+      // Revision R: straight onto the foot part (a plan for the seed: the drive's hostages).
+      const start = o.plan ? { seed, plan: o.plan } : prepareRing(this.app, { seed, route: 'short' });
+      const foot = ringFootScene(this.app, start, null, { section: o.section, bossRush: o.boss });
+      try {
+        this.app.scenes.reset(foot);
+      } catch (err) {
+        this.stats.addError('GameplayScene.enter', err, 0);
+      }
+      this.footFrom = 0;
+      this.observeFoot();
+      return;
+    }
+    const section = o.boss && !o.section ? 'zwaan' : o.section;
+    const scene = new RingScene(this.app, o.plan ? { start: { seed, plan: o.plan, section } } : { seed, section, route: o.route });
     this.scene = scene;
     try {
       this.app.scenes.reset(scene);
@@ -379,6 +480,22 @@ class HeadlessRingImpl implements HeadlessRing {
       this.stats.addError('RingScene.enter', err, 0);
     }
     if (scene.runner) this.stats.watchWorld(scene.runner.world, scene.runner.section.id);
+  }
+
+  private footBotHost(): { readonly runner: MissionRunner | null; readonly topScene: Scene | null } {
+    const self = this;
+    return {
+      get runner(): MissionRunner | null {
+        return self.footRunner;
+      },
+      get topScene(): Scene | null {
+        return self.app.scenes.top;
+      },
+    };
+  }
+
+  get footRunner(): MissionRunner | null {
+    return this.footScene?.runner ?? null;
   }
 
   private botHost(): { readonly runner: RingRunner | null; readonly topScene: Scene | null } {
@@ -394,11 +511,12 @@ class HeadlessRingImpl implements HeadlessRing {
   }
 
   get runner(): RingRunner | null {
-    return this.scene?.runner ?? null;
+    const r = this.scene?.runner ?? null;
+    return r && !r.handedOver && this.footScene === null ? r : null;
   }
 
   get world(): World | null {
-    return this.runner?.world ?? null;
+    return this.runner?.world ?? this.footRunner?.world ?? null;
   }
 
   get done(): boolean {
@@ -433,7 +551,9 @@ class HeadlessRingImpl implements HeadlessRing {
   }
 
   private observe(): void {
+    this.observeFoot();
     const runner = this.runner;
+    if (runner) this.lastRing = runner;
     if (!runner) return;
     const held = runner.countdownHeld;
     if (held && !this.lastHeld) {
@@ -444,6 +564,70 @@ class HeadlessRingImpl implements HeadlessRing {
     this.stats.entityCount(runner.world.entities.length);
     this.watch.tick(runner, this.ticks);
     if (!this.complete && (runner.state === 'victory' || runner.state === 'complete')) {
+      this.complete = true;
+      this.stats.completeTick = this.ticks;
+    }
+  }
+
+  /** Revision R: follow the foot part (the GameplayScene after the hand-over). */
+  private observeFoot(): void {
+    const top = this.app.scenes.top;
+    if (top instanceof GameplayScene && top !== this.footScene) {
+      this.footScene = top;
+      if (this.footFrom < 0) this.footFrom = this.ticks;
+      const slots = this.session.slots.filter((s) => s.joined);
+      this.footBase = {
+        kills: slots.reduce((a, s) => a + s.stats.kills, 0),
+        deaths: slots.reduce((a, s) => a + s.stats.deaths, 0),
+        hostages: slots.reduce((a, s) => a + s.stats.hostages, 0),
+        gameOvers: this.stats.gameOvers,
+      };
+    }
+    const fr = this.footRunner;
+    if (!fr) return;
+    const world = fr.world;
+    if (world && world !== this.footWorld) {
+      this.footWorld = world;
+      this.footSections.push(fr.section.id);
+      this.stats.watchWorld(world, fr.section.id);
+      world.events.on('bossDefeated', () => {
+        this.footBoss = true;
+      });
+      const id = fr.section.id;
+      world.events.on('playerDied', (e) => {
+        this.footDeaths.push(`${id} x ${Math.round(e.player.x)} ${e.cause}`);
+      });
+    }
+    const held = fr.countdownHeld;
+    if (held && !this.footLastHeld) {
+      this.stats.gameOvers++;
+      this.footGameOvers++;
+      this.gameOver = true;
+    }
+    this.footLastHeld = held;
+    if (world) this.stats.entityCount(world.entities.length);
+    if (world && fr.state === 'playing') {
+      const id = fr.section.id;
+      this.footSectionTicks[id] = (this.footSectionTicks[id] ?? 0) + 1;
+      // The momentum: ticks without a live enemy on screen (the bosses count).
+      let foe = false;
+      const list = world.entities;
+      for (let i = 0; i < list.length && !foe; i++) {
+        const e = list[i];
+        if (e.alive && e.team === 'enemy' && e.hasTag('shootable') && world.onScreen(e, 0)) foe = true;
+      }
+      if (id !== this.footGapSection) {
+        this.footGapSection = id;
+        this.footGap = 0;
+      }
+      this.footGap = foe ? 0 : this.footGap + 1;
+      if (this.footGap > (this.footSectionGaps[id] ?? 0)) this.footSectionGaps[id] = this.footGap;
+      if (this.footGap > this.footLongestGap) {
+        this.footLongestGap = this.footGap;
+        this.footGapAt = `${id} x ${Math.round(world.camera.x)}`;
+      }
+    }
+    if (!this.complete && (fr.state === 'victory' || fr.state === 'complete')) {
       this.complete = true;
       this.stats.completeTick = this.ticks;
     }
@@ -465,7 +649,15 @@ class HeadlessRingImpl implements HeadlessRing {
 
   spawn(id: string, dx: number, lane: number, params?: SpawnParams): Entity | null {
     const runner = this.runner;
-    if (!runner || !hasEntity(id)) return null;
+    if (!runner || !hasEntity(id)) {
+      // Revision R: on foot, `lane` is ignored: the entity stands on the ground dx px right of the centre.
+      const fr = this.footRunner;
+      if (!fr || !hasEntity(id)) return null;
+      const cam = fr.world.camera;
+      const e = fr.world.spawn(id, cam.x + cam.w / 2 + dx, cam.y + 120, params);
+      fr.world.flush();
+      return e;
+    }
     const cam = runner.world.camera;
     const y = lane >= 1 && lane <= 4 ? laneY(lane) : lane;
     const e = runner.world.spawn(id, cam.x + cam.w / 2 + dx, y, params);
@@ -474,7 +666,7 @@ class HeadlessRingImpl implements HeadlessRing {
   }
 
   report(): RingSimReport {
-    const runner = this.runner;
+    const runner = this.runner ?? this.lastRing ?? this.scene?.runner ?? null;
     const lines = this.capture ? [...this.capture.lines.entries()].slice(0, 60).map(([l, n]) => (n > 1 ? `${l} (×${n})` : l)) : [];
     const base: RingReport = runner
       ? runner.report()
@@ -502,11 +694,48 @@ class HeadlessRingImpl implements HeadlessRing {
           bosses: [],
           errors: [],
           maxEntities: 0,
+          route: this.o.route ?? 'short',
+          train: null,
+          handedOver: false,
         };
+    // Revision R: the totals over both parts (the session's counters) and the foot part's own.
+    const slots = this.session.slots.filter((s) => s.joined);
+    const sum = (f: (s: (typeof slots)[number]) => number): number => slots.reduce((a, s) => a + f(s), 0);
+    const fr = this.footRunner;
+    const foot: RingFootReport | null =
+      this.footFrom >= 0
+        ? {
+            ticks: this.ticks - this.footFrom,
+            complete: !!fr && (fr.state === 'victory' || fr.state === 'complete'),
+            sectionsVisited: [...this.footSections],
+            finalSection: fr?.section.id ?? '',
+            kills: sum((s) => s.stats.kills) - this.footBase.kills,
+            deaths: sum((s) => s.stats.deaths) - this.footBase.deaths,
+            hostages: sum((s) => s.stats.hostages) - this.footBase.hostages,
+            bossDefeated: this.footBoss,
+            gameOvers: this.footGameOvers,
+            sectionTicks: { ...this.footSectionTicks },
+            longestGap: this.footLongestGap,
+            gapAt: this.footGapAt,
+            sectionGaps: { ...this.footSectionGaps },
+            deathsAt: [...this.footDeaths],
+          }
+        : null;
+    const trainDone = base.train ? base.train.done : base.bosses.some((b) => b.spawned && b.ticks >= 0);
     // The runner's world errors are in the stats too (watchWorld): report them once, with the scenes'.
     return {
       ...base,
-      complete: this.complete || base.complete,
+      ticks: this.ticks,
+      driveTicks: base.ticks,
+      kills: sum((s) => s.stats.kills),
+      deaths: sum((s) => s.stats.deaths),
+      hostages: runner ? base.hostages + (foot?.hostages ?? 0) : sum((s) => s.stats.hostages),
+      continues: sum((s) => s.continues),
+      score: sum((s) => s.score),
+      sectionsVisited: [...base.landmarks, ...this.footSections],
+      bossDefeated: trainDone,
+      foot,
+      complete: this.complete || (base.complete && base.route === 'full'),
       watch: this.watch.report(this.ticks),
       god: this.o.god ?? false,
       seconds: Math.round((this.ticks / 60) * 10) / 10,

@@ -41,6 +41,7 @@
  * No allocations per tick (fixed arrays); deterministic (no randomness).
  */
 import type { Entity } from '../engine/entity';
+import type { Rect } from '../engine/math';
 import { BUTTON_BIT, type InputContext, type InputSource, type PlayerSlot } from '../engine/input';
 import type { Scene } from '../engine/scene';
 import type { World } from '../engine/world';
@@ -83,6 +84,10 @@ const LOOK_BEHIND = 40;
 const SWERVE_REACH = 70;
 /** Ticks FIRE is held before a one-tick release (a fresh press). */
 const FIRE_HOLD = 40;
+/** Revision R: line-up ticks on a ZWAAN part before the bot leaves its lane (twice: it fires anyway). */
+const STUCK_TICKS = 60;
+/** Fixer: player 2's extra danger for player 1's lane on a ZWAAN part (they spread out). */
+const PARTNER_LANE = 150;
 /** Ticks between two lobs at a boss. */
 const BOMB_EVERY = 360;
 /** Where a lob lands on screen: ahead / behind the wagon (content/ring/wagon/lob.ts `LOB`). */
@@ -127,6 +132,77 @@ interface Moded extends Entity {
   wagon?: Entity | null;
   aboard?: boolean;
 }
+interface Flame extends Entity {
+  ax: number;
+  len: number;
+}
+/** Revision R: the ZWAAN tanker's slick and flame trail (content/ring/zwaan/tank.ts ids). */
+const ZWAAN_SLICK = 'ring-zwaan-slick';
+const ZWAAN_FLAME = 'ring-zwaan-flame';
+/** The tag of a ZWAAN train part (content/ring/zwaan/api.ts `RING_ZWAAN_PART_TAG`). */
+const ZWAAN_PART = 'ring-zwaan-part';
+/** The duck-typed boss parts the bot reads (src/game/boss.ts `BossPart`). */
+interface PartsOf extends Entity {
+  parts?: ReadonlyArray<{ multiplier: number; armored: boolean; enabled: boolean; destroyed: boolean }>;
+}
+
+/** The aim at one box (or the entity's x with a half width of 8 without one). */
+function aimBox(box: Rect | undefined, e: Entity, px: number, py: number, wvx: number): { mask: number; move: number } {
+  const tx = box ? box.x + box.w / 2 : e.x;
+  const hw = box ? box.w / 2 : 8;
+  return planeAim(tx - px, e.y - py, e.vx - wvx, hw);
+}
+
+/** The x run of a 20° diagonal shot through a lane's depth slab (2 × DEPTH_HALF = 16 px deep). */
+const HIDE_SPAN = 16 / Math.tan((20 * Math.PI) / 180);
+
+/** Scratch list of a ZWAAN part's live boxes (no allocation per tick). */
+const AIM_ORDER: number[] = [];
+
+/**
+ * The aim at a target: its first hurtbox; for a ZWAAN train part (revision R) the exposed live
+ * weak point (no other live box between the hero and it: a shot stops at the first box) with the
+ * highest damage multiplier that an aim meets from here (a broken one is skipped), else the next
+ * one down (the wide body sections last), else the best one's line-up move.
+ */
+function aimAt(e: Entity, px: number, py: number, wvx: number): { mask: number; move: number } {
+  const boxes = e.hurtboxes();
+  const parts = (e as PartsOf).parts;
+  if (!e.hasTag(ZWAAN_PART) || !parts || parts.length !== boxes.length) return aimBox(boxes[0], e, px, py, wvx);
+  AIM_ORDER.length = 0;
+  for (let i = 0; i < boxes.length; i++) {
+    const q = parts[i];
+    if (!q.enabled || q.destroyed || q.armored || boxes[i].w <= 0) continue;
+    // A shot meets the first box on its way (the boxes share the lane): only a box with no other
+    // live box between the hero and it is a target.
+    const b = boxes[i];
+    const near = px <= b.x ? b.x : px >= b.x + b.w ? b.x + b.w : px;
+    // Fixer (2026-10-22): from another lane a shot enters the part's depth slab only on its last
+    // `HIDE_SPAN` px (the 20° diagonal; straight across: none), so only a box there hides this one.
+    // Before, every box between the hero and it did, and from behind the car transporter the bot
+    // saw only its rear deck (the 2P pair queued for the same spot: 50–100 s fights).
+    const from = Math.abs(py - e.y) < 6 ? px : px < near ? Math.max(px, near - HIDE_SPAN) : Math.min(px, near + HIDE_SPAN);
+    let hidden = false;
+    for (let j = 0; j < boxes.length && !hidden; j++) {
+      const o = boxes[j];
+      if (j === i || o.w <= 0 || !parts[j].enabled || parts[j].destroyed) continue;
+      const mid = o.x + o.w / 2;
+      if ((from < near && mid > from && mid < near) || (from > near && mid < from && mid > near)) hidden = true;
+    }
+    if (!hidden) AIM_ORDER.push(i);
+  }
+  if (AIM_ORDER.length === 0) return aimBox(boxes[0], e, px, py, wvx);
+  // Higher multiplier first; then the wider box (an easier aim); then the part order.
+  AIM_ORDER.sort((a, b) => parts[b].multiplier - parts[a].multiplier || boxes[b].w - boxes[a].w || a - b);
+  let first: { mask: number; move: number } | null = null;
+  for (let k = 0; k < AIM_ORDER.length; k++) {
+    const aim = aimBox(boxes[AIM_ORDER[k]], e, px, py, wvx);
+    if (aim.move === 0) return aim;
+    first ??= aim;
+  }
+  return first!;
+}
+
 interface Strip extends Entity {
   lane: number;
   state: string;
@@ -145,6 +221,12 @@ export class RingBot implements InputSource {
   private quiet = 0;
   private lastTop: Scene | null | undefined = undefined;
   private fireT = 0;
+  /**
+   * Revision R: ticks of the current line-up run on a ZWAAN part (2P: the two wagons want each
+   * other's screen x and swap back and forth): past `STUCK_TICKS` the bot leaves its lane, past
+   * twice that it fires the nearest aim anyway.
+   */
+  private stuckT = 0;
   private lastBomb = -BOMB_EVERY;
   /** Danger score per lane (index 1 … 4). */
   private readonly danger = new Float64Array(LANE_COUNT + 1);
@@ -244,11 +326,24 @@ export class RingBot implements InputSource {
     // wagon's y and the pull flipped the lane every tick (a stuck lorry fight, seed 5).
     const target = this.pickTarget(world, p);
     const settled = Math.abs(w.y - laneY(w.laneTarget)) < 2;
-    if (target && settled) {
+    // (Not toward a ZWAAN train part, revision R: the long part sits in lanes 1-2 and the diagonal
+    // or straight-across aims reach it from the lane beside; the pull and the part's block beside
+    // flipped the lane all fight long.)
+    if (target && settled && !target.hasTag(ZWAAN_PART)) {
       const tl = laneAt(target.y);
       const dx = target.x - p.x;
       const dy = Math.abs(target.y - p.y);
       if (tl >= 1 && tl <= open && tl !== here && dx > 4.5 * dy && this.danger[tl] < Infinity) this.danger[tl] -= 80;
+    }
+    // A long line-up on a ZWAAN part (2P: the wagons swap back and forth): leave the lane.
+    if (this.stuckT > STUCK_TICKS && this.danger[w.laneTarget] < Infinity) this.danger[w.laneTarget] += 400;
+    // Fixer (2026-10-22): 2P on a ZWAAN part, player 2 keeps out of player 1's lane. In one lane
+    // the wagons push each other apart (spec §9), so one wanted forward and the other back and both
+    // line-ups stalled (the car transporter took 50–100 s with two pistols).
+    if (this.slot === 1 && target && target.hasTag(ZWAAN_PART)) {
+      const ow = r.player(0)?.wagon;
+      const ol = ow && ow.alive ? ow.laneTarget : 0;
+      if (ol >= 1 && ol <= open && this.danger[ol] < Infinity) this.danger[ol] += PARTNER_LANE;
     }
     // The safest lane (the current one wins a tie); a change counts every lane on the way.
     const from = w.laneTarget;
@@ -271,6 +366,7 @@ export class RingBot implements InputSource {
       // A lane change: FIRE released, up / down held until the wagon heads for that lane.
       this.goal = 'lane';
       this.fireT = 0;
+      this.stuckT = 0;
       return best < from ? UP : DOWN;
     }
     // An attack sweeps its lane and no lane is free (a brake check, a loose caravan, a charge):
@@ -308,15 +404,17 @@ export class RingBot implements InputSource {
       this.target = target;
       this.goal = 'aim';
       // Where each aim meets the target's lane: fire the one that hits, else move on screen.
-      const box = target.hurtboxes()[0];
-      const tx = box ? box.x + box.w / 2 : target.x;
-      const hw = box ? box.w / 2 : 8;
-      const aim = planeAim(tx - p.x, target.y - p.y, target.vx - w.vx, hw);
+      const aim = aimAt(target, p.x, p.y, w.vx);
       if (aim.move !== 0 && this.canMove(w, aim.move)) {
+        if (target.hasTag(ZWAAN_PART)) this.stuckT++;
+      }
+      if (aim.move !== 0 && this.canMove(w, aim.move) && this.stuckT <= 2 * STUCK_TICKS) {
         this.goal = 'line-up';
         this.fireT = 0;
         return aim.move;
       }
+      if (aim.move === 0) this.stuckT = 0;
+      else if (this.stuckT > 3 * STUCK_TICKS) this.stuckT = 0;
       this.fireT++;
       if (this.fireT > FIRE_HOLD) {
         this.fireT = 0;
@@ -375,6 +473,25 @@ export class RingBot implements InputSource {
         const st = e as Strip;
         if (st.state === 'fade' || st.lane < 1 || st.lane > LANE_COUNT || danger[st.lane] === Infinity) continue;
         if (st.x1 > w.x - WAGON_HALF - 24 && st.x0 < w.x + WAGON_HALF + 24) danger[st.lane] += st.state === 'lock' ? ATTACK_LANE + 600 : ATTACK_LANE;
+        continue;
+      }
+      if (e.type === ZWAAN_SLICK) {
+        // Revision R: a fat slick (world-fixed, x0 … x1 in its lane): the steering lags on it.
+        const sl = e as Strip;
+        const l = laneAt(e.y);
+        if (l < 1 || l > LANE_COUNT || danger[l] === Infinity) continue;
+        const ahead = sl.x0 - (w.x + WAGON_HALF);
+        if (sl.x1 > w.x - WAGON_HALF - 8 && ahead < 300) danger[l] += ahead <= 0 ? ATTACK_LANE - 1200 : CLOSURE_DANGER[Math.min(4, Math.floor(ahead / 96))] * 0.5;
+        continue;
+      }
+      if (e.type === ZWAAN_FLAME) {
+        // Revision R: the flame trail (screen-fixed: `ax` its front's screen x, `len` back from
+        // it): the streak is the tell, the fire costs a cell. Its lane over its reach.
+        const fl = e as Flame;
+        const l = laneAt(e.y);
+        if (l < 1 || l > LANE_COUNT || danger[l] === Infinity) continue;
+        const front = world.camera.x + fl.ax;
+        if (front + 12 > w.x - WAGON_HALF && front - fl.len - 12 < w.x + WAGON_HALF) danger[l] += ATTACK_LANE;
         continue;
       }
       if (e.hasTag('ring-closure') && e.type !== 'ring-closure') {

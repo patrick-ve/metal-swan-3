@@ -1,12 +1,13 @@
 /**
- * The ring's test mid-boss (`ring-lorry`, docs/design/ring.md §6) and its adds (`ring-forklift`,
- * `ring-barrel`): registration and the art at 1× / 2× / 4× (one drawer, the 1× geometry, PAL_HD);
- * inert-safe spawns from {} in a plain world and on the ring; the plan lock (on arrival) and its
- * release (after the jackknife), also through the westpoort-style boss slot; every attack after its
- * tell (≥ 18 ticks, on screen); a free lane in every cargo dump; the parts (doors, wheels, cab);
- * the continue's stagger holding the pattern; the cargo and the forklift's charge on a wagon; the
- * forklift's gloat and cower; the time to kill with the bot on normal (25–90 s by gun); its death never
- * ends the mission.
+ * The ZWAAN train's parts by TRAIN-1 (docs/design/ring.md §R.3): the CONTAINER TRAILER
+ * `ring-zwaan-container` (the retired test lorry `ring-lorry` without its cab) with its adds
+ * (`ring-forklift`, `ring-barrel`) and the CAB `ring-zwaan-cab` (ZWARE JONGEN). Registration and
+ * the art at 1× / 2× / 4× (one drawer, the 1× geometry, PAL_HD) of the container, the cab and the
+ * shared kit; inert-safe spawns; every attack after its tell (≥ 18 ticks, on screen); a free lane
+ * in every cargo dump; the parts (doors, bogie; cab, sleeper, chassis) and their multipliers; the
+ * damage rate and the phase-1 floor; the continue's stagger; the cargo and the forklift's charge;
+ * the cab's weave (never into a car), brake check (a ram) and gunner; the jackknife (the driver
+ * climbs out, the drop); the time to kill with the bot (the momentum: 25–45 s a part).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { inHdPalette } from '../../src/engine/palette-hd';
@@ -14,35 +15,40 @@ import { getFrames, hasHiSprite, listSprites, setHiArt, spriteErrors } from '../
 import { attackTokenLimit } from '../../src/game/enemy';
 import { hasEntity } from '../../src/game/registry';
 import '../../src/game/content/ring/boss/art';
-import { CARGO_AI, FORKLIFT_AI, LORRY, LORRY_AI, RingCargo, RingForklift, RingLorry } from '../../src/game/content/ring/boss/index';
+import { CARGO_AI, FORKLIFT_AI, LORRY, RingCargo, RingForklift } from '../../src/game/content/ring/boss/index';
+import { CONTAINER_AI, CONTAINER_X, ZwaanContainer } from '../../src/game/content/ring/zwaan/container';
+import { CAB_AI, CAB_LINES, ZwaanCab } from '../../src/game/content/ring/zwaan/cab';
+import { CAB } from '../../src/game/content/ring/zwaan/cab-geo';
+import { zwaanRate } from '../../src/game/content/ring/zwaan/kit';
 import '../../src/game/content/ring/items/index';
 import '../../src/game/content/ring/traffic/index';
 import { laneY, nearestLane } from '../../src/game/ring/lanes';
+import { WAGON_W } from '../../src/game/ring/wagon';
 import { createHeadlessRing } from '../../src/sim/headless-ring';
 import { RingRig, tinyPlan } from '../game/ring/ring-helpers';
 import { TestWorld, watchFairness, type TestWorld as TW } from './helpers';
 
-const PREFIX = 'boss/ring-lorry/';
+const PREFIXES = ['boss/ring-zwaan/container/', 'boss/ring-zwaan/cab/', 'boss/ring-zwaan/kit/'];
 
+/** A ring rig on a long plan (a part alone does not lock the plan; the train's controller does). */
 function rig(o: { god?: boolean } = {}): RingRig {
-  const r = new RingRig({ god: o.god });
+  const r = new RingRig({ god: o.god, plan: tinyPlan({ length: 120_000 }) });
   r.run(2);
   return r;
 }
 
-/** The fairness watcher on a ring rig. */
 function asTestWorld(r: RingRig): TW {
   return { world: r.world, run: (n = 1) => r.run(n) } as unknown as TW;
 }
 
-/** A lorry spawned just off the right edge in lane 1, run until its fight starts. */
-function lorryIn(r: RingRig, params: Record<string, unknown> = {}): RingLorry {
-  const l = r.spawnAt<RingLorry>('ring-lorry', 448, laneY(1), params);
-  r.until(() => l.state === 'fight', 600);
-  return l;
+/** A part spawned alone (no controller) just off the right edge in lane 1, run until its fight starts. */
+function partIn<T>(r: RingRig, id: string, params: Record<string, unknown> = {}): T {
+  const p = r.spawnAt<ZwaanContainer | ZwaanCab>(id, 400, laneY(1), params);
+  r.until(() => p.state === 'fight', 600);
+  return p as unknown as T;
 }
 
-describe('ring-lorry: registration and art', () => {
+describe('ZWAAN parts (TRAIN-1): registration and art', () => {
   let warn: { mock: { calls: unknown[][] }; mockRestore: () => void };
   beforeEach(() => {
     setHiArt(true);
@@ -50,118 +56,91 @@ describe('ring-lorry: registration and art', () => {
   });
   afterEach(() => warn.mockRestore());
 
-  it('registers the boss and its adds', () => {
-    for (const id of ['ring-lorry', 'ring-forklift', 'ring-barrel']) expect(hasEntity(id), id).toBe(true);
+  it('registers the container, the cab and the adds; the test lorry is retired', () => {
+    for (const id of ['ring-zwaan', 'ring-zwaan-container', 'ring-zwaan-cab', 'ring-forklift', 'ring-barrel']) expect(hasEntity(id), id).toBe(true);
+    expect(hasEntity('ring-lorry')).toBe(false);
+    expect(listSprites('boss/ring-lorry/')).toEqual([]);
   });
 
   it('every strip has 1× art and one HD drawer at 2× and 4× with the 1× geometry and PAL_HD colours', () => {
-    const ids = listSprites(PREFIX);
-    expect(ids.length).toBeGreaterThanOrEqual(30);
-    for (const id of ids) {
-      const lo = getFrames(id, 1);
-      expect(lo.length, id).toBeGreaterThan(0);
-      for (const d of [2, 4] as const) {
-        expect(hasHiSprite(id, d), `${id}@${d}x`).toBe(true);
-        const hi = getFrames(id, d);
-        expect(hi.length, `${id}@${d}x`).toBe(lo.length);
-        for (let i = 0; i < lo.length; i++) {
-          const f = hi[i];
-          expect([f.buf.w, f.buf.h, f.ox, f.oy], `${id}@${d}x[${i}]`).toEqual([lo[i].buf.w * d, lo[i].buf.h * d, lo[i].ox, lo[i].oy]);
-          let odd = 0;
-          for (const c of f.buf.data) if ((c & 255) !== 0 && !inHdPalette(c)) odd++;
-          expect(odd, `${id}@${d}x[${i}] colours`).toBe(0);
-          expect(f.buf.countOpaque(), `${id}@${d}x[${i}] drawn`).toBeGreaterThan(0);
+    let n = 0;
+    for (const prefix of PREFIXES) {
+      const ids = listSprites(prefix);
+      expect(ids.length, prefix).toBeGreaterThan(0);
+      for (const id of ids) {
+        n++;
+        const lo = getFrames(id, 1);
+        expect(lo.length, id).toBeGreaterThan(0);
+        for (const d of [2, 4] as const) {
+          expect(hasHiSprite(id, d), `${id}@${d}x`).toBe(true);
+          const hi = getFrames(id, d);
+          expect(hi.length, `${id}@${d}x`).toBe(lo.length);
+          for (let i = 0; i < lo.length; i++) {
+            const f = hi[i];
+            expect([f.buf.w, f.buf.h, f.ox, f.oy], `${id}@${d}x[${i}]`).toEqual([lo[i].buf.w * d, lo[i].buf.h * d, lo[i].ox, lo[i].oy]);
+            let odd = 0;
+            for (const c of f.buf.data) if ((c & 255) !== 0 && !inHdPalette(c)) odd++;
+            expect(odd, `${id}@${d}x[${i}] colours`).toBe(0);
+            expect(f.buf.countOpaque(), `${id}@${d}x[${i}] drawn`).toBeGreaterThan(0);
+          }
         }
       }
+      expect(spriteErrors().filter((e) => e.id.startsWith(prefix))).toEqual([]);
     }
-    expect(spriteErrors().filter((e) => e.id.startsWith(PREFIX))).toEqual([]);
-  }, 120_000);
+    expect(n).toBeGreaterThanOrEqual(40);
+  }, 180_000);
 });
 
-describe('ring-lorry: spawns and the plan', () => {
-  it('runs 4000 ticks from {} in a plain world and on the ring without errors', () => {
+describe('ZWAAN parts: spawns', () => {
+  it('run 4000 ticks from {} in a plain world and on the ring without errors', () => {
     const errors: unknown[] = [];
     const tw = new TestWorld({ width: 4000 });
     tw.world.events.on('error', (e) => errors.push(e));
-    tw.world.spawn('ring-lorry', 500, 180, {});
-    tw.world.spawn('ring-forklift', 300, 180, {});
-    tw.world.spawn('ring-barrel', 320, 180, {});
+    for (const id of ['ring-zwaan', 'ring-zwaan-container', 'ring-zwaan-cab', 'ring-forklift', 'ring-barrel']) tw.world.spawn(id, 500, 180, {});
     tw.run(4000);
     const r = rig({ god: true });
     r.world.events.on('error', (e) => errors.push(e));
-    r.spawnAt('ring-lorry', 448, laneY(1), {});
+    r.spawnAt('ring-zwaan-container', 448, laneY(1), {});
+    r.spawnAt('ring-zwaan-cab', 448, laneY(2), {});
     r.spawnAt('ring-forklift', 300, laneY(3), {});
     r.spawnAt('ring-barrel', 280, laneY(2), {});
     r.run(4000);
     expect(errors).toEqual([]);
   });
 
-  it('locks the plan on arrival, unlocks it when it dies; the mission goes on', () => {
+  it('a part alone keeps pace at the anchor (screen x 150) while the road scrolls', () => {
     const r = rig({ god: true });
-    const l = r.spawnAt<RingLorry>('ring-lorry', 448, laneY(1));
-    expect(r.runner.planLocked).toBe(false);
-    r.until(() => l.arrived, 400);
-    expect(r.runner.planLocked).toBe(true);
-    // It keeps pace with the camera: on screen at its home while the road scrolls.
-    const d0 = r.runner.planDist;
+    const c = partIn<ZwaanContainer>(r, 'ring-zwaan-container');
     r.run(300);
-    expect(r.runner.planDist).toBe(d0);
-    expect(Math.abs(l.screenX - LORRY_AI.homeX)).toBeLessThanOrEqual(LORRY_AI.drift + 4);
-    const score = r.session.slots[0].score;
-    l.kill(0);
-    expect(r.session.slots[0].score).toBeGreaterThanOrEqual(score + LORRY_AI.score);
-    expect(r.runner.planLocked).toBe(false);
-    r.until(() => l.defeated, 400);
-    expect(l.dropped).not.toBeNull();
-    expect(r.world.byTag('ring-crate').length).toBeGreaterThanOrEqual(1);
-    r.run(400);
-    expect(r.runner.state).toBe('playing');
-    expect(l.removed).toBe(true);
-  });
-
-  it('the boss slot spawns it off the right edge; the plan holds until it is gone', () => {
-    const plan = { ...tinyPlan({ length: 9000 }), bosses: [{ at: 300, id: 'ring-lorry', landmark: 'oost' as const, lane: 1 }] };
-    const r = new RingRig({ plan, god: true });
-    r.until(() => r.world.byTag('ring-lorry').length > 0, 400);
-    const l = r.world.byTag('ring-lorry')[0] as RingLorry;
-    expect(l.screenX).toBeGreaterThan(r.world.camera.w);
-    expect(l.lane).toBe(1);
-    r.until(() => l.state === 'fight', 400);
-    expect(r.runner.planLocked).toBe(true);
-    l.kill(0);
-    r.until(() => l.defeated, 400);
-    r.run(2);
-    expect(r.runner.planLocked).toBe(false);
-    expect(r.runner.state).toBe('playing');
+    expect(Math.abs(c.screenX - 150)).toBeLessThanOrEqual(6);
   });
 });
 
-describe('ring-lorry: the fight', () => {
-  it('every attack comes after its tell (≥ 18 ticks on screen); every dump leaves a free lane', () => {
+describe('ZWAAN CONTAINER: the fight', () => {
+  it('every attack comes after its tell (≥ 18 ticks on screen); every dump leaves a free lane; the forklift charges after its tell', () => {
     const r = rig({ god: true });
-    const l = lorryIn(r, { rate: 0 });
+    const c = partIn<ZwaanContainer>(r, 'ring-zwaan-container', { rate: 0 });
     let maxBusy = 0;
     const busy = (): void => {
-      maxBusy = Math.max(maxBusy, l.cargoLanes().size);
+      maxBusy = Math.max(maxBusy, c.cargoLanes().size);
     };
-    for (let t = 0; t < 2400; t++) {
+    for (let t = 0; t < 1800; t++) {
       r.run(1);
       busy();
     }
-    // Into phase 2 (the doors stay: cargo and weaves both).
-    r.world.damage(l, { amount: l.maxHp, kind: 'explosion', dirX: -1, owner: 0 }, 3);
-    expect(l.phase).toBe(1);
-    const w = watchFairness(asTestWorld(r), 3600, { attacks: { charge: 'tell-charge' }, tells: new Set(['tell-charge']), watched: (e) => e instanceof RingForklift }, busy);
+    // Into phase 2 (the doors stay: cargo and the forklift both).
+    r.world.damage(c, { amount: c.maxHp, kind: 'explosion', dirX: -1, owner: 0 }, 0);
+    expect(c.phase).toBe(1);
+    const w = watchFairness(asTestWorld(r), 3000, { attacks: { charge: 'tell-charge' }, tells: new Set(['tell-charge']), watched: (e) => e instanceof RingForklift }, busy);
     expect(maxBusy).toBeLessThan(4);
-    const fired = l.trace.filter((tr) => tr.fire >= 0);
-    expect(fired.some((tr) => tr.attack === 'cargo')).toBe(true);
-    expect(fired.some((tr) => tr.attack === 'weave')).toBe(true);
+    const fired = c.trace.filter((tr) => tr.fire >= 0);
+    expect(fired.length).toBeGreaterThanOrEqual(3);
     for (const tr of fired) {
-      expect(tr.fire - tr.tell, `${tr.attack} tell`).toBeGreaterThanOrEqual(18);
-      expect(tr.seen, `${tr.attack} on screen`).toBeGreaterThanOrEqual(18);
-      if (tr.attack === 'cargo') expect(tr.lanes?.length ?? 0).toBeLessThan(4);
+      expect(tr.fire - tr.tell).toBeGreaterThanOrEqual(18);
+      expect(tr.seen).toBeGreaterThanOrEqual(18);
+      expect(tr.lanes?.length ?? 0).toBeLessThan(4);
     }
-    expect(l.panelDown).toBe(true);
+    expect(c.panelDown).toBe(true);
     expect(w.attacks.length).toBeGreaterThan(0);
     for (const a of w.attacks) {
       expect(a.prev).toBe('tell-charge');
@@ -171,185 +150,292 @@ describe('ring-lorry: the fight', () => {
     expect(w.maxTokens).toBeLessThanOrEqual(attackTokenLimit(r.world));
   }, 30_000);
 
-  it('parts break: the doors (the loader jumps, phase 2), the wheels (no more weaving), the cab ends it', () => {
+  it('parts break: the doors (the loader jumps, phase 2), the bogie (the rims drag); the box takes the rest', () => {
     const r = rig({ god: true });
-    const l = lorryIn(r, { rate: 0 });
+    const c = partIn<ZwaanContainer>(r, 'ring-zwaan-container', { rate: 0 });
     const score = r.session.slots[0].score;
-    r.world.damage(l, { amount: 5000, kind: 'bullet', dirX: 1, owner: 0 }, 1);
-    expect(l.parts[1].destroyed).toBe(true);
-    expect(l.doorsGone).toBe(true);
-    expect(l.loader).toBe('gone');
-    expect(l.phase).toBe(1);
+    r.world.damage(c, { amount: 5000, kind: 'bullet', dirX: 1, owner: 0 }, 1);
+    expect(c.parts[1].destroyed).toBe(true);
+    expect(c.doorsGone).toBe(true);
+    expect(c.loader).toBe('gone');
+    expect(c.phase).toBe(1);
     expect(r.session.slots[0].score).toBeGreaterThanOrEqual(score + 1000);
-    r.world.damage(l, { amount: 5000, kind: 'bullet', dirX: 1, owner: 0 }, 2);
-    expect(l.wheelsBroken).toBe(true);
-    expect(l.dead).toBe(false);
-    const weaves = l.trace.filter((t) => t.attack === 'weave').length;
-    r.run(1500);
-    expect(l.trace.filter((t) => t.attack === 'weave').length).toBe(weaves);
-    r.world.damage(l, { amount: 1e6, kind: 'bullet', dirX: 1, owner: 0 }, 0);
-    expect(l.dead).toBe(true);
+    r.world.damage(c, { amount: 5000, kind: 'bullet', dirX: 1, owner: 0 }, 2);
+    expect(c.bogieBroken).toBe(true);
+    expect(c.dead).toBe(false);
+    // The pool holds at the phase-2 line until the side panel lies on the road.
+    r.world.damage(c, { amount: 1e6, kind: 'bullet', dirX: 1, owner: 0 }, 0);
+    expect(c.dead).toBe(false);
+    r.until(() => c.panelDown, 200);
+    r.world.damage(c, { amount: 1e6, kind: 'bullet', dirX: 1, owner: 0 }, 0);
+    expect(c.dead).toBe(true);
   });
 
-  it('the container takes half, the cab one and a half', () => {
+  it('the multipliers: the doors × 1.5, the bogie × 1.25, the box × 1', () => {
     const r = rig({ god: true });
-    const l = lorryIn(r, { rate: 0 });
-    const hp0 = l.hp;
-    r.world.damage(l, { amount: 100, kind: 'bullet', dirX: 1, owner: 0 }, 3);
-    expect(hp0 - l.hp).toBeCloseTo(100 * LORRY_AI.boxMul);
-    const hp1 = l.hp;
-    r.world.damage(l, { amount: 100, kind: 'bullet', dirX: 1, owner: 0 }, 0);
-    expect(hp1 - l.hp).toBeCloseTo(100 * LORRY_AI.cabMul);
+    const c = partIn<ZwaanContainer>(r, 'ring-zwaan-container', { rate: 0 });
+    for (const [i, mul] of [[0, 1], [1, CONTAINER_AI.doorsMul], [2, CONTAINER_AI.bogieMul]] as const) {
+      const hp0 = c.hp;
+      r.world.damage(c, { amount: 20, kind: 'bullet', dirX: 1, owner: 0 }, i);
+      expect(hp0 - c.hp, `part ${i}`).toBeCloseTo(20 * mul);
+    }
   });
 
   it('the damage rate: a burst at most, then the refill per tick; the pool holds at the phase-2 line until the panel is down', () => {
     const r = rig({ god: true });
-    const l = lorryIn(r);
+    const c = partIn<ZwaanContainer>(r, 'ring-zwaan-container');
     const blast = { amount: 150, kind: 'bullet' as const, dirX: 1, owner: 0 };
-    // A full bucket takes one shotgun blast at the cab (225) only up to the burst.
-    const hp0 = l.hp;
-    r.world.damage(l, blast, 0);
-    expect(hp0 - l.hp).toBeCloseTo(LORRY_AI.rate.burst);
-    // An empty bucket: nothing; 28 ticks later (the shotgun's interval): 28 × the rate.
-    const hp1 = l.hp;
-    r.world.damage(l, blast, 0);
-    expect(hp1 - l.hp).toBeCloseTo(0);
+    const k = c.maxHp / CONTAINER_AI.hp.pool;
+    const hp0 = c.hp;
+    r.world.damage(c, blast, 0);
+    expect(hp0 - c.hp).toBeCloseTo(150 * k);
+    const hp1 = c.hp;
+    r.world.damage(c, blast, 0);
+    expect(hp1 - c.hp).toBeCloseTo(0);
     r.run(28);
-    const hp2 = l.hp;
-    r.world.damage(l, blast, 0);
-    expect(hp2 - l.hp).toBeCloseTo(28 * LORRY_AI.rate.perTick, 0);
-    // A shotgun every 28 ticks: the pool stops at the phase-2 line until the side panel is down.
-    const line = Math.floor(l.maxHp * LORRY_AI.phase2);
-    for (let i = 0; i < 80 && !l.panelDown; i++) {
+    const hp2 = c.hp;
+    r.world.damage(c, blast, 0);
+    expect(hp2 - c.hp).toBeCloseTo(28 * zwaanRate(CONTAINER_AI.hp.pool) * k, 0);
+    const line = Math.floor(c.maxHp * CONTAINER_AI.phase2);
+    for (let i = 0; i < 120 && !c.panelDown; i++) {
       r.run(28);
-      r.world.damage(l, blast, 0);
-      if (!l.panelDown) expect(l.hp).toBeGreaterThanOrEqual(line);
+      r.world.damage(c, blast, 0);
+      if (!c.panelDown) expect(c.hp).toBeGreaterThanOrEqual(line);
     }
-    expect(l.phase).toBe(1);
-    expect(l.panelDown).toBe(true);
-    // The fight then goes on to the end at the same rate (at least 2,000 / 2 ticks in all).
+    expect(c.phase).toBe(1);
+    expect(c.panelDown).toBe(true);
     let n = 0;
-    while (!l.dead && n < 200) {
+    while (!c.dead && n < 400) {
       r.run(28);
-      r.world.damage(l, blast, 0);
+      r.world.damage(c, blast, 0);
       n++;
     }
-    expect(l.dead).toBe(true);
+    expect(c.dead).toBe(true);
   });
 
-  it('the continue staggers it: the running attack ends cleanly and holds; the phase runs on after it', () => {
+  it('the continue staggers it: the running dump ends cleanly and holds; the phase runs on after it', () => {
     const r = rig({ god: true });
-    const l = lorryIn(r);
-    r.until(() => l.doorTarget === 1 && l.brakeT > 0, 900);
-    const n = l.trace.length;
+    const c = partIn<ZwaanContainer>(r, 'ring-zwaan-container');
+    r.until(() => c.doorTarget === 1 && c.brakeT > 0, 900);
+    const n = c.trace.length;
     r.world.events.emit('continueLanded', { player: r.hero, slot: 0 } as never);
-    expect(l.staggerTicks).toBeGreaterThan(0);
+    expect(c.staggerTicks).toBeGreaterThan(0);
     r.run(1);
-    expect(l.doorTarget).toBe(0);
-    expect(l.brakeT).toBe(0);
-    expect(l.loader).toBe('stand');
-    const thrown = l.thrown;
-    while (l.staggerTicks > 0) r.run(1);
-    expect(l.thrown).toBe(thrown);
-    expect(l.trace.length).toBe(n);
-    r.run(LORRY_AI.cargo.every + 400);
-    expect(l.trace.length).toBeGreaterThan(n);
+    expect(c.doorTarget).toBe(0);
+    expect(c.brakeT).toBe(0);
+    expect(c.loader).toBe('stand');
+    const thrown = c.thrown;
+    while (c.staggerTicks > 0) r.run(1);
+    expect(c.thrown).toBe(thrown);
+    expect(c.trace.length).toBe(n);
+    r.run(CONTAINER_AI.cargo.every + 400);
+    expect(c.trace.length).toBeGreaterThan(n);
   });
 
-  it('a drum costs a wagon in its lane 1 cell and bursts; a swerving wagon passes; a shot crate drops its item', () => {
+  it('dumps launch from the door and land behind the trailer, in the chosen lanes', () => {
+    const r = rig({ god: true });
+    const c = partIn<ZwaanContainer>(r, 'ring-zwaan-container');
+    r.until(() => c.thrown > 0, 900);
+    const g = r.world.entities.find((e) => e instanceof RingCargo) as RingCargo;
+    expect(g).toBeDefined();
+    expect(g.x).toBeLessThan(c.x + CONTAINER_X.doors[1]);
+    expect(c.trace.find((t) => t.fire >= 0)?.lanes).toContain(nearestLane(g.landY));
+  });
+
+  it('a drum costs a wagon in its lane 1 cell; a shot crate drops its item; the forklift rams for 2 cells', () => {
     const r = rig();
     const wg = r.wagon;
     r.until(() => wg.invulnTicks <= 0, 300);
     const lane = wg.laneTarget;
-    const c = r.spawnAt<RingCargo>('ring-barrel', wg.screenX + 60, laneY(lane), { kind: 'barrel' });
-    r.until(() => c.removed, 200);
+    const g = r.spawnAt<RingCargo>('ring-barrel', wg.screenX + 60, laneY(lane), { kind: 'barrel' });
+    r.until(() => g.removed, 200);
     expect(wg.cells).toBe(wg.maxCells - CARGO_AI.cost);
-    // A crate shot on the road breaks and drops its item.
     const k = r.spawnAt<RingCargo>('ring-barrel', 300, laneY(1), { kind: 'crate', drop: 'repair' });
     r.run(2);
     r.world.damage(k, { amount: 50, kind: 'bullet', dirX: 1, owner: 0 });
-    expect(k.removed || k.dead).toBe(true);
     r.world.flush();
     expect(r.world.byTag('ring-crate').length).toBe(1);
-    // In the air it is not hit.
-    const f = r.spawnAt<RingCargo>('ring-barrel', 300, laneY(1), { kind: 'barrel', ticks: 20, ty: laneY(3), lift: 20 });
-    expect(f.hurtboxes().length).toBe(0);
-  });
-
-  it('the forklift charges after its tell; reaching a wagon costs 2 cells (a ram)', () => {
-    const r = rig();
-    const wg = r.wagon;
     r.until(() => wg.invulnTicks <= 0, 300);
     const f = r.spawnAt<RingForklift>('ring-forklift', wg.screenX + 160, laneY(wg.laneTarget), {});
     const before = wg.cells;
-    let tell = 0;
-    r.until(() => {
-      if (f.mode === 'tell-charge') tell++;
-      return f.mode === 'charge';
-    }, 600);
-    expect(tell).toBeGreaterThanOrEqual(18);
+    r.until(() => f.mode === 'charge', 600);
     r.until(() => f.mode !== 'charge', 200);
     expect(before - wg.cells).toBe(FORKLIFT_AI.ramCost);
   });
 
-  it('the forklift gloats (forks down, a snack; no attack) and cowers', () => {
-    const r = rig();
-    const f = r.spawnAt<RingForklift>('ring-forklift', 300, laneY(2), {});
-    r.run(5);
-    expect(f.react('gloat', 300, null)).toBe(true);
-    const modes = new Set<string>();
-    for (let i = 0; i < 200; i++) {
-      r.run(1);
-      modes.add(f.mode);
-    }
-    expect(modes.has('tell-charge')).toBe(false);
-    expect(modes.has('charge')).toBe(false);
-    expect(f.anim.id).toBe(`${PREFIX}forklift/gloat`);
-    expect(f.react('cower', 60, null)).toBe(true);
-    r.run(2);
-    expect(f.anim.id).toBe(`${PREFIX}forklift/cower`);
-  });
-
-  it('dumps launch from the door and land behind the lorry, in the chosen lanes', () => {
+  it('beaten: the forklift drives off, the trailer tips onto its side and drops an item', () => {
     const r = rig({ god: true });
-    const l = lorryIn(r);
-    r.until(() => l.thrown > 0, 900);
-    const c = r.world.entities.find((e) => e instanceof RingCargo) as RingCargo;
-    expect(c).toBeDefined();
-    expect(c.x).toBeLessThan(l.x + LORRY.rear);
-    expect(l.trace.find((t) => t.fire >= 0)?.lanes).toContain(nearestLane(c.landY));
+    const c = partIn<ZwaanContainer>(r, 'ring-zwaan-container', { rate: 0 });
+    r.world.damage(c, { amount: c.maxHp, kind: 'explosion', dirX: -1, owner: 0 }, 0);
+    r.until(() => c.forklift !== null, 900);
+    const f = c.forklift!;
+    c.kill(0);
+    r.run(1);
+    expect(f.mode).toBe('leave');
+    r.until(() => c.beaten === 'tip', 300);
+    r.until(() => c.removed, 900);
+    expect(c.dropped).not.toBeNull();
+    void LORRY;
   });
 });
 
-describe('ring-lorry: time to kill with the bot (normal)', () => {
-  // The time depends on the gun the bot brings (the damage-rate cap, fixer B: about 28–30 s with
-  // the spread gun, 38–46 s with the machine gun, 45–60 s with the pistol). Since the 2026-10-21
-  // tuning (fewer enemies) the bot wrecks less on the way and keeps its pickups more often: every
-  // seed 25–90 s, and the three never all short.
-  it('the bot kills it in 25–90 s from the start of the fight (seeds 1–3; the median ≥ 35 s)', async () => {
-    const times: number[] = [];
-    for (const seed of [1, 2, 3]) {
-      const h = await createHeadlessRing({ seed, section: 'westpoort', difficulty: 'normal', bot: true });
-      let lorry: RingLorry | null = null;
-      let fight = -1;
-      let death = -1;
-      for (let t = 0; t < 12000 && !h.done && death < 0; t++) {
-        h.step(1);
-        if (!lorry) lorry = (h.world?.entities.find((e) => e instanceof RingLorry) as RingLorry | undefined) ?? null;
-        else {
-          if (fight < 0 && lorry.state === 'fight') fight = h.ticks;
-          if (lorry.dead) death = h.ticks;
-        }
+describe('ZWARE JONGEN (the cab): the fight', () => {
+  it('weaves after its tell (≥ 18 ticks, the cab on screen), the horn on every lane change; never into a car', () => {
+    const r = rig({ god: true });
+    const c = partIn<ZwaanCab>(r, 'ring-zwaan-cab', { rate: 0 });
+    const horns: number[] = [];
+    const sfx = r.world.audio.sfx.bind(r.world.audio);
+    r.world.audio.sfx = ((id: string, o?: unknown) => {
+      if (id === 'ring/zwaan-horn') horns.push(r.world.tick);
+      return sfx(id, o as never);
+    }) as typeof r.world.audio.sfx;
+    r.until(() => c.laneChanges >= 2, 3000);
+    const weaves = c.trace.filter((t) => t.attack === 'weave' && t.fire >= 0);
+    expect(weaves.length).toBeGreaterThanOrEqual(2);
+    for (const t of weaves) {
+      expect(t.fire - t.tell).toBeGreaterThanOrEqual(18);
+      expect(t.seen).toBeGreaterThanOrEqual(18);
+    }
+    expect(horns.length).toBeGreaterThanOrEqual(c.laneChanges);
+    // A car beside it in the other lane: no lane change while it is there.
+    r.until(() => !c.weaving, 200);
+    const other = c.lane === 1 ? 2 : 1;
+    const car = r.spawnAt('ring-car', c.screenX + 40, laneY(other), { model: 'hatch', rel: 0 });
+    const n = c.laneChanges;
+    for (let t = 0; t < 600; t++) {
+      r.run(1);
+      car.x = c.x + 40;
+      car.y = laneY(other);
+    }
+    expect(c.laneChanges).toBe(n);
+  }, 30_000);
+
+  it('the brake check: the brake lights glow (≥ 18 ticks), then a hard brake rams a wagon behind it (1 cell)', () => {
+    const r = rig();
+    const c = partIn<ZwaanCab>(r, 'ring-zwaan-cab', { rate: 0 });
+    const wg = r.wagon;
+    let hit = false;
+    for (let t = 0; t < 4000 && !hit; t++) {
+      // Keep the wagon right behind the cab in its lane.
+      if (!c.weaving && c.mode !== 'brake') {
+        wg.y = c.y;
+        wg.laneTarget = c.lane;
+        wg.x = c.x - WAGON_W / 2 - 20;
       }
+      const before = wg.cells;
+      r.run(1);
+      if (c.mode === 'brake' && wg.cells < before) hit = true;
+    }
+    const brakes = c.trace.filter((t) => t.attack === 'brake' && t.fire >= 0);
+    expect(brakes.length).toBeGreaterThan(0);
+    for (const t of brakes) {
+      expect(t.fire - t.tell).toBeGreaterThanOrEqual(18);
+      expect(t.seen).toBeGreaterThanOrEqual(18);
+    }
+    expect(hit).toBe(true);
+  }, 30_000);
+
+  it('the gunner: the window opens and he aims (≥ 18 ticks), then shots from the window; a broken sleeper stops him (he tumbles out)', () => {
+    const r = rig({ god: true });
+    const c = partIn<ZwaanCab>(r, 'ring-zwaan-cab', { rate: 0 });
+    const w = watchFairness(asTestWorld(r), 2400, { attacks: { gun: 'tell-gun' }, tells: new Set(['tell-gun']), watched: (e) => e === c });
+    const guns = c.trace.filter((t) => t.attack === 'gun' && t.fire >= 0);
+    expect(guns.length).toBeGreaterThan(0);
+    for (const t of guns) {
+      expect(t.fire - t.tell).toBeGreaterThanOrEqual(18);
+      expect(t.seen).toBeGreaterThanOrEqual(18);
+    }
+    expect(c.shots).toBeGreaterThanOrEqual(3);
+    expect(w.outsideShots).toBe(0);
+    // Break the sleeper: the gunner tumbles out; no more shots.
+    const tumblers = r.world.entities.length;
+    r.world.damage(c, { amount: 1e4, kind: 'bullet', dirX: 1, owner: 0 }, 1);
+    expect(c.sleeperBroken).toBe(true);
+    r.world.flush();
+    expect(r.world.entities.length).toBeGreaterThan(tumblers - 1);
+    const shots = c.shots;
+    r.run(2400);
+    expect(c.shots).toBe(shots);
+  }, 30_000);
+
+  it('the multipliers: the cab × 1.5, the sleeper × 1.25, the chassis × 1; phase 2 says its line', () => {
+    const r = rig({ god: true });
+    const c = partIn<ZwaanCab>(r, 'ring-zwaan-cab', { rate: 0 });
+    for (const [i, mul] of [[0, CAB_AI.cabMul], [1, CAB_AI.sleeperMul], [2, CAB_AI.chassisMul]] as const) {
+      const hp0 = c.hp;
+      r.world.damage(c, { amount: 20, kind: 'bullet', dirX: 1, owner: 0 }, i);
+      expect(hp0 - c.hp, `part ${i}`).toBeCloseTo(20 * mul);
+    }
+    const said: string[] = [];
+    const say = c.say.bind(c);
+    c.say = (text, o) => {
+      said.push(text);
+      say(text, o);
+    };
+    r.world.damage(c, { amount: c.hp - c.maxHp * 0.45, kind: 'explosion', dirX: 1, owner: 0 }, 2);
+    expect(c.phase).toBe(1);
+    expect(said).toContain(CAB_LINES.rage);
+    for (const line of Object.values(CAB_LINES)) expect(line.length).toBeLessThanOrEqual(24);
+  });
+
+  it('the continue staggers it; a lane change finishes first', () => {
+    const r = rig({ god: true });
+    const c = partIn<ZwaanCab>(r, 'ring-zwaan-cab', { rate: 0 });
+    r.until(() => c.mode === 'tell-gun' || c.mode === 'tell-weave' || c.mode === 'tell-brake', 1200);
+    r.world.events.emit('continueLanded', { player: r.hero, slot: 0 } as never);
+    expect(c.staggerTicks).toBeGreaterThan(0);
+    r.run(1);
+    expect(c.mode).toBe('cruise');
+    expect(c.blinkT).toBe(0);
+    expect(c.gunner).toBe('none');
+  });
+
+  it('the jackknife: the bubble, the yaw, onto the shoulder, the drop, the driver climbs out dazed; then removed', () => {
+    const r = rig({ god: true });
+    const c = partIn<ZwaanCab>(r, 'ring-zwaan-cab', { rate: 0 });
+    const said: string[] = [];
+    const say = c.say.bind(c);
+    c.say = (text, o) => {
+      said.push(text);
+      say(text, o);
+    };
+    const score = r.session.slots[0].score;
+    c.kill(0);
+    expect(r.session.slots[0].score).toBeGreaterThanOrEqual(score + 10_000);
+    r.until(() => c.yawF >= 0, 120);
+    expect(said).toContain(CAB_LINES.beaten);
+    r.until(() => c.beaten === 'tip', 200);
+    expect(c.y).toBeGreaterThan(laneY(4));
+    r.until(() => c.driverOut, 120);
+    expect(c.dropped).not.toBeNull();
+    r.until(() => c.removed, 900);
+    void CAB;
+  });
+});
+
+describe('ZWAAN parts: time to kill with the bot (normal; the momentum)', () => {
+  it('the bot beats the container and the cab in 25–45 s each from the start of their fight (seeds 1–3)', async () => {
+    const times: Record<string, number[]> = { 'ring-zwaan-container': [], 'ring-zwaan-cab': [] };
+    for (const seed of [1, 2, 3]) {
+      const h = await createHeadlessRing({ seed, section: 'zwaan', difficulty: 'normal', bot: true, god: true });
+      const start: Record<string, number> = {};
+      const ring = h.runner!;
+      ring.world.events.on('ringTrainPart', (e) => {
+        if (!(e.part in times)) return;
+        if (e.phase === 'start') start[e.part] = h.ticks;
+        else times[e.part].push((h.ticks - start[e.part]) / 60);
+      });
+      let done = false;
+      ring.world.events.on('ringTrainDone', () => (done = true));
+      for (let t = 0; t < 20_000 && !h.done && !done; t++) h.step(1);
       h.dispose();
-      expect(fight).toBeGreaterThan(0);
-      expect(death).toBeGreaterThan(fight);
-      times.push((death - fight) / 60);
     }
-    for (const secs of times) {
-      expect(secs, JSON.stringify(times)).toBeGreaterThanOrEqual(25);
-      expect(secs, JSON.stringify(times)).toBeLessThanOrEqual(90);
+    for (const [id, list] of Object.entries(times)) {
+      expect(list.length, id).toBe(3);
+      for (const s of list) {
+        expect(s, `${id} ${JSON.stringify(list)}`).toBeGreaterThanOrEqual(25);
+        expect(s, `${id} ${JSON.stringify(list)}`).toBeLessThanOrEqual(45);
+      }
     }
-    expect([...times].sort((a, b) => a - b)[1], JSON.stringify(times)).toBeGreaterThanOrEqual(35);
-  }, 120_000);
+  }, 180_000);
 });

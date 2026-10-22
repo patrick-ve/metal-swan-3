@@ -14,6 +14,10 @@
  * '3,4') with `stage`
  * ('warn' = arrows toward the nearest open lane, 'close' = red X; default 'close') and `limit`
  * (50 | 80 | 100 | 'end' | '' for the open lanes; default 100); `jam: true` = 50 everywhere.
+ *
+ * Revision R (OPT-IN, off by default): param `drip` ('file') mounts a wide text panel on top of the
+ * beam over the middle lanes (`ring/hazard/drip`, art-drip.ts: `FILE` / `BLOKKADE` in amber LEDs,
+ * our own lettering); it lights with the signs. The final jam's gantry (jam.ts `final`).
  */
 import { Entity } from '../../../../engine/entity';
 import type { DrawOpts, Renderer } from '../../../../engine/render';
@@ -23,6 +27,7 @@ import { RING_ENTITY } from '../../../ring/ids';
 import { LANE_COUNT } from '../../../ring/lanes';
 import { RingLayer, type Layered } from '../traffic/road-kit';
 import { FAR_P, FAR_POST_DX, flashes, NEAR_P, signAt, signFrame, SIGN_H, SIGN_W } from './geometry';
+import { DRIP_AT, dripFrame } from './art-drip';
 
 /** Ticks per flasher phase (the pairs alternate). */
 export const FLASH_TICKS = 18;
@@ -77,6 +82,8 @@ export class RingGantry extends Entity implements Layered {
   faces: string[];
   /** The signs are lit (they switch on as the gantry comes into view). */
   lit = false;
+  /** Revision R: the text panel's frame on the beam (−1 = none; param `drip`). */
+  readonly drip: number;
   private t = 0;
   private layer: RingLayer | null = null;
 
@@ -84,6 +91,7 @@ export class RingGantry extends Entity implements Layered {
     // Drawn in front of every lane: its plane y is the near post's.
     super(world, x, NEAR_P);
     this.faces = gantryFaces(p);
+    this.drip = typeof p.drip === 'string' ? dripFrame(p.drip) : -1;
     this.team = 'neutral';
     this.z = 12;
     this.hitbox = { x: -40, y: -176, w: 80, h: 178 };
@@ -125,6 +133,7 @@ export class RingGantry extends Entity implements Layered {
     const x = Math.round(this.x);
     drawOpts.flipX = false;
     r.sprite('ring/hazard/gantry-truss', 0, x, NEAR_P, drawOpts);
+    if (this.drip >= 0) r.sprite('ring/hazard/drip', this.lit ? this.drip : 0, x + DRIP_AT[0], DRIP_AT[1], drawOpts);
     const phase = Math.floor(this.t / FLASH_TICKS) % 2;
     for (let lane = 1; lane <= LANE_COUNT; lane++) {
       const face = this.lit ? this.faces[lane - 1] : '';
@@ -145,5 +154,5 @@ export class RingGantry extends Entity implements Layered {
 
 defineEntity(RING_ENTITY.gantry, (w, x, y, p) => new RingGantry(w, x, y, p), {
   category: 'prop',
-  description: 'A matrix-sign gantry across the ring (params signs, or closed + stage + limit, or jam).',
+  description: 'A matrix-sign gantry across the ring (params signs, or closed + stage + limit, or jam; drip: a text panel on the beam).',
 });

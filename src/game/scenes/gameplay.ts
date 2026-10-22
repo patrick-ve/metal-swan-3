@@ -104,7 +104,16 @@ export function missionArtOrder(
  * keeps its sprites inside `DENSE_BUDGET_BYTES` minus that (missions without it: the full budget).
  */
 export type MissionArtDef = Pick<MissionDef, 'artDensity' | 'preloadFirst' | 'preloadLast'> &
-  Partial<Pick<MissionDef, 'id' | 'start' | 'sections' | 'bossSection'>> & { readonly extraChar?: readonly string[]; readonly denseReserve?: number };
+  Partial<Pick<MissionDef, 'id' | 'start' | 'sections' | 'bossSection'>> & {
+    readonly extraChar?: readonly string[];
+    readonly denseReserve?: number;
+    /**
+     * OPT-IN (revision R, mission `ring`): `denseReserve` per section id (the drive's stretches have
+     * the ring's streamed scenery, the foot sections their SectionView's); a section without an
+     * entry uses `denseReserve`. Missions without it: unchanged.
+     */
+    readonly sectionReserve?: Readonly<Record<string, number>>;
+  };
 
 type ArtApp = Pick<GameApp, 'preloadArt' | 'session'> & { readonly artCache?: GameApp['artCache'] };
 
@@ -295,7 +304,9 @@ const isHero = (run: DenseRun, id: string): boolean => run.heroes.some((h) => id
 
 /** The run's sprite budget: the dense budget minus the mission's own reserve (`denseReserve`). */
 function runBudget(run: DenseRun): number {
-  return denseBudget - (run.mission.denseReserve ?? 0);
+  const per = run.mission.sectionReserve;
+  const own = per ? per[run.order[run.index] ?? ''] : undefined;
+  return denseBudget - (own ?? run.mission.denseReserve ?? 0);
 }
 
 /**
@@ -588,6 +599,20 @@ export interface DemoOpts {
   onEnd: (byKey: boolean) => void;
 }
 
+/**
+ * OPT-IN (revision R, docs/design/ring.md §R.10): a level that another scene hands over to this one
+ * without a tally (the ring's drive → its on-foot part). `def` is the (unregistered) MissionDef to
+ * run (`mission` is then only its id); the runner continues the session's mission
+ * (`RunnerOptions.continueMission`: the per-mission stats, lives, score and weapons stay); `artDef`
+ * is the tier-4 art definition of the whole level (one run across the hand-over); `onComplete`
+ * replaces the tally hand-off at the end.
+ */
+export interface GameplayHandover {
+  readonly def: MissionDef;
+  readonly artDef: MissionArtDef;
+  onComplete(runner: MissionRunner, scene: GameplayScene): void;
+}
+
 export interface GameplayOpts {
   mission: string;
   section?: string;
@@ -595,6 +620,8 @@ export interface GameplayOpts {
   /** Use this session instead of `app.session` (the attract demo). */
   session?: GameSession;
   demo?: DemoOpts;
+  /** OPT-IN (revision R): see `GameplayHandover`; absent = nothing changes. */
+  handover?: GameplayHandover;
 }
 
 /** The start banner of a mission with a card lasts 120 ticks (GDD §13.6). */
@@ -656,9 +683,12 @@ export class GameplayScene implements Scene, PauseHost, PlayHost {
     app.focusLost = false;
     app.pointerPressed = false;
     const demo = this.opts.demo;
+    const handover = this.opts.handover;
     const runner = new MissionRunner({
       session: this.session,
-      mission: withCard(this.opts.mission),
+      mission: handover ? handover.def : withCard(this.opts.mission),
+      // Revision R (opt-in): the hand-over continues the level's mission (no reset, no banner).
+      ...(handover ? { continueMission: true } : {}),
       section: this.opts.section,
       pads: [app.input.pad(0), app.input.pad(1)],
       // The demo plays silently under the title song.
@@ -672,12 +702,13 @@ export class GameplayScene implements Scene, PauseHost, PlayHost {
     this.runner = runner;
     this.tierSeen = artTier();
     if (!demo) {
-      preloadMissionArt(app, runner.mission, runner.artDensity, this.session, this.session.sectionId || undefined);
+      preloadMissionArt(app, this.artDef, runner.artDensity, this.session, handover ? (this.opts.section ?? handover.def.start) : this.session.sectionId || undefined);
       // A direct start (?mission=, a continue, the next mission): the intro card did not run.
       preloadMissionAudio(app, runner.mission);
     }
     runner.events.on('complete', () => {
       if (this.demo) this.endDemo(false);
+      else if (handover) handover.onComplete(runner, this);
       // ams → the glitch bridge into the first-person mode (docs/design/fps.md §1.1): no tally page.
       else if (runner.mission.after === 'fps') app.scenes.replace(new GlitchBridgeScene(app, { from: this, runner }), { fade: 0 });
       else app.scenes.replace(new MissionCompleteScene(app, runner), { fade: 40 });
@@ -814,7 +845,12 @@ export class GameplayScene implements Scene, PauseHost, PlayHost {
   preloadArtNow(): void {
     const runner = this.runner;
     if (this.demo || !runner) return;
-    preloadMissionArt(this.app, runner.mission, runner.artDensity, this.session, runner.section?.id);
+    preloadMissionArt(this.app, this.artDef, runner.artDensity, this.session, runner.section?.id);
+  }
+
+  /** The tier-4 art definition: the hand-over's (revision R), else the mission's. */
+  private get artDef(): MissionArtDef {
+    return this.opts.handover?.artDef ?? this.runner.mission;
   }
 
   /**

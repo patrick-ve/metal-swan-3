@@ -349,6 +349,21 @@ Mission `ring` (docs/design/ring.md §15, docs/api/ring.md) runs in its own harn
   (2026-10-20): seeds 1–5 god 32,777–33,562 ticks, 0.4 s wall; normal 6–8 wrecks a run. Wave B
   (2026-10-21, docs/api/ring.md §23): god seeds 1–15 32,881–38,290 ticks (the lorry fight adds about
   45–60 s), 0.5–0.8 s wall; normal 6–9 wrecks a run; the report's `bosses[].ticks` is the time to kill.
+- **Revision R (2026-10-22; docs/api/ring.md §R.8, §R.I):** the level is the short route by default.
+  New flags of `sim` and `shot`: `--section zwaan` (a run-in to the ZWAAN truck in zuid), `--section
+  rf-a|rf-b` (straight onto the foot part), `--boss` (= the truck; with `rf-b`: the boat, wave B),
+  `--route short|full` (the full loop for tests; an unused landmark in `--section` implies it). The
+  harness follows the hand-over into the foot `GameplayScene` (the 2D bot plays it) and writes ONE
+  report: `train` (the parts' fight ticks, the catch-ups, `startTick` / `endTick`), `driveTicks`, and
+  `foot` (`sectionTicks`, `sectionGaps` (the longest run without a live enemy on screen per section),
+  `deathsAt`, kills, deaths, hostages). The summary line adds `route …, drive T, train done T [part
+  ticks] catch-ups [..] road T after T, foot rf-a→rf-b T ticks [rf-a T, rf-b T] gaps [rf-a T, …]`.
+  The ring bot fights the train (exposed weak points, slicks and flames, a stuck 2P line-up).
+  Measured (wave A after the fixer, god, normal, seeds 1–5): the level 24,080–26,288 ticks (2P seed 1
+  23,287) with the rf-b placeholder (projected 32,230–34,438, 2P 31,431, with wave B's rf-b), 2–3 s
+  wall; `--route full` 44,527 (its default `--max-ticks` is 64,800); `--section zwaan` 1P 18,254 /
+  2P 16,039 ticks in all. The fixer's 2P bot keeps player 2 out of player 1's lane on a train part.
+  The old full-ring gate (`--expect-ticks 28800-39600`) is for `--route full`.
 - `npm run shot -- --mission ring [--seed n] [--section <landmark>] [--bot] [--god] [--players 2] [--ticks n]
   [--every N --count M] [--res 8 --art 4] [--spawn "<id>@+<dx>:<lane>[?k=v&k=v]"] [--hold up,fire]` →
   `tmp/shots/ring-<stretch>-t<tick>.png` / `ring-sheet.png`, frames labelled with the tick, the stretch, the

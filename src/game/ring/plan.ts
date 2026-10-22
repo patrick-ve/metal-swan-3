@@ -29,7 +29,7 @@ import {
   totalTicks,
   type RingContentWave,
 } from './director';
-import { RING_ENTITY, RING_LANDMARKS } from './ids';
+import { RING_DEFAULT_ROUTE, RING_ENTITY, RING_FULL_ROUTE_BOSS, RING_ROUTES, RING_ZWAAN, type RingRoute } from './ids';
 import { EXIT_NAMES, landmarkDef } from './landmarks';
 import { RING, type RingChunk, type RingExitSign, type RingPlan, type RingStretch } from './types';
 
@@ -39,14 +39,20 @@ export { CHUNK_LEN } from './director';
 export interface RingPlanOptions {
   /** The content wave to plan for (default `RING_CONTENT_WAVE`). */
   readonly wave?: RingContentWave;
+  /**
+   * Revision R (docs/design/ring.md §R.2): 'short' (default: the level — oost → amstel → zuid, the
+   * ZWAAN truck, the final jam) or 'full' (the old loop over all ten landmarks; tests and sims).
+   */
+  readonly route?: RingRoute;
 }
 
 /** The whole ring for a seed and a difficulty (pure). */
 export function planRing(seed: number, difficulty: Difficulty = 'normal', o: RingPlanOptions = {}): RingPlan {
   const wave = o.wave ?? RING_CONTENT_WAVE;
+  const route = o.route ?? RING_DEFAULT_ROUTE;
   const rng = new Rng(seed >>> 0).fork('ring/plan');
   const drivers = rng.fork('drivers').shuffle([...ROSTER]);
-  const r = directRing(rng.fork('director'), difficulty, wave);
+  const r = directRing(rng.fork('director'), difficulty, wave, route);
   const stretches: RingStretch[] = r.landmarks.map((lm, i) => {
     const end = i + 1 < r.landmarks.length ? r.landmarks[i + 1].start : r.length;
     let ticks = 0;
@@ -68,6 +74,7 @@ export function planRing(seed: number, difficulty: Difficulty = 'normal', o: Rin
     ticks: r.ticks,
     exitSigns: exitSigns(r.landmarks, stretches, r.chunks),
     wave,
+    route,
   };
 }
 
@@ -87,14 +94,17 @@ function exitSigns(landmarks: RingPlan['landmarks'], stretches: readonly RingStr
     }
     // The road after the fixed part (set piece + `after`).
     let road = st.start;
-    for (const c of chunks) if (c.start >= st.start && c.start < st.end && c.setPiece) road = c.start + c.length;
+    for (const c of chunks) if (c.start >= st.start && c.start < st.end && c.setPiece && !c.tail) road = c.start + c.length;
+    // A stretch with a tail (revision R): the signs stand on its road, before the tail.
+    let roadEnd = st.end;
+    for (const c of chunks) if (c.start >= st.start && c.start < st.end && c.tail) roadEnd = Math.min(roadEnd, c.start);
     exits.forEach((exit, k) => {
       let at: number;
       if (lm.id === 'oost' && k === 0) at = lm.start + 96;
       else {
         const n = lm.id === 'oost' ? exits.length - 1 : exits.length;
         const j = lm.id === 'oost' ? k - 1 : k;
-        at = Math.round(road + ((st.end - road) * (j + 0.5)) / n);
+        at = Math.round(road + ((roadEnd - road) * (j + 0.5)) / n);
       }
       const c = chunks[chunkIndexAt(chunks, at)];
       if (c?.type === 'tunnel') at = c.start + c.length + 64;
@@ -131,9 +141,11 @@ export function checkPlan(plan: RingPlan): string[] {
   const bad = (msg: string): void => {
     if (out.length < 40) out.push(msg);
   };
+  const route: RingRoute = plan.route ?? 'full';
+  const short = route === 'short';
   // Landmarks and stretches.
   const ids = plan.landmarks.map((l) => l.id).join();
-  if (ids !== RING_LANDMARKS.join()) bad(`landmarks out of order: ${ids}`);
+  if (ids !== RING_ROUTES[route].join()) bad(`landmarks out of order: ${ids}`);
   if (plan.stretches.length !== plan.landmarks.length) bad('a stretch per landmark');
   let prevEnd = 0;
   plan.stretches.forEach((st, i) => {
@@ -166,12 +178,29 @@ export function checkPlan(plan: RingPlan): string[] {
       for (const s of plan.spawns) if (s.id === RING_ENTITY.gantry && s.at >= lm.start && s.at < lm.start + lm.length) bad(`gantry inside ${lm.id}`);
     }
   }
-  // Time.
-  const ticks = totalTicks(plan.chunks);
-  if (Math.abs(ticks - RING_PLAN.ticks) > RING_PLAN.ticks * RING_PLAN.tolerance) bad(`planned ${Math.round(ticks)} ticks, outside 9:00 ± 5 %`);
-  // Jams.
-  const jams = plan.chunks.filter((c) => c.type === 'jam');
-  if (jams.length < RING_PLAN.jams[0] || jams.length > RING_PLAN.jams[1]) bad(`${jams.length} jams`);
+  // Time (the short route: its road part, up to the boss chunk).
+  if (short) {
+    const boss = plan.chunks.find((c) => c.tail && c.part === 'boss');
+    const ticks = boss ? planTicksAt(plan.chunks, boss.start) : totalTicks(plan.chunks);
+    const S = RING_PLAN.short.ticks;
+    if (Math.abs(ticks - S) > S * RING_PLAN.tolerance) bad(`planned road ${Math.round(ticks)} ticks, outside 2:00 ± 5 %`);
+  } else {
+    const ticks = totalTicks(plan.chunks);
+    if (Math.abs(ticks - RING_PLAN.ticks) > RING_PLAN.ticks * RING_PLAN.tolerance) bad(`planned ${Math.round(ticks)} ticks, outside 9:00 ± 5 %`);
+  }
+  // Jams (the short route: none on the drive; the final jam is the last chunk).
+  const jams = plan.chunks.filter((c) => c.type === 'jam' && c.part !== 'final-jam');
+  if (short) {
+    if (jams.length) bad(`${jams.length} mid-drive jams`);
+    const last = plan.chunks[plan.chunks.length - 1];
+    if (!last || last.type !== 'jam' || last.part !== 'final-jam' || !last.scene || !last.tail) bad('the short route does not end with the final jam');
+    if (plan.chunks.filter((c) => c.part === 'final-jam').length !== 1) bad('one final jam');
+    const closures = plan.chunks.filter((c) => c.type === 'gantry' && c.part === 'closure').length;
+    const cams = plan.chunks.filter((c) => c.type === 'speedcam').length;
+    if (closures !== 1) bad(`${closures} gantry closures (short: 1)`);
+    if (cams !== 1) bad(`${cams} speed cameras (short: 1)`);
+    if (plan.chunks.filter((c) => c.type === 'roadworks').length > RING_PLAN.short.roadworks) bad('too many road works');
+  } else if (jams.length < RING_PLAN.jams[0] || jams.length > RING_PLAN.jams[1]) bad(`${jams.length} jams`);
   for (const j of jams) {
     const i = plan.chunks.indexOf(j);
     if (j.closed?.length) bad(`closure inside the jam at ${j.start}`);
@@ -198,8 +227,16 @@ export function checkPlan(plan: RingPlan): string[] {
     const b = plan.bosses.find((x) => x.landmark === lmId);
     if (!lm || !b || b.id !== id || b.at < lm.start || b.at >= lm.start + lm.length) bad(`boss slot ${id} not in ${lmId}`);
   };
-  slot('westpoort', 'ring-lorry');
-  slot('exit', 'ring-end-boss');
+  if (short) {
+    // The ZWAAN truck: one slot, in zuid's tail boss chunk.
+    const zuid = plan.stretches.find((s) => s.id === 'zuid');
+    const b = plan.bosses.find((x) => x.id === RING_ZWAAN.controller);
+    const c = b ? chunkAt(plan, b.at) : null;
+    if (plan.bosses.length !== 1 || !b || !zuid || b.landmark !== 'zuid' || b.at < zuid.start || b.at >= zuid.end || !c || !c.tail || c.part !== 'boss') bad('boss slot ring-zwaan not in the boss chunk of zuid');
+  } else {
+    slot('westpoort', RING_FULL_ROUTE_BOSS);
+    slot('exit', 'ring-end-boss');
+  }
   // Drivers: the whole roster.
   if ([...plan.drivers].sort().join() !== [...ROSTER].sort().join()) bad(`drivers ${plan.drivers.join()}`);
   // Run-ins: a calm chunk before each landmark (a clean `?section=` start).
@@ -212,7 +249,7 @@ export function checkPlan(plan: RingPlan): string[] {
   for (const s of plan.spawns) {
     if (!isRingEnemy(s.id)) continue;
     const c = plan.chunks[chunkIndexAt(plan.chunks, s.from === 'behind' ? s.at : s.at - AHEAD)];
-    if (c && (c.type === 'rest' || c.scene)) bad(`${s.id} appears in the ${c.part ?? c.type} at ${c.start}`);
+    if (c && (c.type === 'rest' || c.scene || c.tail)) bad(`${s.id} appears in the ${c.part ?? c.type} at ${c.start}`);
   }
   // Spawns: inside the plan, on open lanes.
   for (const s of plan.spawns) {

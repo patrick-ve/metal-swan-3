@@ -1,41 +1,38 @@
 /**
- * The test mid-boss of the ring (docs/design/ring.md §6): the container lorry `ring-lorry`, its
- * adds `ring-forklift` and `ring-barrel` (a barrel or a crate of its cargo). Shared numbers of the
- * art (art.ts: one density-generic drawer per strip, 1× / 2× / 4×) and the logic (lorry.ts,
- * adds.ts). Nothing here reads art pixels.
+ * The ZWAAN CONTAINER trailer's shared numbers (docs/design/ring.md §R.3; it was the container half
+ * of the retired test lorry `ring-lorry`, §6): its adds `ring-forklift` and `ring-barrel` (a drum
+ * or a crate of its cargo), the art (art.ts: one density-generic drawer per strip, 1× / 2× / 4×)
+ * and the logic (zwaan/container.ts, adds.ts). Nothing here reads art pixels.
  *
- * Local coordinates: the anchor (0, 0) is the road under the middle of the lorry, x forward (the
- * lorry always faces right: traffic drives right, so its lettering never mirrors), y up negative.
- * A logical pixel (x, y) covers [x, x + 1) × [y, y + 1).
+ * OLD-LOCAL coordinates (the retired lorry's): the anchor (0, 0) is the road under the middle of the
+ * old lorry, x forward (the trailer always faces right: its lettering never mirrors), y up negative.
+ * The container part (zwaan/container.ts) has its REAR at old-local x −92 (`CONTAINER_REAR`), so a
+ * part-local x is an old-local x + 92. A logical pixel (x, y) covers [x, x + 1) × [y, y + 1).
  *
- * Every sprite of the boss lives under `boss/ring-lorry/` (art-def.ts maps the id `ring-lorry` to
- * that prefix: the tier-4 working set keeps it only in the boss stretch), the adds too.
+ * Every sprite of the container trailer lives under `boss/ring-zwaan/container/` (art-def maps the
+ * part id `ring-zwaan-container` to it: the tier-4 working set keeps it only in its pseudo-sections),
+ * the adds too. The cab of the old lorry is now the ZWAAN train's cab (zwaan/cab*.ts).
  */
 
 export type Pt = readonly [number, number];
 
-/** Entity ids (RING_ENTITY_B.lorry and the wave-B contract's own ids). */
-export const LORRY_ID = 'ring-lorry';
+/** Entity ids of the container's adds (wave-B ids, kept). */
 export const FORKLIFT_ID = 'ring-forklift';
 export const CARGO_ID = 'ring-barrel';
 
-/** Health-bar name (the HUD shows it under the bar). */
-export const LORRY_NAME = 'ZWARE JONGEN';
+/** Sprite prefix of the container trailer (and its adds; revision R: was `boss/ring-lorry`). */
+export const LORRY_ART = 'boss/ring-zwaan/container';
 
-/** Sprite prefix of the boss (and its adds). */
-export const LORRY_ART = 'boss/ring-lorry';
+/** The container part's rear in old-local x (part-local x = old-local x − CONTAINER_REAR). */
+export const CONTAINER_REAR = -92;
 
 /** Sprite ids. */
 export const SPR = {
-  /** The tractor cab by damage state (the part's state: `<art>/cab-<0|1|2>`). */
-  cab: (s: number): string => `${LORRY_ART}/cab-${s}`,
-  /** The wrecked cab turning toward the camera (the jackknife): 4 yaw steps. Deferred. */
-  cabYaw: `${LORRY_ART}/cab-yaw`,
   /** The trailer chassis (no wheels, no container). */
   trailer: `${LORRY_ART}/trailer`,
-  /** The container, side panel closed, by the boss's damage state. */
+  /** The container, side panel closed, by the part's damage state. */
   container: (s: number): string => `${LORRY_ART}/container-${s}`,
-  /** The container with the bay of its near side open: the hold (phase 2), by the boss's damage state (3 frames). */
+  /** The container with the bay of its near side open: the hold (phase 2), by the part's damage state (3 frames). */
   hold: `${LORRY_ART}/hold`,
   /** The bay's side panel dropping: 0 upright, 1 tilted, 2 nearly flat, 3 the ramp on the road. */
   panel: `${LORRY_ART}/panel`,
@@ -43,13 +40,9 @@ export const SPR = {
   doors: `${LORRY_ART}/doors`,
   /** A torn-off door tumbling (centre anchor). Deferred. */
   doorFall: `${LORRY_ART}/door-fall`,
-  /** A blown trailer tyre on its rim (centre anchor, 4 turn frames). */
-  rim: `${LORRY_ART}/rim`,
-  /** The amber indicator on the cab corner: 0 off, 1 lit (the weave tell). */
-  blink: `${LORRY_ART}/blink`,
   /** The rear light bar lit red (the brake / cargo tell). */
   brake: `${LORRY_ART}/brake`,
-  /** The container falling off onto its side (the death): 3 frames. Deferred. */
+  /** The container trailer falling onto its side (beaten): 3 frames. Deferred. */
   boxTip: `${LORRY_ART}/box-tip`,
   /** Cargo (centre anchor): a steel drum rolling (8), a wooden crate tumbling (4). */
   barrel: `${LORRY_ART}/barrel`,
@@ -64,6 +57,7 @@ export const SPR = {
 export const WHEEL_R = 7.5;
 export const RIM_R = 6;
 
+/** The retired lorry's old-local geometry; the container trailer uses its rear half (x −92 … 58). */
 export const LORRY = {
   /** Body length (x −92 … +92) and the visual box (doors shut). */
   rear: -92,
@@ -95,22 +89,6 @@ export const LORRY = {
   sayAt: [70, -70] as Pt,
   /** Smoke points: the cab's bonnet grille, the coupling, the bogie. */
   smoke: { cab: [84, -40] as Pt, coupling: [44, -22] as Pt, bogie: [-62, -10] as Pt },
-} as const;
-
-/**
- * Part boxes (plane slabs: x range along the lorry, depth ±`DEPTH_HALF` around the plane y; the
- * Boss base mirrors nothing since the lorry never faces left). Order = part index:
- * 0 `cab` (the bot aims at `hurtboxes()[0]`), 1 `doors` (with the loader), 2 `wheels` (the
- * trailer bogie), 3 `box` (the container: no HP, it pings: cover).
- */
-export const PART_X = {
-  cab: [44, 92] as Pt,
-  doors: [-92, -74] as Pt,
-  /** The doors' slab while they stand open (the door face behind the container). */
-  doorsOpen: [-118, -74] as Pt,
-  wheels: [-74, -36] as Pt,
-  /** The container over its whole length: behind the doors and over the bogie it takes what they let through. */
-  box: [-92, 44] as Pt,
 } as const;
 
 /** The forklift (local: the road under its middle, facing right = forks to the right). */

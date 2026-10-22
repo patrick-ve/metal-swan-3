@@ -124,7 +124,17 @@ const RING_SPURS: readonly MapLine[] = [
   [146, 69, 139, 62],
   [258, 92, 272, 98],
 ];
-const RING_LINES: readonly MapLine[] = [RING_ROAD, RING_WATER, ...RING_SPURS];
+/**
+ * Revision R (docs/design/ring.md §R.1): the level drives only the south-east arc — S113 at A10 Oost
+ * (the dot) clockwise past Amstel to the Zuidas — drawn as a second line just inside the ring (a
+ * bold arc), and the blockade at the Zuidas as a cross.
+ */
+const RING_SHORT: MapLine = [256, 91, 248, 102, 231, 107, 199, 110];
+const RING_BLOCKADE: readonly MapLine[] = [
+  [192, 108, 198, 114],
+  [192, 114, 198, 108],
+];
+const RING_LINES: readonly MapLine[] = [RING_ROAD, RING_WATER, ...RING_SPURS, RING_SHORT, ...RING_BLOCKADE];
 const RING_LABELS: readonly (readonly [string, number, number])[] = [
   ['A10', 192, 92],
   ['IJ', 106, 82],

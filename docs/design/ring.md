@@ -7,6 +7,10 @@ the car across the width of the ring and shoots. The ring is generated procedura
 mobile enemies. With 2 players, each player gets their own wagon. The story and the bosses come
 later; this wave builds the **mechanism**. The first-person run becomes level 3.
 
+**Revision R (2026-10-22, §R): a short drive, the ZWAAN truck (a sequential boss), a traffic jam and
+the rest on foot (the jam, the EXHAUSTING REBELLION blockade, the pink boat). §R wins over every
+older section.**
+
 This file is THE SPEC for the ring waves. Detail values (speeds, HP, sizes, timings) may be tuned
 by the builders when play shows a better value; the report says what changed and why.
 
@@ -20,7 +24,7 @@ Real Amsterdam names are allowed in `ring` (the `ams` exception is extended, §1
 |---|---|---|
 | 1 | New mission `ring` = level 2; order ams → ring → glitch bridge → first-person floors → ending | user |
 | 2 | **Side view, 4 lanes as depth bands**; up/down changes lanes, left/right moves the car on screen | user |
-| 3 | Opening: an in-engine **boarding scene** at the on-ramp; no on-foot part yet | user |
+| 3 | Opening: an in-engine **boarding scene** at the on-ramp; no on-foot part yet **(replaced by revision R)** | user |
 | 4 | **Seeded chunks + fixed landmarks**; same seed = same ring | user |
 | 5 | **Car armour** (the vehicle rule): hits cost armour; at 0 the wagon wrecks and a life is lost | user |
 | 6 | Ground enemies: **scooter gang, parcel vans, enforcement convoy, caravan car** | user |
@@ -29,24 +33,341 @@ Real Amsterdam names are allowed in `ring` (the `ams` exception is extended, §1
 | 9 | Driver: a **random squad hero who does not play**; 2P → two different drivers | user |
 | 10 | Controls: **steer lock on FIRE** (hold FIRE: the D-pad aims 8 ways), JUMP = swerve, BOMB = lob | user |
 | 11 | Civilian traffic: **obstacles + cover**; never destroyed, no penalty | user |
-| 12 | Route: the **full loop, compressed** (about 8–10 min), clockwise from A10 Oost | user |
+| 12 | Route: the **full loop, compressed** (about 8–10 min), clockwise from A10 Oost **(replaced by revision R)** | user |
 | 13 | The wagon: **likeness, no badge**; code ids say `wagon`; lines may say "de Volvo" | user |
 | 13a | The two wagons are the squad's real rally estates: **GREEN safari** (`ARTISANAL GRAPE` / `MAJOR COCKTAILS`, roof lamps, spare tyre) and **WHITE rozzers** (jam-sandwich band, `ROZZERS`, `619`, push bar with lamps); no rally plaque, no real plates; 1P and P1 = white, P2 = green (§3) | user |
-| 14 | Boss slots: the **lorry as a temporary test mid-boss**; the level ends at an exit | user |
-| 15 | The hero **never leaves** the wagon | user |
+| 14 | Boss slots: the **lorry as a temporary test mid-boss**; the level ends at an exit **(replaced by revision R)** | user |
+| 15 | The hero **never leaves** the wagon **(replaced by revision R)** | user |
 | 16 | Pickups: **hostages in vans and caravans + crates** you drive over | user |
 | 17 | Plan first, then a workflow build after the user's OK | user |
 | 18 | All new art at 1×, 2× and 4× (one density-generic drawer) inside the tier-4 budget | standing rule |
 | 19 | Architecture: a `RingRunner` + `RingScene` on the **unchanged** engine World (§13) | lead (architect) |
 | 20 | ams now ends with its normal MISSION COMPLETE tally page, then the ring | lead default |
 | 21 | The ring is `MISSION 2` / high-score `M2`; the URL-only m1 card keeps its old label (passive) | lead default |
-| 22 | The test lorry sits in the **middle** slot (`westpoort`); the end slot is a marker | lead default |
+| 22 | The test lorry sits in the **middle** slot (`westpoort`); the end slot is a marker **(replaced by revision R)** | lead default |
 | 23 | One driver per player for the whole level (a new wagon keeps the driver) | lead default |
 | 24 | New `torso-pistol-diag-down` strips for every squad hero (the near-lane aim with the default gun) | lead default |
 | 25 | Build in **two workflow waves** with a stop to play-test between them (§14) | lead proposal |
 
 Scope: the new mission `ring` and the flow changes it needs. `ams` keeps its content and its sims
 byte-identical; m0–m5 keep working passively (their sims stay byte-identical).
+
+## R. Revision R: the short drive, the ZWAAN truck and the blockade (2026-10-22)
+
+The user (2026-10-22): the ring "is too long and takes away the momentum". The new level: a short
+drive, a sequential truck boss, a traffic jam, and the rest **on foot**: a fight through the jam,
+then a blockade of climate activists with a parody banner and a mini-boss. Four AskUserQuestion
+rounds settled it (R.0). **Where this section and an older section disagree, this section wins.**
+Older rows it replaces are marked in §0.
+
+### R.0 Decisions (revision R)
+
+| # | Item | Decided by |
+|---|---|---|
+| R-1 | The drive is **about 2 min**: the boarding at S113, then `oost` → `amstel` → `zuid`. The truck appears at the Zuidas | user |
+| R-2 | **The ZWAAN truck** = a **sequential boss**: a road train of **4 trailers + the cab**, fought from the rear trailer forward. Each part is a mini-boss; the next part becomes available only after the previous one is beaten | user |
+| R-3 | The trailers: **container** (today's lorry container), **car transporter**, **tanker**, **livestock trailer**; **all four** in every play (5 fights) | user |
+| R-4 | The cab (`ZWARE JONGEN`): **ram, block lanes, brake checks, a gunner** in the sleeper cab | user |
+| R-5 | After the truck: a **traffic jam**; the heroes get out; the **drivers stay in the cars** (silent, as today) | user |
+| R-6 | **On foot like `ams`**: the normal side view, run, jump, shoot; the stopped cars are cover and platforms | user |
+| R-7 | On foot, part 1: a **short fight through the jam** (about 1 min, the ring gangs on foot) | user |
+| R-8 | On foot, part 2: the **blockade**: climate activists chained / glued to the road; **slapstick, bloodless** (a beaten one snaps free and runs off, or the police carry them away) | user |
+| R-9 | The protest group is **`EXHAUSTING REBELLION`** (a parody name; our own mark, never the real logo) | user |
+| R-10 | The blockade's mini-boss: **a pink protest boat** on the A10 with a leader with a megaphone who calls waves; break the boat → the exit → MISSION COMPLETE | user |
+| R-11 | Length: **about 9 min** in total is fine | user |
+| R-12 | Language: **all new bubbles, signs and voices in Dutch** (the spandoek title `EXHAUSTING REBELLION` stays) | user |
+| R-13 | Audio: **ElevenLabs generation inside the build** (voices, sfx, songs); the report says the credits used | user |
+| R-14 | The rest of the ring (`west`, `westpoort`, `coentunnel`, `noord`, `zeeburg`, `exit`) **stays in the code, unused** by the level (a `full` route for tests) | user |
+| R-15 | Spec first; the build starts **after the user's OK** | user |
+| R-16 | The trailer order (rear → front): **container, car transporter, tanker, livestock trailer**, then the cab (fixed) | lead default |
+| R-17 | The on-foot part is an **unregistered `MissionDef` with the id `ring`** (sections `rf-a`, `rf-b`), run by `MissionRunner` in a `GameplayScene`; the drive hands over to it **without a tally page**; **one** MISSION COMPLETE tally at the end | lead (architecture map) |
+| R-18 | The truck = an invisible controller `ring-zwaan` + **one `Boss` subclass per part** | lead (architecture map) |
+| R-19 | Two workflow waves with a play-test stop between them; every agent at **effort high** | lead proposal (standing rule: effort high) |
+
+### R.1 Flow and timing
+
+Title → select → `ams` → tally → the `MISSION 2` card (`DE RING`) → **the drive** (RingScene, the
+short route) → the ZWAAN truck → the final jam and the alight scene → *(hand-over, a 40-tick fade,
+no tally)* → **`rf-a` DE FILE** (on foot) → **`rf-b` DE BLOKKADE** with the pink boat → MISSION
+COMPLETE (one tally for the whole level) → the glitch bridge → the first-person floors. `M2`, the
+high-score column, `FPS_ROUTE`, the golden record and `recordMissionClear` keep the id `ring`.
+
+| Part | Target | Ticks (60 Hz) |
+|---|---|---:|
+| Boarding + the drive `oost` → `amstel` → `zuid` | 2:00 | 7,200 |
+| The ZWAAN truck: 5 parts × 30–40 s + 4 catch-ups of 2–3 s | 3:00 | 10,800 |
+| The final jam + the alight scene | 0:12 | 720 |
+| `rf-a` DE FILE | 1:15 | 4,500 |
+| `rf-b` DE BLOKKADE + the boat | 2:30 | 9,000 |
+| **Total** (the bot's pace) | **≈ 9:00** | **≈ 32,400** |
+
+**URLs.** `?mission=ring` = the whole level. `?mission=ring&section=amstel|zuid` = the drive from
+that landmark. `section=zwaan` (or `?boss=1`) = straight to the truck (a short run-in). `section=rf-a`
+/ `rf-b` = on foot; `section=rf-b&boss=1` = the boat. `&route=full` = the old full loop (tests and
+sims only; its `westpoort` slot spawns the ZWAAN truck too, the `ring-lorry` id retires). An unused
+landmark in `section=` implies `route=full`.
+
+**The card.** The ring card's A10 map polyline shows the short route (S113 → Zuidas) and a
+blockade mark; the card text stays English (as the other cards; the user may still ask for Dutch).
+
+### R.2 The drive (short route)
+
+- `planRing(seed, difficulty, { route: 'short' | 'full' })`; default `short`. `RingPlan.route`
+  records it. The director reads the route's landmark list; `checkPlan` is route-aware.
+- Short route: `oost` (the boarding, S113, S112, S111, the Rembrandt tower), `amstel` (knooppunt
+  Amstel, the Rozenoordbrug), `zuid` (S109 RAI, the Zuidas towers; set piece: `rai`, `zuidas`, then
+  the boss chunk `ring-zwaan`, then the `final-jam` scene chunk). The plan's road part is 7,200
+  ticks ± 5 %.
+- **No mid-drive jam** (the final jam is the only one). Keep a few hazards for variety (one
+  matrix gantry with a closure, one speed camera); the threat budget rises over the 2 min.
+- Guarantees per seed: the golden record in `amstel` or `zuid`; ≥ 1 hostage per stretch; a repair
+  chance every ~60 s; the 4-second rule; the boss slot in `zuid`.
+
+### R.3 The ZWAAN truck (the sequential boss)
+
+**The road train.** One made-up hauler, ZWAAN (our own livery: white cab with an orange band;
+the rust-red `ZWAAN` colour and the swan mark run along every trailer; made-up plates and box
+codes; no badge). Lanes 1–2 only (`ring-block`). Only the active part and the front of the next fit
+on screen: the controller keeps the active part's rear near screen x 150.
+
+**The controller `ring-zwaan`** (invisible, no `boss` tag): holds the plan lock for the whole
+train; spawns the parts in order; when a part is beaten it **uncouples** (a clank, coupling sparks),
+brakes, swerves onto the hard shoulder, tips and drops back as a wreck, and the train pulls ahead
+and eases back about 190 px over 130–180 ticks (**the catch-up**); during a catch-up it sends a
+small gang (2 / 2 / 3 scooters by difficulty) so the 4-second rule holds, and the wreck drops a
+repair or a weapon. It draws the parts in front of the active one (decor only, not hittable).
+
+**The boss bar.** One bar per part with the part's name; under it a strip of **5 pips** shows the
+parts left. The boss song plays from the first part to the cab's death (no stage song between
+parts). Only the cab's death sets the ring's boss end (`bossEndTick`), switches the music back and
+counts for `bossSpeedBonus` (a ring limit like m5's 240 s).
+
+**Every part:** parts with own HP (weak points), stagger and `cutAttack` as in the `Boss` base;
+every attack has a tell of ≥ 18 ticks; a damage-rate bucket like today's lorry (each part 30–40 s
+with the machine gun, ≥ 25 s with the best gun; × difficulty × co-op); 2,000 points per trailer,
+10,000 for the cab.
+
+| # | Part (bar name) | Attacks | Weak points | Beaten |
+|---|---|---|---|---|
+| 1 | Container trailer `ZWAAN CONTAINER` | today's lorry without the cab: CARGO DUMP (drums and crates roll back along the lanes, one lane always free), then the side panel drops and the **forklift** charges along a lane | the rear doors, the bogie | uncouples, the container slides onto the hard shoulder |
+| 2 | Car transporter `ZWAAN AUTOTRANSPORT` | the rear ramp lowers (hydraulic hiss) and a lower-deck car **rolls off backwards** into a lane; the upper deck tilts and a car **slides down** onto the road and bounces once; the dropped cars are obstacles that drift back (civilian-style cars, no badges, no plates) | the hydraulic rams (2), the deck | the decks fold, the cars spill onto the shoulder |
+| 3 | Tanker `ZWAAN TANKWAGEN` (`FRITUURVET` on the tank) | leaks frying-fat **slicks** into a lane (a wagon in a slick slides: the steering lags for ~40 ticks); a hit valve hisses, sparks, then a **flame trail** runs along a lane | 3 valves, the tank | a big bloodless fireball, the tank rolls onto the shoulder |
+| 4 | Livestock trailer `ZWAAN VEETRANSPORT` | the rear gate drops: **cows and pigs** trot back across the lanes (moving obstacles: they block shots like civilian cars and cost a cell on a bump; **never hurt**: they trot to the hard shoulder and graze there); a **farmhand** on the roof throws hay bales and milk churns (lobs) | the gate, the farmhand's hatch | the trailer stops on the shoulder, the animals wander off unhurt |
+| 5 | The cab `ZWARE JONGEN` | **weave** (indicator tell) to block lanes; **brake check** (brake lights ~24 ticks); the **gunner** in the sleeper-cab window fires along a lane; the air horn on every lane change | the cab (× 1.5), the sleeper window (the gunner) | the jackknife: the cab spins onto the shoulder; the driver climbs out dazed (bloodless) |
+
+### R.4 The final jam and the alight scene
+
+After the cab: a matrix gantry shows a red X on every lane and `FILE` / `BLOKKADE` (our own
+lettering). The road slows into a standing queue (the `final-jam` chunk: a `ring-jam` with
+`final: true` that never clears and has no waves). The wagons crawl into the queue and stop in
+their lanes; each hero climbs out of the window and jumps down onto the road (the boarding jump
+run backwards); the drivers stay at the wheel (silent). Then `handOver()` and a 40-tick fade to
+`rf-a`, whose first screen shows the parked wagons with their drivers.
+
+### R.5 `rf-a` DE FILE (on foot, ~1:15)
+
+- The A10 at the Zuidas, in the normal 2D side view: the near lane and the hard shoulder are the
+  ground; **stopped cars** (the ring's civilian car looks as solid decor) are cover and platforms
+  (jump on the roofs); a stopped lorry and a bus are higher platforms; the crash barrier; the far
+  lanes with standing cars and the Zuidas towers in the background (reuse the ring skyline layers).
+- Enemies: **the ring gangs on foot**: scooter riders (pistol, bottle lobs), parcel couriers
+  (parcel lobs, the `NIET THUIS` gag), the van crew. New `Enemy` subclasses with the gangs' looks
+  (all strips at 1×/2×/4×); their scooters stand in the jam as decor.
+- A tied hostage in an open parcel van; weapon crates; a checkpoint at least every 1,400 px.
+- The end: the police line → `rf-b`.
+
+### R.6 `rf-b` DE BLOKKADE (on foot, ~1:30 + the boat)
+
+**The scene.** Police tape and a police van; then the blockade across the whole road: activists
+glued and chained to the asphalt; the big **spandoek** across the road, then the boat.
+
+**The spandoek.** Title `EXHAUSTING REBELLION` (the user's name; a pun: exhausting = tiring and
+exhaust fumes). Our own mark: a round-bellied hourglass with a smoke puff rising from its top,
+**not** in a circle (never the real circled hourglass). The line under it in Dutch, e.g. `WIJ ZIJN
+MOE. NU JULLIE OOK.` Smaller banners and signs in Dutch, our own puns, e.g. `STOP UITLAATGAS`,
+`LIJM IS GEEN MISDAAD`, `TOETER NIET, DOE MEE`, `KLIMAATNOOD!`. Never a real slogan word for word.
+
+**The activists** (fictional, comic; no likeness; bloodless; small HP, 1–3 hits):
+
+| Kind | How it fights | Beaten |
+|---|---|---|
+| `lijmer` (glued sitter) | a fixed turret: lobs **paint balloons**; a **glue pot** leaves a puddle that sticks a hero ~40 ticks (no move, no jump; the hero can still shoot) | the glue lets go with a rip (`LOS!`), they run off in a huff |
+| `ketting` (chained to a barrel or a partner) | throws **soup cans** (orange tomato soup; the can is the hit, the puddle is orange, never red) | the chain snaps; two police officers carry them away stiff as a plank |
+| `megafoon` (on a crate) | a **shout**: sound rings along the ground that push a hero back (no damage); a feedback squeal stuns ~20 ticks | the megaphone squeals, they run off |
+| `loper` (walk-in) | runs in with a small banner, **sits down and glues** (the tell: ~40 ticks) → a `lijmer` | hit before the glue: drops the banner, runs off |
+
+Thrown things hurt like enemy shots (the normal hit rule). In the in-world continue they do not
+point or laugh: they sit and hum, hold up `WIJ HADDEN HET GEZEGD`, or share a sandwich; the cower:
+hands over their heads.
+
+**The police** (`ring-agent`, NPCs): never targeted, never hurt; they come in pairs and carry the
+beaten `ketting` activists (and at the end the leader) off screen.
+
+### R.7 The mini-boss: the pink boat `DE LAATSTE DRUPPEL`
+
+A big pink sailing boat on a wheeled trailer in the middle of the A10 (our own design and name;
+never the real protest boat's look or name). Mast with `EXHAUSTING REBELLION` pennants; on deck the
+leader with a megaphone, a drum band of two drummers, two loudspeakers. The arena locks; `bossIntro`
+(`DE LAATSTE DRUPPEL`, `MINI-BOSS`); `autoStart = false`, the section script starts it.
+
+- Phase 1: the leader's megaphone rings; the leader **calls waves** of `loper` activists (2 / 3 / 4 by
+  difficulty); paint balloons from the deck.
+- Phase 2 (HP ≤ 50 % or both speakers broken): the **drum band**: each drum beat (sticks raised:
+  the tell) sends a ground shock along the road (jump over it); the boom swings low across the deck
+  as a hazard.
+- Parts: the 2 speakers, the hull; the leader ducks behind the rail (not a target).
+- The end: the hull cracks, the mast falls, the boat settles; the leader slides down and the police
+  carry the leader off (`WIJ KOMEN TERUG... NA DE LUNCH!`); a weapon drop; the exit → MISSION COMPLETE.
+
+### R.8 Text and sound
+
+- All new bubbles in Dutch, ≤ 24 characters per line, 2 lines. Examples: the activists
+  `KLIMAATNOOD!`, `WIJ ZITTEN HIER GOED!`, `LIJM IS GEEN MISDAAD!`; the leader `MEDE-REBELLEN...
+  ZITTEN!`, `DIT IS EEN VREEDZAAM PROTEST!`; the cab `UIT MIJN SPIEGEL!`, `MIJN VRACHT...!`. The
+  wagon drivers stay silent (`Wagon.talk = false`). HUD words stay English (as in `oldenzaal`).
+- **ElevenLabs (the user's OK, 2026-10-22):** designed Dutch voices (never a clone) for the
+  leader, two activists and ZWARE JONGEN; sfx (cows, pigs, the ramp hydraulics, the fat hiss and
+  flare, the uncoupling clank, the glue rip, the chain snap, the megaphone squeal, the police
+  whistle, the drum band, the police van); two new songs: `ring-foot` (the jam and the blockade)
+  and `ring-boot` (the boat). The ring stage theme and `ring-boss` stay synth. A synth fallback for
+  every id. The group `mission:ring` joins `SAMPLE_GROUPS`, `GROUP_DIRS` and `LAZY_GROUPS`;
+  ring-route merges the ams entries with `SAMPLE_MANIFEST['mission:ring']`. Every voiced line has a
+  shipped take, and every beat fits its take (a voice-fit test as in `oldenzaal`). Prompts never
+  name games, songs or artists; never generate takes for the user's own four music ids. The report
+  states the credits used.
+
+### R.9 Originality (a dated paragraph in `docs/ORIGINALITY.md`)
+
+`EXHAUSTING REBELLION` is a parody name of a real activist movement (the user's choice,
+2026-10-22). Never the real name, its logo (the circled hourglass), its fonts or its slogans word
+for word; no real activist, leader, event or boat. The activists, the leader and the police are
+fictional comic characters; nothing hurts them (they run off or are carried away). ZWAAN is a
+made-up hauler with our own livery; no real hauler's colours or names. The animals are never hurt.
+
+### R.10 Architecture (from the code map, 2026-10-22)
+
+- **Hand-over.** `RingRunner.handOver()` (no victory banner, no `completed.push`) and a
+  `'handover'` event; `ring-route.ringHandover()` replaces the scene with
+  `new GameplayScene(app, { mission: RING_ID, handover })`. `GameplayOpts.handover = { def, artDef,
+  onComplete }` is optional: absent, nothing changes. The drive's stats stay: either an additive
+  `RunnerOptions.continueMission` (skips `startMission`, the banner, the announcer and the intro
+  drop) or save and restore `slot.mission` / `rescued` around `runner.start()`. `onComplete` opens
+  `MissionCompleteScene(ringFinalTally(...))` (hostages of both parts, FINES, the seed), whose
+  `afterTally` opens the glitch bridge.
+- **The foot def** (`src/game/content/ring/foot/`): `{ id: 'ring', sections: { 'rf-a', 'rf-b' },
+  bossSections: ['zuid'], footsteps: true, audioGroup: 'mission:ring', hostages: drive + foot }`.
+  **Never `defineMission`** (the sorted id list would make it some mission's default next one).
+- **One tier-4 run.** `ringArtDef(plan)` appends the foot sections (same id `ring`); the hand-over
+  skips `stopDense`; the foot part gets its own `denseReserve` and budget test. The train's art goes
+  per part (pseudo-sections per part, death strips deferred) so `zuid` stays inside 256 MB.
+  New art prefixes only: `boss/ring-zwaan/<part>/`, `ring/foot/`, `npc/ring/`, `fx/ring/`, never
+  under the prefixes `ams` preloads (`item/pickup-`, `weapon/`, `ui/icon-`, `fx/hit…`,
+  `fx/dust…`, `npc/ams/`).
+- **The train.** `ring-zwaan` (controller) + `Boss` subclasses `ring-zwaan-container`,
+  `-autos`, `-tank`, `-vee`, `-cab`; the order from `params.order` (fixed, R-16). The old lorry
+  splits into the container trailer and the cab. Fix `bossEndTick` (runner.ts), the music cue
+  (cues.ts) and `bossSpeedBonus` for a multi-part boss. While the plan is locked the controller
+  brings its own adds and traffic.
+- **The alight scene** = the boarding scene run backwards (`boarding.ts` is the model); a
+  `final-jam` chunk; `RING_HOOKS.planEnd` → the alight director on the short route.
+- **Sims.** `headless-ring` follows the `GameplayScene` after the hand-over; both bots registered
+  (each idles while its runner is null); one merged report; the ring bot learns the parts; 2D bot
+  changes keyed to the new entity types only. `npm run sim -- --mission ring --god
+  --expect-complete [--seed n] [--players 2] [--section zwaan|rf-a|rf-b] [--route full]`.
+- **Byte identity:** additive options only in `MissionRunner`, `GameplayScene` and the tally; no
+  change to the defaults of `TUNING`, `Player`, `Enemy`, `Boss`; new randomness only through new
+  rng forks.
+
+### R.11 Build: two workflow waves (every agent at effort high)
+
+Each wave: a snapshot → the workflow → my own gates and a look at frames → a local commit → the
+user plays. No push without the user's word.
+
+**Wave A — the road, the truck and the jam (7 agents).**
+
+| Stage | Builder | Owns |
+|---|---|---|
+| core | CORE | the route option (plan, director, `checkPlan`, URLs), the `zuid` set piece with the boss and `final-jam` chunks, the hand-over chain (runner, ring-route, `GameplayOpts.handover`, the single tally with the drive's stats), the foot def skeleton (flat `rf-a` / `rf-b` placeholders), one tier-4 run across the hand-over, the sim harness (merged report, both bots), stubs. Exit: `?mission=ring` runs drive → placeholder truck → alight → `rf-a` → `rf-b` → tally. Interfaces frozen. |
+| build | TRAIN-1 | the controller (lock, order, catch-up, adds, drops, pips, music), the container trailer and the cab (from today's lorry), the boss-end, cue and speed-bonus fixes, synth sfx |
+| build | TRAIN-2 | the car transporter, the tanker (slicks, flame trail), the livestock trailer (cows, pigs, the farmhand); art 1×/2×/4×, AI, synth sfx |
+| build | JAM + FOOT | the final jam and the alight scene; `rf-a` DE FILE (terrain, background, stopped cars, the parked wagons), the ring gangs on foot, hostage, crates, checkpoints |
+| finish | INTEGRATOR | merge, the bots, sims, budget tests, docs (this spec's status, `docs/api/ring.md`, GDD, ARCHITECTURE) |
+| finish | REVIEW | spec, standards, determinism, byte identity, budget, momentum (part lengths, catch-ups) |
+| finish | FIXER | the review's findings, the final gates, `tmp/ring-r-a-report.md` |
+
+**Wave B — the blockade, the boat and the sound (6 agents).**
+
+| Builder | Owns |
+|---|---|
+| ACTIVISTS | `lijmer`, `ketting`, `megafoon`, `loper`; the police pair and the carry-off; the glue status; gloat and cower; all strips 1×/2×/4× |
+| BLOCKADE + BOAT | `rf-b` DE BLOKKADE (the police line, the spandoek and banners, the layout, the waves); the pink boat (2 phases, parts, the drum band, the end with the leader's carry-off); the exit and the tally |
+| AUDIO + TEXT | the Dutch lines; ElevenLabs voices, sfx and the two songs (plan → generate → pick by measurement → ship; Scribe check of every Dutch line), the voice-fit test, the `mission:ring` group; the credits used |
+| INTEGRATOR, REVIEW, FIXER | as wave A; `tmp/ring-r-b-report.md`; `docs/ORIGINALITY.md` paragraph (R.9) |
+
+Estimates (from the earlier ring and oldenzaal waves): wave A about 5–6 M tokens and 5 h; wave B
+about 4–5 M tokens and 4 h; ElevenLabs about 20,000–30,000 credits (about 1.0 M left).
+
+### R.12 Gates (the lead, after each wave)
+
+- `npm run typecheck`; the full vitest suite; `npx vite build`; `npm run smoke` (title,
+  `?mission=ring`, `?mission=ring&section=rf-b`); a 4K browser run of `?mission=ring&art=4`.
+- Ring sims: god seeds 1–5 and 2P seed 1 complete the whole level, about 32,400 ticks (fail
+  outside 28,800–36,000); every section (`zwaan`, `rf-a`, `rf-b`) 1P and 2P; `--route full`
+  still completes. New ring baselines after wave A.
+- Byte identity (`jq 'del(.timing)'` against `tmp/oz-baseline/`): ams lower 21,443 and upper
+  23,088, m0 5,679, m2 31,036, fps-1 4,026, fps-2 2,533 — identical; oldenzaal full and every
+  section 1P/2P — identical.
+- Budget tests: `zuid` with the train, `rf-a`, `rf-b`, 1P every hero and 2P pairs ≤ 256 MB.
+- Tests to update: `tests/game/ring/{plan,runner,determinism,scenery-job,flow}.test.ts`,
+  `ring-helpers.ts`, `tests/game/fps/flow.test.ts`, `tests/content/ring-{boss,dense-budget,
+  scenery,sound}.test.ts`. New: the train order and the catch-up, the hand-over keeps lives /
+  score / weapon / hostages, the activists never die bloody (exit animations), the boat, the
+  voice fit.
+- Look at frames: every train part at 1×/4×, the alight, `rf-a`, the spandoek (the mark is not a
+  circled hourglass), the boat.
+
+### R.13 Risks
+
+- **Momentum** (the user's reason for this revision): each part ≤ 40 s with the machine gun, each
+  catch-up ≤ 3 s, no empty road (the controller's adds). The review measures it with the bot.
+- **Memory:** the whole train sits in `zuid`'s working set; `ams` has almost no room (251.6 of
+  256 MB): no new art under its preloaded prefixes.
+- **The hand-over:** a 4× rebuild spike if `stopDense` runs; a 2P slot that is out at the
+  hand-over (the foot runner spawns only active slots): it gets a fresh `CONTINUE?` in `rf-a`.
+- **Tone:** a comic parody, bloodless; nobody is hurt; no real people, logos or slogans (R.9).
+
+### R.14 Status (wave A, the integrator, 2026-10-22)
+
+**Wave A is integrated** (reports `tmp/ring-r-a-{core,train1,train2,foot,integrate}-report.md`): the
+whole level plays end to end in 1P and 2P — the boarding, the short drive `oost` → `amstel` → `zuid`,
+the five-part ZWAAN train (container, car transporter, tanker, livestock trailer, ZWARE JONGEN; real
+parts, art at 1× / 2× / 4×), the final jam with the `FILE` / `BLOKKADE` gantry, the alight, the
+hand-over, `rf-a` DE FILE with the ring gangs on foot, `rf-b` (still the wave-A placeholder), ONE
+MISSION COMPLETE tally, the glitch bridge. One tier-4 run covers the level. The decisions above are
+unchanged; the table below lists only tuned values.
+
+| Value | Spec | Now | Why |
+|---|---|---|---|
+| A part's fight with the machine gun (the bot, ammo kept full) | 30–40 s | 1P means 31.1–33.1 s (max 37.1); 2P 30.3–31.0 s (max 32.7) | every part's rate = (HP − 150) / 1,800 ticks (`zwaanRate`, fixer) |
+| A part's fight with the best gun | ≥ 25 s | ≥ 30 s for every gun (the laser 30.0–30.4 s) | the fixer's floor: 30 s; the flat rate 1.1 gave 22–23 s on the tanker, livestock trailer and cab |
+| A part's fight with the pistol (the bot) | — | 1P means 35.7–40.1 s (max 46.1); 2P 30.7–38.9 s (max 50.2) | the bot's aim, not the cap |
+| Container HP | — | 1,845 (0.9 × 2,050; was 2,050) | the pistol took 37–49 s |
+| Car transporter HP | — | 1,640 (0.8 × 2,050; was 1,804) | the pistol 39 s → 36 s |
+| Cab HP (`ZWAAN_PACE.cabHp`) | — | 1,650 (was 2,200) | 47 s → 36 s |
+| Tanker / livestock HP | — | 1,300 / 1,360 (was 1,702 / 1,804) | 44–50 s → 30–40 s |
+| A catch-up | 2–3 s | 131–169 ticks (2.2–2.8 s) | — |
+| The drive before the truck | 7,200 ticks | ≈ 7,420–7,650 (the boarding and the truck's arrival included) | — |
+| The final jam + the alight | 720 | ≈ 500 | — |
+| `rf-a` | 4,500 | 3,780–4,570 (1P), 3,340–3,530 (2P); normal 0–4 deaths (seeds 1–5) | the fixer: the crew at the camper (camera 1,300) only on hard |
+| The longest stretch without an enemy | 4 s rule | the drive 164–218 ticks (god seeds 1–10, 2P 1–3), `rf-a` 150 | the short route's forced-wave mark 130 → 80 ticks (fixer; 243–266 before) |
+| The whole level (the bot, god) | ≈ 32,400 | 1P 24,080–26,288 with the rf-b placeholder (850) → projected 32,230–34,438 with wave B's 9,000; 2P 23,287 → 31,431 | the watch test checks the projection |
+| 2P, the car transporter (two pistols) | 30–40 s | mean 34.1 s, max 39 s (was 67 s, max 99 s) | the ring bot's player 2 keeps out of player 1's lane on a train part |
+
+**Open for wave B / the play-test:** `rf-b` and the boat (the wave-A placeholder now has a trickle of
+the ring gangs on foot); the card's briefing still says "ONE LAP, CLOCKWISE" (voiced; wave B
+re-words and re-voices it); on normal the bot still dies 0–4 times in `rf-a` (the lock at the van,
+x ≈ 1,420–1,660, and the last lock); on hard the flame trail and the animals cost the bot the most
+cells (a play-test question: a softer animal bump?).
 
 ## 1. Flow and numbering
 

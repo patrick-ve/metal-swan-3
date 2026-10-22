@@ -29,8 +29,8 @@
  */
 import type { Rng } from '../../engine/rng';
 import type { Difficulty } from '../session';
-import { RING_ENTITY, RING_ENTITY_B, RING_ENTITY_B_PARTS, type RingCarModel, type RingLandmarkId } from './ids';
-import { fixedLength, RING_LANDMARK_DEFS, setPieceLength, wrapKm, type RingLandmarkDef, type RingSetPieceChunk } from './landmarks';
+import { RING_ENTITY, RING_ENTITY_B, RING_ENTITY_B_PARTS, type RingCarModel, type RingLandmarkId, type RingRoute } from './ids';
+import { fixedLength, RING_LANDMARK_DEFS, routeDefs, setPieceLength, wrapKm, type RingLandmarkDef, type RingSetPieceChunk } from './landmarks';
 import { SHOULDER_TOP } from './lanes';
 import { RING, type RingBossSlot, type RingChunk, type RingChunkType, type RingLandmark, type RingSpawn } from './types';
 
@@ -136,6 +136,28 @@ export const RING_PLAN = Object.freeze({
   carClearAhead: 640,
   /** Stretch run-in: the calm last chunk of each stretch (≥ `RING.runIn`). */
   runIn: [384, 768] as readonly [number, number],
+  /**
+   * Revision R (docs/design/ring.md §R.2): the SHORT route's road part (the boarding … the start of
+   * the boss chunk) is 2:00 at the planned speeds (`short.ticks`, the invariant allows ± 5 %); each
+   * seed draws around `short.target` ± `jitter`. No mid-drive jam; exactly one gantry closure and
+   * one speed camera (forced into `amstel` and `zuid`), at most one road-works chunk.
+   */
+  short: Object.freeze({
+    ticks: 7_200,
+    target: 7_200,
+    /** Forced chunk types per stretch of the short route. */
+    forced: Object.freeze({ amstel: ['gantry'], zuid: ['speedcam'] }) as Readonly<Partial<Record<RingLandmarkId, readonly RingChunkType[]>>>,
+    /** Chunk types the grammar never picks on the short route (the forced ones and the jam). */
+    never: ['gantry', 'speedcam', 'jam', 'avgzone'] as readonly RingChunkType[],
+    roadworks: 1,
+    /**
+     * Fixer (2026-10-22): the forced-wave mark on the short route (the full route keeps `gapPlace`).
+     * At 130 the bot's longest gap reached 243-266 ticks on some seeds (the 4-second rule is 240);
+     * at 110 still 245-259, at 90 one 242; at 80 the longest is 164-218 (god seeds 1-10, 2P 1-3)
+     * for about 5-10 % more kills.
+     */
+    gapPlace: 80,
+  }),
 });
 
 /** Chunk length the grammar is tuned around (spec §4: about 512 px). */
@@ -569,9 +591,12 @@ interface LaneCar {
 const round2 = (v: number): number => Math.round(v * 100) / 100;
 const snap32 = (v: number): number => Math.round(v / 32) * 32;
 
-/** Make the ring: the plan's road, spawns and bosses (plan.ts adds drivers, seed, stretches). */
-export function directRing(rng: Rng, difficulty: Difficulty, wave: RingContentWave): DirectedRing {
-  return new Director(rng, difficulty, wave).run();
+/**
+ * Make the ring: the plan's road, spawns and bosses (plan.ts adds drivers, seed, stretches).
+ * `route` (revision R): 'full' (default here: the old loop, unchanged) or 'short'.
+ */
+export function directRing(rng: Rng, difficulty: Difficulty, wave: RingContentWave, route: RingRoute = 'full'): DirectedRing {
+  return new Director(rng, difficulty, wave, route).run();
 }
 
 class Director {
@@ -590,11 +615,17 @@ class Director {
   private readonly rng: Rng;
   private readonly difficulty: Difficulty;
   private readonly wave: RingContentWave;
+  /** Revision R: the route's landmark defs, the short route, and its road-works count. */
+  private readonly defs: readonly RingLandmarkDef[];
+  private readonly short: boolean;
+  private roadworks = 0;
 
-  constructor(rng: Rng, difficulty: Difficulty, wave: RingContentWave) {
+  constructor(rng: Rng, difficulty: Difficulty, wave: RingContentWave, route: RingRoute = 'full') {
     this.rng = rng;
     this.difficulty = difficulty;
     this.wave = wave;
+    this.defs = routeDefs(route);
+    this.short = route === 'short';
   }
 
   run(): DirectedRing {
@@ -628,8 +659,9 @@ class Director {
   }
 
   private structure(rng: Rng): void {
-    const defs = RING_LANDMARK_DEFS;
-    this.total = Math.round(RING_PLAN.target * (1 + rng.range(-RING_PLAN.jitter, RING_PLAN.jitter)));
+    const defs = this.defs;
+    const target = this.short ? RING_PLAN.short.target : RING_PLAN.target;
+    this.total = Math.round(target * (1 + rng.range(-RING_PLAN.jitter, RING_PLAN.jitter)));
     let fixed = 0;
     let shares = 0;
     for (const def of defs) {
@@ -637,8 +669,9 @@ class Director {
       shares += def.share;
     }
     const road = this.total - fixed;
-    // The jam stretches: 1–2 of the stretches that allow one, never two neighbours.
-    const jamIds = this.pickJams(rng);
+    // The jam stretches: 1–2 of the stretches that allow one, never two neighbours (the short
+    // route has none: its only jam is the final one in zuid's tail).
+    const jamIds = this.short ? [] : this.pickJams(rng);
     let fixedSoFar = 0;
     let shareSoFar = 0;
     for (const def of defs) {
@@ -648,8 +681,31 @@ class Director {
       if (def.share <= 0) continue;
       // Cumulative targets: an overshoot in one stretch is taken back by the next.
       const end = fixedSoFar + (road * shareSoFar) / shares;
-      this.road(rng, def, end, jamIds.includes(def.id));
+      this.road(rng, def, end, jamIds.includes(def.id), this.short ? (RING_PLAN.short.forced[def.id] ?? []) : []);
+      if (def.tail) this.tail(def);
     }
+  }
+
+  /** Revision R: the fixed chunks after a stretch's road (the boss chunk, the final jam) and its boss slot. */
+  private tail(def: RingLandmarkDef): void {
+    const start = this.d;
+    for (const c of def.tail ?? []) {
+      this.push({
+        type: c.type,
+        length: c.length,
+        stretch: def.id,
+        budget: 0,
+        tier: 0,
+        part: c.part,
+        setPiece: true,
+        tail: true,
+        district: c.district ?? def.roadDistrict,
+        limit: def.limit,
+        ...(c.speed !== undefined ? { speed: c.speed } : {}),
+        ...(c.scene ? { scene: true } : {}),
+      });
+    }
+    if (def.boss?.inTail) this.bosses.push({ at: start + def.boss.offset, id: def.boss.id, landmark: def.id, lane: def.boss.lane });
   }
 
   private pickJams(rng: Rng): RingLandmarkId[] {
@@ -710,14 +766,15 @@ class Director {
     };
     for (const c of def.setPiece) fixedChunk(c);
     for (const c of def.after ?? []) fixedChunk(c);
-    if (def.boss) this.bosses.push({ at: start + def.boss.offset, id: def.boss.id, landmark: def.id, lane: def.boss.lane });
+    if (def.boss && !def.boss.inTail) this.bosses.push({ at: start + def.boss.offset, id: def.boss.id, landmark: def.id, lane: def.boss.lane });
   }
 
   /** The generated road of a stretch up to the cumulative target `endTicks`. */
-  private road(rng: Rng, def: RingLandmarkDef, endTicks: number, jam: boolean): void {
+  private road(rng: Rng, def: RingLandmarkDef, endTicks: number, jam: boolean, extra: readonly RingChunkType[] = []): void {
     const forced: RingChunkType[] = [];
     if (def.id === 'west') forced.push('avgzone');
     if (jam) forced.push('jam');
+    forced.push(...extra);
     const counts = new Map<RingChunkType, number>();
     let prev: WorkChunk | null = this.chunks[this.chunks.length - 1] ?? null;
     const left = (): number => endTicks - this.ticks;
@@ -777,6 +834,8 @@ class Director {
     for (const rule of Object.values(CHUNK_RULES)) {
       if (rule.weight <= 0 || rule.minTier > tier || (rule.minTicks ?? 0) > this.ticks) continue;
       if (rule.wave === 'B' && this.wave !== 'B') continue;
+      // The short route: its hazards are forced (one each); at most one road-works chunk.
+      if (this.short && (RING_PLAN.short.never.includes(rule.type) || (rule.type === 'roadworks' && this.roadworks >= RING_PLAN.short.roadworks))) continue;
       if (!this.neighbourOk(rule, prev)) continue;
       if (rule.maxPerStretch !== undefined && (counts.get(rule.type) ?? 0) >= rule.maxPerStretch) continue;
       types.push(rule.type);
@@ -805,6 +864,7 @@ class Director {
       return this.push({ ...base, type, length: len - 384, part: 'closure', closed: [...closed] });
     }
     if (type === 'roadworks') {
+      this.roadworks++;
       const closed = tier >= 3 && rng.chance(0.5) ? [3, 4] : [4];
       return this.push({ ...base, type, length: len, closed });
     }
@@ -869,7 +929,10 @@ class Director {
         this.add({ at: end - 32, id: RING_ENTITY.gantry, y: Y, params: { purpose: 'end', signs: ['end', 'end', 'end', 'end'] } });
       }
       if (c.part === 'jam-warn') this.add({ at: c.start + 96, id: RING_ENTITY.gantry, y: Y, params: { purpose: 'jam', signs: ['50', '50', '50', '50'] } });
-      if (c.type === 'jam') {
+      if (c.type === 'jam' && c.part === 'final-jam') {
+        // Revision R: the final jam (never clears, no waves; JAM+FOOT's controller and the alight).
+        this.add({ at: c.start, id: RING_ENTITY.jam, y: Y, from: 'behind', params: { final: true, length: c.length, crawl: c.speed ?? RING_PLAN.jamCrawl, hold: 0, holdAt: 0, cars: 8 } });
+      } else if (c.type === 'jam') {
         this.add({
           at: c.start,
           id: RING_ENTITY.jam,
@@ -1091,7 +1154,8 @@ class Director {
       const seed = rng.int(1, 0x7fffffff);
       const jam = this.spawns.find((x) => x.id === RING_ENTITY.jam && x.at === c.start);
       if (jam?.params) jam.params.seed = seed;
-      if (!RING_PLAN.jamCars) continue;
+      // The final jam (revision R) builds its own standing queue (the controller's `cars` tail).
+      if (!RING_PLAN.jamCars || c.part === 'final-jam') continue;
       for (let l = 1; l <= (c.lanes ?? 4); l++) {
         let stop = rng.int(8, 48);
         let k = 0;
@@ -1114,7 +1178,8 @@ class Director {
     for (const lm of this.landmarks) {
       const st = this.stretchRange(lm.id);
       const n = st.end - st.start >= 12_000 ? 2 : 1;
-      const after = this.bosses.find((b) => b.landmark === lm.id)?.at ?? -1;
+      // A boss in the stretch's tail (the short route's truck) comes after its hostages.
+      const after = this.bosses.find((b) => b.landmark === lm.id && !this.chunkAt(b.at).tail)?.at ?? -1;
       for (let k = 0; k < n; k++) {
         // Spread the carriers: the k-th one in the k-th part of the stretch.
         const a = st.start + ((st.end - st.start) * k) / n;
@@ -1123,10 +1188,10 @@ class Director {
         // The van's road point (s + AHEAD) stays inside the stretch (the tally counts it there).
         for (let s = Math.max(a, after + 32); s + AHEAD < b - 32; s += 32) {
           const c = this.chunkAt(s + VIEW_W / 2);
-          if (c.scene || c.type === 'jam' || c.part === 'jam-warn' || c.stretch !== lm.id) continue;
+          if (c.scene || c.tail || c.type === 'jam' || c.part === 'jam-warn' || c.stretch !== lm.id) continue;
           // Wave B: the carriers are enemy vehicles, so never in a rest (spec §4).
           const here = this.chunkAt(s);
-          if (here.scene || (this.wave === 'B' && (here.type === 'rest' || c.type === 'rest'))) continue;
+          if (here.scene || here.tail || (this.wave === 'B' && (here.type === 'rest' || c.type === 'rest'))) continue;
           spots.push(s);
         }
         rng.shuffle(spots);
@@ -1228,7 +1293,8 @@ class Director {
   }
 
   private eligible(c: WorkChunk): boolean {
-    return !c.scene && c.type !== 'rest';
+    // Revision R: the tail (the truck brings its own adds; then the final jam) holds no plan waves.
+    return !c.scene && c.type !== 'rest' && !c.tail;
   }
 
   private enemies(rng: Rng): void {
@@ -1273,7 +1339,7 @@ class Director {
       // `gapJam`) and no voluntary waves (else the crawl fills with gangs).
       const jam = c.type === 'jam';
       const standAt = jam && c.hold && c.holdAt !== undefined ? c.start + c.holdAt : Infinity;
-      const place = jam ? P.gapJam : Math.min(P.gapPlace, P.gapTicks - P.gapMargin);
+      const place = jam ? P.gapJam : Math.min(this.short ? P.short.gapPlace : P.gapPlace, P.gapTicks - P.gapMargin);
       for (let s = c.start; s < cEnd; s += 32) {
         // The stand's own wave covers the stand only (it is often shot fast): the crawl after it
         // gets the floor again. (`planTicksAt` at `holdAt` is the stand's end: it counts the hold.)
@@ -1380,7 +1446,7 @@ class Director {
       while (ri < repairs.length && repairs[ri] <= t) lastRepair = Math.max(lastRepair, repairs[ri++]);
       const ci = chunkIndexAt(this.chunks, s + AHEAD);
       const c = this.chunks[ci];
-      if (!c || c.scene) continue;
+      if (!c || c.scene || c.tail) continue;
       if (c.part === 'on-ramp' && lastWeapon < 0) {
         this.crate(rng, s, this.weaponKind(rng));
         lastWeapon = t;
@@ -1424,7 +1490,8 @@ class Director {
 
   private placeGolden(rng: Rng): void {
     // Mid-ring (zuid … coentunnel), in a plain chunk, on the far lane when it is open.
-    const ids: RingLandmarkId[] = ['zuid', 'nieuwe-meer', 'west', 'westpoort', 'coentunnel', 'noord'];
+    // The short route (revision R): in amstel or zuid.
+    const ids: RingLandmarkId[] = this.short ? ['amstel', 'zuid'] : ['zuid', 'nieuwe-meer', 'west', 'westpoort', 'coentunnel', 'noord'];
     const id = rng.pick(ids);
     const st = this.stretchRange(id);
     const spots: number[] = [];
@@ -1527,13 +1594,13 @@ export function enemyGaps(plan: { readonly chunks: readonly RingChunk[]; readonl
   let reach = -Infinity;
   for (let i = 0; i < chunks.length; ) {
     const c = chunks[i];
-    if (c.scene || c.type === 'rest') {
+    if (c.scene || c.tail || c.type === 'rest') {
       i++;
       continue;
     }
     // An eligible run [r0, r1] of planned ticks.
     let j = i;
-    while (j < chunks.length && !chunks[j].scene && chunks[j].type !== 'rest') j++;
+    while (j < chunks.length && !chunks[j].scene && !chunks[j].tail && chunks[j].type !== 'rest') j++;
     const r0 = cum[i];
     const r1 = cum[j];
     let at = r0;

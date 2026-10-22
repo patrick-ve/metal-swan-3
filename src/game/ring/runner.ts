@@ -50,7 +50,7 @@ import { RingContinue } from './continue';
 import { drawRingShadow, setShotLift, shotLiftOf, type RingDrawable, type RingHost } from './entity';
 import { RingHero } from './hero';
 import { RING_HOOKS } from './hooks';
-import { RING_ENTITY, type RingLandmarkId } from './ids';
+import { RING_ENTITY, RING_SECTION_ZWAAN, RING_ZWAAN, RING_ZWAAN_PART_TAG, type RingLandmarkId } from './ids';
 import { GROUND_Y, inRoadBand, laneY } from './lanes';
 import { ringMission, ringSong, type RingMission } from './mission';
 import { planRing } from './plan';
@@ -60,7 +60,11 @@ import { RingView } from './view';
 import { RingXray } from './xray';
 import { spawnWagon } from './wagon';
 
-export type RingState = 'playing' | 'victory' | 'complete' | 'gameover';
+/**
+ * `handover` (revision R): the short route's drive is over; the scene hands the play to the on-foot
+ * part (`handOver()`, the 'handover' event). The runner does nothing more after it.
+ */
+export type RingState = 'playing' | 'victory' | 'complete' | 'gameover' | 'handover';
 
 export interface RingRunnerEvents {
   /** The victory drive is over: show the tally. */
@@ -81,6 +85,11 @@ export interface RingRunnerEvents {
   fine: { slot: SlotIndex; points: number; reason: string };
   /** A boss slot was reached: `spawned` = a registered boss came in and locked the plan. */
   bossSlot: { id: string; at: number; spawned: boolean };
+  /**
+   * Revision R: the short route's drive is over (after the alight scene): the scene replaces itself
+   * with the on-foot GameplayScene (ring-route.ts `ringHandover`). No tally, no `completed` entry.
+   */
+  handover: { mission: string };
 }
 
 export interface RingRunnerOptions {
@@ -127,8 +136,29 @@ export interface RingReport {
   skipped: Record<string, number>;
   /** Boss slots reached; `ticks` = spawn → gone (the time to kill; −1 while it fights or never came). */
   bosses: { id: string; spawned: boolean; ticks: number }[];
+  /** Revision R: the route of the plan ('short' | 'full'). */
+  route: string;
+  /**
+   * Revision R: the ZWAAN train (the momentum numbers): each part's fight (its first phase → beaten,
+   * ticks; −1 = not beaten), the catch-ups between the parts (beaten → the next part's fight, ticks),
+   * the whole train (the first part's fight → the cab beaten; −1 = not done). Null: no train came.
+   */
+  train: RingTrainReport | null;
+  /** Revision R: the drive handed over to the on-foot part. */
+  handedOver: boolean;
   errors: WorldError[];
   maxEntities: number;
+}
+
+/** The ZWAAN train in the report (see `RingReport.train`). */
+export interface RingTrainReport {
+  parts: { id: string; ticks: number }[];
+  catchUps: number[];
+  ticks: number;
+  done: boolean;
+  /** Runner ticks at the first part's fight and at the cab's defeat (−1 = not yet): the road before, the jam and alight after. */
+  startTick: number;
+  endTick: number;
 }
 
 interface BossRun {
@@ -212,6 +242,8 @@ export class RingRunner implements RingHost, RingViewHost {
   private maxEntities = 0;
   private readonly visited: string[] = [];
   private fightStart = -1;
+  /** Revision R: the train's log (`RingReport.train`). */
+  private train: { parts: { id: string; start: number; end: number }[]; start: number; end: number } | null = null;
   private readonly drawList: Entity[] = [];
   /** The outline of a covered player wagon (readability; xray.ts). */
   readonly xray = new RingXray();
@@ -260,8 +292,7 @@ export class RingRunner implements RingHost, RingViewHost {
     this.queue = [...this.plan.spawns].sort((a, b) => triggerOf(a, vw) - triggerOf(b, vw));
     this.triggers = Float64Array.from(this.queue, (s) => triggerOf(s, vw));
     this.bossRuns = [...this.plan.bosses].sort((a, b) => a.at - b.at).map((slot, i) => ({ slot, entity: null, key: `boss:${i}:${slot.id}`, spawnTick: -1, endTick: -1 }));
-    const lm = this.startSection ? this.plan.landmarks.find((l) => l.id === this.startSection) : undefined;
-    this.startDist = lm ? Math.max(0, lm.start - RING.runIn) : 0;
+    this.startDist = ringStartDist(this.plan, this.startSection);
     this.hud.onBubble = (text, kind, speaker) => {
       if (kind === 'gag' && !this.settings.speechBubbles) return;
       if (kind === 'gag') this.audio.say?.(text, speaker);
@@ -320,25 +351,51 @@ export class RingRunner implements RingHost, RingViewHost {
       if (this.fightStart < 0) this.fightStart = this.ticks;
       for (const s of this.session.slots) if (s.mission.bossStartTick < 0) s.mission.bossStartTick = this.ticks;
     });
-    w.events.on('bossDefeated', () => {
-      this.fightStart = -1;
-      for (const s of this.session.slots) if (s.mission.bossStartTick >= 0 && s.mission.bossEndTick < 0) s.mission.bossEndTick = this.ticks;
-      for (const p of this.players) {
-        const v = p.wagon;
-        if (p.state === 'mounted' && v) {
-          p.slot.bonus.vehicle += v.bonus;
-          p.slot.mission.vehicleAtFinish = true;
-        }
-      }
+    w.events.on('bossDefeated', (e) => {
+      // Revision R: a ZWAAN part is one fight of the train; only the whole train ends the boss.
+      if (e.boss.hasTag(RING_ZWAAN_PART_TAG)) return;
+      this.bossDone();
+    });
+    w.events.on('ringTrainPart', (e) => this.logTrainPart(e.part, e.phase));
+    w.events.on('ringTrainDone', () => {
+      if (this.train && this.train.end < 0) this.train.end = this.ticks;
+      this.bossDone();
     });
     // Shots are drawn raised by their shooter's gun height (spec §13).
     w.events.on('spawn', (e) => {
-      if (!e.hasTag('shot')) return;
+      // Fixer (2026-10-22): a beam that follows its gun (the laser: `gun` + `shooter`, not a
+      // 'shot') is raised the same way; it starts on the hero's plane line at the muzzle's x.
+      const beam = !e.hasTag('shot') && !e.hasTag('shootable') && 'gun' in e && 'shooter' in e;
+      if (!e.hasTag('shot') && !beam) return;
       const shooter = (e as Entity & { shooter?: Entity | null }).shooter;
       const lift = shooter ? (shooter as Entity & RingDrawable).shotLift : undefined;
       // Pooled projectiles are reused: a shot without a lifted shooter clears the old lift.
       setShotLift(e, typeof lift === 'number' ? lift : 0);
     });
+  }
+
+  /** A boss fight is over (a boss, or the whole ZWAAN train): the boss timing, the vehicle bonus. */
+  private bossDone(): void {
+    this.fightStart = -1;
+    for (const s of this.session.slots) if (s.mission.bossStartTick >= 0 && s.mission.bossEndTick < 0) s.mission.bossEndTick = this.ticks;
+    for (const p of this.players) {
+      const v = p.wagon;
+      if (p.state === 'mounted' && v) {
+        p.slot.bonus.vehicle += v.bonus;
+        p.slot.mission.vehicleAtFinish = true;
+      }
+    }
+  }
+
+  /** Revision R: a train part's fight starts or it is beaten (the report's momentum numbers). */
+  private logTrainPart(part: string, phase: 'start' | 'beaten'): void {
+    const t = (this.train ??= { parts: [], start: this.ticks, end: -1 });
+    if (phase === 'start') {
+      if (!t.parts.some((p) => p.id === part && p.end < 0)) t.parts.push({ id: part, start: this.ticks, end: -1 });
+      return;
+    }
+    const p = [...t.parts].reverse().find((x) => x.id === part && x.end < 0);
+    if (p) p.end = this.ticks;
   }
 
   // ------------------------------------------------------------------------------- players
@@ -464,6 +521,7 @@ export class RingRunner implements RingHost, RingViewHost {
         break;
       case 'gameover':
       case 'complete':
+      case 'handover':
         break;
     }
     const n = this.world.entities.length;
@@ -490,7 +548,11 @@ export class RingRunner implements RingHost, RingViewHost {
     if (!this.planEnded && this.planDist >= this.plan.length) {
       this.planEnded = true;
       this.events.emit('planEnd', { length: this.plan.length });
-      if (RING_HOOKS.planEnd) RING_HOOKS.planEnd(this);
+      // Revision R: the short route ends in the final jam: the alight scene, then the hand-over.
+      if (this.plan.route === 'short') {
+        if (RING_HOOKS.alight) RING_HOOKS.alight(this);
+        else this.handOver();
+      } else if (RING_HOOKS.planEnd) RING_HOOKS.planEnd(this);
       else this.completeMission();
     }
   }
@@ -717,6 +779,31 @@ export class RingRunner implements RingHost, RingViewHost {
     this.session.completed.push(this.mission.id);
   }
 
+  /**
+   * Revision R (docs/design/ring.md §R.4, §R.10): the drive is over; the on-foot part takes the play
+   * (the scene: `ringHandover`). No victory banner, no `completed` entry, no tally: the drive's stats
+   * (lives, score, bombs, weapon, the per-mission stats, the fines) stay on the session for the
+   * single tally at the very end. The loops fade; the 'handover' event fires once.
+   */
+  handOver(): void {
+    if (this.state !== 'playing') return;
+    this.state = 'handover';
+    // The wagons' heroes: a mounted wagon at full armour keeps NO SCRATCHES for the tally.
+    for (const p of this.players) {
+      const v = p.wagon;
+      if (p.state === 'mounted' && v && v.cells >= v.maxCells) p.slot.mission.noScratches = true;
+    }
+    this.cont.hold(false);
+    this.hud.hideGo();
+    this.stopLoops(40);
+    this.events.emit('handover', { mission: this.mission.id });
+  }
+
+  /** The drive handed over to the on-foot part (revision R). */
+  get handedOver(): boolean {
+    return this.state === 'handover';
+  }
+
   /** The mission after the ring (null: the scene goes on to the glitch bridge). */
   nextMission(): string | null {
     return this.mission.next ?? null;
@@ -735,6 +822,7 @@ export class RingRunner implements RingHost, RingViewHost {
     }
     const next = this.plan.stretches[this.stretchIndex + 1];
     if (next) this.jumpTo(next.start);
+    else if (this.plan.route === 'short') this.jumpTo(this.plan.length);
     else this.completeMission();
   }
 
@@ -814,7 +902,7 @@ export class RingRunner implements RingHost, RingViewHost {
       }
       for (let i = 0; i < dl.length; i++) {
         const e = dl[i];
-        const lift = e.hasTag('shot') ? shotLiftOf(e) : 0;
+        const lift = shotLiftOf(e);
         if (lift !== 0) r.setCamera(vx, vy + lift);
         try {
           e.draw(r);
@@ -908,8 +996,35 @@ export class RingRunner implements RingHost, RingViewHost {
         .map((b) => ({ id: b.slot.id, spawned: hasEntity(b.slot.id), ticks: b.spawnTick >= 0 && b.endTick >= 0 ? b.endTick - b.spawnTick : -1 })),
       errors: [...this.world.errors],
       maxEntities: this.maxEntities,
+      route: this.plan.route ?? 'full',
+      train: this.trainReport(),
+      handedOver: this.state === 'handover',
     };
   }
+
+  /** The train's momentum numbers (see `RingReport.train`). */
+  private trainReport(): RingTrainReport | null {
+    const t = this.train;
+    if (!t) return null;
+    const parts = t.parts.map((p) => ({ id: p.id, ticks: p.end >= 0 ? p.end - p.start : -1 }));
+    const catchUps: number[] = [];
+    for (let i = 1; i < t.parts.length; i++) if (t.parts[i - 1].end >= 0) catchUps.push(t.parts[i].start - t.parts[i - 1].end);
+    return { parts, catchUps, ticks: t.end >= 0 ? t.end - t.start : -1, done: t.end >= 0, startTick: t.start, endTick: t.end };
+  }
+}
+
+/**
+ * The plan distance a start begins at (`?section=`): a landmark → a run-in before it; `zwaan` →
+ * a run-in before the ZWAAN truck's slot (revision R); anything else → the on-ramp.
+ */
+export function ringStartDist(plan: RingPlan, section: string | undefined): number {
+  if (!section) return 0;
+  if (section === RING_SECTION_ZWAAN) {
+    const b = plan.bosses.find((x) => x.id === RING_ZWAAN.controller) ?? plan.bosses[0];
+    return b ? Math.max(0, b.at - RING.runIn) : 0;
+  }
+  const lm = plan.landmarks.find((l) => l.id === section);
+  return lm ? Math.max(0, lm.start - RING.runIn) : 0;
 }
 
 const NO_LANES: readonly number[] = Object.freeze([]);

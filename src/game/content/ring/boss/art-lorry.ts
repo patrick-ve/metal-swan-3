@@ -15,8 +15,8 @@ import type { PixelBuffer } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
 import { inPoly, type HdCanvas } from '../../../art/hd';
 import { bot, finishA, mat, top, type Dn } from '../../stag/kit.art';
-import { glyphHit, glyphHitC } from '../traffic/lettering';
-import { frac, frameOf, hash2, lineW, Pen, roll, turnPt, type Turn } from './art-kit';
+import { glyphHit } from '../traffic/lettering';
+import { frac, frameOf, hash2, Pen, roll, swanHit, turnPt, type Turn } from './art-kit';
 import { LORRY, RIM_R, type Pt } from './geometry';
 
 // ---------------------------------------------------------------------------------------------
@@ -66,13 +66,13 @@ export function lorryMats(c: HdCanvas): LorryMats {
 }
 
 /** The container's line: our own made-up name, a swan mark and a made-up box code. */
-const LINE_NAME = 'ZWAAN';
-const BOX_CODE = 'ZWAU 619072'; // ZWA: no N (the 3-wide N reads as an M at 4x)
+export const LINE_NAME = 'ZWAAN';
+export const BOX_CODE = 'ZWAU 619072'; // ZWA: no N (the 3-wide N reads as an M at 4x)
 /** A made-up yellow plate on the cab's nose (seen in the jackknife). */
-const PLATE = 'ZW-99';
+export const PLATE = 'ZW-99';
 
 /** A spot of damage on a lit surface: dents (dark crescents) and bullet holes. */
-function holes(p: Pen, x: number, y: number, w: number, h: number, n: number, seed: number, inside: (x: number, y: number) => boolean): void {
+export function holes(p: Pen, x: number, y: number, w: number, h: number, n: number, seed: number, inside: (x: number, y: number) => boolean): void {
   const d = p.d;
   const ink = bot('black', d, 0);
   const rim = top('steel', d, 1);
@@ -91,222 +91,11 @@ function holes(p: Pen, x: number, y: number, w: number, h: number, n: number, se
 }
 
 /** Dark soot over a surface (tone down where `inside`). */
-function soot(p: Pen, x: number, y: number, w: number, h: number, cx: number, cy: number, rad: number, amount: number): void {
+export function soot(p: Pen, x: number, y: number, w: number, h: number, cx: number, cy: number, rad: number, amount: number): void {
   p.shade(x, y, w, h, (px, py) => {
     const dd = Math.hypot((px - cx) / rad, (py - cy) / (rad * 0.7));
     return dd < 1 ? -amount * (1 - dd * dd) : 0;
   });
-}
-
-// ---------------------------------------------------------------------------------------------
-// The cab (tractor), side view and the jackknife's yaw
-// ---------------------------------------------------------------------------------------------
-
-const CAB_SIDE: readonly Pt[] = [
-  [48, -12.5],
-  [48, -61],
-  [50.5, -63.8],
-  [60, -64.4],
-  [72, -63.6],
-  [80, -62],
-  [85, -60],
-  [88, -57],
-  [89.6, -48],
-  [90.6, -38],
-  [91.6, -33],
-  [92, -28],
-  [92, -14],
-  [90.4, -12.5],
-];
-const CAB_WIN: readonly Pt[] = [
-  [66.4, -52.4],
-  [86, -52.4],
-  [88.4, -41],
-  [66.4, -41],
-];
-/** Front width of the cab (front view, the jackknife). */
-const CAB_W = 46;
-const ARCHES: readonly Pt[] = [
-  [80.5, -7.5],
-  [53.5, -7.5],
-];
-
-/** Is (x, y) in a wheel arch of the cab? */
-function inArch(x: number, y: number): boolean {
-  if (y < -17) return false;
-  for (const [ax, ay] of ARCHES) if (Math.hypot(x - ax, y - ay) < 9.4) return true;
-  return false;
-}
-
-/**
- * The cab at damage state `s` turned `yaw` degrees toward the camera (0 = side on; the jackknife:
- * 25 … 90, the nose swinging toward the near lanes). The side face shrinks by cos(yaw) about its
- * back wall, the front face (`CAB_W` wide) grows to the right by sin(yaw). Wheels: only in the yaw
- * frames (the live cab's wheels are the entity's `ring/car/wheel-l`).
- */
-export function cabFrame(s: number, yaw: number, d: Dn): Frame {
-  const k = Math.cos((yaw * Math.PI) / 180);
-  const sn = Math.sin((yaw * Math.PI) / 180);
-  const p = new Pen(32, -70, yaw > 0 ? 90 : 66, 71, d);
-  const c = p.c;
-  const m = lorryMats(c);
-  const X = (x: number): number => 48 + (x - 48) * k;
-  const U = (x: number): number => (k > 0.01 ? 48 + (x - 48) / k : 48);
-  const map = (pts: readonly Pt[]): Pt[] => pts.map(([x, y]) => [X(x), y] as const);
-  const side = k > 0.12;
-  const dark = yaw > 0 ? -0.25 * sn : 0;
-  // The tractor's chassis rail, the fifth wheel, the air lines to the trailer (side on only).
-  if (yaw === 0) {
-    p.box(38, -17, 52, 4.6, { mat: m.black, z: -3.5, r: 0.4 });
-    p.box(36, -21, 15, 3.6, { mat: m.steel, z: -3.4, r: 0.6, bevel: 0.5 });
-    const coil = (dx: number, matId: number): void => {
-      const pts: Pt[] = [];
-      for (let i = 0; i <= 10; i++) {
-        const t = i / 10;
-        pts.push([47.2 - t * 2.6 + Math.sin(t * Math.PI * 6) * 0.6 + dx, -42 + t * 20]);
-      }
-      p.stroke(pts, d === 1 ? 0.5 : 0.36, d === 1 ? 0.5 : 0.36, { mat: matId, z: -3 });
-    };
-    coil(0, m.red);
-    coil(-1.4, mat(c, 'gold', { spec: 0.6, shine: 30, lo1: 1, hi1: 3, lo: 2, hi: 5 }));
-    // The drive wheel's mudguard (a black quarter arc).
-    const arc: Pt[] = [];
-    for (let a = 200; a <= 340; a += 20) arc.push([53.5 + Math.cos((a * Math.PI) / 180) * 9.2, -7.5 + Math.sin((a * Math.PI) / 180) * 9.2]);
-    p.stroke(arc, 0.9, 0.9, { mat: m.black, z: -2.5 });
-  }
-  if (side) {
-    // The painted side: rolled edges, the stripes, the door's shut lines, the vent louvres.
-    const hw = lineW(d);
-    p.body(
-      map(CAB_SIDE),
-      2.2 * Math.max(0.4, k),
-      { mat: m.white, z: -2, part: c.newPart(), tone: dark },
-      (x, y) => {
-        const u = U(x);
-        // The cab's side panel bulges a little under the window line.
-        return y > -40 && y < -20 ? 0.3 * Math.sin(((y + 40) / 20) * Math.PI) * (u > 50 ? 1 : 0) : 0;
-      },
-      (x, y) => inArch(U(x), y) || inPoly(U(x), y, CAB_WIN),
-      (t, x, y) => {
-        const u = U(x);
-        if (y > -30.6 && y < -27) t.mat = m.orange;
-        else if (y > -26 && y < -25) t.mat = m.red;
-        // Door shut lines: the front of the door at u 64.5, its bottom at −15.
-        if (Math.abs(u - 64.5) < hw / Math.max(0.3, k) && y > -53.5 && y < -15) t.tone -= 0.8;
-        if (Math.abs(y + 15) < hw && u > 64.5 && u < 90) t.tone -= 0.8;
-        if (Math.abs(y + 53.5) < hw && u > 64.5 && u < 87.6) t.tone -= 0.6;
-        // Vent louvres behind the door.
-        if (u > 52 && u < 60 && y > -50 && y < -44 && frac((y + 50) / 1.5) < 0.4) t.tone -= 0.45;
-        // A horizon in the gloss of the door, sky above, road below.
-        if (u > 65 && u < 89 && y > -38 && y < -16) t.tone += y < -24 + Math.sin(u * 0.2) * 0.3 ? 0.08 : -0.18;
-        // A crease along the roof fairing.
-        if (y < -61.4 && y > -62.4) t.tone += 0.2;
-      },
-    );
-    // The door glass with the driver behind it (a dark head and shoulders) and two sky glints.
-    const win = map(CAB_WIN);
-    p.field(X(66), -53, X(89) - X(66) + 1, 13, (x, y) => (inPoly(x, y, win) ? (y + 53) * 0.12 : NaN), { mat: m.glass, z: 1.05, tone: dark }, (t, x, y) => {
-      const u = U(x);
-      if (s >= 2) {
-        // Broken out: the dark cab inside, jagged shards at the frame.
-        t.tone -= 0.9;
-        if (hash2(Math.floor(u * 2), Math.floor(y * 2)) < 0.08) t.tone += 1.1;
-        return;
-      }
-      const hx = u - 78;
-      const hy = y + 45.2;
-      if ((hx * hx) / 5 + (hy * hy) / 9 < 1 || (y > -42.6 && Math.abs(hx + 0.4) < 4.4)) t.tone -= 0.6;
-      const g = frac((u + (y + 41) * 0.7) / 12);
-      if (g < 0.1) t.tone += 0.9;
-      else if (g > 0.16 && g < 0.2) t.tone += 0.5;
-      // A crack star (state 1).
-      if (s === 1) {
-        const cx = u - 82;
-        const cy = y + 46;
-        const a = Math.atan2(cy, cx);
-        const r = Math.hypot(cx, cy);
-        if (r < 4.5 && frac((a / (Math.PI * 2)) * 7) < 0.12 / Math.max(0.6, r)) t.tone += 1.2;
-      }
-    });
-    // The window seal under the glass.
-    p.box(X(66.4), -41.4, (88.6 - 66.4) * k, 0.9, { mat: m.black, z: 1.1 });
-    // The grab handle, the door handle, the step below the door.
-    p.capsule(X(63.4), -45.5, X(63.4), -23, 0.5, 0.5, { mat: m.chrome, z: 2.2 });
-    p.box(X(66), -36.4, 3 * k, d === 1 ? 1 : 0.8, { mat: m.black, z: 1.6, r: 0.3 });
-    p.box(X(61.5), -11.4, 9 * k, 1.4, { mat: m.plastic, z: 1.6, r: 0.3 });
-    p.box(X(62), -12.5, 1 * k, 2.2, { mat: m.black, z: 1.4 });
-    p.box(X(69.6), -12.5, 1 * k, 2.2, { mat: m.black, z: 1.4 });
-    // The amber side marker (the indicator's lens), small marker lights along the skirt.
-    p.box(X(85), -22, 2 * k, 1.4, { mat: m.amber, z: 1.8, r: 0.3, bevel: 0.4 });
-    for (const mx of [56, 66]) p.box(X(mx), -15.2, 1.2 * k, 0.9, { mat: m.amber, z: 1.7, r: 0.2 });
-    // The front bumper, the headlight at the corner, the sun visor, the mirror on its arm.
-    p.box(X(84), -17, 9 * k, 8.5, { mat: m.plastic, z: 2, r: 1.2, bevel: 0.7 });
-    p.box(X(90.2), -23, 2.2 * k, 4.5, { mat: m.head, z: 2.1, r: 0.5, bevel: 0.5 });
-    p.box(X(85.5), -60.6, 5.1 * k, 2, { mat: m.black, z: 2.2, r: 0.4 });
-    if (yaw === 0) {
-      const hang = s >= 2 ? 3 : 0;
-      p.stroke([[88.4, -50], [93.4, -50.4], [93.6, -48 + hang]], 0.45, 0.45, { mat: m.black, z: 2.4 });
-      p.box(92.2, -53.5 + hang, 3.4, 12.5, { mat: m.black, z: 2.6, r: 0.8, bevel: 0.6 });
-      p.box(93.6, -52.6 + hang, 1.4, 10.6, { mat: m.glass, z: 2.8, r: 0.3 });
-      // Two air horns on the roof (they blow on its arrival and before a weave).
-      p.capsule(69.6, -65.4, 78, -66.4, 0.6, 1.3, { mat: m.chrome, z: 2.3 });
-      p.capsule(72, -64.6, 81.4, -65.4, 0.6, 1.2, { mat: m.chrome, z: 2.2 });
-    }
-    if (s >= 1) {
-      holes(p, X(52), -56, 36 * k, 36, s >= 2 ? 16 : 7, 31 + s, (x, y) => inPoly(U(x), y, CAB_SIDE) && !inPoly(U(x), y, CAB_WIN) && !inArch(U(x), y));
-      p.shade(X(50), -40, 40 * k, 24, (x, y) => {
-        const u = U(x);
-        const a = Math.hypot((u - 74) / 6, (y + 22) / 3);
-        const b = Math.hypot((u - 58) / 4, (y + 34) / 4);
-        return (a < 1 ? -0.5 * (1 - a) : 0) + (b < 1 ? -0.45 * (1 - b) : 0);
-      });
-    }
-    if (s >= 2) soot(p, X(48), -66, 46 * k, 40, X(84), -52, 18 * Math.max(0.5, k), 0.7);
-  }
-  if (yaw > 0) {
-    // The front face: CAB_W wide, from the near corner (left on screen) to the far one.
-    const F = (w: number): number => X(92) + w * sn;
-    const face: Pt[] = [[F(0), -58], [F(1.5), -60.5], [F(CAB_W - 1.5), -60.5], [F(CAB_W), -58], [F(CAB_W), -12], [F(0), -12]];
-    p.body(face, 1.6, { mat: m.white, z: -2, part: c.newPart(), tone: 0.05 }, undefined, undefined, (t, _x, y) => {
-      if (y > -39 && y < -37) t.mat = m.orange;
-    });
-    // The windscreen (smashed: a web of cracks), the visor over it.
-    const W0 = F(3);
-    const W1 = F(CAB_W - 3);
-    p.field(W0 - 0.5, -57, W1 - W0 + 1, 18, (x, y) => (x >= W0 && x <= W1 && y > -56.4 && y < -40 ? 0.15 + (y + 56) * 0.01 : NaN), { mat: m.glass, z: 1.2, tone: -0.15 }, (t, x, y) => {
-      const w = (x - X(92)) / Math.max(0.05, sn);
-      const cx = w - CAB_W * 0.36;
-      const cy = y + 48;
-      const a = Math.atan2(cy, cx);
-      const r = Math.hypot(cx, cy);
-      const lw = (d === 1 ? 0.5 : 0.3) / Math.max(1, r);
-      if (r < 12 && (Math.abs(frac((a / (Math.PI * 2)) * 7 + r * 0.02) - 0.5) < lw * 1.6 || Math.abs(r - 4) < (d === 1 ? 0.5 : 0.3))) t.tone += 1.1;
-      else if (frac((w + (y + 40) * 0.7) / 14) < 0.08) t.tone += 0.6;
-    });
-    p.box(F(2), -60, (CAB_W - 4) * sn, 2.8, { mat: m.black, z: 1.4, r: 0.4 });
-    // The grille: a black frame with chrome slats; the headlights in the lower corners.
-    p.box(F(9), -35.5, 28 * sn, 12.5, { mat: m.black, z: 1.4, r: 0.8, bevel: 0.5 });
-    for (let gy = -33.6; gy < -24; gy += 2.4) p.box(F(10), gy, 26 * sn, d === 1 ? 1 : 0.8, { mat: m.chrome, z: 1.6, r: 0.2 });
-    for (const w0 of [2, CAB_W - 9]) {
-      p.box(F(w0), -24.4, 7 * sn, 5, { mat: m.black, z: 1.45, r: 0.6 });
-      p.box(F(w0 + 0.6), -23.8, 5.8 * sn, 3.8, { mat: m.head, z: 1.5, r: 0.5, bevel: 0.5 });
-    }
-    // The bumper with the made-up plate.
-    p.box(F(0), -18, CAB_W * sn, 7, { mat: m.plastic, z: 1.6, r: 1, bevel: 0.6 });
-    p.box(F(12), -16.6, 22 * sn, 4.4, { mat: m.plate, z: 1.8, r: 0.4 });
-    if (sn > 0.85) {
-      const ink = bot('black', d, 0);
-      const cx = F(23);
-      p.paint(cx - 12, -16.6, 24, 4.4, (x, y) => (glyphHitC(PLATE, cx, -14.4, d === 1 ? 0.8 : 0.72, 1, x, y) ? ink : 0));
-    }
-    soot(p, F(0), -62, CAB_W * sn, 30, F(CAB_W * 0.5), -50, 20 * sn, 0.5);
-    // The wheels under it: the near front wheel and the far one, seen at an angle.
-    for (const [wx, wk] of [[X(80.5), Math.max(0.3, k)], [F(CAB_W - 7), Math.max(0.3, k)], [X(53.5), Math.max(0.3, k)]] as const) {
-      p.ellipsoid(wx, -7.5, 7.5 * wk, 7.5, { mat: m.tyre, z: 0.8, round: 0.6 });
-      p.ellipsoid(wx, -7.5, 4 * wk, 4, { mat: m.steel, z: 0.9, round: 0.4 });
-    }
-  }
-  return p.frame(finishA(c, 0.3));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -400,7 +189,7 @@ function corr(x: number): number {
  * The container's line name in our own wide block letters (5 × 5 bits: the sign face's 3-bit W
  * reads as an H at this size).
  */
-const WIDE: Readonly<Record<string, readonly string[]>> = {
+export const WIDE: Readonly<Record<string, readonly string[]>> = {
   Z: ['11111', '00010', '00100', '01000', '11111'],
   W: ['10001', '10001', '10101', '11011', '10001'],
   A: ['01110', '10001', '11111', '10001', '10001'],
@@ -408,12 +197,12 @@ const WIDE: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** Logical width of `text` in the wide face (bits of `s` px, one bit between letters). */
-function wideWidth(text: string, s: number): number {
+export function wideWidth(text: string, s: number): number {
   return (text.length * 6 - 1) * s;
 }
 
 /** Is (px, py) on a bit of `text` in the wide face set from its top-left (x, y)? */
-function wideHit(text: string, x: number, y: number, s: number, px: number, py: number): boolean {
+export function wideHit(text: string, x: number, y: number, s: number, px: number, py: number): boolean {
   const u = (px - x) / s;
   const v = (py - y) / s;
   if (u < 0 || v < 0 || v >= 5) return false;
@@ -469,6 +258,8 @@ function wallFace(p: Pen, m: LorryMats, s: number, base: number, h: number, tone
     if (wideHit(LINE_NAME, nx, ny, sz, x, v)) return d === 4 && hash2(Math.floor(x * 4), Math.floor(v * 4)) < 0.05 ? 0 : ink;
     // The box code, small, top right.
     if (glyphHit(BOX_CODE, -8, 4, 1, 1, x, v)) return ink;
+    // The swan mark (revision R: ZWAAN's own mark) right of the name.
+    if (swanHit((x - 2) / 10, (v - 22) / 10, d > 1)) return ink;
     return 0;
   }, 2);
   if (s >= 1) {

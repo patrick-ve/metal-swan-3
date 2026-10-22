@@ -263,6 +263,27 @@ export class RingHero extends Player implements RingDrawable {
     return out;
   }
 
+  /**
+   * Beams follow his gun on the PLANE (weapons.ts `GunMount`; fixer 2026-10-22): the laser beam
+   * starts on his plane line at the muzzle's x and keeps his plane aim. Before this the beam
+   * read the 2D player's state ('mounted' ≠ 'play') and ended before its first zap: the laser
+   * did no damage on the ring.
+   */
+  get gunReady(): boolean {
+    return this.state === 'mounted' && !this.boarding;
+  }
+
+  override muzzleWorld(out: [number, number] = [0, 0]): [number, number] {
+    const m = this.muzzle(out);
+    out[0] = this.x + m[0];
+    out[1] = this.y;
+    return out;
+  }
+
+  override get aimAngle(): number {
+    return planeAngle(this.aim8);
+  }
+
   /** One shot along the plane aim from his muzzle (drawn at the muzzle's height). */
   private shootRing(): void {
     const def = this.gun.def;

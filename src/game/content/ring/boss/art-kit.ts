@@ -206,3 +206,61 @@ function cropped(gen: Gen, d: Dn): Frame[] {
 export function defStrip(id: string, gen: Gen, o: { ticksPerFrame?: number; loop?: boolean; defer?: boolean } = {}): void {
   defineSprite(id, () => cropped(gen, 1), { ...o, hd: (d) => cropped(gen, d as Dn) });
 }
+
+// ---------------------------------------------------------------------------------------------
+// The ZWAAN swan mark (revision R: the made-up hauler's own mark; never a real hauler's badge)
+// ---------------------------------------------------------------------------------------------
+
+/** Distance from (x, y) to the segment a–b. */
+function segDist(x: number, y: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+  return Math.hypot(x - ax - t * dx, y - ay - t * dy);
+}
+
+const SWAN_NECK: readonly Pt[] = [
+  [0.42, 0.3],
+  [0.58, 0.06],
+  [0.54, -0.24],
+  [0.38, -0.48],
+  [0.38, -0.7],
+  [0.5, -0.78],
+];
+
+/**
+ * Is (u, v) on the swan mark (unit box −1 … 1, v down; the swan swims to the right, its S-neck
+ * up, the beak forward)? `wing` cuts the wing line into the body (big marks only).
+ */
+export function swanHit(u: number, v: number, wing = true): boolean {
+  if (u < -1 || u > 1 || v < -1 || v > 1) return false;
+  // The body (flat at the waterline) and the raised tail.
+  const bu = (u + 0.05) / 0.8;
+  const bv = (v - 0.38) / 0.36;
+  let body = bu * bu + bv * bv < 1 && v < 0.62;
+  if (!body && inPoly(u, v, [[-0.98, 0.02], [-0.5, 0.2], [-0.62, 0.5]])) body = true;
+  if (body) {
+    // The folded wing's upper contour cut into the body (big marks only).
+    if (wing && u < 0.3) {
+      const e = ((u + 0.2) / 0.52) ** 2 + ((v - 0.4) / 0.24) ** 2;
+      if (Math.abs(e - 1) < 0.3 && v < 0.4) return false;
+    }
+    return true;
+  }
+  // The neck, the head and the beak.
+  for (let i = 0; i + 1 < SWAN_NECK.length; i++) {
+    const [ax, ay] = SWAN_NECK[i];
+    const [bx, by] = SWAN_NECK[i + 1];
+    if (segDist(u, v, ax, ay, bx, by) < 0.115) return true;
+  }
+  if (Math.hypot(u - 0.5, v + 0.76) < 0.14) return true;
+  return inPoly(u, v, [[0.58, -0.86], [0.9, -0.72], [0.58, -0.68]]);
+}
+
+/** Paint the swan mark `h` px tall centred on local (cx, cy) in colour `ink` (layer z). */
+export function swanMark(p: Pen, cx: number, cy: number, h: number, ink: number, z = 2): void {
+  const s = h / 2;
+  const wing = h * p.d >= 14;
+  p.paint(cx - s - 1, cy - s - 1, h + 2, h + 2, (x, y) => (swanHit((x - cx) / s, (y - cy) / s, wing) ? ink : 0), z);
+}

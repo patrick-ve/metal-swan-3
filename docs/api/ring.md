@@ -6,6 +6,488 @@ nothing in `src/engine/`, `mission/runner.ts`, `Player`, `Vehicle`, `Enemy` or `
 run time, so `ams` and m0–m5 stay byte-identical (spec §13). `ring` is **not** registered with
 `defineMission`.
 
+## R. Revision R — the short drive, the ZWAAN truck, the hand-over, the foot part (CORE, 2026-10-22; FROZEN)
+
+Spec: `docs/design/ring.md` §R (it wins over every older section of this file and of the spec). The
+older sections below still describe the drive's machinery; where they say "the ring ends at the exit"
+or "the lorry in westpoort", read this part. Every interface named here is **frozen** at the end of the
+CORE stage: the builders add, never rename. New engine / game features are **additive opt-ins**
+(off by default); `ams`, m0–m5, the fps floors and `oldenzaal` stay byte-identical (`tmp/ring-r/id.sh`).
+
+### R.1 The level and its URLs
+
+```
+boarding (S113) → oost → amstel → zuid (rai, zuidas, road) → [boss chunk: the ZWAAN train]
+  → [final-jam chunk] → RING_HOOKS.alight → RingRunner.handOver() → 'handover'
+  → ring-route.ringHandover → GameplayScene({ handover }) → rf-a DE FILE → rf-b DE BLOKKADE
+  → missionComplete → ringFinalDone → ONE MissionCompleteScene (ringFinalTally) → GlitchBridgeScene
+```
+
+| URL / tool | What starts |
+|---|---|
+| `?mission=ring` | the whole level (short route) |
+| `&section=oost\|amstel\|zuid` | the drive from that landmark (a run-in of `RING.runIn`) |
+| `&section=zwaan` or `&boss=1` | the drive from `RING.runIn` px before the truck's slot (`ringStartDist`) |
+| `&section=rf-a\|rf-b` | on foot (`ringFootScene`; a fresh plan for the seed and the drive's hostages); `rf-b&boss=1` → `bossRush` (reserved for the boat, wave B) |
+| `&route=full` | the old loop (tests, sims). An unused landmark in `section` (`west`, `exit` …) implies it |
+| `npm run sim -- --mission ring [--route short\|full] [--section …\|zwaan\|rf-a\|rf-b] [--boss] [--players 2]` | the same; ONE merged report |
+| `npm run shot -- --mission ring [--route …] [--section …] [--boss]` | the same frames (the foot part labels `ring/rf-a …`) |
+
+`boot.ts ringRouteParam(params)` reads `route` (params.ts has no field yet: it falls back to the page
+URL). `ring-route.ts`: `ringRouteFor(section, route?)`, `isFootSection(section)`, `prepareRing(app, { seed,
+section, route })`, `startRing(app, { section, boss, route, … }): RingScene | GameplayScene`.
+
+### R.2 The route option and the short plan (`ids.ts`, `landmarks.ts`, `director.ts`, `plan.ts`)
+
+- `planRing(seed, difficulty, { route?: 'short' | 'full', wave? })` — default `RING_DEFAULT_ROUTE` =
+  `'short'`. `RingPlan.route` records it (absent = `'full'`). `RING_ROUTES = { short: ['oost','amstel',
+  'zuid'], full: RING_LANDMARKS }`.
+- `routeDefs(route)` (landmarks.ts): the director's landmark defs. The short route's `zuid` has a
+  **`tail`** (`RingLandmarkDef.tail`): fixed chunks after its generated road — the boss chunk
+  (`part: 'boss'`, `SHORT_BOSS_CHUNK` 384 px; the slot `ZWAAN_SLOT_OFFSET` 64 px into it, boss id
+  `'ring-zwaan'`, lane 1, `boss.inTail`) and the final jam (`type: 'jam'`, `part: 'final-jam'`,
+  `scene`, `speed: FINAL_JAM_CRAWL` 1.2, `FINAL_JAM_CHUNK` 384 px). Tail chunks carry
+  `RingChunk.tail = true`: no plan waves, hostages, items or direction signs in them; outside the
+  4-second estimate.
+- `RING_PLAN.short`: `ticks`/`target` 7,200 (2:00 of road up to the boss chunk; ± 5 % checked, ± 2 %
+  jitter); `forced` = `{ amstel: ['gantry'], zuid: ['speedcam'] }`; `never` (the grammar never picks)
+  `gantry, speedcam, jam, avgzone`; at most 1 road works. The budget curve rises over the 2 minutes.
+- The hazards layer gives the final jam one `ring-jam` with params `{ final: true, length, crawl, hold: 0,
+  holdAt: 0, cars: 8, seed }` (no `waves`; no plan queue cars: the controller's `cars` tail). JAM+FOOT
+  makes `final` never clear and shows the `FILE` / `BLOKKADE` gantry (no plan gantry: it would spawn
+  before the lock).
+- The golden record: `amstel` or `zuid`. `ringKmAt` ends a short plan at the next landmark's km (≈ 20).
+- `checkPlan` is route-aware (short: the three landmarks, 2:00 ± 5 %, no mid-drive jam, the final jam
+  last, exactly 1 closure + 1 speed camera, ≤ 1 road works, the one `ring-zwaan` slot in zuid's boss
+  chunk, ≥ 1 hostage per stretch, the repair and 4-second rules).
+- The full route's mid-boss id is ONE constant: `ids.ts RING_FULL_ROUTE_BOSS` (`'ring-zwaan'` since
+  TRAIN-1 retired the lorry; `RING_ENTITY_B.lorry` is the same id; `checkPlan` and the landmark follow).
+
+### R.3 The runner (`runner.ts`, `hooks.ts`, `alight.ts`, `cues.ts`)
+
+- `RingState` adds `'handover'`. **`RingRunner.handOver(): void`** — only from `'playing'`: no victory
+  banner, no `completed.push`, no tally; NO SCRATCHES noted for a full wagon; the continue hold ends; the
+  loops fade; **event `'handover': { mission }`** (once). `runner.handedOver: boolean`.
+- Plan end: the short route calls **`RING_HOOKS.alight(runner)`** (default null → `handOver()` at once);
+  the full route `RING_HOOKS.planEnd` as before. `ring/alight.ts` (stub, OWNER: JAM+FOOT):
+  `ringAlight(runner)` (the road stops: `limitSpeed(ALIGHT_KEY, 0)`, `ALIGHT_STUB_TICKS` 40, then
+  `handOver()`), `ringAlighting(world): boolean` (the sim's pacing watch and the scene's START
+  reservation ask it). The hook registers at import (RingScene imports the module).
+- `ringStartDist(plan, section)`: a landmark → a run-in before it; `'zwaan'` → a run-in before the
+  truck's slot; else 0. `RingRunnerOptions.section` accepts `'zwaan'`.
+- **The multi-part boss.** A world `'bossDefeated'` whose boss has the tag `RING_ZWAAN_PART_TAG`
+  (`'ring-zwaan-part'`) is ignored by the runner and the cues. The new world events (types.ts
+  augments `WorldEvents`): **`'ringTrainPart': { part, index, phase: 'start' | 'beaten' }`** and
+  **`'ringTrainDone': { controller }`** (once, after the cab). `ringTrainDone` sets `bossEndTick`, the
+  vehicle bonus and (cues.ts) the stage theme's return; the boss song plays from the slot's spawn to it.
+  `bossStartTick` is the first part's first phase. `mission-complete.ts LONG_BOSS_LIMITS = { m5: 240,
+  ring: 240 }` (BOSS SPEED BONUS over the whole train).
+- `RingReport` adds `route`, `handedOver`, **`train: { parts: { id, ticks }[]; catchUps: number[];
+  ticks; done } | null`** (a part's ticks = its fight start → beaten; a catch-up = beaten → the next
+  part's fight start) — the momentum numbers.
+- `skip()` (F4) on the short route: stretch by stretch, then to the plan end (the alight).
+
+### R.4 The ZWAAN contract (`content/ring/zwaan/`: `api.ts`, `part.ts`, `controller.ts`, `index.ts`)
+
+Ids (`ids.ts RING_ZWAAN`): controller `'ring-zwaan'`; parts `'ring-zwaan-container'`, `-autos`, `-tank`,
+`-vee`, `-cab`; `RING_ZWAAN_ORDER` (rear → front, R-16). Bar names `ZWAAN_NAMES` (ZWAAN CONTAINER,
+ZWAAN AUTOTRANSPORT, ZWAAN TANKWAGEN, ZWAAN VEETRANSPORT, ZWARE JONGEN). Art prefix `zwaanArt(id)` =
+`boss/ring-zwaan/<part>` (never under the prefixes ams preloads). Tuning `ZWAAN` (anchor 150, catch-up
+130–180 ticks at 1.3 px/tick, coupling 10, gain 0.15 / max rel 3, adds 2/2/3, score 2,000 / 10,000,
+rate 2 HP/tick burst 150, the beaten timings).
+
+**The controller `RingZwaan` (owns):** the plan lock (`ZWAAN_LOCK`) for the whole train; the order
+(`params.order`, unknown ids skipped), the lane (`params.lane`, 1), `params.adds` (false: none); the
+phases `'wait' → 'enter' → 'fight' → 'catchup' → … → 'done'`; spawning part *i* at its chain place
+(`world.spawn(id, x, laneY(lane), { lane, index })`, then `part.train = this; part.index = i`); the
+ANCHOR (`anchorScreenX`: eased during the entry and each catch-up, a ±10 px drift while fighting);
+the catch-up gang (scooters from behind, lanes 3–4); pushing wagons out of the waiting parts' slab
+(½ cell); drawing the waiting parts (`zwaanPartDef(id).drawWaiting`); `'ringTrainPart'` (`beaten`)
+and, after the last part, `'ringTrainDone'`, the unlock and its own removal (the plan rolls on to the
+final jam at once). Public: `order`, `index`, `phase`, `active`, `catchUps`, `addsSent`, `chainFront()`.
+
+**`interface ZwaanTrain`** (what a part asks): `order`, `index`, `laneY`, `catchingUp`, `pips: { total,
+left }`, `anchorWorldX(): number`, `ready(part): boolean`, `partBeaten(part): void`.
+
+**`class ZwaanPart extends Boss`** (`super(world, x, y, p, { art, name, hp, score, length, height? })`):
+- anchor `x` = the REAR end, `length` px forward = the FRONT; `y` = its lane's plane y (1 | 2);
+  tags `ring-zwaan-part`, `ring-block`; `hitbox` = the visual box; `removeOnDeath` true;
+- `keepPace()` from `think()` (call `super.think()`): road speed + a pull to `train.anchorWorldX()`;
+- `*intro()`: invulnerable until `train.ready(this)`, then `'ringTrainPart'` `start` and the fight;
+- `onHit`: the damage-rate bucket (`ZWAAN.rate`; params `rate` (0 = none), `hp`, `hpScale`, `lane`, `index`);
+- `onDeathStart` → `train.partBeaten(this)`; `deathSequence()` → **`*beatenSequence()`** (default:
+  uncouple → brake → swerve onto the hard shoulder → tip (blast, `dropItem()`) → drop back off the
+  left edge; then 'bossDefeated' (ignored by the ring) and removal); `beaten` = the step;
+- `dropItem()`: a repair for a wagon at ≤ 6 cells, else `ZWAAN_DROP_WEAPONS[index]` (no rng);
+- `barPips` (hud.ts draws the pips under the bar); `brakeT`, `fought`, `dropped`, `screenX`, `rearX`, `frontX`;
+- `draw(r)` default: `drawZwaanPlaceholder` (rects, 1× only; every real part overrides it).
+- A part adds its own `addPart(name, { box: zwaanSlab(x0, x1), … })`, `phases` (tells ≥ 18 ticks),
+  and registers `defineEntity(id, …)` **and** `defineZwaanPart(id, { length, drawWaiting(r, x, y, tick) })`.
+
+`index.ts` registers the controller and imports the five real parts (`container.ts`, `autos.ts`,
+`tank.ts`, `vee.ts`, `cab.ts`; the integrator removed the CORE placeholders, wave A). `ring/boss`
+(boss/index.ts) loads it; the parts' sprites load through `ring/boss/art` (boss/art.ts imports
+`zwaan/{art-kit,cab-art,autos-art,tank-art,vee-art}`). HUD: `hud.ts BossBarPips` — any Boss with a
+`barPips: { total, left }` field gets the pip strip (y 213); others draw as before.
+
+### R.5 The hand-over chain (`ring-route.ts`, `gameplay.ts`, `mission/runner.ts`)
+
+- `ringHandover(app, from: RingScene, runner): GameplayScene` — sets `from.handingOver = true` (the
+  RingScene's exit skips `stopDense`: one tier-4 run), replaces the scene with a 40-tick fade.
+- `ringFootScene(app, start: { seed, plan }, drive | null, { section?, bossRush? }): GameplayScene` —
+  `new GameplayScene(app, { mission: 'ring', section, bossRush, handover: { def: ringFootDefOf(plan),
+  artDef: ringArtDef(plan, drivers), onComplete } })`.
+- **`GameplayOpts.handover?: GameplayHandover = { def: MissionDef; artDef: MissionArtDef; onComplete(runner,
+  scene) }`** (OPT-IN; absent = unchanged): runs `def` with `continueMission`, preloads `artDef`,
+  `onComplete` replaces the tally hand-off.
+- **`RunnerOptions.continueMission?: boolean`** (OPT-IN, default false): `start()` keeps the per-mission
+  stats (no `session.startMission`; only `missionId`), no banner, no announcer, no intro drop; a joined
+  slot that is out of lives gets a fresh continue countdown (all out: the hold + 'allOut').
+- `ringFinalTally(foot, { seed, finesBySlot }): NextRunner` / `ringFinalDone(app, foot, drive)` — ONE
+  MISSION COMPLETE page: the foot runner's mission (hostages of the drive's stretches + the foot
+  sections), the drive's FINES, `RING SEED <n>`; `afterTally` → the glitch bridge (`tallied`).
+- Kept across the hand-over (the same `GameSession`): lives, score, bombs, weapon / ammo, continues,
+  credits, `slot.mission` (route, kills, deaths, the boss ticks, golden record, NO SCRATCHES),
+  `rescued`, the fines (passed in `drive`). `session.completed` gets `'ring'` once, at the end.
+
+### R.6 The foot def (`content/ring/foot/`: `ids.ts`, `index.ts`, `section-rf-a.ts`, `section-rf-b.ts`)
+
+`ringFootDef(plan | null): MissionDef` — UNREGISTERED (never `defineMission`), id `'ring'`, start
+`'rf-a'`, sections `rf-a` (OWNER after CORE: JAM+FOOT) and `rf-b` (wave B), `bossSections: ['zuid']`,
+`hostages: { ...plan.hostages, ...RING_FOOT_HOSTAGES }` (`rf-a` 1, `rf-b` 0), `footsteps`, `audioGroup:
+'mission:ring'`, `artDensity: 4`, music `ring` / `ring-boss` (synth until wave B), `denseReserve`
+`RF_SCENERY_RESERVE` (40 MB, a PLACEHOLDER: JAM+FOOT measures it). `RING_FOOT` = the def without a
+plan. Ids: `RF_SECTION`, `RF_ART` (`ring/foot/`, `npc/ring/`, `fx/ring/`), `RF_GROUND` 176,
+`RF_CHECKPOINT_GAP` 1,400. The placeholders: flat concrete at y 176, the ring sky (`ring-sky`), a few
+`handhaver`s, one tied hostage and two crates in rf-a, the exit `rf-a-end` → rf-b, rf-b →
+`missionComplete`. Keep the exports `sectionRfA` / `sectionRfB` and the ids.
+
+**The hook (integrator, wave A):** the scene modules never import `content/ring/foot/` (it registers
+sprites and entities, and `ring-route.ts` / `art-def.ts` are in every mission's static import graph:
+the foot sprites leaked into `art-pool-preload.test.ts`). `foot/index.ts` sets
+`RING_HOOKS.footDef = ringFootDef` at import; the scenes call `hooks.ts ringFootDefOf(plan)` (throws
+when the `ring/foot` content is not loaded) and `ringArtDef` uses `RING_HOOKS.footDef?.(plan)` (null:
+the stretches only). `art-def.ts` reads `RF_SCENERY_RESERVE` from `foot/ids.ts` (no sprites). The
+sprites tool reaches the foot art through the manifest entry `ring/foot/art` (`foot/art.ts`: `art-jam`
++ `gangs/art`).
+
+### R.7 Tier 4 (`art-def.ts`, `gameplay.ts`)
+
+`ringArtDef(plan, drivers)` sections, in order: the stretches; after the stretch of the truck's slot
+the pseudo-sections **`zwaanArtSection(i)` = `'zwaan:<i>'`** (part *i−1*, part *i* and part *i+1*'s
+prefixes from `defineRingArt`: the integrator added the part before, whose wreck and grazing animals
+stay on screen; every part also lists the kit `boss/ring-zwaan/kit/`), then **`rf-a`, `rf-b`** (their `art`). The train's prefixes are never in
+`preloadLast`. The RingScene enters `zwaan:0` at the slot's spawn and `zwaan:<i+1>` at each beaten
+part. **`MissionArtDef.sectionReserve?: Record<section, bytes>`** (OPT-IN): the stretches and the train
+`RING_SCENERY_RESERVE`, the foot sections `RF_SCENERY_RESERVE`. TRAIN-1/2: `defineRingArt(partId,
+['boss/ring-zwaan/<part>/'])`; death / wreck strips `defer: true`. The budget test
+(`tests/content/ring-dense-budget.test.ts`) holds every section to 256 MB − 2 MB − its own reserve.
+
+### R.8 Sims and sound
+
+- `src/sim/headless-ring.ts`: options `route`, `boss`, `footBot`; `section: 'rf-a' | 'rf-b'` starts on
+  foot. Both bots are registered (`bots`: the ring bot; `footBots`: bot.ts; each idles while its runner
+  is null). `runner` = the RingRunner while it drives (null after the hand-over), `footScene` /
+  `footRunner`, `world` = the one being played. `complete` = the level's end (the foot part's
+  MISSION COMPLETE; the full route: the ring's). The merged `RingSimReport`: `ticks` (every tick),
+  `driveTicks`, `sectionsVisited`, `bossDefeated` (the train), `foot: { ticks, complete,
+  sectionsVisited, finalSection, kills, deaths, hostages, bossDefeated, gameOvers, sectionTicks,
+  longestGap, gapAt, sectionGaps, deathsAt } | null`, the totals (kills, deaths, hostages, score,
+  continues) over both parts, `train` (R.3; the integrator added `startTick` / `endTick`: the road
+  before the train, the jam and the alight after it). The sim's summary line prints `train … road <n>
+  after <n>` and `foot … [rf-a <n>, rf-b <n>] gaps [rf-a <n>, …]`.
+- Expected ticks: see R.I (the measured wave-A numbers). `tests/game/ring/watch.test.ts` holds the
+  whole level to 28,800–36,000 at the bot's pace — PROJECTED while rf-b is the placeholder (the run with
+  rf-b's own ticks replaced by the planned 9,000; wave B sets `RF_B_PLACEHOLDER` false) — plus rf-a's
+  longest empty stretch ≤ the gap limit and every catch-up ≤ 180 ticks.
+- Sound: empty synth tables `content/sfx/ring-zwaan-a.ts` (`RING_ZWAAN_A`, TRAIN-1),
+  `ring-zwaan-b.ts` (`RING_ZWAAN_B`, TRAIN-2), `ring-foot.ts` (`RING_FOOT`, JAM+FOOT), spread into
+  `SFX`. The placeholders reuse `ring/lorry-screech`, `ring/lorry-slam`.
+
+### R.9 The card
+
+`content/ui/cards.ts`: the ring map adds the short route (S113 → Zuidas, a second line inside the
+ring: `RING_SHORT`) and the blockade cross at the Zuidas (`RING_BLOCKADE`); the card text is unchanged
+(English; its briefing still says "ONE LAP" — wave B re-words and re-voices it).
+
+### R.T1 ZWAAN train: controller, container, cab (TRAIN-1, 2026-10-22)
+
+Files: `content/ring/zwaan/{kit.ts, art-kit.ts, controller.ts, part.ts, container.ts, cab-geo.ts,
+cab.ts, cab-art.ts}`, `content/ring/boss/{adds.ts, geometry.ts, art-lorry.ts, art-adds.ts,
+art-kit.ts, art.ts, index.ts}`, `content/sfx/ring-zwaan-a.ts`. **`ring-lorry` is retired** (§22 is
+history): `boss/lorry.ts` is gone, the full route's westpoort slot spawns `ring-zwaan`
+(`ids.ts RING_FULL_ROUTE_BOSS`), the lorry's container half is the container trailer and its cab
+became ZWARE JONGEN. Loading: the manifest entry `ring/boss` imports `zwaan/index` FIRST, then
+`zwaan/container` and `zwaan/cab` (the real parts replace CORE's placeholders under the same ids);
+`ring/boss/art` imports `zwaan/art-kit` and `zwaan/cab-art`.
+
+**Local coordinates of every part:** x 0 = its REAR (the anchor), `length` = its FRONT (where its
+drawbar reaches into the part ahead), y 0 = the road (its lane's plane y), up negative. It faces
+right; lettering never mirrors.
+
+**The kit (logic, `kit.ts`) — for TRAIN-2:**
+
+| export | what |
+|---|---|
+| `ZWAAN_PACE = { trailerHp: 2050, cabHp: 1650, tankHp: 1300, veeHp: 1360, floorTicks: 1800 }`, `zwaanRate(hp)` | THE MOMENTUM: pass `rate: zwaanRate(hp)` (`ZwaanPartOpts.rate`) = (hp − the bucket's burst 150) / `floorTicks`; a part then lasts ≥ 30 s with any gun (the machine gun and the laser: 30–33 s), the pistol 32–46 s (the bot). Fixer 2026-10-22; see "Momentum tuning" |
+| `ZWAAN_KIT` | `hitchY` −12, `drawbarBack` 16, `drawbarEye` 3, `dollyBack` 26, `dollyAxles` [−7, 7], `wheelR` 7.5, `rimR` 6, `touchGap` 24 |
+| `KIT_SPR`, `ZWAAN_KIT_ART` (`boss/ring-zwaan/kit/`) | `drawbar` (0 coupled, 1 loose; anchor: the part's FRONT on the road), `hitch` (anchor: the REAR), `dolly` (its middle), `rim` (4), `wheel` = the shared `ring/car/wheel-l`. **Add `ZWAAN_KIT_ART` to your `defineRingArt`.** |
+| `ZWAAN_SFX` | `clank`, `snap`, `tip`, `horn`, `window`, `gunner`, `squeal` (ids `ring/zwaan-…`) |
+| `drawZwaanShadow(r, x, y, length, alpha?)` | the shadow under the whole part (the runner's pass centres one on the anchor = the rear: `ZwaanPart.shadowW` is now 0) |
+| `drawZwaanWheels(r, x, y, xs, roll, { rims?, flash? })` | wheels at local `xs` (or blown rims) |
+| `drawZwaanDolly(r, front, y, roll, flash?)` | the converter dolly under a trailer's front (frame + 2 wheels) |
+| `drawZwaanCoupling(r, front, y, loose?)` | the drawbar at the part's front (loose once `beaten !== null`) |
+| `drawZwaanHitch(r, rear, y)` | the towing jaw at a part's rear (the cab draws it; trailers may) |
+| `uncoupleFx(world, front, y, t)` | the clank (t 0), the snap (t 4), coupling sparks (the base's beaten sequence calls it) |
+| `zwaanSmoke(world, x, y, state, t, pts)` | damage smoke from local points by damage state |
+| `pushWagonsOut(part, x0, x1, touched, { cost?, rearCost?, rearGrace? })` | a driven wagon in the slab: behind → held behind the tailgate, beside → to the lane away (½ cell; one bump / 24 ticks) |
+| `laneFreeBeside(world, self, lane, x0, x1)` | no car / closure / forklift / `ring-block` beside it (a weave never goes into a car) |
+| `zwaanShot(owner, x, y, angle, speed, type)` | an enemy bullet (road speed added, the difficulty's bullet speed) |
+
+**The kit (art, `art-kit.ts`):** `Pen`, `defStrip` (1× + one density-generic drawer, cropped to the
+1× box), `turnPt`/`Turn` (tipping frames), `roll`, `frac`, `hash2`, `lineW`, `zwaanMats(c)` (the
+old lorry's materials), the livery: `swanHit(u, v, wing?)` / `swanMark(p, cx, cy, h, ink, z?)` (the
+ZWAAN swan, our own mark: an S-neck swan swimming right), `wideHit` / `wideWidth` / `WIDE` (our
+block letters), `LINE_NAME` 'ZWAAN', `ZWAAN_PLATES`, `ZWAAN_BOX_CODES` (made up), `glyphHit(C)`,
+`holes`, `soot`, `mat`, `top`, `bot`, `finishA`. The container's wall now carries the swan mark.
+
+**`part.ts` — what TRAIN-1 changed (additive; the contract is kept):** `ZwaanPartOpts.rate?`
+(the damage rate; param `rate` still wins); `shadowW = 0` (the part draws its own shadow; the base
+`draw` does); `beatT` (ticks into the current `beaten` step: tip frames); the default
+`beatenSequence` calls `uncoupleFx` and `ring/zwaan-tip`; `partSpot(i)` (public, overridable: the
+blast of a broken part at its visual spot) with a `breakPart` override (the blast there, +1000);
+`center()` / `randomPoint()` on the visual box (not the road slabs).
+
+**The controller (`controller.ts`, the `ZwaanTrain` interface kept):** the catch-up surges
+(`ZWAAN_CATCH.surge` 18 px) then eases back (130–180 ticks); the gang (2 / 2 / 3); TRAFFIC while
+the train holds the plan: a civilian every 360–600 ticks from behind in lane 3 or 4, passing at
+1.1–1.5 px/tick (its own rng fork `ring-zwaan/traffic`; param `traffic: false` = none; none while
+held or jammed); `carsSent` (tests). Measured: catch-ups 131–149 ticks.
+
+**`ring-zwaan-container` (`ZwaanContainer`, `ZWAAN CONTAINER`, 2,000; length 150, height 68):**
+parts 0 `box` (x 56…136, × 1, the pool; the bot aims at it), 1 `doors` (x 0…18 / −26…18 open,
+× 1.5, own 420), 2 `bogie` (x 18…56, × 1.25, own 340); the phase-1 floor (55 % until the panel is
+down); phase 1 `cargo` (the lorry's dump: tell 32, a free lane always), phase 2 `forklift` (HP ≤
+55 % or the doors broken: the panel drops, the forklift charges, cargo while the doors live);
+beaten: the forklift leaves, the loader jumps, the trailer tips (`box-tip`), the drop. Members:
+`mode` ('cruise' | 'tell-cargo' | 'cargo'), `trace`, `thrown`, `doorOpen` / `doorTarget` /
+`doorsGone`, `panelT` / `panelDown`, `loader`, `bogieBroken`, `forklift`, `cargoLanes()`,
+`pickCargoLanes(n)`, `target()`. `drawContainer(r, x, y, look)` (also the waiting look).
+`CONTAINER_AI`, `CONTAINER_X`. Sprites `boss/ring-zwaan/container/…` (was `boss/ring-lorry/…`;
+the cab strips moved to the cab).
+
+**`ring-zwaan-cab` (`ZwaanCab`, `ZWARE JONGEN`, 10,000; length 100, height 80; `cab-geo.ts`):** a
+high-roof cab-over with a sleeper (x 38…66), the chassis with the tandem axles and the fifth wheel
+(0…38). Parts 0 `cab` (x 64…100, × 1.5, the pool), 1 `sleeper` (x 38…64, × 1.25, own 420; broken:
+the window smashes, the gunner tumbles out dazed, no more shots), 2 `chassis` (x 0…38, × 1).
+Attacks (`mode` tell → strike): WEAVE `tell-weave` (36) → `weave` (lane 1 ↔ 2 in 44 ticks, the air
+horn; never into a car), BRAKE CHECK `tell-brake` (24, the brake lights; a wagon ≤ 150 px behind
+in its lane) → `brake` (−2.8 px/tick for 22 ticks: a ram, 1 cell), THE GUNNER `tell-gun` (30: the
+window opens, he leans out and aims) → `gun` (3 / HARD 4 shots, 9 ticks apart, never forward of
+straight across). Phase 2 `rage` (≤ 50 %): `UIT MIJN SPIEGEL!`, brake checks first. Beaten: THE
+JACKKNIFE (`MIJN VRACHT...!`, the yaw strip, onto the hard shoulder, the drop, the driver climbs
+out and sits dazed). Members: `mode`, `trace`, `weaving`, `laneChanges`, `blinkT`, `hardBrake`,
+`windowT`, `gunner`, `sleeperBroken`, `shots`, `yawF`, `driverOut`, `cabState`, `laneFree(to)`,
+`wagonBehind()`, `target()`. `drawCab(r, x, y, look)` (also the waiting look). `CAB_AI`,
+`CAB_LINES`, `CAB`, `CAB_X`, `CAB_SPR`. Sprites `boss/ring-zwaan/cab/`: `body-<0|1|2>`, `yaw` (4,
+deferred), `window` (3), `gunner/<aim|fire>` (cut at the sill), `gunner/<tumble|sit>` and
+`driver/<tumble|sit>` (deferred), `blink`, `brake`. `shotLift` 49.
+
+**Measured (the ring bot, god, `--section zwaan`, normal, seeds 1–5):** the container 30–41 s and the
+cab 32–37 s with the pistol, the machine gun or the shotgun (1P); 2P (pistol) 30–43 / 33–42 s.
+Tests: `tests/content/ring-boss.test.ts` (the parts), `tests/content/ring-zwaan.test.ts` (the controller).
+
+### R.T2 ZWAAN train: car transporter, tanker, livestock (TRAIN-2, 2026-10-22)
+
+Spec §R.3 parts 2–4, on CORE's `ZwaanPart` and TRAIN-1's kit (`kit.ts`: `ZWAAN_PACE`, `pushWagonsOut`,
+`uncoupleFx`, `drawZwaanShadow/Dolly/Wheels/Coupling/Hitch`). Files (`content/ring/zwaan/`): `autos.ts`,
+`autos-geo.ts`, `autos-art.ts`, `autos-kit.ts` (TRAIN-2's shared kit), `tank.ts`, `tank-geo.ts`,
+`tank-art.ts`, `vee.ts`, `vee-geo.ts`, `vee-art.ts`, `vee-animals.ts`, `vee-animals-art.ts`; sound
+`sfx/ring-zwaan-b.ts` (`RING_ZWAAN_B`, ids `ring/zwaan/*`). REGISTRATION: the logic modules
+(`autos`, `tank`, `vee`) register `defineEntity` + `defineZwaanPart` + `defineRingArt` and must load
+AFTER `zwaan/index.ts` (it registers the placeholders); the art modules (`autos-art`, `tank-art`,
+`vee-art`) are separate (the art manifest).
+
+Every part: rear end = anchor, `index`, lanes 1–2; parts SIDE BY SIDE, never overlapping (a
+straight-across shot takes the first box it meets, ties go to the lowest index): part 0 is a wide
+body section that never breaks (the ring bot aims at part 0). Pace: HP `ZWAAN_PACE.trailerHp ×
+0.8` (the car transporter), `ZWAAN_PACE.tankHp`, `ZWAAN_PACE.veeHp`; rate `zwaanRate(hp)` (see
+"Momentum tuning"); 2,000 points. `mode` 'tell-X' → 'X' (the sim's
+watch), `trace: { attack, tell, fire, seen, lane }[]` (tests), `resetAttack()` (a stagger, a new
+phase). The big bodies never flash white (sparks and a clang instead); the weak points flash.
+
+| Part (bar) | Parts (index: box, mul) | Attacks (tell base) | Beaten |
+|---|---|---|---|
+| `ring-zwaan-autos` ZWAAN AUTOTRANSPORT, 196 px | 0 `deck` 14…52, 1 `ram-r` −2…14 (own HP 380, × 1.5), 2 `ram-f` 52…68 (380, × 1.5), 3 `deck-front` 68…196 | ROLL-OFF `tell-roll` (32: the ramp lowers, hydraulic hiss) → the lower deck's rear car rolls down the ramp; SLIDE-DOWN `tell-slide` (32: the upper deck's rear section tilts 15°) → its car slides off, falls, bounces once. A broken ram snaps (dark oil): the ramp drags (tell: hazard lights + creak) / the deck sags (tell: the car shakes). Phase 2 (≤ 50 % or both rams) shorter pauses. Stock `stock` (4) cars per deck behind the 2 slots | uncouple → the decks fold → onto the shoulder, the cars SPILL onto the shoulder (not solid) → the drop |
+| `ring-zwaan-tank` ZWAAN TANKWAGEN (`FRITUURVET`), 156 px | 0 `tank` 17…70, 1–3 `valve-a/b/c` (360, × 1.5; a = the dump valve −2…17), 4 `tank-mid`, 5 `tank-front` | SLICK `tell-slick` (30: the hose swings out) → `ring-zwaan-slick` sprayed into a lane for 44 ticks; FLAME `tell-flame` (34: a hot valve sparks and hisses, the `fuse` streak runs back along the lane) → `ring-zwaan-flame` runs back and burns (1 cell, fire). A valve flares when its `heat` (damage since its last flare) reaches 70 × HP scale (gap 200); phase 2 (≤ 55 % or a valve broken): a flare after every slick | uncouple → brake (small blasts) → the FIREBALL (`l` + 2 × `m`, bloodless) → the tank ROLLS onto the shoulder (`rollF` 0–3, `rollDy`) → the drop; the bare chassis and the tank drop back |
+| `ring-zwaan-vee` ZWAAN VEETRANSPORT, 164 px | 0 `body` 12…102, 1 `gate` −2…12 (360, × 1.5), 2 `hatch` 102…126 (320, × 1.5), 3 `body-front` | THE HERD `tell-herd` (34: the gate drops, a moo) → 2 (HARD 3) animals walk down and trot to the shoulder, at most 2 (HARD 3) on the road; THE LOB `tell-lob` (30: the farmhand hoists a bale / a churn) → `ring-zwaan-lob` lands where the wagon will be (1 cell). Gate broken: it tumbles off, the animals hop out. Hatch broken: the farmhand ducks dazed (`IK ZIE STERRETJES...`), no lobs. Lines `VEE_LINES` (Dutch) | uncouple → brake (the gate drops) → onto the shoulder, it STOPS (no blast) → 3 animals wander out of its side and graze; the drop |
+
+Things they drop (each removed off the left edge):
+- `ring-zwaan-car` (`ZwaanCar`, params `colour`, `mode` roll|slide|fall|road|spill, `host`, `lx`, `lane`,
+  `lift`): on the road a `ZwaanObstacle` that drifts back (−1.5 px/tick on screen) and veers into its
+  lane (`busyLane()`).
+- `ring-zwaan-cow` / `ring-zwaan-pig` (`ZwaanAnimal`, tag `ring-zwaan-animal`, params `mode`
+  ramp|trot|graze|wander, `host`, `lx`, `look`): trot −0.8 / −1 px/tick on screen and 0.6 / 0.75 px/tick
+  toward the shoulder, graze at y `SHOULDER_TOP + 4` (world-fixed, not solid). NEVER hurt: `onHit`
+  false, no death; a shot that stops on one → a moo / an oink (rate-limited) and a hop.
+- `ZwaanObstacle` (`autos-kit.ts`): a neutral `SolidBox` over the slab (stops both teams' shots in its
+  lane), tags `ring-car`, `solid`, `cover`, `ring-zwaan-obstacle` (the bots, scooters and cargo treat
+  it as a car); a wagon that drives into it pays 1 cell (`gangs/kit pushWagons`, rear cost 1; a side
+  touch ½); `shots` counts the shots that ended on it; `solid` false in the air / on the shoulder.
+- `ring-zwaan-slick` (`ZwaanSlick`, world-fixed `x0 … x1` in its lane, `grow(x)`, `slid`): a driven
+  wagon whose slab touches it gets `Wagon.slip(40)`.
+- `ring-zwaan-flame` (`ZwaanFlame`, params `ax` (screen x of its front), `len` 210, `fuse`): screen-fixed
+  behind the tanker; states fuse → run (5 px/tick) → burn (50) → die (24); `burning`, `burned`.
+- `ring-zwaan-lob` (`ZwaanLob`, params `kind` bale|churn, `ty`, `ticks`, `vx`, `lift`, `arc`): tagged
+  `ring-bottle` (`landX`, `landY`, `ticksLeft` for the bot); 1 cell in a 22 × 14 spot.
+
+Lanes: every attack picks its lane with `pickLanes` (the target wagon's lane first, never a lane with
+one of our obstacles / slicks / flames / the cargo on screen, and at least one open lane left free).
+
+**`Wagon.slip(ticks)` — ADDITIVE OPT-IN (`ring/wagon.ts`, off by default: `slipT` 0):** fields `slipT`,
+`slipLane`; while `slipT > 0` a lane press is stored in `slipLane` and taken when the slide ends,
+the stick changes the screen speed at 0.12 × the normal rate and a held FIRE no longer stops the
+side speed (the swerve still works); `physics()` counts it down. Nothing else calls it.
+
+Sprites (`defStrip`, 1× / 2× / 4×, one drawer each; `boss/ring-zwaan/<autos|tank|vee>/`): autos
+`frame-<s>`, `head-<s>`, `updeck`, `updeck-broken` (deferred), `ramp`, `ramp-broken` (deferred),
+`car-<red|sky|gold|gable|green>` (4 tilts), `lamps`; tank `body-<s>`, `valve`, `hose`, `blob`, `slick`,
+`streak`, `flame`, `roll` / `chassis` (deferred), `lamps`; vee `body-<s>`, `gate`, `gate-fall` (deferred),
+`hatch`, `farmhand-<stand|lift|lift-churn|throw|duck>` (duck deferred), `bale`, `churn`,
+`cow-<walk|trot|graze>`, `pig-<walk|trot|graze>`, `lamps`. Wheels, the dolly, the drawbar and the hitch
+are the kit's.
+
+**Measured (the ring bot with the pistol, god, normal, `--section zwaan`, seeds 1–3, the full pool
+before the × 0.88 / 0.83):** autos 37–40 s, tank 39–49 s, vee 39–42 s (the container 34–37 s); a part
+alone behind a controller on amstel 32–41 s. Tests: `tests/content/ring-zwaan-parts.test.ts`.
+
+### R.F Final jam, alight, rf-a (JAM+FOOT, 2026-10-22)
+
+Spec §R.4, §R.5. Every change outside the new files is an ADDITIVE OPT-IN (off by default).
+
+**The final jam** (`content/ring/hazards/jam.ts`): param `final: true` (OPT-IN) — on its first tick a
+gantry comes in with `signs: ['x','x','x','x']` and `drip: 'file'`; its tail (`cars`) drives in and
+stands; the road crawls at `crawl` to the chunk's `length`, then phase `'hold'` (cap 0, level 1) for
+good: it never clears (`clear()` is a no-op), `waves` / `after` are emptied. `RingJam.final`.
+**The gantry's text panel** (`hazards/gantry.ts` + `hazards/art-drip.ts`): param `drip` (OPT-IN) →
+`RingGantry.drip` (frame; −1 none); `ring/hazard/drip` (2: dark, `FILE` / `BLOKKADE` amber LEDs, our
+own lettering) clamped to the far post (`DRIP_AT`); `DRIP_TEXTS`, `dripFrame(key)`.
+
+**The alight** (`ring/alight.ts`, `RING_HOOKS.alight = ringAlight`, CORE's signature kept):
+`AlightDirector` (hidden entity) — every hero in a driven wagon (`mounted`, or `spawn` still driving
+in: it arrives first) gets a seat; NO SCRATCHES is noted while he is still mounted; the wagons go
+`scripted`, keep pace with the stopping road and settle in their lanes; then per seat `'stop' →
+'wait'` (P2 later: `ALIGHT.delay`) `→ 'jump'` (the boarding somersault backwards from the sill, k 1 → 0,
+`ring/foot/door`, `ring/foot/land` + dust) `→ 'land' → 'done'`; all done → `runner.handOver()`. The
+drivers stay at the wheel, silent. No seat (all out / wrecked) → hand-over after `ALIGHT.stubTicks`.
+START skips it after the first play (`setAlightSeen`, `alightSeen`); `ringAlighting(world)` as before.
+`ALIGHT_KEY`, `ALIGHT_STUB_TICKS` kept.
+
+**rf-a DE FILE** (`content/ring/foot/`):
+- `layout-rf-a.ts`: `RF_SHIFT` 27 (the ring's road layers moved up: the feet line 176 on the hard
+  shoulder), `CAR_Y` 171 (the near lane's wheel line), `FAR_LANE_Y`, `RF_A_W` 3,200, `RF_A_VEHICLES`
+  (cars `ring/car/…`, the two wagons, the coach, the gang's parcel van, the police van),
+  `RF_A_PLATFORMS` (their roofs, from the drive's geometry: one-way platforms), `RF_A_BLOCKS`
+  (concrete blocks: solids, cover), `RF_A_SCOOTERS`, `RF_A_ARENAS` (locks at 700, 1,500, 2,320),
+  `RF_A_CHECKPOINTS` (860, 1,700, 2,480), `RF_A_HOSTAGE_X`, `RF_A_CRATES` (M, S, F), `RF_A_POLICE_LINE_X`,
+  `RF_A_EXIT`.
+- `section-rf-a.ts`: `sectionRfA` (exports kept), `RF_BACKGROUND` = the drive's layers `ring-sky`,
+  `ring-far` towers, `ring-city` zuidas, `ring-verge` plain, `ring-farroad` rail, `ring-road` (576 px
+  tile: six lane dashes), `ring-front` (front) — rf-b uses it too; the far lanes' standing cars as back
+  decor (`farCars(width)`, thinning toward the near lane). Terrain style hidden (collision only).
+- `props.ts`: entity `ring-foot-scene` (`RfJamScene`, z −20, after the terrain, behind every actor)
+  draws the shoulder / verge strip (`ring/foot/verge`), the near lane's vehicles, the PARKED WAGONS with
+  their drivers (the drive's `Wagon` drawn as decor, never in the world; P2's only in 2P), the dumped
+  scooters, the blocks, the police line (`policeLine`: 0 taut, 1 flutter, 2 snapped by a hero), the
+  queue's horns. `spawnJamScene(world, def)`; the drivers: `rfPlanDrivers` (a WeakMap def → the plan's
+  driver list, set by `ringFootDef(plan)`) and `footDrivers(planDrivers, slots)` (ring-route's rule).
+- `script-rf-a.ts`: `scriptRfA`, `RF_A_FOES`; three locks, the NIET THUIS gags, couriers on roofs, the
+  hostage van guarded by the crew; a pacing guard (`RF_A_TRICKLE` 150 ticks without a gang member in
+  view → a rider walks in, until the police line).
+- `art-jam.ts`: `ring/foot/verge` (2), `ring/foot/bus`, `ring/foot/police-van` (2), `ring/foot/police-line`
+  (3), `ring/foot/kbarrier`; sizes `BUS`, `POLICE_VAN`, `KBARRIER`, `VERGE_W/H`.
+
+**The ring gangs on foot** (`content/ring/foot/gangs/`): base `FootGang extends Creature` (kit.ts:
+tokens, `tele` ≥ 18, hand-in-view rule, walk with a `Turner`, never off the own floor, hops low blocks,
+`hit` strip; the bloodless end `endPhase` `'roll' → 'dazed' → 'flee'` (runs off out of view; `dead`
+from the hit: never a target, `waitClear` does not wait); gloat / cower via the Enemy reactions);
+hooks `choose(t, dist)`, `tellOf(kind)`, `strike(kind)`, `strikeOf(kind)`, `during(kind, t)`.
+Entities (kinds.ts, `FOOT_GANG`): `ring-foot-rider` (20 HP; pistol tell 24, bottle lob tell 24; param
+`look` a|b), `ring-foot-courier` (20 HP; parcel lob tell 26, `PAKKETJE!`; param `gag`: the NIET THUIS
+card, the decal entity class `NietThuisCard`), `ring-foot-crew` (50 HP; crowbar swing tell 22 `OPZIJ!`,
+shotgun 3 pellets tell 28). Gloat lines `MOOI WEER, HE?`, `HANDTEKENING, GRAAG.`, `PAUZE.` Art (art.ts,
+fixed box `GANG_BOX` 44 × 48, the HD frames take the 1× points): `ring/foot/rider-a|rider-b|courier|crew/`
+`idle walk run turn alert hit die* dazed* gloat* cower*` (* deferred) + the kind's `tell-…` / attack
+strips (courier `stick*`). Thrown things reuse `ring/scooter/bottle`, `ring/parcel-van/parcel`.
+
+**Sound** (`content/sfx/ring-foot.ts`, `RING_FOOT`): `ring/foot/door`, `land`, `honk`, `pistol`,
+`pump`, `shotgun`, `crowbar-tell`, `crowbar`, `tumble`, `dazed`, `tape`.
+
+**Tests**: `tests/content/ring-foot.test.ts`. Tier 4: rf-a's `art` lists `ring/foot/`, four
+`ring/parcel-van/…` ids, the hostage and crate ids; the budget test (`ring-dense-budget.test.ts`) covers
+rf-a with `RF_SCENERY_RESERVE` (the background layers at 4× + 2× ≈ 26.5 MB; 40 MB kept).
+
+### R.I Integration of wave A (INTEGRATOR, 2026-10-22)
+
+**Wiring.** `zwaan/index.ts` = the controller + the five real parts (the placeholders are gone);
+`boss/art.ts` loads the TRAIN-2 art; the TRAIN-2 parts list `ZWAAN_KIT_ART` in `defineRingArt`; the
+stale `boss/ring-lorry/` art entry is gone and `light.ts LIT_TYPES` lights `ring-zwaan-cab` (was
+`ring-lorry`); `RING_HOOKS.footDef` / `ringFootDefOf` (R.6); manifest `ring/foot/art`;
+`params.ts LaunchParams.route?: 'short' | 'full'` (absent unless `?route=` is set; `boot.ringRouteParam`
+reads it, no page-URL fallback any more).
+
+**One hit-flash rule for the train:** the big bodies never flash white (a white wall reads as a glitch);
+a hit on a body sparks and dents (`autos-kit.ts bodySpark`, `ring/dent`); only the weak points flash
+(the container's doors and bogie, the rams, the valves, the gate and the hatch, the cab's sleeper
+window). The cab follows it now (`cab.ts onHit`; its `o.flash` is always false).
+
+**The ring bot (`src/sim/bot-ring.ts`, keyed to the new ids only):**
+- aims at a ZWAAN part's EXPOSED weak point (`aimAt`: no other live box between the hero and it — a
+  shot stops at the first box in its lane — highest multiplier first, then the wider box; a broken
+  part is skipped; a box no aim meets from here gives way to the next one);
+- avoids `ring-zwaan-slick` (its lane over `x0 … x1`, worse on it) and `ring-zwaan-flame` (its lane over
+  the screen span `ax − len … ax`, the tell included); the dropped cars and the animals are `ring-car`
+  obstacles (neutral, solid) and the lobs `ring-bottle`s, which it already reads; the cab's brake check
+  uses the `tell-brake` / `brake` modes it already swerves from;
+- 2P: a line-up on a part that runs `STUCK_TICKS` (60) makes it leave its lane, twice that it fires
+  the nearest aim anyway (the two wagons wanted each other's screen x: the car transporter took 66 s).
+
+**Momentum tuning** (`zwaan/kit.ts ZWAAN_PACE`, `zwaanRate`; integrator, then the fixer
+2026-10-22): HP container 0.9 × 2050 = 1,845, car transporter 0.8 × 2050 = 1,640, tanker 1,300,
+livestock trailer 1,360, cab 1,650 (× difficulty × co-op); every part's damage rate = (HP − 150) /
+1,800 ticks, so ANY gun needs ≥ 30 s (the full bucket's burst included). Before the fixer the flat
+rate 1.1 let the machine gun beat the tanker, the livestock trailer and the cab in 22–23 s, and the
+laser did NO damage on the ring (the beam read the ring hero's 'mounted' state as "not holding the
+gun" and ended before its first zap: fixed with the additive `GunMount.gunReady`, weapons.ts, and
+`RingHero.gunReady` / `muzzleWorld` / `aimAngle`; the beam is drawn at the gun's height like the
+shots). Measured with `tmp/ring-r-fix/probe4.ts` (`--section zwaan`, god, normal; the start
+weapon's ammo kept full; seconds per part, container / autos / tank / vee / cab):
+
+| Run | Mean | Max |
+|---|---|---|
+| 1P machine gun (seeds 1–5) | 33.1 / 31.4 / 31.1 / 31.3 / 32.5 | 37.1 / 33.3 / 33.7 / 32.6 / 35.0 |
+| 1P laser (seeds 1–5) | 30.4 / 30.3 / 30.2 / 30.1 / 30.0 | 31.4 / 31.1 / 30.5 / 30.3 / 30.0 |
+| 1P pistol (seeds 1–5) | 39.7 / 35.8 / 36.1 / 40.1 / 35.7 | 42.1 / 46.1 / 39.3 / 45.2 / 39.4 |
+| 2P machine gun (seeds 1–7) | 30.7 / 31.0 / 30.4 / 30.3 / 30.7 | 32.1 / 31.8 / 31.4 / 31.2 / 32.7 |
+| 2P pistol (seeds 1–7) | 38.9 / 34.1 / 31.8 / 30.7 / 37.3 | 50.2 / 39.0 / 35.1 / 33.0 / 44.1 |
+
+The 2P car transporter was 67 s mean (max 99 s) with two pistols: the two bot wagons sat in one lane
+and pushed each other apart, one wanting forward, one back. The ring bot's player 2 now keeps out of
+player 1's lane on a train part (`PARTNER_LANE` 150), and a weak point counts as hidden only by a box
+on the last `HIDE_SPAN` (44) px of a diagonal shot's way (bot-ring.ts).
+
+Catch-ups 131–169 ticks. The whole level (god, normal, seeds 1–5): 24,080–26,288 ticks with the
+rf-b placeholder (850) → projected 32,230–34,438 with wave B's 9,000; 2P seed 1: 23,287 → 31,431.
+The full route (`--route full`, the train in westpoort) completes in 44,527. The road before the
+train ≈ 7,420–7,650 ticks (the boarding included), the final jam and the alight ≈ 500, rf-a
+3,780–4,570 (1P) / 3,340–3,530 (2P). The longest empty stretch on the short drive: 164–218 ticks
+(god seeds 1–10, 2P 1–3; the short route's forced-wave mark `RING_PLAN.short.gapPlace` 80, was 130
+→ 243–266), rf-a 150 (its trickle guard). Baselines: `tmp/ring-r/base-a/` (refreshed by the fixer).
+
+**Tier 4** (seeds 1–5, every hero, 1P / 2P pairs; the working set + the section's reserve):
+the drive ≤ 130 / 154 MB, `zwaan:0..4` ≤ 129 / 153 MB, `rf-a` 140 / 164 MB, `rf-b` 137 / 161 MB (fixer: the placeholder now has a trickle of the ring gangs) —
+all far under 256 MB.
+
 ## 1. Files and shared ids
 
 | File | Contents | Owner after the core stage |

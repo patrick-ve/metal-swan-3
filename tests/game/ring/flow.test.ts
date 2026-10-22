@@ -110,12 +110,16 @@ function harness(params: Partial<LaunchParams> = {}): H {
   return { app, keys, step, until, seen };
 }
 
-/** Drive a RingScene to its end with F4 (`skip`: stretch by stretch, bosses die) until `cls` is on top. */
+/**
+ * Drive a RingScene to its end with F4 (`skip`: stretch by stretch, bosses die) until `cls` is on
+ * top; revision R: then the on-foot GameplayScene (F4: section by section, MISSION COMPLETE).
+ */
 function skipRing(h: H, cls: abstract new (...a: never[]) => unknown, max = 6000): boolean {
   for (let i = 0; i < max; i++) {
     const top = h.app.scenes.top;
     if (top instanceof cls) return true;
     if (top instanceof RingScene && i % 60 === 0 && top.runner.state === 'playing') top.runner.skip();
+    if (top instanceof GameplayScene && i % 60 === 0 && top.runner.state === 'playing') top.runner.skip();
     h.step(1);
   }
   return h.app.scenes.top instanceof cls;
@@ -152,10 +156,10 @@ describe('the route through the ring', () => {
     expect(ring.runner.players[0].state).not.toBe('out');
   }, 120000);
 
-  it('the ring completes → its own MISSION COMPLETE page (hostages, fines, the seed) → the bridge → the fps floors', async () => {
+  it('the drive hands over to the foot part → the level completes → ONE MISSION COMPLETE page (hostages, fines, the seed) → the bridge → the fps floors', async () => {
     await loadFpsContent(createApp({ input: new InputManager(), audio: new SimAudio(), store: new MemoryStore() }));
     const h = harness();
-    const scene = startRing(h.app, { characters: ['vincent'], seed: 4242 });
+    const scene = startRing(h.app, { characters: ['vincent'], seed: 4242 }) as RingScene;
     expect(h.until(RingScene, 60)).toBe(true);
     expect(h.app.scenes.top).toBe(scene);
     const slot = h.app.session!.slots[0];
@@ -163,8 +167,12 @@ describe('the route through the ring', () => {
     slot.mission.goldenRecord = true;
     scene.runner.fine(0);
     const before = slot.score;
-    // The victory drive, then the ring's own tally page (spec §1, §10).
+    // Revision R: the drive → the alight → the hand-over (no page) → the foot part → the one page.
+    expect(skipRing(h, GameplayScene)).toBe(true);
+    expect(h.seen).not.toContain(MissionCompleteScene.name);
+    expect(h.app.session!.slots[0].rescued).toBe(2);
     expect(skipRing(h, MissionCompleteScene)).toBe(true);
+    expect(h.seen.filter((n) => n === MissionCompleteScene.name)).toHaveLength(1);
     const page = h.app.scenes.top as MissionCompleteScene;
     expect(page.runner.mission.id).toBe('ring');
     expect(page.runner.tallyFooter).toBe('RING SEED 4242');
@@ -300,7 +308,7 @@ describe('seeds', () => {
 
   it('a start stretch and the expected drivers match the runner', () => {
     const h = harness({ seed: 5, players: 2 });
-    const scene = startRing(h.app, { characters: ['vincent', 'thom'], section: RING_LANDMARKS.at(-1) });
+    const scene = startRing(h.app, { characters: ['vincent', 'thom'], section: RING_LANDMARKS.at(-1) }) as RingScene;
     expect(h.until(RingScene, 60)).toBe(true);
     const runner = scene.runner;
     const start = { seed: runner.seed, plan: runner.plan, section: RING_LANDMARKS.at(-1) };
@@ -315,7 +323,7 @@ describe('seeds', () => {
 describe('player 2 on the ring', () => {
   it('the key 2 joins player 2 at any time: a wagon with a driver of its own drives in from the left', () => {
     const h = harness({ seed: 11 });
-    const scene = startRing(h.app, { characters: ['vincent'] });
+    const scene = startRing(h.app, { characters: ['vincent'] }) as RingScene;
     expect(h.until(RingScene, 60)).toBe(true);
     // Past the boarding scene (about 150 ticks): P1 is mounted when P2 joins.
     h.step(240);
@@ -367,5 +375,34 @@ describe('the ring tools (sim, bot)', () => {
     expect(r.complete).toBe(true);
     expect(r.landmarks.at(-1)).toBe('exit');
     expect(r.god).toBe(true);
+  });
+
+  it('revision R: P2 joins during the drive and goes on foot with P1; P2 joins on foot (rf-a)', () => {
+    // During the drive (the truck's run-in), then the hand-over: both heroes on foot.
+    const h = harness({ seed: 11 });
+    const scene = startRing(h.app, { characters: ['vincent'], section: 'zwaan' }) as RingScene;
+    expect(h.until(RingScene, 60)).toBe(true);
+    h.step(240);
+    h.keys.tap(JOIN_KEY);
+    h.step(RING.driveInTicks + 10);
+    expect(scene.runner.players.length).toBe(2);
+    scene.runner.handOver();
+    expect(h.until(GameplayScene, 200)).toBe(true);
+    const foot = h.app.scenes.top as GameplayScene;
+    h.step(5);
+    expect(foot.runner.section.id).toBe('rf-a');
+    expect(foot.runner.players.length).toBe(2);
+    expect(h.app.session!.slots[1].joined).toBe(true);
+
+    // On foot: a 1P start at rf-a, then the key 2.
+    const g = harness({ seed: 12 });
+    const f = startRing(g.app, { characters: ['vincent'], section: 'rf-a' }) as GameplayScene;
+    expect(g.until(GameplayScene, 60)).toBe(true);
+    g.step(120);
+    expect(f.runner.players.length).toBe(1);
+    g.keys.tap(JOIN_KEY);
+    g.step(120);
+    expect(g.app.session!.slots[1].joined).toBe(true);
+    expect(f.runner.players.length).toBe(2);
   });
 });

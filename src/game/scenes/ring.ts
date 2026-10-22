@@ -30,10 +30,12 @@ import { artTier, withArtDensity } from '../../engine/sprites';
 import { centerText, type GameApp } from '../app';
 import { drawHud } from '../hud';
 import { getWeapon, listWeapons } from '../registry';
-import { ringArtDef } from '../ring/art-def';
+import { ringArtDef, zwaanArtSection } from '../ring/art-def';
 import { ringBoarding } from '../ring/boarding';
+// Revision R: the alight hook (RING_HOOKS.alight) registers at import time.
+import { ringAlighting } from '../ring/alight';
 import { attachRingCues, type RingCues } from '../ring/cues';
-import { RING_ID } from '../ring/ids';
+import { RING_ID, RING_ZWAAN, RING_ZWAAN_ORDER, type RingRoute } from '../ring/ids';
 import { RingRunner } from '../ring/runner';
 import { GameSession } from '../session';
 import { type GameSettings } from '../settings';
@@ -42,16 +44,18 @@ import { VOICE } from './flow-data';
 import { GameOverScene } from './game-over';
 import { missionArtSection, preloadMissionArt, preloadMissionAudio, stopDense } from './gameplay';
 import { PlayControls, type PlayHost } from './play-host';
-import { AMS_AUDIO_GROUP, prepareRing, RING_AUDIO_GROUP, ringDone, type RingStart } from './ring-route';
+import { AMS_AUDIO_GROUP, prepareRing, RING_AUDIO_GROUP, ringDone, ringHandover, type RingStart } from './ring-route';
 import { RumbleWatch } from './rumble';
 
 export interface RingSceneOpts {
   /** A prepared start (the intro card's: seed and plan); default `prepareRing(app, { seed, section })`. */
   start?: RingStart;
-  /** Start at this landmark (`?section=`). */
+  /** Start at this landmark, or `zwaan` (a run-in to the truck) (`?section=`). */
   section?: string;
   /** The ring's seed (default `?seed=`, else a fresh one). */
   seed?: number;
+  /** Revision R: the route (default: by the section, else `short`). */
+  route?: RingRoute;
   /** Use this session instead of `app.session` (tests). */
   session?: GameSession;
 }
@@ -77,6 +81,11 @@ export class RingScene implements Scene, PlayHost {
   private readonly controls = new PlayControls(this);
   /** The music cues (ring/cues.ts: the boss song, the tunnel lift). */
   private cues: RingCues | null = null;
+  /**
+   * Revision R: the drive hands over to the on-foot part (ring-route.ts `ringHandover`): the exit
+   * keeps the tier-4 run (no `stopDense`; the foot part continues it).
+   */
+  handingOver = false;
 
   constructor(app: GameApp, opts: RingSceneOpts = {}) {
     this.app = app;
@@ -99,7 +108,7 @@ export class RingScene implements Scene, PlayHost {
     app.focusLost = false;
     app.pointerPressed = false;
     const session = this.session;
-    const start = this.opts.start ?? prepareRing({ params: app.params, session, settings: app.settings }, { seed: this.opts.seed, section: this.opts.section });
+    const start = this.opts.start ?? prepareRing({ params: app.params, session, settings: app.settings }, { seed: this.opts.seed, section: this.opts.section, route: this.opts.route });
     const runner = new RingRunner({
       session,
       pads: [app.input.pad(0), app.input.pad(1)],
@@ -114,6 +123,8 @@ export class RingScene implements Scene, PlayHost {
     this.cues = attachRingCues(runner);
     this.tierSeen = artTier();
     runner.events.on('complete', () => ringDone(app, this, runner));
+    // Revision R: the short route's drive is over (after the alight): the on-foot part takes over.
+    runner.events.on('handover', () => ringHandover(app, this, runner));
     // The in-world continue (GDD §4.6): the countdown runs over the live (held) ring; no menu.
     runner.events.on('allOut', () => {
       app.audio.voice(VOICE.continue);
@@ -123,6 +134,13 @@ export class RingScene implements Scene, PlayHost {
     runner.events.on('gameOver', () => app.scenes.push(new GameOverScene(app)));
     // Tier 4: the working set moves on with the stretches (art-def.ts: sections = stretches).
     runner.events.on('stretch', ({ id }) => missionArtSection(id));
+    // Revision R: the ZWAAN train's art per part (art-def.ts pseudo-sections `zwaan:<i>`).
+    runner.events.on('bossSlot', (e) => {
+      if (e.spawned && e.id === RING_ZWAAN.controller) missionArtSection(zwaanArtSection(0));
+    });
+    runner.world.events.on('ringTrainPart', (e) => {
+      if (e.phase === 'beaten' && e.index + 1 < RING_ZWAAN_ORDER.length) missionArtSection(zwaanArtSection(e.index + 1));
+    });
     runner.start();
     this.rumble.attach(runner.world, runner);
     // The card's start banner shows for 120 ticks (GDD §13.6).
@@ -144,7 +162,8 @@ export class RingScene implements Scene, PlayHost {
     const app = this.app;
     app.input.joinWatch = false;
     // The play is over (QUIT, game over, the ring's end): its tier-4 working set and 4× frames go.
-    stopDense(RING_ID);
+    // Revision R: not at the hand-over to the foot part (one tier-4 run across it).
+    if (!this.handingOver) stopDense(RING_ID);
     app.debug.on('skip', () => {});
     app.debug.on('weapons', () => {});
     this.cues?.detach();
@@ -198,7 +217,7 @@ export class RingScene implements Scene, PlayHost {
 
   /** The boarding scene owns START (it skips the scene after the first play): no pause then. */
   startReserved(): boolean {
-    return !!this.runner && ringBoarding(this.runner.world);
+    return !!this.runner && (ringBoarding(this.runner.world) || ringAlighting(this.runner.world));
   }
 
   /** The ring's art preload for the stretch being driven (the start, a join, a rise to tier 4). */

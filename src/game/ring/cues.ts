@@ -4,7 +4,9 @@
  *
  * - **Boss:** a boss slot that spawns (`runner.events` 'bossSlot', spawned) switches to the
  *   mission's boss song (`ring-boss`); the boss's defeat (world 'bossDefeated') brings the stage
- *   theme back at its A section (order slot 1, no intro), with a 1.5 s crossfade.
+ *   theme back at its A section (order slot 1, no intro), with a 1.5 s crossfade. Revision R: the
+ *   ZWAAN train is one fight: its parts' defeats (tag `ring-zwaan-part`) keep the boss song; the
+ *   train's end (world 'ringTrainDone') brings the theme back.
  * - **Tunnel lift:** when the view's ambience turns to the tunnel bed inside a tunnel chunk (the
  *   Coentunnel, the Zeeburgertunnel; not a covered stretch) and the stage theme plays, the theme
  *   jumps to its lift C (`RING_LIFT_SLOT`: the hook a whole step up) with a short crossfade at the
@@ -25,6 +27,7 @@
  */
 import { RING_LIFT_SLOT } from '../content/music/ring';
 import { chunkIndexAt } from './director';
+import { RING_ZWAAN_PART_TAG } from './ids';
 import type { RingRunner } from './runner';
 
 /** The ambience id of a tunnel (view.ts `ambience`; content/sfx/ring-scenery.ts). */
@@ -66,12 +69,19 @@ export function attachRingCues(runner: RingRunner): RingCues {
       runner.playMusic(runner.mission.bossMusic, CUE_FADE.boss);
     }),
   );
+  const back = (): void => {
+    if (!alive || runner.currentMusic !== runner.mission.bossMusic) return;
+    runner.playMusic(runner.mission.music, CUE_FADE.back, { from: 1 });
+  };
   offs.push(
-    runner.world.events.on('bossDefeated', () => {
-      if (!alive || runner.currentMusic !== runner.mission.bossMusic) return;
-      runner.playMusic(runner.mission.music, CUE_FADE.back, { from: 1 });
+    runner.world.events.on('bossDefeated', (e) => {
+      // Revision R: a ZWAAN part's defeat keeps the boss song (no stage song between the parts).
+      if (e.boss.hasTag(RING_ZWAAN_PART_TAG)) return;
+      back();
     }),
   );
+  // Revision R: the whole train beaten (the cab): the stage theme comes back.
+  offs.push(runner.world.events.on('ringTrainDone', back));
 
   const handle = runner.world.scripts.run(
     function* cues() {

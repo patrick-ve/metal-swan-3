@@ -189,6 +189,14 @@ export class Wagon extends Vehicle implements RingDrawable {
   /** Swerve: ticks left of the dodge, and of its cooldown. */
   swerveT = 0;
   swerveCool = 0;
+  /**
+   * OPT-IN (revision R, TRAIN-2; off by default: 0): ticks left of a slide on a frying-fat slick
+   * (`slip`, the ZWAAN tanker): the steering lags — a lane asked for waits until the slide ends
+   * (`slipLane`), the stick's screen speed changes slowly and a held FIRE no longer stops the slide;
+   * the swerve (JUMP) still works.
+   */
+  slipT = 0;
+  slipLane = 0;
   /** Ticks left of the spin-out (state 'wreck'). */
   private spinT = 0;
   /** Drawing: which side shows, the spin frame, the body pose and the wheels' turn. */
@@ -353,6 +361,10 @@ export class Wagon extends Vehicle implements RingDrawable {
     const down = pad.held('down') && !up;
     const open = ringOf(this.world)?.lanesOpenAt(this.x) ?? 4;
     if (pad.pressed('jump') && this.swerveCool <= 0 && this.swerveT <= 0) this.swerve(up ? -1 : down ? 1 : 0, open);
+    if (this.slipT > 0) {
+      this.slipControl(pad, up, down, open);
+      return;
+    }
     if (pad.held('fire')) {
       // Steer lock: the lane and the screen x hold (the hero aims).
       this.sideV = 0;
@@ -372,6 +384,25 @@ export class Wagon extends Vehicle implements RingDrawable {
       }
     }
     this.sideV = approach(this.sideV, pad.axisX() * RING.wagonSideSpeed, RING.wagonSideAccel);
+  }
+
+  /**
+   * A slide on a slick (OPT-IN, see `slipT`): the wagon slides for at least `ticks` ticks. Only a
+   * driven, unscripted wagon slides.
+   */
+  slip(ticks: number): void {
+    if (this.state !== 'driven' || this.scripted || ticks <= 0) return;
+    this.slipT = Math.max(this.slipT, Math.round(ticks));
+  }
+
+  /** The input while it slides: lane presses wait (`slipLane`), the stick acts slowly, no steer lock. */
+  private slipControl(pad: VirtualPad, up: boolean, down: boolean, open: number): void {
+    const dir = up ? -1 : down ? 1 : 0;
+    if (dir !== 0 && this.swerveT <= 0 && pad.pressed(up ? 'up' : 'down')) {
+      const from = this.slipLane > 0 ? this.slipLane : nearestLane(this.y);
+      this.slipLane = clampLane(from + dir, open);
+    }
+    this.sideV = approach(this.sideV, pad.axisX() * RING.wagonSideSpeed, RING.wagonSideAccel * 0.12);
   }
 
   /**
@@ -418,6 +449,14 @@ export class Wagon extends Vehicle implements RingDrawable {
   /** Plane motion: road speed + the stick on screen, the lane toward its target, the screen band. */
   protected override physics(): void {
     const cam = this.world.camera;
+    if (this.slipT > 0) {
+      // The slide ends: the lane asked for during it is taken now (OPT-IN, see `slipT`).
+      this.slipT--;
+      if (this.slipT === 0 && this.slipLane > 0) {
+        if (this.swerveT <= 0) this.laneTarget = clampLane(this.slipLane, ringOf(this.world)?.lanesOpenAt(this.x) ?? 4);
+        this.slipLane = 0;
+      }
+    }
     const road = ringOf(this.world)?.roadSpeed ?? 0;
     this.settleLane();
     this.vx = road + this.sideV;

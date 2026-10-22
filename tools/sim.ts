@@ -23,6 +23,12 @@
  * max entities, errors, timing) and a one-line summary. `--seed` fixes the ring, `--section` is a
  * landmark id, `--players 2` drives two wagons; `--expect-ticks 28800-39600` fails a run outside
  * that tick range (the spec's gate for the full ring). Default --max-ticks 43200 (12 minutes).
+ *
+ * Revision R (docs/design/ring.md §R.10): the ring is the whole level — the short drive, the ZWAAN
+ * truck, the hand-over and the on-foot part (`rf-a`, `rf-b`; the 2D bot) — with ONE merged report
+ * (`foot`: the on-foot part's numbers) and `--expect-complete` = the level's final tally.
+ * `--route full` (the old loop), `--section amstel|zuid|zwaan|rf-a|rf-b` (an unused landmark
+ * implies the full route), `--boss` (the truck's run-in; with `rf-b` the boat in wave B).
  */
 import { pathToFileURL } from 'node:url';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -43,6 +49,8 @@ interface Args {
   maxTicks: number;
   seed: number;
   route: BotRoute;
+  /** `--mission ring --route full|short` (revision R). */
+  ringRoute?: 'full' | 'short';
   players: 1 | 2;
   boss: boolean;
   difficulty: Difficulty;
@@ -65,7 +73,7 @@ const USAGE =
   'usage: npm run sim -- --mission m0 [--god] [--max-ticks 72000] [--seed 1] [--route lower|upper] [--players 1|2] ' +
   '[--section a] [--boss] [--difficulty easy|normal|hard] [--char id] [--weapon id] [--no-bot] [--expect-complete] [--out file] [--trace N] [--quiet] [--import module.ts]\n' +
   '       npm run sim -- --mode fps --floor 1|2 [--god] [--seed 1] [--difficulty normal] [--max-ticks 36000] [--expect-complete] [--out file] [--trace N] [--quiet]\n' +
-  '       npm run sim -- --mission ring [--god] [--seed 1] [--players 1|2] [--section <landmark>] [--difficulty normal] [--char id] [--weapon id] [--no-bot] ' +
+  '       npm run sim -- --mission ring [--god] [--seed 1] [--players 1|2] [--route short|full] [--section <landmark>|zwaan|rf-a|rf-b] [--boss] [--difficulty normal] [--char id] [--weapon id] [--no-bot] ' +
   '[--max-ticks 43200] [--expect-complete] [--expect-ticks min-max] [--out file] [--trace N] [--quiet]';
 
 function parseArgs(argv: readonly string[]): Args {
@@ -117,7 +125,11 @@ function parseArgs(argv: readonly string[]): Args {
         break;
       case '--route': {
         const r = next();
-        if (r !== 'upper' && r !== 'lower') throw new Error(`--route must be upper or lower\n${USAGE}`);
+        if (r === 'full' || r === 'short') {
+          a.ringRoute = r;
+          break;
+        }
+        if (r !== 'upper' && r !== 'lower') throw new Error(`--route must be upper, lower (or full, short with --mission ring)\n${USAGE}`);
         a.route = r;
         break;
       }
@@ -232,9 +244,13 @@ async function mainRing(args: Args): Promise<void> {
     weapon: args.weapon,
     difficulty: args.difficulty,
     section: args.section,
+    route: args.ringRoute,
+    boss: args.boss,
     clock: () => performance.now(),
   });
-  const maxTicks = args.maxTicksSet ? args.maxTicks : 43200;
+  // The full loop (tests and sims only) carries the whole ZWAAN train in westpoort: 18 min.
+  const full = (h.runner?.plan.route ?? args.ringRoute) === 'full';
+  const maxTicks = args.maxTicksSet ? args.maxTicks : full ? 64800 : 43200;
   const t0 = performance.now();
   try {
     let last = '';
@@ -245,7 +261,11 @@ async function mainRing(args: Args): Promise<void> {
         const p = h.player(0);
         const w = p?.wagon ?? null;
         const b = h.bots[0];
-        const line =
+        const fr = h.footRunner;
+        const fp = fr?.player(0) ?? null;
+        const line = fr
+          ? `t=${h.ticks} FOOT ${fr.section.id} state=${fr.state} p=${fp ? `${fp.state} x=${Math.round(fp.x)}` : '-'} ent=${fr.world.entities.length}`
+          :
           `t=${h.ticks} ${r?.section.id ?? '-'} state=${r?.state ?? '-'} d=${r ? Math.round(r.planDist) : '-'}/${r?.plan.length ?? '-'} v=${r ? r.roadSpeed.toFixed(1) : '-'}` +
           `${r?.planLocked ? ' LOCK' : ''}${r?.held ? ' HELD' : ''} p=${p ? `${p.state} lane=${w ? w.laneTarget : '-'} sx=${w ? Math.round(w.screenX) : '-'} cells=${w ? w.cells : '-'}` : '-'}` +
           ` bot=${b ? `${b.goal}${b.targetLane ? `>${b.targetLane}` : ''}` : '-'} ent=${r?.world.entities.length ?? 0}`;
@@ -274,6 +294,8 @@ async function mainRing(args: Args): Promise<void> {
     `sim ring seed ${report.seed}${report.god ? ' god' : ''} ${report.difficulty}${report.players > 1 ? ` ${report.players}P` : ''}: ${report.complete ? 'COMPLETE' : report.gameOver ? 'GAME OVER' : 'not complete'} in ${report.ticks} ticks ` +
       `(${report.seconds}s game, ${wall.toFixed(2)}s wall${tick}), landmarks ${report.landmarks.join('→')}, distance ${report.distance}/${report.planLength}, ` +
       `kills ${report.kills}, deaths ${report.deaths}, wrecks ${report.wrecks}, fines ${report.fines}, hostages ${report.hostages}, continues ${report.continues}, ` +
+      `route ${report.route}, drive ${report.driveTicks}, train ${report.train ? `${report.train.done ? 'done' : 'not done'} ${report.train.ticks} [${report.train.parts.map((x) => x.ticks).join(' ')}] catch-ups [${report.train.catchUps.join(' ')}] road ${report.train.startTick} after ${report.train.endTick >= 0 ? report.driveTicks - report.train.endTick : -1}` : '-'}, ` +
+      `foot ${report.foot ? `${report.foot.sectionsVisited.join('→')} ${report.foot.ticks} ticks [${Object.entries(report.foot.sectionTicks).map(([k, v]) => `${k} ${v}`).join(', ')}] gaps [${Object.entries(report.foot.sectionGaps).map(([k, v]) => `${k} ${v}`).join(', ')}]${report.foot.complete ? ' COMPLETE' : ''}` : '-'}, ` +
       `spawned ${report.spawned}${skipped ? ` (skipped ${skipped})` : ''}, max entities ${report.maxEntities}, errors ${report.errors.length}` +
       `${outside ? `  TICKS OUTSIDE ${args.expectTicks?.join('-')}` : ''}${failed ? '  FAIL' : ''}\n`,
   );

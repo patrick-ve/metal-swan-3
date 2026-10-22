@@ -89,6 +89,14 @@ export interface RunnerOptions {
   settings?: GameSettings;
   /** Art density override (the attract demo passes 1); default the mission's `artDensity`. */
   artDensity?: number;
+  /**
+   * OPT-IN (revision R, docs/design/ring.md §R.10; default false): continue the session's running
+   * mission instead of starting it — the ring's drive hands over to its on-foot part. `start()` then
+   * keeps the per-mission stats (`session.startMission` is not called; only `missionId` is set),
+   * shows no start banner, plays no announcer line and no intro drop; a joined slot that is out of
+   * lives gets a fresh continue countdown (every slot out: the world holds as at an 'allOut').
+   */
+  continueMission?: boolean;
 }
 
 interface PendingExit {
@@ -168,6 +176,8 @@ export class MissionRunner {
   /** Auto-scroll speed (px/tick; 0 = off) and the scrolled window position. */
   private autoSpeed = 0;
   private autoPos = 0;
+  /** OPT-IN (revision R): `RunnerOptions.continueMission`. */
+  private readonly continueMission: boolean;
 
   constructor(o: RunnerOptions) {
     this.session = o.session;
@@ -179,6 +189,7 @@ export class MissionRunner {
     this.settings = o.settings ?? { ...DEFAULT_SETTINGS };
     this.startSection = o.section;
     this.density = toArtDensity(o.artDensity ?? this.mission.artDensity ?? 1);
+    this.continueMission = o.continueMission === true;
     // Speech bubbles that show are voiced when a voice sample exists (audio only; the headless
     // outputs have no `say`). Gag bubbles hide with SPEECH BUBBLES OFF and stay silent then.
     // Hint and radio bubbles are important: a gag bark never cuts them off (SpeechLane).
@@ -192,17 +203,38 @@ export class MissionRunner {
   /** Load the first section and show the mission banner. */
   start(): void {
     const m = this.mission;
-    this.session.startMission(m.id);
+    if (this.continueMission) this.session.missionId = m.id;
+    else this.session.startMission(m.id);
     this.fightStart = -1;
     this.fightTicks = 0;
     let id = this.startSection ?? (this.bossRush ? (m.bossSection ?? m.start) : m.start);
     if (!m.sections[id]) id = m.start;
-    this.introDropPending = m.introDrop === true && this.startSection === undefined && !this.bossRush && id === m.start;
-    // Banner first, so a section script may replace it on its first tick.
-    const b = m.startBanner;
-    this.hud.showBanner(b?.text ?? m.name, { sub: b?.sub ?? m.subtitle ?? '', style: 'mission', ticks: 170 });
-    this.audio.voice(m.announce ?? 'Move out!');
+    this.introDropPending = !this.continueMission && m.introDrop === true && this.startSection === undefined && !this.bossRush && id === m.start;
+    if (!this.continueMission) {
+      // Banner first, so a section script may replace it on its first tick.
+      const b = m.startBanner;
+      this.hud.showBanner(b?.text ?? m.name, { sub: b?.sub ?? m.subtitle ?? '', style: 'mission', ticks: 170 });
+      this.audio.voice(m.announce ?? 'Move out!');
+    }
     this.loadSection(id);
+    if (this.continueMission) this.continueOutSlots();
+  }
+
+  /**
+   * OPT-IN (`continueMission`): a joined slot that is out of lives at the hand-over gets a fresh
+   * continue countdown here (the drive's countdown ended with its runner); every slot out: hold.
+   */
+  private continueOutSlots(): void {
+    let out: SlotIndex | -1 = -1;
+    for (const slot of this.session.slots) {
+      if (!slot.joined || !slot.gameOver) continue;
+      this.continueTicks[slot.index] = TUNING.continues.seconds * TUNING.continues.ticksPerCount;
+      out = slot.index;
+    }
+    if (out >= 0 && this.session.allOut && !this.held) {
+      this.hold(true);
+      this.events.emit('allOut', { slot: out as SlotIndex });
+    }
   }
 
   // ------------------------------------------------------------------------------- sections

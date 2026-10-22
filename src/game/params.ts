@@ -10,7 +10,9 @@
  * Pure parsing (main.ts passes `location.search`).
  * With `mission` set the game skips the title and starts that mission at once. `mission=ring`
  * starts the ring road (docs/design/ring.md §1): `section` is then a landmark id (`oost` …
- * `exit`) and `seed` fixes the ring (without it every play gets a fresh one).
+ * `exit`) and `seed` fixes the ring (without it every play gets a fresh one). Revision R
+ * (docs/design/ring.md §R.1): `section=zwaan|rf-a|rf-b` too, and `route=short|full` (the full loop:
+ * tests and sims only; absent = the short route, or the full one for an unused landmark).
  */
 import type { UpscaleMode } from '../engine/upscale';
 import { isDifficulty, type Difficulty } from './session';
@@ -45,6 +47,8 @@ export interface LaunchParams {
   art?: 1 | 2 | 4;
   /** `?cache=0`: no sprite cache, and the offline cache (service worker) is removed. Absent otherwise. */
   noCache?: true;
+  /** `?route=short|full`: the ring's route (revision R). Absent otherwise. */
+  route?: 'short' | 'full';
 }
 
 export const DEFAULT_PARAMS: Readonly<LaunchParams> = Object.freeze({
@@ -104,5 +108,7 @@ export function parseLaunchParams(search: string): LaunchParams {
   if (art === '1' || art === '2' || art === '4') p.art = Number(art) as 1 | 2 | 4;
   const cache = q.get('cache');
   if (cache !== null && !flag(cache)) p.noCache = true;
+  const route = q.get('route')?.toLowerCase();
+  if (route === 'short' || route === 'full') p.route = route;
   return p;
 }

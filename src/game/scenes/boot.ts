@@ -18,6 +18,7 @@ import { preloadSprites } from '../../engine/sprites';
 import { blinkOn, centerText, newCampaign, type GameApp } from '../app';
 import { isLazyContent, loadContent } from '../content/index';
 import type { LaunchParams } from '../params';
+import type { RingRoute } from '../ring/ids';
 import { getCharacter, getMission, hasCharacter } from '../registry';
 import { selectRoster } from './character-select';
 import { firstMission, newSession, startNewGame } from './gameplay';
@@ -55,6 +56,14 @@ export function bootArt(params: Pick<LaunchParams, 'mission' | 'char' | 'mode'>)
   const chars = direct ? [params.char ?? 'recruit'] : selectRoster();
   const charArt = chars.filter((c) => hasCharacter(c)).map((c) => `${getCharacter(c).art}/`);
   return [...START_ART, ...charArt, ...mission.art];
+}
+
+/**
+ * `&route=full|short` of `?mission=ring` (revision R, docs/design/ring.md §R.1; params.ts
+ * `LaunchParams.route`); null = by the section (ring-route.ts `ringRouteFor`).
+ */
+export function ringRouteParam(p: Pick<LaunchParams, 'route'>): RingRoute | null {
+  return p.route ?? null;
 }
 
 export class BootScene implements Scene {
@@ -192,7 +201,7 @@ export class BootScene implements Scene {
       // ?mode=bridge: the glitch bridge with its placeholder snapshot and no runner (fps.md §1.11).
       if (p.mode === 'bridge') app.scenes.replace(new GlitchBridgeScene(app), { fade: 0 });
       else startFpsRun(app, { floor: p.floor ?? 1 });
-    } else if (isRing(p.mission)) startRing(app, { section: p.section ?? undefined, players: p.players });
+    } else if (isRing(p.mission)) startRing(app, { section: p.section ?? undefined, players: p.players, boss: p.boss, route: ringRouteParam(p) ?? undefined });
     else if (p.mission) startNewGame(app, { mission: p.mission, section: p.section ?? undefined, players: p.players, bossRush: p.boss });
     else app.scenes.replace(new TitleScene(app), { fade: 30 });
   }

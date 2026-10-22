@@ -91,6 +91,8 @@ interface Args {
    * --res 4 or 8; a lower res draws the next lower tier, like the browser), 1 the 1× art everywhere.
    */
   art: number;
+  /** --mission ring --route full|short (revision R). */
+  ringRoute?: 'full' | 'short';
   /** --mission ring: entities to put on the road after the first tick. */
   spawns: RingSpawnArg[];
 }
@@ -125,7 +127,7 @@ function parseSpawns(v: string): RingSpawnArg[] {
 const USAGE =
   'usage: npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6] [--seed 1] ' +
   '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4]\n' +
-  '       npm run shot -- --mission ring [--seed 1] [--section <landmark>] [--bot] [--god] [--players 1|2] [--ticks 60] [--every 60 --count 6] [--res 8 --art 4] [--spawn "<id>@+<dx>:<lane>[?k=v]"] [--hold up,fire] [--out file.png]';
+  '       npm run shot -- --mission ring [--seed 1] [--route short|full] [--section <landmark>|zwaan|rf-a|rf-b] [--boss] [--bot] [--god] [--players 1|2] [--ticks 60] [--every 60 --count 6] [--res 8 --art 4] [--spawn "<id>@+<dx>:<lane>[?k=v]"] [--hold up,fire] [--out file.png]';
 
 const BUTTONS: readonly Button[] = ['left', 'right', 'up', 'down', 'fire', 'jump', 'bomb', 'start'];
 
@@ -199,7 +201,12 @@ function parseArgs(argv: readonly string[]): Args {
         break;
       case '--route': {
         const r = next();
-        if (r !== 'upper' && r !== 'lower') throw new Error(`--route must be upper or lower\n${USAGE}`);
+        // Revision R: `--mission ring --route full|short`.
+        if (r === 'full' || r === 'short') {
+          a.ringRoute = r;
+          break;
+        }
+        if (r !== 'upper' && r !== 'lower') throw new Error(`--route must be upper or lower (or full, short with --mission ring)\n${USAGE}`);
         a.route = r;
         break;
       }
@@ -492,6 +499,12 @@ async function fpsMain(argv: readonly string[]): Promise<void> {
 /** Label for one ring frame: tick, stretch, plan distance, the wagon's lane and screen x, the bot's goal. */
 function ringLabel(h: HeadlessRing): string {
   const r = h.runner;
+  const fr = h.footRunner;
+  if (!r && fr) {
+    // Revision R: the on-foot part (rf-a, rf-b) after the hand-over.
+    const fp = fr.player(0);
+    return [`t=${h.ticks}`, `ring/${fr.section.id}`, fp ? `${fp.state} x${Math.round(fp.x)}` : '-', h.footBots[0] ? `bot ${h.footBots[0].goalKind}` : ''].join('  ');
+  }
   if (!r) return `t=${h.ticks}  (no ring)`;
   const p = h.player(0);
   const w = p?.wagon ?? null;
@@ -519,6 +532,8 @@ async function ringMain(args: Args): Promise<void> {
     weapon: args.weapon,
     difficulty: args.difficulty,
     section: args.section,
+    route: args.ringRoute,
+    boss: args.boss,
     res: args.res,
     gfx: gfx.mode,
     input: args.hold.length ? (tick) => holdMask | (tapFire && tick % 2 === 0 ? buttonMask('fire') : 0) : undefined,
@@ -541,7 +556,7 @@ async function ringMain(args: Args): Promise<void> {
     const d = shotTier(args);
     const note = `${resolveGfx(args.res, args.gfx).note}${d >= 2 ? `  ${d}x art` : ''}`;
     const head = `RING  seed ${args.seed}${args.section ? `  from ${args.section}` : ''}${args.bot ? '  bot' : ''}${args.god ? '  god' : ''}${args.players > 1 ? '  2P' : ''}`;
-    const sec = h.runner?.section.id ?? args.section ?? 'x';
+    const sec = h.runner?.section.id ?? h.footRunner?.section.id ?? args.section ?? 'x';
     let file: string;
     if (frames.length === 1) {
       file = args.out ?? join('tmp/shots', `ring-${sec}-t${h.ticks}.png`);
