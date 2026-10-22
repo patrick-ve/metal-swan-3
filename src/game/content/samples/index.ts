@@ -9,6 +9,7 @@
 import { defineSampleGroup, type SampleGroup } from '../../../engine/samples';
 import { mayorVoiceSamples } from '../bosses/ams/voice';
 import { SAMPLE_MANIFEST } from './manifest';
+import { RING_SAMPLE_GROUP, ringSampleGroup } from './ring';
 
 /**
  * ROBO-HALSEMA's clips (public/audio/mayor/, bosses/ams/voice.ts) are kept by hand, not by the
@@ -52,3 +53,8 @@ for (const [name, group] of Object.entries(SAMPLE_MANIFEST)) {
     ...(music ? { music: { ...group.music, ...music } } : {}),
   });
 }
+
+// Mission ring (wave B): 'mission:ring' = the ams group's sfx and voices + the ring's own takes, the
+// same merge as scenes/ring-route.ts (content/samples/ring.ts), so the order of the two never matters.
+const RING_GROUP = ringSampleGroup(SAMPLE_MANIFEST);
+if (RING_GROUP) defineSampleGroup(RING_SAMPLE_GROUP, RING_GROUP);

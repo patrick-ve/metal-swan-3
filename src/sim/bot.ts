@@ -13,7 +13,8 @@
  *   far side and steps off; throws bombs; dodges shots; stuck detector. On a canal cruise
  *   (mission ams c2: a `cruise-boat` that holds the camera) it boards and keeps to the middle
  *   of the DECK (never the glass roof: it drops through when it lands there), picks up only what
- *   lies on the deck and never jumps near a low bridge.
+ *   lies on the deck and never jumps near a low bridge. Mission ring's blockade: it hops over a
+ *   sticky glue puddle ahead (or waits for it to dry), keyed to the puddles' tag only.
  * - FLIGHT (the Trumpeter, m5-a): bot-flight.ts — dodges shots and bodies, lines up with targets,
  *   collects pickups, dive-bombs targets below; never bails out.
  * - SWAN (a ridden Swan, m1-c / m3-a): bot-swan.ts — runs, jumps walls and enemies (stomps),
@@ -95,6 +96,8 @@ export const CRUISE_SPOT = 132;
 /** No jumps while a low bridge (or the closed Magere Brug) is this close (px beyond its half width). */
 const BRIDGE_CLEAR = 28;
 const BRIDGE_TAGS: readonly string[] = ['low-bridge', 'magere-brug'];
+/** Mission ring's glue puddles (content/ring/activists/fx.ts `GLUE_PUDDLE_TAG`; a string here: no content import). */
+const GLUE_PUDDLE_TAG = 'ring-glue-puddle';
 /**
  * Ground vehicles the bot drives with care (hop only over real gaps, never fire into a hop: the
  * RAM combo). The older vehicles keep the old drive (their missions' sims stay byte-identical).
@@ -388,6 +391,15 @@ export class Bot implements InputSource {
         // 'drop': walk on and fall onto the floor below.
       }
     }
+    // ---- a glue puddle just ahead (mission ring's blockade; keyed to its tag only): hop over it
+    // when the landing is safe, else wait until it dries.
+    if (dir !== 0 && p.onGround && !riding && !jump && !aboard) {
+      const pd = this.puddleAhead(world, p, dir);
+      if (pd === 'jump') {
+        jump = true;
+        this.jumpWhy = 'puddle';
+      } else if (pd === 'wait') dir = 0;
+    }
     if (riding && this.waitT === 0 && support) {
       // Off a ride that reached its end is handled by rideOn; nothing to do here.
     }
@@ -453,6 +465,17 @@ export class Bot implements InputSource {
       }
     } else this.overheadT = 0;
 
+    // ---- the ring's pink boat (revision R wave B, keyed to its shock type only): a drum beat's
+    // ground shock rolling along the road at us: jump it straight up, in time.
+    // (Integrator, wave B: checked before the dodge planner, whose sideways dodge jump ran along with
+    // the shock and landed on it: one death per boat fight. Only the shock type triggers it.)
+    if (p.onGround && !jump && !riding && this.shockComing(world, p)) {
+      jump = true;
+      this.jumpWhy = 'shock';
+      this.airDir = 0;
+      press = 0;
+      mask &= ~UP;
+    }
     // ---- dodging: pick a move that no incoming shot hits
     if (this.opts.dodge && p.onGround && !jump && !air.active && !riding) {
       const d = this.planDodge(world, p, press);
@@ -477,6 +500,14 @@ export class Bot implements InputSource {
       press = 0;
       mask &= ~UP;
     }
+    // ---- the ring's pink boat (integrator, wave B; keyed to the boat's type only): the boom swings
+    // out at chest height over the bow: crouch under it, never jump into it.
+    const ducking = p.onGround && !riding && this.boomOver(world, p);
+    if (ducking) {
+      jump = false;
+      press = 0;
+      mask = (mask & ~UP) | DOWN;
+    }
     if (press < 0) mask |= L;
     else if (press > 0) mask |= R;
 
@@ -493,6 +524,7 @@ export class Bot implements InputSource {
     if (jump && (p.onGround || p.body.ticksSinceGrounded <= 3)) mask |= JUMP;
     // Under a low bridge a jump bonks (or, at its face, kills): keep the feet on the deck.
     if (noJump) mask &= ~JUMP;
+    if (ducking) mask &= ~JUMP;
 
     // ---- fire constantly: taps for tap weapons, a held trigger for automatic ones
     if (p.weapon.auto) mask |= FIRE;
@@ -522,6 +554,35 @@ export class Bot implements InputSource {
       if (b.h > 30 || b.y + b.h <= r.y || b.y >= r.y + r.h) continue;
       const gap = e.facing < 0 ? b.x - (r.x + r.w) : r.x - (b.x + b.w);
       if (gap >= 38 && gap <= 70) return true;
+    }
+    return false;
+  }
+
+  /** The ring's pink boat (type `ring-boot`): its boom is creaking or out and over this player. */
+  private boomOver(world: World, p: Player): boolean {
+    const list = world.byTag('boss');
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive || e.type !== 'ring-boot' || ((e as Entity & { boomF?: number }).boomF ?? 0) < 1) continue;
+      if (p.x + 8 >= e.x - 136 && p.x - 8 <= e.x - 44) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The ring boat's ground shock (type `ring-boot-shock`, revision R wave B) coming at us along the
+   * floor: its near edge 8–30 px from our body (it moves ~2.3 px / tick: the jump clears it).
+   */
+  private shockComing(world: World, p: Player): boolean {
+    const list = world.byTag('shot');
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
+      if (!s.alive || s.type !== 'ring-boot-shock' || s.team !== 'enemy') continue;
+      if (Math.abs(s.y - p.y) > 12) continue;
+      const toward = s.vx < 0 ? s.x > p.x : s.x < p.x;
+      if (!toward) continue;
+      const gap = Math.abs(s.x - p.x) - s.hitbox.w / 2 - 7;
+      if (gap >= 8 && gap <= 30) return true;
     }
     return false;
   }
@@ -1011,6 +1072,24 @@ export class Bot implements InputSource {
       if (deadlyAt(world, x, p.y, 40, true)) return false;
     }
     return true;
+  }
+
+  /**
+   * A sticky glue puddle (tag `ring-glue-puddle`, mission ring's blockade) starts within 26 px ahead
+   * at the feet's height: 'jump' over it when the landing is safe, else 'wait'; null when none (every
+   * other mission: the tag list is empty, so nothing changes there).
+   */
+  private puddleAhead(world: World, p: Player, dir: number): 'jump' | 'wait' | null {
+    const list = world.byTag(GLUE_PUDDLE_TAG);
+    for (let i = 0; i < list.length; i++) {
+      const g = list[i] as Entity & { sticky?: boolean };
+      if (!g.sticky || Math.abs(g.y - p.y) > 4) continue;
+      const near = g.x - dir * (-g.hitbox.x + 2);
+      const dist = (near - p.x) * dir;
+      if (dist <= 0 || dist > 26) continue;
+      return this.safeAhead(world, p, dir, 64) ? 'jump' : 'wait';
+    }
+    return null;
   }
 
   /** Turning toward `dir` is fine here (not at a ledge edge over a drop). */

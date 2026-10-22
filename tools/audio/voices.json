@@ -1,4 +1,18 @@
 {
+  "activist-a": {
+    "voice_id": "ZVXfLvfHo2QywaKFZrD5",
+    "name": "MS3 Young Activist",
+    "generated_voice_id": "ZVXfLvfHo2QywaKFZrD5",
+    "preview": 1,
+    "savedAt": "2026-10-22T17:20:22.674Z"
+  },
+  "activist-b": {
+    "voice_id": "WAwQD5Ou8ZE2pjWLYjvH",
+    "name": "MS3 Old Activist",
+    "generated_voice_id": "WAwQD5Ou8ZE2pjWLYjvH",
+    "preview": 3,
+    "savedAt": "2026-10-22T17:20:24.371Z"
+  },
   "announcer": {
     "voice_id": "B5M8Itwdp3m1hNs6TIsq",
     "name": "MS3 Announcer",
@@ -12,6 +26,13 @@
     "generated_voice_id": "uHPpsCTsutr3BR13nDrd",
     "preview": 1,
     "savedAt": "2026-10-14T10:38:58.750Z"
+  },
+  "boerenknecht": {
+    "voice_id": "SCDezMnRJ4FEiK3OSJJT",
+    "name": "MS3 Farmhand",
+    "generated_voice_id": "SCDezMnRJ4FEiK3OSJJT",
+    "preview": 1,
+    "savedAt": "2026-10-22T17:20:28.710Z"
   },
   "drill": {
     "voice_id": "3IsRRoUAm35Y2BQeSLZ7",
@@ -47,6 +68,13 @@
     "generated_voice_id": "Xh6VW8QTqb3RuIy95PD4",
     "preview": 1,
     "savedAt": "2026-10-14T10:39:05.159Z"
+  },
+  "leider": {
+    "voice_id": "FbarUadrfM0mbsbpDIEH",
+    "name": "MS3 Protest Leader",
+    "generated_voice_id": "FbarUadrfM0mbsbpDIEH",
+    "preview": 3,
+    "savedAt": "2026-10-22T17:20:20.887Z"
   },
   "mecha": {
     "voice_id": "qltvKiNyct5F0CAfTzLN",
@@ -138,5 +166,12 @@
     "generated_voice_id": "mEQpraK4w2pR7tEcUSKQ",
     "preview": 1,
     "savedAt": "2026-10-14T10:39:18.939Z"
+  },
+  "zware-jongen": {
+    "voice_id": "nve9GHWNvOcqlDs4T9Vd",
+    "name": "MS3 Truck Driver",
+    "generated_voice_id": "nve9GHWNvOcqlDs4T9Vd",
+    "preview": 2,
+    "savedAt": "2026-10-22T17:20:26.107Z"
   }
 }

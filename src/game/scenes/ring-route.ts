@@ -27,6 +27,7 @@
 import { defineSampleGroup } from '../../engine/audio';
 import { preloadSprites } from '../../engine/sprites';
 import { SAMPLE_MANIFEST } from '../content/samples/manifest';
+import { ringSampleGroup } from '../content/samples/ring';
 import { newCampaign, type GameApp } from '../app';
 import { hasCharacter } from '../registry';
 import type { MissionRunner } from '../mission/runner';
@@ -48,25 +49,28 @@ export { RING_ID };
 
 /**
  * The ring's sampled audio group: the ams group's sound effects and voices WITHOUT its two songs
- * (the ring plays its own synth songs, content/music/ring.ts; the ams songs decode to about 60 MB).
- * The entries are the ams group's own definitions, so the sample bank decodes each file once for
- * both groups (samples.browser.ts shares an entry whose `def` is the same object).
+ * (the ams songs decode to about 60 MB) merged with the ring's own takes
+ * (`SAMPLE_MANIFEST['mission:ring']`: the Dutch voices, the ring sfx, the songs; wave B). The entries
+ * are the manifest's own definitions, so the sample bank decodes each file once for both groups
+ * (samples.browser.ts shares an entry whose `def` is the same object). The drive and the foot part
+ * (its def's `audioGroup`) load it: a bubble whose text has a shipped take plays it in both scenes.
+ * `ringSampleGroup` (content/samples/ring.ts) is the one merge (content/samples/index.ts uses it too).
  */
 export const RING_AUDIO_GROUP = 'mission:ring';
 /** The ams group: RingScene releases it (its songs) once the ring's group is on its way. */
 export const AMS_AUDIO_GROUP = 'mission:ams';
-const AMS_SAMPLES = SAMPLE_MANIFEST[AMS_AUDIO_GROUP];
-if (AMS_SAMPLES) defineSampleGroup(RING_AUDIO_GROUP, { sfx: AMS_SAMPLES.sfx, voice: AMS_SAMPLES.voice });
+const RING_SAMPLES = ringSampleGroup(SAMPLE_MANIFEST);
+if (RING_SAMPLES) defineSampleGroup(RING_AUDIO_GROUP, RING_SAMPLES);
 
 /**
  * What the ring draws at 1× (the boot preloads it for `?mission=ring`; on the normal route the
  * intro card builds it in the background): the ring's own art, the landmark decor, items, weapons,
  * effects and the ring bosses. The drivers' strips are the select roster's (bootArt adds it).
  * Revision R: the on-foot part's art (`ring/foot/` is under `ring/`) and the placeholder foot
- * enemies (the jam boarders' handhaver). Wave B adds `npc/ring/` (the activists, the police) here
- * with its first sprites (fixer, 2026-10-22: the prefix had no sprites yet).
+ * enemies (the jam boarders' handhaver). Wave B (PREP): `npc/ring/` (the activists, the police); the
+ * boat's `boss/ring-boot/` is under `boss/ring-`, the effects' `fx/ring/` under `fx/`.
  */
-export const RING_ART: readonly string[] = ['ring/', 'decor/ring/', 'item/', 'weapon/', 'fx/', 'boss/ring-', 'enemy/handhaver', 'enemy/boete-ticket'];
+export const RING_ART: readonly string[] = ['ring/', 'decor/ring/', 'item/', 'weapon/', 'fx/', 'boss/ring-', 'enemy/handhaver', 'enemy/boete-ticket', 'npc/ring/'];
 
 /** A ring play about to start: its seed, its plan and the landmark it starts at. */
 export interface RingStart {

@@ -42,6 +42,9 @@ import { applyShip, type GroupData } from '../../tools/audio/ship';
 // modules without their art, the boss).
 const ozSound = (id: string): boolean => id === 'sfx/oldenzaal' || id === 'bosses/oldenzaal' || (id.startsWith('oldenzaal/') && !id.endsWith('/art'));
 const report = await loadContent((id) => id === 'sfx' || id.startsWith('music') || id === 'samples' || id === 'fps/sound' || ozSound(id));
+// Mission ring (wave B): the songs on foot `ring-foot` / `ring-boot` register with the foot content
+// (ring/foot/index.ts imports music/ring-foot.ts), which this test does not load.
+await import('../../src/game/content/music/ring-foot');
 const PUBLIC_AUDIO = new URL('../../public/audio/', import.meta.url);
 
 describe('voiceKey', () => {
@@ -230,7 +233,7 @@ describe('sample manifest (src/game/content/samples)', () => {
 
   it('keys are registered sound effect ids and song ids; files exist; loop points are sane', () => {
     const fileOk = (f: string): void => {
-      expect(f, f).toMatch(/^(boot|ams|fps|oldenzaal)\/(sfx|music|voice)\/[a-z0-9._-]+\.mp3$/);
+      expect(f, f).toMatch(/^(boot|ams|fps|oldenzaal|ring)\/(sfx|music|voice)\/[a-z0-9._-]+\.mp3$/);
       const url = new URL(f, PUBLIC_AUDIO);
       expect(existsSync(url), `missing public/audio/${f}`).toBe(true);
       expect(statSync(url).size, f).toBeGreaterThan(0);
@@ -404,13 +407,14 @@ describe('audio:ship keeps the files it did not write', () => {
       put('oldenzaal/sfx/oz-env-old-1.mp3');
       const hand = put('ams/voice/Tot ziens.mp3');
       const empty = (): GroupData => ({ sfx: {}, music: {}, voice: {} });
-      const r = applyShip({ groups: { boot: empty(), 'mission:ams': empty(), 'mode:fps': empty(), 'mission:oldenzaal': empty() }, copies: [], errors: [], warnings: [] }, p, true);
+      const r = applyShip({ groups: { boot: empty(), 'mission:ams': empty(), 'mode:fps': empty(), 'mission:oldenzaal': empty(), 'mission:ring': empty() }, copies: [], errors: [], warnings: [] }, p, true);
       expect(r.removed).toEqual(['public/audio/fps/sfx/fps-old-1.mp3', 'public/audio/oldenzaal/sfx/oz-env-old-1.mp3']);
       expect(r.kept).toEqual(['public/audio/ams/voice/Tot ziens.mp3']);
       expect(existsSync(hand)).toBe(true);
       // An empty lazy group ('mode:fps', 'mission:oldenzaal') stays out of the manifest.
       expect(r.manifest).not.toContain('mode:fps');
       expect(r.manifest).not.toContain('mission:oldenzaal');
+      expect(r.manifest).not.toContain('mission:ring');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

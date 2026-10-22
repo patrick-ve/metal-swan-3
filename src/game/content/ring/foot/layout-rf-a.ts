@@ -113,8 +113,14 @@ export const RF_A_SCOOTERS: ReadonlyArray<readonly [number, number]> = [
   [2652, 1],
 ];
 
-/** The camera locks (fights): [min x, max x] of the camera's left edge. */
-export const RF_A_ARENAS = { first: [700, 700] as const, van: [1500, 1500] as const, last: [2320, 2320] as const };
+/**
+ * The camera locks (fights): [left, right] of the locked view (`Camera.lock`; one screen wide). The
+ * fight starts when the camera's left edge reaches the first number. Integrator, wave B: these were
+ * `[x, x]` (meant as the camera's left edge), which `Camera.lock` reads as a zero-wide range and
+ * centres on x: the view pulled back 192 px at every lock. The framing the fights were placed for
+ * (x − 192 … x + 192) stays; the lock now starts there, with no backward pan.
+ */
+export const RF_A_ARENAS = { first: [508, 892] as const, van: [1308, 1692] as const, last: [2128, 2512] as const };
 
 /** Checkpoints (≤ 1,400 px apart: 0 → 860 → 1,700 → 2,480 → the end). */
 export const RF_A_CHECKPOINTS: readonly number[] = [860, 1700, 2480];

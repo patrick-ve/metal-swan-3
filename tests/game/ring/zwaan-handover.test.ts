@@ -105,7 +105,7 @@ describe('the ZWAAN train and the hand-over (section zwaan, god, the bots)', () 
       expect(s.mission.route).toEqual([...before!.route, 'rf-a']);
       expect(s.mission.bossEndTick).toBe(endAtDone);
       // The foot part to the end: ONE MISSION COMPLETE page with the drive's fines and seed.
-      h.runUntil((x) => x.done, 12_000);
+      h.runUntil((x) => x.done, 16_000);
       expect(h.complete).toBe(true);
       h.runUntil((x) => x.app.scenes.top instanceof MissionCompleteScene, 900);
       const page = h.app.scenes.top as MissionCompleteScene;

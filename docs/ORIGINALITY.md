@@ -147,6 +147,24 @@ above is extended to mission `ring` (level 2). Rules for this exception:
   no cheering idle gag) and the hostage rule (a freed hostage bows; it never salutes).
 - The self-check question 2 below does not apply to these listed real names.
 
+**Revision R: the parody, the hauler and the animals (2026-10-22, `docs/design/ring.md` §R.9).**
+`EXHAUSTING REBELLION` is a parody name of a real activist movement (the user's choice,
+2026-10-22). Never the real name, its logo (the circled hourglass), its fonts or its slogans word
+for word; no real activist, leader, event or boat. The activists, the leader and the police are
+fictional comic characters; nothing hurts them (they run off or are carried away). ZWAAN is a
+made-up hauler with our own livery; no real hauler's colours or names. The animals are never hurt.
+
+- Our mark is a round-bellied hourglass with a smoke puff rising from its top, never inside a
+  circle or ring. The banners and the signs are Dutch puns of our own (e.g. `STOP UITLAATGAS`,
+  `LIJM IS GEEN MISDAAD`); the movement's colours are never used as a brand set.
+- The pink boat `DE LAATSTE DRUPPEL` is our own design and name. The police (`ring-agent`) carry
+  only the generic word `POLITIE` in our own lettering (on the van), never a real force emblem.
+- Gentle satire: the joke is the situation (glue, soup cans, a pink boat on a motorway, a drum
+  band, lunch), never the people's looks, age, gender, body or background. Bloodless: the tomato
+  soup is orange and the paint splats are bright colours, never red pools.
+- In repository text, tests and ElevenLabs prompts the real movement is only ever called "a real
+  activist movement"; its name is never written.
+
 ## Exception: mission `oldenzaal` (2026-10-21; revision 2 of the same evening)
 
 By the user's explicit decision (2026-10-21, `docs/design/oldenzaal.md` §0, §12), mission

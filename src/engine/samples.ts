@@ -19,6 +19,10 @@
  * - `'mission:oldenzaal'`: mission oldenzaal, level 4 (docs/design/oldenzaal.md §11), loaded on
  *   its intro card like 'mission:ams' (`MissionDef.audioGroup`). The audio tool writes it to the
  *   manifest only once something of it is picked (until then the synth plays everything).
+ * - `'mission:ring'`: mission ring, level 2 (docs/design/ring.md §R.8): its own takes (public/audio/
+ *   ring/: the Dutch voices, the blockade's and the train's sfx, the songs `ring-foot` / `ring-boot`).
+ *   Lazy like 'mission:oldenzaal'. The game registers the group MERGED with the ams group's sfx and
+ *   voices (content/samples/ring.ts `ringSampleGroup`): the drive and the foot part load it.
  *
  * File paths are relative to `public/audio/` (e.g. `'ams/sfx/ams-bell-1.mp3'`). The data is
  * written by the audio tool into `src/game/content/samples/manifest.ts`.
@@ -76,7 +80,7 @@ export interface SampleGroup {
  * The sample groups of the game (the audio tool's group names, tools/audio/spec-types.ts, come
  * from this list). New groups are appended: the manifest keeps this order.
  */
-export const SAMPLE_GROUPS = ['boot', 'mission:ams', 'mode:fps', 'mission:oldenzaal'] as const;
+export const SAMPLE_GROUPS = ['boot', 'mission:ams', 'mode:fps', 'mission:oldenzaal', 'mission:ring'] as const;
 
 /** One of `SAMPLE_GROUPS`. */
 export type SampleGroupId = (typeof SAMPLE_GROUPS)[number];

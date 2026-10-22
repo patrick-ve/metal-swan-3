@@ -865,14 +865,21 @@ export class MissionRunner {
     if (!cps || this.nextCheckpoint >= cps.length) return;
     const cam = this.world.camera;
     const v = cps[this.nextCheckpoint];
-    const scroll = this.section.scroll;
-    const passed = scroll === 'up' ? cam.centerY <= v : scroll === 'down' ? cam.centerY >= v : cam.centerX >= v;
-    if (!passed) return;
+    if (!this.checkpointPassed(v)) return;
     this.nextCheckpoint++;
     if (this.vertical) this.setCheckpoint(cam.centerX, floorY(this.world, cam.centerX, v - 48));
     else this.setCheckpoint(v, floorY(this.world, v));
+    // A start past several checkpoints (`?boss=1`) passes one per tick: only the last one calls out.
+    if (this.nextCheckpoint < cps.length && this.checkpointPassed(cps[this.nextCheckpoint])) return;
     this.hud.callout('CHECKPOINT');
     this.audio.sfx('mission/checkpoint');
+  }
+
+  /** Has the camera's centre reached checkpoint `c` (see `updateCheckpoints`)? */
+  private checkpointPassed(c: number): boolean {
+    const cam = this.world.camera;
+    const scroll = this.section.scroll;
+    return scroll === 'up' ? cam.centerY <= c : scroll === 'down' ? cam.centerY >= c : cam.centerX >= c;
   }
 
   /** A new respawn reference: the timer refills and (EASY) the hostage tallies are stored. */

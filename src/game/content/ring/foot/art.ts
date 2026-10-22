@@ -5,3 +5,5 @@
  */
 import './art-jam';
 import './gangs/art';
+// BLOCKADE+BOAT (wave B, additive): the blockade's decor (rf-b).
+import './art-blok';

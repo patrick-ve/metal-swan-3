@@ -313,6 +313,13 @@ export interface RingFootReport {
   sectionGaps: Record<string, number>;
   /** Every death on foot: `<section> x <player x> <cause>`. */
   deathsAt: string[];
+  /**
+   * Wave B (integrator): the foot boss's fight in ticks (its first tick in state 'fight' →
+   * `bossDefeated`; −1 none) and the ticks from `bossDefeated` to the end of the run (the end scene).
+   * The gaps above stop counting once the foot boss is beaten.
+   */
+  bossFightTicks: number;
+  bossEndTicks: number;
 }
 
 /** The sim's ring report: the runner's numbers plus the harness's. */
@@ -400,6 +407,9 @@ class HeadlessRingImpl implements HeadlessRing {
   private footGameOvers = 0;
   private readonly footSections: string[] = [];
   private footBoss = false;
+  /** Wave B (integrator): the foot boss's fight (first tick in state 'fight' → bossDefeated) and the end. */
+  private footBossFrom = -1;
+  private footBossAt = -1;
   private readonly footSectionTicks: Record<string, number> = {};
   private footGap = 0;
   private footLongestGap = 0;
@@ -592,6 +602,7 @@ class HeadlessRingImpl implements HeadlessRing {
       this.stats.watchWorld(world, fr.section.id);
       world.events.on('bossDefeated', () => {
         this.footBoss = true;
+        if (this.footBossAt < 0) this.footBossAt = this.ticks;
       });
       const id = fr.section.id;
       world.events.on('playerDied', (e) => {
@@ -609,8 +620,13 @@ class HeadlessRingImpl implements HeadlessRing {
     if (world && fr.state === 'playing') {
       const id = fr.section.id;
       this.footSectionTicks[id] = (this.footSectionTicks[id] ?? 0) + 1;
-      // The momentum: ticks without a live enemy on screen (the bosses count).
-      let foe = false;
+      if (this.footBossFrom < 0) {
+        const bosses = world.byTag('boss');
+        for (let i = 0; i < bosses.length; i++) if ((bosses[i] as Entity & { state?: string }).state === 'fight') this.footBossFrom = this.ticks;
+      }
+      // The momentum: ticks without a live enemy on screen (the bosses count). Wave B: the end
+      // scene after the foot boss is beaten (the wreck, the carry-off, the exit) is not a gap.
+      let foe = this.footBoss;
       const list = world.entities;
       for (let i = 0; i < list.length && !foe; i++) {
         const e = list[i];
@@ -719,6 +735,8 @@ class HeadlessRingImpl implements HeadlessRing {
             gapAt: this.footGapAt,
             sectionGaps: { ...this.footSectionGaps },
             deathsAt: [...this.footDeaths],
+            bossFightTicks: this.footBossFrom >= 0 && this.footBossAt >= 0 ? this.footBossAt - this.footBossFrom : -1,
+            bossEndTicks: this.footBossAt >= 0 ? this.ticks - this.footBossAt : -1,
           }
         : null;
     const trainDone = base.train ? base.train.done : base.bosses.some((b) => b.spawned && b.ticks >= 0);

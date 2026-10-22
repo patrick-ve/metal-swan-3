@@ -139,7 +139,7 @@ export class ZwaanCab extends ZwaanPart {
         at: CAB_AI.phase2,
         name: 'rage',
         onEnter: (b) => {
-          b.say(CAB_LINES.rage, { at: CAB.sayAt, ticks: 90 });
+          b.say(CAB_LINES.rage, { at: CAB.sayAt, ticks: 116 });
           b.world.audio.sfx(ZWAAN_SFX.horn);
         },
         pattern: (b) => b.phaseRage(),

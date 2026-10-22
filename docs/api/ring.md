@@ -488,6 +488,331 @@ train ≈ 7,420–7,650 ticks (the boarding included), the final jam and the ali
 the drive ≤ 130 / 154 MB, `zwaan:0..4` ≤ 129 / 153 MB, `rf-a` 140 / 164 MB, `rf-b` 137 / 161 MB (fixer: the placeholder now has a trickle of the ring gangs) —
 all far under 256 MB.
 
+### R.B Wave B contracts (PREP, 2026-10-22; FROZEN)
+
+*(The stubs below are gone: the activists are R.B1, rf-b and the boat R.B2, the shipped audio
+`docs/api/audio-pipeline.md` "Mission ring", the integration and the measured numbers R.BI. The
+contracts — ids, params, events, functions — are unchanged.)*
+
+Spec: `docs/design/ring.md` §R.6–§R.9. PREP built the contracts with WORKING STUBS (PLACEHOLDER
+behaviour; the art is 1× rectangles drawn by the renderer, no sprite ids). The builders add, never
+rename. Every new engine / game feature stays an ADDITIVE OPT-IN; the identity sims and the drive
+(`tmp/ring-r/id.sh`, `tmp/ring-r/drive-same.sh`) stay SAME.
+
+**Files and owners.**
+
+| File | What | Owner after PREP |
+|---|---|---|
+| `content/ring/foot/lines.ts` | ALL the new Dutch text + `ringVoicedLines()` | (change a text only with a note: its voice key changes) |
+| `content/ring/activists/api.ts` | ids, params, events, `Carryable`, tuning, the delegating functions | frozen |
+| `content/ring/activists/{index,stub,art}.ts` | the stubs; `art.ts` empty | ACTIVISTS (replaces `stub.ts`) |
+| `content/ring/boot/api.ts` | ids, parts, events, `RingBoat`, `startBoat`, `waitBoatEnd` | frozen |
+| `content/ring/boot/{index,stub,art}.ts` | the stub boat + leader; `art.ts` empty | BLOCKADE+BOAT (replaces `stub.ts`) |
+| `content/ring/foot/section-rf-b.ts` | the playable skeleton | BLOCKADE+BOAT |
+| `content/sfx/ring-activists.ts` (`RING_ACTIVISTS`, ids `ring/act/…`) | empty synth table | ACTIVISTS |
+| `content/sfx/ring-boot.ts` (`RING_BOOT`, ids `ring/blok/…`, `ring/boot/…`) | empty synth table | BLOCKADE+BOAT |
+| `content/samples/ring.ts` | `ringSampleGroup(manifest)` (the one merge) | PREP / AUDIO |
+
+Content manifest entries: `ring/activists`, `ring/activists/art`, `ring/boot`, `ring/boot/art`.
+`ring/foot` (foot/index.ts) imports `../activists/index` and `../boot/index` and re-exports `lines.ts`.
+Art prefixes: `npc/ring/` (activists, police; back in `RING_ART`), `fx/ring/`, `ring/foot/…` (the
+blockade decor), `boss/ring-boot/` (under `RING_ART`'s `boss/ring-`). `RF_B_ART` lists `npc/ring/`,
+`fx/ring/`, `boss/ring-boot/` already.
+
+**The activists (`activists/api.ts`).**
+- `ACTIVIST = { lijmer: 'ring-lijmer', ketting: 'ring-ketting', megafoon: 'ring-megafoon', loper:
+  'ring-loper' }` (`category: 'enemy'`, tag `ACTIVIST_TAG` `'ring-activist'`), `ACTIVIST_KINDS`;
+  `POLICE = 'ring-agent'` (`category: 'npc'`, team neutral, tag `POLICE_TAG`; never a target).
+- `ActivistParams { tag?, facing?: 1 | -1, sign?: string (a `BANNERS` text), anchor?: 'barrel' |
+  'partner', sitAt?: number, enter?: 'left' | 'right' }` (+ the Enemy's `hp`, `drop`, and `wait`:
+  ticks before the first attack). A loper without `sitAt` sits `LOPER_SIT_AHEAD` (96) + 16 px ahead.
+- `interface Carryable extends Entity { carried: boolean }`, `isCarryable(e)`. While `carried`, the
+  entity does nothing of its own: the police set its x / y and remove it off screen.
+- `callPolice(world, target: Carryable, opts?: PoliceOpts): PoliceCall` — `PoliceOpts { from?: 'left' |
+  'right' (default the nearer edge), onDone?(), kind? }`; `PoliceCall { target, phase: 'walk-in' |
+  'lift' | 'carry' | 'done', done }`. A pair walks in (`policeWalk` 1.3), lifts (`policeLift` 24 ticks,
+  10 px), carries off (`policeCarry` 1.1), removes the target. A second call on the same target
+  returns the running one.
+- Event **`'ring-activist-out'`** (`ACTIVIST_OUT_EVENT`): `{ kind: ActivistKind | 'leider', how:
+  'runoff' | 'carried', entity }` — once per activist when it starts to leave (runoff: at the rip;
+  carried: at the lift).
+- The hero opt-ins = **status effects** (`player/status.ts`, registry `defineStatus`; NO Player change,
+  off unless a ring entity adds them): `HERO_STATUS = { glue: 'ring-glue', stun: 'ring-stun', push:
+  'ring-push' }`; `glueHero(p, ticks?)` (speed 0, no jump, no crouch; can shoot; `glueTicks` 40),
+  `stunHero(p, ticks?)` (no control; `stunTicks` 20), `pushHero(p, dir, speed?)` (`vx = dir × 2.4`
+  + no control for `pushTicks` 10; no damage).
+- `ACTIVIST_TUNE` (glue 40, stun 20, push 2.4 / 10, `sitTell` 40, `minTell` 18, the police speeds).
+- The functions delegate to `ACTIVIST_HOOKS.impl: ActivistImpl` (`callPolice`, `glueHero`, `pushHero`,
+  `stunHero`), set by `activists/index.ts` (the stub: `STUB_IMPL`). They throw when `ring/activists`
+  is not loaded.
+- The stubs: lijmer (20 HP, a slow paint balloon, tell 30; beaten `LOS!`, runs off), ketting (30 HP, soup
+  can, tell 26; beaten `MIJN KETTING!`, the police carry it off), megafoon (20 HP, the shout pushes
+  heroes ≤ 140 px ahead, every third a squeal stuns ≤ 80 px; runs off), loper (10 HP, walks in, sits
+  with the 40-tick tell `ZITTEN BLIJVEN!`, then lobs; hit before: `IK BEL MIJN MOEDER!`, runs off). The
+  throwables reuse `ring/scooter/bottle` and `ring/parcel-van/parcel` (ACTIVISTS: `fx/ring/…`).
+
+**The boat (`boot/api.ts`).** `BOAT_ID 'ring-boot'` (a `Boss`, `category: 'boss'`), `BOAT_NAME`
+`'DE LAATSTE DRUPPEL'`, `BOAT_SUBTITLE` `'MINI-BOSS'`, `BOAT_ART 'boss/ring-boot'`, `BOAT_LEADER
+'ring-leider'` (the leader after the end: an NPC, `Carryable`, never a target), `BOAT_PART = { speakerL:
+'speaker-l', speakerR: 'speaker-r', hull: 'hull' }`, `BOAT_SONG 'ring-boot'` / `boatSong()` (falls back
+to `ring-boss` until AUDIO-1 defines the song), `BOAT_TUNE` (`waveSize` easy 2 / normal 3 / hard 4,
+`phase2At` 0.5, score 5,000), `BoatParams { hp?, wave?, tag? }`.
+- `type RingBoat = Boss & { wavesCalled: number; ended: boolean }`, `isRingBoat(e)`; `autoStart =
+  false`, `removeOnDeath = false` (the wreck stays).
+- `startBoat(ctx, boat): Wait` — `ctx.bossIntro(BOAT_NAME, { subtitle: 'MINI-BOSS', music: boatSong() })`
+  + `boat.start()`. `waitBoatEnd(boat, cap = 900): Wait` — `ended`, removed, or `cap` ticks after
+  `defeated`.
+- Event **`'ring-boot'`** (`BOAT_EVENT`): `{ what: 'wave' | 'phase2' | 'beaten' | 'end', boat, wave?,
+  count? }` — a wave called; phase 2 (the drum band); the hull cracked (the death starts); the leader
+  carried off (`ended`).
+- The stub: `STUB_BOAT_HP` 240 (× difficulty × co-op), the hull box 128 × 32 at the deck, two
+  breakable speakers (40 HP, × 1.5); phase 1 calls a wave of lopers (tag `'rf-b-boat'`) when fewer
+  than the wave size are alive, three paint balloons, `DIT IS EEN VREEDZAAM PROTEST!` every second
+  wave; phase 2 (≤ 50 % or both speakers) `TROMMELS... NU!`, a drum tell of 24 ticks then a ground
+  shock rolling left (jump over it); the end: cloth debris and dust (bloodless), a weapon drop (S), the
+  leader slides down, `WIJ KOMEN TERUG... NA DE LUNCH!`, `callPolice` → `ended`, 'end'. The hull never
+  flashes white (the wave-A rule); only the speakers do.
+
+**rf-b (`foot/section-rf-b.ts`, the skeleton).** `sectionRfB` (id `'rf-b'`, name `DE BLOKKADE`),
+`RF_B_W` 2,304, `RF_B_ARENA_L/R` (the last screen), `RF_B_BOAT_X` (W − 120), `RF_B_POLICE_X`,
+`RF_B_LOCK_L`, `RF_B_TAG`, `RF_B_ART`; `bossStart` = arena + 48 (`?section=rf-b&boss=1`: the script
+skips the blockade). The script: the police line (two standing `ring-agent`s), a crate, the blockade
+zone (lijmer, ketting, megafoon, lijmer), a lock with a wave of three lopers, a second group, then the
+arena lock, a body wall at the trailer's rear (players), `startBoat`, `waitBoatEnd`, `missionComplete`.
+`RING_FOOT_HOSTAGES['rf-b']` stays 0. Measured (god, seed 1): rf-b 2,434 ticks 1P / 2,421 2P (the
+whole level 26.3k–27.9k, seeds 1–3); `--boss` 750 / 706. The watch test still projects rf-b at 9,000
+(`RF_B_PLACEHOLDER` true until BLOCKADE+BOAT's real section).
+
+**Text (`foot/lines.ts`; pure data).** `RING_SPEAKER = { activistA: 'activist-a', activistB: 'activist-b',
+leider: 'leider', cab: 'zware-jongen', boer: 'boerenknecht' }`; `ACTIVIST_LINES` (klimaatnood, zitten,
+lijm, sit, los, ketting, toeter, moeder) + `ACTIVIST_LINE_SPEAKER` (the main voice of each; both voices
+may get takes under one key); `LEIDER_LINES` (wave, vreedzaam, drums, lunch; two carry a `'\n'` at the
+natural break: the voice key folds it to a space); `SPANDOEK { title: 'EXHAUSTING REBELLION', sub }`,
+`BANNERS`, `CONTINUE_SIGN`, `PENNANT_TEXT`, `BOAT_TITLE`, `BOAT_SUBTITLE` (signs: never voiced);
+`WAVE_A_LINES` (copies of `CAB_LINES` / `VEE_LINES`; a test holds them equal); `ringVoicedLines():
+{ speaker, text, scene: 'drive' | 'foot' }[]` (the AUDIO spec and the voice-fit test read it).
+
+**Sound.** `SAMPLE_GROUPS` gains `'mission:ring'` (engine/samples.ts); `tools/audio/lib.ts` `GROUP_DIRS
+['mission:ring'] = 'ring'` (public/audio/ring/), `LAZY_GROUPS` has it (the manifest lists it only once
+something of it is picked). **How a ring line finds its take:** a bubble (`hud.bubble` / `gagBubble` /
+`Boss.say`) → the runner's `HudState.onBubble` (RingRunner on the drive, MissionRunner on foot) →
+`AudioOut.say(text, speaker)` → `voiceKey(text)` → a ready voice sample of a loaded group. Both scenes
+load `'mission:ring'` (ring-route `preloadRing` / RingScene, and the foot def's `audioGroup`), which is
+`ringSampleGroup(SAMPLE_MANIFEST)` (content/samples/ring.ts): the ams group's sfx and voices (NOT its
+songs) + `SAMPLE_MANIFEST['mission:ring']` (sfx, voice, music; the ring's entries win on a shared id).
+ring-route.ts registers it at import and content/samples/index.ts again after the manifest loop (same
+merge: the order never matters). No shipped ring samples yet: everything stays synth / silent.
+
+### R.B1 The activists and the police (ACTIVISTS, 2026-10-22)
+
+Spec `docs/design/ring.md` §R.6, §R.9. PREP's `stub.ts` is gone; `api.ts` is unchanged (every
+export kept). Files under `content/ring/activists/`:
+
+| File | What |
+|---|---|
+| `looks.ts` | `Look` ('a' / 'b'), `lookOf(x, param)` (the `look` param, else by spawn x), `ACT_STYLE[kind][look]`, `AGENT_STYLE[look]`, `ACT_ART` (all sprite ids), `PAINT_COLOURS` (pink, gold, sky, green) |
+| `kit.ts` | `Activist` (a `Creature`, implements `Carryable`), `ACT` tuning, `actRng(world)` (the fork `'ring/activists'`), `SignProp` |
+| `kinds.ts` | `Lijmer`, `Ketting`, `Megafoon`, `Loper`, `RoadProp`; `LIJMER` / `KETTING` / `MEGAFOON` / `LOPER` specs, `ACT_TELL`, `LOB_TICKS`, `CRATE_H` (9), `SQUEAL_REACH` (128) |
+| `police.ts` | `Agent` (`ring-agent`), `PoliceJob`, `callPoliceImpl`, `CARRY_HALF` (13), `LIFT_PX` (10) |
+| `fx.ts` | `Splat`, `GluePuddle` (tag `GLUE_PUDDLE_TAG` `'ring-glue-puddle'`), `ShoutRing`, `balloonImpact(colour)`, `canImpact`, `potImpact`, `ACT_FX` |
+| `status.ts` | `GLUE_STATUS`, `STUN_STATUS`, `PUSH_STATUS`; `glueHero`, `stunHero`, `pushHero` |
+| `art.ts`, `art-fx.ts` | the strips (below) |
+| `index.ts` | wires `ACTIVIST_HOOKS.impl = ACTIVIST_IMPL` and re-exports all of the above |
+
+**The base `Activist`** (`kit.ts`). Modes `idle` → `tell` (strip `tell-<attack>`, `tele(base)` ≥ 18,
+its sound, maybe a Dutch line) → `attack` → `recover` (the attack token is held from the tell to the
+end of the recovery; nothing starts outside the view: `onScreen(-8)` and the hand in view). Hooks:
+`choose(t, dist)`, `tellOf(a)`, `strikeOf(a)`, `strike(a)`, `beaten(d)`, `rest()`, `exitDone()`,
+`exitMax()`. Cool-downs: `spec.cool × enemyFireInterval ± coolJitter` from `actRng` (the gameplay rng
+never advances for them). Lobs land where the hero stood (`lob(sprite, ticks, impact)`; the shot speed
+is divided by `enemyBulletSpeed`, so the arc lands at every difficulty). The beaten end (`dead` from the
+hit: no target, `waitClear` stops waiting; no white flash): `markRunoff()` fires
+`ACTIVIST_OUT_EVENT` `runoff` at the rip / the squeal / the dropped banner; `runOff(strip)` leaves by the
+nearer screen edge (a `huff` of 40 ticks at 0.9, then `flee` at 2.4, faster than a hero); a planted sign
+stays on the road (`SignProp`). The `ketting` waits (`endPhase 'wait'`) for `callPolice` (event
+`carried` at the lift). While `carried` it does nothing and draws its `plank` strip (z 32, over the
+officers). Signs are separate sprites drawn unflipped.
+
+**The kinds** (NORMAL; HP not scaled — they are small).
+
+| Kind | HP / score | Attacks (tell) | Beaten |
+|---|---|---|---|
+| `ring-lijmer` | 20 / 100, hit box 16 × 25 | paint balloon (26; lob 52 ticks, bright splat), every third attack with a grounded hero ≤ 170 px the glue pot (30; lob 48; a `GluePuddle` where it lands, none when it hits a hero) | `LOS!`, `rip` strip, `huff`, `flee` |
+| `ring-ketting` | 30 / 150 | soup can (24; lob 44; ORANGE soup `Splat` and the dented can) | `MIJN KETTING!`, `snap`, then `callPolice` |
+| `ring-megafoon` | 20 / 150, on a crate (`CRATE_H` 9, hit box raised) | shout (24; a `ShoutRing` rolls along the ground 2.2 px/tick for 66 ticks: `pushHero`, no damage, a jump clears it), every third with a hero ≤ 128 px in front the squeal (32; `stunHero` to heroes ≤ 128 px in front, ±30 px) | the megaphone squeals, `hop` off the crate (sometimes `IK BEL MIJN MOEDER!`), `flee` |
+| `ring-loper` | 10 / 100, standing hit box until it sits | runs in at 1.4 to `sitAt`; `sitdown` with the sit tell `tele(40)` (`ZITTEN BLIJVEN!`), then a lijmer | before the glue: `IK BEL MIJN MOEDER!`, the banner drops (`RoadProp` `sign-dropped`), `drop`, `flee`; glued: as the lijmer |
+
+Params besides api.ts: `look` ('a' | 'b'). `ketting` with `anchor: 'partner'` spawns its partner (a
+`ketting`, the other look, `anchor: 'linked'`, the same `tag`, `wait` + 40) 20 px behind it; with
+`'barrel'` (default) a blue drum (`RoadProp`) 20 px behind. The megafoon's crate is a `RoadProp`.
+Props stay on the road after their owners leave (decor).
+
+**The in-world continue** (never a laugh or a point; no bubble): `gloat` — the lijmer hums (eyes
+shut, notes rise, `ring/act/hum`), the ketting and a glued loper hold up `WIJ HADDEN HET GEZEGD`
+(`sign-gezegd`), the megafoon eats a sandwich and offers half; a loper still on its feet stands with
+its banner. `cower` — hands over the head (`cower`, `cower-stand`).
+
+**The police** (`police.ts`): `ring-agent` never has 'shootable' or 'enemy'; team neutral; no body.
+Without a job it stands (`stand`; params `facing`, `look`). `callPoliceImpl` spawns two officers 24 px
+outside the nearer edge (`look` a = the front officer, b = the back one), the whistle; walk-in to ±13
+px of the target (`walk`), `lift` (24 ticks, 10 px; the target turns `carried`, faces the exit; the
+event), `carry` (`carry-front` / `carry-back` at 1.1 px/tick) until all three are off screen (or 900
+ticks), then the target and the officers are removed and `onDone` runs.
+
+**The hero opt-ins** (`status.ts`; status effects, off unless a ring entity adds them; NO change in
+`src/game/player/**`): `ring-glue` (40; speed 0, `vx` held at 0 each tick, no jump, no crouch, no
+mount; can shoot and turn; glue strands drawn at the boots), `ring-stun` (20; no control; squiggles over
+the head), `ring-push` (10; no control; `vx = dir × speed` and a hop of −1.6 when grounded and not
+glued). A glue puddle (300 ticks + 30 drying, 26 px) glues a grounded hero whose feet are in it, then a
+grace of glue + 50 ticks lets the hero walk out.
+
+**The 2D bot** (`src/sim/bot.ts`, keyed to the tag `'ring-glue-puddle'` only — the list is empty in
+every other mission): a sticky puddle starting within 26 px ahead at the feet's height → a jump when
+`safeAhead(64)`, else wait. It shoots the activists like any enemy (they are `enemy` / `shootable`).
+
+**Art** (1× PAL, 2× / 4× PAL_HD from one drawer per strip; fixed box `ACT_BOX` [−22, −46, 44, 48],
+feet anchor; `PLANK_BOX` [−22, −30, 44, 32]; the HD frames take the 1× points `hand`). `<P>` =
+`npc/ring/act-<kind>/<look>`:
+- lijmer, loper: `sit` 2, `hit` 1, `tell-lob` 3, `lob` 2, `tell-pot` 3, `pot` 2, `rip` 3*, `huff` 4*,
+  `flee` 4*, `gloat` 4*, `cower` 2*; the loper also `run` 4, `stand` 1, `cower-stand` 2*, `sitdown` 4,
+  `drop` 2*.
+- ketting: `sit` 2, `hit` 1, `tell-throw` 3, `throw` 2, `snap` 2*, `plank` 2*, `gloat` 4*, `cower` 2*.
+- megafoon: `idle` 2, `hit` 1, `tell-shout` 3, `shout` 2, `tell-squeal` 3, `squeal` 2, `hop` 2*,
+  `flee` 4*, `gloat` 4*, `cower` 2*.
+- police `npc/ring/agent/<look>`: `stand` 2, `walk` 8, `lift` 2*; a: `carry-front` 8*; b: `carry-back` 8*.
+- props `npc/ring/prop/`: `sign-0` … `sign-3` (the `BANNERS`), `sign-gezegd`*, `sign-dropped`*,
+  `barrel`, `crate` (outline C).
+- fx `fx/ring/act/`: `balloon-<pink|gold|sky|green>` 2, `pot` 4, `can` 4, `splat` 4 (one per colour),
+  `soup` 1, `glue` 4, `shout` 3, `squeal` 3, `note` 2, `strands` 4, `links` 2 (decals: no ink outline).
+- `*` = deferred. Bloodless: no red (a test).
+
+**Sound** (`content/sfx/ring-activists.ts`, synth): `ring/act/` `balloon-tell`, `splat`, `pot-tell`,
+`pot`, `glue-stick`, `glue-slap`, `can-tell`, `can`, `can-hit`, `shout-tell`, `shout`, `push`,
+`squeal-tell`, `squeal`, `squeal-out`, `rip`, `snap`, `huff`, `hum`, `sit`, `whistle`, `lift`.
+Lines: `ACTIVIST_LINES` with `ACTIVIST_LINE_SPEAKER` through `gagBubble` (voiced once a take exists).
+
+**Tests**: `tests/content/ring-activists.test.ts`.
+
+### R.B2 rf-b DE BLOKKADE and the boat (BLOCKADE+BOAT, 2026-10-22)
+
+Spec §R.6, §R.7. Every change outside the new files is an ADDITIVE OPT-IN; the identity sims and the
+drive stay SAME. PREP's `boot/stub.ts` is gone (boot/index.ts imports `boat.ts`); `boot/api.ts` is
+unchanged.
+
+**The layout** (`foot/layout-rf-b.ts`): `RF_B_W` 3,840; the arena (`RF_B_ARENA_L/R`, the last screen);
+`RF_B_BOAT_X` = W − 96 (the stern ends at the section's end); the police van `RF_B_VAN_X`, the tape
+`RF_B_TAPE_X`, the officers `RF_B_POLICE_X`; the head of the queue `RF_B_CARS` (near lane) and
+`RF_B_QUEUE_END` (the far lanes' standing cars stop there); `RF_B_PLATFORMS` (the van's roof only:
+nothing else in rf-b is solid, so the activists never get stuck); decor in the walking plane
+`RF_B_BARRELS`, `RF_B_CHAINS`, `RF_B_BANNERS`, `RF_B_PICNIC_X`; the far lanes `RF_B_CROWDS` (sitting rows
+on lanes 1–2), `RF_B_PLACARDS`, the spandoek `RF_B_SPANDOEK_X/Y`; `RF_B_ARENAS` (three locks, each
+`[left, left + 384]`: camera.ts `lock` takes the VIEW's left and right; rf-a's old `[x, x]` locks
+centred the camera at x − 192 — fixed by the integrator, see R.BI); `RF_B_CHECKPOINTS` 700, 1,900, 3,000 (+ the arena's 3,496);
+`RF_B_CRATES` (M, F, S). `RING_FOOT_HOSTAGES['rf-b']` stays 0 (no hostage fits a peaceful blockade).
+
+**The set** (`foot/scene-rf-b.ts`): entity `ring-blok-scene` (`RfBlokScene`, z −20, `spawnBlokScene`):
+the shoulder strip, the queue's head and the police van, the tape (`policeLine` 0 / 1 / 2, snaps with
+`ring/blok/tape`), the barrels, chains, banners and the lunch table; the crowd chants
+(`ring/blok/chant`, every 420 ticks while a crowd is in view), the van whoops once. The far lanes are
+the section's static `decor` (the queue's cars, crowds, placards, the spandoek, never mirrored).
+
+**The script** (`foot/script-rf-b.ts`): `scriptRfB`, `RF_B_TAG` (zone, lock, rf-b1..3),
+`RF_B_WAVE_MIN` 150 (a lock's wave lasts at least this long), `RF_B_TRICKLE` 100 (no shootable enemy in
+view this long → a loper runs in from the RIGHT edge, just inside the view, ahead of the squad; only
+when that one is shot down before it shows does the next try, `RF_B_TRICKLE_RETRY` 30 ticks later,
+come from the left edge; so do the tries on the run-up to the boat; at most `RF_B_TRICKLE_MAX` 40;
+the final fixer, wave B). Barrel `ketting`s sit beside the painted barrels of `RF_B_BARRELS`
+(`chainedTo(x)`, param `barrel: 'layout'`: no blue drum of their own; `KETTING_REACH` 20). Activist
+bubbles have a cool-down per line across the road (`ACTIVIST_LINE_GAP`, kit.ts; the run-off line
+falls back from `IK BEL MIJN MOEDER!` to `KLIMAATNOOD!`). The police line → two lopers → glued / chained /
+megaphone groups → LOCK 1 (3 waves) → the lunch table → LOCK 2 under the spandoek (4 waves) → LOCK 3
+(4 waves) → the arena: `lockCamera`, the boat, a body wall at the drawbar (`RF_B_BOAT_X + WALL_X`),
+`startBoat`, `waitBoatEnd`, the wall goes, GO, a hero walks to W − 120 (or 90 ticks) →
+`missionComplete`. `?section=rf-b&boss=1` (`ctx.bossRush`) skips to the arena. NORMAL / HARD / 2P add
+activists.
+
+**The boat** (`boot/boat.ts`, `boot/geometry.ts`): `PinkBoat extends Boss` (`ring-boot`): `BOAT_HP` 1,500
+(× difficulty × co-op; was 1,800), parts `hull` (box takes in the trailer), `speaker-l` / `speaker-r` (40 HP,
+× 1.5; they flash, the hull never does); the hull's damage-rate bucket `BOAT_PACE.floorTicks` 2,250 /
+`burst` 150 (any gun ≥ 37.5 s of hull damage; was 3,000 / 50 s: the final fixer, the momentum rule
+§R.13; a hit on an empty bucket is a plain hit of 0 damage, no armour ping; params `hp`, `rate` (0 = no
+limit), `wave`). Facing 1, the
+art drawn bow-left (never mirrored). `intro()` 150 ticks (the leader taps the megaphone; no attack
+under the WARNING banner). Phase `waves`: `callWave(n)` (the megaphone ring ≥ 18-tick tell → `MEDE-
+REBELLEN... ZITTEN!` → n lopers down the bow's ladder, tag `BOAT_LOPER_TAG` 'rf-b-boat', a new wave
+only while fewer sit there), `lob()` (the snare drummer lifts a paint balloon: the tell; the balloon
+bursts into a bright splat, never red), `DIT IS EEN VREEDZAAM PROTEST!` every second wave. Phase
+`drums` (≤ 50 % or both speakers; `TROMMELS... NU!`): `beat()` (sticks raised ≥ 18 ticks, `drumTell`;
+a ground shock `ring-boot-shock` rolls left at 2.3 px/tick, box 14 × 5: jump it), `boom()` (the creak
+≥ 18 ticks, the leader ducks; `boomF` 2 → 5 → 0; frames 4–5 are a contact box at a standing hero's
+chest height: crouch or step back; `contactBoxes()` returns it only then), smaller waves, balloons.
+`attacks: BoatAttack[]` (kind, tell, tick) for tests; `cutAttack` ends any attack cleanly. The end
+(`deathSequence`, ~90 ticks, bloodless): 'beaten', the hull cracks (`wrecked`), the mast topples
+(`mastFallF` 0..3), the boat settles (`settle` 3 px), an S weapon drop, the leader NPC `ring-leider`
+(`BoatLeader`, neutral, never shootable) slides down the bow, says `WIJ KOMEN TERUG... NA DE LUNCH!`,
+`callPolice(from: 'left', kind: 'leider')`; when the officers lift the leader → `ended`, 'end' (the exit
+opens while they carry the leader off).
+
+**Art** (`boss/ring-boot/…`, one drawer per strip, 1× / 2× / 4×): art-hull.ts `trailer`, `hull-0|1|2`,
+`hull-wreck`*, `deck`, `mast` (3, the streamer `EXHAUSTING REBELLION`, bunting), `mast-fall`* (4),
+`boom` (6), `speaker-l|r-0|1|2`; art-crew.ts `leader-idle|call|duck`, `drum-a-idle|tell|beat|duck`,
+`drum-b-idle|tell|beat|lob|throw|duck`, `kit-a`, `kit-b`, `leider-stand|slide|carried`*; art-fx.ts
+`balloon-0|1|2`, `splat-0|1|2`, `shock`, `ring` (* deferred). The blockade (`ring/foot/blok/…`,
+foot/art-blok.ts, outline C): `spandoek` (3 wind frames; our mark = `markHit`: a round-bellied
+hourglass, sand, a smoke puff on top, never in a circle), `banner` (4), `placard` (4), `barrel` (3),
+`chain`, `picnic` (the soup is orange), `crowd` (2). Our lettering: foot/art-blok-letters.ts (`SMALL`
+3 × 5 with `. , ! -`, `BOLD` brush face; `faceHit`, `faceWidth`, `twoLines`).
+
+**Sound** (`sfx/ring-boot.ts`, synth): `ring/blok/chant|van|tape`, `ring/boot/megaphone|balloon-lift|
+splat|drum-tell|drum|shock|boom-creak|boom|feedback|speaker-break|crack|mast-fall|settle|slide`.
+
+**The 2D bot** (`src/sim/bot.ts`, additive, keyed to the type `ring-boot-shock` only): `shockComing`
+jumps a shock whose near edge is 8–30 px away.
+
+**Measured** (god, seed 1): rf-b 8,156 ticks 1P / 7,719 2P (`--boss` ≈ 3,800 with the end); the
+boat's fight about 50 s (the floor: 3,000 ticks of hull damage); the whole level 31,972–33,825 (seeds 1–3) and 30,244 (2P seed 1); the bots'
+normal runs (no god) 30,134–33,809, 0–2 deaths at the boat. Longest empty stretch before the boat
+≤ 240 ticks (1P / 2P); the end scene (crack → the leader lifted) ≈ 350 ticks without a target.
+Tier 4 (seeds 1–5, every hero, 1P / 2P pairs, the reserve included): rf-b ≤ 156 / 180 MB of 254;
+the boat 10.6 MB, the blockade decor 4.2 MB. Tests: `tests/content/ring-blokkade.test.ts`,
+`tests/content/ring-boot.test.ts`.
+
+### R.BI Integration of wave B (INTEGRATOR, 2026-10-22)
+
+**The level, end to end** (1P and 2P; a P2 join on foot spawns as on any 2D section): the ring card
+(the re-worded briefing, voiced by Gusto; the announce `MISSION TWO. HOU JE VAST!`) → the boarding →
+the short drive → the ZWAAN train → the final jam and the alight → `rf-a` DE FILE → `rf-b` DE BLOKKADE
+(the police line, the blockade, three locks, the spandoek `EXHAUSTING REBELLION`) → the pink boat
+`DE LAATSTE DRUPPEL` → ONE MISSION COMPLETE tally (both parts' hostages, the FINES) → the glitch
+bridge → the first-person floors. Music: the foot def plays `ring-foot` on foot and `ring-boot` for
+the boat (`bossMusic`, `boatSong()`); both have ElevenLabs takes and synth fallbacks
+(`content/music/ring-foot.ts`). Every voiced line's bubble lasts its take (`ring-voice-fit.test.ts`).
+The activists', the blockade's and the boat's art are in `RF_B_ART` (one tier-4 run over the hand-over).
+
+**Changes by the integrator (all keyed to ring ids; the identity sims and the drive stay SAME):**
+- `foot/layout-rf-a.ts` `RF_A_ARENAS` = the locked VIEW `[left, right]` (`{ first: [508, 892], van:
+  [1308, 1692], last: [2128, 2512] }`). They were `[x, x]`, which `Camera.lock` reads as a zero-wide
+  range centred on x: at every lock the view scrolled BACK 192 px and the squad stood at the right
+  edge where the riders come in. The framing the fights were placed for is the same; the lock now
+  starts there (`script-rf-a.ts`: the wait before LOCK 3 moved from camera 2,200 to 2,110 to keep the
+  order).
+- `script-rf-a.ts` `RF_A_LOCK_MAX` 600 (was 2,400): a lock's last wave ends after 10 s even if a
+  member still stands on a roof or a block (out of a level shot's reach the bot held a lock 40 s);
+  the member fights on after the unlock. The van lock's rider from behind comes only on HARD or in 2P.
+- `src/sim/bot.ts` (keyed to the boat's types only): the shock check (`ring-boot-shock`) runs BEFORE
+  the dodge planner (the planner's sideways dodge jump ran along with the shock and landed on it:
+  one death per boat fight); `boomOver` (type `ring-boot`, `boomF ≥ 1`, the hero within the boom's
+  reach `x − 136 … x − 44`): crouch, no jump, no walk, until the boom is back.
+- `src/sim/headless-ring.ts` `RingFootReport` gains `bossFightTicks` (the foot boss's first tick in
+  `'fight'` → `bossDefeated`, −1 none) and `bossEndTicks` (`bossDefeated` → the end of the run); the
+  foot gaps stop counting at `bossDefeated` (the wreck, the carry-off and the exit are a scene, not
+  a gap). `tools/sim.ts` prints `boss T end T` after the gaps.
+- Tests: `watch.test.ts` `RF_B_PLACEHOLDER = false` (the measured totals count), rf-b's gap ≤ the
+  gap limit, the boat's fight 2,700–4,500 ticks; `zwaan-handover.test.ts` the foot cap 16,000.
+
+**Measured** (the bots; `tmp/ring-r/base-b/` holds the god reports for the lead): see
+`docs/design/ring.md` §R.14 "Status (wave B)" for the table (rf-b, the boat, the gaps, the level).
+
 ## 1. Files and shared ids
 
 | File | Contents | Owner after the core stage |

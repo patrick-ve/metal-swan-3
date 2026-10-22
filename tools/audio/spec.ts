@@ -1,5 +1,6 @@
-// ElevenLabs generation spec for the start screens, mission `ams`, the first-person mode and
-// mission `oldenzaal` (audio plan step 2; oldenzaal: docs/design/oldenzaal.md §11, wave A plan).
+// ElevenLabs generation spec for the start screens, mission `ams`, the first-person mode, mission
+// `oldenzaal` (audio plan step 2; oldenzaal: docs/design/oldenzaal.md §11, wave A plan) and mission
+// `ring` (docs/design/ring.md §R.8, revision R wave B).
 // Tools only: src/ never imports this file. The inventory behind it is
 // tmp/audio/overview/critic.md (B1 sfx, B2 music, B3 dialogue) and sfx.md (PART 2).
 //
@@ -18,6 +19,7 @@ const BOOT: Group = 'boot';
 const AMS: Group = 'mission:ams';
 const FPS: Group = 'mode:fps';
 const OZ: Group = 'mission:oldenzaal';
+const RING: Group = 'mission:ring';
 
 // ---------------------------------------------------------------------------------------------
 // SFX
@@ -386,6 +388,85 @@ export const SFX: SfxSpec[] = [
   one('oz/swan/ignite', OZ, 1, 1.5, `Two small rocket engines lighting up: a soft thump and a rising turbine whine into a roaring hiss, ${ONE}`, { isNew: true }),
   loop('oz/swan/jet', OZ, 8, 'Two small rocket engines hovering in a storm: a steady roaring hiss, a low throb and a steady whine', true),
   one('oz/swan/flyby', OZ, 1, 2.35, `A rocket-powered flying machine turning and flying away fast: a jet roar that swells, passes and falls away into the distance with a doppler drop, ${ONE}`, { isNew: true }),
+  // --- Mission ring, revision R (docs/design/ring.md §R.8; group 'mission:ring', loaded by the drive
+  //     and the foot part). Wave B, AUDIO-1: the most heard sounds of wave A (the ZWAAN road train:
+  //     content/sfx/ring-zwaan-a.ts, ring-zwaan-b.ts; the jam and rf-a: ring-road.ts `ring/horns`,
+  //     ring-foot.ts). Their synth recipes are registered at boot (sfx/index.ts), so no `isNew`.
+  //     A made-up hauler, a motorway on a sunny afternoon; the animals are never hurt; no prompt
+  //     names a game, a film, a brand or a real hauler. AUDIO-2 adds the blockade's and the boat's.
+  // The train's kit and the cab ZWARE JONGEN (TRAIN-1).
+  one('ring/zwaan-clank', RING, 1, 0.9, `A heavy truck trailer coupling letting go: a big steel jaw unlatching with a hard clank and a low boom, the steel ringing on, outdoors, ${ONE}`),
+  one('ring/zwaan-snap', RING, 1, 0.33, `A steel drawbar pin popping out of a trailer hitch: a sharp metallic crack, a short spring twang and the whip of air hoses, close, ${ONE}`),
+  one('ring/zwaan-horn', RING, 1, 1.01, `A big lorry's deep triple air horn: one long, loud, low blast in a minor chord, outdoors on a motorway, ${ONE}`),
+  one('ring/zwaan-tip', RING, 1, 1.28, `A heavy truck trailer tipping over onto the road: a deep crunch of folding metal, then a long grinding scrape over asphalt, ${ONE}`),
+  one('ring/zwaan-squeal', RING, 1, 0.56, `A lorry braking hard: a high wavering brake squeal over a burst of air-brake hiss, ${ONE}`),
+  one('ring/zwaan-window', RING, 1, 0.35, `A truck's sleeper window sliding open in its rubber track with a squeaky swish, then a small pistol slide racked, close, ${ONE}`, { timing: TELL }),
+  // The car transporter, the tanker and the livestock trailer (TRAIN-2).
+  one('ring/zwaan/hydraulic', RING, 1, 0.58, `A hydraulic ramp on a car transporter moving: a rising pump whine, oil hissing through a valve, a thump at the end of the stroke, ${ONE}`, { timing: TELL }),
+  one('ring/zwaan/creak', RING, 1, 0.54, `A strained steel deck of a car transporter bending: a long, low metal creak and groan, close, ${ONE}`),
+  one('ring/zwaan/car-roll', RING, 1, 0.78, `A car rolling down a steel ramp: tyres rumbling over ribbed steel plates, a low body rumble, ${ONE}`),
+  one('ring/zwaan/car-bounce', RING, 1, 0.3, `A small car landing hard on asphalt: a hollow body thump, a bounce and a loose rattle, ${ONE}`),
+  one('ring/zwaan/ram-snap', RING, 1, 0.52, `A hydraulic ram bursting: a sharp crack and a quick gush of oil spraying out, ${ONE}`),
+  one('ring/zwaan/fat-hiss', RING, 1, 0.43, `Hot frying fat sizzling and spitting on a hot road surface, a short burst, close, ${ONE}`),
+  one('ring/zwaan/fat-spray', RING, 1, 0.89, `A hose spraying a jet of liquid cooking fat from a tanker truck: a pressurised gush and a splatter on asphalt, ${ONE}`),
+  one('ring/zwaan/valve', RING, 1, 0.6, `A tanker truck's dump valve opening: a metal squeal and a rising hiss of pressure, ${ONE}`, { timing: TELL }),
+  one('ring/zwaan/flame-whoosh', RING, 1, 0.88, `A trail of spilled fat on a road catching fire: a soft whump and a fast roaring whoosh of flame running along, ${ONE}`),
+  one('ring/zwaan/fireball', RING, 1, 1.4, `A tanker truck going up in a big cartoon fireball: a deep whump and a rolling roar of flames that fades, no debris, ${ONE}`),
+  one('ring/zwaan/gate', RING, 1, 0.36, `A livestock trailer's steel gate unlatching: a heavy clank and a loose metal rattle, ${ONE}`, { timing: TELL }),
+  one('ring/zwaan/moo', RING, 2, 0.98, `A single cow mooing, a long, loud, slightly surprised moo, outdoors, close, ${ONE}`),
+  one('ring/zwaan/oink', RING, 2, 0.35, `A pig giving two short, nasal, cheerful oinks, close, ${ONE}`),
+  one('ring/zwaan/hooves', RING, 1, 0.22, `A few hoof clops of a cow on a steel trailer floor, close, dry, ${ONE}`),
+  one('ring/zwaan/bale-thud', RING, 1, 0.33, `A bale of hay landing on asphalt: a soft, dull, rustling thud, ${ONE}`),
+  one('ring/zwaan/churn-clang', RING, 1, 0.5, `A metal milk churn landing on asphalt: a bright clang that rings, and a small splash of milk, ${ONE}`),
+  // The final jam on the drive (ring-road.ts) and DE FILE on foot (JAM+FOOT).
+  one('ring/horns', RING, 1, 0.99, `A motorway traffic jam: several car horns honking at once, impatient, a short chorus of different pitches, outdoors, ${ONE}`),
+  one('ring/foot/honk', RING, 2, 0.41, `One car driver in a standing traffic jam leaning on the horn: a single short, annoyed car horn honk, outdoors, ${ONE}`),
+  one('ring/foot/door', RING, 1, 0.18, `A car door unlatching and swinging open: a latch click and a hollow clunk, close, ${ONE}`),
+  one('ring/foot/land', RING, 1, 0.1, `Boots landing on asphalt after a jump: a short gritty thump, close, dry, ${ONE}`),
+  one('ring/foot/tumble', RING, 1, 0.25, `A person tumbling over asphalt: two or three soft body thumps and a scuff of clothes, close, cartoon, ${ONE}`),
+  one('ring/foot/tape', RING, 1, 0.39, `A plastic police barrier tape snapping and fluttering in the wind, close, ${ONE}`),
+  // Wave B, AUDIO-2: the blockade's people (content/sfx/ring-activists.ts, ACTIVISTS) and rf-b DE
+  //   BLOKKADE with the pink boat DE LAATSTE DRUPPEL (content/sfx/ring-boot.ts, BLOCKADE+BOAT).
+  //   Slapstick and bloodless: paint and orange soup, glue, a chain, a megaphone, a drum band, a
+  //   wooden boat on a trailer. No prompt names a movement, a group, a slogan, a band or a game. The
+  //   wordless voices (`shout`, `chant`) say so in the prompt. Stay synth: `ring/act/squeal-tell`,
+  //   `squeal-out`, `huff`, `hum`, `lift` and `ring/boot/feedback` (pure tones or a voice that must
+  //   not say words).
+  one('ring/act/balloon-tell', RING, 1, 0.19, `A rubber balloon full of paint squeezed in a hand: a short rubbery squeak and a little slosh of liquid inside, close, dry, ${ONE}`, { timing: TELL }),
+  one('ring/act/splat', RING, 2, 0.23, `A loud, wet SPLAT: a water balloon full of thick paint thrown hard and bursting on the ground, a sharp rubber pop and a big juicy splash, close, ${ONE}`, { seconds: 0.8 }),
+  one('ring/act/pot-tell', RING, 1, 0.32, `The lid of a small tin of glue pried off: a tinny pop, then a thick gloopy glug, close, dry, ${ONE}`, { timing: TELL }),
+  one('ring/act/pot', RING, 1, 0.2, `A small metal tin of glue landing on asphalt: a tinny clank and a thick sticky splat, close, ${ONE}`),
+  one('ring/act/glue-stick', RING, 1, 0.25, `Boots stepping into thick wet glue: a sticky, stretchy, rubbery squelch, cartoon, close, dry, ${ONE}`),
+  one('ring/act/glue-slap', RING, 1, 0.19, `A hand slapping down on a blob of thick wet glue: a short wet sticky slap, close, dry, ${ONE}`),
+  one('ring/act/can-tell', RING, 1, 0.26, `A tin can of soup shaken hard in a hand: thick liquid sloshing inside the can, three quick shakes, close, dry, ${ONE}`, { timing: TELL }),
+  one('ring/act/can', RING, 2, 0.21, `A thrown tin can clanking on asphalt as thick soup splashes out of it, close, ${ONE}`),
+  one('ring/act/can-hit', RING, 1, 0.14, `An empty tin can bonking off a hard helmet: a hollow tinny bonk, cartoon, close, dry, ${ONE}`),
+  one('ring/act/shout-tell', RING, 1, 0.4, `A cheap handheld megaphone switched on: a plastic click and a short electric hum from its horn, close, ${ONE}`, { timing: TELL }),
+  one('ring/act/shout', RING, 1, 0.4, `One short, loud, wordless "HAAA!" bark through a cheap handheld megaphone: a buzzy, distorted, honking blast, outdoors, single one-shot, no background music, no words`),
+  one('ring/act/push', RING, 1, 0.16, `A soft, heavy whump of air, a blast of sound shoving someone back: a low dull thud, close, dry, ${ONE}`),
+  one('ring/act/squeal', RING, 1, 0.48, `A handheld megaphone's piercing feedback squeal: a short, shrill, high electronic whine, close, ${ONE}`),
+  one('ring/act/rip', RING, 1, 0.42, `Hands glued to a road tearing free: a long, sticky, rubbery ripping sound, cartoon, close, dry, ${ONE}`),
+  one('ring/act/snap', RING, 1, 0.27, `A steel chain snapping apart: a sharp metallic clank and loose chain links rattling onto asphalt, close, ${ONE}`),
+  one('ring/act/sit', RING, 1, 0.12, `A person plopping down to sit on asphalt: a short soft bump of clothes on the road, close, dry, ${ONE}`),
+  one('ring/act/whistle', RING, 1, 0.43, `A police officer's pea whistle: two short, shrill, rolling trills, outdoors, close, ${ONE}`),
+  // rf-b DE BLOKKADE (BLOCKADE+BOAT).
+  one('ring/blok/chant', RING, 1, 2.13, `A small group of people sitting on a motorway, clapping in rhythm and singing a wordless rising "oh-oh, oh-oh" on two notes, cheerful, outdoors, medium distance, no clear words, single one-shot, no background music`, { seconds: 2.6, trimTo: 2.6 }),
+  one('ring/blok/van', RING, 1, 0.77, `A parked police van giving one short two-tone siren whoop, outdoors on a motorway, medium distance, ${ONE}`),
+  one('ring/blok/tape', RING, 1, 0.28, `A plastic barrier tape snapping as someone walks through it: a crisp plastic snap and a flutter, close, ${ONE}`),
+  // The pink boat DE LAATSTE DRUPPEL (BLOCKADE+BOAT).
+  one('ring/boot/megaphone', RING, 1, 0.52, `A big megaphone tapped twice and switched on: two plastic taps, an electric hum and a short rising feedback whistle, outdoors, ${ONE}`, { timing: TELL }),
+  one('ring/boot/balloon-lift', RING, 1, 0.23, `A rubber balloon full of paint lifted for a throw: a rubbery squeak and a slosh, close, dry, ${ONE}`, { timing: TELL }),
+  one('ring/boot/splat', RING, 1, 0.17, `A big wet slap of thick paint hitting asphalt hard: a loud squelchy splat with a splash, like a cream pie hitting the ground, cartoon, close, ${ONE}`, { seconds: 0.8 }),
+  one('ring/boot/drum-tell', RING, 1, 0.14, `Two wooden drumsticks clicked together twice: a dry click-click, close, ${ONE}`, { timing: TELL }),
+  one('ring/boot/drum', RING, 2, 0.32, `One single hit of a street marching band: a deep bass drum boom and a loud, bright, crisp snare drum crack at the same instant, close, outdoors, ${ONE}`),
+  one('ring/boot/shock', RING, 1, 0.5, `A shockwave rolling over a road surface: a short, deep, low rumble and a ground tremor, ${ONE}`),
+  one('ring/boot/boom-creak', RING, 1, 0.44, `A wooden sailing boat's boom starting to swing: a short loud creak of wood and a rope squeak, close, ${ONE}`, { timing: TELL }),
+  one('ring/boot/boom', RING, 1, 0.38, `A heavy wooden boat boom swinging fast past the ear: a quick, low whoosh, close, ${ONE}`),
+  one('ring/boot/speaker-break', RING, 1, 0.25, `A metal horn loudspeaker shot and breaking: a tinny crunch and an electric pop, close, ${ONE}`),
+  one('ring/boot/crack', RING, 1, 0.54, `A wooden boat hull cracking open: a loud splintering crack of wooden planks, close, ${ONE}`),
+  one('ring/boot/mast-fall', RING, 1, 0.8, `A wooden boat mast toppling over: a creak, then a heavy wooden thump on asphalt and ropes rattling, ${ONE}`),
+  one('ring/boot/settle', RING, 1, 0.62, `A wooden boat sagging down onto its road trailer: a heavy wooden groan, a metal creak and a tyre hissing flat, close, ${ONE}`),
+  one('ring/boot/slide', RING, 1, 0.58, `A person sliding down the side of a painted wooden boat: a squeaky rubbing slide that ends in a soft bump, cartoon, close, ${ONE}`),
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -401,6 +482,8 @@ const FPS_STYLE = 'Instrumental only, no vocals, original composition. Gritty re
 
 /** Mission oldenzaal's songs (docs/design/oldenzaal.md §11): spooky, dark and grim. */
 const OZ_STYLE = 'Instrumental only, no vocals, no lyrics, original composition. Dark, grim and spooky arcade action game score for a haunted old town at night, cinematic, clean stereo mix.';
+/** Mission ring's songs on foot (docs/design/ring.md §R.8): comic, energetic street-band music. */
+const RING_STYLE = 'Instrumental only, no vocals, no lyrics, no chanting, original composition. Comic, energetic arcade run-and-gun game score with a live street brass band feel, punchy clean stereo mix.';
 /** The v1 prompts (takes 1-2 of `title` and `select`, shipped 2026-10-14), kept as a record. */
 export const TITLE_V1_PROMPT = `${MUSIC_STYLE} Heroic-comic title theme, 112 BPM, D major, 4/4. Bars 1-8: a gentle intro of bell arpeggios over a warm pad. Then a 32-bar loop: a calm, graceful legato lead (soft square-wave synth doubled by flute) that leaps up a sixth and walks down in a dotted rhythm, over a frantic running 16th-note filtered-saw bass like legs paddling under water; full drums with kick, snare and hats; a light counter-melody in the middle 8 bars. Dignified on top, furious underneath, a little funny. ${LOOP_TAIL}`;
 export const SELECT_V1_PROMPT = `${MUSIC_STYLE} Bouncy, eager menu music, 128 BPM, A major, 4/4, one 16-bar loop with no intro. A staccato 8th-note synth lead hopping up, a walking bass with chromatic steps, off-beat pulse chords, hi-hats only (no kick). In bars 9-12 a graceful 4-bar hook while the bass breaks into fast 16ths. Excited rookie energy. ${LOOP_TAIL}`;
@@ -610,6 +693,33 @@ export const MUSIC: MusicSpec[] = [
     loop: false,
     takes: 2,
     prompt: `${OZ_STYLE} Short 'to be continued' sting, 96 BPM, about 5 seconds. A deep church bell toll and a timpani hit; a wordless synth choir swells on an F minor chord over a low organ pedal while a thin wavering whistle-like lead sighs up a semitone and back; then everything moves to a held C major chord with the lead hanging on a B above it: unresolved and ominous, the story is not over. It decays naturally to silence. No fade-in.`,
+  },  // --- Mission ring, revision R (docs/design/ring.md §R.8, group 'mission:ring'): the two songs on
+  //     foot. Tempo, key and form match the synth fallbacks in src/game/content/music/ring-foot.ts.
+  //     The stage theme `ring` and `ring-boss` stay synth (no takes). Original tunes only: never a
+  //     quote of a march, a protest song, a brass-band standard or a game tune.
+  {
+    id: 'ring-foot',
+    group: RING,
+    // intro 2 bars (3.6 s) + loop 32 bars (58.2 s) + 2 s
+    seconds: 64,
+    bpm: 132,
+    beatsPerBar: 4,
+    introBars: 2,
+    loop: true,
+    takes: 3,
+    prompt: `${RING_STYLE} A cheeky street-protest march groove for heroes on foot in a stopped motorway traffic jam, 132 BPM, B-flat major, 4/4, a light swing. A 2-bar intro: a snare drum roll and two short whistle blasts. Then a 32-bar loop. Bars 1-8: a bouncy tuba bass on roots and fifths, a tight street snare with rim clicks, hand claps on 2 and 4, a short cheeky whistle motif answered by a muted trumpet. Bars 9-16: a bright brass-band tune for trumpets and trombones over the same groove. Bars 17-24: the tune again with a saxophone counter-line. Bars 25-28: rising tension: the tuba climbs one semitone per bar, the snare rolls grow, a cowbell joins. Bars 29-32: the full band plays the hook loud with a cymbal crash, then a drum fill back into the top. Playful, a little silly, always driving forward. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'ring-boot',
+    group: RING,
+    // intro 2 bars (3.2 s) + loop 24 bars (38.4 s) + 2 s
+    seconds: 44,
+    bpm: 150,
+    beatsPerBar: 4,
+    introBars: 2,
+    loop: true,
+    takes: 3,
+    prompt: `${RING_STYLE} Comic-heroic mini-boss battle against a big pink protest boat with a drum band on deck, 150 BPM, G minor, 4/4. A 2-bar intro: a marching snare cadence over a bass drum, ending on a big brass stab. Then a 24-bar loop. Bars 1-8: a driving marching drum line (snares in sixteenths, big bass drums on every beat, a cymbal crash at every 4 bars), short punchy brass stabs on the off-beats, and a nasal, buzzy, megaphone-like synth lead playing a bold, bossy tune. Bars 9-16: a half-time feel: trombones and tubas play a heroic, slightly pompous tune in B-flat major while the drums keep marching. Bars 17-20: a drum-band break, snares and toms trading calls. Bars 21-24: rising tension: the brass climbs in stabs one semitone per bar over a snare roll, then a crash back into the top. Bold, bouncy and a bit ridiculous. All melodies are new. ${LOOP_TAIL}`,
   },
 ];
 
@@ -793,6 +903,49 @@ export const VOICES: VoiceSpec[] = [
       "A very deep, slow, stony rumble of an old man's voice, as if a stone statue speaks after a thousand years of silence: low, gravelly, calm and gentle, warm and grateful, with long pauses. A native speaker from the Netherlands who speaks Dutch. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.",
     previewText:
       'Dank u, kinderen. Lange tijd zat ik in de kou en het donker, en de vloek hield mij vast als ijzer. Nu is de steen weer warm. Ga in vrede, en zorg goed voor deze stad. Ik waak over het plein, voor jullie.',
+  },  // --- Mission ring, revision R (docs/design/ring.md §R.6-§R.9; content/ring/foot/lines.ts
+  //     `RING_SPEAKER`): designed Dutch voices only, never a clone, never a real person, no accent
+  //     play. The activists and their leader are fictional, likeable comic characters (the joke is
+  //     the situation, never the people); the protest group is a parody, never a real movement.
+  {
+    speaker: 'leider',
+    name: 'MS3 Protest Leader',
+    description:
+      'Earnest, theatrical man in his forties, the leader of a peaceful street protest who talks through a megaphone all day: a passionate, preachy, slightly pompous delivery with big dramatic pauses, and a voice a little hoarse and raspy from shouting. A friendly comic character, never mean. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Mede-rebellen! Luister even, allemaal. Wij gaan hier niet weg. Wij blijven zitten tot iedereen het begrijpt. Dit is een vreedzaam protest, met koffie, met boterhammen en met heel veel lijm. Trommels, klaar? Nu!',
+  },
+  {
+    speaker: 'activist-a',
+    name: 'MS3 Young Activist',
+    description:
+      'Young, eager woman in her early twenties at her first big street protest: a bright, quick, excited voice, a little breathless, idealistic and easily indignant, always cheerful. A likeable comic character. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Hoi! Ja, ik zit hier vast, en dat is precies de bedoeling. Mijn handen zitten aan de weg geplakt, maar ik heb nog nooit zo goed gezeten. Kom erbij zitten! Er is thee, er zijn koekjes, en het is voor een goed doel!',
+  },
+  {
+    speaker: 'activist-b',
+    name: 'MS3 Old Activist',
+    description:
+      'Older man in his sixties, a retired teacher who became a stubborn street protester: a dry, calm, deadpan voice, unimpressed by anything, slow and patient, a little grumpy but kind underneath. A likeable comic character. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Nee hoor, ik ga nergens heen. Ik zit hier al sinds zeven uur vanochtend, met mijn ketting en mijn thermoskan. U mag toeteren wat u wilt. Ik heb veertig jaar voor de klas gestaan, ik ben wel wat gewend. Zo. Nog een koekje?',
+  },
+  {
+    speaker: 'zware-jongen',
+    name: 'MS3 Truck Driver',
+    description:
+      'Big, gruff truck driver in his fifties with a deep, rough, gravelly voice, loud and short-tempered, barking his words as if over the noise of a diesel engine; comic rather than menacing. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Opzij, opzij! Ik heb een vracht die vanavond in Rotterdam moet zijn, en ik sta hier al een uur stil. Wie zit er in mijn spiegel? Ga van mijn bumper af! Zo meteen trap ik op het gas, en dan is het afgelopen, hoor je me?',
+  },
+  {
+    speaker: 'boerenknecht',
+    name: 'MS3 Farmhand',
+    description:
+      'Cheerful young farmhand in his twenties: a warm, hearty, sunny voice, friendly and easy-going, laughing easily, loud as if calling across a field. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Goeiemorgen! Kijk eens, verse melk, vers van de koe, en hooi voor iedereen die het hebben wil. De koeien en de varkens gaan vandaag een dagje uit. Niet schrikken als er eentje loeit, hoor, ze zijn heel lief!',
   },
 ];
 
@@ -951,4 +1104,36 @@ export const LINES: LineSpec[] = [
   { ...line('plechelmus', 'ZO... ZWAAR...', '[deep stony rumble, strained, slow] Zo... zwaar...', 'nl', OZ, 2.5), takes: 3 },
   { ...line('plechelmus', 'VERGEEF MIJ...', '[deep stony rumble, sorrowful, slow] Vergeef mij...', 'nl', OZ, 2.5), takes: 3 },
   { ...line('plechelmus', 'DANK U, KINDEREN.', '[deep, slow, gentle] Dank u... kinderen.', 'nl', OZ, 3.0), takes: 3 },
+  // --- Mission ring, revision R (docs/design/ring.md §R.8; content/ring/foot/lines.ts
+  //     `ringVoicedLines()`, the card's `announce`; group 'mission:ring', loaded by the drive and the
+  //     foot part). Every line is Dutch; `text` is the bubble text verbatim (a '\n' folds to a space
+  //     in the voice key). `maxSeconds` follows the bubble life. Every line gets 3 takes (a Scribe
+  //     check picks one, tmp/ring-audio/stt.ts).
+  { ...line(A, 'MISSION TWO. HOU JE VAST!', '[booming, theatrical] Mission two. [shouts] Hou je vast!', 'nl', RING, 2.6), takes: 3 },
+  // The activists (ACTIVIST_LINES; the main voice of each: ACTIVIST_LINE_SPEAKER).
+  bark('activist-a', 'KLIMAATNOOD!', '[passionate shout, clearly pronounced] Klimaat-nood!', 'nl', RING, 1.3),
+  bark('activist-b', 'WIJ ZITTEN HIER GOED!', '[dry, content, unimpressed] Wij zitten hier goed!', 'nl', RING, 1.8),
+  bark('activist-a', 'LIJM IS GEEN MISDAAD!', '[indignant, defiant] Lijm is geen misdaad!', 'nl', RING, 1.8),
+  bark('activist-a', 'ZITTEN BLIJVEN!', '[eager, quick, sitting down] Zitten blijven!', 'nl', RING, 1.2),
+  bark('activist-a', 'LOS!', '[surprised yelp] Los!', 'nl', RING, 0.8),
+  bark('activist-b', 'MIJN KETTING!', '[dismayed, grumpy] Mijn ketting!', 'nl', RING, 1.2),
+  bark('activist-a', 'TOETER NIET, DOE MEE!', '[cheerful, loud, clearly pronounced] Toeter niet... doe mee!', 'nl', RING, 1.8),
+  bark('activist-b', 'IK BEL MIJN MOEDER!', '[huffy, offended, stomping off] Ik bel mijn moeder!', 'nl', RING, 1.8),
+  // The leader on the pink boat (LEIDER_LINES).
+  bark('leider', 'MEDE-REBELLEN... ZITTEN!', '[theatrical, through a megaphone] Mede-rebellen... [commanding] zitten!', 'nl', RING, 2.6),
+  bark('leider', 'DIT IS EEN VREEDZAAM\nPROTEST!', '[earnest, preachy] Dit is een vreedzaam protest!', 'nl', RING, 2.4),
+  bark('leider', 'TROMMELS... NU!', '[dramatic pause, then shouting] Trommels... nu!', 'nl', RING, 1.8),
+  bark('leider', 'WIJ KOMEN TERUG...\nNA DE LUNCH!', '[defiant, being carried away] Wij komen terug... [matter-of-fact] na de lunch!', 'nl', RING, 3.0),
+  // Wave A's train (WAVE_A_LINES = zwaan/cab.ts CAB_LINES, zwaan/vee.ts VEE_LINES); the wagon
+  // drivers stay silent.
+  bark('zware-jongen', 'UIT MIJN SPIEGEL!', '[angry, loud, every word clear] Uit... mijn spiegel!', 'nl', RING, 1.4),
+  bark('zware-jongen', 'MIJN VRACHT...!', '[anguished, clearly pronounced] Mijn vracht...!', 'nl', RING, 1.6),
+  bark('boerenknecht', 'HOOI VOOR JOU!', '[cheerful, throwing, a long o sound] Hooooi... voor jou!', 'nl', RING, 1.1),
+  bark('boerenknecht', 'VERSE MELK!', '[cheerful shout] Verse melk!', 'nl', RING, 1.1),
+  bark('boerenknecht', 'VAN DE BOER!', '[hearty, proud] Van de boer!', 'nl', RING, 1.1),
+  bark('boerenknecht', 'IK ZIE STERRETJES...', '[dazed, woozy] Ik zie sterretjes...', 'nl', RING, 1.8),
+  // Brigadier Gusto on the ring's intro card (ui/cards.ts; like the ams card: group 'boot', loaded
+  // before any card). Both lines together must fit the card (~5.5 s after the typing starts).
+  line('gusto', 'FRIES SAFE. NOW A SHORT, FAST RUN TO THE ZUIDAS.', '[brisk, quick, upbeat] Fries safe. Now a short, fast run to the Zuidas.', 'en', BOOT, 3.0),
+  line('gusto', 'A FRIEND DRIVES, YOU HANG OUT THE WINDOW. ROAD TRAIN AHEAD!', '[brisk, quick, commanding] A friend drives, you hang out the window. [shouts] Road train ahead!', 'en', BOOT, 2.8),
 ];

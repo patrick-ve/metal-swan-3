@@ -1,4 +1,4 @@
-# Audio pipeline — ElevenLabs samples for the start screens, mission ams, the fps mode and mission oldenzaal
+# Audio pipeline — ElevenLabs samples for the start screens, mission ams, the fps mode, mission oldenzaal and mission ring
 
 Source files: `tools/elevenlabs.ts`, `tools/audio/{spec-types,spec,lib,client,gen,loudness,process,review,ship}.ts`.
 Tests: `tests/tools/audio-pipeline.test.ts`, `tests/content/samples.test.ts`. Runtime side: `src/engine/samples.ts` and
@@ -265,6 +265,77 @@ Level 4, the haunted town (docs/design/oldenzaal.md §11; docs/api/oldenzaal.md 
   Wu's lines (`WU_SCENE.lineTicks`, one per line) and Mevrouw Winkel's wake (`WAKE.lines`) last as
   long as their shipped takes plus a pause; `tests/content/oldenzaal-voice-fit.test.ts` checks it.
   A longer re-pick needs a longer beat.
+
+## Mission ring (group `'mission:ring'`, 2026-10-22)
+
+Level 2, revision R (docs/design/ring.md §R.8; docs/api/ring.md "R.B Wave B contracts"). Round 1 by
+AUDIO-1 (wave B: wave A's sfx, the songs, the voices, every line); round 2 by AUDIO-2 (the blockade's
+and the boat's sfx, the voice fit, the mix check).
+
+- **Group:** `'mission:ring'` is in `SAMPLE_GROUPS`, `GROUP_DIRS` (`public/audio/ring/`) and
+  `LAZY_GROUPS`. The game registers it MERGED with the ams group's sfx and voices (not the ams songs):
+  `content/samples/ring.ts` `ringSampleGroup(SAMPLE_MANIFEST)`. The drive loads it (the card's
+  `preloadRing`, or `RingScene` / the boot on a direct `?mission=ring`), the foot part through its
+  def's `audioGroup`. A bubble finds its take by `voiceKey(text)` in both scenes.
+- **Spec entries** (`tools/audio/spec.ts`, `const RING`): 28 wave-A sfx (the ZWAAN train: the
+  coupling clank, the pin snap, the cab's air horn, the tip-over, the brake squeal, the sleeper
+  window; the ramp hydraulics, the deck creak, the car roll-off and bounce, the ram burst, the fat
+  hiss / spray, the dump valve, the flame whoosh, the fireball, the livestock gate, the moo, the
+  oink, hooves, the hay bale, the milk churn; the jam's `ring/horns`; rf-a's honk, car door, landing,
+  tumble and police tape). Their synth recipes register at boot (`sfx/index.ts`): no `isNew`.
+- **Songs:** `ring-foot` (B♭ major, 132 bpm, intro 2 + a 32-bar loop with 4 bars of rising tension)
+  and `ring-boot` (G minor, 150 bpm, intro 2 + a 24-bar loop with a 4-bar rise). Synth fallbacks in
+  `src/game/content/music/ring-foot.ts` (imported by `content/ring/foot/index.ts`); the foot def plays
+  `music: 'ring-foot'`, `bossMusic: 'ring-boot'` (`boot/api.ts` `boatSong()` finds `ring-boot`). The
+  drive's `ring` and `ring-boss` stay synth (no takes).
+- **Voices** (Voice Design, Dutch speakers, Dutch preview texts; picked by measurement with
+  `tmp/ring-audio/voicestats.py` (median pitch, pitch range, roughness, pace) and a Scribe check of
+  the preview text (`tmp/ring-audio/stt.ts`; all 15 previews transcribed as Dutch):
+  `leider` preview 3 (the slowest delivery with the longest pauses, rough, 246 Hz), `activist-a`
+  preview 1 (the highest and brightest, 314 Hz), `activist-b` preview 3 (low, 157 Hz, the narrowest
+  pitch range: dry and flat), `zware-jongen` preview 2 (the lowest, 176 Hz, the roughest),
+  `boerenknecht` preview 1 (the widest range, bright: cheerful). The speakers are `RING_SPEAKER` of
+  `content/ring/foot/lines.ts` (the farmhand is `boerenknecht`).
+- **Lines** (`lang: 'nl'`, group `'mission:ring'`, 3 takes each): every line of `ringVoicedLines()`
+  (8 activist lines, 4 leader lines, the cab's 2, the farmhand's 4) and the announcer's `MISSION TWO.
+  HOU JE VAST!`. Gusto's two new card lines are in `'boot'` (the card plays before the mission's
+  group, like the ams card). Picked by Scribe (`tmp/ring-audio/pick.ts`): the transcript must match
+  the text (case, punctuation, spaces and hyphens ignored), then the shortest take. Five lines needed
+  takes 4–6 with a clearer `say` (`KLIMAATNOOD!`, `TOETER NIET, DOE MEE!`, `UIT MIJN SPIEGEL!`, `MIJN
+  VRACHT...!`, `HOOI VOOR JOU!`). Scribe writes `HOOI` as `hoi` in all 6 takes (its language model
+  prefers the common word): picked as a near-homophone; re-check it by ear.
+- **Sfx and songs picked** by the oldenzaal rules (`tmp/ring-audio/pick.ts`); songs also by
+  `tmp/ring-audio/songcheck.py` (bar levels, the seam's level step and spectral distance):
+  `ring-foot` take 1, `ring-boot` take 2 (take 1 runs 36 bars, take 3 fades out before its seam).
+  `ring/zwaan-tip`: every take is peak-limited (best 5.1 LU under the synth level).
+- **Round 2 sfx (AUDIO-2):** 33 ids of the blockade and the boat in `const RING` (`ring/act/…` 17,
+  `ring/blok/…` 3, `ring/boot/…` 13; synth fallbacks in `content/sfx/ring-activists.ts` and
+  `ring-boot.ts`, registered at boot: no `isNew`). Stay synth (no spec entry): `ring/act/squeal-tell`,
+  `squeal-out`, `huff`, `hum`, `lift` and `ring/boot/feedback` (pure tones, or a voice that must not say
+  words). The splats needed a louder prompt (`ring/act/splat` takes 4–6, `ring/boot/splat` takes 7–9:
+  the first takes were near-silent). `pick.ts` now also penalises a raw that needs more than 20 dB of
+  gain (mostly silence) and, mildly, any gain over 12 dB; this re-picked `ring/zwaan/churn-clang`
+  (take 2: 4.6 dB of gain, not take 1's 21.6 dB). `ring/boot/drum` is picked by the mix check
+  (below): takes 1 and 5 (with the snare), not the bass-only takes.
+- **Mix check** (`tmp/ring-audio/mixcheck.py`): 29 of the 36 new files sit within 0.5 LU of their
+  target (the synth level); the rest are peak-limited, `ring/boot/crack` the most (3.1 LU under).
+  Both songs are at −16 LUFS integrated. Against the `ring-boot` song (with the bus gains: music 0.6,
+  sfx 0.8) the drum takes stand +4.1 / +2.8 dB over the song's 90th percentile in the low band and
+  −1.7 / +2.6 dB in the mid band; the ground shock +6.0 dB low; the sticks' tell `ring/boot/drum-tell`
+  only +1.7 dB in the high band (its synth: +0.3 dB). The tell's level follows its synth `vol`: the
+  final fixer raised it to 1.0 (was 0.7) and shipped it again (+3.1 dB; −24.5 LUFS momentary max).
+  `process.ts` caches synth levels in `tmp/audio/cand/synth-levels.json` and never re-measures an id:
+  delete the id's entry after a synth `vol` change, then `audio:process --force` and `audio:ship`.
+- **Shipped:** `public/audio/ring/` 67 sfx files (61 ids), 2 songs, 19 lines: 88 files, 3.0 MB;
+  `public/audio/boot/voice/` 2 Gusto lines (108 kB). Picks table: `tmp/ring-audio/picks.md`.
+- **Credits:** round 1 9,031 (945,141 → 954,172 used, the Scribe checks included); round 2 936
+  (954,172 → 955,108); the wave 9,967.
+- **Voice timing:** `tests/content/ring-voice-fit.test.ts`: every voiced line has a take; every
+  bubble lasts its take (the cab's `rage` beat is 116, the farmhand's as before); the activists'
+  bubbles never last less than `ACTIVIST_SAY_TICKS` (activists/kit.ts: the take plus 10 ticks; `say`
+  floors every activist bubble with it); the leader's beats in boot/boat.ts (`wave` 175, `vreedzaam`
+  132, `drums` 122, the lunch line 236) are the take plus 10 or more; the 33 planned sfx ship and the
+  six synth-only ids do not. The beats are only the bubbles' lengths: the ring sims did not change.
 
 ## A full round
 

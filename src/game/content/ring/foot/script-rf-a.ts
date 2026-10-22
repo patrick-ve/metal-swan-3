@@ -57,8 +57,15 @@ function on(ctx: SectionContext, id: string, x: number, y: number, tag?: string,
   return ctx.spawn(id, x, y, { facing: -1, ...withTag(p, tag) });
 }
 
+/**
+ * A lock's last wave ends the lock after this many ticks even if a member is still up (integrator,
+ * wave B: was 2,400; gang members on roofs and blocks out of a level shot's reach held a lock up to 40 s:
+ * rf-a 5,900–8,300 ticks on normal). The member stays and fights on after the unlock.
+ */
+export const RF_A_LOCK_MAX = 600;
+
 /** A camera lock: wait until the tag is clear (members that ran off do not count), at most `max` ticks. */
-function* fight(ctx: SectionContext, at: readonly [number, number], tag: string, waves: Array<(ctx: SectionContext) => void>, max = 2400): ScriptGen {
+function* fight(ctx: SectionContext, at: readonly [number, number], tag: string, waves: Array<(ctx: SectionContext) => void>, max = RF_A_LOCK_MAX): ScriptGen {
   yield ctx.waitCamera(at[0]);
   ctx.lockCamera(at[0], at[1]);
   for (let i = 0; i < waves.length; i++) {
@@ -129,7 +136,7 @@ export function* scriptRfA(ctx: SectionContext): ScriptGen {
   yield ctx.waitCamera(470);
   right(ctx, K, 'rf-a0');
 
-  // LOCK 1 (@700): riders from both sides, a courier on the van's roof, the crew.
+  // LOCK 1 (view 508–892): riders from both sides, a courier on the van's roof, the crew.
   yield* fight(ctx, RF_A_ARENAS.first, 'rf-a1', [
     (c) => {
       right(c, R, 'rf-a1');
@@ -164,12 +171,14 @@ export function* scriptRfA(ctx: SectionContext): ScriptGen {
   // x 1425 (seed 2: 6 deaths, rf-a 98 s). Lock 2 still brings the crew.
   if (H) right(ctx, K);
 
-  // LOCK 2 (@1500): the gang's parcel van with the tied hostage; the crew guards it.
+  // LOCK 2 (view 1308–1692): the gang's parcel van with the tied hostage; the crew guards it.
   yield* fight(ctx, RF_A_ARENAS.van, 'rf-a2', [
     (c) => {
       c.spawn(K, 1730, RF_GROUND, { facing: -1, tag: 'rf-a2', wait: 50 });
       right(c, R, 'rf-a2', undefined, 40);
-      left(c, R, 'rf-a2');
+      // Integrator, wave B: the rider from behind only on hard or in 2P (normal: the bot died 2–3
+      // times here per level, mostly to three riders' pistols at once while the camper courier lobbed).
+      if (H || P2) left(c, R, 'rf-a2');
     },
     (c) => {
       on(c, C, 1650, CAR_Y - 42, 'rf-a2');
@@ -194,10 +203,10 @@ export function* scriptRfA(ctx: SectionContext): ScriptGen {
   yield ctx.waitCamera(2060);
   right(ctx, K);
   if (H) right(ctx, R, undefined, undefined, 40);
-  yield ctx.waitCamera(2200);
+  yield ctx.waitCamera(2110);
   right(ctx, R, undefined, { look: 'b' });
 
-  // LOCK 3 (@2320): the last fight before the police line.
+  // LOCK 3 (view 2128–2512): the last fight before the police line.
   yield* fight(ctx, RF_A_ARENAS.last, 'rf-a3', [
     (c) => {
       right(c, R, 'rf-a3');

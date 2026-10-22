@@ -18,11 +18,12 @@ await loadContent();
  * ticks at the bot's pace: the spec's gate is 28,800–36,000 (§R.12). While `rf-b` is wave A's
  * placeholder (about 850 ticks) the test checks the PROJECTED total: the run with rf-b's own ticks
  * replaced by wave B's planned ~9,000 (§R.1). Wave A (integrator, 2026-10-22, normal, the bots):
- * the measured god totals 23,700–25,800 → projected about 31,900–33,900. Wave B: set
- * `RF_B_PLACEHOLDER` false.
+ * the measured god totals 23,700–25,800 → projected about 31,900–33,900. Wave B (integrator,
+ * 2026-10-22): the real rf-b and the boat; `RF_B_PLACEHOLDER` false, the measured totals count
+ * (normal, the bots: 1P 30,800–33,100, 2P 30,900–31,200).
  */
 const LEVEL_TICKS: readonly [number, number] = [28_800, 36_000];
-const RF_B_PLACEHOLDER = true;
+const RF_B_PLACEHOLDER = false;
 const RF_B_PLANNED = 9_000;
 
 /** The level's ticks at the bot's pace (projected while rf-b is the placeholder, see above). */
@@ -30,6 +31,13 @@ function levelTicks(r: Awaited<ReturnType<typeof runRing>>): number {
   if (!RF_B_PLACEHOLDER) return r.ticks;
   return r.ticks - (r.foot?.sectionTicks['rf-b'] ?? 0) + RF_B_PLANNED;
 }
+
+/**
+ * The pink boat's fight (its first tick in 'fight' → beaten) at the bot's pace: about the hull's
+ * damage floor (`BOAT_PACE.floorTicks` 2,250 = 37.5 s; the momentum rule §R.13: each part ≤ 40 s),
+ * plus a margin for normal's dodging.
+ */
+const BOAT_TICKS: readonly [number, number] = [1_950, 3_000];
 
 /** Longest stretch without an enemy on screen (ticks) a bot run may show (1P, 2P). */
 const GAP_LIMIT: Record<1 | 2, number> = { 1: 270, 2: 300 };
@@ -49,6 +57,11 @@ describe('ring watch (bot runs, normal)', () => {
         expect(w.longestGap, JSON.stringify(w.gaps)).toBeLessThanOrEqual(GAP_LIMIT[players]);
         // The momentum on foot: rf-a never runs empty for long (its trickle guard: 150 ticks).
         expect(r.foot?.sectionGaps['rf-a'] ?? Infinity).toBeLessThanOrEqual(GAP_LIMIT[players]);
+        // Wave B (integrator): rf-b too (its trickle guard: 100 ticks; the end scene after the boat
+        // is not a gap), and the boat's fight 45–75 s (§R.7; the hull's damage floor is 50 s).
+        expect(r.foot?.sectionGaps['rf-b'] ?? Infinity).toBeLessThanOrEqual(GAP_LIMIT[players]);
+        expect(r.foot?.bossFightTicks ?? -1).toBeGreaterThanOrEqual(BOAT_TICKS[0]);
+        expect(r.foot?.bossFightTicks ?? Infinity).toBeLessThanOrEqual(BOAT_TICKS[1]);
         // The train: every catch-up ≤ 3 s (§R.13).
         for (const c of r.train?.catchUps ?? []) expect(c).toBeLessThanOrEqual(180);
         expect(w.outsideShots).toBe(0);

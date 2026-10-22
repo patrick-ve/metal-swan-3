@@ -13,11 +13,14 @@ import '../../src/game/content/music/index';
 import '../../src/game/content/music/missions';
 import '../../src/game/content/music/ams';
 import '../../src/game/content/music/oldenzaal';
+import { RING_FOOT_SONGS } from '../../src/game/content/music/ring-foot';
 import { loadContent } from '../../src/game/content/index';
 import { listSfx } from '../../src/engine/synth';
 import { OZ_AMBIENCE, OZ_AUDIO_GROUP, OZ_SFX, OZ_SONG, OZ_SPEAKER } from '../../src/game/content/missions/oldenzaal/ids';
 import { SNACK_POWER_CALLOUT, voicedLines } from '../../src/game/content/missions/oldenzaal/lines';
 import { OZ_ENV_SFX } from '../../src/game/content/sfx/oldenzaal';
+import { MISSION_CARDS } from '../../src/game/content/ui/cards';
+import { ringVoicedLines } from '../../src/game/content/ring/foot/lines';
 import { itemsOfGroups, items, selectItems } from '../../tools/audio/lib';
 import { LINES, MUSIC, SFX, VOICES } from '../../tools/audio/spec';
 
@@ -28,8 +31,10 @@ const FPS_SPEC = new URL('../../docs/design/fps.md', import.meta.url).pathname;
 const isFps = (x: { group: string }): boolean => x.group === 'mode:fps';
 /** Mission oldenzaal's ids (group 'mission:oldenzaal', docs/design/oldenzaal.md §11). */
 const isOz = (x: { group: string }): boolean => x.group === OZ_AUDIO_GROUP;
+/** Mission ring's ids (group 'mission:ring', docs/design/ring.md §R.8). */
+const isRing = (x: { group: string }): boolean => x.group === 'mission:ring';
 /** The rest of the game (the start screens and ams). */
-const isBase = (x: { group: string }): boolean => !isFps(x) && !isOz(x);
+const isBase = (x: { group: string }): boolean => !isFps(x) && !isOz(x) && !isRing(x);
 
 /** Every backticked `fps/…` sfx id in docs/design/fps.md §9.1. */
 function fpsSpecSfx(): Set<string> {
@@ -120,6 +125,8 @@ describe('audio spec: music', () => {
     // docs/design/oldenzaal.md §11: the four oldenzaal songs (ids.ts OZ_SONG), the sting played once.
     expect(MUSIC.filter(isOz).map((m) => m.id).sort()).toEqual(Object.values(OZ_SONG).sort());
     expect(MUSIC.find((m) => m.id === OZ_SONG.tbc)?.loop).toBe(false);
+    // docs/design/ring.md §R.8: the two songs on foot (the stage theme and ring-boss stay synth).
+    expect(MUSIC.filter(isRing).map((m) => m.id).sort()).toEqual(['ring-boot', 'ring-foot']);
   });
 
   it('the military title and select prompts are v2 takes (3-4); the v1 takes 1-2 keep their prompt on record', async () => {
@@ -135,7 +142,7 @@ describe('audio spec: music', () => {
   });
 
   it('a loop is long enough for its intro, one full loop and 2 s to cut', () => {
-    const loopBars: Record<string, number> = { title: 32, select: 16, briefing: 8, ams: 48, 'ams-boss': 40, continue: 6, 'high-score': 8, 'fps-floor': 32, 'fps-boss': 32, 'fps-bridge': 4, oldenzaal: 24, 'oldenzaal-boss': 24, 'oldenzaal-tower': 32 };
+    const loopBars: Record<string, number> = { title: 32, select: 16, briefing: 8, ams: 48, 'ams-boss': 40, continue: 6, 'high-score': 8, 'fps-floor': 32, 'fps-boss': 32, 'fps-bridge': 4, oldenzaal: 24, 'oldenzaal-boss': 24, 'oldenzaal-tower': 32, 'ring-foot': 32, 'ring-boot': 24 };
     for (const m of MUSIC.filter((x) => x.loop)) {
       const bar = (60 / m.bpm) * m.beatsPerBar;
       const need = ((m.introBars ?? 0) + loopBars[m.id]) * bar + 2;
@@ -332,5 +339,74 @@ describe("audio spec: mission oldenzaal (group 'mission:oldenzaal', docs/design/
     expect(voices).toEqual(['announcer', 'plechelmus', 'winkel', 'wu']);
     expect(selectItems(all, ['sfx'], null, [OZ_AUDIO_GROUP]).every((it) => it.kind === 'sfx' && it.group === OZ_AUDIO_GROUP)).toBe(true);
     expect(selectItems(all, null, null).length).toBe(all.length);
+  });
+});
+
+// ------------------------------------------------------------------------------------------ ring
+
+describe("audio spec: mission ring (group 'mission:ring', docs/design/ring.md §R.8)", () => {
+  it('the ring sfx are registered ring/ recipes (wave A: the train, the jam, rf-a), once', async () => {
+    await loadContent((id) => id === 'sfx' || id === 'ring/foot' || id === 'ring/zwaan');
+    const ring = SFX.filter(isRing);
+    expect(ring.length).toBeGreaterThanOrEqual(20);
+    for (const s of ring) {
+      expect(s.id.startsWith('ring/'), s.id).toBe(true);
+      expect(hasSfx(s.id), `${s.id}: no synth recipe`).toBe(true);
+    }
+    // No ring/ id in another group (the drive and the foot part load 'mission:ring').
+    for (const s of SFX.filter((x) => !isRing(x))) expect(s.id.startsWith('ring/'), s.id).toBe(false);
+  });
+
+  it('the songs: comic prompts in our own words, tempo, key and form as the synth fallbacks', () => {
+    const form: Record<string, { bpm: number; key: string; bars: number }> = {
+      'ring-foot': { bpm: 132, key: 'B-flat major', bars: 32 },
+      'ring-boot': { bpm: 150, key: 'G minor', bars: 24 },
+    };
+    for (const m of MUSIC.filter(isRing)) {
+      const f = form[m.id];
+      expect(m.bpm, m.id).toBe(f.bpm);
+      expect(m.prompt, m.id).toContain(f.key);
+      expect(m.prompt, m.id).toContain(`${f.bars}-bar loop`);
+      expect(m.prompt, m.id).toMatch(/original composition/i);
+      expect(m.prompt, m.id).toMatch(/no vocals/i);
+      expect(m.prompt, m.id).not.toMatch(/\bin the style of\b|\blike the\b/i);
+      const def = RING_FOOT_SONGS[m.id];
+      expect(def.bpm, m.id).toBe(m.bpm);
+      expect(hasSong(m.id), m.id).toBe(true);
+    }
+  });
+
+  it('the designed voices: Dutch speakers, original characters, no real person', () => {
+    const speakers = new Set(ringVoicedLines().map((l) => l.speaker));
+    expect([...speakers].sort()).toEqual(['activist-a', 'activist-b', 'boerenknecht', 'leider', 'zware-jongen']);
+    for (const speaker of speakers) {
+      const v = VOICES.find((x) => x.speaker === speaker);
+      expect(v, speaker).toBeDefined();
+      expect(v?.description, speaker).toMatch(/original character voice/i);
+      expect(v?.description, speaker).toMatch(/never an imitation/i);
+      expect(v?.description, speaker).toMatch(/standard Dutch with a neutral accent/i);
+    }
+  });
+
+  it("every voiced line of lines.ts is in the spec (group 'mission:ring', Dutch), with the card's lines", () => {
+    const ring = LINES.filter(isRing);
+    for (const { speaker, text } of ringVoicedLines()) {
+      const l = ring.find((x) => x.text === text);
+      expect(l, text).toBeDefined();
+      expect(l?.speaker, text).toBe(speaker);
+      expect(l?.lang, text).toBe('nl');
+    }
+    const card = MISSION_CARDS.find((c) => c.id === 'ring')!;
+    // The announcer's start banner line plays when the drive starts ('mission:ring' is loaded).
+    expect(ring.find((l) => l.text === card.announce)?.speaker).toBe('announcer');
+    // Gusto's two briefing lines play on the card, before the mission's group: 'boot' (as ams).
+    for (const t of card.briefing) expect(LINES.find((l) => l.text === t && l.group === 'boot')?.speaker, t).toBe('gusto');
+  });
+
+  it('the group filter selects the ring items and the voice designs they need', () => {
+    const all = items({ SFX, MUSIC, VOICES, LINES });
+    const ring = itemsOfGroups(all, ['mission:ring']);
+    const voices = [...ring].filter((it) => it.kind === 'voice').map((it) => it.id).sort();
+    expect(voices).toEqual(['activist-a', 'activist-b', 'announcer', 'boerenknecht', 'leider', 'zware-jongen']);
   });
 });

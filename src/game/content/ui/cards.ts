@@ -202,8 +202,11 @@ export const MISSION_CARDS: readonly MissionCard[] = [
     label: 'MISSION 2',
     name: 'DE RING',
     place: 'A10 RING ROAD, AMSTERDAM - 1400 HOURS',
-    briefing: ['THE FRIES ARE SAFE. NOW THE A10: ONE LAP, CLOCKWISE, FULL THROTTLE.', 'A FRIEND DRIVES. YOU HANG OUT OF THE WINDOW. MIND THE SPEED CAMERAS.'],
-    headline: 'WAGON LAPS THE RING! TRAFFIC MOVES AGAIN!',
+    // Revision R (docs/design/ring.md §R.1): a short, fast run south (S113 → Zuidas), no full lap.
+    // Gusto voices both lines (group 'boot', tools/audio/spec.ts): 3.2 s + 3.4 s, so the second ends
+    // ~1 s after the card's 360 ticks; the card waits for him (mission-intro.ts INTRO_VOICE_HOLD).
+    briefing: ['FRIES SAFE. NOW A SHORT, FAST RUN TO THE ZUIDAS.', 'A FRIEND DRIVES, YOU HANG OUT THE WINDOW. ROAD TRAIN AHEAD!'],
+    headline: 'ROAD TRAIN STOPPED! BLOCKADE LIFTED! A10 MOVES!',
     announce: 'MISSION TWO. HOU JE VAST!',
     startSub: 'START!',
     map: { lines: RING_LINES, dot: [258, 92], labels: RING_LABELS },

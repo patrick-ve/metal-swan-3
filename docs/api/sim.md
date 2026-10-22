@@ -364,6 +364,12 @@ Mission `ring` (docs/design/ring.md §15, docs/api/ring.md) runs in its own harn
   wall; `--route full` 44,527 (its default `--max-ticks` is 64,800); `--section zwaan` 1P 18,254 /
   2P 16,039 ticks in all. The fixer's 2P bot keeps player 2 out of player 1's lane on a train part.
   The old full-ring gate (`--expect-ticks 28800-39600`) is for `--route full`.
+- **Revision R wave B (2026-10-22; docs/api/ring.md §R.BI):** `--section rf-b` plays DE BLOKKADE and
+  the pink boat; `--section rf-b --boss` starts at the boat. The `foot` report gains `bossFightTicks`
+  (the foot boss's first tick in `'fight'` → `bossDefeated`; −1 none) and `bossEndTicks`
+  (`bossDefeated` → the end); the foot gaps stop counting at `bossDefeated`. The summary line adds
+  `boss T end T` after the gaps. Gate: the whole level 28,800–36,000 ticks at the bot's pace
+  (`tests/game/ring/watch.test.ts`); the boat 2,700–4,500. New ring baselines: `tmp/ring-r/base-b/`.
 - `npm run shot -- --mission ring [--seed n] [--section <landmark>] [--bot] [--god] [--players 2] [--ticks n]
   [--every N --count M] [--res 8 --art 4] [--spawn "<id>@+<dx>:<lane>[?k=v&k=v]"] [--hold up,fire]` →
   `tmp/shots/ring-<stretch>-t<tick>.png` / `ring-sheet.png`, frames labelled with the tick, the stretch, the

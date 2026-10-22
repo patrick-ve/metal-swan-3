@@ -369,6 +369,37 @@ re-words and re-voices it); on normal the bot still dies 0–4 times in `rf-a` (
 x ≈ 1,420–1,660, and the last lock); on hard the flame trail and the animals cost the bot the most
 cells (a play-test question: a softer animal bump?).
 
+### R.14 Status (wave B, the integrator, 2026-10-22)
+
+**Wave B is integrated** (reports `tmp/ring-r-b-{prep,activists,boat,audio1,audio2,integrate}-report.md`):
+`rf-b` DE BLOKKADE (the police line, the activists `lijmer` / `ketting` / `megafoon` / `loper`, the
+police pair, three locks, the spandoek `EXHAUSTING REBELLION` with our own mark) and the pink boat
+`DE LAATSTE DRUPPEL` play to the one tally in 1P and 2P; the Dutch lines are voiced (5 designed
+voices, 19 lines), `ring-foot` and `ring-boot` play on foot and at the boat, 61 ring sfx have
+ElevenLabs takes (synth fallbacks for all). The decisions above are unchanged; the rows below are
+measured and tuned values (the bots, seeds 1–5; normal unless "god").
+
+| Value | Spec | Now | Why |
+|---|---|---|---|
+| `rf-b` (blockade + boat + end) | 9,000 ticks | god 1P 7,467–7,631, 2P 7,042–7,049; normal 7,482–7,508, hard 7,636–7,725 | the shorter boat fight (final fixer) |
+| The boat's fight (first tick in 'fight' → beaten) | ≤ 40 s per part (§R.13) | god 2,344–2,503 ticks (39.1–41.7 s); normal 2,349–2,389 (39.8 s max); hard 2,559 (42.7 s) | final fixer: `BOAT_HP` 1,500 (was 1,800), the hull's floor `BOAT_PACE.floorTicks` 2,250 (37.5 s; was 3,000 / 50 s): at 3,000 every fight lasted exactly the floor and a hull shot at an empty bucket only pinged |
+| The end scene (beaten → the tally) | — | 262 ticks | — |
+| The longest stretch without an enemy in `rf-b` | 4 s rule | 130 ticks (sim; 1P / 2P, god and normal) | the trickle guard `RF_B_TRICKLE` 100, now from the RIGHT (from the left only after an unseen kill and on the run-up to the boat); the end scene no longer counts |
+| Activist bubbles | — | rf-b normal seed 4: `IK BEL MIJN MOEDER!` 9 (was 42), `KLIMAATNOOD!` 10 (was 0) | a cool-down per line (`ACTIVIST_LINE_GAP`, 300–720 ticks) |
+| `rf-a` | 4,500 | god 1P 4,268–5,053, 2P 3,939; normal 3,904–4,831 | the lock cap `RF_A_LOCK_MAX` 600 (was 2,400: a gang member on a roof held a lock up to 40 s) |
+| `rf-a` locks | — | the locked view = the fight's framing, no backward pan | `RF_A_ARENAS` were `[x, x]`: the view scrolled back 192 px at each lock |
+| `rf-a`, the van lock on normal | soften if a human dies there too | the rider from behind only on hard / 2P; the bot still dies 1–4 times per level in `rf-a` (it holds a fixed spot under the roof couriers' lobs; the riders' shots are slow, 2.2 px/tick, with 24-tick tells) | — |
+| The bot at the boat | — | 0 deaths (was 1 per fight: its dodge jump ran along with the shock) | `bot.ts`: the shock jump before the dodge planner; it crouches under the boom |
+| The whole level (the bots) | ≈ 32,400 (28,800–36,000) | god 1P 31,185–33,706, 2P 29,885; normal 1P 29,965–31,966, 2P 29,804–30,064; hard 31,548–33,173 | the watch test now checks the measured totals |
+| Tier 4 (every hero, 1P / 2P pairs, the reserve included) | ≤ 256 MB | `rf-b` 156.0 / 180.1 MB, `rf-a` 154.7 / 178.7 MB | — |
+| The sign face (`SMALL`, art-blok-letters.ts) | our lettering, readable | M and W 5 bits wide, N 4, with diagonal middles | at 2× / 4× M, N and W read as H (`HISDAAD`) |
+
+**Open for the play-test:** listen to `HOOI VOOR JOU!` (Scribe hears "hoi" in every take; the shipped
+take's first word lasts 0.38 s, a long vowel, so it is probably right) and `VERSE MELK!` (Scribe hears a
+question); Gusto's two card lines (6.6 s): the card now waits for him (`INTRO_VOICE_HOLD` up to 90
+ticks); the drum tell `ring/boot/drum-tell` is now at vol 1.0 (+3.1 dB, re-shipped); the boat crew has no gloat / cower of its own in the in-world continue (only
+the boss stagger); the police sprites carry no `POLITIE` lettering (the van does).
+
 ## 1. Flow and numbering
 
 - Normal play: title → select → `ams` (MISSION 1) → MISSION COMPLETE tally → `ring` (MISSION 2)

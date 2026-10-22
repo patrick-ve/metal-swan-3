@@ -3720,9 +3720,26 @@ away the momentum"). The level now (about 9 minutes, ≈ 32,400 ticks at the bot
 - **On foot like `ams`** (an unregistered `MissionDef` with the id `ring`): `rf-a` DE FILE (≈ 1:15;
   the ring gangs on foot — scooter riders, parcel couriers, the van crew — between the stopped
   cars, which are cover and platforms; a tied hostage in an open parcel van; the police line),
-  then `rf-b` DE BLOKKADE (wave B: the climate blockade and the pink boat). ONE MISSION COMPLETE
-  tally for the whole level (the hostages of the drive and on foot, the FINES), then the glitch
-  bridge. New bubbles and signs are Dutch; HUD words stay English.
+  then `rf-b` DE BLOKKADE. ONE MISSION COMPLETE tally for the whole level (the hostages of the
+  drive and on foot, the FINES), then the glitch bridge. New bubbles, signs and voices are Dutch;
+  HUD words stay English.
+- **`rf-b` DE BLOKKADE (≈ 1:30 + the boat; wave B, 2026-10-22):** the police tape and van, then
+  climate activists of the parody group **`EXHAUSTING REBELLION`** (our own mark: a round-bellied
+  hourglass with a smoke puff, never in a circle; the spandoek `WIJ ZIJN MOE. NU JULLIE OOK.`, Dutch
+  banners of our own) glued and chained across the A10. Slapstick and bloodless: the `lijmer` (glued;
+  paint balloons, a glue pot whose puddle sticks a hero ~40 ticks), the `ketting` (chained to a barrel
+  or a partner; orange tomato-soup cans), the `megafoon` (on a crate; a shout ring pushes a hero back,
+  a feedback squeal stuns), the `loper` (runs in with a banner, sits and glues). Beaten, they rip free
+  (`LOS!`) and run off in a huff, or two police officers (never targets) carry them off stiff as a
+  plank. Three camera locks; sitting crowds and placards on the far lanes; a pacing guard sends a
+  loper in from the right after 100 quiet ticks. In the in-world continue they hum, hold up `WIJ HADDEN HET GEZEGD`
+  or eat a sandwich; they never point or laugh.
+- **The mini-boss: the pink boat `DE LAATSTE DRUPPEL`** (≈ 40 s) on a wheeled trailer in the middle of
+  the A10: the leader with a megaphone calls waves of lopers (`MEDE-REBELLEN... ZITTEN!`), the
+  drummer lobs paint balloons; phase 2 (≤ 50 % or both loudspeakers broken; `TROMMELS... NU!`): each
+  drum beat sends a ground shock to jump, the boom swings out at chest height (crouch). The end: the
+  hull cracks, the mast falls, the boat settles, a weapon drops; the leader slides down (`WIJ KOMEN
+  TERUG... NA DE LUNCH!`) and the police carry the leader off; the exit → MISSION COMPLETE.
 
 **`docs/design/ring.md` is the spec of this mission and wins over this document for it**
 (numbers, landmarks, enemies, hazards, art, sound, tests). The runtime, the generator, the

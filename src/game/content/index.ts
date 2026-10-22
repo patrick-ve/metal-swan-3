@@ -92,6 +92,11 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   'ring/zwaan': () => import('./ring/zwaan/index'),
   'ring/foot': () => import('./ring/foot/index'),
   'ring/foot/art': () => import('./ring/foot/art'),
+  // Revision R wave B (PREP): the blockade's people (ACTIVISTS) and the pink boat (BLOCKADE+BOAT).
+  'ring/activists': () => import('./ring/activists/index'),
+  'ring/activists/art': () => import('./ring/activists/art'),
+  'ring/boot': () => import('./ring/boot/index'),
+  'ring/boot/art': () => import('./ring/boot/art'),
   // Mission `oldenzaal`, level 4 (docs/design/oldenzaal.md §13; docs/api/oldenzaal.md; not lazy):
   // one entry per area and owner (ids: missions/oldenzaal/ids.ts).
   'missions/oldenzaal': () => import('./missions/oldenzaal/index'),
