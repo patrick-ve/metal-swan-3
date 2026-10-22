@@ -4,7 +4,7 @@
  * Museumplein lawn with the long pool and the HOT-DOG STAND (box 960–1024, hatch 980–1004,
  * counter y 147; the Swan parks at ~1080), and the canal-side road toward the Amstel (2200–3072).
  *
- * Script: the riders in the passage, the vendor and THE SWAN (greeting + glide lesson; records
+ * Script: the riders in the passage, the vendor and THE SWAN (met silently + glide lesson; records
  * 'ams/swan-met' and 'm1/swan-lesson'), the gull set piece, three tourists, the exit at the end.
  */
 import { PAL } from '../../../../engine/palette';
@@ -15,7 +15,6 @@ import { hudOf } from '../../../context';
 import type { Player } from '../../../player/player';
 import { isSwan } from '../../vehicles/swan/swan';
 import { HOUSE, houseRow, lawnSprite, poolSprite } from './art';
-import { AmsHotdogVendor } from './entities';
 import { at, carillon, crate, fromRight, hostage, normalUp, prewarm, STAG_LOOKS, stagArt, twoPlayers } from './helpers';
 import { placeSecrets, secretArt } from './secrets';
 import { B_HOTDOG_X, B_PASSAGE, B_W, G, terrainB } from './terrain';
@@ -125,38 +124,17 @@ function radio(ctx: SectionContext, p: Entity, text: string, ticks = 150): void 
   hudOf(ctx.world).bubble(p, text, { kind: 'radio', ticks, speaker: 'gramps' });
 }
 
-/** Gramps talks one thread at a time: the lesson waits while the greeting is on the radio. */
-interface RadioState {
-  greeting: boolean;
-}
-
-/** The parked Swan's note and Gramps on the radio when a player walks up to her. */
-function* swanGreeting(ctx: SectionContext, vendor: Entity, radioState: RadioState): ScriptGen {
-  let near: Player | null = null;
-  yield () => (near = playerAtSwan(ctx)) !== null;
-  const p = near as Player | null;
-  if (!p) return;
+/**
+ * The Swan is met when a player walks up to her (the record m1-c reads). Silent since the user's
+ * request of 2026-10-22: no note on her and no radio lines from Gramps when she is available.
+ */
+function* swanMet(ctx: SectionContext): ScriptGen {
+  yield () => playerAtSwan(ctx) !== null;
   ctx.records.set('ams/swan-met', true);
-  radioState.greeting = true;
-  try {
-    // The note on her (above the RIDE? bubble) is a sign, not a voice: it shows at once.
-    hudOf(ctx.world).bubble({ x: SWAN_X, y: G - 62 }, 'SWAN-3. SHORE LEAVE TOO.', { kind: 'hint', ticks: 110, voice: false });
-    // Let the vendor's salute finish first (he stands 90 px before her): one voice at a time.
-    let wait = 0;
-    yield () => ++wait > 90 || !(vendor instanceof AmsHotdogVendor) || vendor.mode !== 'salute';
-    // The radio waits until the sign note (110 ticks) is gone: they share the space over her.
-    yield Math.max(30, 112 - wait);
-    radio(ctx, p, 'GRAMPS: I BROUGHT HER ALONG.', 120);
-    yield 130;
-    radio(ctx, p, "DON'T TELL ACCOUNTING.", 110);
-    yield 120;
-  } finally {
-    radioState.greeting = false;
-  }
 }
 
 /** The first mount of a Swan: the glide lesson on the radio (m1-c skips its own after this). */
-function* swanLesson(ctx: SectionContext, radioState: RadioState): ScriptGen {
+function* swanLesson(ctx: SectionContext): ScriptGen {
   let rider: Entity | null = null;
   const off = ctx.world.events.on('vehicleMounted', (e) => {
     if (!rider && isSwan(e.vehicle)) rider = e.player;
@@ -172,7 +150,6 @@ function* swanLesson(ctx: SectionContext, radioState: RadioState): ScriptGen {
   const p = rider as Entity | null;
   if (!p) return;
   yield 30;
-  yield () => !radioState.greeting;
   radio(ctx, p, 'GRAMPS: SHE GLIDES, YOU KNOW.', 110);
   yield 120;
   radio(ctx, p, 'HOLD JUMP IN THE AIR.', 110);
@@ -189,7 +166,7 @@ const LAMP_TOP = G - 70;
  */
 export function* script(ctx: SectionContext): ScriptGen {
   prewarm('npc/ams/', 'decor/ams/');
-  const { vendor } = life(ctx);
+  life(ctx);
   carillon(ctx);
   ctx.spawn('ams-pigeons', 300, G, { count: 3 });
   ctx.spawn('ams-pigeons', 2900, G, { count: 4 });
@@ -207,9 +184,8 @@ export function* script(ctx: SectionContext): ScriptGen {
       if (twoPlayers(ctx)) ctx.spawn('swan', MUTE_X, 'ground', { variant: 'mute', facing: 1 });
     })(),
   );
-  const radioState: RadioState = { greeting: false };
-  ctx.world.scripts.run(swanGreeting(ctx, vendor, radioState));
-  ctx.world.scripts.run(swanLesson(ctx, radioState));
+  ctx.world.scripts.run(swanMet(ctx));
+  ctx.world.scripts.run(swanLesson(ctx));
 
   // @0: the street to the museum.
   crate(ctx, 300, 'M');
@@ -239,8 +215,8 @@ export function* script(ctx: SectionContext): ScriptGen {
   yield ctx.waitCamera(720);
   ctx.enter('seagull', 'top', { x: 960 });
   yield ctx.waitCamera(800);
-  // The phone rider waits until Gramps has finished at the Swan (or the player walked on).
-  yield () => (ctx.records.get('ams/swan-met', false) && !radioState.greeting) || ctx.world.camera.left >= 1000;
+  // The phone rider comes once a player has met the Swan (or walked on).
+  yield () => ctx.records.get('ams/swan-met', false) || ctx.world.camera.left >= 1000;
   fromRight(ctx, 'delivery-rider', { gag: 'phone' });
 
   // @1100: the gull set piece over the square: gulls steal fries, then dive.

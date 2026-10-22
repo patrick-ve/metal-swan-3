@@ -887,7 +887,6 @@ export const LINES: LineSpec[] = [
 
   // --- Gramps on the radio (section-b.ts, swan.ts). The "GRAMPS: " prefix is the bubble's
   //     speaker tag: voiceKey strips it, and the actor does not read it.
-  line('gramps', 'GRAMPS: I BROUGHT HER ALONG.', '[gruff, proud] I brought her along.', 'en', AMS, 2.0),
   line('gramps', "DON'T TELL ACCOUNTING.", "[lowers voice, conspiratorial] Don't tell accounting.", 'en', AMS, 1.8),
   line('gramps', 'GRAMPS: SHE GLIDES, YOU KNOW.', '[fond, matter-of-fact] She glides, you know.', 'en', AMS, 1.8),
   line('gramps', 'HOLD JUMP IN THE AIR.', '[instructing, patient] Hold jump in the air.', 'en', AMS, 1.8),

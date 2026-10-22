@@ -175,7 +175,6 @@ export const SAMPLE_MANIFEST: Readonly<Record<string, SampleGroup>> = {
       'hier-neem-een-lekker-frietje': { files: ['ams/voice/hier-neem-een-lekker-frietje-1.mp3'], duration: 1.3633 },
       'hoi-welkom-bij-fabel-friet': { files: ['ams/voice/hoi-welkom-bij-fabel-friet-1.mp3'], duration: 1.6289 },
       'hold-jump-in-the-air': { files: ['ams/voice/hold-jump-in-the-air-1.mp3'], duration: 2.2709 },
-      'i-brought-her-along': { files: ['ams/voice/i-brought-her-along-1.mp3'], duration: 1.534 },
       'laser-gun': { files: ['ams/voice/laser-gun-1.mp3'], duration: 1.0522 },
       'lekker': { files: ['ams/voice/lekker-1.mp3'], duration: 0.5252 },
       'maar-de-buren-zijn-blij-met-ons': { files: ['ams/voice/maar-de-buren-zijn-blij-met-ons-1.mp3'], duration: 1.7566 },

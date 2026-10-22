@@ -1913,8 +1913,8 @@ after the scan car, the scan car's drop); bug fixes (§7); Bluetooth controllers
   flamethrower: "FRIES FOR THE ROAD"), `exitTo('b')`. Secrets: the bike in the elm, the houseboat
   hatch (a hidden tourist), the crate on a gable hoist.
 - **`b` Museumplein** (3072, 1100, 2300): riders through the Rijksmuseum passage, the hot-dog
-  vendor and THE SWAN parked at 1080 (2P: the Mute), Gramps `I BROUGHT HER ALONG.` /
-  `DON'T TELL ACCOUNTING.`, the glide lesson on the first mount (records `ams/swan-met`,
+  vendor and THE SWAN parked at 1080 (2P: the Mute; no note and no radio lines when she is
+  available, the user 2026-10-22), the glide lesson on the first mount (records `ams/swan-met`,
   `m1/swan-lesson`; m1-c greets her as an old friend), the gull set piece with a stag party
   (toast, selfie), youths on the lawn, the canal road with one more beer bike; the exit opens
   after the last squad. Secrets: the museum crate `NIET OPENEN` (a hidden tourist), the hot-dog

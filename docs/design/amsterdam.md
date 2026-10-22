@@ -205,7 +205,7 @@ Checkpoints: 0, 1300, 2500. Hostages 5 (one hidden under the houseboat hatch; se
 |---|---|
 | 0–380 | street to the museum |
 | 400–720 | THE PASSAGE: the cycle tunnel through the Rijksmuseum (solid ceiling ~y 96, vaulted decor); delivery riders rush through both ways (bell echoes) |
-| 720–1800 | Museumplein: grass, the long pool (shallow, wadeable decor), the Rijksmuseum back facade in the parallax; HOT-DOG STAND at 960–1024 with the vendor in the hatch at ~990; THE SWAN parked at ~1080 (`ctx.spawn('swan', 1080, 'ground', {facing:1})`, 2P `'mute'` swan like m1-c); Gramps radio `I BROUGHT HER ALONG.` / `DON'T TELL ACCOUNTING.`; the swan lesson (copy of m1-c, new text); sets `'m1/swan-lesson'` and `'ams/swan-met'` |
+| 720–1800 | Museumplein: grass, the long pool (shallow, wadeable decor), the Rijksmuseum back facade in the parallax; HOT-DOG STAND at 960–1024 with the vendor in the hatch at ~990; THE SWAN parked at ~1080 (`ctx.spawn('swan', 1080, 'ground', {facing:1})`, 2P `'mute'` swan like m1-c); no note and no radio lines when she is available (the user, 2026-10-22); the swan lesson (copy of m1-c, new text); sets `'m1/swan-lesson'` and `'ams/swan-met'` |
 | 1300–2200 | gull flock set piece over the square (gulls steal tourists' fries, then dive); a stag party (two clink bottles, one takes a selfie, one more walks in); youths doing circles on the grass (gag); tram in the background; hostages |
 | 2200–3072 | a canal-side road toward the Amstel; one more beer bike (no lock); hostage; exit at ~3000 → `c` |
 Checkpoints: 0, 1200, 2300. Hostages 4 (one hidden in the museum crate `NIET OPENEN`; the hot-dog stand's roof flag hides the 1UP).
