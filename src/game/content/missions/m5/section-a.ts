@@ -102,9 +102,9 @@ function* startRadio(ctx: SectionContext): ScriptGen {
   const other = ctx.players.find((p) => p.character.id !== 'gramps') ?? null;
   if (!hasGramps(ctx)) {
     const p = anyPlayer(ctx);
-    if (p) bubble(ctx, p, "GRAMPS: SHE FLIES! DON'T TELL ACCOUNTING!", 'radio', 180);
+    if (p) bubble(ctx, p, 'GRAMPS: SHE FLIES!', 'radio', 180);
   } else if (gramps) {
-    bubble(ctx, gramps, "SHE FLIES! DON'T TELL ACCOUNTING!", 'gag', 150);
+    bubble(ctx, gramps, 'SHE FLIES!', 'gag', 150);
     if (other) {
       yield 100;
       bubble(ctx, other, 'YOU MADE HER FLY?!', 'gag', 120);

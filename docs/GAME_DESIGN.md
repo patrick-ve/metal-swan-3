@@ -213,7 +213,7 @@ the player, holds up a card with stars and hands over a gift (section 7).
 - **Everything renamed.** In m4 every sign in the capital starts with FANFARONI
   (`FANFARONI LAUNDRY`, `FANFARONI BAKERY`, `FANFARONI AVENUE`). The city was called *Little
   Hushing* last year; one sign still says it, crossed out.
-- **Gramps vs. accounting.** Every new Swan feature comes with `DON'T TELL ACCOUNTING.`
+- **Gramps vs. accounting.** (Removed by the user, 2026-10-22: no `DON'T TELL ACCOUNTING.` line anywhere.)
 
 ### 2.6 Ending (in-engine, then credits)
 
@@ -320,7 +320,7 @@ character. Rig values below are the existing `HumanStyle` options.
   grabs them back as he falls.
 - **Victory pose:** polishes his bald head with a rag; a sparkle pops; thumbs up.
 - **Select quote:** `"BACK IN MY DAY, TANKS DIDN'T HAVE LEGS. THEN I GAVE THEM LEGS."`
-- **Ending line:** `"RIGHT. WHO WANTS TO SEE THE MK4? IT'S A SUBMARINE. DON'T TELL ACCOUNTING."`
+- **Ending line:** `"RIGHT. WHO WANTS TO SEE THE MK4? IT'S A SUBMARINE."`
 
 ### 3.5 `recruit` (test character, kept)
 
@@ -1833,7 +1833,7 @@ the player drops back into the current stage, and destroyed parts stay destroyed
 - **Death sequence (360 ticks):** his last scream cracks into a squeak (`BRAVISSI—`, then a tiny
   `*squeak*`, `boss/voice-crack`); the podium sputters; every pipe in the organ plays one note on
   its own and the room starts to fall apart. The players auto-run right and jump into a Trumpeter
-  flown by Gramps (`I'M A PILOT NOW TOO. DON'T TELL ACCOUNTING.`); if Gramps is a player, Brigadier
+  flown by Gramps (`I'M A PILOT NOW TOO.`); if Gramps is a player, Brigadier
   Gusto flies it, singing. Then the ending (2.6). **Score:** 100,000 + parts.
 
 ---
@@ -1914,8 +1914,8 @@ after the scan car, the scan car's drop); bug fixes (§7); Bluetooth controllers
   hatch (a hidden tourist), the crate on a gable hoist.
 - **`b` Museumplein** (3072, 1100, 2300): riders through the Rijksmuseum passage, the hot-dog
   vendor and THE SWAN parked at 1080 (2P: the Mute; no note and no radio lines when she is
-  available, the user 2026-10-22), the glide lesson on the first mount (records `ams/swan-met`,
-  `m1/swan-lesson`; m1-c greets her as an old friend), the gull set piece with a stag party
+  available and no glide lesson on the first mount, the user 2026-10-22; record `ams/swan-met`:
+  m1-c greets her as an old friend), the gull set piece with a stag party
   (toast, selfie), youths on the lawn, the canal road with one more beer bike; the exit opens
   after the last squad. Secrets: the museum crate `NIET OPENEN` (a hidden tourist), the hot-dog
   stand's roof flag (the hidden 1UP).
@@ -2074,7 +2074,7 @@ after the scan car, the scan car's drop); bug fixes (§7); Bluetooth controllers
 
 | Trigger | Events |
 |---|---|
-| start | The `swan` sits parked at x 160, head tucked, with a note `SWAN-3. PLEASE RETURN BY 6 PM. -G.` (`[2P]` the Mute, `params.variant: 'mute'`, at x 112). When a player comes within 64 px: bubble from Gramps on the radio `BE GENTLE WITH HER!` (if Gramps is a player: `THERE SHE IS!`). The first time anyone mounts a Swan in this mission: radio `SHE GLIDES NOW.` / `HOLD JUMP IN THE AIR.`, then `DON'T TELL ACCOUNTING.` |
+| start | The `swan` sits parked at x 160, head tucked, with a note `SWAN-3. PLEASE RETURN BY 6 PM. -G.` (`[2P]` the Mute, `params.variant: 'mute'`, at x 112). When a player comes within 64 px: bubble from Gramps on the radio `BE GENTLE WITH HER!` (if Gramps is a player: `THERE SHE IS!`). The first time anyone mounts a Swan in this mission: radio `SHE GLIDES NOW.` / `HOLD JUMP IN THE AIR.` |
 | @0 | 3 `rifleman` walk from `R+16` (first targets for the Swan). |
 | @100 | **DRUM LINE** from `R+16`: 3 `drummer` 36 px apart, marching left at 0.5 px/tick on the beat (`params.column: 'c1'`), with a `baton-major` keeping 60–120 px behind them. Kill the first drummer and the line stumbles for 60 ticks. Their drums soak up the beak gun from the front (`hit/drum`), but a stomp lands on the body (30 HP): one stomp each. If no drummer has been stomped 240 ticks after the first one entered the view, a `STOMP!` hint (the word and three gold chevrons pointing down) blinks over the front drummer. On foot: grenades, the knife or shots from behind. hostage `critic/chair @640 (M)`. |
 | @360 | `oompah-tank` from `R+48` to stopX 720, `params.maxX: 744`: it parks on the bank in front of the slipway (a Swan can leap it), and when a player pushes it back it never goes right of x 744, so its body (708–780) stays on the flat bank (without the leash it would back down the slipway at 0.4 px/tick: its anchor would enter the water at x 800 after 200 ticks and leave the ground's end at x 900 after 450). A Swan's clean hurdle take-off window [engine] is 610–660 with the tank at 720 and 634–684 at 744. `[N]` 2 `rifleman` walk in behind it from `R+16`. |
@@ -2527,7 +2527,7 @@ low corner only a near-full glide passes it (2546).
 
 | Trigger | Events |
 |---|---|
-| start | Card `FINAL MISSION`. Players spawn in their Trumpeters at view x 64 (y 80 and 130); `autoScroll(1.0)`; announcer `"TRUMPETER!"`. Radio bubble `GRAMPS: "SHE FLIES! DON'T TELL ACCOUNTING!"` (if Gramps is a player, the first other player says `"YOU MADE HER FLY?!"`). |
+| start | Card `FINAL MISSION`. Players spawn in their Trumpeters at view x 64 (y 80 and 130); `autoScroll(1.0)`; announcer `"TRUMPETER!"`. Radio bubble `GRAMPS: "SHE FLIES!"` (if Gramps is a player, the first other player says `"YOU MADE HER FLY?!"`). |
 | @0 | `kazoo-drone` formation `v` at y 60. |
 | @240 | 2 `kazoo-drone` formations `sine` at y 40 and y 140. |
 | @480 | 2 `baton-copter` (`mode: 'air'`) at y 50 and 150. |

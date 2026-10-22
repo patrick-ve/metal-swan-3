@@ -274,7 +274,7 @@ export const CHARACTER_TEXTS: Readonly<Record<string, { fullName: string; role: 
     fullName: 'W.O. AMBROSE "GRAMPS" FENWICK',
     role: 'ENGINEER. BUILT THE SWAN.',
     quote: '"BACK IN MY DAY, TANKS DIDN\'T HAVE LEGS. THEN I GAVE THEM LEGS."',
-    endingLine: '"RIGHT. WHO WANTS TO SEE THE MK4? IT\'S A SUBMARINE. DON\'T TELL ACCOUNTING."',
+    endingLine: '"RIGHT. WHO WANTS TO SEE THE MK4? IT\'S A SUBMARINE."',
     callsign: 'GRAMPS',
   },
 };

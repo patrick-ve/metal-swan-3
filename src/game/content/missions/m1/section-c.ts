@@ -146,8 +146,6 @@ function* swanLesson(ctx: SectionContext): ScriptGen {
   radio(ctx, p, 'GRAMPS: SHE GLIDES NOW.', 110);
   yield 120;
   radio(ctx, p, 'HOLD JUMP IN THE AIR.', 110);
-  yield 150;
-  radio(ctx, p, "DON'T TELL ACCOUNTING.", 110);
 }
 
 /** DRUM LINE: a STOMP! hint over the front drummer if nobody stomps one within 240 ticks. */

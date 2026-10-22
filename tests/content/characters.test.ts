@@ -177,7 +177,7 @@ describe('character definitions (GDD §3, §13.5, §12.3)', () => {
       role: 'ENGINEER. BUILT THE SWAN.',
       callsign: 'GRAMPS',
       quote: '"BACK IN MY DAY, TANKS DIDN\'T HAVE LEGS. THEN I GAVE THEM LEGS."',
-      endingLine: '"RIGHT. WHO WANTS TO SEE THE MK4? IT\'S A SUBMARINE. DON\'T TELL ACCOUNTING."',
+      endingLine: '"RIGHT. WHO WANTS TO SEE THE MK4? IT\'S A SUBMARINE."',
       voice: 'GRAMPS!',
       knifeSfx: 'weapon/knife-wrench',
       knifeProp: 'wrench',

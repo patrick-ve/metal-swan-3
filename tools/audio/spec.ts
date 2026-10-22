@@ -885,12 +885,10 @@ export const LINES: LineSpec[] = [
   line('vendor', 'HALLO DAAR!', '[hearty, friendly] Hallo daar!', 'nl', AMS, 1.6),
   line('vendor', 'HEB JIJ NOG NEPNAGELS\nVOOR MIJ?', '[hearty, curious] Heb jij nog nepnagels voor mij?', 'nl', AMS, 1.6),
 
-  // --- Gramps on the radio (section-b.ts, swan.ts). The "GRAMPS: " prefix is the bubble's
-  //     speaker tag: voiceKey strips it, and the actor does not read it.
-  line('gramps', "DON'T TELL ACCOUNTING.", "[lowers voice, conspiratorial] Don't tell accounting.", 'en', AMS, 1.8),
-  line('gramps', 'GRAMPS: SHE GLIDES, YOU KNOW.', '[fond, matter-of-fact] She glides, you know.', 'en', AMS, 1.8),
+  // --- Gramps on the radio (swan.ts; HOLD JUMP IN THE AIR. is m1-c's glide lesson: ams-b has no
+  //     Swan lines since the user's requests of 2026-10-22). The "GRAMPS: " prefix is the
+  //     bubble's speaker tag: voiceKey strips it, and the actor does not read it.
   line('gramps', 'HOLD JUMP IN THE AIR.', '[instructing, patient] Hold jump in the air.', 'en', AMS, 1.8),
-  line('gramps', 'AND MIND THE TULIPS!', '[grumpy warning] And mind the tulips!', 'en', AMS, 1.8),
   line('gramps', "SHE DOES THAT WHEN\nSHE'S NERVOUS.", "[embarrassed, fond] She does that when she's nervous.", 'en', AMS, 2.5),
   line('gramps', "GRAMPS: SHE'LL BE BACK\nIN SPRING.", "[wistful, gentle] She'll be back in spring.", 'en', AMS, 2.5),
 

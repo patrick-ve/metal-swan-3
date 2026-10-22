@@ -1,7 +1,6 @@
 /**
  * m5-c finale (GDD §10.5 stage 3 death sequence): while the Maestro's room falls apart, the
- * players auto-run right and jump into a Trumpeter flown by Gramps ("I'M A PILOT NOW TOO. DON'T
- * TELL ACCOUNTING."). If Gramps is a player, Brigadier Gusto flies it, singing (there is no Gusto
+ * players auto-run right and jump into a Trumpeter flown by Gramps ("I'M A PILOT NOW TOO."). If Gramps is a player, Brigadier Gusto flies it, singing (there is no Gusto
  * sprite in the game: the ship then flies the `mute` skin with no visible pilot, notes rise from
  * the seat and his line comes as a radio bubble). Then the ship flies off and the mission ends.
  *

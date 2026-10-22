@@ -4,14 +4,14 @@
  * Museumplein lawn with the long pool and the HOT-DOG STAND (box 960–1024, hatch 980–1004,
  * counter y 147; the Swan parks at ~1080), and the canal-side road toward the Amstel (2200–3072).
  *
- * Script: the riders in the passage, the vendor and THE SWAN (met silently + glide lesson; records
- * 'ams/swan-met' and 'm1/swan-lesson'), the gull set piece, three tourists, the exit at the end.
+ * Script: the riders in the passage, the vendor and THE SWAN (met silently: no note, no radio and no
+ * glide lesson since the user's requests of 2026-10-22; record 'ams/swan-met'), the gull set piece,
+ * three tourists, the exit at the end.
  */
 import { PAL } from '../../../../engine/palette';
 import type { Entity } from '../../../../engine/entity';
 import type { ScriptGen } from '../../../../engine/script';
 import type { BackgroundDef, DecorDef, SectionContext, SectionDef } from '../../../mission/index';
-import { hudOf } from '../../../context';
 import type { Player } from '../../../player/player';
 import { isSwan } from '../../vehicles/swan/swan';
 import { HOUSE, houseRow, lawnSprite, poolSprite } from './art';
@@ -119,42 +119,14 @@ function playerAtSwan(ctx: SectionContext): Player | null {
   return null;
 }
 
-/** Gramps on the radio: a navy bubble over a player, voiced by its sample when one is loaded. */
-function radio(ctx: SectionContext, p: Entity, text: string, ticks = 150): void {
-  hudOf(ctx.world).bubble(p, text, { kind: 'radio', ticks, speaker: 'gramps' });
-}
-
 /**
  * The Swan is met when a player walks up to her (the record m1-c reads). Silent since the user's
- * request of 2026-10-22: no note on her and no radio lines from Gramps when she is available.
+ * requests of 2026-10-22: no note on her, no radio lines from Gramps when she is available and no
+ * glide lesson when she is mounted.
  */
 function* swanMet(ctx: SectionContext): ScriptGen {
   yield () => playerAtSwan(ctx) !== null;
   ctx.records.set('ams/swan-met', true);
-}
-
-/** The first mount of a Swan: the glide lesson on the radio (m1-c skips its own after this). */
-function* swanLesson(ctx: SectionContext): ScriptGen {
-  let rider: Entity | null = null;
-  const off = ctx.world.events.on('vehicleMounted', (e) => {
-    if (!rider && isSwan(e.vehicle)) rider = e.player;
-  });
-  try {
-    yield () => rider !== null;
-  } finally {
-    off();
-  }
-  ctx.records.set('ams/swan-met', true);
-  if (ctx.records.get('m1/swan-lesson', false)) return;
-  ctx.records.set('m1/swan-lesson', true);
-  const p = rider as Entity | null;
-  if (!p) return;
-  yield 30;
-  radio(ctx, p, 'GRAMPS: SHE GLIDES, YOU KNOW.', 110);
-  yield 120;
-  radio(ctx, p, 'HOLD JUMP IN THE AIR.', 110);
-  yield 150;
-  radio(ctx, p, 'AND MIND THE TULIPS!', 110);
 }
 
 /** Lamp top (a perched gull's feet) of a `decor/ams/lamp` on the ground line. */
@@ -185,7 +157,6 @@ export function* script(ctx: SectionContext): ScriptGen {
     })(),
   );
   ctx.world.scripts.run(swanMet(ctx));
-  ctx.world.scripts.run(swanLesson(ctx));
 
   // @0: the street to the museum.
   crate(ctx, 300, 'M');

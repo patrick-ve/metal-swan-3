@@ -121,7 +121,7 @@ function* finale(ctx: SectionContext, boss: Entity): ScriptGen {
   if (gramps) {
     const p = anyPlayer(ctx);
     if (p) bubble(ctx, p, 'GUSTO: LA-LAAA! ALL ABOARD, CYGNETS!', 'radio', 150);
-  } else hudOf(ctx.world).bubble({ x: ship.x - 8, y: ship.y - 46 }, "I'M A PILOT NOW TOO. DON'T TELL ACCOUNTING.", { kind: 'gag', ticks: 150 });
+  } else hudOf(ctx.world).bubble({ x: ship.x - 8, y: ship.y - 46 }, "I'M A PILOT NOW TOO.", { kind: 'gag', ticks: 150 });
   yield () => ship.allAboard(ctx.players);
   // Let his death sequence finish (he floats away under his bicorne) before the ship leaves.
   if (boss instanceof Boss) {
