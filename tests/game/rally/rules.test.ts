@@ -16,7 +16,7 @@ import { laneSide, yawOf } from '../../../src/game/rally/physics';
 import { defineRallySystem, rallySystems, undefineRally, type RallySystemDef } from '../../../src/game/rally/registry';
 import { ahead, inRange, rulesPlan, wrapOff } from '../../../src/game/rally/rules/plan';
 import { BOX_TICKS, HOLD_TICKS, POLICE_SPEC } from '../../../src/game/rally/rules/police';
-import { CAMERA_TOLERANCE, rulesOf, WORKS_CAMERA_LEAD, type RallyRules } from '../../../src/game/rally/rules/rules';
+import { CAMERA_TOLERANCE, OPEN_TOLERANCE, rulesOf, WORKS_CAMERA_LEAD, type RallyRules } from '../../../src/game/rally/rules/rules';
 import { RallyRunner } from '../../../src/game/rally/runner';
 import { eurosText, FINE_BASE, FINE_PER_KMH, fineEuros, raceLines, REDX_EUROS, ScoreBook } from '../../../src/game/rally/score';
 import { loadRallyContent, rallyHeadline, RALLY_HEADLINES } from '../../../src/game/scenes/rally-route';
@@ -220,6 +220,37 @@ describe('enforcement: speed cameras, the average-speed zone, the red X', () => 
     h.step(15);
     expect(rival.fines).toBe(1);
     expect(ev.log.some((x) => x.name === 'flash' && x.e.car === rival.id && x.e.slot === -1)).toBe(true);
+  });
+
+  it('wave C (the balance): the open road flashes above the limit + OPEN_TOLERANCE, the road works above + CAMERA_TOLERANCE', () => {
+    expect(OPEN_TOLERANCE).toBeGreaterThan(CAMERA_TOLERANCE);
+    const h = race();
+    const { runner: r, rules } = h;
+    const ev = record(r);
+    h.toGo();
+    const cam = rules.plan.cameras.find((c) => c.works < 0)!;
+    const me = r.carOf(0)!;
+    // A lift to the limit + 9 (open road): no flash; flat out: a flash.
+    put(r, me, cam.off - 8, (cam.limit + OPEN_TOLERANCE - 1) / 3.6);
+    h.step(20);
+    expect(ev.count.flash ?? 0).toBe(0);
+    put(r, me, r.track.length + cam.off - 8, (cam.limit + OPEN_TOLERANCE + 2) / 3.6);
+    me.lap = 2;
+    h.step(20);
+    expect(ev.count.flash).toBe(1);
+    // A road works' camera (lap 2): 5 km/h over its 70 is a flash.
+    const h2 = race({ lap: 2 });
+    const ev2 = record(h2.runner);
+    h2.toGo();
+    h2.step(2);
+    const wcam = h2.rules.plan.cameras.find((c) => c.works >= 0 && h2.rules.works.zones[c.works]?.active);
+    if (wcam) {
+      const me2 = h2.runner.carOf(0)!;
+      // 3 m before it at 75 km/h (0.35 m per tick): over it within 20 ticks.
+      put(h2.runner, me2, h2.runner.track.length + wcam.off - 3, (wcam.limit + CAMERA_TOLERANCE + 2) / 3.6);
+      h2.step(20);
+      expect(ev2.count.flash).toBe(1);
+    }
   });
 
   it('a debug teleport over a camera fines nothing', () => {

@@ -37,6 +37,7 @@ import { ahead, inRange, wrapOff } from '../../../rally/rules/plan';
 import { HOLD_TICKS } from '../../../rally/rules/police';
 import { FLITSER_AHEAD, rulesOf, type RallyRules } from '../../../rally/rules/rules';
 import { eurosText } from '../../../rally/score';
+import { createRadioTicker } from '../radio/ticker';
 
 /** The ink of the HUD panels (the scene's). */
 const INK_PANEL: Color = 0x05060aff;
@@ -162,6 +163,7 @@ function buildMap(runner: RallyRunner, rules: RallyRules | null, w: number, h: n
 export function createRulesHud(runner: RallyRunner): RallyHudPart {
   const views: ViewState[] = [0, 1].map(() => ({ flashT: 0, fineT: 0, euros: 0, boete: '', clockMin: -1, clock: '', zoneKey: -1, zone: '', worksKey: -1, works: '', flitKey: -1, flit: 'FLITSER', holdKey: -1, hold: '' }));
   const maps: { full: MiniMap | null; split: MiniMap | null } = { full: null, split: null };
+  const ticker = createRadioTicker();
   let t = 0;
   const offs = [
     runner.events.on('flash', (e) => {
@@ -252,12 +254,8 @@ export function createRulesHud(runner: RallyRunner): RallyHudPart {
       drawMap(r, mapOf(v.split), v.x + L.map.x, v.y + L.map.y, runner, rules, car, t);
       // The speed dial (full view only).
       if (L.dial) drawDial(r, v.x + L.dial.cx, v.y + L.dial.cy, L.dial.r, Math.abs(car.speed) * 3.6);
-      // The radio ticker: once, at the bottom of the frame.
-      if (v.ticker && v.y + v.h >= 216) {
-        const tw = Math.min(250, textWidth(v.ticker) + 8);
-        r.rect(cx - (tw >> 1), v.y + v.h - 13, tw, 11, INK_PANEL, PANEL);
-        uiText(r, v.ticker, cx, v.y + v.h - 11, UI_GREY, 'center');
-      }
+      // The radio ticker (RADIO's slot, wave C: content/rally/radio/ticker.ts): once, at the bottom of the frame.
+      if (v.ticker && v.y + v.h >= 216) ticker.draw(r, v.ticker, runner.race.tick, cx, v.y + v.h - 11, v.split);
     },
     dispose() {
       for (const off of offs) off();

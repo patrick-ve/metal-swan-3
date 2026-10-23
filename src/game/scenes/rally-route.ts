@@ -23,6 +23,7 @@
 import { newCampaign, type GameApp } from '../app';
 import { HudState } from '../context';
 import { isRallyContent, loadContent } from '../content/index';
+import { RALLY_SAMPLE_GROUP } from '../content/samples/rally';
 import type { RallyOpts } from '../rally/api';
 import { LEVEL2_SEED_KEY, RALLY_ID, type Level2Seed } from '../rally/ids';
 import { hasRallyTrack } from '../rally/registry';
@@ -35,7 +36,6 @@ import { GlitchBridgeScene, type BridgeRunner } from './glitch-bridge';
 import { MissionCompleteScene, type NextRunner } from './mission-complete';
 import { joinCharacter } from './play-host';
 import { RallyGlitchScene } from './rally-glitch';
-import { RallyScene } from './rally';
 
 export { RALLY_ID };
 
@@ -69,6 +69,19 @@ export function prepareRally(
 const LOAD = { started: false, registered: false, failed: false };
 let loading: Promise<void> | null = null;
 
+/**
+ * The race scene's module (wave C, lead polish 3e): `RallyScene` with its runner, physics, AI,
+ * cameras, radio and sound is a lazy chunk, loaded together with the rally content (the boot's main
+ * chunk stays small). `registered` waits for both.
+ */
+export type RallySceneModule = typeof import('./rally');
+let sceneModule: RallySceneModule | null = null;
+
+/** The race scene's module once `loadRallyContent` loaded it (null before). */
+export function rallySceneModule(): RallySceneModule | null {
+  return sceneModule;
+}
+
 /** The rally content's load state (read every tick by the glitch scene; no allocation). */
 export function rallyLoadState(): { readonly started: boolean; readonly registered: boolean; readonly failed: boolean } {
   return LOAD;
@@ -78,9 +91,10 @@ export function rallyLoadState(): { readonly started: boolean; readonly register
 export function loadRallyContent(): Promise<void> {
   if (!loading) {
     LOAD.started = true;
-    loading = loadContent(isRallyContent).then(
-      (report) => {
+    loading = Promise.all([loadContent(isRallyContent), import('./rally')]).then(
+      ([report, mod]) => {
         for (const f of report.failed) console.error(`[rally] content "${f.id}" failed`);
+        sceneModule = mod;
         LOAD.registered = hasRallyTrack();
         LOAD.failed = !LOAD.registered;
       },
@@ -103,10 +117,17 @@ export function rallyGl(app: Pick<GameApp, 'params' | 'view3d'>): { ok: boolean;
   return { ok: v.ok, reason: v.reason };
 }
 
-/** The card's preload: the lazy content, the GL context (its feature check); wave C: the samples. */
+/**
+ * The card's preload: the lazy content, the GL context (its feature check) and the sample group
+ * 'mission:rally' (wave C: FILE FM's lines and jingles; the songs stream; `RallyScene` loads it too
+ * for a direct start, and releases it when the race ends; with no WebGL2 it is not loaded, and
+ * `RallyNoGlScene` releases it).
+ */
 export function preloadRally(app: GameApp, _start: RallyOpts): void {
   void loadRallyContent();
-  rallyGl(app);
+  // Fixer (wave C review): no race on a device without WebGL2, so no FILE FM (about 28 MB decoded);
+  // RallyNoGlScene releases the group too (a context that fails after the card).
+  if (rallyGl(app).ok) void app.audio.loadSamples?.(RALLY_SAMPLE_GROUP);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -246,7 +267,7 @@ export interface RallyProbe {
 /** The probe of the last RallyScene (pure: main.ts wraps it in a getter on `window.__ms3`). */
 export function rallyProbe(app: GameApp): RallyProbe {
   const gl = rallyGl(app);
-  const runner = RallyScene.last;
+  const runner = sceneModule?.RallyScene.last ?? null;
   const car = runner ? (runner.carOf(0) ?? runner.carOf(1)) : null;
   const st = app.view3d.stats();
   return {

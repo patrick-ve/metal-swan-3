@@ -46,6 +46,11 @@ export const INTRO_SKIP_AFTER = 60;
  * (he never talks over the next scene; the ring's two lines run ~1 s past 360 ticks). No voice, no wait.
  */
 export const INTRO_VOICE_HOLD = 90;
+/**
+ * The rally card's hold (wave C): Gusto's two takes are 4.2 s + 4.9 s; the second starts when the
+ * first ends (about tick 280) and ends about tick 575, 215 ticks past `INTRO_TICKS`.
+ */
+export const RALLY_VOICE_HOLD = 240;
 /** Typing speed (characters per tick) and the text area of the radio box. */
 const TYPE_RATE = 2;
 const TEXT_X = 64;
@@ -188,7 +193,8 @@ export class MissionIntroScene implements Scene {
     const pad = app.input.pad(0);
     const pad2 = app.input.pad(1);
     const skip = pad.pressed('start') || pad.pressed('fire') || pad2.pressed('start') || app.input.keyPressed('Enter');
-    const talking = this.spoken > 0 && this.t < INTRO_TICKS + INTRO_VOICE_HOLD && !!app.audio.speaking?.();
+    const hold = isRally(this.mission) ? RALLY_VOICE_HOLD : INTRO_VOICE_HOLD;
+    const talking = this.spoken > 0 && this.t < INTRO_TICKS + hold && !!app.audio.speaking?.();
     if ((this.t >= INTRO_TICKS && !talking) || (skip && this.t >= INTRO_SKIP_AFTER)) this.go();
   }
 

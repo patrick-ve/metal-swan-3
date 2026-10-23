@@ -219,14 +219,18 @@ export const MISSION_CARDS: readonly MissionCard[] = [
   {
     // Level 2 since 2026-10-22 (docs/design/rally.md §1.1): the 3D race on the A10. English like
     // every card. The headline is the 1st-place one (wave B picks it by the best player's place).
-    // No voice yet (wave C: Gusto's two lines in group 'boot'). The ring's card above stays for its
-    // URL start (`?mission=ring`).
+    // Wave C: Gusto voices both lines (group 'boot'; 4.2 s + 4.9 s, the card waits for him:
+    // mission-intro.ts RALLY_VOICE_HOLD); the announcer's line plays as the card's frame freezes,
+    // before it breaks into 3D (rally-glitch.ts). The ring's card above stays for its URL start
+    // (`?mission=ring`).
     id: 'rally',
     label: 'MISSION 2',
     name: 'BINNEN DE RING',
     place: 'A10 RING ROAD, AMSTERDAM - 1615 HOURS',
     briefing: ['FRIES SAFE. NOW THE SQUAD RACES DE RINGRALLY: THREE LAPS OF THE A10.', 'FIRST PRIZE: A PARKING PERMIT BINNEN DE RING. THE WAITING LIST IS 12 YEARS!'],
     headline: 'SQUAD WINS DE RINGRALLY! PERMIT SECURED!',
+    // content/rally/radio/lines.ts RALLY_ANNOUNCE (the take is in group 'boot').
+    announce: 'MISSION TWO. VOL GAS!',
     map: { lines: RALLY_LINES, dot: [198, 113], labels: RING_LABELS },
   },
   {

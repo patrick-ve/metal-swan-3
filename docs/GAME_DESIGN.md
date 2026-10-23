@@ -2867,7 +2867,9 @@ starts the ring directly; F4 skips to the next stretch (or kills the boss on scr
 **Since 2026-10-22 (user decision; `docs/design/rally.md` §0, §1; §20): level 2 is the 3D race
 `rally`, BINNEN DE RING; the ring above is dormant** (off the route; `?mission=ring` still starts
 it). `Gameplay` (ams) → `MissionComplete` (the ams tally) → `MissionIntro` (`MISSION 2`,
-`BINNEN DE RING`) → `RallyGlitch` (the card breaks into blocks that fold into the 3D start grid) →
+`BINNEN DE RING`; Gusto voices both lines and the card waits for him) → `RallyGlitch` (the announcer's
+`MISSION TWO. VOL GAS!`; the card breaks into blocks that fold into the 3D start grid; the race scene
+is a lazy chunk loaded with the rally content) →
 `Rally` (`RallyScene`: the fly-over of the grid (4 s, any button skips), the countdown on the start
 gantry, three laps, the results UITSLAG; ⇄ `Pause` with a CAMERA item; player 2 joins with START on a
 free pad or the key 2) → `MissionComplete` (the rally's page: PLACE, TIME, BEST LAP, OVERTAKES, NEAR
@@ -3834,7 +3836,19 @@ ring. The spec is final; this chapter only points to it.
 - **The HUD:** POSITIE, RONDE, RONDETIJD, BESTE RONDE, KM/H with a dial, the clock, a ring
   mini-map, the warnings (FLITSER, RIJSTROOK DICHT, TRAJECT, WERK IN UITVOERING 70, SPITSSTROOK
   OPEN, POLITIE!, AAN DE KANT!), BOETE EUR n and the white camera flash in that player's view; a
-  compact set per view in 2P. **Wave C:** the car radio FILE FM with its DJ, the songs, the engines.
+  compact set per view in 2P; the radio ticker (FILE FM and the song title, or the DJ's line;
+  GEEN BEREIK in a tunnel).
+- **The sound (wave C):** the car radio **FILE FM** ("WIJ STAAN ER ALTIJD") with its DJ **FREEK
+  FLITS** (a designed Dutch voice: cheerful, fast, a bit too much): 46 short lines on the race (the
+  start and his count with the beeps, laps, the time, the leader by livery, flashes, the zone, the
+  works, the red X, the spitsstrook, jams, the police, pull-overs, the finish, the parking-permit
+  gag), at most one at a time, about one every 15 s; he teases the situation, never a player. Three
+  driving songs of our own, one per lap (RONDJE RING, ZON OP DE ZUIDAS, NACHTSPITS; streamed), three
+  jingles; a sting at each lap change; static in the tunnels (2P: half static with one player inside).
+  Synth: the engines (≤ 4 voices: the estates' turbo five, each team its own), tyres, scrapes, bumps,
+  horns, the Dutch two-tone siren, the flash, wind, doppler, the tunnel echo. The heroes say nothing
+  in the car; Gusto voices only the card; the announcer's `MISSION TWO. VOL GAS!` breaks the card
+  into 3D. One radio for both players.
 - **Score:** PLACE 20,000…2,000, TIME 50 per second under the par, BEST LAP 2,000, OVERTAKES 100,
   NEAR MISSES 50, FINES −250 each (the euros as a joke), TEAM 5,000 in 2P; on the existing MISSION
   COMPLETE page.
@@ -3844,3 +3858,9 @@ ring. The spec is final; this chapter only points to it.
 - **Status (wave B, 2026-10-23):** the full race plays as above in 1P and 2P (and a P2 join during
   the race). At the sim bot's pace a lap takes 2:20–2:52 and the race 26,000–29,200 ticks
   (7:15–8:07). See `docs/design/rally.md` "Status (wave B)" and `docs/api/rally.md` part B.I.
+- **Status (wave C, 2026-10-23):** the level plays with its full sound end to end (the card, the
+  glitch, FILE FM, the race, the tally, the bridge), 1P and 2P. Polish: a clean headlight beam ahead
+  in the lane; on the open road a camera flashes above the limit + 10 km/h (the road works + 3), so a
+  lift for a FLITSER escapes the fine while racing flat out stays the main path; the race scene loads
+  lazily with the rally content. See `docs/design/rally.md` "Status (wave C)" and `docs/api/rally.md`
+  parts C, C.S, C.R and C.I.

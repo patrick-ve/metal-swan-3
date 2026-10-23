@@ -1,4 +1,4 @@
-# Audio pipeline — ElevenLabs samples for the start screens, mission ams, the fps mode, mission oldenzaal and mission ring
+# Audio pipeline — ElevenLabs samples for the start screens, mission ams, the fps mode, mission oldenzaal, mission ring and mission rally
 
 Source files: `tools/elevenlabs.ts`, `tools/audio/{spec-types,spec,lib,client,gen,loudness,process,review,ship}.ts`.
 Tests: `tests/tools/audio-pipeline.test.ts`, `tests/content/samples.test.ts`. Runtime side: `src/engine/samples.ts` and
@@ -336,6 +336,116 @@ and the boat's sfx, the voice fit, the mix check).
   floors every activist bubble with it); the leader's beats in boot/boat.ts (`wave` 175, `vreedzaam`
   132, `drums` 122, the lunch line 236) are the take plus 10 or more; the 33 planned sfx ship and the
   six synth-only ids do not. The beats are only the bubbles' lengths: the ring sims did not change.
+
+## Mission rally (group `'mission:rally'`, wave C)
+
+Level 2 since 2026-10-22, BINNEN DE RING (docs/design/rally.md §8, §11, §12.6; docs/api/rally.md
+"C. Wave C contracts"). FILE FM, the car radio, with its DJ FREEK FLITS. PREP (2026-10-23) wired the
+group and the engine opt-ins; AUDIO-GEN generates the takes; RADIO and SFX use the opt-ins.
+
+- **Group:** `'mission:rally'` is in `SAMPLE_GROUPS`, `GROUP_DIRS` (`public/audio/rally/`) and
+  `LAZY_GROUPS` (the manifest lists it once something of it is picked). The game registers it with
+  its LONG songs STREAMED: `content/samples/rally.ts` `rallySampleGroup(SAMPLE_MANIFEST)` sets
+  `stream: true` on every song of `STREAM_MIN_SECONDS` (20 s) or more (the ship step does not write
+  the flag). Loaded by the card's `preloadRally` and by `RallyScene.enter` (a direct `?mission=rally`;
+  the boot does not load it); released by `RallyScene.exit` (the race's end).
+- **The lines table:** `src/game/content/rally/radio/lines.ts` — `RADIO_LINES` (46 DJ lines in 18
+  categories: id, category, exact Dutch text, speaker `DJ_SPEAKER = 'freek'`, priority, cooldown,
+  trigger `on`, selectors), `RADIO_SONGS` (`rally-lap1` RONDJE RING 140 BPM, `rally-lap2` ZON OP DE
+  ZUIDAS 138 BPM, `rally-lap3` NACHTSPITS 128 BPM; about 2:30, instrumental, a clean loop, with their
+  genre `style`), `RADIO_JINGLES` (`rally-jingle-1` a sung 'FILE FM!' with a brass hit, `-2` a synth
+  sweep with 'Wij staan er altijd', `-3` an instrumental sting; 3–6 s), Gusto's two card lines
+  (`RALLY_CARD_LINES`, English, group `'boot'`, exactly the card's briefing) and the announcer's
+  `RALLY_ANNOUNCE` 'MISSION TWO. VOL GAS!' (group `'boot'`). A LineSpec's `text` is the table's text
+  verbatim (its take's key is `voiceKey(text)`).
+- **Synth fallbacks:** every song and jingle id is a registered song (`content/music/rally.ts`:
+  RADIO's synth songs RONDJE RING, ZON OP DE ZUIDAS, NACHTSPITS and three jingles, docs/api/rally.md
+  C.R.4; they replaced PREP's placeholders). They play only when a take is missing or its stream
+  fails. The audio spec's test "every music id is a registered song" holds.
+- **Who plays what (integrator, docs/api/rally.md C.I.1):** Gusto's two card lines — the MISSION 2
+  card (`say`, the card waits `RALLY_VOICE_HOLD`); `RALLY_ANNOUNCE` — the glitch into 3D (`voice`, the
+  card's `announce`; the frame breaks on the shout); the DJ lines, songs and jingles — the director
+  `RallyRadio` (`say` as `freek`, `music(id, { once: true })`, the sting first after the glitch); the
+  race's synth sound — `attachRallySound`. The race scene releases the group at its exit.
+- **Rules (spec §11):** FILE FM and FREEK FLITS are our own; the DJ's voice is DESIGNED (a Dutch
+  `VoiceSpec` with `radio: true`; the voice-spec test asks every Dutch voice for "original character
+  voice / never an imitation / standard Dutch with a neutral accent"); prompts never name an artist, a
+  song, a station, a band, a film, a real person or a game. The heroes never talk in the car.
+
+### Generated and shipped (AUDIO-GEN, 2026-10-23)
+
+- **Spec entries** (`tools/audio/spec.ts`): the designed voice `freek` ('MS3 Radio DJ', Dutch preview
+  text, `radio: true`: the `RADIO_FILTER` band-pass, 320 Hz–3.2 kHz, is baked into his takes); the 46 DJ
+  lines built from `RADIO_LINES` (`rallyLines()`: the table's text verbatim, `lang: 'nl'`, group
+  `'mission:rally'`, 2 takes; the `say` of each line is `RALLY_SAY[id]`, with audio tags and the
+  spellings the TTS needs: `A-tien` for A10, `File FM`); Gusto's two card lines (`RALLY_CARD_LINES`,
+  English) and the announcer's `RALLY_ANNOUNCE` in `'boot'`; the songs `rally-lap1` (A minor, intro 4 +
+  80-bar loop, 147 s), `rally-lap2` (D major, 4 + 80 bars, 149 s), `rally-lap3` (C minor, 4 + 72 bars,
+  145 s) and the jingles `rally-jingle-1…3` (8 s requests, one-shots). Genre-only prompts (`RALLY_STYLE`,
+  `JINGLE_STYLE`): no artist, song, station, band, film, person or game.
+- **The sung jingles:** `musicRequest` always sends `force_instrumental: true`, so `rally-jingle-1` and
+  `-2` are made by `tmp/rally-audio/gen-vocal.ts` (the tools' `planJobs` / `runJobs`, the same files and
+  ledger): round 1 with the prompt and `force_instrumental: false` (takes 1–2: no words), round 2
+  (`--plan`, takes 3–4) with a `composition_plan` (music_v2_5 `chunks`: a sung chunk with the lyric, then
+  an instrumental chunk for the hit and its decay). Checked with the Voice Isolator
+  (`tmp/rally-audio/isolate.ts`; it needs 4.6 s or more, so shorter takes are padded) and Scribe on the
+  vocal stem. A plain `gen --force` of these two ids would make them instrumental.
+- **The DJ voice:** 6 previews (2 design calls). Scribe (nld) matched the preview text word for word in
+  previews 1 and 3 only; preview 3 was saved: the fastest delivery (15.4 s for 278 characters, 18
+  characters a second), the widest pitch range of the two (126–302 Hz, median 216 Hz: energetic) and
+  the smoothest voice (roughness 0.307). Voice id in `voices.json` (`freek`).
+- **Lines picked by Scribe** (`tmp/rally-audio/stt.ts` + `pick.ts`; table `tmp/rally-audio/picks.md`):
+  the transcript must match the text (case, punctuation, spaces ignored), else a near-homophone of the
+  table (`4.15u` = 'kwart over vier', `effe` = 'even', `Kssst` = 'Ksst', `Flitz` = 'Flits'), then the
+  shortest take. 45 of 49 lines matched in takes 1–2; `Je luistert naar FILE FM, met Freek Flits!` took
+  4 takes (a clearer `say`). The tunnel line `… ontva...` ends on a cut word (any word that starts with
+  'ont'). Gusto's lines match a pattern with the Dutch words loose (an English transcript cannot spell
+  them; 'binnen' must keep its b). The countdown `Drie... twee... één... GAAN!` was picked by its word
+  onsets: take 2 says the numbers at 0.02 / 1.02 / 2.13 s and GAAN at 3.11 s (the gantry's GO is at
+  180 ticks = 3 s).
+- **Songs and jingles picked by measurement** (`songcheck.py`, `tempo.py`, `envelope.py`;
+  `tmp/rally-audio/song-picks.json`): `rally-lap1` take 2 (take 1 fades out in its last 4 bars; take 2:
+  seam step 0.2 dB, spectral distance 6.2 dB), `rally-lap2` take 1 (the only take; the loop goes from
+  the last drop back to the verse: step 2.2 dB), `rally-lap3` take 1 (the only take; seam 0.4 dB, 3.7
+  dB); tempos measured 140.1 / 138.0 / 127.9 BPM. `rally-jingle-1` take 4 (Scribe hears "Feel the
+  heaven" ≈ 'Fie-le ef-em'; re-check by ear), `rally-jingle-2` take 4 (the vocal stem: "Wij staan er
+  altijd."), `rally-jingle-3` take 2 (the sting sounds for 2.5 s).
+- **Levels:** DJ lines −17.3 LUFS integrated (median; −20.2 … −16.1), peaks ≤ −1.2 dBFS, 1.6–4.8 s
+  (median 2.6 s); songs and jingles −16.3 / −16.4 LUFS; Gusto's lines 4.24 s and 4.91 s (together
+  longer than the card's 360 + 90 ticks after the typing starts: the integrator's call).
+- **Shipped:** `public/audio/rally/` 46 voice files and 6 music files (52 files, 9.3 MB; the songs
+  2.3 MB each, streamed); `public/audio/boot/voice/` 3 files (194 kB). A dev-server check of
+  `?mission=rally` fetched all 46 DJ files, the 3 jingles and the 3 boot lines (200) and streamed
+  `rally-lap1` (206).
+- **Credits:** 14,536 (955,129 → 969,665 used), the Scribe checks and the isolator included; the songs
+  cost the full 900 per minute, so `rally-lap2` and `rally-lap3` kept one take each (both pass the
+  checks).
+
+### The engine opt-ins (`src/engine/audio.ts`; Web Audio in `audio.browser.ts`)
+
+All OPTIONAL `AudioOut` members with no-ops in `NullAudio` (no log entries) and `SimAudio`;
+`GameAudio` forwards them. Nothing but the rally calls them; audio never changes a sim.
+
+| Member | What it does |
+|---|---|
+| `MusicOpts.once` | play a song once to its end even when it loops (then the song-end event); after it ended, `music(sameId)` needs `restart: true` |
+| `songState(): SongState \| null` | the current song: `id`, `source` ('synth' / 'sample' / 'stream'), `position` (s, folded into its loop), `duration` (one pass / the file), `ended`, `paused`; null when none (and always headless). The object is reused |
+| `onSongEnd(fn): () => void` | `fn(id)` when the current song plays to its end (a one-shot, or `once`); never on a stop or a replace; returns the unsubscribe |
+| `SampleSong.stream` | (samples.ts) the song plays through an `HTMLAudioElement` → `MediaElementAudioSourceNode` → the music bus (the dialogue duck, the pause duck and the radio apply); never fetched or decoded by the bank (its key is 'ready' when the group loads). The loop seeks back at `loopEnd` (a short seek, not sample-exact); a load or decode error marks it 'failed' and the synth song takes over at the same position; a hidden tab holds it |
+| `setRadio(o: RadioOpts \| null)` | the car radio's chain on the music bus (after the dialogue duck) and the voice bus: signal → tunnel muffle → (+ static) → speaker high-pass → low-pass → master. `speaker` 0..1 (default 1: 10→180 Hz high-pass, 20→4.5 kHz low-pass), `muffle` 0..1 (20 kHz → 300 Hz), `signal` 0..1 (0 = no reception: the DJ's take is cut too), `static` 0..1 (follows the music volume and the pause; `staticId` = an sfx id, else white noise), `ramp` s. Built on first use; null ramps it neutral; `stopAll` makes it neutral |
+| `engine(key, o: EngineOpts)` / `stopEngine(key, fadeTicks?)` | a parametric engine voice: saw at the firing frequency `rpm / 60 × cyl / 2 × pitch`, triangle at half (rumble), square at twice (2nd order) through a low-pass, band-passed noise (exhaust), a sine turbo whine; `load`, `bright`, `rough`, `turbo`, `vol`, `pan`; updates glide (30 ms). At most `ENGINE_VOICES` (4): a new key replaces the quietest voice when louder (`engineSteal`). Through the loop bus (`pauseLoops` silences it); `stopAll` stops them |
+| `SfxOpts.pan` on `sfxLoop` | now applied: the first pan inserts a `StereoPannerNode`; a mono loop keeps its unpanned level in the centre (`loopPanGain`) |
+
+Pure helpers (node-tested, `tests/engine/audio-optins.test.ts`): `engineParams` (the node values),
+`engineSteal`, `radioParams` / `RADIO_NEUTRAL`, `dopplerPitch(closing, scale)` (c / (c − v), clamped
+0.5 … 2), `closingSpeed(dx, dz, dvx, dvz)`, `stereoPan(right, ahead, width)`, `loopPanGain(pan, mono)`.
+Offline renders for listening by measurement: `renderEngineOffline(steps, seconds, rate)` and
+`renderRadioOffline(o, seconds, rate, input)` (audio.browser.ts). Browser check:
+`tests/media/audio-optins-browser.test.ts` (Chromium; 2026-10-23: the engine at 3000 rpm / 4 cyl has
+its 100 Hz line 43 dB over the 137 Hz bin; full load +8 dB over idle; a hard-left pan leaves the right
+channel at 0; the speaker takes 60 Hz and 8 kHz down 18 dB and keeps 1 kHz (+0.3 dB); the muffle takes
+1 kHz down 21 dB and 8 kHz 68 dB; signal 0 is −107 dB; a streamed WAV plays once to its song-end
+event; a missing stream falls back to the synth).
 
 ## A full round
 

@@ -1,6 +1,7 @@
 // ElevenLabs generation spec for the start screens, mission `ams`, the first-person mode, mission
 // `oldenzaal` (audio plan step 2; oldenzaal: docs/design/oldenzaal.md §11, wave A plan) and mission
-// `ring` (docs/design/ring.md §R.8, revision R wave B).
+// `ring` (docs/design/ring.md §R.8, revision R wave B) and mission `rally` (docs/design/rally.md §8,
+// wave C: FILE FM, the car radio; the lines come from src/game/content/rally/radio/lines.ts).
 // Tools only: src/ never imports this file. The inventory behind it is
 // tmp/audio/overview/critic.md (B1 sfx, B2 music, B3 dialogue) and sfx.md (PART 2).
 //
@@ -13,6 +14,7 @@
 // - Text in LINES is the exact game text (incl. "\n" and a "GRAMPS: " prefix), so the runtime
 //   voiceKey(text) finds the clip; `say` is what the voice actor reads.
 import type { LineSpec, MusicSpec, SfxSpec, VoiceSpec } from './spec-types';
+import { DJ_SPEAKER, GUSTO_SPEAKER, RADIO_LINES, RALLY_ANNOUNCE, RALLY_CARD_LINES, type RadioLine } from '../../src/game/content/rally/radio/lines';
 
 type Group = SfxSpec['group'];
 const BOOT: Group = 'boot';
@@ -20,6 +22,7 @@ const AMS: Group = 'mission:ams';
 const FPS: Group = 'mode:fps';
 const OZ: Group = 'mission:oldenzaal';
 const RING: Group = 'mission:ring';
+const RALLY: Group = 'mission:rally';
 
 // ---------------------------------------------------------------------------------------------
 // SFX
@@ -484,6 +487,10 @@ const FPS_STYLE = 'Instrumental only, no vocals, original composition. Gritty re
 const OZ_STYLE = 'Instrumental only, no vocals, no lyrics, original composition. Dark, grim and spooky arcade action game score for a haunted old town at night, cinematic, clean stereo mix.';
 /** Mission ring's songs on foot (docs/design/ring.md §R.8): comic, energetic street-band music. */
 const RING_STYLE = 'Instrumental only, no vocals, no lyrics, no chanting, original composition. Comic, energetic arcade run-and-gun game score with a live street brass band feel, punchy clean stereo mix.';
+/** Mission rally's FILE FM songs (docs/design/rally.md §8): radio-ready driving songs, genre-only prompts. */
+const RALLY_STYLE = 'Instrumental only, no vocals, no lyrics, no vocal chops, original composition. A driving song on the car radio of a comic arcade racing game on a city ring road, polished radio-ready production, punchy clean stereo mix.';
+/** FILE FM's station jingles: short one-shots that end on a hit and decay to silence. */
+const JINGLE_STYLE = 'Original composition. A short radio station jingle for a comic arcade racing game, bright and polished radio production, clean stereo mix.';
 /** The v1 prompts (takes 1-2 of `title` and `select`, shipped 2026-10-14), kept as a record. */
 export const TITLE_V1_PROMPT = `${MUSIC_STYLE} Heroic-comic title theme, 112 BPM, D major, 4/4. Bars 1-8: a gentle intro of bell arpeggios over a warm pad. Then a 32-bar loop: a calm, graceful legato lead (soft square-wave synth doubled by flute) that leaps up a sixth and walks down in a dotted rhythm, over a frantic running 16th-note filtered-saw bass like legs paddling under water; full drums with kick, snare and hats; a light counter-melody in the middle 8 bars. Dignified on top, furious underneath, a little funny. ${LOOP_TAIL}`;
 export const SELECT_V1_PROMPT = `${MUSIC_STYLE} Bouncy, eager menu music, 128 BPM, A major, 4/4, one 16-bar loop with no intro. A staccato 8th-note synth lead hopping up, a walking bass with chromatic steps, off-beat pulse chords, hi-hats only (no kick). In bars 9-12 a graceful 4-bar hook while the bass breaks into fast 16ths. Excited rookie energy. ${LOOP_TAIL}`;
@@ -721,6 +728,85 @@ export const MUSIC: MusicSpec[] = [
     takes: 3,
     prompt: `${RING_STYLE} Comic-heroic mini-boss battle against a big pink protest boat with a drum band on deck, 150 BPM, G minor, 4/4. A 2-bar intro: a marching snare cadence over a bass drum, ending on a big brass stab. Then a 24-bar loop. Bars 1-8: a driving marching drum line (snares in sixteenths, big bass drums on every beat, a cymbal crash at every 4 bars), short punchy brass stabs on the off-beats, and a nasal, buzzy, megaphone-like synth lead playing a bold, bossy tune. Bars 9-16: a half-time feel: trombones and tubas play a heroic, slightly pompous tune in B-flat major while the drums keep marching. Bars 17-20: a drum-band break, snares and toms trading calls. Bars 21-24: rising tension: the brass climbs in stabs one semitone per bar over a snare roll, then a crash back into the top. Bold, bouncy and a bit ridiculous. All melodies are new. ${LOOP_TAIL}`,
   },
+  // --- Mission rally, wave C (docs/design/rally.md §8, group 'mission:rally'): FILE FM, the car
+  //     radio. One song per lap (content/rally/radio/lines.ts RADIO_SONGS: id, title, bpm, genre),
+  //     about 2:30 each (intro 4 bars + a long loop; the radio plays each once to its end and the
+  //     game streams them), and the three station jingles (RADIO_JINGLES, 3-6 s, one-shots). Synth
+  //     fallbacks: src/game/content/music/rally.ts (RADIO). Genre-only prompts in our own words:
+  //     never an artist, a song, a station, a band, a film, a real person or a game.
+  //     `rally-jingle-1` and `-2` are SUNG: the pipeline's music request always sets
+  //     force_instrumental, so their takes are made by tmp/rally-audio/gen-vocal.ts (the same
+  //     planJobs / runJobs with force_instrumental false). A plain `gen --force` would make them
+  //     instrumental.
+  {
+    id: 'rally-lap1',
+    group: RALLY,
+    // RONDJE RING: intro 4 bars (6.9 s) + loop 80 bars (137.1 s) + 2 s
+    seconds: 147,
+    bpm: 140,
+    beatsPerBar: 4,
+    introBars: 4,
+    loop: true,
+    takes: 2,
+    prompt: `${RALLY_STYLE} An upbeat late-1990s Dutch dance-pop drive, 140 BPM, A minor, 4/4. A 4-bar intro: a filtered synth riff fades in over a kick on every beat. Then an 80-bar loop. Bars 1-16: a four-on-the-floor kick, off-beat open hi-hats, a bouncing octave bass in eighth notes and bright staccato synth-brass stabs on the off-beats. Bars 17-32: a catchy, happy synth lead hook over the same groove. Bars 33-48: the hook with a second lead an octave up and a sparkling arpeggio. Bars 49-64: a breakdown: the kick drops out, warm pads and the riff alone, then a snare roll builds up. Bars 65-80: the full hook again with everything in, then a short drum fill back into bar 1. Sunny, cheeky and fast, a sunny afternoon on the motorway. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'rally-lap2',
+    group: RALLY,
+    // ZON OP DE ZUIDAS: intro 4 bars (7.0 s) + loop 80 bars (139.1 s) + 2 s
+    seconds: 149,
+    bpm: 138,
+    beatsPerBar: 4,
+    introBars: 4,
+    loop: true,
+    takes: 2,
+    prompt: `${RALLY_STYLE} Euphoric sunset trance-pop with warm pads, 138 BPM, D major, 4/4. A 4-bar intro: warm pads swell and a gated arpeggio starts. Then an 80-bar loop. Bars 1-16: a driving kick, a rolling off-beat bass, a rippling plucked arpeggio and wide warm pads. Bars 17-32: a soaring, hopeful synth lead melody in long notes. Bars 33-48: the lead doubled by a bright pluck, with a counter-melody. Bars 49-64: a breakdown: the drums drop out, the pads and a gentle piano play the theme slowly while a filter sweep and a snare roll rise. Bars 65-80: the full euphoric drop with the lead an octave higher, then a fill back into bar 1. Golden light, a wide open sky, the sun setting behind glass office towers. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'rally-lap3',
+    group: RALLY,
+    // NACHTSPITS: intro 4 bars (7.5 s) + loop 72 bars (135 s) + 2 s
+    seconds: 145,
+    bpm: 128,
+    beatsPerBar: 4,
+    introBars: 4,
+    loop: true,
+    takes: 2,
+    prompt: `${RALLY_STYLE} A dark night-drive synth groove with a pulsing bass, 128 BPM, C minor, 4/4. A 4-bar intro: a pulsing sixteenth-note bass fades in under a ticking hi-hat. Then a 72-bar loop. Bars 1-16: a steady kick, the pulsing sixteenth-note analog bass, a snappy clap on 2 and 4 and cold, glassy synth chords. Bars 17-32: a moody, catchy synth lead with a long echo, like streetlights rushing past. Bars 33-48: the lead with a second, higher answer and a gated pad. Bars 49-56: a break: the bass and the hi-hats alone under a rising filter. Bars 57-72: the full groove with the lead and a bright arpeggio on top, then a fill back into bar 1. Cool, tense and stylish, driving through the city lights at night. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'rally-jingle-1',
+    group: RALLY,
+    // a 4 s jingle + its decay; SUNG (tmp/rally-audio/gen-vocal.ts)
+    seconds: 8,
+    bpm: 140,
+    beatsPerBar: 4,
+    loop: false,
+    takes: 2,
+    prompt: `${JINGLE_STYLE} About 4 seconds, 140 BPM, A major. A cheerful vocal group sings the station name in Dutch, in tight, bright three-part harmony: "File F M!" (the Dutch word file, sung FEE-luh, then the letters F and M), over a quick rising synth sweep, and it ends on one big punchy brass hit that rings out and decays to silence. Only these words, sung once. After the hit has decayed, the rest is silence. No fade-in.`,
+  },
+  {
+    id: 'rally-jingle-2',
+    group: RALLY,
+    // a 5 s jingle + its decay; SUNG (tmp/rally-audio/gen-vocal.ts)
+    seconds: 8,
+    bpm: 140,
+    beatsPerBar: 4,
+    loop: false,
+    takes: 2,
+    prompt: `${JINGLE_STYLE} About 5 seconds, 140 BPM, A major. A fast rising synth sweep, then a warm, happy vocal group sings one short Dutch phrase in bright harmony: "Wij staan er altijd!", ending on a shimmering synth chord that decays to silence. Only these words, sung once. After the chord has decayed, the rest is silence. No fade-in.`,
+  },
+  {
+    id: 'rally-jingle-3',
+    group: RALLY,
+    // a 3 s sting + its decay
+    seconds: 8,
+    bpm: 128,
+    beatsPerBar: 4,
+    loop: false,
+    takes: 2,
+    prompt: `${JINGLE_STYLE} Instrumental only, no vocals. About 3 seconds, 128 BPM, C major. A quick, bright synth-brass fanfare of four rising notes over a tight drum fill, ending on one punchy full-band chord hit with a short shimmer that decays to silence. After the hit has decayed, the rest is silence. No fade-in.`,
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -947,6 +1033,18 @@ export const VOICES: VoiceSpec[] = [
     previewText:
       'Goeiemorgen! Kijk eens, verse melk, vers van de koe, en hooi voor iedereen die het hebben wil. De koeien en de varkens gaan vandaag een dagje uit. Niet schrikken als er eentje loeit, hoor, ze zijn heel lief!',
   },
+  // --- Mission rally, wave C (docs/design/rally.md §8, §11): FILE FM's DJ FREEK FLITS (our own
+  //     station and DJ). A DESIGNED Dutch voice, never a clone, never an imitation of a real radio
+  //     presenter; `radio: true` bakes the speaker band-pass into his takes.
+  {
+    speaker: DJ_SPEAKER,
+    name: 'MS3 Radio DJ',
+    description:
+      'Cheerful, fast-talking male radio host in his forties who presents the afternoon traffic show on a car radio station: a warm, bright, smiling voice, quick and punchy, a bit too enthusiastic, full of energy, going up on every punchline as if he loves his own jokes, friendly and never mean. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person or of any real radio presenter. Studio quality, close microphone, no reverb.',
+    previewText:
+      'Goedemiddag, goedemiddag! Wat een middag, mensen! De zon schijnt, de koffie is heet, en de Ring staat natuurlijk weer helemaal vast. Maar niet getreurd, want wij draaien de lekkerste plaatjes, en om vier uur hoor je het verkeer. Blijf hangen, zet hem harder, en toeter maar mee!',
+    radio: true,
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -969,6 +1067,75 @@ function bark(speaker: string, text: string, say: string, lang: LineSpec['lang']
 }
 
 const A = 'announcer';
+
+/**
+ * What FREEK FLITS reads for each DJ line (by RADIO_LINES id). The `text` stays the table's exact
+ * text (its take's voice key); the `say` adds eleven_v3 audio tags for the energy and spells what
+ * the TTS might misread: "A-tien" (A10), "File FM" (the Dutch word file, not the English one). He
+ * teases the situation, never a player: no laughing at a racer.
+ */
+export const RALLY_SAY: Readonly<Record<string, string>> = {
+  'rally/dj/station/1': '[cheerful, upbeat] File FM. [excited] Wij staan er altijd!',
+  // Takes 1-2 said 'Flake' / 'Files' (Scribe): takes 3-4 say the name slower and clearer.
+  'rally/dj/station/2': '[energetic] Je luistert naar File FM... [proud, clearly pronounced] met Freek Flits!',
+  'rally/dj/station/3': '[cheerful] File FM. [playful] De zender die nooit doorrijdt.',
+  'rally/dj/intro/1': '[excited, booming] Goedemiddag Amsterdam! [fast, thrilled] Vandaag op de A-tien: de Ringrally!',
+  'rally/dj/intro/2': "[enthusiastic, fast] Acht auto's, drie rondjes, en één parkeervergunning binnen de ring!",
+  'rally/dj/intro/3': '[playful, mock-serious] De wachtlijst is twaalf jaar. [cheerful] Of je wint vandaag.',
+  'rally/dj/start/1': '[excited, counting down slowly, one second per number] Drie... twee... één... [shouting] GAAN!',
+  'rally/dj/lap/1': '[excited] Ronde twee! [warm, dreamy] De zon zakt boven de Ring.',
+  'rally/dj/lap/2': '[thrilled, loud] Laatste ronde! [fast] En het is spits, mensen!',
+  'rally/dj/lap/3': '[excited, urgent] Nog één rondje voor die vergunning!',
+  'rally/dj/time/1': '[cheerful, chatty] Het is kwart over vier. Droog, en de zon staat laag.',
+  'rally/dj/time/2': '[upbeat] Vijf uur. [cheerful] Lichten aan, mensen!',
+  'rally/dj/time/3': '[warm, a little lower] Kwart voor zes, en het is al donker op de Ring.',
+  'rally/dj/flash/1': '[surprised] Flits! [teasing] Dat wordt een envelop op de mat.',
+  'rally/dj/flash/2': '[mock-dramatic] Weer een flitser. [cheerful, teasing] De schatkist bedankt u!',
+  'rally/dj/flash/3': '[friendly warning, fast] Voet van het gas bij de flitspaal, mensen!',
+  'rally/dj/zone/1': '[announcing, fast] Trajectcontrole op Ring West. [mock-stern] Gemiddeld te hard is ook te hard!',
+  'rally/dj/redx/1': '[mock-shocked] Onder het rode kruis door? [teasing] Dat kost je!',
+  'rally/dj/redx/2': '[mock-stern, playful] Rood kruis is rood kruis!',
+  'rally/dj/roadworks/1': '[traffic news, fast] Werk in uitvoering op de Ring. [excited] Ritsen, mensen, ritsen!',
+  'rally/dj/roadworks/2': '[playful] Rijstroken dicht. [cheerful] Geduld open!',
+  'rally/dj/spitsstrook/1': '[excited] De spitsstrook is open! [fast] Pak die extra baan!',
+  'rally/dj/jam/1': '[dry, sarcastic] File op de Ring. [mock-surprised] Wat een verrassing!',
+  'rally/dj/jam/2': '[playful] Het staat vast. [warm, cheerful] Gelukkig heb je de radio.',
+  'rally/dj/police/1': '[announcing] De politie is op de Ring. [mock-stern] Gedraag je!',
+  'rally/dj/police/2': '[teasing, fast] Blauwe lampen in de spiegel? Die zijn voor jou!',
+  'rally/dj/pulledOver/1': '[excited, gossipy] Daar wordt er eentje aan de kant gezet!',
+  'rally/dj/pulledOver/2': '[mock-official, stiff] Rijbewijs en kentekenbewijs, alstublieft!',
+  'rally/dj/released/1': '[cheerful] En hij mag weer verder. [dry] Met een boete, natuurlijk.',
+  // The tunnels: the take ends cut off mid-word (the game cuts it with the static).
+  'rally/dj/tunnel/1': '[cheerful, fast] De Coentunnel in. Even geen ontva—',
+  'rally/dj/tunnel/2': '[excited] Zeeburgertunnel! [crackling] Ksst... [fading] even geen bereik...',
+  'rally/dj/team/laatste-rit': '[excited] De lijkwagen gaat aan kop! [dry, playful] Die heeft haast.',
+  'rally/dj/team/huisje': '[amazed] Huisje op Wielen voorop! [playful] Dat had niemand verwacht.',
+  'rally/dj/team/frietbak': '[excited] De Frietbak aan kop! [cheerful] Met mayo!',
+  'rally/dj/team/vrijgezellen': '[excited, partying] Vrijgezellen voorop! Feest op de Ring!',
+  'rally/dj/team/ijscoman': '[excited] De IJscoman rijdt voorop! [sing-song, cheerful] Wie wil er een ijsje?',
+  'rally/dj/team/achteruit': '[amazed] Achteruit aan kop... [surprised] en hij rijdt nog vooruit ook!',
+  'rally/dj/team/oma-truus': '[thrilled] Oma Truus aan kop! [fast, delighted] Niemand houdt Oma Truus tegen!',
+  'rally/dj/team/white': '[excited] De Rozzers nemen de leiding!',
+  'rally/dj/team/green': '[excited] Major Cocktails pakt de kop!',
+  'rally/dj/finish/1': '[shouting, thrilled] Finish! [excited] Wat een race op de Ring!',
+  'rally/dj/finish/2': '[ecstatic] We hebben een winnaar! [cheerful] Die vergunning is binnen!',
+  'rally/dj/finish/3': '[warm, sympathetic, playful] Geen vergunning vandaag. [cheerful] Terug op de wachtlijst!',
+  'rally/dj/filler/1': '[chatty] Dit was het verkeer. [dry] Het staat overal stil. [excited] Behalve hier!',
+  'rally/dj/filler/2': '[excited] Muziek! [playful] Want stilstaan doe je maar in de file.',
+  'rally/dj/filler/3': '[dreamy, playful] Een parkeervergunning binnen de ring. Wie droomt daar niet van?',
+};
+
+/** The DJ's lines: every RADIO_LINES entry, verbatim, Dutch, group 'mission:rally', 2 takes. */
+function rallyLines(): LineSpec[] {
+  return RADIO_LINES.map((l: RadioLine) => {
+    const say = RALLY_SAY[l.id];
+    if (!say) throw new Error(`tools/audio/spec.ts: no RALLY_SAY for ${l.id}`);
+    // No bubble: a pacing target for a fast talker (about 12 characters a second).
+    // The countdown spaces its numbers a second apart (GAAN at about 3 s, with the gantry's GO).
+    const max = l.category === 'start' ? 3.8 : Math.round((l.text.length / 12 + 0.6) * 10) / 10;
+    return line(l.speaker, l.text, say, 'nl', RALLY, max);
+  });
+}
 
 export const LINES: LineSpec[] = [
   // --- Announcer: start screens and the flow screens (boot) ----------------------------------
@@ -1136,4 +1303,12 @@ export const LINES: LineSpec[] = [
   // before any card). Both lines together must fit the card (~5.5 s after the typing starts).
   line('gusto', 'FRIES SAFE. NOW A SHORT, FAST RUN TO THE ZUIDAS.', '[brisk, quick, upbeat] Fries safe. Now a short, fast run to the Zuidas.', 'en', BOOT, 3.0),
   line('gusto', 'A FRIEND DRIVES, YOU HANG OUT THE WINDOW. ROAD TRAIN AHEAD!', '[brisk, quick, commanding] A friend drives, you hang out the window. [shouts] Road train ahead!', 'en', BOOT, 2.8),
+  // --- Mission rally, wave C (docs/design/rally.md §8): FILE FM's DJ (RADIO_LINES, 2 takes each,
+  //     Scribe-checked by tmp/rally-audio/stt.ts + pick.ts), Gusto's MISSION 2 card lines and the
+  //     announcer's start line (group 'boot': the card plays before the mission's group loads).
+  ...rallyLines(),
+  // Both card lines together should fit the card's 360 + 90 ticks (mission-intro.ts): brisk.
+  line(GUSTO_SPEAKER, RALLY_CARD_LINES[0], '[brisk, quick, upbeat] Fries safe. Now the squad races De Ringrally: three laps of the A-ten.', 'en', BOOT, 4.0),
+  line(GUSTO_SPEAKER, RALLY_CARD_LINES[1], '[brisk, quick, cheerful] First prize: a parking permit binnen de Ring. [amused] The waiting list is twelve years!', 'en', BOOT, 4.4),
+  line(A, RALLY_ANNOUNCE, '[booming, theatrical] Mission two. [shouts] Vol gas!', 'nl', BOOT, 2.6),
 ];

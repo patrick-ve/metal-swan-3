@@ -46,14 +46,17 @@ import { artTier } from '../../engine/sprites';
 import { PS1_ON, VIEW3D_H, VIEW3D_W, type DrawItem, type Light3, type View3 } from '../../engine/view3d';
 import { centerText, PLAYER_COLORS, uiText, UI_GOLD, UI_GREY, UI_WHITE, type GameApp } from '../app';
 import { carModelInfo, poseWheel, type RallyCarModel } from '../content/rally/models/types';
+import { RALLY_SAMPLE_GROUP } from '../content/samples/rally';
 import { densityAtRes } from '../fps/hud';
 import type { CarState, RallyBody, RallyOpts, RallyTrackView } from '../rally/api';
 import { INTRO, introCam, newCam, stepRig } from '../rally/camera';
 import { daylight, newDaylight, raceProgress } from '../rally/daylight';
 import { BODY_LIGHT } from '../rally/ids';
 import { lockAt } from '../rally/physics';
+import { RallyRadio } from '../rally/radio';
 import { rallyHud, rallyModel, rallyScenery, type RallyDrawCtx, type RallyHudPart, type RallyHudView, type RallyScenery } from '../rally/registry';
 import { RallyRunner } from '../rally/runner';
+import { attachRallySound, type RallySound } from '../rally/sound';
 import { bestLapTicks, raceClock } from '../rally/score';
 import { GameSession } from '../session';
 import type { PauseExtra } from './pause';
@@ -186,8 +189,6 @@ export class RallyScene implements Scene, PlayHost {
   /** Ticks with the WebGL context lost; the scene is leaving. */
   private lostT = 0;
   private leaving = false;
-  /** The countdown's last number (the beeps). */
-  private lastCount = -1;
   /**
    * Wave B hook points (PREP, docs/api/rally.md "B.6"): the time of day (one world time for both
    * views: `daylight(raceProgress(...))` every frame), the radio ticker's text (wave C's radio writes
@@ -195,6 +196,10 @@ export class RallyScene implements Scene, PlayHost {
    */
   readonly day = newDaylight();
   ticker = '';
+  /** Wave C (RADIO): FILE FM's director (src/game/rally/radio.ts); it writes `ticker`. */
+  private radio: RallyRadio | null = null;
+  /** Wave C (SFX): the race's sound (src/game/rally/sound.ts). */
+  private sound: RallySound | null = null;
   private sceneries: RallyScenery[] = [];
   private hudParts: RallyHudPart[] = [];
   /** The scene draws its own results (no 'results' HUD part is registered). */
@@ -241,15 +246,14 @@ export class RallyScene implements Scene, PlayHost {
     this.runner = runner;
     RallyScene.last = runner;
     runner.events.on('complete', () => rallyDone(app, this, runner));
-    runner.events.on('start', () => this.sfx('rally/go'));
-    // Wave B (RULES): the feedback sounds of the rules (synth placeholders until wave C): a camera's flash, a stop by the police.
-    runner.events.on('flash', (e) => {
-      if (e.slot >= 0) this.sfx('rally/flash');
-    });
-    runner.events.on('pulledOver', (e) => {
-      if (e.slot >= 0) this.sfx('rally/pulled');
-    });
+    // Wave C (RADIO): FILE FM, the car radio (cosmetic: it reads the race, never writes it).
+    this.radio = new RallyRadio({ audio: app.audio, runner, on: () => app.settings.musicVolume > 0 });
+    // Wave C (SFX): the race's synth sound (engines, tyres, hits, horns, the siren, the flash, the
+    // tunnels, the countdown beeps, GO, the pull-over; cosmetic). It replaces wave B's placeholders.
+    this.sound = attachRallySound(runner, app.audio);
     runner.start();
+    // Wave C: FILE FM's sample group (the card's preload started it; a direct start loads it here).
+    void app.audio.loadSamples?.(RALLY_SAMPLE_GROUP);
     app.debug.on('skip', () => runner.finishNow());
     // Wave B: the HUD parts of the lazy content (RULES), one set per race.
     const huds = rallyHud();
@@ -277,19 +281,30 @@ export class RallyScene implements Scene, PlayHost {
     this.fold = null;
     this.runner?.stopLoops(0);
     this.runner?.dispose();
+    // Wave C (SFX): every engine, loop and the tunnel echo stop.
+    this.sound?.detach();
+    this.sound = null;
+    // Wave C (RADIO): the radio goes quiet and neutral (setRadio(null), music(null)).
+    this.radio?.dispose();
+    this.radio = null;
+    this.ticker = '';
+    // The race is over (or left): FILE FM's decoded lines and jingles go (a streamed song decodes nothing).
+    app.audio.releaseSamples?.(RALLY_SAMPLE_GROUP);
     for (const p of this.hudParts) p.dispose?.();
     this.hudParts = [];
     this.sceneries = [];
     this.bodyDraws = [];
   }
 
-  /** A scene opened on top (pause): the music at half level. */
+  /** A scene opened on top (pause): the music at half level; the engines and loops go silent. */
   pause(): void {
     this.app.input.joinWatch = false;
     this.app.audio.duckMusic?.(0.5);
+    this.sound?.pause();
   }
 
   resume(): void {
+    this.sound?.resume();
     this.app.input.joinWatch = true;
     this.app.input.raceMode = true;
     this.app.audio.duckMusic?.(1);
@@ -320,32 +335,39 @@ export class RallyScene implements Scene, PlayHost {
     if (this.leaving) return;
     // A lost WebGL context: the race waits; after GL_LOST_TICKS the no-WebGL2 path.
     if (!app.view3d.ok) {
+      // The engines and loops go silent while the race waits.
+      if (this.lostT === 0) this.sound?.pause();
       this.lostT++;
       if (this.lostT >= GL_LOST_TICKS) this.toNoGl(app.view3d.reason || 'the 3D view was lost');
       return;
     }
+    if (this.lostT > 0) this.sound?.resume();
     this.lostT = 0;
     this.controls.trackDevice();
     const racing = runner.phase === 'grid' || runner.phase === 'race';
     // The lost-pad pause, joins and pad claims, the pause (play-host.ts).
     if (racing && !app.scenes.busy && this.controls.interrupt()) return;
     this.controls.watchKeySplit();
+    // Wave C (RADIO): FILE FM steps every update (the fold and the fly-over too) and fills the ticker.
+    if (this.radio) {
+      this.radio.step(this.fold || this.introT >= 0 ? 'intro' : runner.phase);
+      this.ticker = this.radio.ticker;
+    }
     if (this.fold) {
       this.stepFold();
+      this.sound?.tick();
       return;
     }
     if (this.introT >= 0) {
       // The fly-over: exactly `INTRO.ticks` ticks of waiting (fewer when a button skips it).
       this.stepIntro();
+      this.sound?.tick();
       return;
     }
     runner.step();
     for (const p of this.hudParts) p.tick?.();
-    const c = runner.phase === 'grid' ? Math.ceil(runner.countdown / 60) : 0;
-    if (c !== this.lastCount) {
-      if (c > 0) this.sfx('rally/count');
-      this.lastCount = c;
-    }
+    // Wave C (SFX): after the race step (the countdown beeps and GO come from the module).
+    this.sound?.tick();
   }
 
   /** One tick of the glitch's fold: the cameras settle behind the grid; the race waits. */

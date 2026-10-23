@@ -203,10 +203,26 @@ export function halo(b: WorldBatch, c: V3, size: number, col: Rgb, r: { x: numbe
   b.quad(layer, lod, [c[0], c[1] + s, c[2] - s], [c[0], c[1] + s, c[2] + s], [c[0], c[1] - s, c[2] + s], [c[0], c[1] - s, c[2] - s], uv, col, [1, 0, 0]);
 }
 
-/** A pool of light on the ground at (x, y, z) of a frame: `w` across, `l` along. */
-export function pool(b: WorldBatch, fr: Frame, x: number, y: number, z: number, w: number, l: number, col: Rgb, layer = 'pool'): void {
+/**
+ * The road pools' cells (across × along). Wave C (review): one big 8 × 12 m quad beside the car was
+ * smeared across the left lanes by the PS1 affine warp; small cells keep the oval in place up close
+ * (as the car's beam does, `carPoolMesh`).
+ */
+export const POOL_CELLS: readonly [number, number] = [4, 6];
+
+/** A pool of light on the ground at (x, y, z) of a frame: `w` across, `l` along, cut into `nx` × `nz` cells. */
+export function pool(b: WorldBatch, fr: Frame, x: number, y: number, z: number, w: number, l: number, col: Rgb, layer = 'pool', nx = POOL_CELLS[0], nz = POOL_CELLS[1]): void {
   const r = glowTex().pool;
-  b.quad(layer, 'near', fr.p(x - w / 2, y - fr.oy, z - l / 2), fr.p(x + w / 2, y - fr.oy, z - l / 2), fr.p(x + w / 2, y - fr.oy, z + l / 2), fr.p(x - w / 2, y - fr.oy, z + l / 2), [r.x, r.y, r.x + r.w, r.y + r.h], col, [0, 1, 0]);
+  const yy = y - fr.oy;
+  for (let j = 0; j < nz; j++) {
+    const z0 = z - l / 2 + (l * j) / nz, z1 = z - l / 2 + (l * (j + 1)) / nz;
+    const v0 = r.y + (r.h * j) / nz, v1 = r.y + (r.h * (j + 1)) / nz;
+    for (let i = 0; i < nx; i++) {
+      const x0 = x - w / 2 + (w * i) / nx, x1 = x - w / 2 + (w * (i + 1)) / nx;
+      const u0 = r.x + (r.w * i) / nx, u1 = r.x + (r.w * (i + 1)) / nx;
+      b.quad(layer, 'near', fr.p(x0, yy, z0), fr.p(x1, yy, z0), fr.p(x1, yy, z1), fr.p(x0, yy, z1), [u0, v0, u1, v1], col, [0, 1, 0]);
+    }
+  }
 }
 
 /** A billboard on two posts facing the road (the frame's −z faces the traffic): ad `k`. */

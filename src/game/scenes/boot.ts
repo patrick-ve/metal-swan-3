@@ -148,7 +148,7 @@ export class BootScene implements Scene {
     const id = this.app.params.mission;
     // The ring loads its own group (RING_AUDIO_GROUP 'mission:ring': the ams effects and voices
     // without the ams songs; its music is the synth ring theme).
-    // The rally has no sample group yet (wave C: 'mission:rally', loaded by the card).
+    // The rally's group 'mission:rally' (wave C) is loaded by RallyScene, not the boot (its songs stream).
     const direct = id ? (isRing(id) ? RING_AUDIO_GROUP : isRally(id) ? undefined : getMission(id)?.audioGroup) : undefined;
     if (direct) groups.push(direct);
     this.phase = 'samples';

@@ -4,7 +4,7 @@
  * main.ts builds the browser versions; headless tools and tests can build an app with
  * MemoryStore + NullAudio + ScriptedSource input.
  */
-import type { AudioOut, EchoOpts, MusicOpts, SayOpts, SfxOpts, VolumeKind } from '../engine/audio';
+import type { AudioOut, EchoOpts, EngineOpts, MusicOpts, RadioOpts, SayOpts, SfxOpts, SongState, VolumeKind } from '../engine/audio';
 import type { Color } from '../engine/color';
 import { Debug } from '../engine/debug';
 import { measure } from '../engine/font';
@@ -315,6 +315,31 @@ export class GameAudio implements AudioOut {
 
   resumeLoops(): void {
     this.inner.resumeLoops?.();
+  }
+
+  // Rally wave C opt-ins (engine/audio.ts; no-ops when the output has none).
+  /** The current song (cosmetic; null headless). */
+  songState(): SongState | null {
+    return this.inner.songState?.() ?? null;
+  }
+
+  /** Listen for a song's end (a one-shot or a song played `once`); returns the unsubscribe. */
+  onSongEnd(fn: (id: string) => void): () => void {
+    return this.inner.onSongEnd?.(fn) ?? (() => {});
+  }
+
+  /** The car radio's chain (the rally), or null for none. */
+  setRadio(o: RadioOpts | null): void {
+    this.inner.setRadio?.(o);
+  }
+
+  /** A parametric engine voice under a key (the rally's cars). */
+  engine(key: string, o: EngineOpts): void {
+    this.inner.engine?.(key, o);
+  }
+
+  stopEngine(key: string, fadeTicks?: number): void {
+    this.inner.stopEngine?.(key, fadeTicks);
   }
 
   /** Pre-render sound effects (Web Audio only; the boot scene calls it when it exists). */

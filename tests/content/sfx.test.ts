@@ -370,6 +370,8 @@ describe('loops', () => {
         'ring/wagon-engine', 'ring/tunnel-bed', 'ring/bridge-rumble',
         // 2026-10-21 (mission oldenzaal, the tower): the horde tide and the jet Swan's rocket units.
         'oz/tower/tide', 'oz/swan/jet',
+        // 2026-10-23 (mission rally, wave C SFX): tyres, the barrier, the wind, the siren, the arrow truck, the ice-cream van.
+        'rally/squeal', 'rally/scrape', 'rally/wind', 'rally/siren', 'rally/arrow-beep', 'rally/ijsco-tune',
       ].sort(),
     );
     for (const id of SFX_LOOPS) expect(sfxIsLoop(id), id).toBe(true);

@@ -16,8 +16,9 @@
  *    the AI kept out of the closed lanes.
  * 4. **The police** (police.ts).
  * 5. **Enforcement** for every race car (players and rivals): a gantry passed under a red X → `redx`,
- *    `flash`, `fine`; a speed camera passed above the last posted limit (+ `CAMERA_TOLERANCE`) →
- *    `flash`, `fine`; the average-speed zone's average above the limit at its end → `flash`, `fine`.
+ *    `flash`, `fine`; a speed camera passed above the last posted limit (+ `OPEN_TOLERANCE` on the
+ *    open road, + `CAMERA_TOLERANCE` at the works: `toleranceOf`) → `flash`, `fine`; the average-speed
+ *    zone's average above the limit (+ the same tolerance) at its end → `flash`, `fine`.
  *    A jump of more than `MAX_STEP` m in one tick (a debug teleport) checks nothing.
  * 6. **Race events**: `overtake` (a player passes a rival, once per rival per lap), `bestLap`,
  *    `tunnelIn` / `tunnelOut`, `roadworksAhead`, `spitsstrookOpen`, `policeActive`.
@@ -37,8 +38,15 @@ import { ahead, inRange, rulesPlan, sectionAt, signLaneAt, wrapOff, type CameraP
 import { PoliceForce } from './police';
 import { RoadWorks } from './works';
 
-/** A camera flashes a car this far above the limit (km/h; the usual correction). */
+/** A camera flashes a car this far above the limit (km/h; the usual correction) at the road works. */
 export const CAMERA_TOLERANCE = 3;
+/**
+ * Wave C (lead polish 3c, the balance): on the open road (the enforced limit is the gantry's base
+ * limit: 100, 80 in a tunnel section) a fixed camera and the average-speed zone flash only this far
+ * above it, so a lift for a FLITSER (to about 110) escapes the fine where only a full stop did; the
+ * road works keep `CAMERA_TOLERANCE`. Racing flat out is still flashed every time.
+ */
+export const OPEN_TOLERANCE = 10;
 /** A car that moved more than this in one tick was put there (a debug teleport): nothing is checked (m). */
 export const MAX_STEP = 20;
 /** The HUD warns of a speed camera this far ahead (m). */
@@ -335,7 +343,7 @@ export class RallyRules {
         cr.zoneT0 = -1;
         if (dt > 0 && dd > z.len * 0.5 && dd < z.len * 1.5) {
           const avg = Math.round(((dd * 60) / dt) * 3.6);
-          if (avg > cr.zoneLimit + CAMERA_TOLERANCE) this.fine(cr, 'zone', avg, cr.zoneLimit, this.zoneWhere);
+          if (avg > cr.zoneLimit + this.toleranceOf(cr, cr.zoneLimit, false)) this.fine(cr, 'zone', avg, cr.zoneLimit, this.zoneWhere);
         }
       }
     }
@@ -345,8 +353,18 @@ export class RallyRules {
       if (!crossed(o0, span, c.off, L)) continue;
       const limit = this.cameraLimitOf(cr, c);
       const kmh = Math.round(Math.abs(car.speed) * 3.6);
-      if (kmh > limit + CAMERA_TOLERANCE) this.fine(cr, 'camera', kmh, limit, c.where);
+      if (kmh > limit + this.toleranceOf(cr, limit, c.works >= 0)) this.fine(cr, 'camera', kmh, limit, c.where);
     }
+  }
+
+  /**
+   * The margin above an enforced limit before a flash (wave C): `OPEN_TOLERANCE` on the open road
+   * (the limit is the last gantry's base limit, or no gantry was passed yet), `CAMERA_TOLERANCE` at
+   * the road works (a works camera, or a step-down limit below the base).
+   */
+  private toleranceOf(cr: CarRules, limit: number, works: boolean): number {
+    if (works) return CAMERA_TOLERANCE;
+    return cr.postedBase <= 0 || limit >= cr.postedBase ? OPEN_TOLERANCE : CAMERA_TOLERANCE;
   }
 
   private redX(cr: CarRules, g: number, lane: number): void {

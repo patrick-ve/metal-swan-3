@@ -21,7 +21,8 @@ import { MissionCompleteScene } from '../../../src/game/scenes/mission-complete'
 import { PauseScene } from '../../../src/game/scenes/pause';
 import { GL_LOST_TICKS, RallyScene } from '../../../src/game/scenes/rally';
 import { FOLD_TICKS, FOLD_TILE, foldTiles, RallyFold } from '../../../src/game/scenes/rally-fold';
-import { BREAK_TICKS, HOLD_MIN, RallyGlitchScene, RallyNoGlScene } from '../../../src/game/scenes/rally-glitch';
+import { ANNOUNCE_BREAK, BREAK_TICKS, HOLD_MIN, RallyGlitchScene, RallyNoGlScene } from '../../../src/game/scenes/rally-glitch';
+import { INTRO_TICKS, INTRO_VOICE_HOLD, MissionIntroScene, RALLY_VOICE_HOLD } from '../../../src/game/scenes/mission-intro';
 import { loadRallyContent, prepareRally, RALLY_HEADLINES, rallyHeadline, rallyNoGlTally, rallyTally, startRally } from '../../../src/game/scenes/rally-route';
 import { TEAM_NAMES } from '../../../src/game/content/rally/teams/index';
 import { GameSession } from '../../../src/game/session';
@@ -79,10 +80,30 @@ interface H {
   until(cls: abstract new (...a: never[]) => unknown, max: number): boolean;
 }
 
-function harness(params: Partial<LaunchParams> = {}, view3d: View3d = new NullView3d()): H {
+/** Wave C: SimAudio that also remembers the engines that sound and can say it is speaking. */
+class RecAudio extends SimAudio {
+  readonly engines = new Set<string>();
+  readonly lines: string[] = [];
+  talking = false;
+  override engine(key?: string): void {
+    if (key) this.engines.add(key);
+  }
+  override stopEngine(key?: string): void {
+    if (key) this.engines.delete(key);
+  }
+  override voice(line?: string): void {
+    super.voice();
+    if (line) this.lines.push(line);
+  }
+  speaking(): boolean {
+    return this.talking;
+  }
+}
+
+function harness(params: Partial<LaunchParams> = {}, view3d: View3d = new NullView3d(), audio: SimAudio = new SimAudio()): H {
   const input = new InputManager();
   input.players = params.players ?? 1;
-  const app = createApp({ input, audio: new SimAudio(), store: new MemoryStore(), params: { ...DEFAULT_PARAMS, ...params }, view3d });
+  const app = createApp({ input, audio, store: new MemoryStore(), params: { ...DEFAULT_PARAMS, ...params }, view3d });
   const r = new Recorder();
   const step = (n = 1): void => {
     for (let i = 0; i < n; i++) {
@@ -189,6 +210,58 @@ describe('the glitch into 3D (rally-glitch.ts, rally-fold.ts)', () => {
     h.step(2);
     expect(scene.introducing).toBe(false);
     expect(scene.runner.tick).toBeGreaterThan(0);
+  });
+});
+
+describe('wave C: the card, the announcer and the race sound in the scenes', () => {
+  it('the glitch voices the card\'s announcer line and holds the frozen frame while it speaks (the break on its shout)', () => {
+    const audio = new RecAudio();
+    audio.talking = true;
+    const h = harness({ mission: 'rally', seed: 7 }, new NullView3d(), audio);
+    startRally(h.app);
+    expect(h.until(RallyGlitchScene, 60)).toBe(true);
+    const g = h.app.scenes.top as RallyGlitchScene;
+    expect(audio.lines).toEqual(['MISSION TWO. VOL GAS!']);
+    h.step(ANNOUNCE_BREAK - 2);
+    expect(g.phase).toBe('hold');
+    h.step(4);
+    expect(g.phase).toBe('break');
+    expect(h.until(RallyScene, BREAK_TICKS + 20)).toBe(true);
+  });
+
+  it('the MISSION 2 card waits for Gusto\'s second line (RALLY_VOICE_HOLD; the other cards INTRO_VOICE_HOLD)', () => {
+    expect(RALLY_VOICE_HOLD).toBeGreaterThan(INTRO_VOICE_HOLD);
+    const audio = new RecAudio();
+    audio.talking = true;
+    const h = harness({ seed: 7 }, new NullView3d(), audio);
+    h.app.session = new GameSession({ characters: ['recruit'], seed: 7 });
+    h.app.scenes.reset(new MissionIntroScene(h.app, 'rally'));
+    h.step(INTRO_TICKS + INTRO_VOICE_HOLD + 10);
+    expect(h.app.scenes.top).toBeInstanceOf(MissionIntroScene);
+    audio.talking = false;
+    h.step(2);
+    expect(h.until(RallyGlitchScene, 20)).toBe(true);
+  });
+
+  it('the race sound: engines while the race runs (the grid idles too), every engine stops on exit; the countdown beeps and GO once each', () => {
+    const audio = new RecAudio();
+    const h = harness({ mission: 'rally', seed: 5 }, new NullView3d(), audio);
+    h.app.session = new GameSession({ characters: ['recruit'], seed: 5 });
+    const scene = new RallyScene(h.app, { start: prepareRally(h.app, { seed: 5 }) });
+    h.app.scenes.reset(scene);
+    h.step(5);
+    expect(audio.engines.size).toBeGreaterThan(0);
+    expect(audio.engines.size).toBeLessThanOrEqual(4);
+    while (scene.runner.phase === 'grid') h.step(1);
+    h.step(30);
+    expect(audio.sfxCounts.get('rally/count')).toBe(3);
+    expect(audio.sfxCounts.get('rally/go')).toBe(1);
+    // Wave B's placeholders are gone (the module plays the flash and the pull-over).
+    expect(audio.sfxCounts.get('rally/flash') ?? 0).toBe(0);
+    // The race scene leaves (any scene after it): its exit stops every engine.
+    h.app.scenes.reset({ update() {}, draw() {} });
+    h.step(2);
+    expect(audio.engines.size).toBe(0);
   });
 });
 

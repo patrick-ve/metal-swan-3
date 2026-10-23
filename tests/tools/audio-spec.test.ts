@@ -21,8 +21,10 @@ import { SNACK_POWER_CALLOUT, voicedLines } from '../../src/game/content/mission
 import { OZ_ENV_SFX } from '../../src/game/content/sfx/oldenzaal';
 import { MISSION_CARDS } from '../../src/game/content/ui/cards';
 import { ringVoicedLines } from '../../src/game/content/ring/foot/lines';
+import { DJ_SPEAKER, RADIO_JINGLES, RADIO_LINES, RADIO_SONGS, RALLY_ANNOUNCE, RALLY_CARD_LINES } from '../../src/game/content/rally/radio/lines';
+import '../../src/game/content/music/rally';
 import { itemsOfGroups, items, selectItems } from '../../tools/audio/lib';
-import { LINES, MUSIC, SFX, VOICES } from '../../tools/audio/spec';
+import { LINES, MUSIC, RALLY_SAY, SFX, VOICES } from '../../tools/audio/spec';
 
 const SRC = new URL('../../src/', import.meta.url).pathname;
 const FPS_SPEC = new URL('../../docs/design/fps.md', import.meta.url).pathname;
@@ -33,8 +35,10 @@ const isFps = (x: { group: string }): boolean => x.group === 'mode:fps';
 const isOz = (x: { group: string }): boolean => x.group === OZ_AUDIO_GROUP;
 /** Mission ring's ids (group 'mission:ring', docs/design/ring.md §R.8). */
 const isRing = (x: { group: string }): boolean => x.group === 'mission:ring';
+/** Mission rally's ids (group 'mission:rally', docs/design/rally.md §8: FILE FM). */
+const isRally = (x: { group: string }): boolean => x.group === 'mission:rally';
 /** The rest of the game (the start screens and ams). */
-const isBase = (x: { group: string }): boolean => !isFps(x) && !isOz(x) && !isRing(x);
+const isBase = (x: { group: string }): boolean => !isFps(x) && !isOz(x) && !isRing(x) && !isRally(x);
 
 /** Every backticked `fps/…` sfx id in docs/design/fps.md §9.1. */
 function fpsSpecSfx(): Set<string> {
@@ -127,6 +131,8 @@ describe('audio spec: music', () => {
     expect(MUSIC.find((m) => m.id === OZ_SONG.tbc)?.loop).toBe(false);
     // docs/design/ring.md §R.8: the two songs on foot (the stage theme and ring-boss stay synth).
     expect(MUSIC.filter(isRing).map((m) => m.id).sort()).toEqual(['ring-boot', 'ring-foot']);
+    // docs/design/rally.md §8: FILE FM's three lap songs and three jingles (lines.ts ids).
+    expect(MUSIC.filter(isRally).map((m) => m.id).sort()).toEqual([...RADIO_SONGS, ...RADIO_JINGLES].map((x) => x.id).sort());
   });
 
   it('the military title and select prompts are v2 takes (3-4); the v1 takes 1-2 keep their prompt on record', async () => {
@@ -142,7 +148,7 @@ describe('audio spec: music', () => {
   });
 
   it('a loop is long enough for its intro, one full loop and 2 s to cut', () => {
-    const loopBars: Record<string, number> = { title: 32, select: 16, briefing: 8, ams: 48, 'ams-boss': 40, continue: 6, 'high-score': 8, 'fps-floor': 32, 'fps-boss': 32, 'fps-bridge': 4, oldenzaal: 24, 'oldenzaal-boss': 24, 'oldenzaal-tower': 32, 'ring-foot': 32, 'ring-boot': 24 };
+    const loopBars: Record<string, number> = { title: 32, select: 16, briefing: 8, ams: 48, 'ams-boss': 40, continue: 6, 'high-score': 8, 'fps-floor': 32, 'fps-boss': 32, 'fps-bridge': 4, oldenzaal: 24, 'oldenzaal-boss': 24, 'oldenzaal-tower': 32, 'ring-foot': 32, 'ring-boot': 24, 'rally-lap1': 80, 'rally-lap2': 80, 'rally-lap3': 72 };
     for (const m of MUSIC.filter((x) => x.loop)) {
       const bar = (60 / m.bpm) * m.beatsPerBar;
       const need = ((m.introBars ?? 0) + loopBars[m.id]) * bar + 2;
@@ -408,5 +414,87 @@ describe("audio spec: mission ring (group 'mission:ring', docs/design/ring.md §
     const ring = itemsOfGroups(all, ['mission:ring']);
     const voices = [...ring].filter((it) => it.kind === 'voice').map((it) => it.id).sort();
     expect(voices).toEqual(['activist-a', 'activist-b', 'announcer', 'boerenknecht', 'leider', 'zware-jongen']);
+  });
+});
+
+// ----------------------------------------------------------------------------------------- rally
+
+describe("audio spec: mission rally (group 'mission:rally', docs/design/rally.md §8: FILE FM)", () => {
+  it('the lap songs: genre-only prompts in our own words, instrumental, about 2:30, the tempo of lines.ts', () => {
+    for (const song of RADIO_SONGS) {
+      const m = MUSIC.find((x) => x.id === song.id)!;
+      expect(m, song.id).toBeDefined();
+      expect(m.group).toBe('mission:rally');
+      expect(m.bpm, song.id).toBe(song.bpm);
+      expect(m.loop, song.id).toBe(true);
+      expect(m.seconds, song.id).toBeGreaterThanOrEqual(140);
+      expect(m.seconds, song.id).toBeLessThanOrEqual(160);
+      // The genre of lines.ts (the part before ' with …'), in the prompt's own words.
+      expect(m.prompt.toLowerCase(), song.id).toContain(song.style.split(' with ')[0].toLowerCase());
+      expect(m.prompt, song.id).toMatch(/original composition/i);
+      expect(m.prompt, song.id).toMatch(/no vocals/i);
+      expect(m.prompt, song.id).not.toMatch(/\bin the style of\b|\blike the\b|\bsounds like\b/i);
+      expect(hasSong(m.id), m.id).toBe(true);
+    }
+  });
+
+  it('the jingles: one-shots of 3-6 s plus their decay; only jingle 3 is instrumental', () => {
+    for (const j of RADIO_JINGLES) {
+      const m = MUSIC.find((x) => x.id === j.id)!;
+      expect(m.loop, j.id).toBe(false);
+      expect(m.seconds, j.id).toBeLessThanOrEqual(10);
+      expect(m.prompt, j.id).toMatch(/original composition/i);
+      expect(m.prompt, j.id).toContain(`About ${j.seconds} seconds`);
+      expect(hasSong(m.id), m.id).toBe(true);
+    }
+    expect(MUSIC.find((x) => x.id === 'rally-jingle-1')?.prompt).toContain('File F M!');
+    expect(MUSIC.find((x) => x.id === 'rally-jingle-2')?.prompt).toContain('Wij staan er altijd!');
+    expect(MUSIC.find((x) => x.id === 'rally-jingle-3')?.prompt).toMatch(/instrumental only, no vocals/i);
+  });
+
+  it("the DJ's voice is designed: a Dutch speaker, an original character, never an imitation, with the radio filter", () => {
+    const v = VOICES.find((x) => x.speaker === DJ_SPEAKER);
+    expect(v).toBeDefined();
+    expect(v?.radio).toBe(true);
+    expect(v?.description).toMatch(/original character voice/i);
+    expect(v?.description).toMatch(/never an imitation/i);
+    expect(v?.description).toMatch(/standard Dutch with a neutral accent/i);
+    expect(v?.previewText).toMatch(/goedemiddag/i);
+  });
+
+  it("every DJ line of lines.ts is in the spec verbatim (speaker 'freek', Dutch); no laughing at a racer", () => {
+    const rally = LINES.filter(isRally);
+    expect(rally.length).toBe(RADIO_LINES.length);
+    for (const l of RADIO_LINES) {
+      const spec = rally.find((x) => x.text === l.text);
+      expect(spec, l.id).toBeDefined();
+      expect(spec?.speaker, l.id).toBe(DJ_SPEAKER);
+      expect(spec?.lang, l.id).toBe('nl');
+      expect(spec?.say, l.id).toBe(RALLY_SAY[l.id]);
+      expect(spec?.say, l.id).not.toMatch(/\[[^\]]*(laugh|giggl|chuckl)[^\]]*\]/i);
+    }
+    expect(Object.keys(RALLY_SAY).sort()).toEqual(RADIO_LINES.map((l) => l.id).sort());
+  });
+
+  it("Gusto's MISSION 2 card lines and the announcer's start line are in group 'boot'", () => {
+    const card = MISSION_CARDS.find((c) => c.id === 'rally')!;
+    expect([...card.briefing]).toEqual([...RALLY_CARD_LINES]);
+    for (const t of card.briefing) {
+      const l = LINES.find((x) => x.text === t);
+      expect(l?.speaker, t).toBe('gusto');
+      expect(l?.group, t).toBe('boot');
+      expect(l?.lang, t).toBe('en');
+    }
+    const a = LINES.find((x) => x.text === RALLY_ANNOUNCE);
+    expect(a?.speaker).toBe('announcer');
+    expect(a?.group).toBe('boot');
+  });
+
+  it('the group filter selects the rally items and the one voice design they need', () => {
+    const all = items({ SFX, MUSIC, VOICES, LINES });
+    const rally = [...itemsOfGroups(all, ['mission:rally'])];
+    expect(rally.filter((it) => it.kind === 'voice').map((it) => it.id)).toEqual([DJ_SPEAKER]);
+    expect(rally.filter((it) => it.kind === 'line').length).toBe(RADIO_LINES.length);
+    expect(rally.filter((it) => it.kind === 'music').length).toBe(6);
   });
 });

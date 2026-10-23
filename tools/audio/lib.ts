@@ -91,15 +91,16 @@ export const GROUP_DIRS: Readonly<Record<SampleGroupName, string>> = {
   'mode:fps': 'fps',
   'mission:oldenzaal': 'oldenzaal',
   'mission:ring': 'ring',
+  'mission:rally': 'rally',
 };
 
 /**
  * Groups the manifest lists only once something of them is picked (the first-person mode, mission
- * oldenzaal and mission ring); 'boot' and 'mission:ams' are always written, empty or not.
+ * oldenzaal, mission ring and mission rally); 'boot' and 'mission:ams' are always written, empty or not.
  */
-export const LAZY_GROUPS: ReadonlySet<SampleGroupName> = new Set<SampleGroupName>(['mode:fps', 'mission:oldenzaal', 'mission:ring']);
+export const LAZY_GROUPS: ReadonlySet<SampleGroupName> = new Set<SampleGroupName>(['mode:fps', 'mission:oldenzaal', 'mission:ring', 'mission:rally']);
 
-/** Folder under public/audio/ of a sample group: boot, ams, fps, oldenzaal or ring. */
+/** Folder under public/audio/ of a sample group: boot, ams, fps, oldenzaal, ring or rally. */
 export function groupDir(group: SampleGroupName): string {
   return GROUP_DIRS[group];
 }

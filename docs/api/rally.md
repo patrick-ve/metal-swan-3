@@ -1120,7 +1120,7 @@ the scenery, the cars, the bodies, the fold's tiles.
 | sign faces | `content/rally/props/index.ts` | B.2: the states as emissive faces on the gantries |
 | teams | `content/rally/teams/index.ts` | wave A's `RIVAL_SPECS` through the hook (the names stay `RIVAL n`: `tests/game/rally/scene.test.ts` counts them; FIELD updates that test when it uses `TEAM_NAMES`) |
 | traffic | `content/rally/traffic/index.ts` | one hatchback (a `HATCH_COLOURS` row from `runner.rng.fork('traffic')`) at about 100 km/h in the right lane, 600 m past the start; it comes back 380 m ahead of the leader when the leader is 200 m past it |
-| rules | `content/rally/rules/index.ts` | the start gantry's countdown; every speed camera (`A10Track.cameras`, any lap) fines a car passing above its limit + 3 km/h (`flash`, `fine`: 50 + 10 EUR per km/h over); the HUD part: the clock, `FLITSER` 250 m before a camera, the white flash, `BOETE EUR n` |
+| rules | `content/rally/rules/index.ts` | the start gantry's countdown; every speed camera (`A10Track.cameras`, any lap) fines a car passing above its limit + 3 km/h (`flash`, `fine`: 50 + 10 EUR per km/h over; wave C: + 10 km/h on the open road, + 3 at the works, C.I.4); the HUD part: the clock, `FLITSER` 250 m before a camera, the white flash, `BOETE EUR n` |
 
 Numbers with the stubs (`npm run sim -- --mission rally --expect-complete`; in
 `tmp/rally-prep-b/`): 1P seeds 1–3 normal 24,182 ticks, place 1, 9 fines (8,430 EUR), score 22,150,
@@ -1290,7 +1290,7 @@ class RallyRules { plan; lap /* the event lap 1..3 */; lap3Tick; spitsOpen; post
   police: PoliceForce; cars: CarRules[]; of(car); offOf(dist); clearOfPlayers(off0, len);
   cameraAhead(car, range = 250); redXAhead(car, range = 300); zoneAverage(car); laneClosed(off, lane, look = 0); joinPoint(last) }
 CarRules { car prev posted zoneT0 zoneD0 zoneLimit tunnel stopped hunted pulled best }
-CAMERA_TOLERANCE 3; MAX_STEP 20; FLITSER_AHEAD 250; SWITCH_CLEAR_BEFORE 520 / _AFTER 60; POLICE_BY_DIFFICULTY { easy 2, normal 3, hard 4 }
+CAMERA_TOLERANCE 3 /* the works */; OPEN_TOLERANCE 10 /* the open road, wave C, C.I.4 */; MAX_STEP 20; FLITSER_AHEAD 250; SWITCH_CLEAR_BEFORE 520 / _AFTER 60; POLICE_BY_DIFFICULTY { easy 2, normal 3, hard 4 }
 ```
 
 - **The event lap** = max(`startLap`, 1 + ⌊the leading player's progress⌋) (daylight.ts `raceProgress`,
@@ -1312,9 +1312,12 @@ CAMERA_TOLERANCE 3; MAX_STEP 20; FLITSER_AHEAD 250; SWITCH_CLEAR_BEFORE 520 / _A
   than `MAX_STEP` m in a tick — a debug teleport — checks nothing): a gantry passed under `x` over
   the car's lane (`signLaneAt`; 3 = the shoulder) → `redx`, `flash` (kind 'redx'), `fine`
   (`REDX_EUROS`); every gantry passed sets the car's posted limit; a speed camera passed above the
-  posted limit + 3 km/h (the camera's own limit before any sign) → `flash`, `fine`; the zone: the
-  clock starts at its start, the average (m / ticks) at its end above the entry limit + 3 → `flash`
-  (kind 'zone'), `fine`. `CarState.fines` + 1 before `fine`; euros `fineEuros(kind, over)`.
+  posted limit (the camera's own limit before any sign) plus the tolerance → `flash`, `fine`; the
+  zone: the clock starts at its start, the average (m / ticks) at its end above the entry limit plus
+  the tolerance → `flash` (kind 'zone'), `fine`. The tolerance (wave C, C.I.4, `toleranceOf`):
+  `OPEN_TOLERANCE` (+ 10 km/h) on the open road (the limit is the gantries' base limit, or no gantry
+  was passed yet), `CAMERA_TOLERANCE` (+ 3) at the road works (a works camera, or a step-down limit
+  below the base). `CarState.fines` + 1 before `fine`; euros `fineEuros(kind, over)`.
 - **Race events**: `overtake` (a player passes a rival: once per rival per lap of the player, by
   `dist`), `bestLap` (a new best FULL lap of any racer), `tunnelIn` / `tunnelOut` (the tube's name),
   `roadworksAhead` (a zone goes up: its section and closed lanes), `policeActive` (a police car joins:
@@ -1743,6 +1746,9 @@ pace. Lap 3 costs about 7 s for the pull-over and 4–8 s per jam; that is the d
 
 ### B.X.3 Sims (`tmp/rally/base-b/` refreshed by the fixer; the integrator's set is in `tmp/rally-fix-b/base-b-integrate/`)
 
+Superseded by `tmp/rally/base-c/` (wave C, the open-road camera tolerance: seed 2 and `--lap 3`
+changed; C.I.4).
+
 | Run | Ticks | Places | Laps (P1 / P2) | stateHash |
 |---|---|---|---|---|
 | seed 1 | 27,959 | 2 | 9,019 / 9,288 / 9,172 | 2010710864 |
@@ -1766,3 +1772,411 @@ the cameras before the works keep the base limit, the AI lanes (no shoulder unde
 the shoulder on lap 3, the closed works lanes left out), the red X warning at the shoulder border.
 `tests/game/rally/ai-field.test.ts`: a P2 join grows the traffic pools and `k`. `contract-b.test.ts`:
 the sign page; `FLITSER` with its limit. `tests/content/rally-track.test.ts`: the pinned hash.
+
+## C. Wave C contracts (PREP, 2026-10-23)
+
+Wave C is sound and polish (spec §8, §12.6, §13). PREP ran first and alone: the radio lines table,
+the sample group `'mission:rally'` and the `AudioOut` opt-ins. RADIO, AUDIO-GEN and SFX build on
+them in parallel. Audio never changes a sim: every new engine member is an OPTIONAL `AudioOut`
+member with a no-op in `NullAudio` / `SimAudio`; the rally sims stay byte-identical.
+
+### C.1 Owners after PREP (wave C)
+
+| Owner | Files |
+|---|---|
+| PREP (frozen; requests go to the integrator) | `src/game/content/rally/radio/lines.ts`; `src/game/content/samples/rally.ts`; the group in `src/engine/samples.ts` and `tools/audio/lib.ts`; the opt-ins in `src/engine/audio.ts`, `audio.browser.ts`, `samples.browser.ts` (`stream`), `src/sim/stats.ts` (`SimAudio`), `src/game/app.ts` (`GameAudio` forwards); the group's load / release in `scenes/rally-route.ts` (`preloadRally`) and `scenes/rally.ts` (`enter` / `exit`) |
+| RADIO | `src/engine/radio.ts` (new, pure: the scheduler), `src/game/rally/radio.ts` (new: the director), the HUD ticker text (`RallyScene.ticker`), `src/game/content/music/rally.ts` (replace PREP's placeholders with the real synth fallbacks; keep the ids and `RALLY_PLACEHOLDER_SONGS`' export name or update the test) |
+| AUDIO-GEN | the `tools/audio/spec.ts` entries (`const RALLY` group), `public/audio/rally/`, the manifest via `audio:ship` |
+| SFX | `src/game/content/sfx/rally-*.ts` (engines through `engine()`, tyres, scrapes, bumps, the flash, the siren, the horns, wind, doppler, the tunnel echo, the mix) |
+
+### C.2 The lines table (`content/rally/radio/lines.ts`, pure)
+
+- `RADIO_STATION` 'FILE FM', `RADIO_SLOGAN` 'WIJ STAAN ER ALTIJD', `DJ_NAME` 'FREEK FLITS',
+  `DJ_SPEAKER` 'freek' (the audio spec's speaker id), `RADIO_GROUP` 'mission:rally'.
+- `RadioLine { id, category, text, speaker, priority, cooldown, on, lap?, clock?, car?, tunnel?, result? }`.
+  `text` is the exact game text (the ticker shows it; `voiceKey(text)` keys the take). Ids:
+  `rally/dj/<category>/<n>`; leader lines `rally/dj/team/<car id>` = the rival team spec's `dj`.
+- `RADIO_CATEGORIES[cat] = { priority 0…10, cooldown, gap, maxWait }` (ticks at 60 Hz;
+  `RADIO_ONCE` = −1 = once per race). The categories, their triggers (`on`) and selectors:
+
+| Category | Lines | Priority | `on` (trigger) | Selector |
+|---|---|---|---|---|
+| station | 3 | 1 | `radio:between` (between songs) | |
+| intro | 3 | 8 | `race:intro` (the fly-over: 1, 2), `race:grid` (3) | |
+| start | 1 | 10 | `race:countdown` (timed to the gantry; the game's countdown is the master; dropped when late) | |
+| lap | 3 | 7 | `lap` (a player's lap starts) | `lap` 2 / 3 / 3 |
+| time | 3 | 4 | `clock` (the HUD clock passes it: `daylight().clock`) | `clock` 975 / 1020 / 1065 |
+| flash | 3 | 6 | `flash:camera` (`flash` with `kind: 'camera'`) | |
+| zone | 1 | 6 | `flash:zone` | |
+| redx | 2 | 6 | `redx` | |
+| roadworks | 2 | 6 | `roadworksAhead` | |
+| spitsstrook | 1 | 6 | `spitsstrookOpen` | |
+| jam | 2 | 5 | `jam` | |
+| police | 2 | 7 | `policeActive` (1), `police:chase` (2: a police car after a player) | |
+| pulledOver | 2 | 7 | `pulledOver` | |
+| released | 1 | 5 | `released` | |
+| tunnel | 2 | 9 | `tunnelIn` (then the static until `tunnelOut`) | `tunnel` 'COENTUNNEL' / 'ZEEBURGERTUNNEL' (the event's `name`) |
+| leader | 9 | 5 | `place:1` (a car takes the lead) | `car` (`LEADER_CARS`: the 7 teams, 'white', 'green') |
+| finish | 3 | 9 | `finish` | `result` 'any' / 'win' / 'lose' |
+| filler | 3 | 1 | `radio:between` | |
+
+- Helpers: `radioLines(category)`, `radioLine(id)`, `leaderLine(car)`, `radioKey(line)`,
+  `tickerText(text)` (folds the accents the small font lacks: 'één' → 'een'; the text stays exact),
+  `lapSong(lap)`.
+- `RADIO_SONGS` (`id`, `title`, `lap`, `bpm`, `seconds` 150 = the scheduler's clock when `songState()`
+  is null, `style`) and `RADIO_JINGLES` (`id`, `title`, `seconds`, `style`); see the audio part.
+- Gusto (English, group `'boot'`): `RALLY_CARD_LINES` (the card's briefing, verbatim; a test checks
+  it) and `RALLY_ANNOUNCE` 'MISSION TWO. VOL GAS!' (speaker 'announcer'). The card has no `announce`
+  field yet: voicing it (`audio.voice(RALLY_ANNOUNCE)` on the card or at the race start) is open for
+  the integrator / RADIO. The heroes never talk in the car.
+
+### C.3 The sample group and the opt-ins
+
+`'mission:rally'` (`public/audio/rally/`, lazy) is registered by `content/samples/index.ts` through
+`rallySampleGroup` (songs ≥ 20 s STREAM). `preloadRally` (the card) and `RallyScene.enter` load it,
+`RallyScene.exit` releases it. The opt-ins (`MusicOpts.once`, `songState`, `onSongEnd`,
+`SampleSong.stream`, `setRadio`, `engine` / `stopEngine`, pan on `sfxLoop`, `dopplerPitch`,
+`closingSpeed`, `stereoPan`) are in `docs/api/audio-pipeline.md` "Mission rally". For the
+director: songs play with `music(id, { once: true, restart: true })`; the next one starts on
+`onSongEnd` (or, with `songState()` null, after `RadioSong.seconds`); the DJ speaks with
+`say(text, DJ_SPEAKER, { important: true })` gated by `hasVoice(text)`; the tunnel calls
+`setRadio({ muffle, signal, static })` at `tunnelIn` and back at `tunnelOut`; `setRadio(null)` and
+`music(null)` when the race scene exits. A cosmetic director never reads `runner.rng`.
+
+### C.4 Tests
+
+`tests/content/rally-radio-lines.test.ts` (the table verbatim, ids and keys unique, the selectors,
+the leader ids = the team specs' `dj`, the ticker fold, Gusto's lines = the card, every song and
+jingle registered, the group in the engine and the tool, the streamed songs, the load / release in
+the scenes); `tests/engine/audio-optins.test.ts` (the pure helpers, the no-ops, `GameAudio`);
+`tests/media/audio-optins-browser.test.ts` (Chromium: the engine voice, the radio chain, a live
+stream with its song-end event and the synth fallback, the engine cap, a panned loop).
+
+## C.S The sounds (SFX, wave C, 2026-10-23)
+
+The race's synth sound (spec §8 "Synth"): the engines, the tyres and hits, the world, the mix. Our own
+recipes, no samples, no credits. Report: `tmp/rally-c-sfx-report.md`.
+
+### C.S.1 The recipes (`content/sfx/rally-car.ts` `RALLY_CAR`, `rally-world.ts` `RALLY_WORLD`; spread into `SFX`)
+
+| Id | What | Loop | LUFS (K-weighted max, raw) |
+|---|---|---|---|
+| `rally/squeal` | tyre squeal (two howling partials, a scrubbing band) | 0.5 s | −20.0 |
+| `rally/scrape` | metal grinding along the barrier | 0.5 s | −21.1 |
+| `rally/wind` | the air at speed | 1 s | −22.0 |
+| `rally/siren` | the police two-tone (450 Hz / a fourth up, 0.6 s each) | 1.2 s | −19.4 |
+| `rally/arrow-beep` | the arrow-board truck: its diesel idle and one beep a second | 1 s | −20.9 |
+| `rally/ijsco-tune` | DE IJSCOMAN's tune (an original waltz phrase in F, a tinny speaker) | 2.4 s | −21.0 |
+| `rally/scrape-hit`, `rally/bump`, `rally/bump-hard`, `rally/crash` | the first touch of a barrier; car–car; a hard knock; a hard hit on traffic (crunch, glass) | | −20.9, −22.8, −19.0, −17.5 |
+| `rally/recover`, `rally/handbrake`, `rally/shift` | the recovery blink; the lever's ratchet and a chirp; an estate's upshift (clunk, turbo blow-off) | | −22.0, −24.0, −25.9 |
+| `rally/whoosh`, `rally/whoosh-big` | a car / a lorry or coach passing close (a falling band of air) | | −23.0, −21.0 |
+| `rally/horn/<team id>` ×7 | the team specs' `horn`: the hearse deep and soft, OMA TRUUS "meep meep", the stag limo an arpeggio, the snack van hoarse, the camper wheezy and sagging, ACHTERUIT backwards (a swell, a hard stop), the ice-cream van a ding-dong | | −19.0 … −20.6 |
+| `rally/horn/car`, `rally/horn/car-long`, `rally/horn/air` | traffic: a short two-tone, leaning on it, a lorry's or a coach's air horn | | −20.5, −20.5, −19.0 |
+| `rally/whoop`, `rally/flitser` | two police yelps (a pull-over); the speed camera (a double shutter click, the flash's pop, the recharge whine) | | −20.0, −20.1 |
+| `rally/finish`, `rally/finish-win` | a two-chord synth-brass sting (any place); a rising arpeggio into a bright chord (the winner) | | −17.9, −16.6 |
+
+Reused: `ring/tunnel-bed` (the tunnel's bed) and wave A's lazy `rally/count`, `rally/go`.
+`tests/content/sfx.test.ts` lists the six new loops (it checks every recipe's peak, band and seam).
+
+### C.S.2 The race's sound (`src/game/rally/sound.ts`, cosmetic)
+
+```ts
+const sound = attachRallySound(runner, app.audio, { cues?: boolean /* default true */ });
+sound.tick();      // once per scene update after the race step, also during the fold and the fly-over (the grid idles)
+sound.pause();     // the scene's pause(): pauseLoops (the loops and the engine voices go silent)
+sound.resume();    // the scene's resume()
+sound.detach();    // the scene's exit: every engine, loop, the echo and the listeners stop
+sound.state;       // { engines, loops, echo, duck } (tests, debug)
+```
+
+- **Engines** (`AudioOut.engine`, never more than `ENGINE_VOICES` = 4): each player's estate every tick
+  (`ESTATE_ENGINE`: five cylinders, a turbo whine; `engineRpm(rev, speed, gas, spec)`: idle 850 rpm,
+  revving with the gas on the grid, 1,100 … 6,800 rpm from DRIVE's `phys.rev`, so the rpm drops at an
+  upshift; a 5-tick lift and `rally/shift` at an upshift); the rivals nearest a player (every 10 ticks,
+  sticky; 1P three, 2P two; within 110 m) every other tick with `distanceGain(d, 8, 110)`,
+  `stereoPan` from the nearest player's heading (0.85 wide in 1P, 0.45 in 2P) and a smoothed
+  `dopplerPitch(closingSpeed(...), 1.4)`. `CAR_ENGINES`: the hearse a deep, smooth six (pitch 0.62),
+  OMA TRUUS a high, buzzy three (pitch 1.45, rpm ×1.25), the limo a burbling eight, the snack van a
+  clattering four, the camper a rough four, ACHTERUIT a belt drive (`cvt`: one droning note rising
+  with the speed, the belt's whine on the turbo), the ice-cream van a plain four. 2P: both estates
+  (pan −0.25 / +0.25). The voices are dropped before new ones start (the output never steals).
+- **Tyres and hits:** `rally/squeal` per car from |`phys.slip`| (1.5 … 6 m/s), the handbrake at speed
+  and a player's hard braking (brake > 90 above 15 m/s); `rally/handbrake` on a player's pull above 8 m/s;
+  `rally/scrape` while `phys.scrape` > 0 (panned to the touching side); events `scrape` →
+  `rally/scrape-hit`, `bump` → `rally/bump` (dv < 7 m/s) / `rally/bump-hard`, `crash` →
+  `rally/crash`, `recover` (a player) → `rally/recover`. AI sounds by the distance to the nearest player.
+- **The world:** `honk` → `hornOf(body)` (a rival's spec `horn`; lorry / coach `air`; van / parcel
+  `car-long`; other cars `car` or `car-long` by a hash of the id) with doppler; `rally/siren` per
+  police body with `BODY_LIGHT.blue` on (the two nearest, 420 m range, doppler × 1.7); `flash` →
+  `rally/flitser` (a player at `MIX.flash`; a rival near a player quieter and panned); DE IJSCOMAN's
+  tune within 90 m; the arrow trucks (`rw-truck-*` props, not hidden) within 160 m; the wind per player
+  above about 80 km/h; the whoosh when traffic or a rival crosses a player's nose or tail within 8 m
+  sideways at more than 12 m/s relative (a lorry or a coach: `whoosh-big`); a player inside a tunnel
+  (`A10Track.tunnels`): `setEcho(RALLY_TUNNEL_ECHO)` (0.14 s, feedback 0.32, mix 0.3), the tunnel bed,
+  the engines +2 dB, the wind down; `finish` (a player, not projected) → `rally/finish-win` (1st) or
+  `rally/finish`. With `cues`: the countdown beeps (`rally/count`, only while the race steps), `start`
+  → `rally/go`, a player's `flash`, `pulledOver` → `rally/whoop` (the scene's four placeholder calls
+  go when the scene attaches it).
+- **The mix** (`MIX`): the radio is the music and voice buses; the engines and the wind duck by
+  `MIX.djDuck` (0.7, −3 dB) while `speaking()`. Measured (`tests/game/rally/sound-browser.test.ts`,
+  K-weighted, with the output's sfx volume 0.8): an estate at full load near the redline −22.8 LUFS in
+  the mix (the DJ line −15, a song −20.4, the song under the DJ −28.4), cruising −26.8, the grid's
+  revving −23.8, idle −38.3; the rivals at 8 m −22.1 … −23.9; both estates in 2P −22.6 together.
+  One-shots in the mix: a horn about −24, the flash −22, the crash −19.4, the finish sting about −19.4.
+- **Determinism:** it never writes race state and never draws from `runner.rng` / `fxRng`; with and
+  without it a race has the same `stateHash` and rng states (1P and 2P, 1,680 ticks).
+
+### C.S.3 Tests
+
+`tests/game/rally/sound.test.ts` (20: every id has a recipe, the team horns = the specs, the loops,
+the engine table, `engineRpm`, `distanceGain`, `hornOf`; on a race on the A10 with a recording
+`AudioOut`: the countdown and GO, `cues` off, every event cue, the engines (≤ 4, rivals, a shift),
+2P, the wind and the DJ duck, the siren's doppler, the tune and the arrow truck, the whoosh, the
+tunnel echo, the tyres, pause and detach, the identity with and without it);
+`tests/game/rally/sound-browser.test.ts` (Chromium: the engine voices' loudness against the radio).
+
+## C.R The radio (RADIO, wave C, 2026-10-23)
+
+FILE FM in the car (spec §8, §12.6): the pure scheduler, the director, the HUD's radio slot and the
+synth fallback songs. Cosmetic only: the rally sims stay byte-identical (16/16 SAME vs
+`tmp/rally/base-b/`). The trace of whole races: `npx tsx tmp/rally-radio/trace.ts [seed] [players] [out]`.
+
+### C.R.1 The scheduler (`src/engine/radio.ts`, pure, node-testable; no game imports)
+
+```ts
+const s = new RadioScheduler({ categories, songs, jingles, sting? , waits?, preemptMargin?, timedPriority?, maxQueue?, airMax?, airWindow?, urgentPriority?, charsPerSecond? });
+s.startMusic(lap, now, { jingle? }); s.setLap(lap, now); s.songEnded(id); s.stopMusic();
+s.request(cue, now, { after?, maxWait? }) // 'queued' | 'once' | 'cooldown' | 'gap' | 'repeat' | 'busy' | 'full'
+s.pick(cues, now, rand)                   // a free line, the least played first, or null
+for (const e of s.step(now, { busy, signal, clocked })) … // say | end | cut | drop | song | jingle | between
+s.onAir; s.waiting; s.lastLine; s.airtime; s.playing; s.musicMode; s.waitOf(priority); s.playCount(id)
+```
+
+- **The voice lane:** one voice at a time; a priority queue (then the oldest); a request waits at most
+  its category's `maxWait` (`drop` 'stale'); cooldowns per line (`RADIO_ONCE_COOLDOWN` = once per
+  race) and a gap per category; one waiting line per category; never the same line twice in a row.
+  The quiet before a line follows its priority (`RADIO_TUNING.waits`: timed 0, urgent ≥ 7 0.4 s,
+  news ≥ 5 2 s, chatter 5 s). The airtime cap: while the DJ talked more than 35 % of the last ~30 s,
+  only urgent lines start. Preemption: a waiting line cuts the one on air when it outranks it by 3
+  (a finish 9 or a pull-over 7 beats a filler 1); a timed line (10, the start) always. `busy`: the
+  take speaks (`speaking()`); null = no take, the line lasts its estimate (13 characters/s, ≥ 1 s; a
+  stuck flag ends at 2 × estimate + 2 s). `signal: false` (a tunnel) cuts the line on air and starts nothing.
+- **The music lane:** one song per lap, played once; at its end a jingle (`jingle` + `between`), then the
+  lap's song again. `setLap` changes the song at once after the `sting` (no `between`). `clocked`: a
+  clip ends by `songEnded` (or after 3 × its nominal length when the event is lost); else by its nominal
+  `seconds`.
+
+### C.R.2 The director (`src/game/rally/radio.ts`, `RallyRadio`; cosmetic)
+
+```ts
+const radio = new RallyRadio({ audio, runner, on: () => settings.musicVolume > 0, trace? });
+radio.step(stage);   // every scene update: 'intro' (the fold and the fly-over), then runner.phase
+scene.ticker = radio.ticker;
+radio.dispose();     // setRadio(null), music(null), the listeners off
+RallyRadio.traceAll = (line) => …; // DEBUG: the trace sink of radios made without one
+```
+
+- Picks with `runner.fxRng.fork('radio')` (a fork never advances `fxRng`); never `runner.rng`; it only
+  reads the runner (and `RallyBody.kind/lights/dist` of the police). Scheduler categories = the lines
+  table's, with the director's density: the flash gap 75 s, the red X gap 30 s, a flash line rests 90 s.
+- **The moments:** the fold (stage 'intro') → FILE FM opens with the sting `rally-jingle-3`, then the
+  lap's song (`startMusic(lap, t, { sting: true })`, integrator; a start without the fold — a sim, a
+  test — plays the song at once); the fly-over → intro 1; the grid → the start line (timed: the take's words land on
+  3-2-1-GO within ~0.15 s, measured on the shipped take); GO → intro 2 (≤ 10 s late), then intro 3; the
+  leading player's lap → `setLap` (the sting `rally-jingle-3`, then the lap's song) and a lap line; the
+  HUD clock 6 min past a time line's clock → the time line (skipped 14 min past: a late start); a new
+  leader held 1.5 s, from 10 s after GO → its line (`spec.dj`, else `leaderLine(id)`); a tunnel ahead of
+  a player → its line one take-length (16 characters/s − 0.15 s) before the portal, so the static cuts
+  the last word (first pass always, later passes 1 in 3); a police car with blue lights ≤ 140 m behind a
+  racing player that a police car hunts and that was not stopped yet (`rulesOf(runner).of(car)`:
+  `hunted ≥ 0`, `!stopped`; integrator) → 'police:chase'; 50 s without a line → a station id or a filler.
+- **The events:** `flash` camera (a player always, an AI car 1 in 4) → flash; `flash` zone (the same filter, C.X) → zone;
+  `redx` (idem) → redx; `roadworksAhead`, `spitsstrookOpen`, `jam` → their lines; the first
+  `policeActive` → police 1; `pulledOver` → pulledOver; `released` within 12 s of a pull-over line on
+  air → released; `finish` place 1: a player → 'win', a rival → 'any'; the results (stage 'finish')
+  without a player's win → 'lose'; `tunnelIn` / `tunnelOut` of a player → the static.
+- **The output:** songs and jingles `music(id, { once: true, restart: true, fadeTicks })` (the
+  streamed takes when shipped, else the synth songs); the onSongEnd listener feeds the lane; a line
+  with a take (`hasVoice`) → `say(text, 'freek', { important: true })`; without one the ticker still
+  shows it for its estimate. The radio chain: `{ speaker: 0.25 }` (a hint of the car), one of two
+  players in a tunnel `{ muffle 0.55, signal 0.6, static 0.35 }`, all players `{ muffle 0.9, signal
+  0.06, static 0.9 }`, `staticId 'env/radio-static'` when it exists.
+- **The settings:** the music volume 0 → the radio is off (no DJ, no ticker; the lane keeps time);
+  the mute silences everything. The DJ's level is the voice volume (the voice bus).
+- **The ticker text:** `FILE FM  <TITLE>` while a song plays, `FILE FM  WIJ STAAN ER ALTIJD` during a
+  jingle, the DJ's line (`tickerText`) while it plays and 0.75 s after, `FILE FM  - GEEN BEREIK -`
+  with every player in a tunnel, '' when off.
+
+### C.R.3 The HUD's radio slot (`src/game/content/rally/radio/ticker.ts`)
+
+`createRadioTicker().draw(r, text, raceTick, cx, y, split)`, called once per frame by RULES' HUD part
+(the ticker block of `rules/hud.ts`). A text that fits: still and centred on a panel 8 px wider (grey;
+a DJ line white). A longer caption scrolls in a fixed window (`TICKER_W` 242 px, 196 px in 2P): it
+holds 0.75 s, moves 0.6 px per tick (36 px/s) until its end shows and holds; only whole glyphs inside
+the window (one text call of the visible part; the part is cut again only when it changes).
+
+### C.R.4 The synth songs (`src/game/content/music/rally.ts`; `RALLY_SONGS`, alias `RALLY_PLACEHOLDER_SONGS`)
+
+| Id | Title | Key, bpm | Length | Character |
+|---|---|---|---|---|
+| `rally-lap1` | RONDJE RING | A minor, 140 | 88 bars, 150.9 s | octave bass, four on the floor, off-beat saw stabs, a plucked riff, a hook on a bright saw lead (F–G–Em–Am), a pad/arp/bell break, a snare build |
+| `rally-lap2` | ZON OP DE ZUIDAS | D minor, 138 | 88 bars, 153.0 s | rolling bass, a 16th pluck arpeggio, wide pads, a breakdown with the anthem on a soft lead, a riser, the anthem (Dm–B♭–F–C) on a soaring lead |
+| `rally-lap3` | NACHTSPITS | E minor, 128 | 80 bars, 150.0 s | 8th pulse bass, gated pads, a melancholy pulse lead (Em–C–Am–B), an arpeggio break, tom fills |
+| `rally-jingle-1` | FILE FM! | C, 140 | 3.4 s | FI-LE EF-EM on a vowel lead, a brass hit and a boom |
+| `rally-jingle-2` | WIJ STAAN ER ALTIJD | A, 140 | 5.1 s | an arpeggio sweep over a noise riser, then the five syllables |
+| `rally-jingle-3` | the sting | D, 150 | 3.2 s | three brass chords (B♭–C–D), a boom, a sparkle (the lap change; the DJ talks over it) |
+
+The songs loop to their top (`loop: 0`); the jingles play once. Two new drum sounds: `drum/rally-rise`
+(a noise sweep), `drum/rally-boom`. Levels (Web Audio, whole song): −19.2 / −19.1 / −20.0 dB RMS, peaks
+0.74 / 0.68 / 0.92 (the game's other songs: −18.6 … −19.9 dB).
+
+### C.R.5 Numbers and tests
+
+- Whole races (node, estimates at 13 characters/s; the shipped takes run 15–18): seed 1 1P 31 lines in
+  7:46, the DJ on air 22 %; seed 2 2P 35 lines, 24 %; seed 3 1P 32 lines, 23 %; no line more than 3
+  times (`tmp/rally-radio/trace*.txt`).
+- Chromium (`tmp/rally-radio/probe.ts`, the shipped takes): the lap-1 song streams (144.0 s); the
+  sting (a 4.4 s sample) ends by the output's event and the lap-2 stream starts; the start take speaks
+  for 3.5 s from the grid's first tick.
+- `tests/engine/radio.test.ts` (15: priorities, cooldowns and once, the gap, one per category, no
+  repeat, the time-out, preemption, the waits, the airtime cap, no reception, pick; the music lane: the
+  playlist, the sting, the clock, the lost event, stop); `tests/game/rally/radio.test.ts` (24: the
+  fly-over / countdown / GO lines, a direct start, the lap change, every event to its line, the police
+  and the release, the results, the idle filler, the tunnel line and static, 2P half and full static,
+  the ticker, a take through `say`, the music volume 0, the output's clock, dispose, the race identical
+  with and without the radio); `tests/game/rally/radio-race.test.ts` (7: a whole headless race — the
+  first and last lines, one voice at a time, no repeats, the density and airtime, the playlist; the
+  ticker's still text and its scrolling caption in 1P and 2P).
+
+## C.I The integration (INTEGRATE, wave C, 2026-10-23)
+
+The race with its full sound, end to end (spec §1, §8, §12.6), the builders' requests and the lead's
+polish items 3a–3e. Cosmetic changes leave every sim byte-identical; one gameplay change (C.I.4, on
+purpose) made the new baselines `tmp/rally/base-c/`.
+
+### C.I.1 The flow with sound (`scenes/mission-intro.ts`, `rally-glitch.ts`, `rally.ts`, `content/ui/cards.ts`)
+
+| Moment | Sound |
+|---|---|
+| The MISSION 2 card | `briefing` music, the radio static under the typing, Gusto's two takes (group 'boot', 4.2 s + 4.9 s); the card waits for him up to `INTRO_TICKS + RALLY_VOICE_HOLD` (360 + 240 ticks; the other cards keep `INTRO_VOICE_HOLD` 90) |
+| The glitch | the card's new `announce: 'MISSION TWO. VOL GAS!'` (`RALLY_ANNOUNCE`, group 'boot') as the frame freezes; the frame holds while it speaks, at most `ANNOUNCE_BREAK` (96 ticks), so the break comes on the shout (VOL GAS! starts 1.6 s into the 2.8 s take); no voice (ANNOUNCER off, no sample): no wait. Then the `rally/glitch` crackles |
+| The fold and the fly-over | `rally/fold`; FILE FM opens with the sting (`rally-jingle-3`), the DJ's intro 1 over it (it waits in the speech lane while the announcer ends), the lap-1 song after the sting; the engines idle on the grid |
+| The countdown | the start take (words on 3-2-1-GO), the beeps `rally/count` × 3 and `rally/go` (SFX's module, `cues` on) |
+| Laps 1–3 | the lap songs (streamed), the sting and a lap line at each lap change, the news (flashes, the zone, the works, the spitsstrook, jams, the police, pull-overs), the time lines, the leader; engines (≤ 4 voices), tyres, hits, horns, wind, whoosh, the arrow truck, the ice-cream tune, the siren |
+| The tunnels | the tunnel line cut by the static; the echo and the bed; 2P: half static with one player inside, full with both |
+| The finish | the DJ's finish line (win / any / lose), the finish sting `rally/finish(-win)` (not for projected times) |
+| The tally, the bridge | the scene's exit: `sound.detach()` (engines, loops, echo stop), `radio.dispose()` (`setRadio(null)`, `music(null)`), the group released; the tally's and the bridge's own sound |
+
+The scene (`RallyScene`): `this.sound = attachRallySound(runner, app.audio)` in `enter` (after the
+runner, next to the radio); `sound.tick()` after every race step and in every fold / fly-over update;
+`pause()` / `resume()` and a lost WebGL context pause and resume it; `exit` detaches it. Wave B's four
+placeholder calls (`rally/go`, `rally/flash`, `rally/pulled`, the `rally/count` block) are gone (the
+module plays them).
+
+### C.I.2 The headlight pool (lead polish 3a; `content/rally/lights/cars.ts`, `page.ts`)
+
+- Its own mesh `fx/carpool/<model>` (`carPoolMesh`), apart from the halos (`carGlowMesh`): a beam on
+  the road from `POOL_FROM` 0.4 m to `POOL_LEN` 36 m past the nose, 2.0 m wide at the nose to 3.4 m at
+  the far end (`POOL_W0`, `POOL_W1`; a lane is 3.5 m), `POOL_X` × `POOL_Z` = 3 × 10 cells (small cells:
+  the affine warp of big near cells smeared it sideways), tint [100, 98, 88].
+- A new glow texture `GlowTex.beam` (32 × 32 at (8, 32) on page 302): soft edges across (full in the
+  middle 30 %), along a rise over the first 6 %, full to 22 %, then an even fade to the far end.
+- A view draws the pool of its own car and of the cars at least `POOL_AHEAD` (4 m) ahead of it along
+  its heading, within 160 m; a car beside or behind lit the road beside the player as a smear.
+- LOOKED (`tmp/rally-integrate-c/look/`): `pool-before-*` vs `pool-after-*`, `night-sheet.png` (1P
+  and 2P, 1× and the 4× tier): a clean beam ahead in the lane, no smear beside the car.
+
+### C.I.3 Debug F4 (lead polish 3b; `runner.ts` `endRace`)
+
+The projected pace blends the measured pace with the car's nominal pace (`topSpeed · 0.7`) before
+`PROJECT_SURE` (3,600 ticks): `pace = measured · w + nominal · (1 − w)`, `w = now / PROJECT_SURE`. F4
+right after GO projected 113:23 (a car still accelerating); now about a race at the nominal pace. A
+real finish comes after 60 s, so its projections (and every sim) are unchanged.
+
+### C.I.4 The camera balance (lead polish 3c; `rules/rules.ts` `OPEN_TOLERANCE`)
+
+On the open road (the enforced limit is the last gantry's base limit, or no gantry was passed yet) a
+fixed camera and the average-speed zone flash above the limit + `OPEN_TOLERANCE` (10 km/h); the road
+works (a works camera, a step-down limit) keep `CAMERA_TOLERANCE` (3). A lift for a FLITSER (to about
+110) now escapes the fine; racing flat out is flashed every time.
+
+Probe (`tmp/rally-integrate-c/bal/probe.ts`, the review's probe; normal, seeds 1–3; ticks / place /
+player fines / score):
+
+| Driver | Before (+3) | After (+10 open road) |
+|---|---|---|
+| the bot, flat out | 27,959 / 2 / 14 / 12,200 · 27,859 / 2 / 11 / 15,150 · 28,348 / 3 / 13 / 11,400 | 27,959 / 2 / 14 / 12,200 · 27,889 / 3 / 11 / 12,050 · 28,348 / 3 / 13 / 11,400 |
+| brakes to the limit 260 m before every camera | 32,943 / 8 / 0 / 2,200 · 32,233 / 8 / 0 / 2,500 · 32,347 / 8 / 0 / 2,300 | the same |
+| lifts to the limit + 8 within 150 m of a camera | 31,652 / 8 / 10 / 50 · 30,894 / 6 / 10 / 3,000 · 30,921 / 7 / 10 / 1,150 | 31,652 / 8 / 2 / 2,050 · 30,894 / 6 / 1 / 5,250 · 30,921 / 7 / 2 / 3,150 |
+
+Racing fast stays the main path (2nd–3rd); a careful driver now keeps the fines near 0 with a lift
+(+2,000 points over the same drive before) but still loses 3,000–4,000 ticks and places; braking is
+never required. The police focus was not changed (a speeding player is already their first pick).
+Sims: 14 of 16 byte-identical to `base-b`; seed 2 (P1 3rd instead of 2nd: a rival escaped a fine,
+the police hunted another racer; 27,889 ticks, stateHash 3925906280) and `--lap 3` (the bot 3 fines
+instead of 4, score 19,950) changed. New baselines `tmp/rally/base-c/` (16/16 the same twice);
+compare with `tmp/rally/base-c-same.sh <dir>`.
+
+### C.I.5 The GL readback (lead polish 3d)
+
+Measured on the production build (`tmp/rally-integrate-c/out`, `vite preview`), 3840 × 2160, art tier
+4 (density 4), a real GPU (`--gpu`: ANGLE Metal, Apple M5): `perf` 1P 0.28 ms render + present per
+frame (p95 0.4), 2P 0.34 ms, 2P lap 3 0.37 ms; frame interval 16.67 ms (60 fps) in all three; the
+console (`tmp/rally-integrate-c/perf/stall.ts`) shows 0 'GPU stall due to ReadPixels' messages in 8 s
+of racing. The 2D backbuffer is accelerated and `drawImage` of the GL canvas is a GPU copy, so no
+change. On SwiftShader (no GPU: the CI smoke) Chrome logs the warning (3–4 times, then it stops
+logging); that path has no GPU canvas to copy into.
+
+### C.I.6 The boot (lead polish 3e; `scenes/rally-route.ts`, `rally-glitch.ts`)
+
+`RallyScene` and everything only it imports (the runner, physics, AI, cameras, the radio, the sound,
+the lines table, the score, the time of day …) are a lazy chunk: `loadRallyContent()` loads the rally
+content and `import('./rally')` together (`rallyLoadState().registered` waits for both;
+`rallySceneModule()` returns the module); the glitch creates `new mod.RallyScene(…)`; the probe reads
+`RallyScene.last` through it. The main chunk: 872 KB (gzip 303 KB) → 785 KB (gzip 270 KB); wave B
+had 822 KB. `cache-check` firstBoot is unchanged by it: 4,203 / 4,279 ms (before) vs 4,255 / 4,312 ms
+(after), alternating on one machine at load 6–11 (the wave-A review measured the pre-rally build at
+4.15–4.22 s on a loaded machine); the final build 4,332 ms (load 8–10): the boot is the boot art and
+samples, not the main chunk. The sims tick in 0.17 ms (base-b 0.13 ms; the race's sound and the radio
+now tick in the headless scene too, with SimAudio's no-ops).
+
+### C.I.7 Measured: the whole level with sound (`tmp/rally-integrate-c/flow.ts`, Chromium, dev server)
+
+The card → the glitch → the race (autopilot; teleports to a lap change, the Coentunnel, lap 3 with
+player 1 the most-fined racer) → F4 → the tally → the bridge, 1P and 2P (`flow-1p.json`,
+`flow-2p.json`): every moment of C.I.1 in order; at most 4 engine voices; at the tally 0 engines, 0
+rally loops, no song; 0 console errors, 0 failed audio requests. The mix (RMS per 100 ms on the buses,
+the DJ speaking): the voice bus is 9.7 / 11.2 dB (1P / 2P, median) and 4.9 / 6.0 dB (p10) over the sfx
+bus (the engines duck 3 dB); over the music bus 8.3 dB median before the −8 dB dialogue duck (so about
+16 dB after it). The only louder sfx windows under the DJ are the countdown beeps and GO, under his own
+count.
+
+### C.I.8 Tests
+
+`tests/game/rally/scene.test.ts`: the glitch voices the announcer and holds while it speaks; the card
+waits `RALLY_VOICE_HOLD`; the race sound (engines on the grid, ≤ 4, the beeps and GO once each, no
+placeholder flash, every engine stops on exit). `tests/content/rally-world.test.ts`: the pool mesh
+(cells, inside the lane, ahead of the nose, facing up). `tests/game/rally/race.test.ts`: F4 just after
+GO. `tests/game/rally/rules.test.ts`: the open-road and the works tolerance. `tests/engine/radio.test.ts`
+and `tests/game/rally/radio.test.ts`: the opening sting.
+
+
+## C.X The final fixes (FIXER, wave C, 2026-10-23)
+
+The review of wave C (`tmp/rally-c-review-report.md`) found 6 issues. The fixer verified each one,
+fixed 4 and measured the other 2 (both for the lead or for a listen by ear). Every change is render,
+radio or memory only: the 16 rally sims stay byte-identical to `tmp/rally/base-c/`, and the 2D game,
+the dormant ring and the FPS mode are unchanged (`id.sh` 10/10, `ring-b.sh` 6/6, `drive-same.sh` 4/4).
+
+| Finding | Cause | Change (API) |
+|---|---|---|
+| 1 a smear beside the car at night (lead polish 3a, part 2) | the central lamps' sodium pool was one 8 × 12 m quad beside the car; the affine warp spread it over the left lanes | `sections/pieces.ts`: `pool()` cuts every pool into `POOL_CELLS` = 4 × 6 cells (2 × 2 m on the road), uv split to match (new optional `nx`, `nz`). Looked: an oval on the left lanes, no jagged patch (`tmp/rally-fix-c/look/`). About +650 triangles per view near the lamps: lap 3 at 1×, P1 every 200 m: 1P max 8,308 / avg 6,254; 2P max 16,496 / avg 13,242 for both views (wave B 7,386 and 15,788) |
+| 2 boot@1x over 4.0 s (gate §14.6) | the boot art and the boot samples, not the main chunk (C.I.6) | none (the lead's decision); measured again, see the report |
+| 3 the docs said + 3 km/h for every camera | C.I.4 changed the code | B.R, the wave-A stub table and `rules.ts`'s header now name `OPEN_TOLERANCE` (+ 10, the open road) and `CAMERA_TOLERANCE` (+ 3, the works) |
+| 4 no WebGL2: 'mission:rally' never released | `preloadRally` loaded the group on the card; only `RallyScene.exit` released it | `preloadRally` loads it only when `rallyGl(app).ok`; `RallyNoGlScene.enter` calls `releaseSamples?.(RALLY_SAMPLE_GROUP)` (a context that failed after the card) |
+| 5 Gusto's Dutch words and jingle 1 | Scribe (eng) hears "to Ring Rally", "Binander Ring"; nothing reads sung letters | no new takes (no wrong word and no cut line: Gusto speaks English with the Dutch words in his own accent; the card waits for him, `RALLY_VOICE_HOLD`). For a listen by ear |
+| 6 the zone line every lap | the zone's `flash` asked for the line for every car (about 20 AI zone fines a race) | `RallyRadio`: the zone goes through `news()` like the cameras (`aiNews` 0.25 for an AI car; a player's always) |
+
+Tests: `tests/content/rally-world.test.ts` (the road pools are small cells: every triangle's edge
+< 3.2 m), `tests/game/rally/radio.test.ts` (a player's zone flash always; the rivals' sometimes),
+`tests/content/rally-radio-lines.test.ts` (the no-GL load and release).

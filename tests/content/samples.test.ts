@@ -233,7 +233,7 @@ describe('sample manifest (src/game/content/samples)', () => {
 
   it('keys are registered sound effect ids and song ids; files exist; loop points are sane', () => {
     const fileOk = (f: string): void => {
-      expect(f, f).toMatch(/^(boot|ams|fps|oldenzaal|ring)\/(sfx|music|voice)\/[a-z0-9._-]+\.mp3$/);
+      expect(f, f).toMatch(/^(boot|ams|fps|oldenzaal|ring|rally)\/(sfx|music|voice)\/[a-z0-9._-]+\.mp3$/);
       const url = new URL(f, PUBLIC_AUDIO);
       expect(existsSync(url), `missing public/audio/${f}`).toBe(true);
       expect(statSync(url).size, f).toBeGreaterThan(0);
@@ -392,6 +392,38 @@ describe('the REPORT FOR DUTY drill callouts (docs/design/squad.md)', () => {
   });
 });
 
+describe("FILE FM's takes (group 'mission:rally', docs/design/rally.md §8)", () => {
+  it('every DJ line, the 3 lap songs (streamed) and the 3 jingles have a take; Gusto and the announcer are in boot', async () => {
+    const { RADIO_LINES, RADIO_SONGS, RADIO_JINGLES, RALLY_CARD_LINES, RALLY_ANNOUNCE } = await import('../../src/game/content/rally/radio/lines');
+    const { rallySampleGroup } = await import('../../src/game/content/samples/rally');
+    const g = rallySampleGroup(SAMPLE_MANIFEST)!;
+    expect(g).not.toBeNull();
+    for (const l of RADIO_LINES) {
+      const v = g.voice?.[voiceKey(l.text)];
+      expect(v, l.id).toBeDefined();
+      expect(v!.files[0], l.id).toMatch(/^rally\/voice\//);
+      // A short radio line: it never holds the queue for long.
+      expect(v!.duration, l.id).toBeGreaterThan(0.8);
+      expect(v!.duration, l.id).toBeLessThan(6);
+    }
+    for (const s of RADIO_SONGS) {
+      const m = g.music?.[s.id];
+      expect(m?.stream, s.id).toBe(true);
+      expect(m!.duration, s.id).toBeGreaterThan(130);
+      expect(m!.duration, s.id).toBeLessThan(160);
+      expect(m!.loopStart, s.id).not.toBeNull();
+    }
+    for (const j of RADIO_JINGLES) {
+      const m = g.music?.[j.id];
+      expect(m?.stream, j.id).toBeUndefined();
+      expect(m!.loopStart, j.id).toBeNull();
+      expect(m!.duration, j.id).toBeLessThan(8);
+    }
+    const boot = SAMPLE_MANIFEST.boot;
+    for (const t of [...RALLY_CARD_LINES, RALLY_ANNOUNCE]) expect(boot.voice?.[voiceKey(t)], t).toBeDefined();
+  });
+});
+
 describe('audio:ship keeps the files it did not write', () => {
   it("removes an unpicked '<slug>-<n>.mp3' but keeps a hand-placed file such as 'Tot ziens.mp3'", () => {
     const root = mkdtempSync(join(tmpdir(), 'ms3-ship-'));
@@ -407,7 +439,7 @@ describe('audio:ship keeps the files it did not write', () => {
       put('oldenzaal/sfx/oz-env-old-1.mp3');
       const hand = put('ams/voice/Tot ziens.mp3');
       const empty = (): GroupData => ({ sfx: {}, music: {}, voice: {} });
-      const r = applyShip({ groups: { boot: empty(), 'mission:ams': empty(), 'mode:fps': empty(), 'mission:oldenzaal': empty(), 'mission:ring': empty() }, copies: [], errors: [], warnings: [] }, p, true);
+      const r = applyShip({ groups: { boot: empty(), 'mission:ams': empty(), 'mode:fps': empty(), 'mission:oldenzaal': empty(), 'mission:ring': empty(), 'mission:rally': empty() }, copies: [], errors: [], warnings: [] }, p, true);
       expect(r.removed).toEqual(['public/audio/fps/sfx/fps-old-1.mp3', 'public/audio/oldenzaal/sfx/oz-env-old-1.mp3']);
       expect(r.kept).toEqual(['public/audio/ams/voice/Tot ziens.mp3']);
       expect(existsSync(hand)).toBe(true);
@@ -415,6 +447,7 @@ describe('audio:ship keeps the files it did not write', () => {
       expect(r.manifest).not.toContain('mode:fps');
       expect(r.manifest).not.toContain('mission:oldenzaal');
       expect(r.manifest).not.toContain('mission:ring');
+      expect(r.manifest).not.toContain('mission:rally');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

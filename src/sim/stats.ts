@@ -104,6 +104,16 @@ export class SimAudio implements AudioOut {
   stopSfx(): void {}
   duckMusic(): void {}
   setMuted(): void {}
+  // Rally wave C opt-ins (audio.ts): no-ops; a sim has no song clock, no radio and no engines.
+  songState(): null {
+    return null;
+  }
+  onSongEnd(): () => void {
+    return () => {};
+  }
+  setRadio(): void {}
+  engine(): void {}
+  stopEngine(): void {}
 }
 
 // ---------------------------------------------------------------------------------------------

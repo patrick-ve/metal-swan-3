@@ -1,7 +1,8 @@
-import type { AudioOut, EchoOpts, MusicOpts, SfxOpts, VolumeKind } from './audio';
+import type { AudioOut, EchoOpts, EngineOpts, EngineParams, MusicOpts, RadioOpts, RadioParams, SfxOpts, SongSource, SongState, VolumeKind } from './audio';
+import { engineParams, engineSteal, loopPanGain, RADIO_NEUTRAL, radioParams } from './audio';
 import type { InstrumentDef, InstrumentEnv, ParsedSong, ScheduledNote } from './music';
-import { getSong, midiToFreq, orderTime, songError, songEvents, songLength } from './music';
-import type { SampleBankDeps, SongTake } from './samples.browser';
+import { getSong, midiToFreq, orderTime, rowTime, songError, songEvents, songLength } from './music';
+import type { SampleBankDeps, SongTake, StreamTake } from './samples.browser';
 import { defaultDecoder, SampleBank } from './samples.browser';
 import type { SayOpts, SpeechItem, SpeechKind } from './samples';
 import { foldLoopPosition, songLoopEnd, SpeechLane, voiceKey } from './samples';
@@ -27,6 +28,11 @@ import { createAnnouncer } from './voice.browser';
  *   line plays its sample on the voice bus with the music ducked under it. Missing, loading or
  *   failed samples fall back to the synth (sfx, music), the speech announcer (`voice`) or
  *   silence (`say`).
+ * - Rally wave C opt-ins (audio.ts; nothing else calls them): a song-end event and a song state
+ *   query (`onSongEnd`, `songState`, `MusicOpts.once`); STREAMED songs (`SampleSong.stream`: a media
+ *   element source on the music bus, no full decode; the dialogue duck applies); the car radio's
+ *   chain on the music + voice buses (`setRadio`: speaker band-pass, tunnel muffle, signal, static);
+ *   parametric engine voices (`engine` / `stopEngine`, at most ENGINE_VOICES); pan on loops.
  */
 
 let sharedCtx: AudioContext | null = null;
@@ -95,6 +101,35 @@ interface ActiveSfx {
   end: number;
 }
 
+/** A looping sound (`sfxLoop`): `mul` = the sample's level match, `panMul` = the pan's level match. */
+interface LoopEntry {
+  id: string;
+  src: AudioBufferSourceNode;
+  gain: GainNode;
+  mul: number;
+  vol: number;
+  /** Where the loop goes (the loop bus). */
+  out: AudioNode;
+  /** Inserted by the first pan (rally wave C). */
+  panner: StereoPannerNode | null;
+  panMul: number;
+  mono: boolean;
+}
+
+/** Can this context stream a song through a media element (a live AudioContext in a page)? */
+function canStream(ctx: BaseAudioContext): boolean {
+  return typeof (ctx as AudioContext).createMediaElementSource === 'function' && typeof Audio === 'function';
+}
+
+/** `seconds` of white noise (mono, cosmetic: Math.random). */
+function makeNoise(ctx: BaseAudioContext, seconds: number): AudioBuffer {
+  const n = Math.max(1, Math.round(ctx.sampleRate * seconds));
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  return buf;
+}
+
 const clamp01 = (v: number): number => (v <= 0 ? 0 : v >= 1 ? 1 : v);
 /** A manifest gain multiplier (level match), 0..4. */
 const gainOf = (v: number | undefined): number => (v === undefined || !Number.isFinite(v) ? 1 : Math.max(0, Math.min(4, v)));
@@ -116,7 +151,19 @@ export class WebAudioOut implements AudioOut {
   private song: MusicPlayer | null = null;
   private wanted: { id: string | null; opts?: MusicOpts } | null = null;
   /** Looping sounds by key (sfxLoop / stopSfx); `mul` is the sample's level match. */
-  private readonly loops = new Map<string, { id: string; src: AudioBufferSourceNode; gain: GainNode; mul: number }>();
+  private readonly loops = new Map<string, LoopEntry>();
+  /** Song-end listeners (`onSongEnd`). */
+  private readonly songEnd = new Set<(id: string) => void>();
+  /** The reused `songState` object. */
+  private readonly state: SongState = { id: '', source: 'synth', position: 0, duration: 0, ended: false, paused: false };
+  /** The car radio's chain (`setRadio`; built on its first use) and the wanted settings. */
+  private radio: RadioChain | null = null;
+  private radioWanted: RadioOpts | null = null;
+  /** Engine voices by key (`engine`). */
+  private readonly engines = new Map<string, EngineVoice>();
+  private readonly engineP = {} as EngineParams;
+  /** One second of white noise (the engines' exhaust, the radio's static), made on first use. */
+  private noise: AudioBuffer | null = null;
   private duck = 1;
   /** Decoded sample groups (samples.ts); empty until `loadSamples`. */
   readonly samples: SampleBank;
@@ -222,6 +269,7 @@ export class WebAudioOut implements AudioOut {
     this.loopBus.connect(this.buses.sfx);
     this.applyVolumes(true);
     if (this.echoWanted) this.setEcho(this.echoWanted);
+    if (this.radioWanted) this.setRadio(this.radioWanted);
     // A song requested while the context was missing or suspended starts once it runs.
     ctx.addEventListener('statechange', this.flushWanted);
     this.flushWanted();
@@ -361,6 +409,7 @@ export class WebAudioOut implements AudioOut {
       return;
     }
     const fade = Math.max(0, (o?.fadeTicks ?? 0) / 60);
+    const once = o?.once === true;
     if (id === null) {
       this.song?.stop(fade);
       this.song = null;
@@ -371,11 +420,18 @@ export class WebAudioOut implements AudioOut {
       if (this.song.paused) this.song.resume();
       return;
     }
-    // A loaded sample plays first; `from` maps through its marks (else the top).
+    // A streamed song (rally wave C), else a loaded sample; `from` maps through its marks (else the top).
+    const stream = canStream(ctx) ? this.samples.stream(id) : null;
+    if (stream) {
+      this.song?.stop(fade);
+      this.song = new StreamPlayer(ctx as AudioContext, id, stream, this.buses.music, once, this.songEnded, this.streamFailed);
+      this.song.start(fade, o?.from ? (stream.def.marks?.[o.from] ?? 0) : 0);
+      return;
+    }
     const take = this.samples.song(id);
     if (take) {
       this.song?.stop(fade);
-      this.song = new SamplePlayer(ctx, id, take, this.buses.music);
+      this.song = new SamplePlayer(ctx, id, take, this.buses.music, once, this.songEnded);
       this.song.start(fade, o?.from ? (take.def.marks?.[o.from] ?? 0) : 0);
       return;
     }
@@ -389,8 +445,62 @@ export class WebAudioOut implements AudioOut {
       return;
     }
     this.song?.stop(fade);
-    this.song = new SongPlayer(ctx, id, parsed, this.buses.music, (sfxId) => this.buffer(sfxId));
+    this.song = new SongPlayer(ctx, id, parsed, this.buses.music, (sfxId) => this.buffer(sfxId), once, this.songEnded);
     this.song.start(fade, o?.from ? orderTime(parsed, o.from) : 0);
+  }
+
+  /** A player played to its end: tell the listeners when it is still the current song. */
+  private readonly songEnded = (p: MusicPlayer): void => {
+    if (this.song !== p) return;
+    for (const fn of [...this.songEnd]) {
+      try {
+        fn(p.id);
+      } catch (err) {
+        console.error('[music] a song-end listener failed:', err);
+      }
+    }
+  };
+
+  /** A streamed song failed to load or play: the synth takes over at the same position. */
+  private readonly streamFailed = (p: MusicPlayer, at: number, once: boolean): void => {
+    this.samples.failStream(p.id);
+    if (!this.warned.has(`stream:${p.id}`)) {
+      this.warned.add(`stream:${p.id}`);
+      console.warn(`[music] cannot stream "${p.id}" (the synth plays instead)`);
+    }
+    const ctx = this.ctx;
+    if (this.song !== p || !ctx || !this.buses) return;
+    const parsed = getSong(p.id);
+    this.song = null;
+    if (!parsed) return;
+    const next = new SongPlayer(ctx, p.id, parsed, this.buses.music, (sfxId) => this.buffer(sfxId), once, this.songEnded);
+    this.song = next;
+    next.start(0.3, Math.min(at, songLength(parsed)));
+  };
+
+  /**
+   * The current song: id, source, position (folded into its loop), length, ended, paused; null when
+   * none. The returned object is reused by the next call.
+   */
+  songState(): SongState | null {
+    const p = this.song;
+    if (!p) return null;
+    const st = this.state;
+    st.id = p.id;
+    st.source = p.source;
+    st.position = p.songPosition;
+    st.duration = p.duration;
+    st.ended = p.finished;
+    st.paused = p.paused;
+    return st;
+  }
+
+  /** Listen for the end of the current song (a one-shot or a song played `once`). */
+  onSongEnd(fn: (id: string) => void): () => void {
+    this.songEnd.add(fn);
+    return () => {
+      this.songEnd.delete(fn);
+    };
   }
 
   /** Id of the song that is loaded (playing or paused), or null. */
@@ -398,9 +508,9 @@ export class WebAudioOut implements AudioOut {
     return this.song?.id ?? null;
   }
 
-  /** 'sample' or 'synth': what plays the current song (tests), or null. */
-  get songSource(): 'sample' | 'synth' | null {
-    return this.song ? (this.song instanceof SamplePlayer ? 'sample' : 'synth') : null;
+  /** 'sample' or 'synth' (or 'stream', rally wave C): what plays the current song (tests), or null. */
+  get songSource(): SongSource | null {
+    return this.song ? this.song.source : null;
   }
 
   // ------------------------------------------------------------------ samples
@@ -431,21 +541,26 @@ export class WebAudioOut implements AudioOut {
   private swapToSample(): void {
     const ctx = this.ctx;
     const cur = this.song;
-    if (!ctx || !this.buses || ctx.state !== 'running' || !(cur instanceof SongPlayer) || cur.paused || cur.ended) return;
-    const take = this.samples.song(cur.id);
-    if (!take) return;
+    if (!ctx || !this.buses || ctx.state !== 'running' || !(cur instanceof SongPlayer) || cur.paused || cur.ended || cur.finished) return;
+    // A streamed song (rally wave C) swaps like a sample.
+    const stream = canStream(ctx) ? this.samples.stream(cur.id) : null;
+    const take = stream ? null : this.samples.song(cur.id);
+    const def = stream?.def ?? take?.def;
+    if (!def) return;
     const pos = cur.position;
     let at: number;
     let fade: number;
     if (pos < HOT_SWAP_SAME_POS) {
       at = pos;
       fade = 0.3;
-    } else if (take.def.loopStart !== null) {
-      at = take.def.loopStart;
+    } else if (def.loopStart !== null && !cur.once) {
+      at = def.loopStart;
       fade = 1.5;
     } else return;
     cur.stop(fade);
-    const next = new SamplePlayer(ctx, cur.id, take, this.buses.music);
+    const next: MusicPlayer = stream
+      ? new StreamPlayer(ctx as AudioContext, cur.id, stream, this.buses.music, cur.once, this.songEnded, this.streamFailed)
+      : new SamplePlayer(ctx, cur.id, take as SongTake, this.buses.music, cur.once, this.songEnded);
     this.song = next;
     next.start(fade, at);
   }
@@ -459,7 +574,10 @@ export class WebAudioOut implements AudioOut {
     const vol = clamp01(o?.vol ?? 1);
     const pitch = Math.max(0.1, Math.min(4, o?.pitch ?? 1));
     if (cur && cur.id === id) {
-      cur.gain.gain.setTargetAtTime(vol * cur.mul, ctx.currentTime, 0.02);
+      // Pan (rally wave C): the first pan inserts a panner (level-matched: `loopPanGain`).
+      if (o?.pan !== undefined) this.panLoop(ctx, cur, o.pan);
+      cur.vol = vol;
+      cur.gain.gain.setTargetAtTime(vol * cur.mul * cur.panMul, ctx.currentTime, 0.02);
       cur.src.playbackRate.setTargetAtTime(pitch, ctx.currentTime, 0.02);
       return;
     }
@@ -484,18 +602,40 @@ export class WebAudioOut implements AudioOut {
     const mul = gainOf(take?.def.vol);
     const gain = ctx.createGain();
     gain.gain.value = vol * mul;
-    src.connect(gain).connect(this.loopBus ?? this.buses.sfx);
+    const out = this.loopBus ?? this.buses.sfx;
+    src.connect(gain).connect(out);
     src.start();
-    this.loops.set(key, { id, src, gain, mul });
+    const entry: LoopEntry = { id, src, gain, mul, vol, out, panner: null, panMul: 1, mono: buf.numberOfChannels === 1 };
+    this.loops.set(key, entry);
+    if (o?.pan !== undefined) this.panLoop(ctx, entry, o.pan);
+  }
+
+  /** Set a loop's pan (a panner is inserted on the first call; the gain keeps the centre level). */
+  private panLoop(ctx: AudioContext, e: LoopEntry, pan: number): void {
+    const p = Math.max(-1, Math.min(1, Number.isFinite(pan) ? pan : 0));
+    if (!e.panner) {
+      if (typeof ctx.createStereoPanner !== 'function') return;
+      e.panner = ctx.createStereoPanner();
+      e.panner.pan.value = p;
+      e.gain.disconnect();
+      e.gain.connect(e.panner).connect(e.out);
+      e.panMul = loopPanGain(p, e.mono);
+      e.gain.gain.setValueAtTime(e.vol * e.mul * e.panMul, ctx.currentTime);
+      return;
+    }
+    e.panner.pan.setTargetAtTime(p, ctx.currentTime, 0.02);
+    e.panMul = loopPanGain(p, e.mono);
   }
 
   pauseLoops(): void {
     this.loopsPaused = true;
     this.setLoopBus(0, 0);
+    if (this.ctx) this.radio?.level(this.staticLevel(), this.ctx.currentTime);
   }
 
   resumeLoops(): void {
     this.loopsPaused = false;
+    if (this.ctx) this.radio?.level(this.staticLevel(), this.ctx.currentTime);
     // A short delay: loops stopped together with the resume (a scene that leaves gameplay) end
     // before the bus comes back up.
     this.setLoopBus(1, 0.05);
@@ -526,6 +666,75 @@ export class WebAudioOut implements AudioOut {
   duckMusic(factor: number): void {
     this.duck = clamp01(factor);
     this.applyVolumes(false);
+  }
+
+  // ------------------------------------------------------------------ engines (rally wave C)
+
+  /** One second of white noise (cosmetic: Math.random), shared by the engines and the static. */
+  private noiseBuffer(ctx: BaseAudioContext): AudioBuffer {
+    if (!this.noise) this.noise = makeNoise(ctx, 1);
+    return this.noise;
+  }
+
+  /**
+   * Start or update the parametric engine voice of a key (`engineParams`; AudioParam ramps). When
+   * ENGINE_VOICES sound, a new key replaces the quietest voice if it is louder (`engineSteal`).
+   */
+  engine(key: string, o: EngineOpts): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.buses || ctx.state !== 'running') return;
+    const p = engineParams(o, this.engineP);
+    let v = this.engines.get(key);
+    if (!v) {
+      const keys = [...this.engines.keys()];
+      const i = engineSteal(keys.map((k) => (this.engines.get(k) as EngineVoice).level), p.gain);
+      if (i < 0) return;
+      if (i < keys.length) this.stopEngine(keys[i], 3);
+      v = new EngineVoice(ctx, this.loopBus ?? this.buses.sfx, this.noiseBuffer(ctx), p);
+      this.engines.set(key, v);
+      return;
+    }
+    v.set(p, ctx.currentTime);
+  }
+
+  stopEngine(key: string, fadeTicks = 4): void {
+    const v = this.engines.get(key);
+    if (!v || !this.ctx) return;
+    this.engines.delete(key);
+    v.stop(this.ctx.currentTime, Math.max(0.01, fadeTicks / 60));
+  }
+
+  /** Keys of the engine voices that sound (tests). */
+  get engineKeys(): string[] {
+    return [...this.engines.keys()];
+  }
+
+  // ------------------------------------------------------------------ the car radio (rally wave C)
+
+  /**
+   * The car radio's chain (`radioParams`): the music bus (after the dialogue duck) and the voice bus
+   * run through signal → muffle, the static joins after them, and the speaker's high-pass and
+   * low-pass sit last. Built (and the buses rerouted) on the first non-null call; null ramps it to
+   * neutral (flat filters, full signal, no static).
+   */
+  setRadio(o: RadioOpts | null): void {
+    this.radioWanted = o;
+    const ctx = this.ctx;
+    if (!ctx || !this.buses || !this.master || !this.dialogueDuck || (!o && !this.radio)) return;
+    if (!this.radio) this.radio = new RadioChain(ctx, this.dialogueDuck, this.buses.voice, this.master);
+    const r = radioParams(o);
+    let staticBuf: AudioBuffer | null = null;
+    if (r.static > 0) {
+      const sid = o?.staticId;
+      const take = sid ? this.sampleId(sid) : null;
+      staticBuf = (take ? this.samples.sfx(take)?.buffer : null) ?? (sid ? this.buffer(sid) : null) ?? this.noiseBuffer(ctx);
+    }
+    this.radio.set(r, staticBuf, this.staticLevel(), ctx.currentTime);
+  }
+
+  /** The static's level factor: the music volume and the pause duck (the static is part of the radio). */
+  private staticLevel(): number {
+    return this.loopsPaused ? 0 : this.vols.music * this.duck;
   }
 
   pauseMusic(): void {
@@ -664,6 +873,7 @@ export class WebAudioOut implements AudioOut {
     set(this.buses.music.gain, this.vols.music * this.duck);
     set(this.buses.sfx.gain, this.vols.sfx);
     set(this.buses.voice.gain, this.vols.voice);
+    this.radio?.level(this.staticLevel(), ctx.currentTime);
   }
 
   stopAll(): void {
@@ -677,17 +887,24 @@ export class WebAudioOut implements AudioOut {
     const now = ctx.currentTime;
     while (this.active.length > 0) this.kill(this.active.length - 1, now);
     for (const key of [...this.loops.keys()]) this.stopSfx(key, 0);
+    for (const key of [...this.engines.keys()]) this.stopEngine(key, 0);
     this.loopsPaused = false;
     this.setLoopBus(1, 0.05);
     this.song?.stop(0);
     this.song = null;
+    // The car radio goes neutral (a scene that forgot `setRadio(null)` never muffles the next one).
+    if (this.radio) this.setRadio(null);
+    this.radioWanted = null;
   }
 
   suspend(): void {
+    // A media element plays on while the context sleeps: hold a streamed song (hidden tab).
+    if (this.song instanceof StreamPlayer) this.song.hold(true);
     void this.ctx?.suspend().catch(() => undefined);
   }
 
   resume(): void {
+    if (this.song instanceof StreamPlayer) this.song.hold(false);
     if (this.ctx?.state === 'suspended') void this.ctx.resume().catch(() => undefined);
   }
 
@@ -721,6 +938,62 @@ export async function renderSongOffline(id: string, seconds: number, sampleRate 
     return drums.get(d) ?? null;
   };
   new SongPlayer(ctx, id, song, bus, drum).scheduleRange(0, seconds);
+  return ctx.startRendering();
+}
+
+/**
+ * Render an engine voice offline (tests; SFX's listening by measurement): `steps` set its opts at
+ * their times (seconds; the first one starts it at 0), `seconds` long, stereo. The same nodes as
+ * `WebAudioOut.engine` (`EngineVoice`), straight into the destination.
+ */
+export function renderEngineOffline(steps: readonly { at: number; o: EngineOpts }[], seconds: number, sampleRate = 44100): Promise<AudioBuffer> {
+  const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(seconds * sampleRate)), sampleRate);
+  const first = steps[0] ?? { at: 0, o: { rpm: 900, load: 0 } };
+  const v = new EngineVoice(ctx, ctx.destination, makeNoise(ctx, 1), engineParams(first.o, {} as EngineParams));
+  for (let i = 1; i < steps.length; i++) v.set(engineParams(steps[i].o, {} as EngineParams), Math.max(0, steps[i].at));
+  return ctx.startRendering();
+}
+
+/**
+ * Render `seconds` of a test input on the programme input (white noise; three sines at 60 Hz, 1 kHz
+ * and 8 kHz; or silence) through the car radio's chain with `o` (null = neutral) offline (tests).
+ * The static is the output's own noise; its level factor is 1 (no music volume). Stereo.
+ */
+export function renderRadioOffline(
+  o: RadioOpts | null,
+  seconds: number,
+  sampleRate = 44100,
+  input: 'noise' | 'tones' | 'silence' = 'noise',
+): Promise<AudioBuffer> {
+  const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(seconds * sampleRate)), sampleRate);
+  const music = ctx.createGain();
+  const voice = ctx.createGain();
+  music.connect(ctx.destination);
+  voice.connect(ctx.destination);
+  const chain = new RadioChain(ctx, music, voice, ctx.destination);
+  const noise = makeNoise(ctx, 1);
+  if (input === 'noise') {
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    src.loop = true;
+    const g = ctx.createGain();
+    g.gain.value = 0.25;
+    src.connect(g).connect(music);
+    src.start(0);
+  } else if (input === 'tones') {
+    for (const f of [60, 1000, 8000]) {
+      const osc = ctx.createOscillator();
+      osc.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.value = 0.1;
+      osc.connect(g).connect(music);
+      osc.start(0);
+    }
+  }
+  const r = radioParams(o);
+  // Settle at once (a test reads the steady state): no ramp.
+  r.ramp = 0.005;
+  chain.set(r, r.static > 0 ? noise : null, 1, 0);
   return ctx.startRendering();
 }
 
@@ -771,10 +1044,19 @@ function scheduleEnv(p: AudioParam, t0: number, dur: number, e: InstrumentEnv, p
   return t0 + dur + r * 2;
 }
 
-/** What `WebAudioOut.music` drives: the synth SongPlayer or a SamplePlayer. */
+/** What `WebAudioOut.music` drives: the synth SongPlayer, a SamplePlayer or a StreamPlayer. */
 interface MusicPlayer {
   readonly id: string;
+  readonly source: SongSource;
   readonly paused: boolean;
+  /** Played once to its end (MusicOpts.once). */
+  readonly once: boolean;
+  /** It played to its end (a one-shot, or `once`); `songEnded` was called. */
+  readonly finished: boolean;
+  /** Seconds into the song or file, folded into its loop (`songState`). */
+  readonly songPosition: number;
+  /** Seconds of one pass or of the file. */
+  readonly duration: number;
   /** Start; `at` = seconds into the song. */
   start(fade: number, at?: number): void;
   pause(): void;
@@ -782,8 +1064,15 @@ interface MusicPlayer {
   stop(fade: number): void;
 }
 
+/** Called once when a player plays to its end (not on stop). */
+type EndFn = (p: MusicPlayer) => void;
+
 class SongPlayer implements MusicPlayer {
   readonly id: string;
+  readonly source: SongSource = 'synth';
+  readonly once: boolean;
+  private readonly onEnd: EndFn | null;
+  private endFired = false;
   private readonly ctx: BaseAudioContext;
   private readonly song: ParsedSong;
   private readonly out: GainNode;
@@ -797,11 +1086,13 @@ class SongPlayer implements MusicPlayer {
   private pausedAt: number | null = null;
   private stopped = false;
 
-  constructor(ctx: BaseAudioContext, id: string, song: ParsedSong, bus: GainNode, drum: (id: string) => AudioBuffer | null) {
+  constructor(ctx: BaseAudioContext, id: string, song: ParsedSong, bus: GainNode, drum: (id: string) => AudioBuffer | null, once = false, onEnd: EndFn | null = null) {
     this.ctx = ctx;
     this.id = id;
     this.song = song;
     this.drum = drum;
+    this.once = once;
+    this.onEnd = onEnd;
     this.out = ctx.createGain();
     this.out.connect(bus);
     this.inputs = song.channels.map((c) => {
@@ -847,13 +1138,23 @@ class SongPlayer implements MusicPlayer {
 
   private pump(): void {
     if (this.stopped || this.pausedAt !== null) return;
-    const until = this.ctx.currentTime - this.startAt + HORIZON;
-    if (until <= this.cursor) return;
-    this.events.length = 0;
-    songEvents(this.song, this.cursor, until, this.events);
-    for (const ev of this.events) this.note(ev);
-    this.cursor = until;
-    if (this.song.loopRow === null && this.cursor > songLength(this.song) + 3) this.stop(0);
+    const len = songLength(this.song);
+    const pos = this.ctx.currentTime - this.startAt;
+    // The song-end event (rally wave C): a one-shot or a song played `once` reached its end.
+    if (!this.endFired && (this.once || this.song.loopRow === null) && pos >= len) {
+      this.endFired = true;
+      this.onEnd?.(this);
+      if (this.stopped) return;
+    }
+    // `once`: never schedule past one pass.
+    const until = this.once ? Math.min(pos + HORIZON, len) : pos + HORIZON;
+    if (until > this.cursor) {
+      this.events.length = 0;
+      songEvents(this.song, this.cursor, until, this.events);
+      for (const ev of this.events) this.note(ev);
+      this.cursor = until;
+    }
+    if (this.song.loopRow === null ? this.cursor > len + 3 : this.once && pos > len + 3) this.stop(0);
   }
 
   private note(ev: ScheduledNote): void {
@@ -1037,6 +1338,21 @@ class SongPlayer implements MusicPlayer {
     return this.stopped;
   }
 
+  get finished(): boolean {
+    return this.endFired;
+  }
+
+  get duration(): number {
+    return songLength(this.song);
+  }
+
+  /** The song time folded into its loop (one pass for a one-shot or `once`). */
+  get songPosition(): number {
+    const len = songLength(this.song);
+    const loop = this.song.loopRow === null || this.once ? null : rowTime(this.song, this.song.loopRow);
+    return foldLoopPosition(this.position, loop, len, len);
+  }
+
   /** Seconds of song time played so far. */
   get position(): number {
     if (this.pausedAt !== null) return this.pausedAt;
@@ -1104,6 +1420,9 @@ class SongPlayer implements MusicPlayer {
  */
 class SamplePlayer implements MusicPlayer {
   readonly id: string;
+  readonly source: SongSource = 'sample';
+  readonly once: boolean;
+  private readonly onEnd: EndFn | null;
   private readonly ctx: BaseAudioContext;
   private readonly take: SongTake;
   private readonly out: GainNode;
@@ -1113,11 +1432,14 @@ class SamplePlayer implements MusicPlayer {
   private t0 = 0;
   private pausedAt: number | null = null;
   private stopped = false;
+  private done = false;
 
-  constructor(ctx: BaseAudioContext, id: string, take: SongTake, bus: GainNode) {
+  constructor(ctx: BaseAudioContext, id: string, take: SongTake, bus: GainNode, once = false, onEnd: EndFn | null = null) {
     this.ctx = ctx;
     this.id = id;
     this.take = take;
+    this.once = once;
+    this.onEnd = onEnd;
     this.level = gainOf(take.def.vol);
     this.out = ctx.createGain();
     this.out.gain.value = 0;
@@ -1126,7 +1448,27 @@ class SamplePlayer implements MusicPlayer {
 
   private get loopStart(): number | null {
     const ls = this.take.def.loopStart;
-    return ls !== null && this.loopEnd > ls ? Math.max(0, ls) : null;
+    return ls !== null && !this.once && this.loopEnd > ls ? Math.max(0, ls) : null;
+  }
+
+  get finished(): boolean {
+    return this.done;
+  }
+
+  get duration(): number {
+    return this.take.buffer.duration;
+  }
+
+  get songPosition(): number {
+    return this.position;
+  }
+
+  /** Played to its end: once. */
+  private end(): void {
+    if (this.done) return;
+    this.stopped = true;
+    this.done = true;
+    this.onEnd?.(this);
   }
 
   private get loopEnd(): number {
@@ -1156,6 +1498,8 @@ class SamplePlayer implements MusicPlayer {
     const offset = foldLoopPosition(at, ls, this.loopEnd, buf.duration);
     if (ls === null && offset >= buf.duration) {
       this.stopped = true;
+      // Started past its end: the end event still comes (after the caller's `music` returns).
+      queueMicrotask(() => this.end());
       return;
     }
     const src = this.ctx.createBufferSource();
@@ -1170,8 +1514,8 @@ class SamplePlayer implements MusicPlayer {
       src.disconnect();
       if (this.src !== src) return;
       this.src = null;
-      // A one-shot played to its end.
-      if (this.pausedAt === null) this.stopped = true;
+      // A one-shot (or `once`) played to its end.
+      if (this.pausedAt === null) this.end();
     };
     src.start(when, offset);
     this.src = src;
@@ -1224,3 +1568,406 @@ class SamplePlayer implements MusicPlayer {
     }
   }
 }
+
+// ==================================================================== stream player (rally wave C)
+
+/**
+ * A streamed song (`SampleSong.stream`): an HTMLAudioElement through a MediaElementAudioSourceNode on
+ * the music bus (so the dialogue duck, the pause duck and the radio chain apply), never decoded whole.
+ * The loop: a 20 ms timer seeks back to `loopStart` at `loopEnd` (a short seek, not sample-exact; a
+ * radio talks over it). `once` (or a song without a loop) plays to the file's end, then calls `onEnd`.
+ * A load or decode error calls `onError` (the output falls back to the synth song).
+ */
+class StreamPlayer implements MusicPlayer {
+  readonly id: string;
+  readonly source: SongSource = 'stream';
+  readonly once: boolean;
+  private readonly ctx: AudioContext;
+  private readonly def: StreamTake['def'];
+  private readonly el: HTMLAudioElement;
+  private readonly node: MediaElementAudioSourceNode;
+  private readonly out: GainNode;
+  private readonly level: number;
+  private readonly onEnd: EndFn;
+  private readonly onError: (p: MusicPlayer, at: number, once: boolean) => void;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private pausedAt: number | null = null;
+  private held = false;
+  private stopped = false;
+  private done = false;
+
+  constructor(
+    ctx: AudioContext,
+    id: string,
+    take: StreamTake,
+    bus: GainNode,
+    once: boolean,
+    onEnd: EndFn,
+    onError: (p: MusicPlayer, at: number, once: boolean) => void,
+  ) {
+    this.ctx = ctx;
+    this.id = id;
+    this.def = take.def;
+    this.once = once;
+    this.onEnd = onEnd;
+    this.onError = onError;
+    this.level = gainOf(take.def.vol);
+    const el = new Audio();
+    el.preload = 'auto';
+    el.crossOrigin = 'anonymous';
+    el.src = take.url;
+    this.el = el;
+    this.node = ctx.createMediaElementSource(el);
+    this.out = ctx.createGain();
+    this.out.gain.value = 0;
+    this.node.connect(this.out).connect(bus);
+    el.addEventListener('ended', () => {
+      if (this.stopped || this.pausedAt !== null || this.done) return;
+      // A loop whose end lies at (or past) the file's end: the file ended first, so loop here.
+      const ls = this.loopStart;
+      if (ls !== null) {
+        this.seek(ls);
+        this.play();
+        return;
+      }
+      this.done = true;
+      this.stop(0);
+      this.onEnd(this);
+    });
+    el.addEventListener('error', () => {
+      if (this.stopped) return;
+      const at = this.position;
+      this.stop(0);
+      this.onError(this, at, this.once);
+    });
+  }
+
+  private get loopStart(): number | null {
+    const ls = this.def.loopStart;
+    return ls !== null && !this.once && this.loopEnd > ls ? Math.max(0, ls) : null;
+  }
+
+  private get loopEnd(): number {
+    return songLoopEnd(this.def);
+  }
+
+  get paused(): boolean {
+    return this.pausedAt !== null;
+  }
+
+  get finished(): boolean {
+    return this.done;
+  }
+
+  get duration(): number {
+    const d = this.el.duration;
+    return Number.isFinite(d) && d > 0 ? d : this.def.duration;
+  }
+
+  /** The file position (the loop timer keeps it inside the loop). */
+  get position(): number {
+    return this.pausedAt ?? this.el.currentTime;
+  }
+
+  get songPosition(): number {
+    return this.position;
+  }
+
+  start(fade: number, at = 0): void {
+    const now = this.ctx.currentTime;
+    this.out.gain.setValueAtTime(fade > 0 ? 0 : this.level, now);
+    if (fade > 0) this.out.gain.linearRampToValueAtTime(this.level, now + fade);
+    this.seek(foldLoopPosition(at, this.loopStart, this.loopEnd, this.def.duration));
+    this.play();
+  }
+
+  private seek(at: number): void {
+    try {
+      this.el.currentTime = Math.max(0, at);
+    } catch {
+      // no metadata yet in an old browser: it starts at 0
+    }
+  }
+
+  private play(): void {
+    const p = this.el.play();
+    // An abort (a stop before it started) is normal; any other refusal leaves the song silent.
+    if (p) p.catch((err: unknown) => (err instanceof DOMException && err.name === 'AbortError' ? undefined : console.warn(`[music] stream "${this.id}":`, err)));
+    if (this.loopStart !== null && this.timer === null) this.timer = setInterval(this.wrap, 20);
+  }
+
+  /** The loop: back to `loopStart` when the file passes `loopEnd`. */
+  private readonly wrap = (): void => {
+    const ls = this.loopStart;
+    if (ls === null || this.stopped || this.pausedAt !== null) return;
+    const t = this.el.currentTime;
+    if (t >= this.loopEnd - 0.015) this.seek(ls + Math.max(0, t - this.loopEnd));
+  };
+
+  private halt(): void {
+    if (this.timer !== null) clearInterval(this.timer);
+    this.timer = null;
+    this.el.pause();
+  }
+
+  /** Hold or release the element while the context is suspended (a hidden tab). */
+  hold(on: boolean): void {
+    if (this.stopped || this.pausedAt !== null || on === this.held) return;
+    this.held = on;
+    if (on) this.halt();
+    else this.play();
+  }
+
+  pause(): void {
+    if (this.pausedAt !== null || this.stopped) return;
+    const now = this.ctx.currentTime;
+    this.pausedAt = this.el.currentTime;
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setTargetAtTime(0, now, 0.01);
+    this.halt();
+  }
+
+  resume(): void {
+    if (this.pausedAt === null || this.stopped) return;
+    const now = this.ctx.currentTime;
+    const at = this.pausedAt;
+    this.pausedAt = null;
+    this.held = false;
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setValueAtTime(0, now);
+    this.out.gain.linearRampToValueAtTime(this.level, now + 0.08);
+    this.seek(at);
+    this.play();
+  }
+
+  stop(fade: number): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    if (this.timer !== null) clearInterval(this.timer);
+    this.timer = null;
+    const now = this.ctx.currentTime;
+    const f = Math.max(0.02, fade);
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setValueAtTime(this.out.gain.value, now);
+    this.out.gain.linearRampToValueAtTime(0, now + f);
+    setTimeout(() => {
+      this.el.pause();
+      // Release the network stream and the decoder.
+      this.el.removeAttribute('src');
+      this.el.load();
+      this.node.disconnect();
+      this.out.disconnect();
+    }, (f + 0.05) * 1000);
+  }
+}
+
+// ==================================================================== engine voice (rally wave C)
+
+/** Seconds of the AudioParam glide of an engine update (one tick at 60 Hz is 16.7 ms). */
+const ENGINE_GLIDE = 0.03;
+
+/**
+ * A parametric engine (`AudioOut.engine`, `engineParams`): a sawtooth at the firing frequency, a
+ * triangle at half of it (the rumble) and a square at twice it (the 2nd order) through a low-pass,
+ * band-passed noise (the exhaust) and a sine whine (the turbo), then the gain and a panner (level-
+ * matched in the centre: `loopPanGain`) into the loop bus. Updates glide (setTargetAtTime).
+ */
+class EngineVoice {
+  /** The last output gain (the voice steal compares it). */
+  level: number;
+  private readonly oscs: OscillatorNode[];
+  private readonly tone: GainNode;
+  private readonly rumble: GainNode;
+  private readonly harm: GainNode;
+  private readonly lp: BiquadFilterNode;
+  private readonly noiseSrc: AudioBufferSourceNode;
+  private readonly bp: BiquadFilterNode;
+  private readonly noise: GainNode;
+  private readonly turbo: GainNode;
+  private readonly out: GainNode;
+  private readonly panner: StereoPannerNode | null;
+  private readonly nodes: AudioNode[];
+
+  constructor(ctx: BaseAudioContext, dest: AudioNode, noise: AudioBuffer, p: EngineParams) {
+    const osc = (type: OscillatorType, f: number): OscillatorNode => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.value = f;
+      return o;
+    };
+    const gain = (v: number): GainNode => {
+      const g = ctx.createGain();
+      g.gain.value = v;
+      return g;
+    };
+    const saw = osc('sawtooth', p.fire);
+    const tri = osc('triangle', p.fire / 2);
+    const sq = osc('square', p.fire * 2);
+    const whine = osc('sine', p.turboFreq);
+    this.oscs = [saw, tri, sq, whine];
+    this.tone = gain(p.tone);
+    this.rumble = gain(p.rumble);
+    this.harm = gain(p.harm);
+    this.lp = ctx.createBiquadFilter();
+    this.lp.type = 'lowpass';
+    this.lp.frequency.value = p.cutoff;
+    this.lp.Q.value = 0.9;
+    this.noiseSrc = ctx.createBufferSource();
+    this.noiseSrc.buffer = noise;
+    this.noiseSrc.loop = true;
+    this.bp = ctx.createBiquadFilter();
+    this.bp.type = 'bandpass';
+    this.bp.frequency.value = p.noiseFreq;
+    this.bp.Q.value = p.noiseQ;
+    this.noise = gain(p.noise);
+    this.turbo = gain(p.turbo);
+    this.panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    this.level = p.gain;
+    // The output fades in over one glide (no click on the first update).
+    this.out = gain(0);
+    this.out.gain.setTargetAtTime(p.gain * (this.panner ? loopPanGain(p.pan, true) : 1), ctx.currentTime, ENGINE_GLIDE);
+    saw.connect(this.tone).connect(this.lp);
+    tri.connect(this.rumble).connect(this.lp);
+    sq.connect(this.harm).connect(this.lp);
+    this.lp.connect(this.out);
+    this.noiseSrc.connect(this.bp).connect(this.noise).connect(this.out);
+    whine.connect(this.turbo).connect(this.out);
+    if (this.panner) {
+      this.panner.pan.value = p.pan;
+      this.out.connect(this.panner).connect(dest);
+    } else this.out.connect(dest);
+    this.nodes = [this.tone, this.rumble, this.harm, this.lp, this.bp, this.noise, this.turbo, this.out];
+    if (this.panner) this.nodes.push(this.panner);
+    const t = ctx.currentTime;
+    for (const o of this.oscs) o.start(t);
+    this.noiseSrc.start(t, Math.random() * noise.duration);
+  }
+
+  set(p: EngineParams, now: number): void {
+    const g = (a: AudioParam, v: number): void => {
+      a.setTargetAtTime(v, now, ENGINE_GLIDE);
+    };
+    const [saw, tri, sq, whine] = this.oscs;
+    g(saw.frequency, p.fire);
+    g(tri.frequency, p.fire / 2);
+    g(sq.frequency, p.fire * 2);
+    g(whine.frequency, p.turboFreq);
+    g(this.tone.gain, p.tone);
+    g(this.rumble.gain, p.rumble);
+    g(this.harm.gain, p.harm);
+    g(this.lp.frequency, p.cutoff);
+    g(this.bp.frequency, p.noiseFreq);
+    g(this.noise.gain, p.noise);
+    g(this.turbo.gain, p.turbo);
+    this.level = p.gain;
+    g(this.out.gain, p.gain * (this.panner ? loopPanGain(p.pan, true) : 1));
+    if (this.panner) g(this.panner.pan, p.pan);
+  }
+
+  stop(now: number, fade: number): void {
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setTargetAtTime(0, now, fade / 3);
+    const end = now + fade + 0.05;
+    for (const o of this.oscs) o.stop(end);
+    this.noiseSrc.stop(end);
+    this.oscs[0].onended = (): void => {
+      for (const o of this.oscs) o.disconnect();
+      this.noiseSrc.disconnect();
+      for (const n of this.nodes) n.disconnect();
+    };
+  }
+}
+
+// ==================================================================== the car radio (rally wave C)
+
+/**
+ * The car radio's chain (`AudioOut.setRadio`): `input` (the dialogue duck's output and the voice
+ * bus, rerouted from the master) → signal → muffle (low-pass) → join; the static loop → its level
+ * → join; join → the speaker's high-pass → low-pass → the master. Built once; `set` ramps.
+ */
+class RadioChain {
+  private readonly ctx: BaseAudioContext;
+  private readonly signal: GainNode;
+  private readonly muffle: BiquadFilterNode;
+  private readonly hp: BiquadFilterNode;
+  private readonly lp: BiquadFilterNode;
+  private readonly staticGain: GainNode;
+  private readonly join: GainNode;
+  private staticSrc: AudioBufferSourceNode | null = null;
+  private staticBuf: AudioBuffer | null = null;
+  /** The wanted static level (0..1, before the music volume). */
+  private staticWant = 0;
+  private ramp = RADIO_NEUTRAL.ramp;
+
+  constructor(ctx: BaseAudioContext, music: AudioNode, voice: AudioNode, master: AudioNode) {
+    this.ctx = ctx;
+    const input = ctx.createGain();
+    this.signal = ctx.createGain();
+    const nyq = ctx.sampleRate / 2;
+    const filter = (type: BiquadFilterType, f: number): BiquadFilterNode => {
+      const b = ctx.createBiquadFilter();
+      b.type = type;
+      b.frequency.value = Math.min(f, nyq);
+      b.Q.value = 0.707;
+      return b;
+    };
+    this.muffle = filter('lowpass', RADIO_NEUTRAL.muffleHz);
+    this.hp = filter('highpass', RADIO_NEUTRAL.hp);
+    this.lp = filter('lowpass', RADIO_NEUTRAL.lp);
+    this.staticGain = ctx.createGain();
+    this.staticGain.gain.value = 0;
+    this.join = ctx.createGain();
+    input.connect(this.signal).connect(this.muffle).connect(this.join);
+    this.staticGain.connect(this.join);
+    this.join.connect(this.hp).connect(this.lp).connect(master);
+    // Reroute the music (after the dialogue duck) and the voice bus through the chain.
+    music.disconnect();
+    music.connect(input);
+    voice.disconnect();
+    voice.connect(input);
+  }
+
+  set(r: RadioParams, staticBuf: AudioBuffer | null, level: number, now: number): void {
+    const nyq = this.ctx.sampleRate / 2;
+    const tc = Math.max(0.002, r.ramp / 3);
+    this.ramp = r.ramp;
+    this.signal.gain.setTargetAtTime(r.signal, now, tc);
+    this.muffle.frequency.setTargetAtTime(Math.min(r.muffleHz, nyq), now, tc);
+    this.hp.frequency.setTargetAtTime(Math.min(r.hp, nyq), now, tc);
+    this.lp.frequency.setTargetAtTime(Math.min(r.lp, nyq), now, tc);
+    this.staticWant = r.static;
+    if (r.static > 0 && staticBuf && (staticBuf !== this.staticBuf || !this.staticSrc)) {
+      this.stopStatic(now, 0.05);
+      const src = this.ctx.createBufferSource();
+      src.buffer = staticBuf;
+      src.loop = true;
+      src.connect(this.staticGain);
+      src.start(now, Math.random() * staticBuf.duration);
+      this.staticSrc = src;
+      this.staticBuf = staticBuf;
+    }
+    this.level(level, now);
+    if (r.static <= 0) this.stopStatic(now, r.ramp + 0.1);
+  }
+
+  /** The static's level × `factor` (the music volume, the pause duck). */
+  level(factor: number, now: number): void {
+    this.staticGain.gain.setTargetAtTime(this.staticWant * STATIC_LEVEL * factor, now, Math.max(0.002, this.ramp / 3));
+  }
+
+  private stopStatic(now: number, after: number): void {
+    const src = this.staticSrc;
+    this.staticSrc = null;
+    this.staticBuf = null;
+    if (!src) return;
+    try {
+      src.stop(now + after);
+    } catch {
+      // already stopped
+    }
+    src.onended = (): void => src.disconnect();
+  }
+}
+
+/** The static's gain at level 1 (white noise is loud; under the speaker filter it reads as hiss). */
+const STATIC_LEVEL = 0.35;

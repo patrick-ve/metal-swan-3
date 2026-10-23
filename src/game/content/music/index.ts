@@ -36,6 +36,8 @@ import { noteToMidi, patternRows } from '../../../engine/music';
 import type { InstrumentDef, SongDef } from '../../../engine/music';
 // Mission ring's songs (`ring`, `ring-boss`); ring.ts imports only the engine (no cycle).
 import './ring';
+// Mission rally's FILE FM songs and jingles (wave C: the synth fallbacks of the streamed takes).
+import './rally';
 
 /** Rows per bar at 4 rows per beat in 4/4. */
 export const BAR = 16;

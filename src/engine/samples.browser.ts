@@ -14,6 +14,10 @@ import { getSampleGroup, pickTake } from './samples';
  *   once and the synth keeps playing that id.
  * - Takes are picked at random (Math.random: cosmetic, browser only) and never twice in a row.
  *
+ * Streamed songs (`SampleSong.stream`, rally wave C) are never fetched or decoded here: their key is
+ * 'ready' once the group loads, and `stream(id)` hands the Web Audio output the file's URL (it plays
+ * through a media element). `failStream(id)` marks one 'failed' (the synth plays it from then on).
+ *
  * Memory: decoded audio is 32-bit float PCM, about 21 MB per minute of stereo at 44.1 kHz (a
  * 60 s song is about 21 MB; a 1 s sound about 0.35 MB). `release(group)` drops a group's buffers;
  * a key that another loaded group also lists stays.
@@ -53,6 +57,12 @@ export interface SfxTake {
 
 export interface SongTake {
   buffer: AudioBuffer;
+  def: SampleSong;
+}
+
+/** A streamed song (`SampleBank.stream`): the absolute URL of its file and its manifest entry. */
+export interface StreamTake {
+  url: string;
   def: SampleSong;
 }
 
@@ -148,6 +158,18 @@ export class SampleBank {
     return e && buffer ? { buffer, def: e.def } : null;
   }
 
+  /** A streamed song of a loaded group (`SampleSong.stream`): its URL and entry, else null. */
+  stream(id: string): StreamTake | null {
+    const e = this.songs.get(id);
+    return e && e.def.stream === true && e.state === 'ready' ? { url: this.url(e.def.file), def: e.def } : null;
+  }
+
+  /** A streamed song could not play: the synth plays it from now on (until its group loads again). */
+  failStream(id: string): void {
+    const e = this.songs.get(id);
+    if (e && e.def.stream === true) e.state = 'failed';
+  }
+
   voice(key: string): VoiceTake | null {
     const e = this.voices.get(key);
     const buffer = e && this.take(e);
@@ -187,7 +209,16 @@ export class SampleBank {
       for (const file of files) jobs.push({ entry: e as Entry<unknown>, file });
     };
     for (const [id, d] of Object.entries(g.sfx ?? {})) add(this.sfxs, id, d, d.files);
-    for (const [id, d] of Object.entries(g.music ?? {})) add(this.songs, id, d, [d.file]);
+    for (const [id, d] of Object.entries(g.music ?? {})) {
+      if (d.stream !== true) {
+        add(this.songs, id, d, [d.file]);
+        continue;
+      }
+      // A streamed song: no fetch, no decode (the media element loads it when it plays).
+      const e = this.songs.get(id);
+      if (e && e.def === d) e.owners.add(group);
+      else this.songs.set(id, { def: d, state: 'ready', takes: [], last: -1, owners: new Set([group]) });
+    }
     for (const [key, d] of Object.entries(g.voice ?? {})) add(this.voices, key, d, d.files);
 
     const total = jobs.length;
@@ -220,9 +251,13 @@ export class SampleBank {
     await Promise.all(Array.from({ length: n }, worker));
   }
 
+  /** The absolute URL of a file under `audio/`. */
+  private url(file: string): string {
+    return new URL(`audio/${file}`, this.deps.baseUrl ?? document.baseURI).href;
+  }
+
   private async bytes(file: string): Promise<ArrayBuffer> {
-    const base = this.deps.baseUrl ?? document.baseURI;
-    const url = new URL(`audio/${file}`, base).href;
+    const url = this.url(file);
     const f = this.deps.fetch ?? ((u: string) => fetch(u));
     const res = await f(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

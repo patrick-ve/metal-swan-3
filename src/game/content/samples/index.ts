@@ -9,6 +9,7 @@
 import { defineSampleGroup, type SampleGroup } from '../../../engine/samples';
 import { mayorVoiceSamples } from '../bosses/ams/voice';
 import { SAMPLE_MANIFEST } from './manifest';
+import { RALLY_SAMPLE_GROUP, rallySampleGroup } from './rally';
 import { RING_SAMPLE_GROUP, ringSampleGroup } from './ring';
 
 /**
@@ -58,3 +59,8 @@ for (const [name, group] of Object.entries(SAMPLE_MANIFEST)) {
 // same merge as scenes/ring-route.ts (content/samples/ring.ts), so the order of the two never matters.
 const RING_GROUP = ringSampleGroup(SAMPLE_MANIFEST);
 if (RING_GROUP) defineSampleGroup(RING_SAMPLE_GROUP, RING_GROUP);
+
+// Mission rally (wave C): 'mission:rally' = the manifest's group with its long songs streamed
+// (content/samples/rally.ts); registered after the plain manifest loop so the streamed copy wins.
+const RALLY_GROUP = rallySampleGroup(SAMPLE_MANIFEST);
+if (RALLY_GROUP) defineSampleGroup(RALLY_SAMPLE_GROUP, RALLY_GROUP);

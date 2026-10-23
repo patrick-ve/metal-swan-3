@@ -10,11 +10,12 @@ import { inHdPalette } from '../../src/engine/palette-hd';
 import { atan2T } from '../../src/engine/r3/trig';
 import { NullView3d, type Cam3, type DrawItem, type Mesh3, type TexturePage } from '../../src/engine/view3d';
 import { buildSections } from '../../src/game/content/rally/sections/index';
+import { POOL_CELLS } from '../../src/game/content/rally/sections/pieces';
 import { BILLBOARD_ADS, PLATES, worldTexts } from '../../src/game/content/rally/sections/pages';
 import { buildSigns } from '../../src/game/content/rally/signs/index';
 import { LED } from '../../src/game/content/rally/signs/page';
 import { buildSky, CLOUD_Y } from '../../src/game/content/rally/sky/index';
-import { buildCarLights, carGlowMesh } from '../../src/game/content/rally/lights/cars';
+import { buildCarLights, carGlowMesh, carPoolMesh, POOL_LEN, POOL_X, POOL_Z } from '../../src/game/content/rally/lights/cars';
 import { glowLevel } from '../../src/game/content/rally/lights/page';
 import { buildA10, A10_TABLE, type A10Track } from '../../src/game/content/rally/track/index';
 import { trackTex } from '../../src/game/content/rally/track/tex-road';
@@ -88,6 +89,29 @@ describe('the sections (spec §3)', () => {
       return h >>> 0;
     };
     expect(hash(again.meshes)).toBe(hash(world.meshes));
+  });
+
+  it("the lamps' road pools are small cells (the affine warp smeared one big quad across the lanes)", () => {
+    // Fixer (wave C review): pieces.ts pool() cuts each 8 × 12 m pool into POOL_CELLS (4 × 6).
+    expect(POOL_CELLS[0] * POOL_CELLS[1]).toBeGreaterThanOrEqual(24);
+    let n = 0, worst = 0;
+    for (const m of world.meshes) {
+      if (!m.id.includes('/pool')) continue;
+      for (let t = 0; t < m.idx.length; t += 3 * 4) {
+        const v = [m.idx[t] * 3, m.idx[t + 1] * 3, m.idx[t + 2] * 3];
+        const cx = (m.pos[v[0]] + m.pos[v[1]] + m.pos[v[2]]) / 3, cz = (m.pos[v[0] + 2] + m.pos[v[1] + 2] + m.pos[v[2] + 2]) / 3;
+        const q = track.sample(track.spline.nearest(cx, cz));
+        const lat = (cx - q.pos[0]) * q.right[0] + (cz - q.pos[2]) * q.right[2];
+        if (lat < -23 || lat > 7.4) continue; // off the road (the pitches' floodlight pools)
+        n++;
+        for (let k = 0; k < 3; k++) {
+          const a = v[k], b = v[(k + 1) % 3];
+          worst = Math.max(worst, Math.hypot(m.pos[a] - m.pos[b], m.pos[a + 2] - m.pos[b + 2]));
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(100);
+    expect(worst).toBeLessThan(3.2);
   });
 
   it('nothing stands on the road: no scenery vertex within the carriageways', () => {
@@ -228,13 +252,32 @@ describe('the time of day (spec §4; B.1)', () => {
     expect(CLOUD_Y).toBeGreaterThan(96);
   });
 
-  it('the car lights: one glow mesh per model (head and tail halos, the pool)', () => {
+  it('the car lights: a glow mesh (head and tail halos) and a pool mesh per model', () => {
     const info = carModelInfo(rallyModel('estate-white'));
     expect(info).toBeTruthy();
     const m = carGlowMesh('fx/carglow/test', info!);
     expect(m.blend).toBe('add');
-    // The pool is cut into 2 × 6 cells (the affine warp of one big quad shifted it to one side).
-    expect(m.idx.length / 3).toBe((info!.anchors.lamps.head.length + info!.anchors.lamps.tail.length + 12) * 2);
+    expect(m.idx.length / 3).toBe((info!.anchors.lamps.head.length + info!.anchors.lamps.tail.length) * 2);
+    // Wave C (lead polish 3a): the pool is its own mesh, small cells (the affine warp of big near
+    // cells smeared it sideways), inside the lane ahead of the nose, facing up.
+    const p = carPoolMesh('fx/carpool/test', info!);
+    expect(p.blend).toBe('add');
+    expect(p.idx.length / 3).toBe(POOL_X * POOL_Z * 2);
+    let minZ = Infinity, maxX = 0;
+    for (let i = 0; i < p.pos.length; i += 3) {
+      minZ = Math.min(minZ, p.pos[i + 2]);
+      maxX = Math.max(maxX, Math.abs(p.pos[i]));
+    }
+    expect(minZ).toBeGreaterThan(info!.anchors.box.z1);
+    expect(maxX).toBeLessThanOrEqual(1.75);
+    // Facing up: every triangle's normal has +y.
+    for (let t = 0; t < p.idx.length; t += 3) {
+      const [a, b, c] = [p.idx[t] * 3, p.idx[t + 1] * 3, p.idx[t + 2] * 3];
+      const ux = p.pos[b] - p.pos[a], uz = p.pos[b + 2] - p.pos[a + 2];
+      const vx = p.pos[c] - p.pos[a], vz = p.pos[c + 2] - p.pos[a + 2];
+      expect(uz * vx - ux * vz).toBeGreaterThan(0);
+    }
+    expect(POOL_LEN).toBeGreaterThan(15);
     expect(buildCarLights(track).meshes).toHaveLength(0);
   });
 });

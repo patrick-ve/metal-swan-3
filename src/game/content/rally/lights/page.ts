@@ -22,6 +22,11 @@ export interface GlowTex {
   readonly disc: TexRect;
   /** A soft pool (an ellipse filling the rect; stretch it along the road). */
   readonly pool: TexRect;
+  /**
+   * The headlight beam on the road (integrator, wave C): u across (soft edges, full in the middle
+   * third), v along from the nose (v = 0: a quick rise) to the far end (v = 1: faded out).
+   */
+  readonly beam: TexRect;
   /** A soft horizontal bar. */
   readonly bar: TexRect;
   /** The sun: a bright core in a halo. */
@@ -63,6 +68,7 @@ export function glowTex(): GlowTex {
   const sun = pb.alloc(32, 32)!;
   const bar = pb.alloc(32, 8)!;
   const dot = pb.alloc(8, 8)!;
+  const beam = pb.alloc(32, 32)!;
   /** A radial ramp: 15 at the centre to 0 at radius 1 (power p shapes the falloff). */
   const radial = (r: TexRect, p: number, core = 0): void => {
     for (let y = 0; y < r.h; y++) {
@@ -95,7 +101,20 @@ export function glowTex(): GlowTex {
     for (let i = 0; i < 16; i++) row.push(i === 0 ? 0x000000ff : greyHd(((i / 15) * level) * 255));
     pb.addRow(row);
   }
-  built = { page: pb.build(), disc, pool, bar, sun, dot };
+  // The beam: across, full in the middle and soft to 0 at both edges; along, a rise over the first
+  // 6 % (under the bumper), full to 22 %, then a long, even fade to the far end (seen from the chase
+  // camera over the roof it reads as a fan of light ahead, not as a lamp on the roof).
+  for (let y = 0; y < beam.h; y++) {
+    const v = (y + 0.5) / beam.h;
+    const along = v < 0.06 ? v / 0.06 : v < 0.22 ? 1 : (1 - v) / 0.78;
+    for (let x = 0; x < beam.w; x++) {
+      const u = Math.abs(x + 0.5 - beam.w / 2) / (beam.w / 2);
+      const e = u < 0.3 ? 1 : 1 - (u - 0.3) / 0.7;
+      const across = e * e * (3 - 2 * e);
+      pb.set(beam, x, y, Math.max(0, Math.min(15, Math.round(across * along * 15))));
+    }
+  }
+  built = { page: pb.build(), disc, pool, bar, sun, dot, beam };
   return built;
 }
 

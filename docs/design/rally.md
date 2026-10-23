@@ -653,3 +653,56 @@ every §9 line → the glitch bridge → fps-1.
   POLISH): braking for the cameras still does not pay against the places (the fines are cheap).
 - **Not yet (wave C):** FILE FM and its DJ, the songs, the jingles, the engines, the siren, the
   horns and the ice-cream tune (the teams carry their horn and DJ ids already).
+
+## Status (wave C, 2026-10-23)
+
+Wave C (sound and polish, §8, §12.6, §13) is built and integrated; the decisions above are
+unchanged. The level now plays with its full sound, end to end, in 1P and 2P: the MISSION 2 card
+(Gusto voices both briefing lines; the card waits for him) → the glitch (the announcer's
+`MISSION TWO. VOL GAS!` as the frame freezes, the break on the shout, the crackle) → the fold and
+the fly-over (FILE FM opens with its sting, FREEK FLITS welcomes the listeners) → the countdown
+(the DJ counts with the beeps, GAAN on GO) → lap 1 (RONDJE RING; news on flashes and the zone) →
+lap 2 (the sting, ZON OP DE ZUIDAS; the road works) → lap 3 (the sting, NACHTSPITS; the police with
+the two-tone siren, the spitsstrook, jams, pull-overs) → the tunnels (the line cut by the static;
+the echo) → the finish (the DJ, the sting) → the tally → the bridge (the radio, the engines and the
+loops all stop at the tally). Details: docs/api/rally.md parts C, C.S, C.R and C.I.
+
+- **PREP:** the lines table (46 DJ lines in 18 categories, Gusto's card lines, the announcer line),
+  the sample group `mission:rally` (lazy; the songs stream), five additive `AudioOut` opt-ins
+  (song end, streamed songs, the radio chain, the parametric engine voice, panned loops) with no-ops
+  for the sims.
+- **RADIO:** the pure scheduler (priorities, cooldowns, one voice at a time, an airtime cap,
+  preemption, the tunnel cut, one song per lap with jingles), the director (every race moment and
+  event to a line; one radio for both players; half / full static in 2P), the HUD ticker, the synth
+  fallback songs and jingles. About one line every 15 s, the DJ on air 22–24 % of a race.
+- **AUDIO-GEN:** the designed DJ voice `freek` (Dutch, cheerful, fast, a bit too much; never a
+  clone), 46 lines, Gusto's two lines, the announcer line, 3 songs and 3 jingles of our own
+  (genre-only prompts), all checked with Scribe and by measurement; 14,536 credits (cap 20,000).
+- **SFX:** the engines (the estates' five-cylinder with a turbo, each team its own sound, ≤ 4
+  voices, doppler and pan), tyres, scrapes, bumps, the crash, the horns (a horn per team), the Dutch
+  two-tone siren, the flash, wind, the passing whoosh, the arrow truck, the ice-cream tune, the
+  tunnel echo, the finish stings; the engines duck 3 dB under the DJ.
+- **Lead polish (integrator):**
+  - the headlight pool is a clean beam ahead in the car's lane; a view shows only the pools ahead of
+    its car (no smear beside it);
+  - debug F4 projects early times from each car's nominal pace (no 113-minute times);
+  - the balance: on the open road a camera flashes above the limit + 10 km/h (the works keep + 3),
+    so a lift for a FLITSER escapes the fine; racing flat out stays the main path (the bot 2nd–3rd)
+    and braking is never required; new sim baselines `tmp/rally/base-c/` (2 of 16 changed);
+  - the GL readback: none on a real GPU at 4K (0.3 ms per frame on the main thread, 16.67 ms frames,
+    no stall messages); only SwiftShader logs it;
+  - the boot: the race scene and its runner, physics, AI, radio and sound are a lazy chunk (the main
+    chunk 872 → 785 KB); the first boot is the same (about 4.2 s on a loaded machine, as before the
+    rally): the boot art dominates it.
+- **The mix (measured live):** while the DJ speaks his voice is about 10 dB (median) over all the
+  synth sound and about 16 dB over the song (after the dialogue duck); only the countdown beeps are
+  louder, under his own count.
+- **Final fixes (fixer, after the review):** the central lamps' road pools are cut into small cells
+  (the affine warp spread one big quad over the lanes beside the car: now an oval on the left lanes);
+  the zone's news goes through the AI filter like the cameras' (it played every lap); with no WebGL2
+  the card does not load FILE FM's samples and the no-GL card releases them; the docs name the open
+  road's + 10 km/h. The sims stay as `tmp/rally/base-c/`. The first boot (about 4.2–4.6 s on a loaded
+  machine, budget 4.0 s) is the lead's decision. Details: docs/api/rally.md part C.X.
+- **Not done:** no human play-test; the DJ's level follows the voice volume (the music volume 0
+  switches the radio off); `tickerText` still spells `één` as `een` (the small font has no é); the
+  sung jingle 1's words cannot be confirmed by Scribe (check by ear).

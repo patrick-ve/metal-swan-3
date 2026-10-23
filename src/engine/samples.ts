@@ -23,6 +23,10 @@
  *   ring/: the Dutch voices, the blockade's and the train's sfx, the songs `ring-foot` / `ring-boot`).
  *   Lazy like 'mission:oldenzaal'. The game registers the group MERGED with the ams group's sfx and
  *   voices (content/samples/ring.ts `ringSampleGroup`): the drive and the foot part load it.
+ * - `'mission:rally'`: mission rally, level 2 since 2026-10-22 (docs/design/rally.md §8, §12.6;
+ *   public/audio/rally/): FILE FM (the DJ's Dutch lines, the jingles, the three songs). Lazy; the
+ *   card's preload and RallyScene load it, the race's end releases it. The game registers it with
+ *   its long songs STREAMED (`SampleSong.stream`, content/samples/rally.ts `rallySampleGroup`).
  *
  * File paths are relative to `public/audio/` (e.g. `'ams/sfx/ams-bell-1.mp3'`). The data is
  * written by the audio tool into `src/game/content/samples/manifest.ts`.
@@ -56,6 +60,13 @@ export interface SampleSong {
   duration: number;
   /** Seconds per order index for `MusicOpts.from` (default: `from` starts at 0). */
   marks?: readonly number[];
+  /**
+   * Stream the file through a media element instead of decoding it whole (rally wave C: three
+   * songs of 2:30 would decode to about 160 MB). Not written by the audio tool: a group's
+   * registration sets it (content/samples/rally.ts). The loop jumps back at `loopEnd` (a short
+   * seek, not sample-exact); a failed stream falls back to the synth song.
+   */
+  stream?: boolean;
 }
 
 /** Sampled takes of one spoken line. */
@@ -80,7 +91,7 @@ export interface SampleGroup {
  * The sample groups of the game (the audio tool's group names, tools/audio/spec-types.ts, come
  * from this list). New groups are appended: the manifest keeps this order.
  */
-export const SAMPLE_GROUPS = ['boot', 'mission:ams', 'mode:fps', 'mission:oldenzaal', 'mission:ring'] as const;
+export const SAMPLE_GROUPS = ['boot', 'mission:ams', 'mode:fps', 'mission:oldenzaal', 'mission:ring', 'mission:rally'] as const;
 
 /** One of `SAMPLE_GROUPS`. */
 export type SampleGroupId = (typeof SAMPLE_GROUPS)[number];

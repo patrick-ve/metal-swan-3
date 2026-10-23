@@ -33,12 +33,13 @@ import { Rng } from '../../engine/rng';
 import type { Scene } from '../../engine/scene';
 import { blinkOn, centerText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import type { RallyOpts } from '../rally/api';
+import { missionCard } from './flow-data';
+import { RALLY_SAMPLE_GROUP } from '../content/samples/rally';
 import { RALLY_ID } from '../rally/ids';
 import { GameSession } from '../session';
 import { MissionCompleteScene } from './mission-complete';
-import { RallyScene } from './rally';
 import { foldTiles, tileColour, type FoldTile } from './rally-fold';
-import { loadRallyContent, rallyGl, rallyLoadState, rallyNoGlTally } from './rally-route';
+import { loadRallyContent, rallyGl, rallyLoadState, rallyNoGlTally, rallySceneModule } from './rally-route';
 
 /** The frozen frame holds at least this long (ticks). */
 export const HOLD_MIN = 8;
@@ -49,6 +50,12 @@ export const MOSAIC_AT = 22;
 export const GLITCH_MIN = HOLD_MIN + BREAK_TICKS;
 /** The content may take this long at most; then the no-3D path (ticks). */
 export const GLITCH_MAX_WAIT = 900;
+/**
+ * Wave C: the announcer's line (the card's `announce`, MISSION TWO. VOL GAS!) starts with the frozen
+ * frame; while it speaks the frame holds up to this tick, so the break comes on its shout ("VOL GAS!"
+ * starts 1.6 s into the 2.8 s take). No voice (no sample, the ANNOUNCER option off): no wait.
+ */
+export const ANNOUNCE_BREAK = 96;
 /** The picture's density (the glitch density of the bridge: crisp at 2×, cheap at 4K). */
 const G = 2;
 const W = 384;
@@ -137,6 +144,8 @@ export class RallyGlitchScene implements Scene {
     this.app.pointerPressed = false;
     this.app.audio.music(null, { fadeTicks: 20 });
     void loadRallyContent();
+    const line = missionCard(RALLY_ID).announce;
+    if (line) this.app.audio.voice(line);
   }
 
   update(): void {
@@ -145,7 +154,8 @@ export class RallyGlitchScene implements Scene {
     if (this._phase === 'gone') return;
     if (this._phase === 'hold') {
       const st = rallyLoadState();
-      if ((this.pt >= HOLD_MIN && (st.registered || st.failed)) || this.t >= GLITCH_MAX_WAIT) {
+      const voiced = this.t >= ANNOUNCE_BREAK || !this.app.audio.speaking?.();
+      if ((this.pt >= HOLD_MIN && (st.registered || st.failed) && voiced) || this.t >= GLITCH_MAX_WAIT) {
         this._phase = 'break';
         this.pt = 0;
         this.nextSfx = 0;
@@ -176,7 +186,9 @@ export class RallyGlitchScene implements Scene {
     const app = this.app;
     const st = rallyLoadState();
     const gl = rallyGl(app);
-    if (gl.ok && st.registered) app.scenes.replace(new RallyScene(app, { start: this.start, fold: this.work }), { fade: 0 });
+    // The race scene is a lazy chunk (loaded with the content: `registered` waits for it).
+    const mod = rallySceneModule();
+    if (gl.ok && st.registered && mod) app.scenes.replace(new mod.RallyScene(app, { start: this.start, fold: this.work }), { fade: 0 });
     else app.scenes.replace(new RallyNoGlScene(app, { start: this.start, reason: st.registered ? gl.reason : 'the race did not load' }), { fade: 20 });
   }
 
@@ -292,6 +304,9 @@ export class RallyNoGlScene implements Scene {
     this.app.input.suppress();
     this.app.pointerPressed = false;
     this.session.startMission(RALLY_ID);
+    // Fixer (wave C review): no race, so drop FILE FM's decoded lines and jingles (the card's
+    // preload may have loaded them before the context failed).
+    this.app.audio.releaseSamples?.(RALLY_SAMPLE_GROUP);
   }
 
   update(): void {

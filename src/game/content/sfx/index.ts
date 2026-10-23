@@ -42,6 +42,8 @@ import { RING_ZWAAN_B } from './ring-zwaan-b';
 import { RING_FOOT } from './ring-foot';
 import { RING_ACTIVISTS } from './ring-activists';
 import { RING_BOOT } from './ring-boot';
+import { RALLY_CAR } from './rally-car';
+import { RALLY_WORLD } from './rally-world';
 import { OZ_WU_SFX } from './oldenzaal-wu';
 import { OZ_ZOMBIE_SFX } from './oldenzaal-zombies';
 import { OZ_CHURCH_SFX_RECIPES } from './oldenzaal-church';
@@ -128,6 +130,8 @@ export const SFX: Readonly<Record<string, SfxRecipe>> = pinSeeds({
   ...OZ_CHURCH_SFX_RECIPES,
   ...OZ_STATUE_SFX,
   ...OZ_TOWER_SFX,
+  ...RALLY_CAR,
+  ...RALLY_WORLD,
 });
 
 /** Seamless loops: play them with `audio.sfxLoop(key, id)` and stop them with `stopSfx(key)`. */

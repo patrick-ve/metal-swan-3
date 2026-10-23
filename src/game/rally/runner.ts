@@ -53,6 +53,11 @@ import { trackInfo, type TrackInfo } from './track-info';
 export const COUNTDOWN_TICKS = 180;
 /** The results hold this long after the race before 'complete' (the orbit, the standings). */
 export const FINISH_HOLD = 300;
+/**
+ * A projected finish (`endRace`) trusts a car's measured pace from this race time on (ticks, 60 s);
+ * before it the pace blends with the car's nominal pace (debug F4 early in the race).
+ */
+export const PROJECT_SURE = 3600;
 /** The rivals: 7 in 1P, 6 in 2P (spec §0 item 20: 8 cars on the grid). */
 export const RIVALS_1P = 7;
 export const RIVALS_2P = 6;
@@ -726,7 +731,13 @@ export class RallyRunner {
       }
       const startDist = (this.startLap - 1) * L;
       const done = c.dist - startDist;
-      const pace = now > 0 && done > 0 ? done / now : (c.spec.topSpeed * 0.7) / 60;
+      // Its pace: the measured one; early in the race (debug F4 just after GO, a car still
+      // accelerating projected 113 minutes) blended with its nominal pace (wave C polish 3b). A
+      // real finish comes after PROJECT_SURE, so its projections are unchanged.
+      const nominal = (c.spec.topSpeed * 0.7) / 60;
+      const measured = now > 0 && done > 0 ? done / now : nominal;
+      const w = now / PROJECT_SURE;
+      const pace = now >= PROJECT_SURE ? measured : measured * w + nominal * (1 - w);
       const left = this.laps * L - c.dist;
       const t = Math.max(prev + 1, now + Math.ceil(left / Math.max(0.05, pace)));
       prev = t;

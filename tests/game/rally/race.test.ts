@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { ScriptedSource } from '../../../src/engine/input';
 import { newCam } from '../../../src/game/rally/camera';
-import { COUNTDOWN_TICKS, CRUISE_PACE, FINISH_HOLD, RIVALS_1P, RIVALS_2P } from '../../../src/game/rally/runner';
+import { COUNTDOWN_TICKS, CRUISE_PACE, FINISH_HOLD, PROJECT_SURE, RIVALS_1P, RIVALS_2P } from '../../../src/game/rally/runner';
 import { PHYS } from '../../../src/game/rally/physics';
 import { RallyBot } from '../../../src/sim/bot-rally';
 import { ovalTrack, race, ringTrack } from './helpers';
@@ -151,6 +151,25 @@ describe('laps, places and the finish', () => {
     h.runner.events.on('complete', () => (done = true));
     h.step(30);
     expect(done).toBe(true);
+  });
+});
+
+describe('the projected times of debug F4 (wave C polish 3b)', () => {
+  it('F4 just after GO projects from each car\'s pace (no 113-minute times while the cars accelerate)', () => {
+    const h = race();
+    h.input.addSource(driver(() => ({ gas: 127 })));
+    h.step(COUNTDOWN_TICKS + 12);
+    expect(h.runner.phase).toBe('race');
+    h.runner.finishNow();
+    const L = h.runner.track.length * h.runner.laps;
+    for (const c of h.runner.cars) {
+      const nominal = (c.spec.topSpeed * 0.7) / 60;
+      expect(c.projected).toBe(true);
+      // At most a little over the race at the nominal pace (the measured pace is tiny this early).
+      expect(c.finishTicks).toBeLessThan((L / nominal) * 1.2 + 60);
+    }
+    // Late in a race (after PROJECT_SURE) the measured pace alone counts, as before.
+    expect(PROJECT_SURE).toBeGreaterThanOrEqual(3600);
   });
 });
 
