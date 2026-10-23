@@ -21,6 +21,10 @@
  *   player 1 has no pad becomes player 1's. 2-player mode: each slot is driven by its own pad
  *   only (a third pad drives nobody in play; its presses reach the menus as raw codes, and with
  *   `menuPads` (a menu open over the game) it drives slot 0 so it can navigate the menu).
+ * - **The race** (`ctx.raceMode`, an ADDITIVE opt-in; race-input.ts): the left stick steers in
+ *   proportion, the triggers (standard 6 / 7) give analog brake and gas, and standard 3 / 4 / 5
+ *   are the camera, the look back and a second handbrake (`readRace`; 1 player: every pad drives
+ *   slot 0; 2 players: each slot its own pad).
  * - **Rumble** (`rumble`): `vibrationActuator.playEffect('dual-rumble')` where the browser has
  *   it, else `hapticActuators[0].pulse`; feature-detected, never throws.
  *
@@ -34,6 +38,7 @@ import {
   stickTurn,
 } from './input-actions';
 import { BUTTON_BIT, type InputContext, type InputSource, maskFromPad, padButtonCode, type PadMap, type PlayerSlot } from './input';
+import { clearRaceAxes, mergeRaceAxes, newRaceAxes, RACE_BIT, RACE_PAD, type RaceAxes, stickSteer, triggerValue } from './race-input';
 
 // ---------------------------------------------------------------------------------------------
 // Standard indices
@@ -395,6 +400,9 @@ export class PadSource implements InputSource {
   private fpsActions = 0;
   private readonly fpsAnalog: AnalogState = { turn: 0, moveX: 0, moveY: 0 };
   private readonly stickTmp: AnalogState = { turn: 0, moveX: 0, moveY: 0 };
+  /** The race axes of each slot this tick (race mode only) and a scratch. */
+  private readonly raceAx: [RaceAxes, RaceAxes] = [newRaceAxes(), newRaceAxes()];
+  private readonly raceTmp: RaceAxes = newRaceAxes();
 
   constructor(getPads: PadsFn) {
     this.getPads = getPads;
@@ -459,6 +467,7 @@ export class PadSource implements InputSource {
       }
     }
     if (ctx.fpsMode === true) this.updateFps();
+    if (ctx.raceMode === true) this.updateRace(ctx);
   }
 
   /** Standard buttons, stick and press edges of one pad. */
@@ -712,6 +721,42 @@ export class PadSource implements InputSource {
     out.turn += this.fpsAnalog.turn;
     out.moveX += this.fpsAnalog.moveX;
     out.moveY += this.fpsAnalog.moveY;
+  }
+
+  /** The race (race-input.ts): stick steer, trigger gas and brake, the race buttons, per slot. */
+  private updateRace(ctx: InputContext): void {
+    clearRaceAxes(this.raceAx[0]);
+    clearRaceAxes(this.raceAx[1]);
+    const a = this.raceTmp;
+    const own0 = this.liveIndex(0);
+    const own1 = this.liveIndex(1);
+    for (let i = 0; i < this.states.length; i++) {
+      const st = this.states[i];
+      if (!st || !st.id || !st.gp) continue;
+      // 1 player: every pad drives slot 0 (as `read`); 2 players: each slot its own pad.
+      const slot = ctx.players === 2 ? (i === own0 ? 0 : i === own1 ? 1 : -1) : 0;
+      if (slot < 0) continue;
+      clearRaceAxes(a);
+      const gp = st.gp;
+      const axes = gp.axes;
+      a.steer = stickSteer(axes.length > 0 ? axes[0] : 0);
+      const prof = st.info.profile.buttons;
+      const btn = gp.buttons;
+      const gi = prof ? prof[RACE_PAD.gasTrigger] : RACE_PAD.gasTrigger;
+      const bi = prof ? prof[RACE_PAD.brakeTrigger] : RACE_PAD.brakeTrigger;
+      if (gi !== undefined && gi >= 0 && gi < btn.length && btn[gi]) a.gas = triggerValue(btn[gi].value);
+      if (bi !== undefined && bi >= 0 && bi < btn.length && btn[bi]) a.brake = triggerValue(btn[bi].value);
+      const bits = st.bits;
+      if ((bits >>> RACE_PAD.camera) & 1) a.buttons |= RACE_BIT.camera;
+      if ((bits >>> RACE_PAD.lookBack) & 1) a.buttons |= RACE_BIT.lookBack;
+      if ((bits >>> RACE_PAD.handbrake) & 1) a.buttons |= RACE_BIT.handbrake;
+      mergeRaceAxes(this.raceAx[slot === 1 ? 1 : 0], a);
+    }
+  }
+
+  /** The race axes of a slot (race mode only; see `updateRace`). */
+  readRace(slot: PlayerSlot, out: RaceAxes): void {
+    mergeRaceAxes(out, this.raceAx[slot]);
   }
 
   // ------------------------------------------------------------------------------- rumble

@@ -379,3 +379,46 @@ Mission `ring` (docs/design/ring.md §15, docs/api/ring.md) runs in its own harn
   plus lane changes, the steer lock (FIRE + up) and player 2's join (key 2). The ams route (`--query
   "mission=ams&boss=1&debug=1"`) now runs ams → its tally → the ring card → the ring (F4 to the exit) → the
   bridge → the fps floors → the name entry.
+
+## 13. The rally in the tools — src/sim/headless-rally.ts, src/sim/bot-rally.ts
+
+Mission `rally` (BINNEN DE RING, the 3D race; docs/design/rally.md §14, docs/api/rally.md "A.11" and
+"A.D") runs logic-only in its own harness: the real app with a `RallyScene`, a `NullView3d` (node has
+no WebGL), the software renderer (nothing is drawn unless `renderFrame()` is called), `SimAudio`, a
+`MemoryStore`. The input manager's race mode is ON, so the bot drives through the race channel
+(engine/race-input.ts: analog steer, gas and brake), the path of a pad with a stick and triggers.
+
+- `createHeadlessRally({ seed = 1, players, difficulty, lap, cam, bot = true, botPace, raceMode = true,
+  view3d, captureConsole, echoConsole, clock })` → `HeadlessRally`: `app input session bot scene runner
+  done ticks`, `step(n)`, `runUntil(pred, max)`, `renderFrame()`, `report()`, `dispose()`; it loads
+  the lazy rally content once. `runRally(o)` runs one race to 'complete' (or `maxTicks`, default
+  54,000) → `RallySimReport` = the runner's `RallyReport` (`places`, `lapTicks`, `finishTicks`,
+  `fines`, `score`, `stateHash`, and per player `bestLap`, `topKmh`, `scrapes`, `bumps`,
+  `recoveries`) + `seconds`, `errors`, `warnings`, `missingSfx`, `timing`. The same seed gives the same
+  report (timing aside); drawing never changes the `stateHash`.
+- `RallyBot(runner)` (`InputSource`): `pace` (0.94 of its car's top speed and corner grip), `racing`
+  (the track's racing line when not passing), `slots` ([true, true]); per tick a `Driver` per slot
+  (rally/ai.ts `drive`: the racing line or a lane, passing a slower car, the speed envelope of the
+  corners ahead, pure pursuit); `readRace` in race mode, `read` (the 8 buttons) when the mode is off. It
+  starts at GO and stops at its car's finish.
+- `npm run sim -- --mission rally [--seed n] [--players 2] [--difficulty easy|normal|hard] [--lap 1|2|3]
+  [--no-bot] [--grid-back] [--max-ticks 54000] [--expect-complete] [--expect-ticks min-max] [--out file]
+  [--trace N] [--quiet]` → the JSON report and a summary line (`sim rally seed n normal: COMPLETE in T ticks (…),
+  places [..], laps [a/b/c], finish [..], best [..], top [..] km/h, scrapes [..], bumps [..],
+  recoveries [..], score [..], hash h, errors 0`); `--trace N` prints the order every N ticks
+  (`P1:L1@dist/kmh`). Exit 1 on errors, a failed `--expect-complete` or ticks outside
+  `--expect-ticks`. The gate (spec §14 item 3): seeds 1–3 1P and seed 1 2P at every difficulty,
+  complete, 0 errors, 23,000–31,000 ticks, the same `stateHash` twice; since the wave-A fix also the
+  OVERTAKING gate `--grid-back` (the player estates start behind the rivals, so the bot passes the
+  field: a car locked to another would end far outside the range). Measured 2026-10-23 on the A10
+  (6,801 m): 1P 24,094 ticks at every difficulty, 2P 24,190–24,195 (the seed changes nothing until
+  wave B's traffic), about 0.02 ms per tick.
+- The harness starts the `RallyScene` without the glitch's fold (`RallySceneOpts.fold` absent: the
+  countdown runs from the first tick); the fold is cosmetic and never changes the race (a test
+  checks the hash with and without it). The wave-A baselines of the gate (seeds 1–3, 2P seed 1,
+  easy and hard seed 1; after the wave-A fix, 2026-10-23: 1P 24,094 ticks, hashes 716585496 /
+  easy 1370001541 / hard 448174481, 2P 24,195 ticks, hash 1108275714; `--grid-back` 24,524–25,034
+  ticks, 2P 24,694) are in
+  `tmp/rally/base-a/rally-*.json` (git-ignored; the lead's identity check of the next wave).
+- Tests: `tests/sim/rally-sim.test.ts` (the gate on the real content), `tests/game/rally/*.test.ts`
+  (physics, race, input, cameras, bot, determinism on test tracks; `scene.test.ts`: the scenes).

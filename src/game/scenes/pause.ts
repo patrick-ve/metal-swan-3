@@ -3,7 +3,8 @@
  * plays at half volume (GameplayScene.pause), a centre box 160 × 80 in the `ui` ramp with `PAUSE`
  * (big, C, y 76) and the menu `RESUME` · `OPTIONS` · `QUIT TO TITLE` (small, C, from y 96, 12 px
  * apart). QUIT asks `QUIT? PROGRESS WILL BE LOST.` → `YES` / `NO` (default NO). Esc / P / start
- * on RESUME go back to the game.
+ * on RESUME go back to the game. A host may add one item after RESUME (`PauseHost.pauseExtra`, an
+ * additive opt-in: the race's `CAMERA: CHASE` / `CAMERA: BUMPER`); the box keeps its size.
  *
  * Gag: after 600 ticks a tiny Legion private walks onto the box, sits on its top edge and falls
  * asleep (snore bubble). He is gone when the game resumes. The gag draws at the art tier
@@ -35,6 +36,18 @@ export const PAUSE_PAD_HELP = '{FIRE}: FIRE   {JUMP}: JUMP   {BOMB}: BOMB   {STA
 export interface PauseHost {
   /** OPTIONS changed a setting while paused. */
   applySettings?(s: GameSettings): void;
+  /**
+   * OPTIONAL (mission `rally`, additive; docs/design/rally.md §7.6): one more menu item right after
+   * RESUME (the race's camera switch) — its label now and what a confirm does (the menu stays open).
+   * Absent (every other scene): the menu is unchanged.
+   */
+  pauseExtra?(): PauseExtra | null;
+}
+
+/** A host's own pause menu item (`PauseHost.pauseExtra`). */
+export interface PauseExtra {
+  readonly label: string;
+  act(): void;
 }
 
 export const PAUSE_ITEMS = ['RESUME', 'OPTIONS', 'QUIT TO TITLE'] as const;
@@ -60,15 +73,20 @@ export class PauseScene implements Scene {
   /** QUIT asks first: null = no question, 0 = YES, 1 = NO. */
   private confirm: number | null = null;
   private leaving = false;
+  /** The menu: PAUSE_ITEMS, with the host's own item after RESUME (`PauseHost.pauseExtra`). */
+  private readonly menu: string[];
+  private readonly extra: PauseExtra | null;
 
   constructor(app: GameApp, host: PauseHost) {
     this.app = app;
     this.host = host;
+    this.extra = host.pauseExtra?.() ?? null;
+    this.menu = this.extra ? [PAUSE_ITEMS[0], this.extra.label, ...PAUSE_ITEMS.slice(1)] : [...PAUSE_ITEMS];
   }
 
   /** The highlighted menu item. */
-  get selected(): (typeof PAUSE_ITEMS)[number] {
-    return PAUSE_ITEMS[this.sel];
+  get selected(): string {
+    return this.menu[this.sel];
   }
 
   /** True while the QUIT question is open. */
@@ -108,7 +126,7 @@ export class PauseScene implements Scene {
       return;
     }
     if (k.up || k.down) {
-      this.sel = (this.sel + (k.up ? -1 : 1) + PAUSE_ITEMS.length) % PAUSE_ITEMS.length;
+      this.sel = (this.sel + (k.up ? -1 : 1) + this.menu.length) % this.menu.length;
       app.audio.sfx('ui/move');
     }
     if (k.back) {
@@ -116,6 +134,13 @@ export class PauseScene implements Scene {
       return;
     }
     if (!k.confirm) return;
+    if (this.extra && this.sel === 1) {
+      // The host's own item: it acts, the menu stays open with the new label.
+      this.extra.act();
+      this.menu[1] = this.host.pauseExtra?.()?.label ?? this.menu[1];
+      app.audio.sfx('ui/confirm');
+      return;
+    }
     switch (this.selected) {
       case 'RESUME':
         this.resumeGame();
@@ -171,7 +196,7 @@ export class PauseScene implements Scene {
     centerText(r, 'PAUSE', 76, UI_GOLD, 'big');
     // The menu's swan cursor at the tier, like the gag (the text keeps its own glyph density).
     const cur = setArtDensity(screenTier(r));
-    drawMenu(r, PAUSE_ITEMS, this.confirm === null ? this.sel : -1, 96, this.t, 12);
+    drawMenu(r, this.menu, this.confirm === null ? this.sel : -1, 96, this.t, 12);
     setArtDensity(cur);
     this.drawPadHelp(r);
     if (this.confirm !== null) this.drawConfirm(r);

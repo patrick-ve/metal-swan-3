@@ -2864,6 +2864,17 @@ ALL GOLDEN RECORDS on this route needs ams, the ring, fps-1 and fps-2. Debug: `?
 (+ `section=<landmark>`, `seed`, `players`, `char`, `god`, `debug`, `art`, `res`, `difficulty`)
 starts the ring directly; F4 skips to the next stretch (or kills the boss on screen).
 
+**Since 2026-10-22 (user decision; `docs/design/rally.md` §0, §1; §20): level 2 is the 3D race
+`rally`, BINNEN DE RING; the ring above is dormant** (off the route; `?mission=ring` still starts
+it). `Gameplay` (ams) → `MissionComplete` (the ams tally) → `MissionIntro` (`MISSION 2`,
+`BINNEN DE RING`) → `RallyGlitch` (the card breaks into blocks that fold into the 3D start grid) →
+`Rally` (`RallyScene`: the countdown, three laps, the results; ⇄ `Pause` with a CAMERA item;
+player 2 joins with START on a free pad or the key 2) → `MissionComplete` (the rally's page: PLACE,
+TIME; the headline by the best place; `RALLY SEED n`) → `GlitchBridge` → `FpsIntro` → … Without
+WebGL2: `RallyNoGl` (THIS DEVICE CANNOT SHOW 3D) → the tally with no race lines → the bridge.
+High scores: the rally is `M2`, the dormant ring `RIN`. Debug: `?mission=rally` (+ `players`,
+`seed`, `difficulty`, `art`, `lap`, `cam=chase|bumper`, `gl=0`, `debug`: F4 ends the race).
+
 ### 13.2 Boot
 
 - Black screen; a row of 8 small swan icons (C, y 100) fills in as sprites and sounds pre-render.
@@ -3664,6 +3675,9 @@ floors are level 3 (ams → ring → glitch bridge → floors → ending).
 
 ## 18. Mission `ring` (level 2, the A10 ring road) — see `docs/design/ring.md`
 
+**Dormant since 2026-10-22:** the 3D race `rally` (§20) replaced it as level 2. Its code, art,
+audio and tests stay; `?mission=ring` still runs it; its sims stay byte-identical.
+
 By the user's decision (2026-10-20), level 2 picks up from the end of `ams`: the players leave the
 city centre and drive the A10 ring road ("de Ring") clockwise from A10 Oost in a 1990s station
 wagon (a likeness of the Volvo 850 estate, no badge) that a squad hero nobody plays drives. The
@@ -3787,3 +3801,27 @@ the in-world continue. Revision 2 (the user's feedback after playing wave A) is 
 (numbers, sections, enemies, art, sound, tests). The contracts and the scripts are in
 `docs/api/oldenzaal.md`; the originality exception (real Oldenzaal names, Meneer Wu, Mevrouw
 Winkel, the respect rules, the generated audio) is in `docs/ORIGINALITY.md`.
+
+## 20. Mission `rally` (level 2, BINNEN DE RING, the 3D race) — see `docs/design/rally.md`
+
+By the user's decision (2026-10-22), level 2 is a **3D racing game on the A10 ring of Amsterdam**
+with the look of the 32-bit console era (the "PS1 look": low-poly models, affine texture warp,
+vertex wobble, 15-bit colour with a 4×4 dither, short sight with fog), drawn with WebGL2. The
+squad races DE RINGRALLY in their two rally estates; first prize is a parking permit binnen de
+ring. The spec is final; this chapter only points to it.
+
+- **A pure racer:** no guns. Three laps of a compressed ring (about 6.8 km, clockwise from the
+  Zuidas through ten sections, two tunnels), eight cars on the grid, places by lap and distance,
+  car–car bumps, barrier scrapes, slipstream, recovery after 3 s stuck. 1P and P1 drive the WHITE
+  "rozzers" estate, P2 the GREEN "safari" estate (split screen: P1 on top).
+- **Controls:** the 8-button pad (LEFT / RIGHT steer, FIRE or UP gas, JUMP or DOWN brake and
+  reverse, BOMB handbrake, START pause) plus a race channel per slot (a stick steers analog,
+  triggers give analog gas and brake, a camera button and a held look-back).
+- **Per lap (wave B):** the time of day (afternoon → sunset → dark), traffic up to rush hour, road
+  works on lap 2, the police on lap 3, speed cameras, matrix signs and the spitsstrook, the rally
+  teams. **Wave C:** the car radio FILE FM with its DJ, the songs, the engines.
+- **Score:** the place and the time (more lines in wave B), on the existing MISSION COMPLETE page.
+- **Status (wave A, 2026-10-23):** the race plays end to end with the real track, physics,
+  cameras, estates and stub rivals (the hearse); the HUD basics (POSITIE, RONDE, the lap time,
+  KM/H, the countdown, the results); the glitch into 3D; the no-WebGL2 path. See
+  `docs/design/rally.md` "Status (wave A)" and `docs/api/rally.md`.

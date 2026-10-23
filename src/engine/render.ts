@@ -184,4 +184,16 @@ export interface Renderer {
   ): void;
   /** Full-screen colour overlay (fades, flashes). */
   fade(c: Color, alpha: number): void;
+  /**
+   * The 3D view's image (docs/design/rally.md §12.2; additive, optional): draw `src` (a canvas of
+   * the 3D view, `View3d.render`'s result) over the logical rectangle (x, y, w, h), screen space,
+   * nearest-neighbour, in draw order. A null `src` (no 3D view: node, no WebGL2) draws a flat
+   * placeholder (sky above, road grey below). The canvas renderer uses `drawImage`; the software
+   * renderer always draws the placeholder. Renderers without it simply skip the 3D view.
+   */
+  surface?(src: unknown, x: number, y: number, w: number, h: number): void;
 }
+
+/** The placeholder colours of `Renderer.surface` (sky above, road below the middle). */
+export const SURFACE_SKY: Color = 0x6f9fd4ff;
+export const SURFACE_ROAD: Color = 0x4a4a52ff;

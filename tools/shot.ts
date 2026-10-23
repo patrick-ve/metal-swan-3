@@ -40,6 +40,10 @@
  * `--spawn "ring-car@+60:2?model=van&colour=3" --ticks 10` LOOKs at one entity. Every frame is
  * labelled with its tick, stretch, plan distance, the wagon's lane and screen x and the bot's goal.
  * → tmp/shots/ring-<stretch>-t<tick>.png / ring-sheet.png.
+ *
+ * --mission rally (the 3D race, docs/design/rally.md §12.3): node has no WebGL, so this tool cannot
+ * show it; it prints the `npm run shot3d` command to use instead (tools/shot3d.ts: Playwright
+ * captures of the 3D view) and exits with code 2.
  */
 import { pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
@@ -582,6 +586,12 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.art < 2) setHiArt(false);
   else setArtTier(shotTier(args));
+  if (args.mission === 'rally') {
+    // The 3D race draws only in a browser (WebGL2): tools/shot3d.ts.
+    console.error('[shot] --mission rally is a 3D view (WebGL2): node cannot draw it. Use npm run shot3d -- --port <port> [--art 4] [--players 2] [--cam bumper] [--at 2400] --out tmp/x.png');
+    process.exitCode = 2;
+    return;
+  }
   if (args.mission === 'ring') {
     await ringMain(args);
     return;

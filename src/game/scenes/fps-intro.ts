@@ -14,7 +14,7 @@ import type { Scene } from '../../engine/scene';
 import { preloadSprites } from '../../engine/sprites';
 import { requestFpsDenseArt } from '../content/fps/dense-load';
 import { blinkOn, centerText, PLAYER_COLORS, type GameApp } from '../app';
-import { isLazyContent, loadContent } from '../content/index';
+import { isFpsContent, loadContent } from '../content/index';
 import { MODE_TITLE } from '../content/fps/names';
 import { fpsFloorByNumber } from '../fps/registry';
 import { newFpsRun, reserveLives } from '../fps/run';
@@ -81,7 +81,8 @@ async function runLoad(app: GameApp): Promise<void> {
   const audio = app.audio as { preload?: (ids: readonly string[]) => void };
   const preload = typeof audio.preload === 'function' ? (ids: readonly string[]) => audio.preload?.call(app.audio, ids) : null;
   await step('content', async () => {
-    const report = await loadContent(isLazyContent);
+    // Only the fps entries (the rally's lazy content is loaded by its own card: rally-route.ts).
+    const report = await loadContent(isFpsContent);
     for (const f of report.failed) console.error(`[fps] content "${f.id}" failed`);
   });
   LOAD.registered = true;

@@ -29,6 +29,14 @@
  * (`foot`: the on-foot part's numbers) and `--expect-complete` = the level's final tally.
  * `--route full` (the old loop), `--section amstel|zuid|zwaan|rf-a|rf-b` (an unused landmark
  * implies the full route), `--boss` (the truck's run-in; with `rf-b` the boat in wave B).
+ *
+ * `--mission rally` (docs/design/rally.md §14 item 3; docs/api/rally.md "Sim") plays the 3D race
+ * BINNEN DE RING logic-only (node has no WebGL) with the rally bot (src/sim/bot-rally.ts) in a
+ * RallyScene (src/sim/headless-rally.ts) and prints the RallySimReport (places, lap ticks, finish
+ * ticks, fines, score, stateHash, errors, timing) and a one-line summary. `--seed`, `--players 2`,
+ * `--difficulty`, `--lap 1|2|3` (start at that lap), `--grid-back` (the player estates start behind
+ * the rivals: the overtaking gate), `--expect-complete`, `--expect-ticks min-max`.
+ * Default --max-ticks 54000 (15 minutes).
  */
 import { pathToFileURL } from 'node:url';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -36,6 +44,7 @@ import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import type { Difficulty } from '../src/game/session';
 import { createHeadlessFps } from '../src/sim/headless-fps';
+import { createHeadlessRally } from '../src/sim/headless-rally';
 import { createHeadlessRing } from '../src/sim/headless-ring';
 import { createHeadlessGame } from '../src/sim/index';
 import type { BotRoute } from '../src/sim/index';
@@ -65,8 +74,12 @@ interface Args {
   mode: 'mission' | 'fps';
   floor: number;
   maxTicksSet: boolean;
-  /** `--mission ring`: fail outside this tick range ([min, max]; null = no check). */
+  /** `--mission ring` / `rally`: fail outside this tick range ([min, max]; null = no check). */
   expectTicks: [number, number] | null;
+  /** `--mission rally --lap n`: start at that lap. */
+  lap?: 1 | 2 | 3;
+  /** `--mission rally --grid-back`: the player estates start behind the rivals (the overtaking gate). */
+  gridBack: boolean;
 }
 
 const USAGE =
@@ -74,7 +87,8 @@ const USAGE =
   '[--section a] [--boss] [--difficulty easy|normal|hard] [--char id] [--weapon id] [--no-bot] [--expect-complete] [--out file] [--trace N] [--quiet] [--import module.ts]\n' +
   '       npm run sim -- --mode fps --floor 1|2 [--god] [--seed 1] [--difficulty normal] [--max-ticks 36000] [--expect-complete] [--out file] [--trace N] [--quiet]\n' +
   '       npm run sim -- --mission ring [--god] [--seed 1] [--players 1|2] [--route short|full] [--section <landmark>|zwaan|rf-a|rf-b] [--boss] [--difficulty normal] [--char id] [--weapon id] [--no-bot] ' +
-  '[--max-ticks 43200] [--expect-complete] [--expect-ticks min-max] [--out file] [--trace N] [--quiet]';
+  '[--max-ticks 43200] [--expect-complete] [--expect-ticks min-max] [--out file] [--trace N] [--quiet]\n' +
+  '       npm run sim -- --mission rally [--seed 1] [--players 1|2] [--difficulty easy|normal|hard] [--lap 1|2|3] [--grid-back] [--max-ticks 54000] [--expect-complete] [--expect-ticks min-max] [--out file] [--trace N] [--quiet]';
 
 function parseArgs(argv: readonly string[]): Args {
   const a: Args = {
@@ -95,6 +109,7 @@ function parseArgs(argv: readonly string[]): Args {
     floor: 1,
     maxTicksSet: false,
     expectTicks: null,
+    gridBack: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
@@ -177,6 +192,15 @@ function parseArgs(argv: readonly string[]): Args {
       }
       case '--floor':
         a.floor = Math.max(0, Math.floor(Number(next()) || 0));
+        break;
+      case '--lap': {
+        const l = next();
+        if (l !== '1' && l !== '2' && l !== '3') throw new Error(`--lap must be 1, 2 or 3\n${USAGE}`);
+        a.lap = Number(l) as 1 | 2 | 3;
+        break;
+      }
+      case '--grid-back':
+        a.gridBack = true;
         break;
       case '--quiet':
         a.quiet = true;
@@ -302,10 +326,56 @@ async function mainRing(args: Args): Promise<void> {
   if (failed) process.exitCode = 1;
 }
 
+/** `--mission rally`: the 3D race, logic only, with the rally bot (docs/design/rally.md §14). */
+async function mainRally(args: Args): Promise<void> {
+  const h = await createHeadlessRally({ seed: args.seed, players: args.players, difficulty: args.difficulty, lap: args.lap, bot: args.bot, gridBack: args.gridBack, clock: () => performance.now() });
+  const maxTicks = args.maxTicksSet ? args.maxTicks : 54000;
+  const t0 = performance.now();
+  try {
+    let last = '';
+    for (let t = 0; t < maxTicks && !h.done; t++) {
+      h.step(1);
+      if (args.trace > 0 && h.ticks % args.trace === 0) {
+        const r = h.runner;
+        const cars = r ? r.race.order.map((c) => `${c.slot >= 0 ? `P${c.slot + 1}` : c.id}:L${c.lap}@${Math.round(c.dist)}/${Math.round(c.speed * 3.6)}${c.finished ? 'F' : ''}`).join(' ') : '-';
+        const line = `t=${h.ticks} ${r?.phase ?? '-'} race=${r?.race.raceTick ?? '-'} ${cars}`;
+        if (line !== last) process.stderr.write(`${line}\n`);
+        last = line;
+      }
+    }
+  } finally {
+    h.dispose();
+  }
+  const report = h.report();
+  const wall = (performance.now() - t0) / 1000;
+  const json = JSON.stringify(report, null, 2);
+  if (args.out) {
+    mkdirSync(dirname(args.out), { recursive: true });
+    writeFileSync(args.out, json);
+  }
+  if (!args.quiet) console.log(json);
+  const outside = args.expectTicks !== null && (report.ticks < args.expectTicks[0] || report.ticks > args.expectTicks[1]);
+  const failed = report.errors.length > 0 || (args.expectComplete && !report.complete) || outside;
+  const tick = report.timing ? `, ${report.timing.avgTickMs.toFixed(3)} ms/tick` : '';
+  process.stderr.write(
+    `sim rally seed ${report.seed} ${report.difficulty}${report.players > 1 ? ` ${report.players}P` : ''}: ${report.complete ? 'COMPLETE' : 'not complete'} in ${report.ticks} ticks ` +
+      `(${report.seconds}s game, ${wall.toFixed(2)}s wall${tick}), places [${report.places.join(' ')}], laps [${report.lapTicks.map((l) => l.join('/')).join(' | ')}], ` +
+      `finish [${report.finishTicks.join(' ')}], best [${(report.bestLap ?? []).join(' ')}], top [${(report.topKmh ?? []).join(' ')}] km/h, ` +
+      `scrapes [${(report.scrapes ?? []).join(' ')}], bumps [${(report.bumps ?? []).join(' ')}], recoveries [${(report.recoveries ?? []).join(' ')}], ` +
+      `score [${report.score.join(' ')}], hash ${report.stateHash}, errors ${report.errors.length}` +
+      `${outside ? `  TICKS OUTSIDE ${args.expectTicks?.join('-')}` : ''}${failed ? '  FAIL' : ''}\n`,
+  );
+  if (failed) process.exitCode = 1;
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.mode === 'fps') {
     await mainFps(args);
+    return;
+  }
+  if (args.mission === 'rally') {
+    await mainRally(args);
     return;
   }
   if (args.mission === 'ring') {

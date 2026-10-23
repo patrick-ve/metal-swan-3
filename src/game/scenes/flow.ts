@@ -7,18 +7,19 @@
  * qualifies) → `HighScores` → `Title`. Every player out of continues: `GameOver` → `NameEntry`
  * → `HighScores` → `Title`.
  *
- * The normal route (docs/design/ring.md §1, docs/design/oldenzaal.md §1): `ams` (MISSION 1) → its
- * tally → the ring's intro card (MISSION 2, `RingScene`, ring-route.ts) → the glitch bridge (the
- * ring's silent tally) → the first-person floors (MISSION 3) → the story card (fps-route.ts) →
- * `oldenzaal` (MISSION 4) → its tally → the TO BE CONTINUED card → the ending (fps variant).
- * `ring` is not a registered mission: `missionDone` sends its id to the intro card, which starts
- * the RingScene.
+ * The normal route (docs/design/rally.md §1, docs/design/oldenzaal.md §1): `ams` (MISSION 1) → its
+ * tally → the rally's intro card (MISSION 2 BINNEN DE RING; the glitch into 3D, `RallyScene`,
+ * rally-route.ts) → the rally's tally → the glitch bridge → the first-person floors (MISSION 3) →
+ * the story card (fps-route.ts) → `oldenzaal` (MISSION 4) → its tally → the TO BE CONTINUED card →
+ * the ending (fps variant). `rally` (and the dormant 2D `ring`, `?mission=ring`) are not
+ * registered missions: `missionDone` sends their ids to the intro card, which starts their scene.
  *
  * Scenes call these helpers instead of building each other directly where a step is shared.
  */
 import { newCampaign, type GameApp } from '../app';
 import { OLDENZAAL_ID } from '../content/missions/oldenzaal/ids';
 import { hasMission } from '../registry';
+import { RALLY_ID } from '../rally/ids';
 import { RING_ID } from '../ring/ids';
 import type { Difficulty, HighScoreEntry, PlayerSlot } from '../session';
 import { EndingScene } from './ending';
@@ -48,8 +49,8 @@ export function startCampaign(app: GameApp, o: CampaignOpts): void {
 }
 
 /**
- * After a mission's tally: the next mission's intro card (the ring's too: it is not a registered
- * mission, its card starts the RingScene), or the ending after the last one. After `oldenzaal`:
+ * After a mission's tally: the next mission's intro card (the rally's and the ring's too: they are
+ * not registered missions, their cards start their scenes), or the ending after the last one. After `oldenzaal`:
  * the TO BE CONTINUED card, then the ending (its first-person variant).
  *
  * The m5 trap (docs/design/oldenzaal.md §1): `listMissions` sorts ids, so `oldenzaal` comes after
@@ -63,7 +64,7 @@ export function missionDone(app: GameApp, runner: NextRunner): void {
   }
   let next = runner.nextMission();
   if (next === OLDENZAAL_ID && (runner.mission as { next?: string }).next !== OLDENZAAL_ID) next = null;
-  if (next && (hasMission(next) || next === RING_ID)) app.scenes.replace(new MissionIntroScene(app, next), { fade: 40 });
+  if (next && (hasMission(next) || next === RING_ID || next === RALLY_ID)) app.scenes.replace(new MissionIntroScene(app, next), { fade: 40 });
   else app.scenes.reset(new EndingScene(app), { fade: 60 });
 }
 

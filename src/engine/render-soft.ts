@@ -4,7 +4,7 @@ import { drawText, drawTextPx, glyphDensity, textScale } from './font';
 import type { BlitOpts } from './pixel';
 import { PixelBuffer, traceLine } from './pixel';
 import type { DrawOpts, Frame, ParallaxOpts, Renderer, TextOpts } from './render';
-import { VIEW_H, VIEW_W } from './render';
+import { SURFACE_ROAD, SURFACE_SKY, VIEW_H, VIEW_W } from './render';
 import type { LineEnds, Part, Placement, SubpixelMode } from './render-common';
 import {
   anchorTopLeft,
@@ -243,6 +243,17 @@ export class SoftRenderer implements Renderer {
       }
       if (!repeatY) break;
     }
+  }
+
+  /**
+   * The 3D view (render.ts `surface`): node has no WebGL, so this always draws the flat
+   * placeholder over the logical rectangle (sky above the middle, road grey below), screen space.
+   */
+  surface(_src: unknown, x: number, y: number, w: number, h: number): void {
+    const k = this.res;
+    const top = Math.floor(h / 2);
+    this.target.blendRect(x * k, y * k, w * k, top * k, SURFACE_SKY, 1, 'over');
+    this.target.blendRect(x * k, (y + top) * k, w * k, (h - top) * k, SURFACE_ROAD, 1, 'over');
   }
 
   fade(c: Color, alpha: number): void {

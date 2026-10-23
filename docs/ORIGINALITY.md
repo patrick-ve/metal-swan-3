@@ -165,6 +165,39 @@ made-up hauler with our own livery; no real hauler's colours or names. The anima
 - In repository text, tests and ElevenLabs prompts the real movement is only ever called "a real
   activist movement"; its name is never written.
 
+## Exception: mission `rally` (BINNEN DE RING, the 3D race on the A10, 2026-10-22)
+
+By the user's explicit decision (2026-10-22, `docs/design/rally.md` §0 and §11), mission `rally`
+(level 2 since 2026-10-22; the 2D `ring` is dormant) is a 3D racing game on the A10 with the look
+of the 32-bit console era. Rules for this exception:
+
+- The `ring` exception above (real A10 names; the estates' likeness and liveries; our own
+  lettering; no badges; no real plates) applies to `rally` in full. The two estates are
+  low-poly likenesses of the squad's own rally estates (a boxy 1990s Swedish estate; from the
+  user's photos, which never enter the repository): no maker badge, logo or name on the car,
+  made-up yellow Dutch plates only.
+- The look of an era is allowed, like pixel art: low-poly models, affine texture warp, vertex
+  wobble, 15-bit colour with an ordered dither, fog. No console name, logo, boot screen, start-up
+  sound, controller picture or system font of a real console appears in the game. In repository
+  text, "PS1 look" only describes the look.
+- The user's look reference is a late-1990s Dutch motorway racing game. It is never named in the
+  repository (code, ids, comments, docs, prompts, commit messages). Genre conventions are
+  allowed: racing through motorway traffic, rivals, police, speed cameras, an in-car radio with a
+  DJ and traffic news, a race on a real road. Never its title, logo, menus, HUD, car models,
+  liveries, track layout, radio station or DJ names, jingles, songs or lines; no screenshot is
+  traced, sampled or copied.
+- FILE FM and its DJ are our own. The DJ's voice is designed (never a clone, never an imitation
+  of a real presenter). The songs and jingles are our own; their prompts never name an artist, a
+  song, a station or a game. If a real station uses the name, ours is renamed.
+- Buildings along the ring are likenesses without real company names or logos (our own blank or
+  made-up signs). The police carry the generic words `POLITIE` and `STOP POLITIE` in our own
+  lettering on our own livery, never a real force emblem or livery design.
+- The parking-permit joke is about a situation (a long waiting list), never a real official or
+  office.
+- All textures and models are made by our code (no photo, no scan, no AI image, no external
+  asset); `docs/research/mechanics.md` §23 applies (no laughing or pointing at a player's
+  failure; bloodless).
+
 ## Exception: mission `oldenzaal` (2026-10-21; revision 2 of the same evening)
 
 By the user's explicit decision (2026-10-21, `docs/design/oldenzaal.md` §0, §12), mission

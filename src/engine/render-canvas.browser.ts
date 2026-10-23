@@ -5,7 +5,7 @@ import { GLYPH_ATLAS_COLS, getFont, glyphAtlas, glyphDensity, hdAtlasCell, hdTex
 import type { PixelBuffer } from './pixel';
 import { traceLine } from './pixel';
 import type { DrawOpts, Frame, ParallaxOpts, Renderer, TextOpts } from './render';
-import { VIEW_H, VIEW_W } from './render';
+import { SURFACE_ROAD, SURFACE_SKY, VIEW_H, VIEW_W } from './render';
 import type { LineEnds, Part, Placement, SubpixelMode } from './render-common';
 import {
   anchorTopLeft,
@@ -603,6 +603,26 @@ export class CanvasRenderer implements Renderer {
     this.setAdd(false);
     this.ctx.fillStyle = this.cssOf(c);
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  /**
+   * The 3D view's image (render.ts `surface`; docs/design/rally.md §12.2): one `drawImage` of the GL
+   * canvas over the logical rectangle, nearest-neighbour (smoothing is off), no camera. Null: the
+   * flat placeholder (sky over road).
+   */
+  surface(src: unknown, x: number, y: number, w: number, h: number): void {
+    const k = this.k;
+    this.setAlpha(1);
+    this.setAdd(false);
+    if (!src) {
+      const top = Math.floor(h / 2);
+      this.ctx.fillStyle = this.cssOf(SURFACE_SKY);
+      this.ctx.fillRect(x * k, y * k, w * k, top * k);
+      this.ctx.fillStyle = this.cssOf(SURFACE_ROAD);
+      this.ctx.fillRect(x * k, (y + top) * k, w * k, (h - top) * k);
+      return;
+    }
+    this.ctx.drawImage(src as CanvasImageSource, x * k, y * k, w * k, h * k);
   }
 
   /** Drop the cached canvases and the stream slot of one buffer (they are rebuilt on next use). */

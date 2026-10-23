@@ -29,15 +29,16 @@ import { createHeadlessGame } from '../../src/sim/index';
 await loadContent();
 
 describe('mission ams', () => {
-  it('is registered, comes first in the campaign and leads to the ring', () => {
+  it('is registered, comes first in the campaign and leads to the rally', () => {
     expect(getMission('ams')).toBe(AMS);
     expect(firstMission()).toBe('ams');
     expect(CAMPAIGN_MISSIONS[0]).toBe('ams');
     expect(Object.keys(AMS.sections).sort()).toEqual(['a', 'b', 'c', 'c1', 'c2', 'd']);
     expect(AMS.start).toBe('a');
     expect(AMS.bossSection).toBe('d');
-    // After its tally: the ring road, level 2 (docs/design/ring.md §1); the bridge follows the ring.
-    expect(AMS.next).toBe('ring');
+    // After its tally: the 3D race BINNEN DE RING, level 2 (docs/design/rally.md §1); the bridge
+    // follows the race. The 2D ring is dormant since 2026-10-22.
+    expect(AMS.next).toBe('rally');
     expect(AMS.after).toBeUndefined();
     expect(AMS.music).toBe('ams');
     expect(AMS.bossMusic).toBe('ams-boss');

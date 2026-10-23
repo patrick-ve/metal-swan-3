@@ -15,10 +15,10 @@
  * like `mission=` and expects FpsScene (then walks, turns, fires, opens, pauses and resumes);
  * `--query "mode=bridge"` expects GlitchBridgeScene, skips the story card and goes on into
  * FpsScene. `--route` (on by default for `mission=ams` with `boss=1&debug=1`) plays the normal
- * script, then presses F4 (the boss dies), expects the ams tally (the newspaper), the ring's
- * intro card and the RingScene (docs/design/ring.md §1), drives a little, skips the ring with F4
- * (stretch by stretch to the exit), expects the ring's own MISSION COMPLETE page (a shot of the
- * ring tally, then Enter), expects the bridge and follows it into FpsScene, then
+ * script, then presses F4 (the boss dies), expects the ams tally (the newspaper), the MISSION 2
+ * card BINNEN DE RING, the glitch into 3D and the RallyScene (docs/design/rally.md §1; the GL flag
+ * must be OK), drives a little, ends the race with F4, expects the rally's own MISSION COMPLETE
+ * page (a shot of the rally tally, then Enter), expects the bridge and follows it into FpsScene, then
  * plays the rest of the route with F4: floor-1 tally → floor 2 → the suit breaks → the boss dies →
  * floor-2 tally → the story card → MISSION 4 (oldenzaal: F4 skips its sections) → its tally →
  * the TO BE CONTINUED card → the fps ending → the final tally → the name entry. The route adds `god=1` to
@@ -26,7 +26,18 @@
  *
  * The ring (`--query "mission=ring&god=1"`): the same script in the RingScene (FIRE / JUMP = swerve
  * / BOMB = lob, pause and resume), plus lane changes (up / down), the steer lock (FIRE held + up:
- * the far aim) and player 2's join with the key 2 (a second wagon drives in).
+ * the far aim) and player 2's join with the key 2 (a second wagon drives in). The ring is dormant
+ * since 2026-10-22 (docs/design/rally.md §0): only its URL start runs it.
+ *
+ * The rally (`--query "mission=rally"`, `"mission=rally&players=2"`; docs/design/rally.md §14):
+ * `playRally` FAILS when `window.__ms3.rally.gl.ok` is false (smoke does not fail on console
+ * errors, so a broken WebGL2 context or shader must fail here), waits for GO, drives (gas, steer),
+ * pauses and resumes, checks the player cars (2P: both estates; 1P: player 2 joins with the key 2),
+ * and with `debug=1` presses F4 (the race ends at once) and expects the rally's MISSION COMPLETE
+ * page. The CI route (`--route`) now runs ams → its tally → the MISSION 2 card BINNEN DE RING → the
+ * glitch into 3D → the race (F4) → the rally's tally → the bridge → the fps floors → oldenzaal → the
+ * name entry. `--query "mission=rally&gl=0"` expects the no-WebGL2 path: the card THIS DEVICE
+ * CANNOT SHOW 3D (the GL flag must be down), the rally's tally with no race lines, the bridge.
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -166,8 +177,23 @@ async function gameState(page: Page): Promise<GameState> {
   });
 }
 
-/** The scenes that host a play (the side-scrolling missions and the ring). */
-const PLAY_SCENES: readonly string[] = ['GameplayScene', 'RingScene'];
+/** The scenes that host a play (the side-scrolling missions, the dormant ring and the 3D race). */
+const PLAY_SCENES: readonly string[] = ['GameplayScene', 'RingScene', 'RallyScene'];
+
+/** The rally's probe (`window.__ms3.rally`: main.ts / rally-route.ts `rallyProbe`). */
+interface RallyProbe {
+  gl: { ok: boolean; reason: string };
+  scene: string;
+  raceTick: number;
+  phase: string;
+  players: number;
+  cars: number;
+  tris: number;
+}
+
+async function rallyProbe(page: Page): Promise<RallyProbe | null> {
+  return page.evaluate(() => ((window as unknown as { __ms3?: { rally?: unknown } }).__ms3?.rally ?? null) as never);
+}
 
 async function waitForScene(page: Page, names: readonly string[], timeout: number): Promise<boolean> {
   try {
@@ -331,42 +357,79 @@ async function main(): Promise<void> {
       if (players < 2) throw new Error('player 2 did not join the ring (key 2)');
     };
     /**
-     * --route after the ams boss: its tally (the newspaper) → the ring's intro card → the RingScene;
-     * a little driving, then F4 stretch by stretch to the exit; the victory drive; the ring's own
-     * MISSION COMPLETE page (hostages, FINES, `RING SEED n` in the footer); Enter → the bridge.
+     * The 3D race (docs/design/rally.md §14): the GL flag (fail when it is down), GO, gas and steering,
+     * pause / resume, the player cars (`twoP`: both estates; else player 2 joins with the key 2 unless
+     * `join` is false), and with `finish` F4 until the rally's MISSION COMPLETE page.
      */
-    const followRing = async (): Promise<void> => {
+    const playRally = async (o: { twoP: boolean; join: boolean; finish: boolean }): Promise<void> => {
+      if (!(await waitForScene(page, ['RallyScene'], args.timeout))) throw new Error('the race never started');
+      const p0 = await rallyProbe(page);
+      if (!p0?.gl.ok) throw new Error(`the 3D view is not OK (window.__ms3.rally.gl): ${p0?.gl.reason ?? 'no probe'}`);
+      summary.reachedGameplay = true;
+      await wait(800);
+      await shot('rally-grid');
+      // GO: the countdown is 3 s.
+      await page.waitForFunction(() => ((window as unknown as { __ms3?: { rally?: { raceTick: number } } }).__ms3?.rally?.raceTick ?? -1) >= 0, undefined, { timeout: 15000, polling: 100 });
+      const gas = o.twoP ? ['KeyW', 'ArrowUp'] : ['ArrowUp', 'KeyZ'];
+      await holdAndTap(gas, 2200);
+      await shot('rally-drive');
+      await holdAndTap([...gas, o.twoP ? 'KeyA' : 'ArrowLeft'], 500);
+      await holdAndTap([...gas, o.twoP ? 'KeyD' : 'ArrowRight'], 500);
+      await shot('rally-steer');
+      const p1 = await rallyProbe(page);
+      if (!p1 || p1.tris <= 0) throw new Error(`the 3D view drew nothing (tris ${p1?.tris ?? '-'})`);
+      await page.keyboard.press('Escape', { delay: 40 });
+      if (!(await waitForScene(page, ['PauseScene'], 2000))) throw new Error('Esc did not pause the race');
+      await wait(300);
+      await shot('rally-pause');
+      await page.keyboard.press('Escape', { delay: 40 });
+      if (!(await waitForScene(page, ['RallyScene'], 2000))) throw new Error('Esc did not resume the race');
+      if (!o.twoP && o.join) {
+        await page.keyboard.press('Digit2', { delay: 40 });
+        await wait(1200);
+        await shot('rally-p2-join');
+      }
+      const p2 = await rallyProbe(page);
+      const want = o.twoP || o.join ? 2 : 1;
+      if ((p2?.players ?? 0) < want) throw new Error(`the race has ${p2?.players ?? 0} player cars (want ${want})`);
+      await holdAndTap(gas, 1200);
+      await shot('rally-play');
+      if (!o.finish) return;
+      let tally = false;
+      for (let i = 0; i < 20 && !tally; i++) {
+        tally = await waitForScene(page, ['MissionCompleteScene'], 900);
+        if (!tally) await page.keyboard.press('F4', { delay: 40 });
+      }
+      if (!tally) throw new Error('F4 did not end the race on its MISSION COMPLETE page');
+      const id = await page.evaluate(() => {
+        const app = (window as unknown as { __ms3?: { app: { scenes: { top: { runner?: { mission?: { id: string } } } | null } } } }).__ms3?.app;
+        return app?.scenes.top?.runner?.mission?.id ?? null;
+      });
+      if (id !== 'rally') throw new Error(`the page after the race is not the rally's tally (mission ${id})`);
+      await wait(2500);
+      await shot('rally-tally');
+      await page.keyboard.press('Enter', { delay: 40 }); // the first press shows the whole page
+      await wait(500);
+      await shot('rally-tally-full');
+    };
+    /**
+     * --route after the ams boss: its tally (the newspaper) → the MISSION 2 card BINNEN DE RING → the
+     * glitch into 3D → the race (gas, steer, pause; F4 ends it) → the rally's MISSION COMPLETE page →
+     * Enter → the bridge.
+     */
+    const followRally = async (): Promise<void> => {
       if (!(await waitForScene(page, ['MissionCompleteScene'], args.timeout))) throw new Error('the ams boss did not reach its tally');
       await wait(2500);
       await shot('ams-tally');
-      if (!(await pressUntil(['MissionIntroScene'], 30000, 1500))) throw new Error('the ams tally did not move on to the ring card');
+      if (!(await pressUntil(['MissionIntroScene'], 30000, 1500))) throw new Error('the ams tally did not move on to the rally card');
       await wait(1200);
-      await shot('ring-card');
-      if (!(await pressUntil(['RingScene'], 15000))) throw new Error('the ring never started');
-      await wait(1500);
-      await shot('ring-start');
-      await holdAndTap(['ArrowRight'], 900, 'KeyZ');
-      await shot('ring-play');
-      let tally = false;
-      for (let i = 0; i < 40 && !tally; i++) {
-        tally = await waitForScene(page, ['MissionCompleteScene'], 700);
-        if (!tally) await page.keyboard.press('F4', { delay: 40 });
-      }
-      if (!tally) throw new Error('the ring did not reach its MISSION COMPLETE page');
-      // The ring's own page: its runner is the ring's tally (the seed in the footer).
-      const footer = await page.evaluate(() => {
-        const app = (window as unknown as { __ms3?: { app: { scenes: { top: { runner?: { tallyFooter?: string } } | null } } } }).__ms3?.app;
-        return app?.scenes.top?.runner?.tallyFooter ?? null;
-      });
-      if (!footer || !footer.startsWith('RING SEED')) throw new Error(`the page after the ring is not the ring's tally (footer: ${footer})`);
-      await wait(2500);
-      await shot('ring-tally');
-      await page.keyboard.press('Enter', { delay: 40 }); // the first press shows the whole page
-      await wait(500);
-      await shot('ring-tally-full');
-      if (!(await pressUntil(['GlitchBridgeScene'], 15000))) throw new Error('the ring tally did not move on to the bridge');
+      await shot('rally-card');
+      if (!(await pressUntil(['RallyGlitchScene', 'RallyScene'], 15000))) throw new Error('the rally card did not move on to the glitch into 3D');
+      await wait(450);
+      await shot('rally-glitch');
+      await playRally({ twoP: false, join: false, finish: true });
+      if (!(await pressUntil(['GlitchBridgeScene'], 15000))) throw new Error('the rally tally did not move on to the bridge');
     };
-
     /** The title flow (unless `mission=`), then the side-scrolling script; with --route on into the fps mode. */
     const playSideScroller = async (): Promise<void> => {
       const direct = /(^|&)mission=/.test(args.query);
@@ -388,8 +451,19 @@ async function main(): Promise<void> {
           await page.keyboard.press('Enter', { delay: 40 });
         }
       }
+      const q0 = new URLSearchParams(args.query);
+      if (q0.get('mission') === 'rally' && q0.get('gl') === '0') {
+        await playRallyNoGl();
+        return;
+      }
       summary.reachedGameplay = await waitForScene(page, PLAY_SCENES, args.timeout);
       if (!summary.reachedGameplay) throw new Error('gameplay never started');
+      // The 3D race (?mission=rally): its own script.
+      if (await waitForScene(page, ['RallyScene'], 100)) {
+        const q = new URLSearchParams(args.query);
+        await playRally({ twoP: q.get('players') === '2', join: true, finish: q.get('debug') === '1' });
+        return;
+      }
       const ring = await waitForScene(page, ['RingScene'], 100);
       await wait(1200);
       await shot('mission-start');
@@ -429,7 +503,7 @@ async function main(): Promise<void> {
         await page.keyboard.press('F4', { delay: 40 });
         await wait(500);
         await shot('boss-skip');
-        await followRing();
+        await followRally();
         await followBridge();
         await playFps();
         await finishRoute();
@@ -443,6 +517,25 @@ async function main(): Promise<void> {
         await page.keyboard.press('Enter', { delay: 40 });
       }
       return waitForScene(page, names, 100);
+    };
+    /**
+     * `mission=rally&gl=0` (docs/design/rally.md §0 item 23): the no-WebGL2 path — the card THIS
+     * DEVICE CANNOT SHOW 3D (the GL flag must be down), the rally's tally with no race lines, then
+     * the bridge. The run never dead-ends.
+     */
+    const playRallyNoGl = async (): Promise<void> => {
+      if (!(await waitForScene(page, ['RallyNoGlScene'], args.timeout))) throw new Error('?gl=0 did not take the no-WebGL2 path');
+      const p = await rallyProbe(page);
+      if (p?.gl.ok) throw new Error('?gl=0: the GL flag says OK');
+      summary.reachedGameplay = true;
+      await wait(600);
+      await shot('rally-nogl');
+      if (!(await waitForScene(page, ['MissionCompleteScene'], 15000))) throw new Error('the no-WebGL2 card did not move on to the tally');
+      await wait(2500);
+      await shot('rally-nogl-tally');
+      if (!(await pressUntil(['GlitchBridgeScene'], 20000))) throw new Error('the no-WebGL2 tally did not move on to the bridge');
+      await wait(800);
+      await shot('rally-nogl-bridge');
     };
     /**
      * --route after floor 1 (debug=1): F4 ends floor 1 (the elevator) → its tally → floor 2 →

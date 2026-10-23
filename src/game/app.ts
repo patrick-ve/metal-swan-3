@@ -15,6 +15,7 @@ import { SceneManager } from '../engine/scene';
 import { frameH, frameW, getFrame, hasSprite } from '../engine/sprites';
 import type { Store } from '../engine/storage';
 import type { UpscaleMode } from '../engine/upscale';
+import { NullView3d, type View3d } from '../engine/view3d';
 import type { ArtCache } from './art-cache';
 import type { ContentReport } from './content/index';
 import { DEFAULT_PARAMS, type LaunchParams } from './params';
@@ -95,6 +96,11 @@ export interface GameApp {
    * the dev server and with `?cache=0`.
    */
   readonly artCache: ArtCache | null;
+  /**
+   * The 3D view (docs/design/rally.md §12.1): WebGL2 in the browser (main.ts `createGl3d`), a
+   * `NullView3d` headless (it draws nothing; its `ok` says whether the race may run).
+   */
+  readonly view3d: View3d;
 }
 
 export interface AppOptions {
@@ -109,6 +115,8 @@ export interface AppOptions {
   preloadArt?: boolean;
   /** The sprite cache (default none). */
   artCache?: ArtCache | null;
+  /** The 3D view (default `new NullView3d()`: draws nothing, the race runs logic only). */
+  view3d?: View3d;
 }
 
 /** The store key of the high score table (session.ts). */
@@ -171,6 +179,7 @@ export function createApp(o: AppOptions): GameApp {
     displayRes: 1,
     preloadArt: o.preloadArt ?? false,
     artCache: o.artCache ?? null,
+    view3d: o.view3d ?? new NullView3d(),
   };
 }
 

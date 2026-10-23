@@ -7,8 +7,11 @@
  * the title — or straight into a mission with `?mission=`, or into the first-person mode with
  * `?mode=fps&floor=n` (docs/design/fps.md §1.11; its lazy content loads in FpsIntroScene), or
  * into the glitch bridge with `?mode=bridge`. `?mission=ring` (docs/design/ring.md §1; not a registered
- * mission) starts the RingScene (`startRing`; `section` = a landmark id, `seed` its ring), with
- * the ring's 1× art and the reused ams sample group.
+ * mission; dormant since 2026-10-22) starts the RingScene (`startRing`; `section` = a landmark id,
+ * `seed` its ring), with the ring's 1× art and the reused ams sample group. `?mission=rally`
+ * (docs/design/rally.md §1; level 2, not a registered mission) starts the race (`startRally`: the
+ * glitch into 3D loads the lazy rally content; `lap`, `cam`, `gl=0` in params.ts); the boot loads
+ * only the start screens' art and the 'boot' samples for it.
  */
 import { listSfx } from '../../engine/audio';
 import { PAL } from '../../engine/palette';
@@ -25,6 +28,7 @@ import { firstMission, newSession, startNewGame } from './gameplay';
 import { startFpsRun } from './fps-route';
 import { GlitchBridgeScene } from './glitch-bridge';
 import { isRing, RING_ART, RING_AUDIO_GROUP, startRing } from './ring-route';
+import { isRally, startRally } from './rally-route';
 import { TitleScene } from './title';
 
 type Phase = 'content' | 'sprites' | 'sounds' | 'samples' | 'done';
@@ -49,6 +53,12 @@ export function bootArt(params: Pick<LaunchParams, 'mission' | 'char' | 'mode'>)
   if (isRing(params.mission)) {
     const chars = [params.char ?? 'recruit', ...selectRoster()].filter((c, i, a) => a.indexOf(c) === i && hasCharacter(c));
     return [...START_ART, ...chars.map((c) => `${getCharacter(c).art}/`), ...RING_ART];
+  }
+  // The rally draws no sprites in the race (its art is the lazy 3D content): the start screens and
+  // the player's hero (the tally page, the bridge and the floors after it make their own on use).
+  if (isRally(params.mission)) {
+    const char = params.char ?? 'recruit';
+    return [...START_ART, ...(hasCharacter(char) ? [`${getCharacter(char).art}/`] : [])];
   }
   const mission = getMission(params.mission ?? firstMission());
   if (!mission?.art) return undefined;
@@ -138,7 +148,8 @@ export class BootScene implements Scene {
     const id = this.app.params.mission;
     // The ring loads its own group (RING_AUDIO_GROUP 'mission:ring': the ams effects and voices
     // without the ams songs; its music is the synth ring theme).
-    const direct = id ? (isRing(id) ? RING_AUDIO_GROUP : getMission(id)?.audioGroup) : undefined;
+    // The rally has no sample group yet (wave C: 'mission:rally', loaded by the card).
+    const direct = id ? (isRing(id) ? RING_AUDIO_GROUP : isRally(id) ? undefined : getMission(id)?.audioGroup) : undefined;
     if (direct) groups.push(direct);
     this.phase = 'samples';
     this.done = 0;
@@ -202,6 +213,7 @@ export class BootScene implements Scene {
       if (p.mode === 'bridge') app.scenes.replace(new GlitchBridgeScene(app), { fade: 0 });
       else startFpsRun(app, { floor: p.floor ?? 1 });
     } else if (isRing(p.mission)) startRing(app, { section: p.section ?? undefined, players: p.players, boss: p.boss, route: ringRouteParam(p) ?? undefined });
+    else if (isRally(p.mission)) startRally(app, { players: p.players });
     else if (p.mission) startNewGame(app, { mission: p.mission, section: p.section ?? undefined, players: p.players, bossRush: p.boss });
     else app.scenes.replace(new TitleScene(app), { fade: 30 });
   }

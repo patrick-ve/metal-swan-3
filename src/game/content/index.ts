@@ -124,11 +124,27 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   'fps/art': () => import('./fps/art'),
   'fps/sound': () => import('./fps/sound'),
   'fps/floors': () => import('./fps/floors'),
+  // Mission `rally`, level 2 (docs/design/rally.md §12.1; docs/api/rally.md): LAZY too — the boot
+  // skips it; the MISSION 2 card / the glitch into 3D load it (rally-route.ts `loadRallyContent`).
+  rally: () => import('./rally/index'),
 };
 
-/** Manifest ids loaded on demand, not at boot: the first-person mode (`fps`, `fps/…`). */
+/**
+ * Manifest ids loaded on demand, not at boot: the first-person mode (`fps`, `fps/…`) and the 3D
+ * race (`rally`, `rally/…`).
+ */
 export function isLazyContent(id: string): boolean {
+  return isFpsContent(id) || isRallyContent(id);
+}
+
+/** The first-person mode's lazy entries (FpsIntroScene's `loadFpsContent`). */
+export function isFpsContent(id: string): boolean {
   return id === 'fps' || id.startsWith('fps/');
+}
+
+/** The 3D race's lazy entries (rally-route.ts `loadRallyContent`). */
+export function isRallyContent(id: string): boolean {
+  return id === 'rally' || id.startsWith('rally/');
 }
 
 export interface ContentReport {

@@ -437,9 +437,12 @@ describe('campaign numbering (docs/design/amsterdam.md §8)', () => {
     expect(['ams', 'm1', 'm4', 'm5', 'all'].map(col)).toEqual(['M1', 'M2', 'M5', 'M6', 'ALL']);
     // The first-person floors (docs/design/fps.md §1.9).
     expect(['fps-1', 'fps-2'].map(col)).toEqual(['F1', 'F2']);
-    // The ring road is level 2 on the route (docs/design/ring.md §1): MISSION 2, column M2.
-    expect(missionLabel('ring')).toBe('MISSION 2');
-    expect(col('ring')).toBe('M2');
+    // The 3D race BINNEN DE RING is level 2 on the route (docs/design/rally.md §1): MISSION 2, column
+    // M2. The 2D ring is dormant (since 2026-10-22): off the route, its id's own label.
+    expect(missionLabel('rally')).toBe('MISSION 2');
+    expect(col('rally')).toBe('M2');
+    expect(missionLabel('ring')).toBe('RING');
+    expect(col('ring')).toBe('RIN');
     // Level 4 (docs/design/oldenzaal.md §1): the fps floors count as level 3.
     expect(missionLabel('oldenzaal')).toBe('MISSION 4');
     expect(col('oldenzaal')).toBe('M4');

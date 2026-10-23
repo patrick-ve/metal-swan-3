@@ -96,7 +96,7 @@ function afterFps(h: H, players: 1 | 2): GameSession {
   const s = new GameSession({ characters: players === 2 ? ['vincent', 'thom'] : ['vincent'], seed: 7 });
   h.app.session = s;
   h.app.campaign = newCampaign();
-  h.app.campaign.missions.push('ams', 'ring', 'fps-1', 'fps-2');
+  h.app.campaign.missions.push('ams', 'rally', 'fps-1', 'fps-2');
   s.startMission('fps-2');
   return s;
 }

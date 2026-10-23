@@ -139,6 +139,11 @@ const RING_LABELS: readonly (readonly [string, number, number])[] = [
   ['A10', 192, 92],
   ['IJ', 106, 82],
 ];
+/**
+ * The rally (docs/design/rally.md §1, §3): three laps of the whole ring, clockwise from the start
+ * at the Zuidas (the dot); the road, the water and the motorways that meet it.
+ */
+const RALLY_LINES: readonly MapLine[] = [RING_ROAD, RING_WATER, ...RING_SPURS];
 
 // ---------------------------------------------------------------------------------------------
 // The oldenzaal map: the flight east to Twente (mission oldenzaal, docs/design/oldenzaal.md §1)
@@ -210,6 +215,19 @@ export const MISSION_CARDS: readonly MissionCard[] = [
     announce: 'MISSION TWO. HOU JE VAST!',
     startSub: 'START!',
     map: { lines: RING_LINES, dot: [258, 92], labels: RING_LABELS },
+  },
+  {
+    // Level 2 since 2026-10-22 (docs/design/rally.md §1.1): the 3D race on the A10. English like
+    // every card. The headline is the 1st-place one (wave B picks it by the best player's place).
+    // No voice yet (wave C: Gusto's two lines in group 'boot'). The ring's card above stays for its
+    // URL start (`?mission=ring`).
+    id: 'rally',
+    label: 'MISSION 2',
+    name: 'BINNEN DE RING',
+    place: 'A10 RING ROAD, AMSTERDAM - 1615 HOURS',
+    briefing: ['FRIES SAFE. NOW THE SQUAD RACES DE RINGRALLY: THREE LAPS OF THE A10.', 'FIRST PRIZE: A PARKING PERMIT BINNEN DE RING. THE WAITING LIST IS 12 YEARS!'],
+    headline: 'SQUAD WINS DE RINGRALLY! PERMIT SECURED!',
+    map: { lines: RALLY_LINES, dot: [198, 113], labels: RING_LABELS },
   },
   {
     // Level 4 (docs/design/oldenzaal.md §1): after the first-person floors and the story card.

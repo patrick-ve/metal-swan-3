@@ -1,6 +1,6 @@
 /**
- * The route of the first-person mode (docs/design/fps.md §1, §10, group flow; docs/design/ring.md
- * §1): ams complete → its tally → the ring → its own tally page → bridge (records) → intro →
+ * The route of the first-person mode (docs/design/fps.md §1, §10, group flow; docs/design/rally.md
+ * §1): ams complete → its tally → the rally (level 2) → its own tally page → bridge (records) → intro →
  * floor 1; tally → floor 2 → fps ending → final tally;
  * pause / continue / game over from the mode; P2's slot waits; the golden-record route; the story
  * lines fit; the bridge waits in `freeze` while the lazy content is not registered.
@@ -36,7 +36,8 @@ import { AMS_BONUS_KEY, CARD_STEP, CARD_Y, FREEZE_MAX, FREEZE_MIN, GlitchBridgeS
 import { missionColumn } from '../../../src/game/scenes/high-scores';
 import { MissionCompleteScene } from '../../../src/game/scenes/mission-complete';
 import { MissionIntroScene } from '../../../src/game/scenes/mission-intro';
-import { RingScene } from '../../../src/game/scenes/ring';
+import { RallyScene } from '../../../src/game/scenes/rally';
+import { loadRallyContent } from '../../../src/game/scenes/rally-route';
 import { StoryCardScene } from '../../../src/game/scenes/story-card';
 import { missionBonusOf } from '../../../src/game/fps/run';
 import { PauseScene } from '../../../src/game/scenes/pause';
@@ -166,8 +167,9 @@ describe('GlitchBridgeScene before the lazy content', () => {
 });
 
 describe('the route (headless)', () => {
-  it('ams complete → its tally → the ring → its tally → bridge (records) → intro → floor 1', async () => {
+  it('ams complete → its tally → the rally → its tally → bridge (records) → intro → floor 1', async () => {
     await loadContent();
+    await loadRallyContent();
     await loadFpsContent(createApp({ input: new InputManager(), audio: new SimAudio(), store: new MemoryStore() }));
     ensureFloors();
     const h = harness();
@@ -186,39 +188,31 @@ describe('the route (headless)', () => {
     }
     expect(ok).toBe(true);
     expect(h.seen).not.toContain(GlitchBridgeScene.name);
-    // The newspaper → the ring's card → the ring (docs/design/ring.md §1).
+    // The newspaper → the rally's card (MISSION 2 BINNEN DE RING) → the glitch into 3D → the race
+    // (docs/design/rally.md §1; the 2D ring is dormant since 2026-10-22).
     expect(h.until(MissionIntroScene, 900)).toBe(true);
-    expect((h.app.scenes.top as MissionIntroScene).mission).toBe('ring');
-    expect(h.until(RingScene, 500)).toBe(true);
-    const ring = h.app.scenes.top as RingScene;
-    slot.rescued = 3;
-    slot.mission.goldenRecord = true;
+    expect((h.app.scenes.top as MissionIntroScene).mission).toBe('rally');
+    expect(h.until(RallyScene, 900)).toBe(true);
+    const race = h.app.scenes.top as RallyScene;
+    h.step(5);
     const before = slot.score;
-    // F4 on the ring: stretch by stretch to the final jam, the hand-over to the on-foot part
-    // (revision R), F4 there section by section; then the level's ONE MISSION COMPLETE page
-    // (docs/design/ring.md §R.1, §R.10), then the bridge.
-    ok = false;
-    for (let i = 0; i < 8000 && !ok; i++) {
-      const top = h.app.scenes.top;
-      if (i % 60 === 0 && ring.runner.state === 'playing') ring.runner.skip();
-      if (i % 60 === 0 && top instanceof GameplayScene && top !== game && top.runner.state === 'playing') top.runner.skip();
-      h.step(1);
-      ok = h.app.scenes.top instanceof MissionCompleteScene;
-    }
-    expect(ok).toBe(true);
-    expect(h.seen).toContain(GameplayScene.name);
-    expect((h.app.scenes.top as MissionCompleteScene).runner.mission.id).toBe('ring');
-    // The page pays the ring's tally (HOSTAGES 3 × 10,000 and the rest) and moves on by itself.
+    // F4 on the race (`finishNow`): it ends at once in the grid order (the player's estate is on pole:
+    // 1st, the rally's golden record); the results, then the rally's MISSION COMPLETE page, then the bridge.
+    race.runner.finishNow();
+    expect(h.until(MissionCompleteScene, 400)).toBe(true);
+    expect(h.seen).toContain(RallyScene.name);
+    expect((h.app.scenes.top as MissionCompleteScene).runner.mission.id).toBe('rally');
+    // The page pays the race lines (PLACE 1/n: 20,000) and moves on by itself.
     expect(h.until(GlitchBridgeScene, 900)).toBe(true);
     const bridge = h.app.scenes.top as GlitchBridgeScene;
     expect(bridge.snap.density).toBe(2);
-    expect(slot.score - before).toBeGreaterThanOrEqual(30000);
+    expect(slot.score - before).toBeGreaterThanOrEqual(20000);
     expect(slot.rescued).toBe(0);
     // The bridge pays nothing more: no bonus record, no MISSION 2 BONUS line on floor 1.
     expect(missionBonusOf(h.app.session!.records.get<unknown>(AMS_BONUS_KEY))).toBeUndefined();
-    expect(h.app.campaign!.missions).toEqual(['ams', 'ring']);
+    expect(h.app.campaign!.missions).toEqual(['ams', 'rally']);
     expect(h.app.campaign!.goldenRecords[0].has('ams')).toBe(true);
-    expect(h.app.campaign!.goldenRecords[0].has('ring')).toBe(true);
+    expect(h.app.campaign!.goldenRecords[0].has('rally')).toBe(true);
     // The phases, then a press finishes the typing and a second press folds the card.
     expect(h.until(GlitchBridgeScene, 1)).toBe(true);
     for (let i = 0; i < 200 && bridge.phase !== 'card'; i++) h.step(1);
@@ -399,15 +393,15 @@ describe('pause, continue and game over in the fps mode', () => {
 });
 
 describe('records, route lists and text', () => {
-  it('the golden-record route: ams + ring + fps-1 + fps-2 + oldenzaal on the route, the six missions otherwise', () => {
+  it('the golden-record route: ams + rally + fps-1 + fps-2 + oldenzaal on the route, the six missions otherwise', () => {
     const c = newCampaign();
     expect(goldenRecordRoute(c)).toBe(CAMPAIGN_MISSIONS);
     expect(goldenRecordRoute(null)).toBe(CAMPAIGN_MISSIONS);
     c.missions.push('ams', 'fps-1');
     expect(goldenRecordRoute(c)).toBe(FPS_ROUTE);
-    // The ring is level 2 (docs/design/ring.md §1): it is on the route too.
+    // The rally is level 2 (docs/design/rally.md §1; the 2D ring is dormant since 2026-10-22).
     // Level 4, the haunted town, follows the floors (docs/design/oldenzaal.md §1).
-    expect(FPS_ROUTE).toEqual(['ams', 'ring', 'fps-1', 'fps-2', 'oldenzaal']);
+    expect(FPS_ROUTE).toEqual(['ams', 'rally', 'fps-1', 'fps-2', 'oldenzaal']);
     expect(CAMPAIGN_MISSIONS).toEqual(['ams', 'm1', 'm2', 'm3', 'm4', 'm5']);
     const s = new GameSession({ characters: ['vincent', 'thom'] });
     for (const id of FPS_ROUTE) c.goldenRecords[0].add(id);

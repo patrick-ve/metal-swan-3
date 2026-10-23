@@ -43,6 +43,20 @@ export interface TallyRunner {
   tallyNotes?(slot: PlayerSlot): readonly TallyLine[];
   /** Optional small footer line on the page (the ring's seed). */
   readonly tallyFooter?: string;
+  /**
+   * Optional (docs/design/rally.md §9, additive): the play's own tally lines (the rally's PLACE,
+   * TIME, ...) INSTEAD of the bonus lines (hostages, flawless, boss speed, vehicle, no scratches);
+   * DIFFICULTY and TOTAL follow as usual. Absent (every MissionRunner, the ring): the page is
+   * unchanged.
+   */
+  tallyLines?(slot: PlayerSlot): readonly TallyLine[];
+  /** Optional, with `tallyLines`: THE CRITICS SAY (1–5; default 3). */
+  tallyStars?(slot: PlayerSlot): number;
+  /**
+   * Optional (docs/design/rally.md §1.1, additive): the newspaper's headline of this play (the
+   * rally's by the best player's place). Absent: the mission card's `headline`, as before.
+   */
+  readonly tallyHeadline?: string;
 }
 
 /** A tally runner that knows what comes next (the newspaper's `missionDone`). */
@@ -117,6 +131,12 @@ export function bossSpeedBonus(missionId: string, startTick: number, endTick: nu
 
 /** The tally lines of one slot (GDD §14.4), before the difficulty line. */
 export function tallyLines(runner: TallyRunner, session: GameSession, slot: PlayerSlot): SlotTally {
+  // The play's own lines (the rally's race lines): no bonus lines, its own stars.
+  if (runner.tallyLines) {
+    const own = [...runner.tallyLines(slot)];
+    const sum = own.reduce((a, l) => a + (l.points ?? 0), 0);
+    return { lines: own, raw: sum, stars: Math.max(1, Math.min(5, Math.round(runner.tallyStars?.(slot) ?? 3))) };
+  }
   const S = TUNING.score;
   const m = slot.mission;
   const lines: TallyLine[] = [];
@@ -217,7 +237,7 @@ export class MissionCompleteScene implements Scene {
     app.pointerPressed = false;
     const session = this.runner.session;
     this.mul = session.mods.tallyScore;
-    this.headline = missionCard(this.runner.mission.id).headline;
+    this.headline = this.runner.tallyHeadline ?? missionCard(this.runner.mission.id).headline;
     this.cols = session.slots
       .filter((s) => s.joined)
       .map((slot) => {
@@ -231,7 +251,7 @@ export class MissionCompleteScene implements Scene {
       });
     // The campaign remembers finished missions and golden records (final tally, GDD §14.6).
     recordMissionClear(this.app, this.runner);
-    if (this.cols.some((c) => c.tally.lines[1].points !== null)) app.audio.voice(VOICE.ovation);
+    if (!this.runner.tallyLines && this.cols.some((c) => c.tally.lines[1]?.points != null)) app.audio.voice(VOICE.ovation);
   }
 
   update(): void {

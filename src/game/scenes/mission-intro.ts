@@ -8,9 +8,14 @@
  * starts, the next one once he has finished the one before. Music `briefing`. `PRESS START TO SKIP` (small, C,
  * y 206). Then a fade to the mission, which opens with its `MISSION 1` / `START!` banner.
  *
- * The ring (docs/design/ring.md §1, not a registered mission): the card makes the play's seed and
- * plan (`prepareRing`), preloads its art and the reused ams samples (`preloadRing`) and starts the
- * `RingScene` with them.
+ * The ring (docs/design/ring.md §1, not a registered mission; dormant since 2026-10-22, its card
+ * shows on a URL route only): the card makes the play's seed and plan (`prepareRing`), preloads its
+ * art and the reused ams samples (`preloadRing`) and starts the `RingScene` with them.
+ *
+ * The rally (docs/design/rally.md §1, §12.3; level 2, not a registered mission): the card makes the
+ * race's seed (`prepareRally`), loads the lazy rally content and creates the GL context
+ * (`preloadRally`: the feature check), and its end glitches into 3D (`RallyGlitchScene` →
+ * `RallyScene`, or the no-WebGL2 card).
  */
 import type { Color } from '../../engine/color';
 import { measure } from '../../engine/font';
@@ -26,6 +31,9 @@ import { RADIO_BOX } from '../content/ui/screens.art';
 import { keepForHeroes, releaseScreenArt, screenArt } from './base';
 import { RingScene } from './ring';
 import { isRing, prepareRing, preloadRing, type RingStart } from './ring-route';
+import type { RallyOpts } from '../rally/api';
+import { RallyGlitchScene } from './rally-glitch';
+import { isRally, prepareRally, preloadRally } from './rally-route';
 
 /** The radio box and the portrait (one screen-art group: HD at the art tier once built). */
 const RADIO_ART: readonly string[] = ['ui/radio', 'ui/portrait-gusto'];
@@ -106,6 +114,8 @@ export class MissionIntroScene implements Scene {
   private radio = false;
   /** The ring's seed and plan (made on enter; null for a registered mission). */
   private ring: RingStart | null = null;
+  /** The rally's race (made on enter; null otherwise). */
+  private rally: RallyOpts | null = null;
 
   constructor(app: GameApp, mission: string) {
     this.app = app;
@@ -133,6 +143,12 @@ export class MissionIntroScene implements Scene {
       // The ring: a new seed per play (`?seed=` wins), its plan, its art and the reused samples.
       this.ring = prepareRing(this.app);
       preloadRing(this.app, this.ring);
+      return;
+    }
+    if (isRally(this.mission)) {
+      // The rally: a new seed per race (`?seed=` wins), the lazy content and the GL context.
+      this.rally = prepareRally(this.app);
+      preloadRally(this.app, this.rally);
       return;
     }
     preloadMissionArt(this.app, getMission(this.mission));
@@ -181,6 +197,7 @@ export class MissionIntroScene implements Scene {
     if (this.radio) this.app.audio.stopSfx?.('radio');
     this.radio = false;
     if (isRing(this.mission)) this.app.scenes.replace(new RingScene(this.app, { start: this.ring ?? undefined }), { fade: 40 });
+    else if (isRally(this.mission)) this.app.scenes.replace(new RallyGlitchScene(this.app, { start: this.rally ?? prepareRally(this.app), from: this }), { fade: 0 });
     else this.app.scenes.replace(new GameplayScene(this.app, { mission: this.mission }), { fade: 40 });
   }
 

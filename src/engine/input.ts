@@ -9,6 +9,10 @@
  * First-person mode (docs/design/fps.md §2): while `fpsMode` is on, slot 0 also gets a 16-bit
  * action pad (`actions`) and an analog channel (`analog`), see input-actions.ts.
  *
+ * The race (docs/design/rally.md §12.5; race-input.ts): while `raceMode` is on (an ADDITIVE opt-in,
+ * off by default), each slot's `VirtualPad.race` also holds that slot's race input (steer, gas,
+ * brake, handbrake, camera, look back) from its buttons and the sources' analog `readRace`.
+ *
  * Gamepads (pads.ts, docs/api/input.md): `useGamepads` registers the one `PadSource`; the slot
  * claims, the free pads, the lost-pad check, the per-pad labels and rumble go through it (the
  * helpers below answer "no pad" when there is none, as in the headless sims).
@@ -22,6 +26,16 @@ import {
   clearAnalog,
   newAnalog,
 } from './input-actions';
+import {
+  clearRaceAxes,
+  clearRaceInput,
+  mergeRaceAxes,
+  newRaceAxes,
+  newRaceInput,
+  raceFromPad,
+  type RaceAxes,
+  type RaceInput,
+} from './race-input';
 
 export type Button = 'left' | 'right' | 'up' | 'down' | 'fire' | 'jump' | 'bomb' | 'start';
 
@@ -93,6 +107,13 @@ export class VirtualPad {
   /** Buttons hidden until they are released (see `suppress`). */
   private suppressed = 0;
   private readonly ticks = new Uint32Array(8);
+  /**
+   * The race channel of this slot (race-input.ts): filled every tick while `InputManager.raceMode`
+   * is on (`raceOn` true); all zero otherwise.
+   */
+  readonly race: RaceInput = newRaceInput();
+  /** `race` is live (the input manager's race mode was on at this tick). */
+  raceOn = false;
 
   /** Feed this tick's raw held mask. */
   update(mask: number): void {
@@ -174,6 +195,7 @@ export class VirtualPad {
     this.prev = 0;
     this.suppressed = 0;
     this.ticks.fill(0);
+    clearRaceInput(this.race);
   }
 }
 
@@ -366,6 +388,8 @@ export interface InputContext {
   readonly bindings: Bindings;
   /** First-person mode is on (sources then also report actions and analog for slot 0). */
   readonly fpsMode?: boolean;
+  /** Race mode is on (sources then also report the race axes for both slots: `readRace`). */
+  readonly raceMode?: boolean;
   /** 2 players on the 2-player key sets (default: `players === 2`; see `keySetFor`). */
   readonly keySplit?: boolean;
   /**
@@ -396,6 +420,11 @@ export interface InputSource {
   readActions?(slot: PlayerSlot, ctx: InputContext): number;
   /** Add this tick's analog input for a slot to `out` (slot 0, `fpsMode` only). */
   readAnalog?(slot: PlayerSlot, out: AnalogState, ctx: InputContext): void;
+  /**
+   * Add this tick's race axes for a slot to `out` with `mergeRaceAxes` (both slots, `raceMode`
+   * only; race-input.ts). A source without it adds nothing (its buttons count through the pad).
+   */
+  readRace?(slot: PlayerSlot, out: RaceAxes, ctx: InputContext): void;
 }
 
 /** Optional first-person channel of a `ScriptedSource` (functions of the source's tick). */
@@ -404,6 +433,8 @@ export interface ScriptedActions {
   actions?: (tick: number) => number;
   /** Write the analog input of a tick into `out` (starts cleared each tick). */
   analog?: (tick: number, out: AnalogState) => void;
+  /** Write the race axes of a tick into `out` (starts cleared each tick; `raceMode` only). */
+  race?: (tick: number, out: RaceAxes) => void;
 }
 
 export type ScriptedFn = (tick: number) => HeldSpec;
@@ -425,6 +456,9 @@ export class ScriptedSource implements InputSource {
   readonly readActions?: (slot: PlayerSlot) => number;
   /** Present only when the script gives `analog`. */
   readonly readAnalog?: (slot: PlayerSlot, out: AnalogState) => void;
+  /** Present only when the script gives `race`. */
+  readonly readRace?: (slot: PlayerSlot, out: RaceAxes) => void;
+  private readonly raceScratch: RaceAxes = newRaceAxes();
 
   constructor(fn: ScriptedFn | InputTimeline, slot: PlayerSlot = 0, fps?: ScriptedActions) {
     this.fn = fn instanceof InputTimeline ? fn.fn() : fn;
@@ -440,6 +474,15 @@ export class ScriptedSource implements InputSource {
         out.turn += a.turn;
         out.moveX += a.moveX;
         out.moveY += a.moveY;
+      };
+    }
+    if (fps?.race) {
+      this.readRace = (s, out) => {
+        if (s !== this.slot) return;
+        const a = this.raceScratch;
+        clearRaceAxes(a);
+        this.fps!.race!(this.tick, a);
+        mergeRaceAxes(out, a);
       };
     }
   }
@@ -550,6 +593,11 @@ export class InputManager implements InputContext {
   /** First-person mode: poll `actions` and `analog` for slot 0 (the fps scene turns it on). */
   fpsMode = false;
   /**
+   * Race mode (an ADDITIVE opt-in, off by default; the rally race turns it on): every tick each
+   * slot's `VirtualPad.race` gets its race input (race-input.ts). Off: `race` stays zero.
+   */
+  raceMode = false;
+  /**
    * The keyboard is split into the 2-player key sets (`keySetFor`). Setting `players` sets it to
    * `players === 2`; a player 2 who joins a 1-player game with a pad sets it back to false (the
    * solo keys keep driving player 1).
@@ -571,6 +619,9 @@ export class InputManager implements InputContext {
   /** Slots whose buttons are hidden after the next update (a pad just claimed them). */
   private readonly hideNext = [false, false];
   private device: 'none' | 'keys' | 'pad' = 'none';
+  /** The race axes summed over the sources (scratch) and each slot's race buttons of last tick. */
+  private readonly raceAxes: RaceAxes = newRaceAxes();
+  private readonly raceHeld = [0, 0];
 
   constructor(bindings: Bindings = defaultBindings()) {
     this.bindings = bindings;
@@ -622,6 +673,7 @@ export class InputManager implements InputContext {
       }
     }
     this.updateActions();
+    if (this.raceMode || this.pads[0].raceOn || this.pads[1].raceOn) this.updateRace();
     this.raw.length = 0;
     for (let i = 0; i < srcs.length; i++) srcs[i].drainPressed?.(this.raw);
     for (let i = 0; i < srcs.length; i++) srcs[i].endTick?.();
@@ -644,6 +696,25 @@ export class InputManager implements InputContext {
       clampAnalog(a);
     }
     this.actions.update(m);
+  }
+
+  /** The race channel of both slots (race mode; on the tick it turns off, both are cleared once). */
+  private updateRace(): void {
+    const srcs = this.sources;
+    const a = this.raceAxes;
+    for (let s = 0; s <= 1; s++) {
+      const slot = s as PlayerSlot;
+      const pad = this.pads[slot];
+      pad.raceOn = this.raceMode;
+      if (!this.raceMode) {
+        clearRaceInput(pad.race);
+        this.raceHeld[s] = 0;
+        continue;
+      }
+      clearRaceAxes(a);
+      for (let i = 0; i < srcs.length; i++) srcs[i].readRace?.(slot, a, this);
+      this.raceHeld[s] = raceFromPad(pad.mask, a, this.raceHeld[s], pad.race);
+    }
   }
 
   private computePause(): boolean {
@@ -788,6 +859,7 @@ export class InputManager implements InputContext {
     this.pads[1].reset();
     this.actions.reset();
     clearAnalog(this.analog);
+    this.raceHeld[0] = this.raceHeld[1] = 0;
     this.raw.length = 0;
     this.pauseEdge = false;
     this.hideNext[0] = this.hideNext[1] = false;

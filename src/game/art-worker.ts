@@ -6,11 +6,12 @@
  * transferred, not copied.
  */
 import { createArtWorkerHandler, type ArtBuildReply, type ArtBuildRequest, type NodeWorkerThreads } from '../engine/art-pool';
-import { isLazyContent, loadContent } from './content/index';
+import { isFpsContent, isLazyContent, loadContent } from './content/index';
 
 const handle = createArtWorkerHandler(
   async (lazy) => {
-    const report = await loadContent(lazy ? isLazyContent : (id) => !isLazyContent(id));
+    // The lazy fps content when an fps id needs it (the rally's lazy content has no sprites).
+    const report = await loadContent(lazy ? isFpsContent : (id) => !isLazyContent(id));
     if (report.failed.length) console.warn(`[art-worker] content failed: ${report.failed.map((f) => f.id).join(', ')}`);
   },
   (id) => id.startsWith('fps/'),

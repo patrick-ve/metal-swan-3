@@ -17,6 +17,12 @@
  * governor (`FrameGovernor`) caps the tier at 2 (k ≤ 6) once per session when render + present
  * average more than 8 ms over 2 s at tier 4.
  *
+ * The 3D view (docs/design/rally.md §12.2): WebGL2 on a detached canvas (`createGl3d`), injected
+ * through `AppOptions.view3d`. The CPU governor cannot see the GPU, so the 3D frames get their own
+ * frame-interval governor (`Governor3d`, r3/ps1.ts): a 2 s average interval above 20 ms at 3D
+ * density 4 caps the 3D view at 2, a later one at 2 caps it at 1 (once per session each; the 2D art
+ * tier stays). The 2D governor's sample leaves out the 3D view's own CPU time.
+ *
  * Pointer lock (docs/design/fps.md §2.3): a click on the canvas takes the lock when
  * `app.pointerLockWanted` and the MOUSE LOOK setting are on; the lock is given back when either
  * turns off; losing it while it is wanted (Esc, alt-tab) sets `app.focusLost` (the scene pauses).
@@ -35,8 +41,10 @@ import { GamepadSource, KeyboardSource, TouchSource } from './engine/input.brows
 import { startBrowserLoop } from './engine/loop.browser';
 import { registerOfflineCache, removeOfflineCache } from './engine/offline.browser';
 import { PointerLockSource } from './engine/pointer.browser';
+import { createGl3d, type Gl3dView } from './engine/gl3d.browser';
 import { CanvasRenderer } from './engine/render-canvas.browser';
 import { FrameGovernor } from './engine/render-common';
+import { Governor3d } from './engine/r3/ps1';
 import { artTier, setArtTier, setDeferDense } from './engine/sprites';
 import { upscaleFactor } from './engine/upscale';
 import { createBrowserStore } from './engine/storage.browser';
@@ -45,6 +53,7 @@ import { ArtCache } from './game/art-cache';
 import { parseLaunchParams } from './game/params';
 import { artDetailTier } from './game/settings';
 import { BootScene } from './game/scenes/index';
+import { rallyProbe, type RallyProbe } from './game/scenes/rally-route';
 import { applyTuning } from './game/tuning';
 
 /** Render + present times of the last frames (ms), for the perf tool (tools/perf.ts). */
@@ -57,7 +66,16 @@ export interface FrameTimes {
 declare global {
   interface Window {
     /** Debug handle for the console, the smoke / perf tools and browser tests. */
-    __ms3?: { app: GameApp; renderer: CanvasRenderer; frames: FrameTimes; tier: () => number };
+    __ms3?: {
+      app: GameApp;
+      renderer: CanvasRenderer;
+      frames: FrameTimes;
+      tier: () => number;
+      /** The 3D race's probe (a getter; docs/api/rally.md): the GL flag, the last race's state. */
+      readonly rally?: RallyProbe;
+      /** The WebGL2 3D view (docs/api/rally.md "A.GL"): `stats()` (frame interval, cap, tris), `cap`, `ok`. */
+      gl3d?: Gl3dView;
+    };
   }
 }
 
@@ -129,7 +147,13 @@ function main(): void {
   if (import.meta.env.PROD && params.noCache) void removeOfflineCache();
   let offlinePending = caching;
 
-  const app = createApp({ input, audio, store, params, debug, gesture: false, preloadArt: true, artCache });
+  // The 3D view (docs/design/rally.md §12.2): WebGL2 on a detached canvas, created on its first use
+  // (the rally card's preload); the rally scene draws it through `Renderer.surface`.
+  const view3d = createGl3d();
+  const gov3d = new Governor3d();
+  let frames3d = 0;
+  let last3d = -1;
+  const app = createApp({ input, audio, store, params, debug, gesture: false, preloadArt: true, artCache, view3d });
   // `?art=` wins over ART DETAIL until the option is changed.
   const artAtStart = app.settings.artDetail;
   const wantedTier = (): number => {
@@ -138,7 +162,16 @@ function main(): void {
     return governor.tripped ? (w === 1 ? 1 : 2) : w;
   };
   let tier = 0;
-  window.__ms3 = { app, renderer, frames, tier: artTier };
+  window.__ms3 = {
+    app,
+    renderer,
+    frames,
+    tier: artTier,
+    gl3d: view3d,
+    get rally(): RallyProbe {
+      return rallyProbe(app);
+    },
+  };
   app.scenes.reset(new BootScene(app));
   // Losing focus (another window, a notification) pauses a game in progress.
   window.addEventListener('blur', () => {
@@ -196,7 +229,20 @@ function main(): void {
       display.present(renderer.canvas);
       const t1 = performance.now();
       frames.ms[frames.count++ % frames.ms.length] = t1 - t0;
-      if (governor.sample(t1 - t0, t1, tier)) {
+      // The 3D governor: the interval between 3D frames (it sees the GPU through the rAF pace).
+      const drew3d = view3d.frames !== frames3d;
+      if (drew3d) {
+        frames3d = view3d.frames;
+        if (last3d >= 0) {
+          const cap = gov3d.sample(t1 - last3d, t1, view3d.density);
+          if (cap) {
+            view3d.setCap(cap);
+            console.info(`[metal-swan-3] 3D frames averaged ${gov3d.trippedMs.toFixed(1)} ms apart: the 3D view drops to ${cap}× for this session`);
+          }
+        }
+        last3d = t1;
+      } else last3d = -1;
+      if (governor.sample(t1 - t0 - (drew3d ? view3d.stats().cpuMs : 0), t1, tier)) {
         console.info(`[metal-swan-3] render + present averaged ${governor.trippedMs.toFixed(1)} ms at 4× art: dropping to 2× art for this session`);
       }
     },

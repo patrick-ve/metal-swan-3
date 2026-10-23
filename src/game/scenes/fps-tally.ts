@@ -6,8 +6,10 @@
  * KILLS n% (10,000 at 100 %), SECRETS a/b (10,000 when all found), TREASURE n% (10,000 at 100 %),
  * TIME m:ss PAR m:ss ((par − seconds) × 500 under par), the bonus info lines of the mission before
  * the bridge on floor 1 (`<MISSION n> BONUS`, only when the bridge paid that mission's tally
- * silently and wrote a bonus record; not in TOTAL; a ring seed in the footer; on the normal route
- * the ring has its own tally page, so there is no such line), DIFFICULTY (× 0.5 / 1.0 / 1.5), TOTAL
+ * silently and wrote a bonus record; not in TOTAL; on the normal route the level 2 (the rally) has
+ * its own tally page, so there is no such line), DIFFICULTY (× 0.5 / 1.0 / 1.5), TOTAL; floor 1's
+ * footer shows `RING SEED n`, the seed of the level 2 the run passed (the bonus record's, else the
+ * rally's `LEVEL2_SEED_KEY` record)
  * (counted into the score; extends apply).
  *
  * A line every 30 ticks with `ui/tally-tick`, TOTAL with `ui/tally-end`, `fps/tally-100` under a
@@ -22,6 +24,7 @@ import { blinkOn, centerText, drawPanel, PLAYER_COLORS, uiText, type GameApp } f
 import { fpsFloorByNumber, fpsFloorId } from '../fps/registry';
 import { AMS_BONUS_KEY, missionBonusOf } from '../fps/run';
 import type { FloorResult, FpsRun } from '../fps/types';
+import { LEVEL2_SEED_KEY } from '../rally/ids';
 import type { PlayerSlot } from '../session';
 import { missionLabel } from './flow-data';
 import { fpsTallyDone } from './fps-route';
@@ -142,7 +145,7 @@ export class FpsTallyScene implements Scene {
   readonly result: FloorResult;
   readonly tally: FpsTally;
   readonly slot: PlayerSlot;
-  /** The ring's seed in the footer (floor 1 after the ring; null = none). */
+  /** The seed of the level 2 the run passed, in the footer (`RING SEED n`; floor 1 only; null = none). */
   readonly seed: number | null;
   private readonly name: string;
   private t = 0;
@@ -163,7 +166,9 @@ export class FpsTallyScene implements Scene {
     const slotIndex = run.slot;
     this.slot = session ? session.slots[slotIndex] : (null as unknown as PlayerSlot);
     const bonus = result.floor === 1 ? missionBonusOf(session?.records.get<unknown>(AMS_BONUS_KEY)) : undefined;
-    this.seed = bonus?.seed ?? null;
+    // The seed of the level 2 the run passed (docs/design/rally.md §12.3): the silent tally's
+    // record (a ring before the bridge), else the rally's record (LEVEL2_SEED_KEY).
+    this.seed = result.floor === 1 ? (bonus?.seed ?? level2Seed(session?.records.get<unknown>(LEVEL2_SEED_KEY))) : null;
     this.tally = fpsTally(result, {
       par: def?.par ?? 0,
       mul: session?.mods.tallyScore ?? 1,
@@ -295,6 +300,11 @@ export class FpsTallyScene implements Scene {
 }
 
 /** 12,345 */
+/** The seed of a `LEVEL2_SEED_KEY` record (`{ mission, seed }`), null when there is none. */
+function level2Seed(v: unknown): number | null {
+  return v && typeof v === 'object' && 'seed' in v && typeof (v as { seed: unknown }).seed === 'number' ? (v as { seed: number }).seed : null;
+}
+
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('en-US');
 }

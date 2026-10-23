@@ -19,6 +19,7 @@
  */
 import { actionsFromKeys, defaultFpsKeyMap, FPS_KEY_CODES, type FpsKeyMap } from './input-actions';
 import { BUTTON_BIT, type InputContext, type InputSource, keySetFor, maskFromKeys, type PlayerSlot } from './input';
+import { RACE_BIT, RACE_KEYS, type RaceAxes } from './race-input';
 import { type GamepadLike, PadSource } from './pads';
 
 export interface KeyboardOptions {
@@ -89,6 +90,18 @@ export class KeyboardSource implements InputSource {
   read(slot: PlayerSlot, ctx: InputContext): number {
     const set = keySetFor(slot, ctx.players, ctx.keySplit ?? ctx.players === 2);
     return set ? maskFromKeys(ctx.bindings[set], this.isDown) : 0;
+  }
+
+  /**
+   * The race keys (race mode only; race-input.ts `RACE_KEYS`): the camera and the look back of the
+   * slot's key set. The 8 buttons count through the pad.
+   */
+  readRace(slot: PlayerSlot, out: RaceAxes, ctx: InputContext): void {
+    const set = keySetFor(slot, ctx.players, ctx.keySplit ?? ctx.players === 2);
+    if (!set) return;
+    const keys = RACE_KEYS[set];
+    for (let i = 0; i < keys.camera.length; i++) if (this.isDown(keys.camera[i])) out.buttons |= RACE_BIT.camera;
+    for (let i = 0; i < keys.lookBack.length; i++) if (this.isDown(keys.lookBack[i])) out.buttons |= RACE_BIT.lookBack;
   }
 
   /** First-person actions: the whole keyboard drives slot 0 (spec §1.10). */

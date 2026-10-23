@@ -402,6 +402,11 @@ the boss stagger); the police sprites carry no `POLITIE` lettering (the van does
 
 ## 1. Flow and numbering
 
+> **Dormant since 2026-10-22:** level 2 is now the 3D race `rally` (BINNEN DE RING), replaced by
+> `docs/design/rally.md`. The 2D ring leaves the route (ams → rally → the glitch bridge); its code,
+> art, audio and tests stay, and `?mission=ring` still opens it (its card still says MISSION 2; its
+> label and high-score column are `RING` / `RIN`).
+
 - Normal play: title → select → `ams` (MISSION 1) → MISSION COMPLETE tally → `ring` (MISSION 2)
   → tally → the glitch bridge → the first-person floors (level 3) → the ending.
 - `?mission=ring` starts the ring directly (with `seed`, `players`, `char`, `god`, `debug`,

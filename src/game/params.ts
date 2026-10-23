@@ -13,6 +13,10 @@
  * `exit`) and `seed` fixes the ring (without it every play gets a fresh one). Revision R
  * (docs/design/ring.md §R.1): `section=zwaan|rf-a|rf-b` too, and `route=short|full` (the full loop:
  * tests and sims only; absent = the short route, or the full one for an unused landmark).
+ * `mission=rally` starts the 3D race BINNEN DE RING (docs/design/rally.md §1; level 2 since
+ * 2026-10-22; `mission=ring` still opens the dormant 2D ring): `lap=1|2|3` starts at that lap,
+ * `cam=chase|bumper` picks the camera, and `gl=0` (a test param) takes the no-WebGL2 path (a short
+ * card, then the tally with no race lines, then the bridge).
  */
 import type { UpscaleMode } from '../engine/upscale';
 import { isDifficulty, type Difficulty } from './session';
@@ -49,6 +53,12 @@ export interface LaunchParams {
   noCache?: true;
   /** `?route=short|full`: the ring's route (revision R). Absent otherwise. */
   route?: 'short' | 'full';
+  /** `?lap=1|2|3`: the rally starts at that lap (docs/design/rally.md §1). Absent otherwise. */
+  lap?: 1 | 2 | 3;
+  /** `?cam=chase|bumper`: the rally's camera. Absent otherwise. */
+  cam?: 'chase' | 'bumper';
+  /** `?gl=0`: the rally takes the no-WebGL2 path (false). Absent otherwise. */
+  gl?: false;
 }
 
 export const DEFAULT_PARAMS: Readonly<LaunchParams> = Object.freeze({
@@ -110,5 +120,11 @@ export function parseLaunchParams(search: string): LaunchParams {
   if (cache !== null && !flag(cache)) p.noCache = true;
   const route = q.get('route')?.toLowerCase();
   if (route === 'short' || route === 'full') p.route = route;
+  const lap = q.get('lap');
+  if (lap === '1' || lap === '2' || lap === '3') p.lap = Number(lap) as 1 | 2 | 3;
+  const cam = q.get('cam')?.toLowerCase();
+  if (cam === 'chase' || cam === 'bumper') p.cam = cam;
+  const gl = q.get('gl');
+  if (gl !== null && !flag(gl)) p.gl = false;
   return p;
 }

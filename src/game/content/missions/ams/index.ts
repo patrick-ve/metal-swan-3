@@ -62,9 +62,9 @@ export const AMS: MissionDef = {
   bossMusic: 'ams-boss',
   start: 'a',
   bossSection: 'd',
-  // After its tally: the ring road, level 2 (docs/design/ring.md §1; not a registered mission:
-  // flow.ts `missionDone` sends it to its intro card). The glitch bridge follows the ring now.
-  next: 'ring',
+  // After its tally: the 3D race BINNEN DE RING, level 2 (docs/design/rally.md §1; not a registered
+  // mission: flow.ts `missionDone` sends it to its intro card). The glitch bridge follows the race.
+  next: 'rally',
   announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
   sections: {
     a: sectionA,
