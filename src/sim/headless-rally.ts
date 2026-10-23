@@ -37,7 +37,7 @@ export interface HeadlessRallyOptions {
   cam?: RallyCam;
   /** Drive the player cars with the rally bot (default true). */
   bot?: boolean;
-  /** The bot's pace (of its car's top speed; default the bot's own, 0.96). */
+  /** The bot's pace (of its car's top speed; default the bot's own, `RallyBot.pace` 0.94). */
   botPace?: number;
   /** The player estates start at the back of the grid (`RallyOpts.gridBack`: the overtaking gate). */
   gridBack?: boolean;

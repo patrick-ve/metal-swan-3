@@ -15,7 +15,7 @@ import { NullView3d, PS1_ON, type DrawItem, type Mesh3, type Ps1Opts, type Textu
 import { createApp, newCampaign, type GameApp } from '../../../src/game/app';
 import { loadContent } from '../../../src/game/content/index';
 import { DEFAULT_PARAMS, type LaunchParams } from '../../../src/game/params';
-import { newCam } from '../../../src/game/rally/camera';
+import { INTRO, newCam } from '../../../src/game/rally/camera';
 import { RallyRunner } from '../../../src/game/rally/runner';
 import { MissionCompleteScene } from '../../../src/game/scenes/mission-complete';
 import { PauseScene } from '../../../src/game/scenes/pause';
@@ -23,6 +23,7 @@ import { GL_LOST_TICKS, RallyScene } from '../../../src/game/scenes/rally';
 import { FOLD_TICKS, FOLD_TILE, foldTiles, RallyFold } from '../../../src/game/scenes/rally-fold';
 import { BREAK_TICKS, HOLD_MIN, RallyGlitchScene, RallyNoGlScene } from '../../../src/game/scenes/rally-glitch';
 import { loadRallyContent, prepareRally, RALLY_HEADLINES, rallyHeadline, rallyNoGlTally, rallyTally, startRally } from '../../../src/game/scenes/rally-route';
+import { TEAM_NAMES } from '../../../src/game/content/rally/teams/index';
 import { GameSession } from '../../../src/game/session';
 import { SimAudio } from '../../../src/sim/stats';
 
@@ -163,7 +164,7 @@ describe('the glitch into 3D (rally-glitch.ts, rally-fold.ts)', () => {
     expect(two.meshes.length).toBeLessThanOrEqual(8);
   });
 
-  it('a direct start: hold → break (the mosaic) → the RallyScene folds first (the race waits), then counts down', () => {
+  it('a direct start: hold → break (the mosaic) → the RallyScene folds first (the race waits), the fly-over (the race waits), then counts down', () => {
     const h = harness({ mission: 'rally', seed: 7 });
     startRally(h.app);
     expect(h.until(RallyGlitchScene, 60)).toBe(true);
@@ -181,6 +182,12 @@ describe('the glitch into 3D (rally-glitch.ts, rally-fold.ts)', () => {
     expect(scene.runner.tick).toBe(0);
     h.step(2);
     expect(scene.folding).toBe(false);
+    // The fly-over over the grid (spec §1): the race still waits, the titles show.
+    expect(scene.introducing).toBe(true);
+    h.step(INTRO.ticks - 2);
+    expect(scene.runner.tick).toBe(0);
+    h.step(2);
+    expect(scene.introducing).toBe(false);
     expect(scene.runner.tick).toBeGreaterThan(0);
   });
 });
@@ -193,7 +200,7 @@ describe('RallyScene', () => {
     one.step(2);
     const t1 = one.r.texts;
     expect(t1).toContain('POSITIE');
-    expect(t1).toContain('1/8');
+    expect(t1).toContain('6/8');
     expect(t1).toContain('RONDE 1/3');
     expect(t1).toContain('RONDETIJD');
     expect(t1).toContain('KM/H');
@@ -229,7 +236,8 @@ describe('RallyScene', () => {
     scene.runner.finishNow();
     h.step(5);
     expect(h.r.texts).toContain('UITSLAG');
-    expect(h.r.texts.filter((s) => s.startsWith('RIVAL ')).length).toBe(7);
+    // FIELD's rally teams: every one of the seven on the results.
+    for (const name of TEAM_NAMES) expect(h.r.texts).toContain(name);
   });
 
   it('a lost WebGL context: the race waits; back within GL_LOST_TICKS it goes on, else the no-WebGL2 path', () => {
@@ -298,7 +306,7 @@ describe('RallyScene', () => {
       const pic = fold ? new PixelBuffer(768, 432).fill(0x000000ff) : null;
       const scene = new RallyScene(h.app, { start: prepareRally(h.app, { seed: 11 }), fold: pic });
       h.app.scenes.reset(scene);
-      for (let i = 0; i < (fold ? FOLD_TICKS : 0) + 600; i++) {
+      for (let i = 0; i < (fold ? FOLD_TICKS + INTRO.ticks : 0) + 600; i++) {
         h.input.update();
         h.app.scenes.update();
         if (draw && i % 7 === 0) {

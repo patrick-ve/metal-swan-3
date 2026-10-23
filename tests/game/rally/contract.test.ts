@@ -18,6 +18,7 @@ import { CONTENT_MODULES, isFpsContent, isLazyContent, isRallyContent, loadConte
 import { pageToPixels, PageBuilder, ramp } from '../../../src/game/content/rally/tex/kit';
 import { newFpsRun } from '../../../src/game/fps/run';
 import { DEFAULT_PARAMS, parseLaunchParams, type LaunchParams } from '../../../src/game/params';
+import { INTRO } from '../../../src/game/rally/camera';
 import { LEVEL2_SEED_KEY, RALLY_ID, RALLY_MODEL } from '../../../src/game/rally/ids';
 import { listRallyModels, rallyModel, rallyTrack } from '../../../src/game/rally/registry';
 import { FINISH_HOLD, RallyRunner } from '../../../src/game/rally/runner';
@@ -180,7 +181,8 @@ describe('the lazy content and the registry', () => {
       expect(m!.tris).toBeGreaterThan(0);
       for (const part of m!.parts) expect(m!.meshes.some((x) => x.id === part)).toBe(true);
     }
-    expect(listRallyModels()).toEqual(Object.values(RALLY_MODEL).sort());
+    // (FIELD's wave-B teams and traffic register their models too: CARS' ids are among them.)
+    for (const id of Object.values(RALLY_MODEL)) expect(listRallyModels()).toContain(id);
   });
 
   it('the texture kit: shelf allocation, ≤ 16-colour rows from the PAL_HD ramps, lettering, the PNG helper', () => {
@@ -266,7 +268,7 @@ describe('the race (rally/runner.ts) and the sim', () => {
 });
 
 describe('the tally hook (TallyRunner.tallyLines)', () => {
-  it("the rally's page: PLACE and TIME instead of the bonus lines; the stars by place; absent = unchanged", () => {
+  it("the rally's page: the race lines instead of the bonus lines; the stars by place; absent = unchanged", () => {
     const s = new GameSession({ characters: ['recruit'], seed: 2 });
     const input = new InputManager();
     const runner = new RallyRunner({ seed: 2, difficulty: 'normal', players: 1, session: s, pads: [input.pad(0), input.pad(1)] });
@@ -274,7 +276,8 @@ describe('the tally hook (TallyRunner.tallyLines)', () => {
     runner.finishNow();
     const nr = rallyTally(runner);
     const t = tallyLines(nr, s, s.slots[0]);
-    expect(t.lines.map((l) => l.label.split(' ')[0])).toEqual(['PLACE', 'TIME']);
+    // Wave B (PREP): the full lines of spec §9 (the ScoreBook; TEAM only in a race of two players).
+    expect(t.lines.map((l) => l.label.split(' ')[0])).toEqual(['PLACE', 'TIME', 'BEST', 'OVERTAKES', 'NEAR', 'FINES']);
     expect(t.raw).toBe(t.lines.reduce((a, l) => a + (l.points ?? 0), 0));
     expect(t.stars).toBe(runner.raceStars(0));
     const plain = tallyLines({ session: s, mission: { id: 'ams' } }, s, s.slots[0]);
@@ -331,6 +334,8 @@ describe('the flow: card → glitch into 3D → race → tally → bridge', () =
     // The glitch's fold first (the race waits), then the countdown.
     expect(scene.folding).toBe(true);
     h.step(FOLD_TICKS);
+    // The fly-over over the grid (spec §1): the race waits until it is over.
+    h.step(INTRO.ticks);
     expect(scene.folding).toBe(false);
     expect(scene.runner.tick).toBe(0);
     h.step(10);

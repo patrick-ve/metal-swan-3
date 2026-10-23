@@ -9,7 +9,8 @@ import type { Spline3 } from '../../engine/r3/spline';
 import type { Vec3 } from '../../engine/r3/vec';
 import type { Cam3, DrawItem, Mesh3, TexturePage } from '../../engine/view3d';
 import type { Difficulty } from '../session';
-import type { RallyCam } from './ids';
+import type { BodyKind, RallyCam } from './ids';
+import type { SignTable } from './signs';
 
 /**
  * How a car drives (spec §6: mass, top speed, grip). The fields after `grip` are OPTIONAL (DRIVE,
@@ -142,6 +143,20 @@ export interface RallyBody {
   /** Metres driven along the track (signed progress; laps for the race cars). */
   dist: number;
   readonly phys: CarPhys;
+  /**
+   * Wave B (PREP, additive; docs/api/rally.md "B.3"): what it is. Absent on the race cars (the
+   * scene reads `slot`: 'player' or 'rival'); FIELD's traffic 'traffic', RULES' police 'police' and
+   * road works 'prop'.
+   */
+  kind?: BodyKind;
+  /** Wave B: the model the scene draws for a body that is not a race car (registry.ts `rallyModel`). */
+  model?: string;
+  /** Wave B: a palette swap of that model (a CLUT row; the traffic's colours). */
+  clutRow?: number;
+  /** Wave B: the lamps (ids.ts `BODY_LIGHT` bits; 0 / absent = none). */
+  lights?: number;
+  /** Wave B: a parked body of a pool (not drawn; its owner also sets `phys.ghost`: no contact). */
+  hidden?: boolean;
 }
 
 /** One car in the race (mutable; the runner owns it). */
@@ -198,6 +213,55 @@ export interface RaceState {
   readonly cars: readonly CarState[];
   /** The cars by place (index 0 = the leader). */
   readonly order: readonly CarState[];
+  /**
+   * Wave B (PREP, additive; docs/api/rally.md "B.2"): the matrix signs of every gantry (RULES sets
+   * them, WORLD draws them). The runner always makes it; optional only for hand-made states.
+   */
+  readonly signs?: SignTable;
+}
+
+/** Wave B: what a fine was for (spec §5). */
+export type FineKind = 'camera' | 'zone' | 'redx';
+
+/**
+ * Wave B (PREP, additive; docs/api/rally.md "B.4"): the payloads of the wave-B events on the
+ * runner's one emitter (`runner.events`; runner.ts `RallyRunnerEvents` extends this). `car` / `other`
+ * / `police` are body ids; `slot` the player slot of `car` (−1 = an AI car). Sections are the track's
+ * section ids ('zuidas', 'ring-west', …). The radio (wave C) and the HUD listen; the sim never reads
+ * them back (emit nothing that the state depends on).
+ */
+export interface RallyEventsB {
+  /** A speed camera, the average-speed zone's end gantry or a red X caught a car (the white flash). km/h. */
+  flash: { car: string; slot: number; speed: number; limit: number; where: string; kind: FineKind };
+  /** A fine (after a flash; `CarState.fines` is already counted). */
+  fine: { car: string; slot: number; kind: FineKind; euros: number };
+  /** A car drove under a red X (its lane closed ahead): the fine follows. */
+  redx: { car: string; slot: number; gantry: number; lane: number };
+  /** A police car pulled a racer over (3 s on the hard shoulder). */
+  pulledOver: { car: string; slot: number; police: string };
+  /** The pulled-over racer drives on. */
+  released: { car: string; slot: number };
+  /** The police joined (lap 3): how many are on the road now. */
+  policeActive: { count: number };
+  /** Road works ahead (lap 2): the section and its closed lanes (0 = the left lane). */
+  roadworksAhead: { section: string; lanes: readonly number[] };
+  /** The spitsstrook opened (lap 3: green arrows over the hard shoulder). */
+  spitsstrookOpen: { lap: number };
+  /** A jam formed (lap 3's rush hour). */
+  jam: { section: string };
+  /** A racer passed a rival (once per rival per lap: the emitter checks it). */
+  overtake: { car: string; slot: number; other: string };
+  /** A racer passed traffic close at speed (km/h; above 150 km/h it scores). */
+  nearMiss: { car: string; slot: number; other: string; speed: number };
+  /** A racer's new best lap (race ticks). */
+  bestLap: { car: string; slot: number; ticks: number };
+  /** A car entered / left a tunnel tube (the radio's static). */
+  tunnelIn: { car: string; slot: number; name: string };
+  tunnelOut: { car: string; slot: number; name: string };
+  /** A body honked (traffic at a racer, a team horn). */
+  honk: { car: string; slot: number };
+  /** A hard hit on traffic (the big speed loss, the spin; the traffic car stops with its hazards). */
+  crash: { car: string; slot: number; other: string };
 }
 
 /** What a race starts with (the URL / the card / the sim). */
@@ -340,4 +404,8 @@ export interface RallyReport {
   scrapes?: number[];
   bumps?: number[];
   recoveries?: number[];
+  /** Wave B (PREP, additive), per joined player slot: overtakes, near misses, the fines in euros (score.ts `ScoreBook`). */
+  overtakes?: number[];
+  nearMisses?: number[];
+  finesEuros?: number[];
 }

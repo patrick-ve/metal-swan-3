@@ -39,6 +39,7 @@ import { ACTION_BUTTONS } from '../../engine/input';
 import { PAL } from '../../engine/palette';
 import type { PixelBuffer } from '../../engine/pixel';
 import { mat4PoseYPR } from '../../engine/r3/mat';
+import { splineSample } from '../../engine/r3/spline';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { artTier } from '../../engine/sprites';
@@ -46,10 +47,12 @@ import { PS1_ON, VIEW3D_H, VIEW3D_W, type DrawItem, type Light3, type View3 } fr
 import { centerText, PLAYER_COLORS, uiText, UI_GOLD, UI_GREY, UI_WHITE, type GameApp } from '../app';
 import { carModelInfo, poseWheel, type RallyCarModel } from '../content/rally/models/types';
 import { densityAtRes } from '../fps/hud';
-import type { CarState, RallyOpts, RallyTrackView } from '../rally/api';
-import { newCam, stepRig } from '../rally/camera';
+import type { CarState, RallyBody, RallyOpts, RallyTrackView } from '../rally/api';
+import { INTRO, introCam, newCam, stepRig } from '../rally/camera';
+import { daylight, newDaylight, raceProgress } from '../rally/daylight';
+import { BODY_LIGHT } from '../rally/ids';
 import { lockAt } from '../rally/physics';
-import { rallyModel } from '../rally/registry';
+import { rallyHud, rallyModel, rallyScenery, type RallyDrawCtx, type RallyHudPart, type RallyHudView, type RallyScenery } from '../rally/registry';
 import { RallyRunner } from '../rally/runner';
 import { bestLapTicks, raceClock } from '../rally/score';
 import { GameSession } from '../session';
@@ -83,6 +86,14 @@ export const RALLY_LIGHT: Light3 = {
   skyBottom: [0.78, 0.84, 0.9],
 };
 
+/**
+ * Inside a tunnel tube the lit things (the road, the cars) take the sodium lamps' cast instead of
+ * the sky's light (WORLD's request; the tube's own walls are emissive): the ambient and the key
+ * light, blended in over `TUNNEL_FADE` m at each mouth. Cosmetic.
+ */
+export const TUNNEL_LIGHT = { ambient: [0.92, 0.6, 0.3] as const, sun: [0.18, 0.12, 0.06] as const };
+const TUNNEL_FADE = 30;
+
 /** The backbuffer's clear colour behind the 3D view (the sky's horizon tone). */
 const SKY = 0xc6d6e5ff;
 /** Beyond this distance from the camera a car draws its far model (m). */
@@ -111,6 +122,22 @@ interface CarDraw {
   readonly far: DrawItem[];
   readonly brake: DrawItem | null;
 }
+
+/** Wave B: a body that is not a race car (traffic, police, props), drawn by its `model`. */
+interface BodyDraw {
+  readonly body: RallyBody;
+  readonly m: Float32Array;
+  readonly info: RallyCarModel | null;
+  readonly wheels: Float32Array[];
+  readonly near: DrawItem[];
+  readonly far: DrawItem[];
+  readonly brake: DrawItem | null;
+  /** The model and colour it was built for (a pooled body may change them). */
+  readonly model: string;
+  readonly clutRow: number | undefined;
+}
+
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 /** The race's camera label (the pause item). */
 function camLabel(c: string): string {
@@ -146,11 +173,35 @@ export class RallyScene implements Scene, PlayHost {
   private foldT = 0;
   private foldUploaded = false;
   private foldPlayers = 0;
+  /**
+   * The race intro (wave B, spec §1): the camera flies over the grid (`introCam`) before the
+   * countdown; the race waits. Its tick (−1: none or done). Only after the glitch's fold (a sim, a
+   * test without the fold starts at once). During the fold the camera holds the fly-over's first view.
+   */
+  private introT = -1;
+  private readonly introEnd = newCam();
+  private readonly introTmp = splineSample();
+  /** Each view's light inside a tunnel (a copy of the day's, tinted; reused). */
+  private readonly tunnelLights: Light3[] = [0, 1].map(() => ({ ...RALLY_LIGHT, sunDir: [0, 1, 0], sun: [0, 0, 0], ambient: [0, 0, 0], fog: [0, 0, 0], skyTop: [0, 0, 0], skyBottom: [0, 0, 0] }));
   /** Ticks with the WebGL context lost; the scene is leaving. */
   private lostT = 0;
   private leaving = false;
   /** The countdown's last number (the beeps). */
   private lastCount = -1;
+  /**
+   * Wave B hook points (PREP, docs/api/rally.md "B.6"): the time of day (one world time for both
+   * views: `daylight(raceProgress(...))` every frame), the radio ticker's text (wave C's radio writes
+   * it), the lazy content's scenery parts and HUD parts, and the bodies that are not race cars.
+   */
+  readonly day = newDaylight();
+  ticker = '';
+  private sceneries: RallyScenery[] = [];
+  private hudParts: RallyHudPart[] = [];
+  /** The scene draws its own results (no 'results' HUD part is registered). */
+  private ownResults = true;
+  private bodyDraws: BodyDraw[] = [];
+  private readonly drawCtx: Mutable<RallyDrawCtx>[] = [];
+  private readonly hudViews: Mutable<RallyHudView>[] = [];
 
   constructor(app: GameApp, opts: RallySceneOpts = {}) {
     this.app = app;
@@ -161,6 +212,11 @@ export class RallyScene implements Scene, PlayHost {
     if (this.opts.session) return this.opts.session;
     if (!this.app.session) this.app.session = new GameSession({ seed: this.app.params.seed ?? 1 });
     return this.app.session;
+  }
+
+  /** The fly-over over the grid is running (the race waits; spec §1). */
+  get introducing(): boolean {
+    return this.introT >= 0;
   }
 
   /** The glitch's fold is still running (the race waits). */
@@ -186,12 +242,25 @@ export class RallyScene implements Scene, PlayHost {
     RallyScene.last = runner;
     runner.events.on('complete', () => rallyDone(app, this, runner));
     runner.events.on('start', () => this.sfx('rally/go'));
+    // Wave B (RULES): the feedback sounds of the rules (synth placeholders until wave C): a camera's flash, a stop by the police.
+    runner.events.on('flash', (e) => {
+      if (e.slot >= 0) this.sfx('rally/flash');
+    });
+    runner.events.on('pulledOver', (e) => {
+      if (e.slot >= 0) this.sfx('rally/pulled');
+    });
     runner.start();
     app.debug.on('skip', () => runner.finishNow());
+    // Wave B: the HUD parts of the lazy content (RULES), one set per race.
+    const huds = rallyHud();
+    this.hudParts = huds.map((def) => def.create(runner));
+    // FIELD's results part (UITSLAG with best laps and fines) replaces the scene's own panel.
+    this.ownResults = !huds.some((def) => def.id === 'results');
     if (this.opts.fold) {
       this.fold = new RallyFold(this.opts.fold, start.players);
       this.foldPlayers = start.players;
       this.foldT = 0;
+      this.introT = 0;
       this.sfx('rally/fold');
     }
   }
@@ -208,6 +277,10 @@ export class RallyScene implements Scene, PlayHost {
     this.fold = null;
     this.runner?.stopLoops(0);
     this.runner?.dispose();
+    for (const p of this.hudParts) p.dispose?.();
+    this.hudParts = [];
+    this.sceneries = [];
+    this.bodyDraws = [];
   }
 
   /** A scene opened on top (pause): the music at half level. */
@@ -261,7 +334,13 @@ export class RallyScene implements Scene, PlayHost {
       this.stepFold();
       return;
     }
+    if (this.introT >= 0) {
+      // The fly-over: exactly `INTRO.ticks` ticks of waiting (fewer when a button skips it).
+      this.stepIntro();
+      return;
+    }
     runner.step();
+    for (const p of this.hudParts) p.tick?.();
     const c = runner.phase === 'grid' ? Math.ceil(runner.countdown / 60) : 0;
     if (c !== this.lastCount) {
       if (c > 0) this.sfx('rally/count');
@@ -286,6 +365,42 @@ export class RallyScene implements Scene, PlayHost {
     }
   }
 
+  /** The light of view i with its car at arc length s: the day's, or the sodium cast in a tunnel. */
+  private lightAt(i: number, s: number): Light3 {
+    const day = this.day.light;
+    const tunnels = (this.runner.track as { readonly tunnels?: readonly { readonly s0: number; readonly s1: number }[] }).tunnels;
+    if (!tunnels) return day;
+    let k = 0;
+    for (const t of tunnels) {
+      if (s < t.s0 || s > t.s1) continue;
+      k = Math.min(1, (s - t.s0) / TUNNEL_FADE, (t.s1 - s) / TUNNEL_FADE);
+      break;
+    }
+    if (k <= 0) return day;
+    const out = this.tunnelLights[i];
+    for (let c = 0; c < 3; c++) {
+      out.sunDir[c] = day.sunDir[c];
+      out.fog[c] = day.fog[c];
+      out.skyTop[c] = day.skyTop[c];
+      out.skyBottom[c] = day.skyBottom[c];
+      out.ambient[c] = day.ambient[c] + (TUNNEL_LIGHT.ambient[c] - day.ambient[c]) * k;
+      out.sun[c] = day.sun[c] + (TUNNEL_LIGHT.sun[c] - day.sun[c]) * k;
+    }
+    out.fogNear = day.fogNear;
+    out.fogFar = day.fogFar;
+    return out;
+  }
+
+  /** One tick of the fly-over: the rigs settle behind the cars; any button skips it (after a moment). */
+  private stepIntro(): void {
+    const runner = this.runner;
+    const input = this.app.input;
+    for (const car of runner.cars) if (car.slot >= 0) stepRig(runner.rigs[car.slot === 1 ? 1 : 0], car, runner.info, false, false);
+    this.introT++;
+    const skip = this.introT > 20 && (input.pad(0).anyPressed() || input.pad(1).anyPressed());
+    if (this.introT >= INTRO.ticks || skip) this.introT = -1;
+  }
+
   /** The no-WebGL2 path in the middle of the race (the context did not come back). */
   private toNoGl(reason: string): void {
     this.leaving = true;
@@ -306,15 +421,49 @@ export class RallyScene implements Scene, PlayHost {
     if (!this.uploaded) {
       v3.upload(track.meshes, track.pages);
       for (let i = 0; i < 2; i++) this.cullers[i] = track.createView?.() ?? null;
+      // Wave B: the scenery parts of the lazy content (built once per track).
+      this.sceneries = rallyScenery(track);
+      for (const sc of this.sceneries) v3.upload(sc.meshes, sc.pages);
       this.uploaded = true;
     }
-    for (const car of this.runner.cars) {
-      const id = car.spec.model;
-      if (this.models.has(id)) continue;
+    const bodies = this.runner.bodies;
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      const id = i < this.runner.cars.length ? this.runner.cars[i].spec.model : b.model;
+      if (!id || this.models.has(id)) continue;
       this.models.add(id);
       const model = rallyModel(id);
       if (model) v3.upload(model.meshes, model.pages);
     }
+  }
+
+  /** Wave B: the draw data of a body that is not a race car (by its model; null when it has none). */
+  private bodyDraw(body: RallyBody): BodyDraw | null {
+    const id = body.model;
+    const model = id ? rallyModel(id) : null;
+    if (!id || !model) return null;
+    const info = carModelInfo(model);
+    const m = new Float32Array(16);
+    const row = body.clutRow;
+    const item = (mesh: string, mm: Float32Array): DrawItem => (row === undefined ? { mesh, m: mm } : { mesh, m: mm, clutRow: row });
+    const wheels: Float32Array[] = [];
+    let near: DrawItem[];
+    let far: DrawItem[];
+    let brake: DrawItem | null = null;
+    if (info) {
+      near = info.body.map((mid) => item(mid, m));
+      for (const w of info.anchors.wheels) {
+        const wm = new Float32Array(16);
+        wheels.push(wm);
+        near.push(item(w.mesh, wm));
+      }
+      far = info.lod.parts.map((mid) => item(mid, m));
+      brake = item(info.lights.brake, m);
+    } else {
+      near = model.parts.map((mid) => item(mid, m));
+      far = near;
+    }
+    return { body, m, info, wheels, near, far, brake, model: id, clutRow: row };
   }
 
   /** Every car's draw data (rebuilt when a car joins). */
@@ -347,6 +496,12 @@ export class RallyScene implements Scene, PlayHost {
       }
       this.cars.push({ car, index, m, info, wheels, near, far, brake });
     });
+    // Wave B: the other bodies (traffic, police, props).
+    this.bodyDraws = [];
+    for (let i = runner.cars.length; i < runner.bodies.length; i++) {
+      const bd = this.bodyDraw(runner.bodies[i]);
+      if (bd) this.bodyDraws.push(bd);
+    }
     this.carsSeen = runner.roster;
     this.playerCars.length = 0;
     for (const slot of [0, 1]) {
@@ -371,6 +526,40 @@ export class RallyScene implements Scene, PlayHost {
         poseWheel(cd.wheels[k], cd.m, w, w.front ? steer : 0, (c.dist - Math.floor(c.dist / lap) * lap) / w.r);
       }
     }
+    // Wave B: the other bodies (a pooled body that changed its model or colour gets new draw data).
+    for (let i = 0; i < this.bodyDraws.length; i++) {
+      let bd = this.bodyDraws[i];
+      const b = bd.body;
+      if (b.model !== bd.model || b.clutRow !== bd.clutRow) {
+        const nb = this.bodyDraw(b);
+        if (!nb) continue;
+        if (!this.models.has(nb.model)) this.upload();
+        this.bodyDraws[i] = bd = nb;
+      }
+      mat4PoseYPR(bd.m, b.pos[0], b.pos[1], b.pos[2], b.yaw, b.phys.pitch, b.phys.roll);
+      if (!bd.info) continue;
+      const steer = b.steer * lockAt(b.phys.h, b.speed);
+      const ws = bd.info.anchors.wheels;
+      for (let k = 0; k < ws.length; k++) {
+        const w = ws[k];
+        const lap = 6.283185307 * w.r;
+        poseWheel(bd.wheels[k], bd.m, w, w.front ? steer : 0, (b.dist - Math.floor(b.dist / lap) * lap) / w.r);
+      }
+    }
+  }
+
+  /** Wave B: the draw context of view i for the scenery parts (reused every frame). */
+  private ctxOf(i: number): RallyDrawCtx {
+    const v = this.views[i];
+    let c = this.drawCtx[i];
+    if (!c) c = this.drawCtx[i] = { runner: this.runner, view: i, cam: v.cam, aspect: 1, far: 0, day: this.day, t: 0, v3: this.app.view3d };
+    c.runner = this.runner;
+    c.cam = v.cam;
+    c.aspect = v.w / v.h;
+    c.far = v.light.fogFar;
+    c.t = this.t;
+    c.v3 = this.app.view3d;
+    return c;
   }
 
   /** View i's draw list: the culled track, the cars (near, far or blinking), the fold's tiles. */
@@ -385,6 +574,11 @@ export class RallyScene implements Scene, PlayHost {
     else {
       k = 0;
       for (const it of track.items) list[k++] = it;
+    }
+    // Wave B: the scenery parts (WORLD's sections, landmarks, signs; FIELD's oncoming traffic).
+    if (this.sceneries.length > 0) {
+      const ctx = this.ctxOf(i);
+      for (const sc of this.sceneries) k = sc.fill(ctx, list, k);
     }
     const cx = v.cam.pos[0];
     const cy = v.cam.pos[1];
@@ -404,6 +598,19 @@ export class RallyScene implements Scene, PlayHost {
       for (let q = 0; q < parts.length; q++) list[k++] = parts[q];
       const inp = inputs[cd.index];
       if (cd.brake && d2 <= lodSq && inp && inp.brake >= BRAKE_LAMP && c.speed > 0.5) list[k++] = cd.brake;
+    }
+    // Wave B: the other bodies (a hidden one is parked in its pool).
+    for (const bd of this.bodyDraws) {
+      const b = bd.body;
+      if (b.hidden) continue;
+      const dx = b.pos[0] - cx;
+      const dy = b.pos[1] - cy;
+      const dz = b.pos[2] - cz;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 > farSq) continue;
+      const parts = d2 > lodSq ? bd.far : bd.near;
+      for (let q = 0; q < parts.length; q++) list[k++] = parts[q];
+      if (bd.brake && d2 <= lodSq && ((b.lights ?? 0) & BODY_LIGHT.brake) !== 0) list[k++] = bd.brake;
     }
     if (this.fold) {
       if (!this.foldUploaded) {
@@ -432,6 +639,8 @@ export class RallyScene implements Scene, PlayHost {
     }
     const d = densityAtRes(Math.min(artTier(), 4), r.res);
     if (v3.density !== d) v3.setDensity(d);
+    // Wave B: the time of day (one world time for both views).
+    daylight(raceProgress(runner.race, runner.track.length), this.day);
     this.poseCars();
     const split = this.playerCars.length > 1;
     const n = Math.min(2, this.playerCars.length);
@@ -441,14 +650,42 @@ export class RallyScene implements Scene, PlayHost {
       v.y = split ? i * (VIEW3D_H / 2) : 0;
       v.w = VIEW3D_W;
       v.h = split ? VIEW3D_H / 2 : VIEW3D_H;
+      v.light = this.lightAt(i, this.playerCars[i].s);
       runner.camera(this.playerCars[i].slot, v.cam, split);
+      if (this.introT >= 0) {
+        // The fly-over (the fold folds into its first view): from over the gantry down into the chase camera.
+        const e = this.introEnd;
+        e.pos[0] = v.cam.pos[0];
+        e.pos[1] = v.cam.pos[1];
+        e.pos[2] = v.cam.pos[2];
+        e.yaw = v.cam.yaw;
+        e.pitch = v.cam.pitch;
+        e.roll = v.cam.roll;
+        e.fovY = v.cam.fovY;
+        e.near = v.cam.near;
+        e.far = v.cam.far;
+        introCam(this.introT, runner.track, runner.cars, this.playerCars[i], e, v.cam, this.introTmp);
+      }
       this.fillView(i);
     }
     const src = n > 0 ? v3.render(split ? this.two : this.one, PS1_ON) : null;
     r.surface?.(src, 0, 0, VIEW3D_W, VIEW3D_H);
-    if (!this.fold || this.foldT >= HUD_AFTER_FOLD) this.drawHud(r, split);
+    if (this.introT >= 0) this.drawIntro(r, split);
+    else if (!this.fold || this.foldT >= HUD_AFTER_FOLD) this.drawHud(r, split);
     const debug = app.debug;
     if (debug.enabled) centerText(r, `SEED ${runner.seed}  ${runner.phase.toUpperCase()}  T${runner.race.raceTick}`, debug.stats ? 11 : 2, PAL.stone[3]);
+  }
+
+  /** The fly-over's titles (no HUD yet): the rally's name and the laps, in each view. */
+  private drawIntro(r: Renderer, split: boolean): void {
+    if ((this.fold && this.foldT < HUD_AFTER_FOLD) || this.introT > INTRO.ticks - 90) return;
+    const n = split ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const y = split ? i * 108 + 14 : 26;
+      centerText(r, 'DE RINGRALLY', y, UI_GOLD, 'big', split ? 1 : 2);
+      centerText(r, `${this.runner.laps} RONDEN  A10  ${this.runner.cars.length} AUTO'S`, y + (split ? 14 : 24), UI_WHITE);
+    }
+    if (split) r.rect(0, VIEW3D_H / 2 - 1, VIEW3D_W, 1, SPLIT_LINE);
   }
 
   /** The context is lost: the race waits. */
@@ -467,20 +704,33 @@ export class RallyScene implements Scene, PlayHost {
       const col = PLAYER_COLORS[car.slot === 1 ? 1 : 0];
       if (split) this.hudSplit(r, car, i * 108, col, n);
       else this.hudFull(r, car, col, n);
+      // Wave B: the HUD parts of the lazy content (RULES: warnings, the clock, the ticker, the map).
+      if (this.hudParts.length > 0) {
+        let hv = this.hudViews[i];
+        if (!hv) hv = this.hudViews[i] = { slot: car.slot, car, x: 0, y: 0, w: VIEW3D_W, h: VIEW3D_H, split, day: this.day, ticker: '' };
+        hv.slot = car.slot;
+        hv.car = car;
+        hv.y = split ? i * 108 : 0;
+        hv.h = split ? 108 : VIEW3D_H;
+        hv.split = split;
+        hv.ticker = this.ticker;
+        for (const p of this.hudParts) p.draw(r, hv);
+      }
     }
+    for (const p of this.hudParts) p.drawFrame?.(r);
     // The split: a dark line between the two views (P2's sky never touches P1's road).
     if (split) r.rect(0, VIEW3D_H / 2 - 1, VIEW3D_W, 1, SPLIT_LINE);
     if (this.fold) return;
     const cd = runner.countdown;
     if (runner.phase === 'grid' && cd > 0) {
       const s = String(Math.ceil(cd / 60));
-      if (split) for (let i = 0; i < 2; i++) centerText(r, s, i * 108 + 40, UI_WHITE, 'big', 2);
+      if (split) for (let i = 0; i < 2; i++) centerText(r, s, i * 108 + 26, UI_WHITE, 'big', 2);
       else centerText(r, s, 72, UI_WHITE, 'big', 3);
     } else if (runner.phase === 'race' && runner.race.raceTick < 50) {
-      if (split) for (let i = 0; i < 2; i++) centerText(r, 'GO!', i * 108 + 40, UI_GOLD, 'big', 2);
+      if (split) for (let i = 0; i < 2; i++) centerText(r, 'GO!', i * 108 + 26, UI_GOLD, 'big', 2);
       else centerText(r, 'GO!', 72, UI_GOLD, 'big', 3);
     }
-    if (runner.phase === 'finish' || runner.phase === 'done') this.drawResults(r);
+    if (this.ownResults && (runner.phase === 'finish' || runner.phase === 'done')) this.drawResults(r);
   }
 
   /** Ticks of the car's current lap (its finish time once finished). */

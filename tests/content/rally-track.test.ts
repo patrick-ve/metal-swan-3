@@ -339,7 +339,7 @@ describe('the meshes', () => {
   it('deterministic: two builds give the same bytes (the pinned hash)', () => {
     const again = buildA10(A10_TABLE);
     expect(hashTrack(again)).toBe(hashTrack(track));
-    expect(hashTrack(track)).toMatchInlineSnapshot(`1555196669`);
+    expect(hashTrack(track)).toMatchInlineSnapshot(`2477415180`);
   });
 
   it('the subdivision near the road: road polygons ≤ 3.75 m across and ≤ 7 m along (the affine warp reads)', () => {

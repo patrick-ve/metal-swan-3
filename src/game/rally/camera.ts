@@ -21,10 +21,11 @@
  * from the car's rig (the frozen entry point; a car without a rig gets the plain rigid camera).
  */
 import { angleDiff, atan2T, cosT, PI, sinT, wrapAngle } from '../../engine/r3/trig';
+import type { SplineSample } from '../../engine/r3/spline';
 import type { Cam3 } from '../../engine/view3d';
-import type { RallyBody } from './api';
+import type { RallyBody, RallyTrack } from './api';
 import type { RallyCam } from './ids';
-import { DT } from './physics';
+import { bodyShape, dsOf, DT } from './physics';
 import { yawAt, type TrackInfo } from './track-info';
 
 const DEG = Math.PI / 180;
@@ -192,9 +193,12 @@ export function rallyCam(kind: RallyCam, car: RallyBody, out: Cam3, split: boole
     const yaw = back ? wrapAngle(car.yaw + PI) : car.yaw;
     const fx = sinT(car.yaw);
     const fz = cosT(car.yaw);
-    const k = (ph.h.halfLen - CAM.bumperIn) * (back ? -1 : 1);
+    // The model's own mount (CARS' anchors through the physics, wave B) when it has one.
+    const sh = bodyShape(ph.h);
+    const k = back ? -(ph.h.halfLen - CAM.bumperIn) : sh ? sh.cam[2] : ph.h.halfLen - CAM.bumperIn;
+    const hy = sh && !back ? sh.cam[1] : CAM.bumperHeight;
     out.pos[0] = p[0] + fx * k;
-    out.pos[1] = p[1] + CAM.bumperHeight + ph.pitch * k;
+    out.pos[1] = p[1] + hy + ph.pitch * k;
     out.pos[2] = p[2] + fz * k;
     out.yaw = yaw;
     out.pitch = (back ? -ph.pitch : ph.pitch) - 0.02;
@@ -227,5 +231,80 @@ export function rallyCam(kind: RallyCam, car: RallyBody, out: Cam3, split: boole
     out.pitch = CAM.pitch + pitch;
   }
   out.fovY = fov + (rig ? rig.fovAdd * (fov / FOV_FULL) : 0);
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The race intro (wave B, spec §1): the camera flies over the grid, then settles into the chase view
+// ---------------------------------------------------------------------------------------------
+
+/** The fly-over's length (ticks, 4 s) and the shape of its path (m). Cosmetic. */
+export const INTRO = {
+  ticks: 240,
+  /** It starts this far ahead of the grid's front, this high, looking back down at the field. */
+  ahead: 70,
+  height: 26,
+  /** It swings this far out to the right of the grid at the middle of its path. */
+  swing: 15,
+  /** The last share of the path blends into the chase camera. */
+  blend: 0.25,
+} as const;
+
+function smooth(x: number): number {
+  const u = x < 0 ? 0 : x > 1 ? 1 : x;
+  return u * u * (3 - 2 * u);
+}
+
+/**
+ * The intro camera at tick `t` (0..`INTRO.ticks`) for the view of `car`: from high over the start
+ * gantry (looking back at the grid) round the right side of the field and down into `end` (the
+ * view's chase camera, which it equals at the end). `cars`: the grid (its front, back and middle).
+ * Pure; trig from the r3 tables.
+ */
+export function introCam(t: number, track: RallyTrack, cars: readonly RallyBody[], car: RallyBody, end: Cam3, out: Cam3, tmp: SplineSample): Cam3 {
+  const L = track.length;
+  const u = t <= 0 ? 0 : t >= INTRO.ticks ? 1 : t / INTRO.ticks;
+  const e = smooth(u);
+  // The grid: its front, back and middle (along and across the road), relative to this car.
+  let lo = 0;
+  let hi = 0;
+  let side = 0;
+  for (const c of cars) {
+    const d = dsOf(car.s, c.s, L);
+    if (d < lo) lo = d;
+    if (d > hi) hi = d;
+    side += c.side;
+  }
+  side = cars.length > 0 ? side / cars.length : car.side;
+  const chase = -CAM.dist;
+  const along = hi + INTRO.ahead + (chase - hi - INTRO.ahead) * e;
+  const arc = sinT(PI * e);
+  const lat = side + INTRO.swing * arc;
+  const sp = track.spline.sample(track.spline.wrap(car.s + along), tmp);
+  const px = sp.p[0] + sp.r[0] * lat;
+  const py = sp.p[1] + INTRO.height + (CAM.height - INTRO.height) * e + 4 * arc;
+  const pz = sp.p[2] + sp.r[2] * lat;
+  // The point looked at: the middle of the grid, then ahead of the car.
+  const mid = (lo + hi) / 2;
+  const ls = track.spline.sample(track.spline.wrap(car.s + mid + (12 - mid) * e * e), tmp);
+  const lx = ls.p[0] + ls.r[0] * (side + (car.side - side) * e);
+  const ly = ls.p[1] + 1;
+  const lz = ls.p[2] + ls.r[2] * (side + (car.side - side) * e);
+  const dx = lx - px;
+  const dy = ly - py;
+  const dz = lz - pz;
+  const yaw = atan2T(dx, dz);
+  const pitch = atan2T(dy, Math.sqrt(dx * dx + dz * dz));
+  // The last stretch blends into the chase camera (no jump when the countdown starts).
+  const w = smooth((u - (1 - INTRO.blend)) / INTRO.blend);
+  out.pos[0] = px + (end.pos[0] - px) * w;
+  out.pos[1] = py + (end.pos[1] - py) * w;
+  out.pos[2] = pz + (end.pos[2] - pz) * w;
+  out.yaw = wrapAngle(yaw + angleDiff(yaw, end.yaw) * w);
+  out.pitch = pitch + (end.pitch - pitch) * w;
+  out.roll = end.roll * w;
+  out.fovY = end.fovY;
+  out.near = end.near;
+  out.far = end.far;
   return out;
 }

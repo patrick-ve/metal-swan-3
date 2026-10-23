@@ -37,14 +37,16 @@ import type { Cam3 } from '../../engine/view3d';
 import { HudState } from '../context';
 import type { Difficulty, GameSession, SlotIndex } from '../session';
 import type { GameSettings } from '../settings';
-import { emptyRallyInput, type CarSpec, type CarState, type RaceState, type RallyBody, type RallyInput, type RallyOpts, type RallyReport, type RallyTrack } from './api';
+import { emptyRallyInput, type CarSpec, type CarState, type RaceState, type RallyBody, type RallyEventsB, type RallyInput, type RallyOpts, type RallyReport, type RallyTrack } from './api';
 import { drive, newDriver, type Driver } from './ai';
 import { bindRig, newRig, rallyCam, stepRig, type CamRig } from './camera';
 import { RALLY_ID, RALLY_LAPS, RALLY_MODEL, type RallyCam } from './ids';
 import { readRaceInput } from './input';
 import { Collider, draftStep, dsOf, handlingOf, laneOf, laneSide, newPhys, PHYS, recoverBody, stepBody, stuckStep, yawOf } from './physics';
-import { rallyTrack } from './registry';
-import { bestLapTicks, linesTotal, raceLines, raceStars, type RallyLine } from './score';
+import { rallySystems, rallyTeams, rallyTrack } from './registry';
+import { bestLapTicks, linesTotal, raceLines, raceStars, ScoreBook, type RallyLine } from './score';
+import { gridPlan } from './grid';
+import { gantriesOf, SignTable } from './signs';
 import { trackInfo, type TrackInfo } from './track-info';
 
 /** The countdown before GO (3, 2, 1: one second each). */
@@ -82,7 +84,8 @@ export const PACE: Readonly<Record<Difficulty, number>> = { easy: 0.94, normal: 
 /** Each rival's own share of that pace (the field spreads out). */
 const RIVAL_PACE: readonly number[] = [0.955, 0.94, 0.95, 0.93, 0.945, 0.935, 0.925];
 
-export interface RallyRunnerEvents {
+/** The runner's events: wave A's below, wave B's from api.ts `RallyEventsB` (PREP, additive). */
+export interface RallyRunnerEvents extends RallyEventsB {
   /** GO (the countdown is over). */
   start: { tick: number };
   /** A car finished a lap (`lap` = the lap just finished; `ticks` its race ticks). */
@@ -141,6 +144,10 @@ export class RallyRunner {
   /** Cosmetic randomness (radio, sparks). */
   readonly fxRng: Rng;
   readonly race: RaceState;
+  /** Wave B (PREP, additive): the matrix signs of every gantry (also `race.signs`; RULES sets, WORLD draws). */
+  readonly signs: SignTable;
+  /** Wave B (PREP, additive): the race's counters (overtakes, near misses, fines' euros) from the events. */
+  readonly book = new ScoreBook();
   readonly cars: CarState[] = [];
   /** Everything on the road that collides: the cars first, then the bodies of `addBody`. */
   readonly bodies: RallyBody[] = [];
@@ -164,15 +171,23 @@ export class RallyRunner {
   private readonly scrapeEv = { car: '', slot: -1, side: 0, speed: 0 };
   private readonly bumpEv = { a: '', b: '', slotA: -1, slotB: -1, dv: 0 };
   private finishT = 0;
-  /** Counts every change of `cars` (a car added or removed): the scene rebuilds its draw list on a change. */
+  /** Counts every change of `cars` and (wave B) of the other bodies: the scene rebuilds its draw list on a change. */
   roster = 0;
   private started = false;
   private completed = false;
+  /** `RallyOpts.gridBack` (FIELD: the join's grid keeps it). */
+  private readonly gridBack: boolean;
   /**
    * DEBUG (tools/shot3d.ts, the console; never the game's own input, never the sims): the player
    * slots whose car its driver drives (`setAutopilot`). Off by default.
    */
   readonly autopilot: [boolean, boolean] = [false, false];
+  /**
+   * Wave B (RULES, additive): where a player who joins during the race starts — `back` m behind the
+   * last car in lane `lane` (the next safe point: no tunnel, no road works, a free lane); null (or no
+   * hook) = wave A's 15 m behind it, in a lane away from it.
+   */
+  joinAt: ((last: CarState) => { back: number; lane: number } | null) | null = null;
 
   constructor(o: RallyRunnerOptions) {
     this.session = o.session;
@@ -184,20 +199,36 @@ export class RallyRunner {
     this.pads = o.pads;
     this.rng = new Rng(this.seed);
     this.fxRng = this.rng.fork('fx');
+    this.gridBack = o.gridBack === true;
     const cam = o.cam ?? 'chase';
     this.cams = [cam, cam];
-    this.race = { tick: 0, raceTick: -1, phase: 'grid', laps: this.laps, cars: this.cars, order: this.order };
-    // The grid: the player estates first (1P / P1 white, P2 green), then the rivals (`gridBack`: the other way round).
+    this.signs = new SignTable(gantriesOf(this.track).length);
+    this.race = { tick: 0, raceTick: -1, phase: 'grid', laps: this.laps, cars: this.cars, order: this.order, signs: this.signs };
+    this.book.listen(this.events);
+    // The grid (1P / P1 white, P2 green; FIELD grid.ts `gridPlan`): the estates among the rivals (`gridBack`: behind them).
     const slots = this.session.slots.filter((s) => s.joined).map((s) => s.index);
     const rivals = slots.length > 1 ? RIVALS_2P : RIVALS_1P;
     const pace = PACE[this.difficulty];
-    const addRivals = (): void => {
-      for (let i = 0; i < rivals; i++) this.addCar(RIVAL_SPECS[i % RIVAL_SPECS.length], -1, this.cars.length, pace * RIVAL_PACE[i % RIVAL_PACE.length]);
+    // Wave B: FIELD's rally teams when registered (registry.ts `defineRallyTeams`), else the stub rivals.
+    const teams = rallyTeams()?.rivals(rivals) ?? null;
+    const addRival = (i: number): void => {
+      if (teams && teams.length > 0) {
+        const e = teams[i % teams.length];
+        this.addCar(e.spec, -1, this.cars.length, pace * e.pace);
+      } else this.addCar(RIVAL_SPECS[i % RIVAL_SPECS.length], -1, this.cars.length, pace * RIVAL_PACE[i % RIVAL_PACE.length]);
     };
-    if (o.gridBack) addRivals();
-    for (const slot of slots) this.addCar(slot === 1 ? ESTATE_GREEN : ESTATE_WHITE, slot, this.cars.length);
-    if (!o.gridBack) addRivals();
+    // FIELD (wave B, grid.ts): 1P starts 6th, 2P the estates 5th and 6th; `gridBack` behind every rival.
+    let ri = 0;
+    let pi = 0;
+    for (const k of gridPlan(slots.length, rivals, this.gridBack)) {
+      if (k === 'p') {
+        const slot = slots[pi++];
+        this.addCar(slot === 1 ? ESTATE_GREEN : ESTATE_WHITE, slot, this.cars.length);
+      } else addRival(ri++);
+    }
     this.sortPlaces();
+    // Wave B: the lazy content's systems (traffic, the rules, the police) install themselves.
+    for (const def of rallySystems()) def.install(this);
   }
 
   /**
@@ -269,6 +300,30 @@ export class RallyRunner {
     car.phys.yawRate = 0;
     d.lane = laneOf(t, grid.side, car.s);
     d.side = grid.side;
+  }
+
+  /**
+   * FIELD (grid.ts): put `cars` (and the index-aligned `bodies`, `inputs`, `drivers`) in the grid
+   * order of `gridPlan` — the player estates by slot, the rivals in their order. The caller places
+   * the cars that moved (`toGrid`).
+   */
+  private regrid(): void {
+    const cars = this.cars;
+    const players = cars.filter((c) => c.slot >= 0).sort((a, b) => a.slot - b.slot);
+    const rivals = cars.filter((c) => c.slot < 0);
+    const plan = gridPlan(players.length, rivals.length, this.gridBack);
+    let pi = 0;
+    let ri = 0;
+    const order = plan.map((k) => (k === 'p' ? players[pi++] : rivals[ri++]));
+    const idx = order.map((c) => cars.indexOf(c));
+    const inputs = idx.map((i) => this.inputs[i]);
+    const drivers = idx.map((i) => this.drivers[i]);
+    for (let i = 0; i < order.length; i++) {
+      cars[i] = order[i];
+      this.bodies[i] = order[i];
+      this.inputs[i] = inputs[i];
+      this.drivers[i] = drivers[i];
+    }
   }
 
   /** Take car i out of the race (a rival that gives its place to a joining player). */
@@ -345,35 +400,37 @@ export class RallyRunner {
         for (let i = 0; i < this.cars.length; i++) if (this.cars[i].slot < 0) lastG = i;
         this.removeCar(lastG);
       }
-      let players = 0;
-      for (const c of this.cars) if (c.slot >= 0) players++;
-      const gridBack = this.cars.length > 0 && this.cars[0].slot < 0;
-      const at = gridBack ? this.cars.length : players;
-      const car = this.addCar(spec, slot, at, 1, at);
-      // Every other car whose grid slot changed moves to its new slot (the grid cars stand).
+      const car = this.addCar(spec, slot, this.cars.length);
+      // FIELD (grid.ts): the grid of a 2P start (the estates on their slots, `gridBack` behind the
+      // rivals); every car whose grid slot changed moves to its new slot (the grid cars stand).
+      this.regrid();
       for (let i = 0; i < this.cars.length; i++) {
         const c = this.cars[i];
-        if (c !== car && was.indexOf(c) !== i) this.toGrid(c, this.drivers[i], i);
+        if (was.indexOf(c) !== i) this.toGrid(c, this.drivers[i], i);
       }
       this.sortPlaces();
       return car;
     }
     // The last rival still racing leaves (the field stays at 8).
     if (drop >= 0) this.removeCar(drop);
-    // Behind the last car, on the track (no teleport into the field), in a lane away from it.
+    // Behind the last car, on the track (no teleport into the field), in a lane away from it — or
+    // (RULES, wave B: `joinAt`) at the next safe point behind it (no tunnel, no road works, a free lane).
     let last = this.cars[0];
     for (const c of this.cars) if (c.dist < last.dist) last = c;
+    const at = this.joinAt?.(last) ?? null;
+    const back = at ? at.back : 15;
+    const lane = at ? at.lane : last.side > 0 ? 0 : this.track.lanes - 1;
     const car = this.addCar(spec, slot, this.cars.length);
-    const s = this.track.spline.wrap(last.s - 15);
+    const s = this.track.spline.wrap(last.s - back);
     const sp = this.track.spline.sample(s, this.tmp);
-    const side = laneSide(this.track, last.side > 0 ? 0 : this.track.lanes - 1, s);
+    const side = laneSide(this.track, lane, s);
     car.pos[0] = sp.p[0] + sp.r[0] * side;
     car.pos[1] = sp.p[1];
     car.pos[2] = sp.p[2] + sp.r[2] * side;
     car.yaw = yawOf(sp.t[0], sp.t[2]);
     car.s = s;
     car.side = side;
-    car.dist = last.dist - 15;
+    car.dist = last.dist - back;
     car.lap = Math.max(1, 1 + Math.floor(car.dist / this.track.length));
     car.speed = Math.max(0, last.speed * 0.8);
     car.phys.blink = PHYS.recoverBlink;
@@ -382,7 +439,7 @@ export class RallyRunner {
     car.partLaps = 1;
     const d = this.drivers[this.cars.length - 1];
     d.side = side;
-    d.lane = last.side > 0 ? 0 : this.track.lanes - 1;
+    d.lane = lane;
     this.sortPlaces();
     return car;
   }
@@ -396,12 +453,16 @@ export class RallyRunner {
 
   /** Add a body to the road (wave B: traffic, police); it collides with the cars from the next tick. */
   addBody(b: RallyBody): void {
-    if (!this.bodies.includes(b)) this.bodies.push(b);
+    if (this.bodies.includes(b)) return;
+    this.bodies.push(b);
+    this.roster++;
   }
 
   removeBody(b: RallyBody): void {
     const i = this.bodies.indexOf(b);
-    if (i >= this.cars.length) this.bodies.splice(i, 1);
+    if (i < this.cars.length) return;
+    this.bodies.splice(i, 1);
+    this.roster++;
   }
 
   /** Add a system that steps every race tick (after the cars moved, before the contacts). */
@@ -735,7 +796,7 @@ export class RallyRunner {
 
   /** The tally lines of a player slot (PLACE, TIME; wave B adds the rest). */
   raceLines(slot: number): RallyLine[] {
-    return raceLines({ parTicks: this.parTicks, carCount: this.cars.length }, this.carOf(slot));
+    return raceLines({ parTicks: this.parTicks, carCount: this.cars.length, parLapTicks: this.track.parLapTicks, book: this.book, cars: this.cars }, this.carOf(slot));
   }
 
   /** THE CRITICS SAY of a player slot (by place). */
@@ -765,6 +826,14 @@ export class RallyRunner {
       h = hashNum(h, c.place);
       h = hashNum(h, c.finishTicks);
     }
+    // Wave B: the other bodies (traffic, police, props) once there are any.
+    for (let i = this.cars.length; i < this.bodies.length; i++) {
+      const b = this.bodies[i];
+      h = hashNum(h, b.pos[0]);
+      h = hashNum(h, b.pos[2]);
+      h = hashNum(h, b.yaw);
+      h = hashNum(h, b.speed);
+    }
     return h >>> 0;
   }
 
@@ -789,6 +858,9 @@ export class RallyRunner {
       scrapes: cars.map((c) => c?.phys.scrapes ?? 0),
       bumps: cars.map((c) => c?.phys.bumps ?? 0),
       recoveries: cars.map((c) => c?.phys.recoveries ?? 0),
+      overtakes: cars.map((c) => (c ? (this.book.peek(c.id)?.overtakes ?? 0) : 0)),
+      nearMisses: cars.map((c) => (c ? (this.book.peek(c.id)?.nearMisses ?? 0) : 0)),
+      finesEuros: cars.map((c) => (c ? (this.book.peek(c.id)?.finesEuros ?? 0) : 0)),
     };
   }
 

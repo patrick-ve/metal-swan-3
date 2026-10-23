@@ -654,7 +654,9 @@ the car (6.3–7.6 m behind, 2.3–2.55 m up, −0.12 rad); the heading on a cri
 (6.5 rad/s, the lag capped at 0.45 rad, 75 % of the steady lag in a bend fed forward), half the slip
 angle, a look-ahead of 0.25 × the track's turn 20 + 0.6·v m ahead (≤ 0.12 rad); +5° of field of view
 at top speed. A split view: the chase camera `CAM.splitDist` 0.6 m further back and `CAM.splitPitch`
-0.08 rad more down (the whole car and its shadow in the 384 × 108 view). Bumper: 0.2 m inside the nose, 0.85 m up, rigid. Look back: the chase camera in front
+0.08 rad more down (the whole car and its shadow in the 384 × 108 view). Bumper: 0.2 m inside the nose, 0.85 m up, rigid
+(wave B, integrator: the model's own eye `bodyShape(h).cam` — forward `cam[2]`, up `cam[1]` — when the
+physics has the model's shape; the look-back keeps `halfLen − bumperIn`). Look back: the chase camera in front
 looking back; the bumper camera at the rear. The results orbit: radius 8.5 m, 2.6 m up, 0.011 rad
 per tick, from where the chase camera was.
 
@@ -921,3 +923,846 @@ B's traffic). Baselines: `tmp/rally/base-a/`. A tick takes about 0.007 ms. The v
 the mosaic, the fold before the countdown, the HUD texts (1P, 2P), the pause item, the results, a
 lost context (wait, resume, the no-WebGL2 path), the headline by place, the debug teleport and
 autopilot, and that the fold and the drawing never change the state hash.
+
+## B. Wave B contracts (PREP, 2026-10-23; FROZEN)
+
+PREP built every contract below with WORKING STUBS: the start gantry counts down on its matrix
+signs, the sky darkens over the laps, one traffic car drives, every speed camera fines a car above
+its limit (the HUD shows `FLITSER` before it, the white flash and `BOETE EUR n` after it), and the
+tally shows every line of spec §9. The builders grow the stubs behind these names. A name below
+changes only when the code demands it; the change is then ADDITIVE and the report says so.
+
+The wave-B parts live in the LAZY content (`src/game/content/rally/**`, lead note 6): they register
+with the plug-in registries of `registry.ts` (B.6) at import, and the runner and the scene (static,
+the main chunk) find them there. The 10 identity sims and the dormant ring stay byte-identical; the
+rally sims change in wave B (the integrator writes new baselines).
+
+### B.0 Owners (wave B)
+
+| Owner | Files |
+|---|---|
+| PREP (frozen; requests go to the integrator) | `src/game/rally/{daylight,signs}.ts` (the API; `DAY_KEYS` values are WORLD's), the wave-B parts of `ids.ts`, `api.ts`, `score.ts` (the API; the values are RULES'), `registry.ts`; the hooks in `runner.ts` (B.7) and `scenes/rally.ts` (B.8); `tests/game/rally/contract-b.test.ts`; this part B |
+| WORLD | `content/rally/sections/`, `content/rally/props/` (the stub sign faces), new `content/rally/{sky,lights,…}/` files; the `DAY_KEYS` values; the road page `track/tex-road.ts` (lead note 2a: keep the page layout and the UV contract) |
+| FIELD | `content/rally/teams/`, `content/rally/traffic/`; `rally/physics.ts` (lead note 3: the models' anchors) and `rally/ai.ts` (the rival AI); the oncoming decor traffic (a scenery part) |
+| RULES | `content/rally/rules/` (the director, cameras, the zone, the red X, road works, police, the HUD part); the values in `score.ts`; the 2P join (`runner.joinPlayer`) |
+
+### B.1 The time of day (`src/game/rally/daylight.ts`, pure)
+
+```ts
+interface Daylight { progress; clock /* minutes after midnight */; night /* 0..1 */; readonly light: Light3;
+  lampGlow /* 0..1 */; carLights: boolean }
+interface DayKey { at /* laps */; sunDir; sun; ambient; fog; fogNear; fogFar; skyTop; skyBottom }
+CLOCK_START = 975 /* 16:15 */; CLOCK_PER_LAP = 45; CAR_LIGHTS_AT = 0.3
+DAY_KEYS: readonly DayKey[]                       // PREP's stub: 0 afternoon, 1 sunset, 2 dark, 3 night (WORLD fills)
+newDaylight(): Daylight
+daylight(progress, out = newDaylight(), keys = DAY_KEYS): Daylight   // writes out in place
+raceProgress(race, length): number                // the leading PLAYER's dist / length, 0..laps
+clockText(minutes): string                        // '16:15'
+```
+
+- `progress` is the race progress of the LEADING PLAYER in laps (0 … 3, continuous; a `?lap=2`
+  race starts at about 1). The clock: 16:15 at 0, 17:00 at 1, 17:45 at 2, 18:30 at 3.
+- The keys blend with a smoothstep between neighbours (no steps). `night` rises from 0.6 to 2 laps,
+  `lampGlow` from 0.8 to 1.6 laps; `carLights` = `night ≥ 0.3` (during lap 2).
+- The fog colour equals `skyBottom` (a seamless pop-in). The scene culls at `light.fogFar`.
+- ONE world time for both views: the scene computes it once per frame (`RallyScene.day`) and gives
+  every view `day.light`. Cosmetic: the sim never reads it.
+
+### B.2 The matrix signs (`src/game/rally/signs.ts`, pure)
+
+```ts
+SIGN_STATES = ['blank', 'limit-50', 'limit-70', 'limit-80', 'limit-100', 'x', 'arrow-down',
+  'merge-left', 'merge-right', 'end', 'count-3', 'count-2', 'count-1', 'go']; type SignState
+SIGN_LANES = 4 /* lanes 0..2 (0 = the left lane) + 3 the hard shoulder */; SIGN_SHOULDER = 3
+class SignTable { constructor(gantries); count; codes: Uint8Array; version /* +1 per change */;
+  sign(g, lane): SignState; setSign(g, lane, state): boolean /* changed */; setGantry(g, state, lanes = 4); clear() }
+signCode(state); signOf(code); signLimit(state) /* km/h or 0 */
+gantriesOf(track); startGantry(track) /* −1 on a test track */
+countdownSign(left, raceTick); GO_SIGN_TICKS = 180   // count-3 → count-2 → count-1 → go (180 ticks) → blank
+```
+
+- A gantry's id is its index in `A10Track.gantries` (17 on the A10: 'start', 'matrix',
+  'avg-start', 'avg-end', 'exit'; the 'exit' ones carry a blue direction sign, no matrix). The
+  start gantry has three signs (no shoulder sign).
+- The runner makes the table: `runner.signs` = `race.signs` (`RaceState.signs?`, additive). RULES
+  sets the states (`race.signs.setSign(g, lane, state)`); WORLD draws them (B.6 scenery: an
+  emissive face per state, our own pixel symbols in the Dutch matrix style) and may compare
+  `version` to skip work.
+- PREP's stubs: RULES' stub system drives the start gantry's countdown (`countdownSign`); the props
+  stub (`content/rally/props/index.ts`, `buildSignFaces`, page `PAGE_IDS.signs` 301, meshes
+  `fx/sign/<state>`) draws a 1.5 m face in front of TRACK's dark placeholder sign (5.55 m up, not in
+  tunnels). WORLD replaces both the faces and the gantries.
+
+### B.3 Bodies (`ids.ts`, `api.ts`; DRIVE's body API of wave A)
+
+```ts
+BODY_KINDS = ['player', 'rival', 'traffic', 'police', 'prop']; type BodyKind
+BODY_LIGHT = { head 1, tail 2, brake 4, left 8, right 16, hazard 32, blue 64 }
+interface RallyBody { …wave A…; kind?: BodyKind; model?: string; clutRow?: number; lights?: number; hidden?: boolean }
+```
+
+- FIELD (traffic) and RULES (police, road-works trucks and barriers) add bodies with
+  `runner.addBody(b)` (once; a POOL is preferred: park a body with `hidden = true` and
+  `phys.ghost = true` instead of removing it) and drive them in a system (B.6) with
+  `drive(...)` + `stepBody(...)` (a standing prop needs no step). `addBody` / `removeBody` now bump
+  `runner.roster` (the scene rebuilds its draw list), so pool, do not churn.
+- The race cars have no `kind`: the scene reads `slot` ('player' ≥ 0, else 'rival').
+- `model` (a registered `RallyModel` id) and `clutRow` (a palette swap) are what the scene draws; a
+  pooled body may change them (the scene rebuilds that body's items, an allocation only then).
+- `lights`: the owner sets brake, the indicators (blinking is the drawer's: on in the first half
+  of every 40 ticks), hazard and blue; head and tail at night come from `day.carLights` (the
+  drawer ORs them in). The scene draws the brake lamp of a near body with `BODY_LIGHT.brake`;
+  WORLD's night lights draw the glows of every car and body.
+- Collisions, the slipstream and `laneFree` already treat every body alike (DRIVE); `ghost` = no
+  contact.
+
+### B.4 Events (one emitter: `runner.events`)
+
+`RallyRunnerEvents extends RallyEventsB` (api.ts). Wave A's events keep their payloads (`lap {
+car, slot, lap, ticks }`, `place { car, slot, place }`, `finish { car, slot, place, ticks,
+projected }`, …). The wave-B payloads (`car`, `other`, `police` = body ids; `slot` = the player slot
+of `car`, −1 for an AI car; sections = section ids such as `'ring-west'`; speeds in km/h):
+
+| Event | Payload | Emitted by |
+|---|---|---|
+| `flash` | `{ car, slot, speed, limit, where, kind: 'camera' \| 'zone' \| 'redx' }` | RULES |
+| `fine` | `{ car, slot, kind, euros }` (after `CarState.fines` += 1) | RULES |
+| `redx` | `{ car, slot, gantry, lane }` | RULES |
+| `pulledOver` / `released` | `{ car, slot, police }` / `{ car, slot }` | RULES |
+| `policeActive` | `{ count }` | RULES |
+| `roadworksAhead` | `{ section, lanes }` | RULES |
+| `spitsstrookOpen` | `{ lap }` | RULES |
+| `jam` | `{ section }` | FIELD |
+| `overtake` | `{ car, slot, other }` (once per rival per lap: the emitter checks) | RULES |
+| `nearMiss` | `{ car, slot, other, speed }` | FIELD |
+| `bestLap` | `{ car, slot, ticks }` | RULES |
+| `tunnelIn` / `tunnelOut` | `{ car, slot, name }` | RULES |
+| `honk` | `{ car, slot }` | FIELD |
+| `crash` | `{ car, slot, other }` (a hard hit on traffic) | FIELD |
+
+`RALLY_EVENTS` (ids.ts) lists every name. The radio (wave C) and the HUD listen; the sim never
+reads an event back. Reuse one payload object per event (no allocation per tick).
+
+### B.5 The score (`score.ts`; RULES owns the values)
+
+```ts
+BEST_LAP_POINTS 2000; OVERTAKE_POINTS 100; NEAR_MISS_POINTS 50; NEAR_MISS_KMH 150; FINE_POINTS −250;
+TEAM_POINTS 5000; TEAM_TOP 3                                  // spec §9 (PLACE_POINTS, TIME as in wave A)
+interface CarTally { overtakes; nearMisses; finesEuros }
+class ScoreBook { tally(car); peek(car); overtake(car); nearMiss(car, kmh); fine(car, euros);
+  listen(events): () => void; clear() }
+interface PlayerScore { place; timeBonus; bestLap; overtakes; nearMisses; fines; finesEuros; team }
+interface ScoredRace { parTicks; carCount; parLapTicks?; book?; cars? }   // the optional fields are wave B's
+playerScore(race, car): PlayerScore | null
+raceLines(race, car): RallyLine[]     // with a book: scoreLines; without: wave A's PLACE, TIME
+scoreLines(race, car): RallyLine[]    // PLACE n/N, TIME m:ss.t, BEST LAP m:ss.t, OVERTAKES n, NEAR MISSES n, FINES n EUR e, TEAM (2P)
+```
+
+- `runner.book` listens to the runner's `overtake`, `nearMiss` and `fine` events; the emitters only
+  emit. The fine count is `CarState.fines` (RULES adds 1 before `fine`); the book adds the euros.
+- `runner.raceLines(slot)` passes the book, the par lap and the cars, so the tally
+  (`rallyTally` → `TallyRunner.tallyLines`) shows every line; a missed bonus shows its count with
+  null points (`---`). The FINES line never takes the total below 0.
+- TEAM (2P): 5,000 each when both estates finish in the top 3. The headline stays wave A's
+  `rallyHeadline(bestPlace)` (spec §1.1).
+- `RallyReport` gains `overtakes?`, `nearMisses?`, `finesEuros?` per joined player.
+
+### B.6 The plug-ins (`registry.ts`; the lazy content registers at import)
+
+```ts
+defineRallySystem({ id, order?, install(runner) }); rallySystems()        // FIELD 100–199, RULES 200–299
+defineRallyTeams({ id, rivals(count): RivalEntry[] }); rallyTeams()        // RivalEntry { spec: CarSpec, pace }
+defineRallyScenery({ id, order?, build(track): RallyScenery }); rallyScenery(track)   // WORLD 100–199, FIELD 200–299, RULES 300–399
+defineRallyHud({ id, order?, create(runner): RallyHudPart }); rallyHud()
+undefineRally(id)                                                            // tests
+interface RallyScenery { meshes; pages; fill(ctx: RallyDrawCtx, out: DrawItem[], k): number }
+interface RallyDrawCtx { runner; view /* 0 | 1 */; cam; aspect; far /* fog far */; day: Daylight; t; v3: View3d }
+interface RallyHudPart { tick?(); draw(r, v: RallyHudView); drawFrame?(r); dispose?() }
+interface RallyHudView { slot; car; x; y; w; h; split; day; ticker }
+```
+
+- **Systems** (the sim): `install(runner)` runs at the END of every runner's constructor (the grid
+  is set) in `order`; it adds systems (`runner.addSystem({ step })`: every tick, the grid included,
+  after the cars moved and before the contacts), bodies and listeners. Pure and deterministic
+  (`runner.rng.fork(...)` for gameplay, `runner.fxRng` for cosmetics); it must cope with a test
+  track (no gantries, cameras or zones).
+- **Teams** (FIELD): `rivals(count)` gives the rivals in grid order (7 in 1P, 6 in 2P; fewer = the
+  runner repeats); `pace` × the difficulty's `PACE` drives each one. Absent: wave A's `RIVAL_SPECS`.
+- **Scenery** (cosmetic): built once per track (cached), uploaded with the track, released on the
+  scene's exit. `fill` runs per view per frame after the track's culled items and before the cars:
+  cull by `ctx.cam` / `ctx.far`, no allocation. Moving decor (the oncoming traffic) may use
+  dynamic meshes (`ctx.v3.updateMesh`) or matrices it rewrites.
+- **HUD parts** (cosmetic; RULES): created in the scene's `enter`, `tick` after each race step,
+  `draw` per player view after the base HUD (place, lap, times, speed), `drawFrame` once over the
+  frame, `dispose` on exit. `ticker` is the radio's text (`''` until wave C writes
+  `RallyScene.ticker`).
+
+### B.7 The runner's hooks (`runner.ts`, PREP, additive)
+
+`signs` (+ `race.signs`), `book` (listening), the teams in the constructor, the systems installed
+at the end of the constructor, `roster` bumped by `addBody` / `removeBody`, `raceLines` with the
+book, the report's new fields, and `stateHash` over the extra bodies (position, yaw, speed) once
+there are any. Nothing else in the race changed.
+
+### B.8 The scene's hooks (`scenes/rally.ts`, PREP, additive)
+
+`RallyScene.day` (`daylight(raceProgress(...))` every frame, every view's light), `ticker`, the
+scenery parts (uploaded once; `fill` per view), the bodies that are not race cars (drawn by
+`model` / `clutRow`, near and far LOD like the cars, the brake lamp from `lights`, hidden ones
+skipped), the HUD parts (enter / tick / draw / drawFrame / exit). A view's list order: the track,
+the scenery, the cars, the bodies, the fold's tiles.
+
+### B.9 PREP's stubs (the builders replace them)
+
+| Stub | File | What it does |
+|---|---|---|
+| sections | `content/rally/sections/index.ts` | an empty scenery part; `SECTION_LOOK` (spec §3) |
+| sign faces | `content/rally/props/index.ts` | B.2: the states as emissive faces on the gantries |
+| teams | `content/rally/teams/index.ts` | wave A's `RIVAL_SPECS` through the hook (the names stay `RIVAL n`: `tests/game/rally/scene.test.ts` counts them; FIELD updates that test when it uses `TEAM_NAMES`) |
+| traffic | `content/rally/traffic/index.ts` | one hatchback (a `HATCH_COLOURS` row from `runner.rng.fork('traffic')`) at about 100 km/h in the right lane, 600 m past the start; it comes back 380 m ahead of the leader when the leader is 200 m past it |
+| rules | `content/rally/rules/index.ts` | the start gantry's countdown; every speed camera (`A10Track.cameras`, any lap) fines a car passing above its limit + 3 km/h (`flash`, `fine`: 50 + 10 EUR per km/h over); the HUD part: the clock, `FLITSER` 250 m before a camera, the white flash, `BOETE EUR n` |
+
+Numbers with the stubs (`npm run sim -- --mission rally --expect-complete`; in
+`tmp/rally-prep-b/`): 1P seeds 1–3 normal 24,182 ticks, place 1, 9 fines (8,430 EUR), score 22,150,
+hash 3644224439 (the same twice; the seed only picks the traffic car's colour so far); easy / hard
+24,182 (place 1); 2P normal / easy / hard 24,403 / 24,388 / 24,297 ticks, places 1 3 / 1 2 / 2 3;
+`--lap 3` 8,619; `--grid-back` normal / easy / hard 24,969 / 24,498 / 24,427 ticks, places 5 / 1 / 4;
+2P `--grid-back` 24,988, places 4 and 5. (A debug teleport over a camera fines too: the captures'
+`BOETE` lines.)
+
+### B.10 Tests
+
+`tests/game/rally/contract-b.test.ts`: the clock and the light over the laps, `out` in place,
+`raceProgress`; the sign table, the countdown, the runner's table, the faces; the event names, the
+body kinds and lamp bits; the `ScoreBook` and every line of §9 (TEAM, the fines' floor); the
+registries (order, teams, scenery cache, HUD list); the stubs on the A10 (the countdown on the
+start gantry, the traffic car, a camera's fine with `FLITSER`, `BOETE` and the clock on the HUD,
+the tally lines, the same hash twice). Wave A's `contract.test.ts` tally test now expects the full
+lines.
+
+## B.W The world (WORLD, wave B, 2026-10-23)
+
+The A10 around the road (spec §3, §4, §7.4, §7.5): the scenery and landmarks of the ten sections,
+the road's furniture (gantries, matrix signs, S-exit signs, hectometre boards, flitspalen), the sky
+and the time of day, and the lights of the night. All of it is LAZY content that registers with
+`defineRallyScenery` at import (B.6): cosmetic, built once per track, culled per view, no allocation
+per frame. A test track (no A10 anchors) gets empty parts.
+
+| Part (scenery id, order) | Files | What |
+|---|---|---|
+| `world/sky` (100) | `content/rally/sky/index.ts` | the cloud layer and the sun sprite |
+| `sections` (110) | `content/rally/sections/*` | buildings, trees, water, fields, lamp posts, billboards, landmarks; windows, lamp glows and pools at night |
+| `world/signs` (150) | `content/rally/signs/*`, `props/index.ts` | gantries with their matrix signs, S-exit signs, hectometre boards, average-speed boards, flitspalen |
+| `world/car-lights` (190) | `content/rally/lights/*` | headlights, tail lights and indicators of every car and body |
+
+`sections/index.ts` loads the sky and the car lights; `props/index.ts` loads the signs (the content
+index already imports both). PREP's stub sign faces are gone; `buildSignFaces()` stays for the B.10
+test (it now cuts WORLD's faces).
+
+### B.W.1 The time of day (`rally/daylight.ts`; the B.1 API unchanged)
+
+- `DAY_KEYS` (WORLD's): 0 (16:15) a low autumn sun from the south-west, warm light, a cool fill
+  (the long dark sides away from the sun), a cream horizon; 0.5 (16:37) golden; 0.95 (16:58) the
+  sunset, an orange-pink horizon under a purple-blue sky; 1.35 (17:16) the afterglow; 1.85 (17:38)
+  the blue hour; 2.2 (17:54) dark: a deep blue sky over the orange city glow; 3 (18:30) night. Every
+  channel of `skyTop` only falls; the fog colour is `skyBottom`; the fog's far end 430 → 370 m.
+- Additive: `sunVector(azimuth°, elevation°)`, `SUN_PATH` (226°/13° at 0 → 242°/0.5° at 1 → below the
+  horizon after), `sunAt(progress, out)` (the sky's sun; below the horizon after about 1.05 laps).
+  After the sunset `light.sunDir` turns into the night's high fill (the city's glow), not the sun.
+- `carLights` (night ≥ 0.3, about 1.15 laps) and `lampGlow` (0.8 → 1.6 laps) as PREP made them:
+  the lamps, windows and car lights read them.
+
+### B.W.2 Pages (WORLD's ids)
+
+| Id | Page | Size | CLUT rows |
+|---|---|---|---|
+| 200 | façades: 7 full-height strips of 32 × 256 (glass, stone, 1960s flats, brick, the islands' flats, sheds, halls) + roof gravel and louvres | 256² | 0 day; 1–4 the night overlay (all cut out but the lit windows, glow levels ¼ … 1) |
+| 201 | props: tree cards, bushes, reeds, 6 billboards, name plates, lattice, pitch, container, boats, fence, water, swatches | 256² | 0 |
+| 301 | signs: the 14 matrix faces (32 × 32), 17 S-exit panels, 68 hectometre boards, zone boards, the A10 shield, the finish banner, truss, cabinet | 256² | 0 |
+| 302 | glows: disc, pool, sun, bar, dot (16-step gradients, additive from black) | 128 × 64 | 0–3 glow levels, 3 full |
+| 310 | clouds (tileable, cut out) | 256² | 0 |
+
+RULES' road-works page is 303 (`PAGE_IDS.fx + 3`); WORLD's sky moved to 310 to stay clear of it.
+Every texture is a 16-colour bank of PAL_HD tones (the glow page's index 0 is black: it adds nothing).
+
+### B.W.3 The sections (`sections/`)
+
+- `batch.ts`: `WorldBatch(prefix, layers, cell = 160)` — world-space geometry cut into square
+  CELLS of the ground; per cell one mesh per LAYER and level of detail (`near` within
+  `WORLD_LOD_NEAR` 150 m of the cell's box, `far` beyond); `Frame` (x right, y up, z forward; the
+  track's frame or any yaw); `quad / tri / poly / box` (the winding follows the given outward side);
+  `CellCuller.fill(cells, cam, aspect, far, glowLevel, out, k)` (box within the fog, sphere in the
+  frustum, the night layers' CLUT row per glow level; `tris` / `draws` of the last fill).
+- Layers (`pieces.ts` `WORLD_LAYERS`): `facade` (lit, 200), `props` (lit, 201), `cut` (two-sided
+  cut-out, baked), `ground` (decals with a depth bias), `win` (the lit windows, emissive, night
+  rows), `glow` (additive halos), `pool` (additive light on the road, near only, from glow level 1).
+- `pieces.ts`: `building` (façade quads of at most one strip width, a gravel roof, the window
+  overlay), `tree` (two crossed cards), `centralLamp` (the A10's double-armed mast on the central
+  barrier every 50 m, with sodium halos and pools), `billboard`, `water`, `parcel`, `container`,
+  `boat`, `lattice`, `crane`, `floodlight`, `turbineTower`, `deck` (viaducts and flyovers), `face`.
+- `place.ts`: `Placer` (frames at (s, side); `clear(x, z, r)` keeps 27 m + r from the middle of both
+  carriageways and off the keep-outs: rivers, pitches, landmarks) and the filler makers (`office`,
+  `tower`, `flats`, `houses` with pitched roofs, `shed`, `farm`, `trees`, `billboardAt`, `treeRow`,
+  `zone`).
+- `dress.ts`: `dressA10(track, batch)` — the lamp posts, the 26 landmarks at TRACK's anchors (one
+  builder per id; table in the file's header), then each section's filler. Animated parts
+  (`AnimSpec`): five turbine rotors, the metro train on the Ring West viaduct (posed once a frame).
+- `index.ts`: `buildSections(track): WorldSections` (`cells`, `report.landmarks` per section,
+  `layerTris`, `cullers`), `isA10(track)`, `SECTION_LOOK`.
+
+Our own made-up billboards (`BILLBOARD_ADS`: FRIET MET ALLES, FILE FM, STROOPWAFELS, PARKEERVERGUNNING?,
+APPELTAART, FIETS KWIJT?) and plates (`PLATES`: the two tunnel names, station names, EXPO, SCIENCE
+PARK, SPORTPARK); `worldTexts()` lists them (the brand test). No company name on any building.
+
+### B.W.4 The road's furniture (`signs/`)
+
+- The gantries enclose TRACK's placeholders (columns 0.6 m, the beam 1.25 × 1.1 m, a dark housing per
+  lane), so `buildA10(…, { props: false })` would leave no gap. A matrix gantry has ONE dynamic mesh
+  (`fx/world-signs/leds/<g>`) of 4 faces (3 on the start gantry): 1.5 m, 5.55 m up, 0.28 m in front;
+  its uv is rewritten (and `updateMesh` called) only when `race.signs.version` changes.
+- The 'exit' gantries carry the blue panel of the next S-exit; the start gantry the FINISH banner;
+  the average-speed gantries a blue TRAJECT / CONTROLE (EINDE TRAJECT) board on the right column.
+- `EXIT_PLACES` fills the table's blank S-exit names with real districts (S108 ZUID, S110
+  BUITENVELDERT, S115 ZEEBURG, S116 NIEUWENDAM, S117 NOORD, S118 OOSTZAAN). A blue sign stands on the
+  verge 250 m before each exit that no gantry signs; green hectometre boards every 100 m (our own
+  numbering from 12.0, `hectoText(s)`); the zone's boards 160 m before and 40 m after it.
+- `signTex(exits, hectos)`: the page; `faces[state]` for every `SIGN_STATES` entry (our own 5 × 9
+  digits; the countdown at double size), `texts` (the brand test).
+
+### B.W.5 The sky (`sky/`)
+
+- The cloud layer: a 10 × 10 sheet of 100 m tiles, `CLOUD_Y` 105 m up (above every building, 96 m at
+  most, so the depth test never lets it cover one), cut-out clouds lit by the time of day and faded
+  by the fog. One DYNAMIC mesh per view (`sky/clouds/<view>`) follows its camera tile by tile; its uv
+  is rewritten then, so the clouds stay fixed in the world.
+- The sun: an additive sprite 140 m from the camera in `sunAt`'s direction, facing the camera, in four
+  tints (warm white → orange-red); not drawn below the horizon or at night. Near its distance it
+  may glow over a far building (the glare of the era).
+
+### B.W.6 The night (`lights/`)
+
+- Glow levels (`glowLevel(lampGlow)`: −1 off, 0 … 3): the windows' overlay rows, the lamp halos and
+  floodlights, the pools (from level 1).
+- `lights/cars.ts`: per car and body (not hidden), at night or when its `lights` has head / tail:
+  one glow mesh per model (`fx/carglow/<model>`: halos at the head lamps, red halos at the tail lamps,
+  a pool on the road ahead; built and uploaded when the model is first seen), plus CARS' lamp lenses
+  within 70 m; the indicators (left / right / hazard bits) blink on the first half of every 40
+  frames. The scene draws the brake lamps; RULES draws the police beacons.
+
+### B.W.7 Numbers (node: `tests/content/rally-world.test.ts`; browser: shot3d)
+
+- The world: 593 meshes, 146 cells, about 26,300 triangles in all; built in about 25–50 ms.
+- Per view along the lap (340 chase cameras; track + sky + sections + signs; no cars): 1P day max
+  6,294 / avg 4,334 triangles, at most 96 draws; 1P night max 6,128; 2P night max 6,128 / avg 4,203,
+  at most 95 draws. The world's own share: max 3,600, avg about 1,950.
+- In the game (SwiftShader, `stats()` with cars and traffic): 1P 4,200–5,500 triangles in 63–88
+  draws; 2P about 12,800 triangles in 190 draws for both views.
+
+### B.W.8 Tests
+
+`tests/content/rally-world.test.ts`: the 26 landmarks in their sections; geometry in every section;
+a test track; determinism; nothing stands on the carriageways; no company name in any text; the
+road signs carry real place names; the palette rules of every page; the road page's layout; every
+matrix state has its face and a gantry's faces follow the table; the time of day (continuous, the
+clock monotonic, the fog = the sky's bottom, the sun sets in lap 2); the glow levels and the sun
+sprite; a model's glow mesh; the budget per view at 40 places (1P day and night, 2P).
+
+## B.R The rules, the score and the HUD (RULES, wave B, 2026-10-23)
+
+Spec §4, §5, §7.6, §9, §10. Files: `src/game/rally/rules/` (`plan.ts`, `rules.ts`, `works.ts`,
+`police.ts`; pure, deterministic, scanned), `src/game/content/rally/rules/` (`index.ts` the
+registrations, `hud.ts`, `scenery.ts`, `sfx.ts`; lazy), `src/game/content/rally/props/roadworks.ts`
+(the art), the values in `score.ts`, the `joinAt` hook in `runner.ts`, two feedback sounds in
+`scenes/rally.ts`. The race modules reach the main chunk only through the lazy content.
+
+### B.R.1 The plan (`plan.ts`) and the rules (`rules.ts`)
+
+```ts
+rulesPlan(track): RulesPlan          // cached per track: anchors as lap OFFSETS (m past the start line, [0, L))
+RulesPlan { L, gantries: GantryPlan[] /* off kind section signs base (100; 80 in a tunnel section) spits */, start,
+  cameras: CameraPlan[] /* off limit where works (−1 fixed; else the road works it belongs to) side */, zone, works: WorksPlan[],
+  spits, tunnels, exits, sections, laneX /* 0..2 lanes, 3 shoulder */, borders }
+WorksPlan { index off0 len closed limit section arrow x inside end open openDir line edge cones }
+wrapOff(x, L); inRange(off, off0, len, L); ahead(a, b, L); signLaneAt(plan, side) /* 0..3 */; sectionAt(plan, off)
+installRules(runner): RallyRules     // the system 'rules' (content/rally/rules/index.ts, order 200)
+rulesOf(runner): RallyRules | null   // the HUD, the scenery, other owners
+class RallyRules { plan; lap /* the event lap 1..3 */; lap3Tick; spitsOpen; posted[] /* km/h per gantry */; works: RoadWorks;
+  police: PoliceForce; cars: CarRules[]; of(car); offOf(dist); clearOfPlayers(off0, len);
+  cameraAhead(car, range = 250); redXAhead(car, range = 300); zoneAverage(car); laneClosed(off, lane, look = 0); joinPoint(last) }
+CarRules { car prev posted zoneT0 zoneD0 zoneLimit tunnel stopped hunted pulled best }
+CAMERA_TOLERANCE 3; MAX_STEP 20; FLITSER_AHEAD 250; SWITCH_CLEAR_BEFORE 520 / _AFTER 60; POLICE_BY_DIFFICULTY { easy 2, normal 3, hard 4 }
+```
+
+- **The event lap** = max(`startLap`, 1 + ⌊the leading player's progress⌋) (daylight.ts `raceProgress`,
+  the clock's own measure): lap 1 cameras and signs; lap 2 the road works; lap 3 `spitsstrookOpen`
+  (once) and the police. A road-works zone switches up or down only while no player car is within
+  520 m before it, in it or 60 m after it (no pop-in in a player's view).
+- **The signs** (recomputed only when the lap, the standing works or the start's state change):
+  matrix gantries show their base limit over lanes 0–2; the shoulder sign shows the spitsstrook
+  (`x` laps 1–2, `arrow-down` lap 3) where a stretch is under it or starts within 250 m, else blank;
+  exit gantries stay blank. Around a standing zone: the **arrow gantry** (the gantry before the red-X
+  gantry, ≤ 950 m) `merge-left` / `merge-right` over the closed lanes and 80 over the others; the
+  **red-X gantry** (the last one ≤ 700 m before the zone) and the gantries inside it `x` over the
+  closed lanes (the shoulder too when closed) and the zone's limit (70); the **end gantry** (the first
+  ≤ 400 m after it) `end`. The start gantry: `count-3/2/1`, `go` for `GO_SIGN_TICKS`, then dark.
+  `posted[g]` = the highest limit over its lanes (blank / end = its base). On the A10: RING WEST
+  arrow 2 / X 3 / inside 4 / end 5; NOORD 8 / 9 / – / 11; OOST 11 / 12 / – / 14 (gantry 11 is both
+  NOORD's end and OOST's arrow: the arrow wins).
+- **Enforcement** (every race car, players and rivals; not finished, not being stopped; a move of more
+  than `MAX_STEP` m in a tick — a debug teleport — checks nothing): a gantry passed under `x` over
+  the car's lane (`signLaneAt`; 3 = the shoulder) → `redx`, `flash` (kind 'redx'), `fine`
+  (`REDX_EUROS`); every gantry passed sets the car's posted limit; a speed camera passed above the
+  posted limit + 3 km/h (the camera's own limit before any sign) → `flash`, `fine`; the zone: the
+  clock starts at its start, the average (m / ticks) at its end above the entry limit + 3 → `flash`
+  (kind 'zone'), `fine`. `CarState.fines` + 1 before `fine`; euros `fineEuros(kind, over)`.
+- **Race events**: `overtake` (a player passes a rival: once per rival per lap of the player, by
+  `dist`), `bestLap` (a new best FULL lap of any racer), `tunnelIn` / `tunnelOut` (the tube's name),
+  `roadworksAhead` (a zone goes up: its section and closed lanes), `policeActive` (a police car joins:
+  the count on the road). The payloads are reused objects.
+
+### B.R.2 The road works (`works.ts`, lap 2)
+
+- The seed (`runner.rng.fork('rules')`) leaves one zone out half of the time (never RING WEST): 2–3
+  zones. A zone is a POOL of standing bodies (`kind` 'prop', no `model`: the drawing is the scenery
+  `rules/works`): the arrow-board truck (`WORKS_TRUCK`, 7.4 × 2.3 m, 9 t) at `TRUCK_AT` 4 m in the
+  first closed lane, a barrier (`WORKS_BARRIER`, 2 × 2 m, 20 t) every 30 m in every closed lane, and
+  the taper's cones (`WORKS_CONE`, 0.6 m, 400 kg) every 10 m over `TAPER_LEN` 100 m from the far edge
+  of the closed lanes to the cones' line (`CONE_CLEAR` 2.45 m from the open lane's centre: outside a
+  driver's corridor). Parked: `hidden` + `phys.ghost`; up: solid once nothing overlaps it; reset to
+  its place every tick (a push never moves it).
+- The AI: every driver of `runner.drivers` (the rivals, the finished cars, the debug autopilot)
+  leaves a closed lane from `GUIDE_AHEAD` 420 m before a zone (`openLane`). The bot (`RallyBot`)
+  reads the same guide (integrator: like a player who reads the red X; before, its racing line ran
+  into the taper and it pushed against the cones for up to 19 s). FIELD's traffic reads the zones too
+  (B.F.2). The safety net: a race car that stands (below `STUCK_SPEED` 2.5 m/s: creeping against a
+  cone counts; integrator) 2 s within 16 m behind a prop is put in the nearest free open lane
+  (`recoverBody`, the `recover` event).
+- Queries: `closedAt(off, lane, look)`, `openLane(off, lane, look)`, `mask()`; `taperSide(w, o)`.
+
+### B.R.3 The police (`police.ts`, lap 3)
+
+```ts
+POLICE_SPEC { 1600 kg, 72 m/s, accel 8.5, grip 1.12, 4.9 × 1.76 m, model 'police' }; POLICE_GAP 420; BOX_AHEAD 3.5; BOX_SLACK 3;
+BOX_SIDE_MIN 1.9 / MAX 5; BOX_TICKS 120; HOLD_TICKS 180; CHASE_MAX 3600; LOSE_GAP 600; APPROACH 22; DROP_BACK 40; TAIL_GAP 12;
+SPAWN_MIN 130 / NEAR 450 / MAX 900; SEEN_AHEAD 430 / BEHIND 40; CATCH_GAIN 15; CATCH_PACE 1.12; RETRY_TICKS 600
+class PoliceForce { cars: PoliceCar[]; count; active; hunting(car); step() }
+PoliceCar { index body driver phase: 'idle'|'chase'|'pull'|'hold'|'leave'|'done' target chaseT boxT pullT holdT waitT stopped … }
+```
+
+- Police k joins `POLICE_GAP`·k ticks after the event lap 3 began. **The pick:** the racer with the
+  most fines (≥ 1), not stopped, not hunted (a tie: the better place). **The on-ramp:** the nearest
+  S-exit 130–450 m behind the racer that no player sees (not within 430 m ahead of a player car nor
+  40 m behind one), else the shoulder 170–320 m behind, else a farther exit (≤ 900 m); on the shoulder,
+  6 m/s faster than the racer, blue lights on (`BODY_LIGHT.blue`).
+- **The chase:** unseen by every player and more than 32 m behind its racer it gains on it as a ghost
+  along its lane (`CATCH_GAIN`); seen, it drives (rally/ai.ts `drive`, pace 1.12, passing) until
+  `APPROACH` m; then its own line one lane beside the racer (the freer side, the left on a tie),
+  `BOX_AHEAD` m ahead; with traffic beside on both sides it tails the racer `TAIL_GAP` m behind; traffic
+  in its line caps its speed (bumps only) and sends it back to the lanes. **The box** (`BOX_SLACK`,
+  one lane beside, the racer moving) for `BOX_TICKS` → `pulledOver` → both glide onto the hard shoulder
+  (kinematic, ghosts, the racer's input held) → `HOLD_TICKS` standing (its hazards on; integrator:
+  the racer and the police car turn solid once nothing overlaps them, so lap 3's spitsstrook traffic
+  sees them and does not drive through them) → `released` (the racer still a ghost while a body
+  overlaps it, then solid; before, a lorry on the spitsstrook pinned a released P2 to the barrier).
+  Shaken off (`CHASE_MAX`, `LOSE_GAP`, standing 3 s): it drives off and returns for the next racer after
+  `RETRY_TICKS`. It never spins; a stopped racer and a police car that stopped one are never in a
+  chase again.
+
+### B.R.4 The score (`score.ts`, RULES' values) and the tally
+
+`FINE_BASE` 50 + `FINE_PER_KMH` 10 per km/h over (camera, zone), `REDX_EUROS` 250, `fineEuros(kind,
+over)`, `eurosText(e)` ('8.430'); the FINES line `FINES n EUR 8.430`. Unchanged from B.5: PLACE
+20,000…2,000, TIME 50 per second under the par (TRACK's par: 8,871 ticks a lap, 26,613 the race),
+BEST LAP 2,000 under the lap par, OVERTAKES 100, NEAR MISSES 50 (≥ 150 km/h), FINES −250 (never below
+0), TEAM 5,000. The headline by the best player's place: `rallyHeadline` (spec §1.1).
+
+### B.R.5 The HUD part (`content/rally/rules/hud.ts`, `rules/hud`)
+
+`createRulesHud(runner)`; `HUD_LAYOUT.full` / `.split` (the boxes the tests check). Full view: the
+clock top centre; two warning rows by priority (`POLITIE!` within 300 m of a police car after you,
+`RIJSTROOK DICHT` with a red cross when a gantry ≤ 300 m ahead shows X over your lane, `FLITSER` ≤ 250 m
+before a live camera, `TRAJECT avg/limit` in the zone (red above it), `WERK IN UITVOERING 70` ≤ 600 m
+before standing works, `SPITSSTROOK OPEN` on lap 3 near a stretch); `BOETE EUR n` for 2.5 s after a
+fine; the white flash of a camera over that view only (10 ticks); `AAN DE KANT!` + `POLITIE n` (the
+seconds) while stopped; the mini-map bottom left (56 px: the loop pre-drawn, the start tick, rivals
+white, the players in their colours with a blinking centre on your own, the police blinking blue / red,
+standing works amber); a speed dial (0–260, ticks every 20, gold every 100, red past 200) above the
+digits; the ticker bottom centre once (in 2P: in the lower view). Split view: the clock, one row, BOETE,
+AAN DE KANT!, a 34 px map.
+
+### B.R.6 The scenery part (`content/rally/rules/scenery.ts`, `rules/works`, order 300)
+
+Page `WORKS_PAGE` 303 (128², one 16-colour CLUT). Per zone: the solid props cut into 80 m pieces
+(cones, boards on posts, the truck with its raised arrow board, the mobile camera's tripod), one
+decal mesh (the yellow solid line along the closed lanes, yellow dashes between the open ones;
+`bias` 6), the lit arrow (emissive; pointing to the open side) and the amber lamps (additive) by
+turns every 24 frames. Police: CARS' beacon meshes by turns (6 frames) while the blue bit is on, and
+`rules/police/display` + `stop` / `politie` (a raised red-LED matrix over the roof bar, every 40
+frames) while it chases or stops. About 700 triangles a zone; 1–12 draws in a view.
+
+### B.R.7 The 2P join (`runner.ts` `joinAt`, additive)
+
+`RallyRunner.joinAt: ((last) => { back, lane } | null) | null` — RULES sets it to `joinPoint`: the
+first place 15–600 m behind the last car (10 m steps) with no tunnel or cutting within 40 m, clear of
+standing works (140 m before to 40 m after), and a lane (the right one first) with no body within
+30 m. Null = wave A's 15 m behind it.
+
+### B.R.8 Sounds, numbers, tests
+
+- Synth placeholders (wave C replaces them): `rally/flash` (a player is flashed) and `rally/pulled`
+  (a player is stopped), played by the scene's listeners.
+- Sims with the full rules and WORLD's / FIELD's wave-B parts as of 2026-10-23 05:10 (`npm run sim --
+  --mission rally --expect-complete`; `tmp/rally-rules/many.sh`): every run complete; 1P seeds 1–3
+  27,447–29,227 ticks; easy / hard 27,537 / 29,291; 2P 28,582–31,368; `--grid-back` 26,964–30,135;
+  `--lap 3` 12,432. Per race ~100–120 flashes in the field (the bot ~15 fines, rivals 11–17), 7–17
+  red X, 2 / 3 / 4 stops by the police (easy / normal / hard), 6–9 overtakes by the bot. Without the
+  rules (seed 1): 28,420 → with them 28,521–29,181 (the police's stop costs a player about 6 s).
+- `tests/game/rally/rules.test.ts` (20: the plan, the signs per lap, a flash above the limit only and
+  rivals too, a teleport fines nothing, the zone's average, the red X, the works up / down / never
+  near a player, the AI and the safety net, the police count / pick / box / stop / release / once,
+  overtakes once per lap, tunnels, the euros, the headline, the join's safe point, determinism) and
+  `tests/game/rally/rules-hud.test.ts` (4: 1P and 2P at 1× with every element on and no text over
+  another, the layout, drawing never changes the race).
+
+## B.F The field (FIELD, wave B, 2026-10-23)
+
+Spec §2 (the race), §4 (traffic per lap), §6 (the cars), §7.3 (budgets); lead notes 3 and 6. The
+rally teams, the traffic and its spawner, the rival AI, the oncoming decor, the grid order, the
+results, and the physics' bodies from CARS' anchors. The AI modules live in `src/game/rally/ai-*.ts`
+but only the lazy content imports them (the main chunk grows by `grid.ts` and the small additions
+to `ai.ts` / `physics.ts` only).
+
+### B.F.1 The rally teams (`content/rally/teams/index.ts`; models `models/team-index.ts`)
+
+| Grid (1P) | Team | Model (`TEAM_MODEL_IDS`) | Tris / far | Handling (mass kg, top m/s, accel, grip; extras) | Pace share |
+|---|---|---|---|---|---|
+| 1 | DE LAATSTE RIT | `rival` (CARS' hearse) | 402 / 158 | 1800, 60.5, 6.0, 0.95; RWD | 0.955 |
+| 2 | OMA TRUUS | `team-oma`: a tiny lilac 1990s hatch, the grey-haired driver through the glass, a boy racer's wing | 326 / 112 | 820, 57, 7.2, 1.02 | 0.97 |
+| 3 | VRIJGEZELLEN | `team-limo`: a white stretch limousine, three lads through the sunroof (the groom in a gold hat) | 440 / 148 | 2400, 60, 6.0, 0.92; RWD; wheelbase 5.05 m | 0.95 |
+| 4 | DE FRIETBAK | `team-frietbak`: a snack van, the giant cone of fries on the roof, the hatch open under its flap | 386 / 138 | 2100, 55, 5.8, 0.94; RWD; `lean` 1.6 | 0.962 |
+| 5 | HUISJE OP WIELEN | `team-camper`: a 1970s coachbuilt camper, cream with sweeping stripes, the luton, a ladder | 404 / 138 | 2300, 51.5, 5.2, 0.97; RWD; `lean` 2.6 | 0.985 |
+| 6 | ACHTERUIT | `team-achteruit`: a small orange 1970s saloon, white arrows pointing BACKWARDS | 330 / 124 | 850, 55, 6.6, 1.0; `reverseTop` 55 (belt drive); `gag` 'reverse' | 0.945 |
+| 7 | DE IJSCOMAN | `team-ijsco`: a pastel ice-cream van, a giant ice cream on the roof, the striped awning | 330 / 138 | 1900, 54, 5.9, 0.95; `lean` 1.5 | 0.965 |
+
+- `TEAMS: Team[]` (grid order; 2P uses the first six), `TEAM_NAMES`, `TEAM_PACE`; each spec is a
+  `RivalSpec` (`ai-rival.ts`: `CarSpecB` + `horn` `'rally/horn/<id>'`, `dj` `'rally/dj/team/<id>'`,
+  `gag`, `bias`). Wave C makes the horns (and the ice-cream tune) and writes the DJ lines.
+- Every team name on both sides (painted unmirrored, `sideText` / `sideTextScaled`), on the roof
+  (reads from behind) and mostly on the back; made-up yellow plates; no badges.
+- Registered here: the models, `defineRallyTeams('teams')`, `defineRallySystem('rivals', 110)`,
+  `defineRallyHud('results', 900)`.
+
+### B.F.2 The traffic (`content/rally/traffic/index.ts`; `rally/ai-traffic.ts`)
+
+`TRAFFIC_TYPES` (spawn weight, lanes, pace × the lane's speed, cap, pool per player):
+
+| Type | Model | Tris | Rows | Lanes | Notes |
+|---|---|---|---|---|---|
+| hatch 22 | `traffic` (CARS') | 240 | 10 | 0–2 | |
+| saloon 18 | `traffic-saloon` | 240 | 10 | 0–2 | 1990s four-door |
+| estate 14 | `traffic-estate` | 250 | 10 | 0–2 | |
+| van 10 | `traffic-van` | 250 | 6 | 0–2 | glass in the cab only |
+| parcel 6 | `traffic-parcel` | 250 | 4 | 1–2 | a step van; our own parcel icon, `PAKKETTEN` on the back (no company) |
+| lorry 12 | `traffic-lorry` | 250 | 6 | 1–2 | cab-over + curtain trailer, 16.1 m, 5 axles (2 spin), 18 t, ≤ 85 km/h; wake 2 (slipstream) |
+| coach 4 | `traffic-coach` | 250 | 4 | 1–2 | 12 m, `AMSTERDAM` on the back |
+| taxi 4 | `traffic-taxi` | 250 | 2 | 0–2 | the saloon + a `TAXI` roof sign |
+
+- **Pools** (`Traffic`, one per runner; `trafficOf(runner)`): every type's bodies are added ONCE at
+  install (`kind` 'traffic', `hidden` + `phys.ghost` when parked, `side` 1000 then); a spawn sets
+  the `clutRow`. The stateHash covers them (B.7).
+- **The spawner** (every 8 ticks): `DENSITY` 5 / 8 / 12 cars per player window (laps 1 / 2 / 3) ×
+  `DENSITY_K` (easy 0.75, normal 1, hard 1.2) × `DENSITY_2P` 0.85 in 2P; the window is
+  `WINDOW_BEHIND` 240 m behind to `WINDOW_AHEAD` 500 m ahead of each player; new cars at
+  `SPAWN_AHEAD` 450–500 m (never within −60 … `SPAWN_SAFE` 440 m of ANY player: no pop-in), behind a
+  slow player at −220 m; never two bodies within 40 m across the road (no walls); parked beyond
+  −270 / +660 m of every player. At install the road ahead of the grid is filled (250–500 m).
+- **The driver** (per car, per tick): `LANE_KMH` 108 / 98 / 86 (left → right) × the type's pace × its
+  own ±5 %, the spitsstrook 88; bends at 90 % of its grip; a time gap behind the body ahead (brake
+  lights); a lane change = the indicator `SIGNAL` 60 ticks first, then the move at 1.8 m/s (the
+  indicator stays on; it goes back if a car comes alongside: the mirror); reasons: out of a lane
+  closed by road works (280 m early; with RULES installed it reads RULES' zones — `rulesOf(runner)
+  .works`: the active zones, their closed lanes and limit; without them TRACK's `roadworks` anchors
+  while a player is on lap 2), onto / off the hard shoulder in a `spits` stretch while a player is on lap 3, make way
+  for a faster body from up to 150 m behind (keep right), pass a slower car on the left, back right
+  when there is room. Lorries, coaches and parcel vans never use the left lane.
+- **A hit** (a bump that spins it or changes its speed by `HIT_DV` 4 m/s): it brakes to a stop with
+  its hazards on, stands `STOP_TICKS` 120–180 (integrator: was 180–240), turns back along the road, drives on (hazards
+  `HAZARD_AFTER` 90 more ticks). `crash { car: the racer, slot, other: the traffic car }`.
+- **Lights** (`lights`, B.3): brake (braking, or slow in a jam), left / right (signalling or
+  moving), hazard; head / tail at night are the drawer's.
+- **Events:** `honk { car: the traffic car, slot: the racer it honks at }` when a racer cuts in
+  within 14 m and it must brake > 5 m/s (cooldown 4 s); `nearMiss { car: the player, slot, other,
+  speed km/h }` when a PLAYER passes it with less than `NEAR_GAP` 0.9 m between the bodies (no
+  bump in the last 0.5 s); `jam { section }`.
+- **Jams** (lap 3): `JAMS` 1 / 2 / 2 zones (easy / normal / hard) of `JAM_LEN` 110 m spread over
+  lap 3 (seeded); armed when a player is `JAM_ARM` 520 m before one: `JAM_CARS` 7 slow cars across
+  the lanes (out of sight), stop-and-go at about `JAM_KMH` 60 km/h (27–72) with brake lights;
+  traffic slows into it from `JAM_APPROACH` 60 m before; over when every player is through.
+  Integrator (momentum, B.I.4): FIELD's 170 m / 45 km/h / 90 m cost the bot 20–25 s per jam.
+- **The works' limit by lane** (integrator): traffic takes the limit × its own ±5 % × `WORKS_LEFT`
+  1.04 (the left open lanes) or `WORKS_RIGHT` 0.86 (the right lane), so two cars side by side at
+  exactly 70 no longer form a rolling wall through a zone.
+- **The deadlock breaker** (integrator): a car that stood `DEADLOCK_TICKS` 300 while it wanted to
+  drive turns a ghost for `UNLOCK_TICKS` 150, takes the middle of its nearest lane and drives on
+  (it ignores the bodies ahead meanwhile); it turns solid once nothing overlaps it. A lane change
+  holds its line while a body is alongside on that side (it never squeezes a car against the
+  barrier).
+
+### B.F.3 The rival AI (`rally/ai-rival.ts`; system 'rivals')
+
+`installRivals(runner)` puts a `RivalBrain` in each rival's `Driver.ext` (B.F.6) and one system:
+`catchUp` = `catchUpFactor(dist − leading player's dist, hard)` (+3 % at 400 m behind, −2 % at
+400 m ahead, linear, 1 on hard; × top speed only), `traffic` = 1 − `VIRTUAL_TRAFFIC` (1.2 / 2.5 /
+4.5 % by lap) outside every player's window (no traffic is simulated there), the horns (a close pass
+of a player → `honk { car: the rival, slot: the player }`, cooldown 10 s), ACHTERUIT's gag. The
+drive: the racing line + the team's `bias`; a slower body ahead → the lane (the hard shoulder too)
+with the most free road, the mirror checked 1.8 s back (`passLane`); behind a race car / lorry /
+coach nearly as fast on a straight → stay in its slipstream to 8 m, then pull out; follow at 0.35 s
+(0.25 s drafting); it never moves onto a line a player closes in on and never brakes for a car
+behind (no brake-checks). **The gag** (once, from lap 2, a straight of 220 m ahead, a player 15–220 m
+behind, or anyone's on lap 3): a 0.5 s spin (kinematic, keeping the velocity), backwards at full
+reverse (its belt drive: up to its top speed) for ≤ 4 s or until a bend / a body ahead, a spin back
+(`GAG`, `GagPhase` 'ready' → 'spin' → 'back' → 'spinBack' → 'done').
+
+### B.F.4 The oncoming decor (`rally/ai-oncoming.ts`; `content/rally/traffic/oncoming.ts`)
+
+`oncomingPlan(length, skins)` — a fixed plan (Rng 'rally/oncoming'; 9 / 12 / 14 cars per km in the
+lanes −10.6 / −14.1 / −17.6 m at 112 / 100 / 86 km/h, against our direction; vans; lorries not in
+the fast lane); `oncomingS(car, L, t)`; `oncomingDensity(progress)` 0.45 → 1 (lap 1 → lap 3). The
+scenery part `oncoming` (order 200): the `ONCOMING_MAX` 26 nearest per view (−40 m to the fog) as
+textured boxes (10 tris; one dynamic mesh per view, two-sided, page `PAGE_IDS.cars + 30`) and, when
+`day.carLights`, their headlamps (an emissive additive dynamic mesh). Cosmetic: never in the sim; no
+allocation per frame.
+
+### B.F.5 The grid and the results
+
+- `rally/grid.ts`: `PLAYER_GRID` {1: [5], 2: [4, 5]}, `gridPlan(players, rivals, gridBack)`. The
+  runner builds `cars` in that order; a P2 join on the grid re-grids (`regrid`, private) to the 2P
+  start (the estates 5th and 6th, the last rival leaves). (runner.ts: the constructor's grid and the
+  grid branch of `joinPlayer`, FIELD's additive edit.)
+- `content/rally/teams/results.ts` (HUD part 'results'): UITSLAG over the frame in 'finish' / 'done':
+  POS, TEAM (`P1 ROZZERS` …), TIJD (a projected time with `*`), BESTE, BOETES (`nX EUR e` from
+  `CarState.fines` and the book, the euros in Dutch thousands: `eurosText`). `resultRows(runner)`
+  (rebuilt every 15 ticks). The camera orbit is the runner's. When this part is registered the scene
+  no longer draws its own wave-A panel (integrator).
+
+### B.F.6 Additive changes to DRIVE's files
+
+- `ai.ts`: `Driver.ext?: DriverExt` (`drive` → `ext.drive`, else `driveCore` = wave A's driver
+  improved for traffic), `Driver.backT?`, `lastLane?` / `forcedT?` (`forcedLane`: a lane set from
+  outside — RULES' road works guide, a recovery — is kept `FORCE_TICKS` 90: no racing line, no
+  passing), `laneFreeAt`, `laneRoom`, `sideClear` (the mirror: a faster body from behind within
+  `react` s), `passLane` (the lane with the most room, crossing lanes, `squeeze` round a standing
+  body), `driveLanes(track)` (the hard shoulder counts when the track has one), `reachFirst`,
+  `lookAhead`, `AI_CORRIDOR`. `driveCore` now plans a pass `PLAN_EXTRA` 45 m beyond its look-ahead,
+  moves over at 6 m/s on straights, never steers into a body alongside, moves off a touching or
+  standing body, backs away (steering) when pressed against a standing one, and sees RULES' props
+  by their real width.
+- `physics.ts` (lead note 3): `handlingOf(spec)` takes the length, width, wheelbase and the box's
+  centre (`offZ`: the white estate's push bar) from the model's anchors when the model is
+  registered (`shapeOfModel`, cached per model; the spec's numbers otherwise); `HandlingB` adds
+  `offZ`, `circles` (`circlesFor`: odd, ≥ 3; the limousine 5, the lorry 7), `lean`, `reverse`,
+  `reverseTop`, `shape`; `CarSpecB` (`lean`, `reverseAccel`, `reverseTop`); `bodyShape(h).cam` = the
+  bumper camera's eye (camera.ts reads it since the integrator's change, A.D.5); the Collider's circles follow
+  `circles` and `offZ`; the barrier check uses the box's centre.
+- `tex/car-sheet.ts`: `CarSheet(…, texel = CAR_TEXEL)` (the limousine 24, the lorry 12, the coach 16
+  texels per metre); `models/vehicle.ts` (FIELD's kit: `assemble`, `lampSet`, panels, `frustum`,
+  `cone`, scaled lettering).
+
+### B.F.7 Numbers (2026-10-23, `npm run sim -- --mission rally --expect-complete`, all rules on)
+
+1P seeds 1–3 28,536–29,199 ticks (places 2–5); easy / hard 28,263 / 29,346; 2P normal / easy / hard
+27,805 / 26,560 / 27,977; `--grid-back` normal / hard / easy 28,657 / 29,685 / 26,445 (places 7 / 4 /
+1), 2P 29,067; `--lap 3` 10,589; 0 recoveries for the bot in every run; laps of the bot 8,300–11,500
+ticks (2:18–3:12; lap 3 is rush hour). FIELD's harness without RULES (`tmp/rally-field/batch.sh`, 6
+seeds): mean 27,354, max 28,111. View at 1× 1P: 6,800–8,000 tris, 94–108 draws (the grid, the pack,
+lap 3 at night). Rival laps in a race of their own (the player dawdling): 6,600–12,000 ticks, all
+three laps, ≤ 1 recovery.
+
+### B.F.8 Tests
+
+`tests/content/rally-teams.test.ts` (11: registry, budgets, meshes, pages and rows, deterministic
+builds, sizes, anchors, the team names on both sides and the roof (never mirrored), plates, the
+teams' handling, the anchors in the physics, the traffic types) and `tests/game/rally/ai-field.test.ts`
+(15: the grid; traffic spawns out of sight, keeps lanes, signals ≥ 1 s; a hit → hazards, stop, drive
+on, `crash`; `honk`; `nearMiss`; lap 3's jams and spitsstrook; determinism; the catch-up bounds; no
+brake-checks; three laps at every difficulty; ACHTERUIT's gag; the oncoming plan; the estate's box
+from its anchors; the belt drive). Updated: `race.test.ts` (the grid order, the 2P join on the grid),
+`scene.test.ts` (6/8 on the grid, the team names on the results), `contract.test.ts` (CARS' ids among
+the registered models), `contract-b.test.ts` (the real traffic instead of PREP's stub).
+
+## B.I The integration (INTEGRATE, wave B, 2026-10-23)
+
+The integrator merged the builders' parts (B.W, B.R, B.F on PREP's contracts B.0–B.10), did their
+requests, built the race intro and tuned the momentum. Every change below is additive to the frozen
+contracts; the identity sims (`tmp/ring-r/id.sh`, `ring-b.sh`, `drive-same.sh`) stay byte-identical.
+
+### B.I.1 The full race
+
+ams tally → the MISSION 2 card → the glitch into 3D (the fold folds into the fly-over's first view)
+→ **the fly-over** (B.I.2) → the countdown on the start gantry (3-2-1, green arrows; then dark) →
+lap 1 (16:15, the low sun, light traffic, the speed cameras, the average-speed zone, the matrix
+signs) → lap 2 (the sunset, the headlights and lamps on, medium traffic, 2–3 road-works zones with
+the red X, merge arrows, cones, barriers, the arrow-board truck, yellow lines, 70 and a camera) →
+lap 3 (dark, rush hour with short jams, the spitsstrook open, the police) → the finish → the results
+(UITSLAG: FIELD's part over the orbiting camera) → the tally (PLACE, TIME, BEST LAP, OVERTAKES, NEAR
+MISSES, FINES with the euros, TEAM in 2P; the headline by place) → the glitch bridge → fps-1. 1P and
+2P; P2 joins on the grid, during the fly-over (the fly-over goes on in both views) or during the race
+(RULES' `joinAt`: the next safe point at the back).
+
+### B.I.2 The race intro: the fly-over (`camera.ts`, `scenes/rally.ts`; cosmetic)
+
+```ts
+INTRO { ticks 240, ahead 70, height 26, swing 15, blend 0.25 }
+introCam(t, track, cars, car, end: Cam3, out: Cam3, tmp: SplineSample): Cam3   // r3 trig only
+RallyScene.introducing: boolean
+```
+
+- From high over the start gantry (`ahead` m before the grid's front, `height` m up, looking back
+  down at the middle of the grid) round the right side of the field (`swing` m out at the middle of
+  the path) and down into the view's chase camera (`end`): the last `blend` of the path blends into
+  it, so the countdown starts without a jump. One path per view (2P: each ends behind its own car).
+- Only after the glitch's fold (`RallySceneOpts.fold`): the fold folds into the fly-over's first view,
+  then the race waits exactly `INTRO.ticks` ticks (any pad button skips it after 20 ticks). A sim or
+  a test without the fold starts at once, so the fly-over never changes the race (the scene test's
+  hash with and without the fold and the fly-over).
+- The titles (no HUD yet): `DE RINGRALLY` (big, gold) and `3 RONDEN  A10  8 AUTO'S`, until 90 ticks
+  before the end.
+
+### B.I.3 The builders' requests
+
+| From | Request | Done |
+|---|---|---|
+| FIELD 1 | the scene's own UITSLAG only without FIELD's part | `RallyScene.ownResults` (no 'results' HUD part registered) |
+| FIELD 2 | the bumper camera from the model's anchors | `rallyCam`: `bodyShape(ph.h).cam` (A.D.5) |
+| FIELD | results fines in Dutch thousands | `eurosText` in `resultRows` |
+| RULES 1 | the traffic reads RULES' road works | `Traffic.roadworksOn` / `worksClosed` / the works' limit read `rulesOf(runner).works` (active zones, closed lanes, the limit); TRACK's anchors only without RULES |
+| RULES 2 | the rival AI honours `d.lane` | already in FIELD's `ai-rival.ts` (`forcedLane`) |
+| RULES 3 | `PAGE_IDS.works` | `PAGE_IDS.works` 303 (`WORKS_PAGE`), `PAGE_IDS.sky` 310 (WORLD's) |
+| RULES 4 | `PAR_SPEED` 46 → 44 m/s? | **kept at 46** (race par 26,613 ticks): the bot (pace 0.94) finishes in 26,056–29,192 ticks (B.I.5; after the fixer's changes 26,320–29,317, B.X.3), so a TIME bonus comes for a race at or above the bot's level |
+| WORLD | the pinned track hash | `tests/content/rally-track.test.ts`: 2708714424 (the fixer's road repaint: 2477415180) |
+| WORLD (optional) | a sodium light in the tunnels | `TUNNEL_LIGHT` { ambient 0.92 / 0.6 / 0.3, sun 0.18 / 0.12 / 0.06 }, blended in over `TUNNEL_FADE` 30 m at each mouth, per view by its car's arc length (the tube walls are emissive; the road and the cars take it) |
+| WORLD (look) | the headlight pool shifted to one side | the pool quad is cut into 2 × 6 cells (the affine warp of one big quad) |
+
+### B.I.4 Momentum (the bot's pace; tuned 2026-10-23)
+
+What dragged, measured with per-lap probes (ticks below 100 km/h and standing, the events):
+
+| Drag (before) | Cause | Change |
+|---|---|---|
+| lap 2 easy: 19 s standing at the NOORD taper | the bot's racing line ran into the taper and pushed against the cones (creeping 2–6 km/h, so the 2 s safety net never fired) | the bot reads RULES' guide (B.R.2); the safety net counts below `STUCK_SPEED` 2.5 m/s |
+| lap 2: 20–25 s at 70 km/h in RING WEST | two traffic cars side by side at exactly the works' limit | the works' limit by lane (`WORKS_LEFT` 1.04, `WORKS_RIGHT` 0.86) × the car's ±5 % |
+| lap 3: 20–28 s per jam | `JAM_LEN` 170 m, `JAM_KMH` 45, a 90 m approach | `JAM_LEN` 110, `JAM_KMH` 60, `JAM_APPROACH` 60 m |
+| lap 3 (2P): a 3-minute knot of standing traffic and racers | lorries stuck half across two lanes | the deadlock breaker (`DEADLOCK_TICKS` 300 → a ghost for `UNLOCK_TICKS` 150) |
+| lap 3 (2P hard): a recovery | a pulled-over racer stood on the spitsstrook as a ghost; a lorry drove into it and pinned it to the barrier at the release | standing racer and police car solid once clear; the release waits until nothing overlaps (B.R.3); a lane change never squeezes a body alongside |
+| a hit traffic car | stood 3–4 s | `STOP_TICKS` 120–180 |
+
+The result (16 sims, B.I.5): laps 8,395–10,290 ticks (2:20–2:52; lap 1 8,400–9,300 with the start
+from 6th, lap 2 8,350–9,750, lap 3 8,420–10,290 with rush hour, 1–2 jams and usually a pull-over of
+the bot, which collects 12–15 fines), races 26,056–29,192 ticks (7:14–8:07) in 1P, 26,413–29,182 in
+2P. Gaps between the events: the cameras every ~2,000 m, the average-speed zone, the works from
+lap 2's start, the spitsstrook at lap 3's start, police 1–4 at 420-tick steps after it, jams armed
+520 m ahead. The jam and a pull-over cost about 6–9 s each.
+
+### B.I.5 Sims (`tmp/rally/base-b/`, `tmp/rally/base-b-same.sh`)
+
+| Run | Ticks | Places | Laps (P1 / P2) | stateHash |
+|---|---|---|---|---|
+| seed 1 | 29,192 | 2 | 9,203 / 9,219 / 10,290 | 3090918087 |
+| seed 2 | 27,483 | 2 | 8,908 / 8,959 / 9,136 | 388572297 |
+| seed 3 | 28,597 | 4 | 9,300 / 8,884 / 9,933 | 2554887757 |
+| seed 4 | 26,056 | 1 | 8,395 / 8,761 / 8,420 | 3481186445 |
+| seed 5 | 26,900 | 1 | 8,779 / 8,705 / 8,936 | 1049823357 |
+| easy / hard seed 1 | 27,536 / 27,412 | 2 / 1 | | 3769366482 / 3532398400 |
+| 2P seed 1 / 2 | 27,722 / 28,025 | 1 2 / 3 1 | | 2589755350 / 3411358398 |
+| 2P easy / hard | 26,413 / 28,586 | 3 1 / 1 4 | | 3166585092 / 3310924776 |
+| `--grid-back` normal / easy / hard | 27,765 / 27,068 / 28,238 | 2 / 3 / 2 | | 1112348446 / 2030626039 / 2691694365 |
+| `--grid-back` 2P | 29,182 | 6 2 | | 903341713 |
+| `--lap 3` | 9,875 | 1 | 9,395 | 391978127 |
+
+All complete, 0 errors, 0 recoveries, the same hash on a second run; 0.18–0.20 ms per tick.
+
+### B.I.6 Budgets (`tmp/rally-integrate-b/lapstats.ts`: P1 teleported every 200 m, stats() after 20 ticks)
+
+| View | Density | Triangles max / avg | Draws max / avg | Notes |
+|---|---|---|---|---|
+| 1P lap 1 (1×, SwiftShader) | 1 | 6,892 / 5,331 | 99 / 81 | |
+| 1P lap 2 | 1 | 6,940 / 5,769 | 109 / 93 | the road works |
+| 1P lap 3 | 1 | 7,602 / 5,604 | 130 / 92 | rush hour, night |
+| 2P lap 2 (both views) | 1 | 14,956 / 12,056 | 231 / 195 | about 7,500 / 116 per view |
+| 2P lap 3 (both views) | 1 | 15,738 / 11,848 | 272 / 197 | |
+| 1P 4K, real GPU (Metal), lap 3 | 4 | 7,124 / 5,374 | 123 / 88 | frame interval 16.67 ms (max 16.68) |
+| 2P 4K, real GPU, lap 3 | 4 | 15,032 / 11,517 | 257 / 187 | frame interval 16.67 ms (max 16.70) |
+
+Textures 1.49 MB, buffers 7.1 MB (of 8 / 16 MB). Every view stays under the lead's 10,000 triangles;
+the busiest 1P frames pass the spec's 6,000 (the lead allows it where the look needs it). The main
+chunk is 822 KB (wave A 803 KB: +19 KB of the wave-B contracts the scene imports statically —
+daylight, signs, score, the intro); the rally content chunk is 266 KB (95 KB gzip), lazy.
+
+### B.I.7 Tests
+
+`tests/game/rally/scene.test.ts` (the direct start: fold, fly-over, countdown; the hash with the
+fold and the fly-over), `contract.test.ts` (the flow waits `INTRO.ticks`), `tests/content/
+rally-track.test.ts` (the pinned hash), `rally-world.test.ts` (the pool's cells).
+
+## B.X The final fixes (FIXER, wave B, 2026-10-23)
+
+The review of wave B (`tmp/rally-b-review-report.md`) found 12 issues. The fixer verified each one
+and fixed 11; finding 8 (the balance of fines against places) is the lead's decision for wave C.
+Every change is additive or local to the rally; the 2D game, the dormant ring and the FPS mode are
+unchanged (`id.sh` 10/10, `ring-b.sh` 6/6, `drive-same.sh` 4/4 SAME).
+
+### B.X.1 Behaviour
+
+| Finding | Cause | Change (API) |
+|---|---|---|
+| 1 the police brake-check | close and AHEAD of its racer with both lines beside busy, the tail case put the police car in the racer's line at the racer's speed − 12 m/s | `police.ts`: ahead (gap < −1) it holds its own line at the racer's speed + `AHEAD_PULL` 1.5 m/s; ahead and nearer than `IN_LINE` (= `BOX_SIDE_MIN` 1.9 m) sideways it never drives slower than that |
+| (found on the way) a catching ghost turned solid at +20 m/s into a car's tail | the un-ghost checked only an overlap within 10 m | `PoliceForce.aheadCap`: it turns solid only at a speed it can hold behind the body ahead in its line (10 m + 2 s of closing) |
+| 2 rivals into the taper | the racing line (+ bias) ran along a closed lane's cones; RULES' guide changed only `d.lane` | `Driver.keepLo` / `keepHi` (additive): the lanes a driver may use; `keepSide` / `keepLane` clamp the racing line and the lane (rivals and `driveCore`); RULES sets them each tick for the AI drivers (`RoadWorks.keepLanes`), the sim bot sets its own |
+| 7 the AI on the closed hard shoulder | `driveLanes` gave every pass the shoulder | `keepHi` = `track.lanes` (the shoulder) only with no red X over it within `SHOULDER_X_AHEAD` 300 m (`RallyRules.shoulderX`); `passLane` keeps inside `keepLo..keepHi`. The HUD's red X warning also counts a lane within `REDX_EDGE` 1 m of the car's side |
+| (found on the way) a released or spun racer crossed all lanes at 60 km/h | the racing line at once | below `MERGE_SPEED` 18 m/s a racing driver keeps the lane it is in (`holdLane`; the shoulder when it may use it) |
+| 4 lap-2 cameras enforce 80 / 70 far from the works | the arrow / red-X gantries post the step-down up to 950 / 700 m before a zone | a fixed camera more than `WORKS_CAMERA_LEAD` 300 m before standing works keeps the base limit (`CarRules.postedBase`, `cameraLimitOf`); the mobile camera and the zone are unchanged. The HUD's `WERK IN UITVOERING` row shows from the arrow gantry on |
+| 3 the limits unreadable at 1× | 5 × 9 digits with 1-texel strokes in a 1.5 m face | `signs/page.ts`: bold 7 × 12 digits (strokes 2, holes 3), a thinner ring; `FACE_M` 1.5 → 1.7 m (the housing follows). `RallyRules.cameraLimit(car, range)` and the HUD row `FLITSER 100` (the limit that camera enforces on that car) |
+| 6 a P2 join keeps the 1P traffic | the pools and `k` were fixed at install | `Traffic.syncPlayers` on a roster change: the pools grow to 2 players (`addBody`), `k` takes `DENSITY_2P` (`Traffic.k` is no longer readonly) |
+| 9 the headlight pool as a roof lamp | the bright middle of a 16 m pool was the only part the car did not hide | `lights/cars.ts`: `POOL_LEN` 24 m, the near part faded by vertex colour (15 % at the nose, full from 70 %), a slightly dimmer tint |
+| 10 dark texels in the near asphalt | 1 lone darker texel in 19, the tyre tracks as 40 % lone texels | `tex-road.ts`: the grain only base + a hair lighter; the tracks as 4–10-texel streaks along the lane (pinned track hash 2477415180) |
+| 11 docs | | B.I.3 and `headless-rally.ts` (`botPace` default 0.94) |
+| 12 `buildSignFaces` | PREP's dead stub | removed; `contract-b.test.ts` reads WORLD's sign page |
+
+### B.X.2 Momentum (`tmp/rally-fix-b/probe/`: the review's probe at the bot's paces, seeds 1–5, normal)
+
+| Pace | Race ticks (avg) | Laps over 2:40 | Recoveries | Before (review) |
+|---|---|---|---|---|
+| 0.94 | 26,320–28,348 (27,696) | 2 of 15 | 0 | 26,056–29,192; 1–2 rival recoveries in a race |
+| 0.97 | 27,327–28,537 (28,015) | 4 of 15 | 0 | seed 1 28,678 (lap 3 3:02), seed 2 28,906 (6th) |
+| 1.0 | 26,789–28,139 (27,307) | 0 of 15 | 0 | seed 3 lap 3 10,202; seed 1 lap 2 10,595 |
+
+Pace 1.0 is now the fastest on average, and no run needs a recovery. 0.97 is still not faster than
+0.94: one incident (a pull-over, a jam, a traffic knot) moves a race by ±600 ticks, more than 3 % of
+pace. Lap 3 costs about 7 s for the pull-over and 4–8 s per jam; that is the design (spec §4).
+
+### B.X.3 Sims (`tmp/rally/base-b/` refreshed by the fixer; the integrator's set is in `tmp/rally-fix-b/base-b-integrate/`)
+
+| Run | Ticks | Places | Laps (P1 / P2) | stateHash |
+|---|---|---|---|---|
+| seed 1 | 27,959 | 2 | 9,019 / 9,288 / 9,172 | 2010710864 |
+| seed 2 | 27,859 | 2 | 8,630 / 8,818 / 9,931 | 1185523105 |
+| seed 3 | 28,348 | 3 | 9,602 / 8,846 / 9,420 | 2904554971 |
+| seed 4 | 26,320 | 1 | 8,670 / 8,512 / 8,658 | 3779398399 |
+| seed 5 | 27,996 | 2 | 9,101 / 9,410 / 9,005 | 2992313605 |
+| easy / hard seed 1 | 27,067 / 29,317 | 1 / 6 | 8,449 / 9,800 / 8,338 — 8,742 / 10,788 / 9,307 | 3285246445 / 3703276667 |
+| 2P seed 1 / 2 | 27,270 / 28,545 | 2 3 / 2 5 | | 349112750 / 580332114 |
+| 2P easy / hard | 27,408 / 29,294 | 1 5 / 3 1 | | 2381576728 / 624434113 |
+| `--grid-back` normal / easy / hard | 28,352 / 27,692 / 27,787 | 3 / 4 / 1 | | 3894115142 / 1890955972 / 3017487850 |
+| `--grid-back` 2P | 27,799 | 3 1 | | 2018254950 |
+| `--lap 3` | 10,350 | 1 | 9,870 | 4269963532 |
+
+All complete, 0 errors, 0 recoveries, 16/16 the same hash on a second run.
+
+### B.X.4 Tests
+
+`tests/game/rally/rules.test.ts`: no brake check (fails without the fix: both cars down to 15 km/h),
+the cameras before the works keep the base limit, the AI lanes (no shoulder under a red X on laps 1–2,
+the shoulder on lap 3, the closed works lanes left out), the red X warning at the shoulder border.
+`tests/game/rally/ai-field.test.ts`: a P2 join grows the traffic pools and `k`. `contract-b.test.ts`:
+the sign page; `FLITSER` with its limit. `tests/content/rally-track.test.ts`: the pinned hash.

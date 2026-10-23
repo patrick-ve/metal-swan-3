@@ -2868,9 +2868,10 @@ starts the ring directly; F4 skips to the next stretch (or kills the boss on scr
 `rally`, BINNEN DE RING; the ring above is dormant** (off the route; `?mission=ring` still starts
 it). `Gameplay` (ams) → `MissionComplete` (the ams tally) → `MissionIntro` (`MISSION 2`,
 `BINNEN DE RING`) → `RallyGlitch` (the card breaks into blocks that fold into the 3D start grid) →
-`Rally` (`RallyScene`: the countdown, three laps, the results; ⇄ `Pause` with a CAMERA item;
-player 2 joins with START on a free pad or the key 2) → `MissionComplete` (the rally's page: PLACE,
-TIME; the headline by the best place; `RALLY SEED n`) → `GlitchBridge` → `FpsIntro` → … Without
+`Rally` (`RallyScene`: the fly-over of the grid (4 s, any button skips), the countdown on the start
+gantry, three laps, the results UITSLAG; ⇄ `Pause` with a CAMERA item; player 2 joins with START on a
+free pad or the key 2) → `MissionComplete` (the rally's page: PLACE, TIME, BEST LAP, OVERTAKES, NEAR
+MISSES, FINES with the euros, TEAM in 2P; the headline by the best place; `RALLY SEED n`) → `GlitchBridge` → `FpsIntro` → … Without
 WebGL2: `RallyNoGl` (THIS DEVICE CANNOT SHOW 3D) → the tally with no race lines → the bridge.
 High scores: the rally is `M2`, the dormant ring `RIN`. Debug: `?mission=rally` (+ `players`,
 `seed`, `difficulty`, `art`, `lap`, `cam=chase|bumper`, `gl=0`, `debug`: F4 ends the race).
@@ -3817,11 +3818,29 @@ ring. The spec is final; this chapter only points to it.
 - **Controls:** the 8-button pad (LEFT / RIGHT steer, FIRE or UP gas, JUMP or DOWN brake and
   reverse, BOMB handbrake, START pause) plus a race channel per slot (a stick steers analog,
   triggers give analog gas and brake, a camera button and a held look-back).
-- **Per lap (wave B):** the time of day (afternoon → sunset → dark), traffic up to rush hour, road
-  works on lap 2, the police on lap 3, speed cameras, matrix signs and the spitsstrook, the rally
-  teams. **Wave C:** the car radio FILE FM with its DJ, the songs, the engines.
-- **Score:** the place and the time (more lines in wave B), on the existing MISSION COMPLETE page.
+- **The race intro:** after the glitch's fold the camera flies over the grid from high above the
+  start gantry, round the field and down behind the player's estate (`DE RINGRALLY`, `3 RONDEN A10
+  8 AUTO'S`); then the start gantry's matrix signs count down 3-2-1 and show green arrows.
+- **Per lap:** the clock runs 16:15 → 17:00 → 17:45 → 18:30 and the light blends from the low
+  afternoon sun through the sunset to the dark (head and tail lights, street lamps, lit windows,
+  sodium-orange tunnels). Traffic builds up (5 / 8 / 12 cars around each player). Lap 1: speed
+  cameras (FLITSER) and the average-speed zone in RING WEST. Lap 2: road works at 2–3 places (the red
+  X, merge arrows, cones, barriers, the arrow-board truck, yellow lines, 70 with a camera). Lap 3:
+  rush hour with short jams, the spitsstrook opens (green arrows), the police (2 / 3 / 4) go after the
+  racers with the most fines and pull one over for 3 s.
+- **The field:** seven made-up rally teams (DE LAATSTE RIT, HUISJE OP WIELEN, DE FRIETBAK,
+  VRIJGEZELLEN, DE IJSCOMAN, ACHTERUIT, OMA TRUUS) with their own handling; 1P starts 6th; eight
+  traffic types with indicators, brake and hazard lights; oncoming decor traffic.
+- **The HUD:** POSITIE, RONDE, RONDETIJD, BESTE RONDE, KM/H with a dial, the clock, a ring
+  mini-map, the warnings (FLITSER, RIJSTROOK DICHT, TRAJECT, WERK IN UITVOERING 70, SPITSSTROOK
+  OPEN, POLITIE!, AAN DE KANT!), BOETE EUR n and the white camera flash in that player's view; a
+  compact set per view in 2P. **Wave C:** the car radio FILE FM with its DJ, the songs, the engines.
+- **Score:** PLACE 20,000…2,000, TIME 50 per second under the par, BEST LAP 2,000, OVERTAKES 100,
+  NEAR MISSES 50, FINES −250 each (the euros as a joke), TEAM 5,000 in 2P; on the existing MISSION
+  COMPLETE page.
 - **Status (wave A, 2026-10-23):** the race plays end to end with the real track, physics,
   cameras, estates and stub rivals (the hearse); the HUD basics (POSITIE, RONDE, the lap time,
-  KM/H, the countdown, the results); the glitch into 3D; the no-WebGL2 path. See
-  `docs/design/rally.md` "Status (wave A)" and `docs/api/rally.md`.
+  KM/H, the countdown, the results); the glitch into 3D; the no-WebGL2 path.
+- **Status (wave B, 2026-10-23):** the full race plays as above in 1P and 2P (and a P2 join during
+  the race). At the sim bot's pace a lap takes 2:20–2:52 and the race 26,000–29,200 ticks
+  (7:15–8:07). See `docs/design/rally.md` "Status (wave B)" and `docs/api/rally.md` part B.I.

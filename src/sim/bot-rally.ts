@@ -16,6 +16,8 @@ import { BUTTON_BIT } from '../engine/input';
 import { mergeRaceAxes, type RaceAxes } from '../engine/race-input';
 import { drive, newDriver, type Driver } from '../game/rally/ai';
 import { emptyRallyInput, type CarState, type RallyInput } from '../game/rally/api';
+import { GUIDE_AHEAD } from '../game/rally/rules/works';
+import { rulesOf } from '../game/rally/rules/rules';
 import type { RallyRunner } from '../game/rally/runner';
 
 /** The steer the bot needs before it presses a direction with the 8 buttons (of 127). */
@@ -50,6 +52,15 @@ export class RallyBot implements InputSource {
       if (this.cars[s] !== car || !d) {
         this.cars[s] = car;
         d = this.drivers[s] = newDriver(r.track, car.s, car.side, this.pace, true, this.racing);
+      }
+      // Like a player who reads the red X and the merge arrows: out of a lane the road works close ahead.
+      const rules = rulesOf(r);
+      if (rules) {
+        const off = rules.offOf(car.dist);
+        // Fixer (wave B): and keeps its line and its passes inside the open lanes (no shoulder under a red X).
+        rules.works.keepLanes(off, d);
+        const lane = rules.works.openLane(off, d.lane, GUIDE_AHEAD);
+        if (lane !== d.lane) d.lane = lane;
       }
       drive(car, d, r.track, r.bodies, r.bodies.length, this.out[s]);
       this.active[s] = true;

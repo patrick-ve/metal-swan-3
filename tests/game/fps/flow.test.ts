@@ -16,6 +16,7 @@ import { loadContent } from '../../../src/game/content/index';
 // Level 4 is registered for every test here (the last floor's tally leads to its story card).
 import '../../../src/game/content/missions/oldenzaal/index';
 import { DYING_TICKS } from '../../../src/game/fps/game';
+import { PLACE_POINTS } from '../../../src/game/rally/score';
 import { defineFpsFloor, fpsFloorByNumber, hasFpsFloor } from '../../../src/game/fps/registry';
 import { newFpsRun } from '../../../src/game/fps/run';
 import type { FloorResult, FpsRun } from '../../../src/game/fps/types';
@@ -196,23 +197,25 @@ describe('the route (headless)', () => {
     const race = h.app.scenes.top as RallyScene;
     h.step(5);
     const before = slot.score;
-    // F4 on the race (`finishNow`): it ends at once in the grid order (the player's estate is on pole:
-    // 1st, the rally's golden record); the results, then the rally's MISSION COMPLETE page, then the bridge.
+    // F4 on the race (`finishNow`): it ends at once in the grid order (the player's estate starts 6th:
+    // FIELD's grid, docs/design/rally.md §2 — no golden record then); the results, then the rally's
+    // MISSION COMPLETE page, then the bridge.
     race.runner.finishNow();
+    const place = race.runner.carOf(0)!.place;
     expect(h.until(MissionCompleteScene, 400)).toBe(true);
     expect(h.seen).toContain(RallyScene.name);
     expect((h.app.scenes.top as MissionCompleteScene).runner.mission.id).toBe('rally');
-    // The page pays the race lines (PLACE 1/n: 20,000) and moves on by itself.
+    // The page pays the race lines (PLACE n/8: 5,000 for 6th) and moves on by itself.
     expect(h.until(GlitchBridgeScene, 900)).toBe(true);
     const bridge = h.app.scenes.top as GlitchBridgeScene;
     expect(bridge.snap.density).toBe(2);
-    expect(slot.score - before).toBeGreaterThanOrEqual(20000);
+    expect(slot.score - before).toBeGreaterThanOrEqual(PLACE_POINTS[place - 1]);
     expect(slot.rescued).toBe(0);
     // The bridge pays nothing more: no bonus record, no MISSION 2 BONUS line on floor 1.
     expect(missionBonusOf(h.app.session!.records.get<unknown>(AMS_BONUS_KEY))).toBeUndefined();
     expect(h.app.campaign!.missions).toEqual(['ams', 'rally']);
     expect(h.app.campaign!.goldenRecords[0].has('ams')).toBe(true);
-    expect(h.app.campaign!.goldenRecords[0].has('rally')).toBe(true);
+    expect(h.app.campaign!.goldenRecords[0].has('rally')).toBe(place === 1);
     // The phases, then a press finishes the typing and a second press folds the card.
     expect(h.until(GlitchBridgeScene, 1)).toBe(true);
     for (let i = 0; i < 200 && bridge.phase !== 'card'; i++) h.step(1);

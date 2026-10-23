@@ -68,16 +68,19 @@ function tone(name: Parameters<typeof ramp>[0], i: number): Color {
 /** The 16 colours of each bank (fewer are padded with the first). */
 function banks(): Color[][] {
   return [
-    // 0 road: tar, three close asphalt tones and a darker patch (cool greys only: a warm tone read
-    // as brown dirt near the car), a light shoulder speck, the white line, the worn line, oil,
-    // yellow, the dark of the wheel tracks.
-    [tone('steel', 1), tone('black', 4), tone('steel', 3), tone('black', 5), tone('steel', 2), tone('black', 6), tone('snow', 5), tone('snow', 3), tone('ink', 0), tone('gold', 5), tone('steel', 2)],
-    // 1 concrete: dirt, five greys, a joint, a light edge.
-    [tone('stone', 2), tone('stone', 3), tone('stone', 4), tone('stone', 5), tone('stone', 6), tone('steel', 4), tone('stone', 1), tone('stone', 7)],
+    // 0 road (WORLD, wave B; lead note 2a): asphalt from three close cool greys with a fine grain
+    // (1 the base, 2 a hair lighter, 3 a step darker), the tar of the seams, a repair patch, the
+    // shoulder's lighter speck, the white line, the worn line, ink, yellow, the faint tyre tracks.
+    [tone('steel', 2), tone('steel', 3), tone('black', 5), tone('gable', 1), tone('black', 4), tone('snow', 0), tone('snow', 5), tone('snow', 3), tone('ink', 0), tone('gold', 5), tone('gable', 1)],
+    // 1 concrete (lead note 2b): light cool concrete — the dark base line, a dark grain, three close
+    // light greys, the joint, the top highlight, a run of dirt.
+    [tone('steel', 3), tone('steel', 4), tone('steel', 5), tone('snow', 3), tone('gable', 3), tone('black', 6), tone('steel', 6), tone('snow', 2)],
     // 2 grass.
     [tone('green', 2), tone('green', 3), tone('green', 4), tone('green', 5), tone('olive', 3), tone('olive', 4), tone('moss', 3), tone('olive', 5)],
-    // 3 tunnel tiles: the plinth, grout, three creams, a dark top.
-    [tone('slate', 2), tone('slate', 3), tone('stone', 4), tone('plaster', 4), tone('plaster', 5), tone('plaster', 6), tone('slate', 1)],
+    // 3 tunnel tiles (lead note 2c): the plinth (two dark slates), the grout (a hair darker than the
+    // tiles), two near-white tiles, a dark top band. The lamps' sodium cast comes from the tube's
+    // vertex colour (geometry.ts), so the tiles read cream under it.
+    [tone('slate', 2), tone('slate', 3), tone('gable', 4), tone('gable', 5), tone('snow', 5), tone('cloth', 4), tone('slate', 1)],
     // 4 rail: cut out, the post, the band (dark → light), its highlight.
     [CLEAR, tone('steel', 2), tone('steel', 3), tone('steel', 4), tone('steel', 5), tone('steel', 6), tone('steel', 7)],
     // 5 lamp: cut out, the housing, the sodium glow (amber → pale).
@@ -127,19 +130,22 @@ export function trackTex(): TrackTex {
   paintRoad(b, road, rng.fork('road'), (i) => at(BANK.road, i), false);
   paintRoad(b, roadBlock, rng.fork('road-block'), (i) => at(BANK.road, i), true);
 
-  // Concrete: noise, a dirty foot (u 0–1), joints every 4 m (16 texels along), a light top edge.
+  // Concrete (u 0 = the foot of a barrier or a wall, up its height; 4 texels per metre): three close
+  // light greys with a fine dark grain, a dark base line (u 0), a top highlight at u 3 (the top edge
+  // of the 0.9 m central barrier and of the parapets), joints every 4 m, a few faint runs of dirt.
   {
     const c = (i: number): number => at(BANK.concrete, i);
-    b.noise(concrete, rng.fork('concrete'), [c(1), c(2), c(3), c(4), c(5)], [1, 3, 4, 2, 1]);
-    b.noise(b.reserve(concrete.x, 0, 2, 256), rng.fork('concrete-foot'), [c(0), c(1), c(6)], [3, 2, 1]);
-    for (let v = 0; v < 256; v += 16) b.rect(concrete, 2, v, 30, 1, c(6));
-    b.rect(concrete, 3, 0, 1, 256, c(7));
-    // A few stains (runs down from the top).
+    b.noise(concrete, rng.fork('concrete'), [c(2), c(3), c(4), c(1)], [8, 4, 3, 1]);
+    b.rect(concrete, 0, 0, 1, 256, c(0));
+    b.noise(b.reserve(concrete.x + 1, 0, 1, 256), rng.fork('concrete-foot'), [c(1), c(2), c(0)], [3, 4, 1]);
+    b.rect(concrete, 3, 0, 1, 256, c(6));
+    for (let v = 0; v < 256; v += 16) b.rect(concrete, 1, v, 31, 1, c(5));
+    // Runs of dirt down from the top of the tall walls (u ≥ 6), far apart.
     const st = rng.fork('stains');
-    for (let k = 0; k < 18; k++) {
+    for (let k = 0; k < 10; k++) {
       const v = st.int(0, 255);
-      const len = st.int(3, 12);
-      b.rect(concrete, 32 - len, v, len, 1, c(st.int(0, 1)));
+      const len = st.int(4, 14);
+      b.rect(concrete, 32 - len, v, len, 1, c(7));
     }
   }
   // Grass: four greens, olive and moss clumps.
@@ -149,8 +155,9 @@ export function trackTex(): TrackTex {
     const cl = rng.fork('clumps');
     for (let k = 0; k < 40; k++) b.rect(grass, cl.int(0, 30), cl.int(0, 254), 2, 2, g(cl.int(0, 1) ? 6 : 7));
   }
-  // Tunnel tiles: u across the wall's height (0 = the road): the dark plinth, then cream tiles of
-  // 4 × 4 texels with grout, a dark band at the top.
+  // Tunnel tiles: u across the wall's height (0 = the road; 32 texels over 5.4 m): the dark plinth,
+  // then near-white tiles of 3 × 4 texels (about 0.5 × 1 m) with fine grout a hair darker, a few
+  // tiles a shade off, a dark band at the top.
   {
     const t = (i: number): number => at(BANK.tiles, i);
     const tr = rng.fork('tiles');
@@ -159,8 +166,11 @@ export function trackTex(): TrackTex {
         let i: number;
         if (u < 5) i = u === 4 ? t(1) : t(tr.int(0, 3) === 0 ? 1 : 0);
         else if (u >= 29) i = t(6);
-        else if (u % 4 === 0 || v % 4 === 0) i = t(2);
-        else i = t(3 + ((((u >> 2) * 7 + (v >> 2) * 3) % 5) % 3));
+        else if ((u - 5) % 3 === 0 || v % 4 === 0) i = t(2);
+        else {
+          const cell = Math.floor((u - 5) / 3) * 31 + (v >> 2) * 17;
+          i = t(cell % 11 === 0 ? 5 : cell % 3 === 0 ? 4 : 3);
+        }
         b.set(tiles, u, v, i);
       }
     }
@@ -255,34 +265,53 @@ export function trackTex(): TrackTex {
  * on, 12 off, two wide), wear in the wheel tracks.
  */
 function paintRoad(b: PageBuilder, r: TexRect, rng: Rng, c: (i: number) => number, block: boolean): void {
-  // Asphalt: tones 1–4 (mostly 2), darker in the wheel tracks, lighter on the shoulder, dirt at the barriers.
-  b.noise(r, rng.fork('asphalt'), [c(1), c(2), c(3), c(4)], [2, 9, 3, 1]);
-  const wear = rng.fork('wear');
+  // Asphalt (lead note 2a): the base tone with a fine grain of a hair lighter. Fixer (wave B): no lone
+  // darker texels (near the camera each read as a dark square); the darker tone is only in the tracks.
+  b.noise(r, rng.fork('asphalt'), [c(1), c(2)], [12, 6]);
   const xs = (x: number): number => Math.floor((x + ROAD_SPAN / 2) * ROAD_TPM_X);
+  // Faint tyre tracks along the lanes: the two wheel tracks of each lane, 2 texels wide, a sparse
+  // darker grain (they read as a soft band, not as stripes).
+  // Fixer (wave B): short streaks along the lane (4–10 texels), not lone texels: they read as tracks.
+  const wear = rng.fork('wear');
   for (const lane of [-5.0, -1.5, 2.0]) {
     for (const off of [-0.85, 0.85]) {
       const u = xs(lane + off);
-      for (let v = 0; v < 256; v++) {
-        for (let du = 0; du < 2; du++) if (wear.int(0, 2) > 0) b.set(r, u + du, v, wear.int(0, 3) === 0 ? c(10) : c(1));
+      for (let du = 0; du < 2; du++) {
+        let run = 0;
+        for (let v = 0; v < 256; v++) {
+          if (run === 0 && wear.int(0, 19) === 0) run = wear.int(4, 10);
+          if (run > 0) {
+            b.set(r, u + du, v, c(10));
+            run--;
+          }
+        }
       }
     }
   }
+  // The shoulder (u 37+): the lighter tone with a few pale specks; dirt along the barriers.
   const sh = rng.fork('shoulder');
   for (let v = 0; v < 256; v++) {
-    for (let u = 37; u < 48; u++) if (sh.int(0, 2) === 0) b.set(r, u, v, c(sh.int(0, 3) ? 3 : 5));
-    for (let u = 0; u < 2; u++) if (sh.int(0, 1) === 0) b.set(r, u, v, c(0));
+    for (let u = 37; u < 48; u++) {
+      const k = sh.int(0, 9);
+      if (k < 4) b.set(r, u, v, c(2));
+      else if (k === 4) b.set(r, u, v, c(5));
+    }
+    for (let u = 0; u < 2; u++) if (sh.int(0, 2) === 0) b.set(r, u, v, c(3));
   }
-  // Tar seams and oil.
+  // A repair patch (one per 64 m strip, a different place in each strip) and two short cracks.
   const tar = rng.fork('tar');
-  for (let k = 0; k < 14; k++) {
-    const u0 = tar.int(3, 44);
-    const v0 = tar.int(0, 255);
-    b.line(r, u0, v0, u0 + tar.int(-3, 3), v0 + tar.int(4, 14), c(0));
+  {
+    const u0 = tar.int(6, 30);
+    const v0 = tar.int(0, 200);
+    const w = tar.int(6, 10);
+    const h = tar.int(14, 30);
+    b.rect(r, u0, v0, w, h, c(4));
+    for (let v = v0; v < v0 + h; v++) if (tar.int(0, 2) === 0) b.set(r, u0 + tar.int(0, w - 1), v, c(3));
   }
-  for (let k = 0; k < 6; k++) {
-    const u0 = xs([-5.0, -1.5, 2.0][k % 3]) - 1;
-    const v0 = tar.int(0, 250);
-    b.rect(r, u0, v0, 2, 3, c(10));
+  for (let k = 0; k < 2; k++) {
+    const u0 = tar.int(4, 42);
+    const v0 = tar.int(0, 240);
+    b.line(r, u0, v0, u0 + tar.int(-2, 2), v0 + tar.int(5, 12), c(0));
   }
   // The lines (white, a few worn texels).
   const line = rng.fork('lines');

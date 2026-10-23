@@ -25,15 +25,17 @@ function driver(fn: (t: number) => { steer?: number; gas?: number; brake?: numbe
 }
 
 describe('the grid and the countdown', () => {
-  it('8 cars: the player estates first, then 7 rivals (1P) or 6 (2P); two wide behind the line', () => {
+  it('8 cars: 7 rivals (1P) or 6 (2P), the estates on their grid slots (1P 6th; 2P 5th and 6th); two wide behind the line', () => {
     const one = race();
     expect(one.runner.cars).toHaveLength(1 + RIVALS_1P);
-    expect(one.runner.cars[0].slot).toBe(0);
-    expect(one.runner.cars[0].spec.model).toBe('estate-white');
-    expect(one.runner.cars.slice(1).every((c) => c.slot === -1)).toBe(true);
+    expect(one.runner.cars[5].slot).toBe(0);
+    expect(one.runner.cars[5].spec.model).toBe('estate-white');
+    expect(one.runner.cars[5].place).toBe(6);
+    expect(one.runner.cars.filter((c) => c.slot === -1)).toHaveLength(RIVALS_1P);
     const two = race({ players: 2 });
     expect(two.runner.cars).toHaveLength(2 + RIVALS_2P);
     expect(two.car(1).spec.model).toBe('estate-green');
+    expect(two.runner.cars.map((c) => c.slot).slice(3, 7)).toEqual([-1, 0, 1, -1]);
     expect(new Set(one.runner.cars.map((c) => c.id)).size).toBe(8);
     for (const c of one.runner.cars) expect(c.dist).toBeLessThan(0);
   });
@@ -49,15 +51,16 @@ describe('the grid and the countdown', () => {
     expect(h.runner.countdown).toBe(1);
     expect(h.car().speed).toBeLessThanOrEqual(PHYS.creep + 1e-3);
     expect(h.car().speed).toBeGreaterThan(0);
-    for (const c of h.runner.cars.slice(1)) expect(c.speed).toBe(0);
+    for (const c of h.runner.cars) if (c.slot < 0) expect(c.speed).toBe(0);
     h.step(1);
     expect(h.runner.phase).toBe('race');
     expect(go).toBe(COUNTDOWN_TICKS);
     expect(h.runner.countdown).toBe(0);
     h.step(120);
-    expect(h.car().speed).toBeGreaterThan(11);
+    // From the 6th grid slot: the row ahead pulls away first.
+    expect(h.car().speed).toBeGreaterThan(8);
     // The rivals start row by row (each keeps its gap to the car ahead).
-    expect(h.runner.cars.slice(1).every((c) => c.speed > 3)).toBe(true);
+    expect(h.runner.cars.filter((c) => c.slot < 0).every((c) => c.speed > 3)).toBe(true);
   });
 });
 
@@ -234,7 +237,7 @@ describe('events and the recovery in a race', () => {
 });
 
 describe('joins (spec §10)', () => {
-  it('player 2 joins on the grid: the green estate on the second grid slot, the field stays at 8, with its own camera rig', () => {
+  it('player 2 joins on the grid: the grid of a 2P start (the estates 5th and 6th), the field stays at 8, with its own camera rig', () => {
     const h = race();
     const two = race({ players: 2 });
     h.step(30);
@@ -245,11 +248,13 @@ describe('joins (spec §10)', () => {
     // The grid of a 2P start: the same cars on the same slots.
     expect(h.runner.cars).toHaveLength(8);
     expect(h.runner.cars.map((c) => c.id)).toEqual(two.runner.cars.map((c) => c.id));
-    for (let i = 1; i < 8; i++) {
-      expect(h.runner.cars[i].s).toBeCloseTo(two.runner.cars[i].s, 6);
-      expect(h.runner.cars[i].side).toBeCloseTo(two.runner.cars[i].side, 6);
+    // (The cars that stood still settled on the road for 30 ticks: centimetres.)
+    for (let i = 0; i < 8; i++) {
+      expect(h.runner.cars[i].s).toBeCloseTo(two.runner.cars[i].s, 1);
+      expect(h.runner.cars[i].side).toBeCloseTo(two.runner.cars[i].side, 1);
     }
-    expect(car.place).toBe(2);
+    expect(car.place).toBe(6);
+    expect(h.runner.carOf(0)!.place).toBe(5);
     expect(h.runner.carOf(1)).toBe(car);
     const cam = newCam();
     h.step(1);

@@ -32,7 +32,8 @@
  */
 import type { SplineSample } from '../../engine/r3/spline';
 import { angleDiff, atan2T, cosT, sinT, wrapAngle } from '../../engine/r3/trig';
-import type { CarPhys, CarSpec, Handling, RallyBody, RallyInput, RallyTrack, TrackBounds } from './api';
+import type { CarPhys, CarSpec, Handling, RallyBody, RallyInput, RallyModel, RallyTrack, TrackBounds } from './api';
+import { hasRallyModel, rallyModel } from './registry';
 
 export const DT = 1 / 60;
 /** m/s². */
@@ -122,21 +123,115 @@ const DEF_LENGTH = 4.7;
 const DEF_WIDTH = 1.8;
 const DEF_WHEELBASE = 2.7;
 
-const HANDLING = new WeakMap<CarSpec, Handling>();
+/**
+ * FIELD (wave B, additive): optional spec fields beyond `CarSpec` (absent = wave A's behaviour).
+ * `lean` multiplies the body's lean in corners (the camper leans); `reverseAccel` / `reverseTop` give
+ * the reverse gear's pull (m/s²) and top speed (m/s; default `PHYS.reverse` / `PHYS.reverseTop`):
+ * ACHTERUIT's belt drive goes as fast backwards as forwards.
+ */
+export interface CarSpecB extends CarSpec {
+  readonly lean?: number;
+  readonly reverseAccel?: number;
+  readonly reverseTop?: number;
+}
 
-/** The handling of a spec (cached per spec object): the CarSpec numbers with the defaults filled in. */
+/**
+ * The body of a car model from CARS' anchors (lead note 3; content/rally/models `CarAnchors`): the
+ * collision box (its size and its centre along the car), the wheelbase and the bumper camera's eye
+ * (model space: x left, y up, z forward). The physics takes these over the spec's own numbers.
+ */
+export interface BodyShape {
+  readonly length: number;
+  readonly width: number;
+  readonly height: number;
+  /** The collision box's centre, m forward of the body's origin (the push bar moves it forward). */
+  readonly offZ: number;
+  readonly wheelbase: number;
+  readonly cam: readonly [number, number, number];
+}
+
+/** Every `Handling` of `handlingOf` is one (FIELD's additive fields; read them through `handlingB`). */
+export interface HandlingB extends Handling {
+  /** The collision box's centre forward of the origin (m). */
+  readonly offZ: number;
+  /** Collision circles along the body (odd, ≥ 3; long bodies more: the limousine, the lorry). */
+  readonly circles: number;
+  /** × the lean in corners. */
+  readonly lean: number;
+  /** The reverse gear: pull (m/s²) and top speed (m/s). */
+  readonly reverse: number;
+  readonly reverseTop: number;
+  /** The model's body (null: the spec's numbers, e.g. a test track without the content). */
+  readonly shape: BodyShape | null;
+}
+
+/** The anchors of a registry model as the physics reads them (duck-typed: CARS' `RallyCarModel`). */
+interface AnchorsLike {
+  readonly height: number;
+  readonly box: { readonly x0: number; readonly x1: number; readonly z0: number; readonly z1: number };
+  readonly wheelbase: number;
+  readonly bumperCam: readonly [number, number, number];
+}
+
+const SHAPES = new WeakMap<RallyModel, BodyShape | null>();
+
+/** The body of a registered model from its anchors (null: no model, or one without anchors). Cached per model object. */
+export function shapeOfModel(id: string): BodyShape | null {
+  if (!hasRallyModel(id)) return null;
+  const m = rallyModel(id);
+  if (!m) return null;
+  const had = SHAPES.get(m);
+  if (had !== undefined) return had;
+  const a = (m as RallyModel & { anchors?: AnchorsLike }).anchors;
+  const shape: BodyShape | null = a
+    ? { length: a.box.z1 - a.box.z0, width: a.box.x1 - a.box.x0, height: a.height, offZ: (a.box.z0 + a.box.z1) / 2, wheelbase: a.wheelbase, cam: [a.bumperCam[0], a.bumperCam[1], a.bumperCam[2]] }
+    : null;
+  SHAPES.set(m, shape);
+  return shape;
+}
+
+/** FIELD's fields of a handling (defaults for a hand-made `Handling`). */
+export function handlingB(h: Handling): HandlingB {
+  const x = h as Partial<HandlingB> & Handling;
+  if (x.circles !== undefined) return x as HandlingB;
+  return { ...h, offZ: 0, circles: 3, lean: 1, reverse: PHYS.reverse, reverseTop: PHYS.reverseTop, shape: null };
+}
+
+/** The body of a handling (the bumper camera's mount: `cam`), or null (the spec's numbers). */
+export function bodyShape(h: Handling): BodyShape | null {
+  return (h as Partial<HandlingB>).shape ?? null;
+}
+
+/** Collision circles for a body (odd, ≥ 3): about one per 1.2 widths of length. */
+export function circlesFor(length: number, width: number): number {
+  let n = Math.ceil(length / (1.2 * width));
+  if (n < 3) n = 3;
+  if ((n & 1) === 0) n++;
+  return n;
+}
+
+const HANDLING = new WeakMap<CarSpec, { readonly model: RallyModel | null; readonly h: HandlingB }>();
+
+/**
+ * The handling of a spec (cached per spec object): the CarSpec numbers with the defaults filled in.
+ * FIELD (lead note 3): when the spec's model is registered (the rally content is loaded), its
+ * anchors give the length, the width, the wheelbase, the box's centre and the bumper camera.
+ */
 export function handlingOf(spec: CarSpec): Handling {
+  const model = hasRallyModel(spec.model) ? rallyModel(spec.model) : null;
   const had = HANDLING.get(spec);
-  if (had) return had;
+  if (had && had.model === model) return had.h;
+  const shape = model ? shapeOfModel(spec.model) : null;
+  const sb = spec as CarSpecB;
   const top = Math.max(5, spec.topSpeed);
   const accel = Math.max(0.5, spec.accel);
   const power = spec.power ?? accel * POWER_KNEE * top;
   const drag = Math.max(1e-5, (power / top - PHYS.roll) / (top * top));
   const g = PHYS.grip * spec.grip;
-  const length = spec.length ?? DEF_LENGTH;
-  const width = spec.width ?? DEF_WIDTH;
+  const length = shape?.length ?? spec.length ?? DEF_LENGTH;
+  const width = shape?.width ?? spec.width ?? DEF_WIDTH;
   const mass = Math.max(100, spec.mass);
-  const h: Handling = {
+  const h: HandlingB = {
     mass,
     topSpeed: top,
     accel,
@@ -148,14 +243,20 @@ export function handlingOf(spec: CarSpec): Handling {
     gripFront: spec.gripFront ?? g,
     gripRear: spec.gripRear ?? g * 1.05,
     fwd: spec.fwd ?? true,
-    wheelbase: spec.wheelbase ?? Math.min(DEF_WHEELBASE, length * 0.6),
+    wheelbase: shape?.wheelbase ?? spec.wheelbase ?? Math.min(DEF_WHEELBASE, length * 0.6),
     halfLen: length / 2,
     halfWid: width / 2,
     inertia: (mass * (length * length + width * width)) / 12,
     yawResp: Math.max(4, Math.min(12, (9 * 1400) / mass)),
     wake: Math.max(1, Math.min(2, (length * width) / (DEF_LENGTH * DEF_WIDTH))),
+    offZ: shape?.offZ ?? 0,
+    circles: circlesFor(length, width),
+    lean: sb.lean ?? 1,
+    reverse: sb.reverseAccel ?? PHYS.reverse,
+    reverseTop: sb.reverseTop ?? PHYS.reverseTop,
+    shape,
   };
-  HANDLING.set(spec, h);
+  HANDLING.set(spec, { model, h });
   return h;
 }
 
@@ -247,6 +348,7 @@ function clamp(v: number, lo: number, hi: number): number {
 export function stepBody(b: RallyBody, inp: Readonly<RallyInput>, track: RallyTrack, tmp: SplineSample, cap = Infinity): void {
   const ph = b.phys;
   const h = ph.h;
+  const hx = h as Partial<HandlingB>;
   if (ph.hold > 0) {
     // The recovery hold: the car stands where it was put.
     ph.hold--;
@@ -285,7 +387,10 @@ export function stepBody(b: RallyBody, inp: Readonly<RallyInput>, track: RallyTr
     if (u > 0.5) a -= brake * h.brake;
     else if (gas === 0) {
       reversing = true;
-      a -= brake * PHYS.reverse;
+      // FIELD: a reverse gear of its own (ACHTERUIT: as fast backwards as forwards, on its power curve).
+      const rt = hx.reverseTop ?? PHYS.reverseTop;
+      const rv = hx.reverse ?? PHYS.reverse;
+      a -= brake * (rt > PHYS.reverseTop ? Math.min(rv, h.power / Math.max(au, 1)) : rv);
     }
   }
   a -= GRAVITY * ph.grade;
@@ -314,7 +419,8 @@ export function stepBody(b: RallyBody, inp: Readonly<RallyInput>, track: RallyTr
   u += a * DT;
   if (u > 0) u = Math.max(0, u - res * DT);
   else if (u < 0) u = Math.min(0, u + res * DT);
-  if (reversing && u < -PHYS.reverseTop) u = Math.min(b.speed, -PHYS.reverseTop);
+  const revTop = hx.reverseTop ?? PHYS.reverseTop;
+  if (reversing && u < -revTop) u = Math.min(b.speed, -revTop);
   if (u > cap) u = cap;
   else if (u < -cap) u = -cap;
 
@@ -366,14 +472,17 @@ export function stepBody(b: RallyBody, inp: Readonly<RallyInput>, track: RallyTr
   let cosRel = fx * tx + fz * tz;
   const sinRel = fx * tz - fz * tx;
   const ext = h.halfLen * Math.abs(sinRel) + h.halfWid * Math.abs(cosRel);
+  // FIELD: the collision box's centre (CARS' anchors: the push bar moves it forward).
+  const oz = hx.offZ ?? 0;
+  const cs = oz === 0 ? side : side + oz * (fx * rr[0] + fz * rr[2]);
   let contact = 0;
   let pen = 0;
-  if (side + ext > bd.right) {
+  if (cs + ext > bd.right) {
     contact = 1;
-    pen = side + ext - bd.right;
-  } else if (side - ext < bd.left) {
+    pen = cs + ext - bd.right;
+  } else if (cs - ext < bd.left) {
     contact = -1;
-    pen = side - ext - bd.left;
+    pen = cs - ext - bd.left;
   }
   if (contact !== 0) {
     pos[0] -= pen * rr[0];
@@ -422,7 +531,8 @@ export function stepBody(b: RallyBody, inp: Readonly<RallyInput>, track: RallyTr
   pos[1] = tmp.p[1];
   ph.grade = t[1] * cosRel;
   ph.pitch = atan2T(t[1] * cosRel, th);
-  const lean = clamp(ph.lat * 0.006, -0.07, 0.07);
+  const lk = hx.lean ?? 1;
+  const lean = clamp(ph.lat * 0.006 * lk, -0.07 * lk, 0.07 * lk);
   ph.roll += (lean - ph.roll) * 0.15;
 
   // Progress along the track.
@@ -585,7 +695,7 @@ export class Collider {
       for (let j = i + 1; j < n; j++) {
         const b = bodies[j];
         if (b.phys.ghost || b.phys.blink > 0) continue;
-        const reach = a.phys.h.halfLen + b.phys.h.halfLen + 0.5;
+        const reach = a.phys.h.halfLen + b.phys.h.halfLen + 0.5 + offAbs(a.phys.h) + offAbs(b.phys.h);
         const ds = dsOf(a.s, b.s, L);
         if (Math.abs(ds) > reach) continue;
         if (Math.abs(a.side - b.side) > reach) continue;
@@ -607,15 +717,24 @@ export class Collider {
     const ka = Math.max(0, ha.halfLen - ha.halfWid);
     const kb = Math.max(0, hb.halfLen - hb.halfWid);
     const rad = ha.halfWid + hb.halfWid;
+    // FIELD: more circles along a long body (the limousine, the lorry), the box's centre (offZ).
+    const xa = ha as Partial<HandlingB>;
+    const xb = hb as Partial<HandlingB>;
+    const na = ((xa.circles ?? 3) - 1) >> 1;
+    const nb = ((xb.circles ?? 3) - 1) >> 1;
+    const oa = xa.offZ ?? 0;
+    const ob = xb.offZ ?? 0;
     // The deepest overlapping pair of circles.
     let best = 0;
     let ax = 0, az = 0, nx = 0, nz = 0, dist = 0;
-    for (let p = -1; p <= 1; p++) {
-      const cax = a.pos[0] + afx * ka * p;
-      const caz = a.pos[2] + afz * ka * p;
-      for (let q = -1; q <= 1; q++) {
-        const cbx = b.pos[0] + bfx * kb * q;
-        const cbz = b.pos[2] + bfz * kb * q;
+    for (let p = -na; p <= na; p++) {
+      const pp = oa + (ka * p) / na;
+      const cax = a.pos[0] + afx * pp;
+      const caz = a.pos[2] + afz * pp;
+      for (let q = -nb; q <= nb; q++) {
+        const qb = ob + (kb * q) / nb;
+        const cbx = b.pos[0] + bfx * qb;
+        const cbz = b.pos[2] + bfz * qb;
         const dx = cbx - cax;
         const dz = cbz - caz;
         const d2 = dx * dx + dz * dz;
@@ -707,6 +826,12 @@ export class Collider {
     }
     return true;
   }
+}
+
+/** |offZ| of a handling (0 for wave A's). */
+function offAbs(h: Handling): number {
+  const o = (h as Partial<HandlingB>).offZ;
+  return o === undefined ? 0 : o < 0 ? -o : o;
 }
 
 /** The yaw of a horizontal direction (dx, dz): forward(yaw) = (sin yaw, 0, cos yaw). */

@@ -400,7 +400,8 @@ no WebGL), the software renderer (nothing is drawn unless `renderFrame()` is cal
   (the track's racing line when not passing), `slots` ([true, true]); per tick a `Driver` per slot
   (rally/ai.ts `drive`: the racing line or a lane, passing a slower car, the speed envelope of the
   corners ahead, pure pursuit); `readRace` in race mode, `read` (the 8 buttons) when the mode is off. It
-  starts at GO and stops at its car's finish.
+  starts at GO and stops at its car's finish. Wave B: like a player who reads the red X, it leaves a
+  lane that RULES' road works close ahead (`rulesOf(runner).works.openLane`, `GUIDE_AHEAD` 420 m).
 - `npm run sim -- --mission rally [--seed n] [--players 2] [--difficulty easy|normal|hard] [--lap 1|2|3]
   [--no-bot] [--grid-back] [--max-ticks 54000] [--expect-complete] [--expect-ticks min-max] [--out file]
   [--trace N] [--quiet]` → the JSON report and a summary line (`sim rally seed n normal: COMPLETE in T ticks (…),
@@ -411,11 +412,18 @@ no WebGL), the software renderer (nothing is drawn unless `renderFrame()` is cal
   complete, 0 errors, 23,000–31,000 ticks, the same `stateHash` twice; since the wave-A fix also the
   OVERTAKING gate `--grid-back` (the player estates start behind the rivals, so the bot passes the
   field: a car locked to another would end far outside the range). Measured 2026-10-23 on the A10
-  (6,801 m): 1P 24,094 ticks at every difficulty, 2P 24,190–24,195 (the seed changes nothing until
-  wave B's traffic), about 0.02 ms per tick.
+  (6,801 m), wave A: 1P 24,094 ticks at every difficulty, 2P 24,190–24,195 (the seed changed nothing
+  before the traffic). **Wave B** (all of it on: the traffic, the rival AI, the rules, the road works,
+  the police; integrator, 2026-10-23): 1P seeds 1–5 26,056–29,192 ticks, 2P seeds 1–2 27,722 /
+  28,025, easy / hard 27,536 / 27,412 (2P 26,413 / 28,586), `--grid-back` 27,068–28,238 (2P 29,182),
+  `--lap 3` 9,875; laps 8,395–10,290 ticks (2:20–2:52); 0 recoveries; the same `stateHash` twice; about
+  0.18–0.20 ms per tick.
 - The harness starts the `RallyScene` without the glitch's fold (`RallySceneOpts.fold` absent: the
-  countdown runs from the first tick); the fold is cosmetic and never changes the race (a test
-  checks the hash with and without it). The wave-A baselines of the gate (seeds 1–3, 2P seed 1,
+  countdown runs from the first tick, and there is no fly-over intro either: it only follows the
+  fold); the fold and the fly-over are cosmetic and never change the race (a test checks the hash
+  with and without them). The wave-B baselines (16 runs: seeds 1–5, 2P seeds 1–2, easy / hard 1P and
+  2P, `--grid-back` normal / easy / hard / 2P, `--lap 3`) are in `tmp/rally/base-b/rally-*.json`;
+  `tmp/rally/base-b-same.sh <outdir>` compares a tree with them. The wave-A baselines of the gate (seeds 1–3, 2P seed 1,
   easy and hard seed 1; after the wave-A fix, 2026-10-23: 1P 24,094 ticks, hashes 716585496 /
   easy 1370001541 / hard 448174481, 2P 24,195 ticks, hash 1108275714; `--grid-back` 24,524–25,034
   ticks, 2P 24,694) are in

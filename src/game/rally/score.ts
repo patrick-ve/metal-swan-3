@@ -1,9 +1,12 @@
 /**
- * The race's tally lines — WAVE A by PREP (docs/design/rally.md §9): PLACE and TIME. RULES (wave B)
- * adds BEST LAP, OVERTAKES, NEAR MISSES, FINES and TEAM and may tune the values; the shape stays
- * (`raceLines(runner, slot)` → lines with points, or null for a missed bonus).
+ * The race's tally lines (docs/design/rally.md §9). WAVE A by PREP: PLACE and TIME. WAVE B by PREP
+ * (the contract, docs/api/rally.md "B.5"; RULES owns the values and may tune them): BEST LAP,
+ * OVERTAKES, NEAR MISSES, FINES (with the euros as a joke) and TEAM (2P), from the `ScoreBook` that
+ * counts the runner's wave-B events. The shape stays (`raceLines(race, car)` → lines with points, or
+ * null for a missed bonus); without a book the lines are wave A's (PLACE, TIME).
  */
-import type { CarState } from './api';
+import type { EventBus } from '../../engine/events';
+import type { CarState, RallyEventsB } from './api';
 
 /** One tally line (the shape of mission-complete.ts `TallyLine`). */
 export interface RallyLine {
@@ -25,16 +28,161 @@ export function raceClock(ticks: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}.${tenths}`;
 }
 
+/** Wave B (spec §9; RULES may tune): BEST LAP for a lap under the lap par. */
+export const BEST_LAP_POINTS = 2000;
+/** Per overtake of a rival (once per rival per lap: the emitter checks it). */
+export const OVERTAKE_POINTS = 100;
+/** Per near miss with traffic above `NEAR_MISS_KMH`. */
+export const NEAR_MISS_POINTS = 50;
+export const NEAR_MISS_KMH = 150;
+/** Per fine (the tally also shows the euros). */
+export const FINE_POINTS = -250;
+/** 2P: each player when both estates finish in the top `TEAM_TOP`. */
+export const TEAM_POINTS = 5000;
+export const TEAM_TOP = 3;
+
+/**
+ * RULES (wave B): the fines in euros — the joke column of the tally (spec §5, §9). A speed camera or
+ * the average-speed zone: a base plus euros per km/h over the limit; a red X: a fixed amount. Our
+ * own round numbers, not a real tariff.
+ */
+export const FINE_BASE = 50;
+export const FINE_PER_KMH = 10;
+export const REDX_EUROS = 250;
+
+/** The euros of one fine (`over`: km/h above the limit; ignored for a red X). */
+export function fineEuros(kind: 'camera' | 'zone' | 'redx', over: number): number {
+  if (kind === 'redx') return REDX_EUROS;
+  return FINE_BASE + FINE_PER_KMH * Math.max(0, Math.round(over));
+}
+
+/** The euros as the tally writes them: '8.430' (Dutch thousands). */
+export function eurosText(e: number): string {
+  const n = Math.max(0, Math.round(e));
+  const s = String(n);
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 === 0) out += '.';
+    out += s[i];
+  }
+  return out;
+}
+
+/** What the book counts for one car (by its id): the rivals too (the results, the police's choice). */
+export interface CarTally {
+  overtakes: number;
+  nearMisses: number;
+  /** The fines' euros (the count is `CarState.fines`). */
+  finesEuros: number;
+}
+
+/**
+ * The race's counters (wave B): it listens to the runner's `overtake`, `nearMiss` and `fine` events
+ * (`listen`), so the emitters (FIELD, RULES) only emit. A car's entry is made on its first event.
+ */
+export class ScoreBook {
+  private readonly cars = new Map<string, CarTally>();
+
+  /** The tally of a car (made on first use). */
+  tally(car: string): CarTally {
+    let t = this.cars.get(car);
+    if (!t) {
+      t = { overtakes: 0, nearMisses: 0, finesEuros: 0 };
+      this.cars.set(car, t);
+    }
+    return t;
+  }
+
+  /** The tally of a car, or null when nothing was counted for it. */
+  peek(car: string): Readonly<CarTally> | null {
+    return this.cars.get(car) ?? null;
+  }
+
+  overtake(car: string): void {
+    this.tally(car).overtakes++;
+  }
+
+  /** A near miss (it counts only at `NEAR_MISS_KMH` or more). */
+  nearMiss(car: string, kmh: number): void {
+    if (kmh >= NEAR_MISS_KMH) this.tally(car).nearMisses++;
+  }
+
+  fine(car: string, euros: number): void {
+    this.tally(car).finesEuros += euros;
+  }
+
+  /** Count the runner's events from now on; returns the unsubscribe. */
+  listen<M extends Pick<RallyEventsB, 'overtake' | 'nearMiss' | 'fine'>>(events: EventBus<M>): () => void {
+    const offs = [events.on('overtake', (e) => this.overtake(e.car)), events.on('nearMiss', (e) => this.nearMiss(e.car, e.speed)), events.on('fine', (e) => this.fine(e.car, e.euros))];
+    return () => {
+      for (const off of offs) off();
+    };
+  }
+
+  clear(): void {
+    this.cars.clear();
+  }
+}
+
+/** A player's score by line (points; `finesEuros` the joke column), spec §9. */
+export interface PlayerScore {
+  place: number;
+  timeBonus: number;
+  bestLap: number;
+  overtakes: number;
+  nearMisses: number;
+  /** ≤ 0 (never more than the other lines together: the total never goes below 0). */
+  fines: number;
+  finesEuros: number;
+  team: number;
+}
+
 /** What `raceLines` reads. */
 export interface ScoredRace {
   /** The par of the whole race (ticks: the par lap × the laps driven). */
   readonly parTicks: number;
   readonly carCount: number;
+  /** Wave B (optional): the par lap (ticks) for BEST LAP; absent = no BEST LAP bonus. */
+  readonly parLapTicks?: number;
+  /** Wave B (optional): the race's counters; absent = wave A's lines only (PLACE, TIME). */
+  readonly book?: ScoreBook;
+  /** Wave B (optional): every car (the TEAM line looks for the other estate). */
+  readonly cars?: readonly CarState[];
+}
+
+/** A player's score by line (spec §9); null for no car. */
+export function playerScore(race: ScoredRace, car: CarState | null): PlayerScore | null {
+  if (!car) return null;
+  const place = car.place;
+  const placePts = place >= 1 ? PLACE_POINTS[Math.min(place, PLACE_POINTS.length) - 1] : 0;
+  const t = car.finishTicks;
+  const under = t >= 0 ? Math.floor((race.parTicks - t) / 60) : 0;
+  const timeBonus = under > 0 ? under * TIME_POINTS_PER_SECOND : 0;
+  const best = bestLapTicks(car);
+  const bestLap = race.parLapTicks !== undefined && best >= 0 && best < race.parLapTicks ? BEST_LAP_POINTS : 0;
+  const tally = race.book?.peek(car.id) ?? null;
+  const overtakes = (tally?.overtakes ?? 0) * OVERTAKE_POINTS;
+  const nearMisses = (tally?.nearMisses ?? 0) * NEAR_MISS_POINTS;
+  let team = 0;
+  if (race.cars && car.slot >= 0 && car.finished && place <= TEAM_TOP) {
+    let mates = 0;
+    let top = 0;
+    for (const c of race.cars) {
+      if (c.slot < 0) continue;
+      mates++;
+      if (c.finished && c.place <= TEAM_TOP) top++;
+    }
+    if (mates >= 2 && top === mates) team = TEAM_POINTS;
+  }
+  const plus = placePts + timeBonus + bestLap + overtakes + nearMisses + team;
+  const fines = Math.max(car.fines * FINE_POINTS, -plus);
+  return { place: placePts, timeBonus, bestLap, overtakes, nearMisses, fines, finesEuros: tally?.finesEuros ?? 0, team };
 }
 
 /** The tally lines of a player's car (an unfinished car: PLACE by its place, no TIME bonus). */
 export function raceLines(race: ScoredRace, car: CarState | null): RallyLine[] {
   if (!car) return [{ label: 'PLACE', points: null, note: '-' }];
+  if (race.book) return scoreLines(race, car);
   const place = car.place;
   // A place past the table (a field of 9: a mid-race join after every rival finished) scores as the last.
   const pts = place >= 1 ? PLACE_POINTS[Math.min(place, PLACE_POINTS.length) - 1] : 0;
@@ -42,6 +190,29 @@ export function raceLines(race: ScoredRace, car: CarState | null): RallyLine[] {
   const t = car.finishTicks;
   const under = t >= 0 ? Math.floor((race.parTicks - t) / 60) : 0;
   lines.push({ label: `TIME ${t >= 0 ? raceClock(t) : '-'}`, points: under > 0 ? under * TIME_POINTS_PER_SECOND : null });
+  return lines;
+}
+
+/**
+ * Wave B: every line of spec §9 (PLACE, TIME, BEST LAP, OVERTAKES, NEAR MISSES, FINES, and TEAM in
+ * a race of two players). A missed bonus shows its count with null points.
+ */
+export function scoreLines(race: ScoredRace, car: CarState): RallyLine[] {
+  const sc = playerScore(race, car)!;
+  const tally = race.book?.peek(car.id) ?? null;
+  const t = car.finishTicks;
+  const best = bestLapTicks(car);
+  const lines: RallyLine[] = [
+    { label: `PLACE ${car.place}/${race.carCount}`, points: sc.place },
+    { label: `TIME ${t >= 0 ? raceClock(t) : '-'}`, points: sc.timeBonus > 0 ? sc.timeBonus : null },
+    { label: `BEST LAP ${best >= 0 ? raceClock(best) : '-'}`, points: sc.bestLap > 0 ? sc.bestLap : null },
+    { label: `OVERTAKES ${tally?.overtakes ?? 0}`, points: sc.overtakes > 0 ? sc.overtakes : null },
+    { label: `NEAR MISSES ${tally?.nearMisses ?? 0}`, points: sc.nearMisses > 0 ? sc.nearMisses : null },
+    { label: `FINES ${car.fines} EUR ${eurosText(sc.finesEuros)}`, points: sc.fines < 0 ? sc.fines : null },
+  ];
+  let players = 0;
+  for (const c of race.cars ?? []) if (c.slot >= 0) players++;
+  if (players >= 2) lines.push({ label: 'TEAM', points: sc.team > 0 ? sc.team : null });
   return lines;
 }
 

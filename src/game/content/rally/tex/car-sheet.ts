@@ -56,7 +56,8 @@ export interface ExtraTex {
 
 export class CarSheet {
   readonly b: PageBuilder;
-  readonly D = CAR_TEXEL;
+  /** Texels per metre (`CAR_TEXEL`; FIELD's long vehicles fewer: the limousine, the lorry, the coach). */
+  readonly D: number;
   readonly frame: CarFrame;
   readonly sideL: TexRect;
   readonly sideR: TexRect;
@@ -71,8 +72,9 @@ export class CarSheet {
   readonly solids: readonly TexRect[];
   readonly extra: Readonly<Record<string, TexRect>>;
 
-  constructor(id: number, frame: CarFrame, extras: readonly ExtraTex[] = [], h = PAGE_MAX) {
-    const D = CAR_TEXEL;
+  constructor(id: number, frame: CarFrame, extras: readonly ExtraTex[] = [], h = PAGE_MAX, texel = CAR_TEXEL) {
+    const D = texel;
+    this.D = texel;
     this.frame = frame;
     this.b = new PageBuilder(id, PAGE_MAX, h);
     const sw = Math.ceil(2 * frame.z0 * D);

@@ -602,3 +602,54 @@ standings) → the tally (PLACE, TIME; the headline by the best place) → the g
   radio ticker, warnings, clock), the countdown on the gantry, the camera fly-over intro, the radio,
   the engines and the other sounds. The seed changes nothing yet (no gameplay randomness before the
   traffic).
+
+## Status (wave B, 2026-10-23)
+
+Wave B (the race, §13) is built and integrated; the decisions above are unchanged. What plays now,
+end to end, in 1P and 2P (and a P2 join during the race): the card → the glitch into 3D → **the
+race intro** (the fold folds into a high view over the start gantry; the camera flies round the
+grid and down behind the player's estate, 4 s, any button skips; `DE RINGRALLY`) → the countdown on
+the start gantry's matrix signs → three laps with the time of day (16:15 → 18:30: the low sun, the
+sunset, the dark with headlights, lamps, lit windows and sodium-lit tunnels), the ten sections with
+their scenery and 26 landmarks, gantries, S-exit signs, hectometre boards and flitspalen → lap 1:
+speed cameras and the average-speed zone → lap 2: road works at 2–3 places → lap 3: rush hour with
+short jams, the spitsstrook open, the police → the finish → the results UITSLAG → the tally with
+every §9 line → the glitch bridge → fps-1.
+
+- **WORLD:** the scenery, landmarks and night lights of the ten sections (160 m cells, near and far
+  levels), the road furniture and the 14 sign states, the sky with clouds and the sun, the time of
+  day (`daylight`); the road, barrier and tunnel textures repainted (the lead's notes).
+- **FIELD:** seven made-up rally teams (the hearse, the camper, the snack van, the limousine, the
+  ice-cream van, the small saloon that also races backwards, the tiny hatchback) with their own
+  handling and sizes (the physics takes each model's box, wheelbase and bumper camera); eight traffic
+  types with indicators, brake and hazard lights; the traffic AI (5 / 8 / 12 cars per player window,
+  lane speeds, making way, the works, the spitsstrook, jams); the rival AI (racing line, passing,
+  slipstream, catch-up +3 % / −2 %, off on hard); oncoming decor traffic; the grid (1P starts 6th);
+  the results.
+- **RULES:** the event director, the signs director, the speed cameras, the average-speed zone, the
+  red X, the road works, the police (2 / 3 / 4), the score values and the fines in euros, the full
+  HUD (clock, warnings, BOETE, the flash, the mini-map, the dial), the 2P join at a safe point.
+- **Lead defaults taken in wave B (integrator):**
+  - the fly-over intro (4 s; only after the glitch's fold, so a sim never sees it);
+  - the momentum (the bot's pace): jams of 110 m at about 60 km/h, the works' limit a little lower in
+    the right lane for traffic, a deadlock breaker for traffic, the sim bot reads the red X like a
+    player; the race is 26,000–29,200 ticks (7:14–8:07) and a lap 2:20–2:52 (lap 3, with rush hour
+    and usually a pull-over of the bot, is the long one);
+  - `PAR_SPEED` stays 46 m/s (race par 26,613 ticks): the TIME bonus rewards a race at or above the
+    bot's level;
+  - a sodium-orange light on the road and the cars inside the tunnels.
+- **Gates:** typecheck clean; the full vitest suite; the 10 identity sims and the dormant ring's 6 + 4
+  sims byte-identical; 16 rally sims complete with 0 errors and 0 recoveries, the same hash twice
+  (`tmp/rally/base-b/`); the build; smoke on the CI route and the rally queries with 0 errors; on a
+  real GPU a 4K split screen holds 16.7 ms frames at 3D density 4 (about 15,000 triangles in about
+  260 draws for both views at the busiest point).
+- **Final fixes (fixer, after the review; docs/api/rally.md B.X):** a police car ahead of its racer
+  never brakes in its line; the AI keeps to the open lanes at the road works and off the hard
+  shoulder under a red X (laps 1–2); a slow racer (released, spun) keeps its lane until up to speed;
+  a fixed camera more than 300 m before standing works keeps the base limit, and the HUD shows the
+  enforced limit (`FLITSER 100`) and the works warning from the arrow gantry; bolder, larger limit
+  digits (1.7 m faces); a P2 join gets the 2P traffic; a longer, softer headlight pool; a calmer
+  near asphalt. New baselines: races 26,320–29,317 ticks, 0 recoveries. Open for the lead (wave C
+  POLISH): braking for the cameras still does not pay against the places (the fines are cheap).
+- **Not yet (wave C):** FILE FM and its DJ, the songs, the jingles, the engines, the siren, the
+  horns and the ice-cream tune (the teams carry their horn and DJ ids already).
