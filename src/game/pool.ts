@@ -74,4 +74,6 @@ function revive(e: Entity): void {
   e.vx = 0;
   e.vy = 0;
   e.contactDamage = null;
+  // Render only (the perspective floor): a depth-drawn fx never lends its depth to its next use.
+  e.drawDepth = 0;
 }

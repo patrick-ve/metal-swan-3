@@ -103,6 +103,13 @@ export abstract class Entity {
   facing: 1 | -1 = 1;
   /** Draw order: decor 10, items 20, enemies 30, vehicles 35, players 40, shots 50, fx 60, front decor 80. */
   z = 30;
+  /**
+   * RENDER ONLY (the perspective floor, docs/design/floor.md §3.7): draw this entity at this depth
+   * (screen px behind the walk line) — the world's draw shifts it to that depth (`World.depthDraw`);
+   * 0 = as always. Never read by the simulation; use it only while the entity cannot hit or be hit,
+   * or for cosmetic entities.
+   */
+  drawDepth = 0;
   /** Ticks since the first update. */
   age = 0;
   dead = false;
@@ -140,6 +147,16 @@ export abstract class Entity {
   /** Not dead and not removed. */
   get alive(): boolean {
     return !this.dead && !this.removed;
+  }
+
+  /**
+   * RENDER ONLY (the perspective floor's contact shadows, docs/design/floor.md §3.7): does this
+   * entity cast a shadow now? True by default; an entity that is not drawn for a while (a zombie
+   * under the ground or behind the boards, a flock that flew off) overrides it, so no shadow lies
+   * on an empty floor. Never read by the simulation.
+   */
+  get castsShadow(): boolean {
+    return true;
   }
 
   /** Called once per tick. */

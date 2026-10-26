@@ -16,6 +16,8 @@ import { frameH, frameW, getFrame, hasSprite } from '../engine/sprites';
 import type { Store } from '../engine/storage';
 import type { UpscaleMode } from '../engine/upscale';
 import { NullView3d, type View3d } from '../engine/view3d';
+import type { FloorGpu } from '../engine/floor/gpu';
+import { setFloorGpu } from './mission/floor/registry';
 import type { ArtCache } from './art-cache';
 import type { ContentReport } from './content/index';
 import { DEFAULT_PARAMS, type LaunchParams } from './params';
@@ -117,6 +119,11 @@ export interface AppOptions {
   artCache?: ArtCache | null;
   /** The 3D view (default `new NullView3d()`: draws nothing, the race runs logic only). */
   view3d?: View3d;
+  /**
+   * The GPU floor renderer (docs/design/floor.md §3.3; main.ts creates it in the browser). Default
+   * none: the CPU raster draws the perspective floor (node, tests, tools).
+   */
+  floorGpu?: FloorGpu;
 }
 
 /** The store key of the high score table (session.ts). */
@@ -152,6 +159,8 @@ export function loadHighScores(store: Store): HighScoreTable {
 
 export function createApp(o: AppOptions): GameApp {
   const params = o.params ?? { ...DEFAULT_PARAMS };
+  // The perspective floor's GPU renderer for every mission runner of this app (none: the CPU raster).
+  setFloorGpu(o.floorGpu ?? null);
   const debug = o.debug ?? new Debug(params.debug);
   if (params.god) debug.god = true;
   const settings = loadSettings(o.store);

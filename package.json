@@ -12,6 +12,7 @@
     "test": "vitest run",
     "sprites": "tsx tools/sprites.ts",
     "shot": "tsx tools/shot.ts",
+    "floor-clip": "tsx tools/floor-clip.ts",
     "arena": "tsx tools/arena.ts",
     "sim": "tsx tools/sim.ts",
     "smoke": "tsx tools/smoke.ts",

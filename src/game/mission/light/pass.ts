@@ -17,6 +17,11 @@
  * - the players (`heroLight` px, no colour: the readability floor) and the pickups (a faint pool);
  * - muzzle flashes and blasts (`fx/muzzle…`, `fx/explosion…`): a short warm flash in the dark.
  *
+ * The perspective floor (docs/design/floor.md §3.8; ./floor.ts): ONLY in a section that has a floor
+ * (`worldFloor`), the lamp glows move with their lamps' depth, every lamp lights an elliptical pool
+ * on the floor, the far fog rises with the lifted backdrop and the near fog becomes a ground mist
+ * lying on the floor (line-scrolled rows). Every other section takes the paths below unchanged.
+ *
  * Weather: the `fog` bands use the `oz-fog` generator and the `rain` the `oz-rain` tile
  * (content/oldenzaal/weather/), built at the drawing's art density (1×, 2× or 4×; the dense ones
  * as art jobs in the browser). Wind gusts (`wind`) push the rain and the fog sideways.
@@ -28,8 +33,9 @@
  * defined) after a delay.
  */
 import type { Color } from '../../../engine/color';
+import { sOfY } from '../../../engine/floor/cam';
 import type { PixelBuffer } from '../../../engine/pixel';
-import type { DrawOpts, ParallaxOpts, Renderer } from '../../../engine/render';
+import type { DrawOpts, Frame, ParallaxOpts, Renderer, SrcRect } from '../../../engine/render';
 import { VIEW_H, VIEW_W } from '../../../engine/render';
 import { Rng } from '../../../engine/rng';
 import { cancelArtJobs, hiArtDeferred, queueArtJob } from '../../../engine/sprites';
@@ -45,9 +51,14 @@ import {
   type LightControl,
   type LightSpot,
   type SectionLight,
+  type StaticLight,
 } from '../../content/oldenzaal/kit/light-api';
 import { FxEntity } from '../../fx';
+import { floorPool, floorShift, worldFloor, type FloorPoint, type FloorPool } from '../floor/hooks';
+import { FramePlacer } from '../floor/place';
+import type { SectionFloor } from '../floor/section-floor';
 import type { SectionDef } from '../types';
+import { DEFAULT_MIST, floorLightOf, mistAlpha, type FloorLightConfig, type MistConfig } from './floor';
 import { LightMap } from './lightmap';
 
 /** Generator ids (content/oldenzaal/weather; ids.ts OZ_LIGHT.fogLayer / rainLayer). */
@@ -78,6 +89,10 @@ const NEUTRAL: Color = 0xffffffff;
 
 /** Fog / rain tile sizes (logical px). */
 const FOG_W = 512;
+/** The ground mist's texture rows (a floor only: from the mist's top to the view's bottom). */
+const MIST_H = 80;
+/** The ground mist's highest density (its 4× build is one 32 ms art job: integration, wave A). */
+const MIST_MAX_DENSITY = 2;
 const RAIN_W = 192;
 const RAIN_H = 216;
 
@@ -163,11 +178,32 @@ export class MissionLight implements LightControl {
   private readonly rainOpts: ParallaxOpts = { repeatX: true, repeatY: true, alpha: 1 };
   /** Was the glow layer drawn last frame (tests / debug)? */
   glowDrawn = false;
+  /** The section's perspective floor (null: none — every path below draws as before). */
+  readonly floor: SectionFloor | null;
+  private readonly floorCfg: FloorLightConfig | null;
+  private readonly mistCfg: MistConfig;
+  private readonly mist: WeatherBuf | null;
+  /** The depth of each static lamp on the floor (null: no floor, or every lamp at the walk plane). */
+  private readonly lampDepths: Float64Array | null;
+  private readonly pt: FloorPoint = { x: 0, y: 0 };
+  private readonly pool: FloorPool = { x: 0, y: 0, rx: 0, ry: 0 };
+  private readonly mistFrames = new Map<PixelBuffer, Frame>();
+  private readonly mistSrc: SrcRect = { x: 0, y: 0, w: FOG_W, h: 1 };
+  /** The mist rows draw in world space (the renderer's 1/res grid: no whole-px stepping, spec §2.1). */
+  private readonly mistOpts: DrawOpts = { alpha: 1, src: this.mistSrc };
+  private readonly placer = new FramePlacer();
+  /** Mist rows drawn last frame (tests / debug). */
+  mistRows = 0;
+  /**
+   * The ground mist is drawn UNDER the entities (the runner binds `drawGround` to the view's
+   * `floorHook`, a floor only); false: `draw` lays it over them, in the old near fog's slot.
+   */
+  mistUnder = false;
 
   /** The pass of a section, or null when it has no light config (= no pass: draws as today). */
   static forSection(def: SectionDef, world: World, seed: number, flashScale = 1): MissionLight | null {
     const cfg = sectionLight(def.id);
-    return cfg ? new MissionLight(cfg, world, seed, flashScale) : null;
+    return cfg ? new MissionLight(cfg, world, seed, flashScale, def.id) : null;
   }
 
   /**
@@ -176,7 +212,8 @@ export class MissionLight implements LightControl {
    */
   readonly flashScale: number;
 
-  constructor(cfg: SectionLight, world: World, seed: number, flashScale = 1) {
+  /** `sectionId`: names the floor light (`defineFloorLight`) of a section with a perspective floor. */
+  constructor(cfg: SectionLight, world: World, seed: number, flashScale = 1, sectionId?: string) {
     this.cfg = cfg;
     this.flashScale = Math.max(0, Math.min(1, flashScale));
     this.world = world;
@@ -203,6 +240,15 @@ export class MissionLight implements LightControl {
       if (rain.color !== undefined) params.color = rain.color;
       this.rain = this.weather(RAIN_GEN, RAIN_W, RAIN_H, params, seed ^ 0x4a1);
     } else this.rain = null;
+    // The perspective floor (opt-in: a section with a floor only).
+    const floor = worldFloor(world);
+    this.floor = floor;
+    this.floorCfg = floor ? ((sectionId !== undefined ? floorLightOf(sectionId) : undefined) ?? {}) : null;
+    this.mistCfg = { ...DEFAULT_MIST, ...(this.floorCfg?.mist ?? {}) };
+    this.mist = floor && fog && fog.density > 0 && hasBgGenerator(FOG_GEN) ? this.weather(FOG_GEN, FOG_W, MIST_H, { color: fog.color, ramp: 1, base: 0.62, cell: 96 }, seed ^ 0xf08) : null;
+    const lampDepth = this.floorCfg?.lampDepth;
+    const lamps = cfg.lamps;
+    this.lampDepths = floor && lamps && lampDepth ? Float64Array.from(lamps, (l, i) => lampDepth(l, i)) : null;
     bindLightControl(world, this);
   }
 
@@ -347,8 +393,10 @@ export class MissionLight implements LightControl {
     const fog = this.cfg.fog;
     if (fog && this.fogFar) {
       const top = Math.max(0, Math.min(VIEW_H - 8, fog.top));
-      this.drawLayer(r, this.fogFar, want, 0.22, this.fogX * 0.4 + 131, top - 10, fog.density * 0.8, this.layerOpts);
-      this.drawLayer(r, this.fogFar, want, 0.5, this.fogX * 0.7, top - 2, fog.density * 0.75, this.layerOpts);
+      // On a floor the far bands rise with the lifted backdrop (its depth behind the feet).
+      const lift = this.floor ? this.floor.cam.yw - this.floor.cam.back : 0;
+      this.drawLayer(r, this.fogFar, want, 0.22, this.fogX * 0.4 + 131, top - 10 - lift, fog.density * 0.8, this.layerOpts);
+      this.drawLayer(r, this.fogFar, want, 0.5, this.fogX * 0.7, top - 2 - lift, fog.density * 0.75, this.layerOpts);
     }
     const f = this.flashAt(tick) * this.flashScale;
     if (f > 0.01) {
@@ -361,9 +409,12 @@ export class MissionLight implements LightControl {
   draw(r: Renderer, tick: number, density: number): void {
     const want = atRes(density, r.res);
     const cfg = this.cfg;
-    // 1. The near fog over the feet (in front of the entities, thin).
+    // 1. The near fog over the feet (in front of the entities, thin); on a floor, the ground mist
+    //    (here only when `drawGround` does not lay it under the entities).
     const fog = cfg.fog;
-    if (fog && this.fogNear) {
+    if (fog && this.floor) {
+      if (!this.mistUnder) this.drawMist(r, want, fog.density, this.floor);
+    } else if (fog && this.fogNear) {
       const top = Math.max(0, Math.min(VIEW_H - 8, fog.top));
       const nearTop = Math.round(top + (VIEW_H - top) * 0.3);
       this.drawLayer(r, this.fogNear, want, 1.2, this.fogX * 1.3 + 57, nearTop, fog.density * 0.6, this.layerOpts);
@@ -373,7 +424,7 @@ export class MissionLight implements LightControl {
     const dark = this.darkness * (1 - FLASH_LIFT * f);
     const map = this.map;
     map.begin(Math.floor(r.camX), Math.floor(r.camY));
-    this.gatherLights(tick);
+    this.gatherLights(tick, r.camX);
     const glow = map.resolve(cfg.tint, dark);
     if (dark > 0.004) r.image(map.dark, map.ox, map.oy, this.darkOpts);
     this.glowDrawn = glow;
@@ -394,8 +445,69 @@ export class MissionLight implements LightControl {
     }
   }
 
-  /** Every light of this frame into the map (culled to the view by the map). */
-  private gatherLights(tick: number): void {
+  /**
+   * The ground mist under the entities (a floor only; the view's `floorHook`, before the contact
+   * shadows and `world.draw`): it lies on the floor and the walk-plane decor, and the heroes stand
+   * in it. Sets `mistUnder` (then `draw` leaves the mist out).
+   */
+  drawGround(r: Renderer, _tick: number, density: number): void {
+    this.mistUnder = true;
+    const fog = this.cfg.fog;
+    if (fog && this.floor) this.drawMist(r, atRes(density, r.res), fog.density, this.floor);
+  }
+
+  /**
+   * The ground mist on a floor (docs/design/floor.md §3.8): one row of the mist texture per floor
+   * row (two below the walk line, where the mist is thin), each scrolling at its row's speed s(y)
+   * (line scroll) and drifting with the fog; alpha by `mistAlpha` × the fog's density. The rows are
+   * drawn in world space, so they move in the renderer's 1/res steps like the floor under them
+   * (spec §2.1: nothing on whole logical px), through the placer (no boxed doubles per row).
+   */
+  private drawMist(r: Renderer, want: 1 | 2 | 4, density: number, floor: SectionFloor): void {
+    this.mistRows = 0;
+    if (!this.mist) return;
+    // At most 2× (a soft noise: the 4× one is a 32 ms art job and 2.6 MB for no visible gain).
+    const b = this.buf(this.mist, want > MIST_MAX_DENSITY ? MIST_MAX_DENSITY : want);
+    if (!b) return;
+    let f = this.mistFrames.get(b.buf);
+    if (!f) {
+      f = { buf: b.buf, ox: 0, oy: 0, density: b.d };
+      this.mistFrames.set(b.buf, f);
+    }
+    const cam = floor.cam;
+    const m = this.mistCfg;
+    const top = Math.max(0, Math.floor(cam.back - m.rise));
+    const src = this.mistSrc;
+    const o = this.mistOpts;
+    const shift = this.fogX + r.camX;
+    for (let y = top; y < VIEW_H; ) {
+      const step = y < cam.yw + 4 ? 1 : 2;
+      const a = density * mistAlpha(y + step / 2, cam.back, cam.yw, m);
+      const row = Math.min(MIST_H - step, y - top);
+      if (a > 0.004) {
+        const s = sOfY(cam, Math.max(cam.back, y + step / 2));
+        const off = (((shift * s) % FOG_W) + FOG_W) % FOG_W;
+        src.y = row;
+        src.h = step;
+        o.alpha = Math.min(1, a);
+        // World space: the row's screen y is y − camY (the shake), its x the scroll offset.
+        const pl = this.placer;
+        pl.x = r.camX - off;
+        pl.y = y - row;
+        pl.put(r, f, o);
+        if (FOG_W - off < VIEW_W) {
+          pl.x = r.camX + FOG_W - off;
+          pl.y = y - row;
+          pl.put(r, f, o);
+        }
+        this.mistRows++;
+      }
+      y += step;
+    }
+  }
+
+  /** Every light of this frame into the map (culled to the view by the map). `camX`: the renderer's camera (the floor's shifts). */
+  private gatherLights(tick: number, camX: number): void {
     const map = this.map;
     const cfg = this.cfg;
     const x0 = map.ox;
@@ -403,7 +515,9 @@ export class MissionLight implements LightControl {
     const x1 = x0 + map.w;
     const y1 = y0 + map.h;
     const lamps = cfg.lamps;
-    if (lamps) {
+    const floor = this.floor;
+    if (lamps && floor) this.floorLamps(lamps, floor, tick, camX);
+    else if (lamps) {
       for (let i = 0; i < lamps.length; i++) {
         const l = lamps[i];
         if (l.x + l.r < x0 || l.x - l.r > x1 || l.y + l.r < y0 || l.y - l.r > y1) continue;
@@ -420,6 +534,12 @@ export class MissionLight implements LightControl {
       spot.flicker = 0;
       spot.intensity = 1;
       if (!e.lightOf(spot, tick)) continue;
+      if (floor && e.drawDepth !== 0) {
+        // Drawn at a depth (render only): its light goes with it.
+        floorShift(floor, spot.x, spot.y, e.drawDepth, camX, this.pt);
+        spot.x = this.pt.x;
+        spot.y = this.pt.y;
+      }
       if (spot.x + spot.r < x0 || spot.x - spot.r > x1 || spot.y + spot.r < y0 || spot.y - spot.r > y1) continue;
       map.add(spot.x, spot.y, spot.r, spot.intensity * flickerAt(spot.flicker, tick, e.id), spot.color, LAMP_GLOW);
     }
@@ -442,6 +562,35 @@ export class MissionLight implements LightControl {
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
       if (e instanceof FxEntity && !e.removed) this.fxLight(e);
+    }
+  }
+
+  /**
+   * The static lamps on a floor: each glow at its lamp's depth (the shift and speed of that depth,
+   * so it stays on the lamp head), and its pool on the floor row of that depth, flickering with it.
+   */
+  private floorLamps(lamps: readonly StaticLight[], floor: SectionFloor, tick: number, camX: number): void {
+    const map = this.map;
+    const x0 = map.ox;
+    const y0 = map.oy;
+    const x1 = x0 + map.w;
+    const y1 = y0 + map.h;
+    const depths = this.lampDepths;
+    const pc = this.floorCfg?.pool;
+    const pt = this.pt;
+    const pool = this.pool;
+    const yMin = floor.cam.back - 1;
+    for (let i = 0; i < lamps.length; i++) {
+      const l = lamps[i];
+      const depth = depths ? depths[i] : 0;
+      floorShift(floor, l.x, l.y, depth, camX, pt);
+      const k = flickerAt(l.flicker ?? 0, tick, i * 7 + 3);
+      const glow = l.glow ?? LAMP_GLOW;
+      if (!(pt.x + l.r < x0 || pt.x - l.r > x1 || pt.y + l.r < y0 || pt.y - l.r > y1)) map.add(pt.x, pt.y, l.r, (l.intensity ?? 1) * k, l.color, glow);
+      if (!pc || pc.intensity <= 0) continue;
+      floorPool(floor, l.x, depth, l.r * pc.radius, camX, pool);
+      if (pool.x + pool.rx < x0 || pool.x - pool.rx > x1 || pool.y + pool.ry < y0 || pool.y - pool.ry > y1) continue;
+      map.addEllipse(pool.x, pool.y, pool.rx, pool.ry, (l.intensity ?? 1) * k * pc.intensity, l.color, pc.glow, yMin);
     }
   }
 

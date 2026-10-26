@@ -23,6 +23,15 @@
  * density 4 caps the 3D view at 2, a later one at 2 caps it at 1 (once per session each; the 2D art
  * tier stays). The 2D governor's sample leaves out the 3D view's own CPU time.
  *
+ * The perspective floor (docs/design/floor.md §3.3): WebGL2 on a second detached canvas
+ * (`createGlFloor`), injected through `AppOptions.floorGpu`; its context is made with the first
+ * floor section. It draws the band at the backbuffer res (`renderer.res`, so `Renderer.surface` puts
+ * it 1:1) with the art tier's textures. Its CPU time stays inside the 2D governor's sample (it is 2D
+ * art, unlike the 3D view): a slow floor drops the art tier like any other art, and the floor then
+ * follows the tier (2× textures, k ≤ 6). `?floorgl=0` keeps it off: the CPU raster draws the floor
+ * (at most 2×), as it does without WebGL2 or while the context is lost. `?debug=floor` draws the
+ * floor's debug overlay (the depth grid, the walk line, the row lines).
+ *
  * Pointer lock (docs/design/fps.md §2.3): a click on the canvas takes the lock when
  * `app.pointerLockWanted` and the MOUSE LOOK setting are on; the lock is given back when either
  * turns off; losing it while it is wanted (Esc, alt-tab) sets `app.focusLost` (the scene pauses).
@@ -42,6 +51,7 @@ import { startBrowserLoop } from './engine/loop.browser';
 import { registerOfflineCache, removeOfflineCache } from './engine/offline.browser';
 import { PointerLockSource } from './engine/pointer.browser';
 import { createGl3d, type Gl3dView } from './engine/gl3d.browser';
+import { createGlFloor, type GlFloor } from './engine/gl-floor.browser';
 import { CanvasRenderer } from './engine/render-canvas.browser';
 import { FrameGovernor } from './engine/render-common';
 import { Governor3d } from './engine/r3/ps1';
@@ -51,6 +61,7 @@ import { createBrowserStore } from './engine/storage.browser';
 import { createApp, graphicsMode, type GameApp } from './game/app';
 import { ArtCache } from './game/art-cache';
 import { parseLaunchParams } from './game/params';
+import { setFloorOverlay } from './game/mission/floor/registry';
 import { artDetailTier } from './game/settings';
 import { BootScene } from './game/scenes/index';
 import { rallyProbe, type RallyProbe } from './game/scenes/rally-route';
@@ -75,6 +86,8 @@ declare global {
       readonly rally?: RallyProbe;
       /** The WebGL2 3D view (docs/api/rally.md "A.GL"): `stats()` (frame interval, cap, tris), `cap`, `ok`. */
       gl3d?: Gl3dView;
+      /** The WebGL2 floor (docs/api/floor.md §7): `stats()` (CPU ms, res, uploads, GPU bytes), `ok`, `reason`. */
+      floorGl?: GlFloor;
     };
   }
 }
@@ -153,7 +166,12 @@ function main(): void {
   const gov3d = new Governor3d();
   let frames3d = 0;
   let last3d = -1;
-  const app = createApp({ input, audio, store, params, debug, gesture: false, preloadArt: true, artCache, view3d });
+  // The perspective floor (docs/design/floor.md §3.3): WebGL2 at the backbuffer res; `?floorgl=0`
+  // leaves it off (the CPU raster draws).
+  const query = new URLSearchParams(window.location.search);
+  const floorGl = createGlFloor({ enabled: query.get('floorgl') !== '0', res: () => renderer.res });
+  if (query.get('debug') === 'floor') setFloorOverlay(true);
+  const app = createApp({ input, audio, store, params, debug, gesture: false, preloadArt: true, artCache, view3d, floorGpu: floorGl });
   // `?art=` wins over ART DETAIL until the option is changed.
   const artAtStart = app.settings.artDetail;
   const wantedTier = (): number => {
@@ -168,6 +186,7 @@ function main(): void {
     frames,
     tier: artTier,
     gl3d: view3d,
+    floorGl,
     get rally(): RallyProbe {
       return rallyProbe(app);
     },
@@ -242,6 +261,7 @@ function main(): void {
         }
         last3d = t1;
       } else last3d = -1;
+      // The floor's GL time stays in the sample (2D art); the 3D view has its own governor above.
       if (governor.sample(t1 - t0 - (drew3d ? view3d.stats().cpuMs : 0), t1, tier)) {
         console.info(`[metal-swan-3] render + present averaged ${governor.trippedMs.toFixed(1)} ms at 4× art: dropping to 2× art for this session`);
       }

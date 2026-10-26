@@ -19,6 +19,8 @@ import { OZ_WUGHOST_ART, OZ_ZOMBIE_ART } from './script-kit';
 import { OZ_RUIN_ART, withRuin } from '../../oldenzaal/ruin/index';
 import { scriptOzA } from './script-oz-a';
 import { G, OZ_A_CHECKPOINTS, OZ_A_EXIT, OZ_A_OPENINGS, OZ_A_W, terrainOzA } from './terrain';
+import { OZ_A_FLOOR, OZ_A_STREET, ozADecor } from './floor/oz-a';
+import { defineFloorLight } from '../../../mission/light/floor';
 
 /**
  * The town's materials (TOWN; terrain-art.ts + art-terrain.ts): red-brown herringbone brick
@@ -36,6 +38,18 @@ export const OZ_A_LIGHT = defineSectionLight(OZ_SECTION.a, {
   heroLight: 24,
 });
 
+/**
+ * The light on the perspective floor (docs/design/floor.md §3.8, §5.1): the lamps (and the
+ * emergency sign's amber lamp) stand on the pavement by the kerb, their glows at that depth; each
+ * lights a warm pool on the floor; the fog lies on the floor as a ground mist (thick at the fronts'
+ * feet, thin over the walk lane), so the street reads while the dusk stays grim.
+ */
+export const OZ_A_FLOOR_LIGHT = defineFloorLight(OZ_SECTION.a, {
+  lampDepth: () => OZ_A_STREET.lamp,
+  pool: { radius: 0.9, intensity: 0.45, glow: 0.2 },
+  mist: { back: 0.45, walk: 0.12, front: 0.2, rise: 10 },
+});
+
 export const sectionOzA: SectionDef = {
   id: OZ_SECTION.a,
   name: 'The shopping street (dusk)',
@@ -45,7 +59,10 @@ export const sectionOzA: SectionDef = {
   background: BG_OZ_A,
   terrain: terrainOzA(),
   terrainStyle: OZ_STREET_STYLE,
-  decor: [...OZ_A_DECOR],
+  // The perspective floor (docs/design/floor.md §5.1; floor/oz-a.ts): the decor at its depths (as
+  // before, without a floor: the kit is fail soft).
+  decor: OZ_A_FLOOR ? ozADecor() : [...OZ_A_DECOR],
+  floor: OZ_A_FLOOR,
   // Tier 4: the town decor this section draws, the openings, the dead soldiers, the meal's HUD / fx
   // and the light glows (the snack power carries on from oz-b only, but the icons are tiny).
   art: [...decorArt(OZ_A_DECOR), ...OZ_RUIN_ART, ...OZ_ZOMBIE_ART, ...OZ_WUGHOST_ART, 'item/pickup-gem/golden-record', 'item/crate'],

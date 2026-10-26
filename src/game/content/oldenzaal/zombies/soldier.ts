@@ -55,9 +55,12 @@ import { KIT_PREFIX, ZTABLE, ZTIMING, type ZFrameInfo } from './art';
 import { HEAD_BARE, HEAD_TILTS, HEADS, eyeAt, headId, type HeadName } from './art-head';
 import { CHUNK_FRAMES, CHUNK_ID, EYE_ID, GUN_ANGLES, MG_GUN, MG_MUZZLE, SHOT_ID, gunAngleIndex, mgGunFrame, type RiseLook } from './art-gear';
 import { grab as grabHero, release as releaseHero } from './grab';
+import { dustAt, FxDepths, ozFacadeDepth } from '../../missions/oldenzaal/floor/flat';
 import { CLAMBER, COLLAPSE, CRAWLER, ENTRY, GRUNT, GUNNER, HIT_FX, RIFLEMAN, STAGGER } from './numbers';
 
 const NO_BOXES: readonly Rect[] = [];
+/** On a perspective floor, a tell's dust keeps the front's depth while it lives (render only). */
+const PUFF_HOLD = 1 << 20;
 
 /** The sfx of the dead (sfx/oldenzaal-zombies.ts). */
 export const ZSFX = {
@@ -165,6 +168,14 @@ export class DeadSoldier extends Creature implements Zombie {
   private phaseT = 0;
   private waitLeft: number;
   private riseFx: (Entity & { open(): void }) | null = null;
+  /**
+   * The perspective floor (docs/design/floor.md §3.7; render only): the depth of the shop front a
+   * burst zombie comes out of (0 without a floor or for the other entrances). The dust of its tell
+   * falls there (`fxd`); the zombie itself is drawn in the walk plane with its hitbox from its first
+   * tick out of hiding (it can be hit from then on).
+   */
+  private readonly frontDepth: number;
+  private readonly fxd: FxDepths | null;
   // the fight
   private graceLeft = 0;
   private staggerLeft = 0;
@@ -210,6 +221,9 @@ export class DeadSoldier extends Creature implements Zombie {
     if (typeof p.facing === 'number') this.facing = p.facing < 0 ? -1 : 1;
     else if (this.opening && this.opening.outDir !== 0) this.facing = this.opening.outDir;
     else this.facePlayer();
+    // The fronts' depth on a perspective floor (0 without one: nothing changes).
+    this.frontDepth = this.entrance === 'burst' ? ozFacadeDepth(world) : 0;
+    this.fxd = this.frontDepth > 0 ? new FxDepths() : null;
     if (this.entrance === 'walk') this.phase = 'done';
     else if (this.entrance === 'march') this.phase = 'march';
     else {
@@ -233,6 +247,11 @@ export class DeadSoldier extends Creature implements Zombie {
   /** Under the ground / cover or behind the boards: no hurt boxes, not drawn. */
   get hidden(): boolean {
     return this.phase === 'wait' || this.phase === 'tell';
+  }
+
+  /** Render only (the floor's contact shadows): no shadow while hidden (nothing is drawn there yet). */
+  override get castsShadow(): boolean {
+    return !this.hidden;
   }
 
   stagger(ticks: number, dirX: number): void {
@@ -343,10 +362,16 @@ export class DeadSoldier extends Creature implements Zombie {
   override onRemove(): void {
     this.letGo();
     this.riseFx = null;
+    this.fxd?.clear();
     super.onRemove();
   }
 
   // ------------------------------------------------------------------------------- the tick
+
+  override update(): void {
+    super.update();
+    this.fxd?.tick();
+  }
 
   protected override think(): void {
     this.modeT++;
@@ -430,7 +455,11 @@ export class DeadSoldier extends Creature implements Zombie {
       }
       case 'tell': {
         // Dust and grit over the spot while it cracks / rattles / bangs (cosmetic: fxRng).
-        if (this.phaseT % 9 === 1) dust(w, this.spotX() + w.fxRng.range(-6, 6), this.y - (this.entrance === 'burst' ? 14 : 1), 1);
+        if (this.phaseT % 9 === 1) {
+          const puff = dustAt(w, this.spotX() + w.fxRng.range(-6, 6), this.y - (this.entrance === 'burst' ? 14 : 1), 1);
+          // On a floor a burst's dust falls in its front (render only; `fxd` is null otherwise).
+          this.fxd?.add(puff, this.frontDepth, PUFF_HOLD, 1);
+        }
         if (this.phaseT < this.telegraph) return;
         if (this.opening) this.opening.open(this.facing);
         else {

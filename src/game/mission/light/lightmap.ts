@@ -8,7 +8,8 @@
  * - `glow`: the coloured light (additive blend). Every cell adds the summed colour of the lights
  *   that reach it (`glow` share of each light), so lamps and candles tint and brighten their pool.
  *
- * A light falls off as (1 − d²/r²)² (soft edge, bright core). Nothing here allocates per frame:
+ * A light falls off as (1 − d²/r²)² (soft edge, bright core); `addEllipse` is the same over an
+ * ellipse (a lamp's pool on the perspective floor, docs/design/floor.md §3.8). Nothing here allocates per frame:
  * the arrays are made once; `begin` clears them, `add` accumulates, `resolve` packs the buffers.
  * Pure and deterministic (no randomness): the same lights give the same pixels.
  */
@@ -130,6 +131,66 @@ export class LightMap {
           const dx = px + 0.5 - cx;
           const q = 1 - (dx * dx + dy2) * inv;
           if (q > 0) L[row + px] += q * q * intensity;
+        }
+      }
+    }
+  }
+
+  /**
+   * Add an ELLIPTICAL light (a lamp's pool on the perspective floor, docs/design/floor.md §3.8):
+   * centre world (x, y), radii rx, ry, the falloff (1 − q)² of q = (dx/rx)² + (dy/ry)². Cells above
+   * world y `yMin` get none, fading in over 3 px below it (the pool stays on the floor).
+   */
+  addEllipse(x: number, y: number, rx: number, ry: number, intensity: number, color: Color, glow: number, yMin = -Infinity): void {
+    if (rx <= 0.5 || ry <= 0.5 || intensity <= 0) return;
+    const cx = x - this.ox;
+    const cy = y - this.oy;
+    const top = yMin - this.oy;
+    const x0 = Math.max(0, Math.floor(cx - rx));
+    const x1 = Math.min(this.w - 1, Math.ceil(cx + rx));
+    const y0 = Math.max(0, Math.floor(cy - ry), Math.floor(top));
+    const y1 = Math.min(this.h - 1, Math.ceil(cy + ry));
+    if (x1 < x0 || y1 < y0) return;
+    this.count++;
+    const g = glow > 0 ? glow * intensity : 0;
+    const cr = (((color >>> 24) & 255) / 255) * g;
+    const cg = (((color >>> 16) & 255) / 255) * g;
+    const cb = (((color >>> 8) & 255) / 255) * g;
+    if (g > 0) {
+      if (x0 < this.gx0) this.gx0 = x0;
+      if (y0 < this.gy0) this.gy0 = y0;
+      if (x1 > this.gx1) this.gx1 = x1;
+      if (y1 > this.gy1) this.gy1 = y1;
+    }
+    const L = this.L;
+    const R = this.R;
+    const G = this.G;
+    const B = this.B;
+    const w = this.w;
+    const irx = 1 / rx;
+    const iry = 1 / ry;
+    for (let py = y0; py <= y1; py++) {
+      const yc = py + 0.5;
+      const ey = (yc - cy) * iry;
+      const ey2 = ey * ey;
+      if (ey2 >= 1) continue;
+      const fade = yc - top >= 3 ? 1 : Math.max(0, (yc - top) / 3);
+      if (fade <= 0) continue;
+      const half = Math.sqrt(1 - ey2) * rx;
+      const a = Math.max(x0, Math.ceil(cx - half - 0.5));
+      const b = Math.min(x1, Math.floor(cx + half - 0.5));
+      const row = py * w;
+      for (let px = a; px <= b; px++) {
+        const ex = (px + 0.5 - cx) * irx;
+        const q = 1 - (ex * ex + ey2);
+        if (q <= 0) continue;
+        const f = q * q * fade;
+        const i = row + px;
+        L[i] += f * intensity;
+        if (g > 0) {
+          R[i] += f * cr;
+          G[i] += f * cg;
+          B[i] += f * cb;
         }
       }
     }

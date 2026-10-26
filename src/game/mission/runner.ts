@@ -57,6 +57,9 @@ import type {
 } from './types';
 import { SectionView } from './view';
 import { MissionLight, REDUCED_FLASH } from './light/pass';
+import type { FloorGpu } from '../../engine/floor/gpu';
+import { activeFloorGpu } from './floor/registry';
+import { bindWorldFloor } from './floor/hooks';
 
 export type RunnerState = 'playing' | 'exiting' | 'entering' | 'victory' | 'complete' | 'gameover';
 
@@ -97,6 +100,11 @@ export interface RunnerOptions {
    * lives gets a fresh continue countdown (every slot out: the world holds as at an 'allOut').
    */
   continueMission?: boolean;
+  /**
+   * The GPU floor renderer for sections with a perspective floor (docs/design/floor.md §3.3; default
+   * the one `AppOptions.floorGpu` registered, else none: the CPU raster). Art only.
+   */
+  floorGpu?: FloorGpu | null;
 }
 
 interface PendingExit {
@@ -153,6 +161,8 @@ export class MissionRunner {
   private introDropPending = false;
   /** The highest art density of the drawing (option or mission); `artDensity` caps it by the tier. */
   private readonly density: ArtDensity;
+  /** The GPU floor renderer (sections with a perspective floor). */
+  private readonly floorGpu: FloorGpu;
   private fadeT = 0;
   private fadeLen = TUNING.transition.fadeTicks;
   private pending: PendingExit | null = null;
@@ -189,6 +199,7 @@ export class MissionRunner {
     this.settings = o.settings ?? { ...DEFAULT_SETTINGS };
     this.startSection = o.section;
     this.density = toArtDensity(o.artDensity ?? this.mission.artDensity ?? 1);
+    this.floorGpu = o.floorGpu ?? activeFloorGpu();
     this.continueMission = o.continueMission === true;
     // Speech bubbles that show are voiced when a voice sample exists (audio only; the headless
     // outputs have no `say`). Gag bubbles hide with SPEECH BUBBLES OFF and stay silent then.
@@ -272,12 +283,21 @@ export class MissionRunner {
     this.view = new SectionView(def, terrain, seed, this.density);
     // Opt-in: a vertical section with dense art also releases its dense chunks by row.
     if (this.density > 1 && (def.scroll === 'up' || def.scroll === 'down')) this.view.evictRows = true;
+    // Opt-in: the perspective floor (art only): the GPU, entities drawn at a depth, the light's hook.
+    const floor = this.view.floor;
+    if (floor) {
+      this.view.floorGpu = this.floorGpu;
+      world.depthDraw = (r, e) => floor.drawAtDepth(r, e, world);
+    }
+    bindWorldFloor(world, floor);
     // Opt-in: the light pass of a section with a light config (none for every other section).
     this.light?.dispose();
     this.light = MissionLight.forSection(def, world, seed, this.settings.reduceFlashes ? REDUCED_FLASH : 1);
     if (this.light) {
       const light = this.light;
       this.view.backHook = (r, tick) => light.drawBack(r, tick, this.artDensity);
+      // On a floor the ground mist lies under the entities (docs/design/floor.md §3.8).
+      if (floor) this.view.floorHook = (r, tick) => light.drawGround(r, tick, this.artDensity);
     }
     this.exitOn.clear();
     for (const ex of def.exits ?? []) this.exitOn.set(ex, !ex.disabled);
@@ -551,6 +571,7 @@ export class MissionRunner {
       const cam = this.world.camera;
       r.setCamera(cam.viewX, cam.viewY);
       this.view.drawBack(r, this.ticks);
+      this.view.drawShadows(r, this.world);
       this.world.draw(r);
       this.view.drawFront(r, this.ticks);
       this.light?.draw(r, this.ticks, this.artDensity);

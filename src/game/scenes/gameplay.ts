@@ -43,6 +43,7 @@ import { blinkOn, centerText, newCampaign, UI_WHITE, type GameApp } from '../app
 import { drawHud } from '../hud';
 import type { MissionDef } from '../mission/index';
 import { MissionRunner } from '../mission/runner';
+import { warmFloorGpu } from '../mission/floor/registry';
 import { getMission, getWeapon, hasMission, listMissions, listWeapons } from '../registry';
 import { GameSession, type Difficulty } from '../session';
 import { creditsOf, type GameSettings } from '../settings';
@@ -499,6 +500,9 @@ export function missionArtSection(section: string): void {
  * It also switches on `setDeferHiArt`: the 2× scenery (background layers, terrain chunks) of each
  * section becomes art jobs the section view runs within the same budget per frame (the pool's
  * main-thread fallback runs them first in its slices), so a section start never stalls.
+ * A mission with a perspective floor (docs/design/floor.md §2.6) also warms the GPU floor here, at
+ * every tier (its context and compile: no play frame pays them; the section start queues the floor's
+ * chunk jobs, SectionView.prepare).
  * Returns true when the preload runs (started now or before).
  */
 export function preloadMissionArt(
@@ -508,6 +512,8 @@ export function preloadMissionArt(
   session: Pick<GameSession, 'slots'> | null = app.session,
   section?: string,
 ): boolean {
+  // The perspective floor's GL context and program, at any tier (the browser only).
+  if (app.preloadArt) warmFloorGpu(mission?.sections);
   // The density checks: the mission's highest density, capped by the art tier (tier 1: nothing).
   const tier = Math.min(toArtDensity(density), artTier());
   if (tier < 2 || !app.preloadArt) return hiPreload !== null;

@@ -22,6 +22,21 @@ import { at, carillon, crate, fromLeft, fromRight, hardOnly, hostage, normalUp, 
 import { placeSecrets, secretArt } from './secrets';
 import { awningSprite, balustradeSprite, boatDecor, bridgeDecor, HOUSE, houseRow, rowWidth, waterDecor } from './art';
 import { A_ARENA, A_AWNINGS, A_BIKE_LOCK, A_BOATS, A_BRIDGES, A_CANAL, A_FABEL_X, A_LEDGES, A_W, DECK_Y, G, ROOF_Y, terrainA, WATER_Y } from './terrain';
+import {
+  A_BRIDGE_1,
+  A_BRIDGE_2,
+  aFloor,
+  BULB_FRONT_DECOR,
+  FACADE,
+  frontRailDecor,
+  HOUSE_FRONT_ROW,
+  HOUSE_PAVEMENT,
+  kitDecor,
+  kitFloor,
+  QUAY_FRONT_ROW,
+  QUAY_PAVEMENT,
+  withRowboatFaces,
+} from './floor/index';
 
 export const BG_MORNING: BackgroundDef = {
   sky: PAL.sky[2],
@@ -42,64 +57,65 @@ const ARRIVAL = [HOUSE.flat, HOUSE.bell, HOUSE.koffie, HOUSE.step, HOUSE.neckRed
 const AFTER = [HOUSE.stepBrown, HOUSE.boeken, HOUSE.bell];
 
 const decor: DecorDef[] = [
-  // --- the quay street (canal and houses in the parallax) ---
-  { sprite: 'decor/ams/elm', x: 60, y: G },
-  { sprite: 'decor/ams/lamp', x: 150, y: G },
-  { sprite: 'decor/ams/tulips', x: 205, y: G, animate: true },
-  { sprite: 'decor/ams/bench', x: 250, y: G },
-  { sprite: 'decor/ams/bike', frame: 1, x: 296, y: G },
-  { sprite: 'decor/ams/flag-ams', x: 410, y: G, animate: true },
-  { sprite: 'decor/ams/lamp', x: 470, y: G },
-  { sprite: 'decor/ams/elm', x: 620, y: G },
+  // --- the quay street (canal and houses in the parallax); depths on the floor (docs/design/floor.md §4.4) ---
+  { sprite: 'decor/ams/elm', x: 60, y: G, depth: QUAY_PAVEMENT },
+  { sprite: 'decor/ams/lamp', x: 150, y: G, depth: 21 },
+  { sprite: 'decor/ams/tulips', x: 205, y: G, animate: true, depth: QUAY_PAVEMENT },
+  { sprite: 'decor/ams/bench', x: 250, y: G, depth: 25 },
+  { sprite: 'decor/ams/bike', frame: 1, x: 296, y: G, depth: 21 },
+  { sprite: 'decor/ams/flag-ams', x: 410, y: G, animate: true, depth: 26 },
+  // What a hittable entity sits on stays in the walk plane (floor.md §3.7: art and hitbox together):
+  // the lamps a gull sleeps on and the elm with the secret bike in its crown. On the floor they stand
+  // on a widened pavement (a bulb: the lane swerves round it, floor/section-a.ts).
+  { sprite: 'decor/ams/lamp', x: 470, y: G, depth: 0 },
+  { sprite: 'decor/ams/elm', x: 620, y: G, depth: 0 },
+  // Bridge 1: the old 2D pieces are hidden on the floor (the deck's face, a back-row railing, this front railing).
   ...bridgeDecor(A_BRIDGES[0][0], A_BRIDGES[0][1], A_BRIDGES[0][2]),
-  { sprite: 'decor/ams/lamp', x: 920, y: G },
+  ...kitDecor('ams/a', () => [frontRailDecor(A_BRIDGE_1)]),
+  { sprite: 'decor/ams/lamp', x: 920, y: G, depth: 0 },
   // --- the side canal: the raised drawbridge and two houseboats ---
-  { sprite: 'decor/ams/drawbridge', x: 1026, y: G },
+  // On the floor the drawbridge stands in the street (its gallows a row, its leaf faces: floor/drawbridge.ts).
+  { sprite: 'decor/ams/drawbridge', x: 1026, y: G, depth: null },
   ...waterDecor(A_CANAL[0], A_CANAL[1]),
   ...boatDecor(A_BOATS, ROOF_Y, DECK_Y - ROOF_Y),
-  { sprite: 'decor/ams/lamp', x: 1360, y: G },
-  { sprite: 'decor/ams/elm', x: 1440, y: G },
+  { sprite: 'decor/ams/lamp', x: 1360, y: G, depth: 0 },
+  { sprite: 'decor/ams/elm', x: 1440, y: G, depth: QUAY_PAVEMENT },
   // --- PLEINTJE ---
-  { sprite: 'decor/ams/lamp', x: 1540, y: G },
-  { sprite: 'decor/ams/tulips', x: 1598, y: G, animate: 12 },
-  { sprite: 'decor/ams/bench', x: 1660, y: G },
-  { sprite: 'decor/ams/elm', x: 1712, y: G },
-  { sprite: 'decor/ams/bench', x: 1770, y: G },
-  { sprite: 'decor/ams/flag-nl', x: 1820, y: G, animate: true },
-  { sprite: 'decor/ams/lamp', x: 1890, y: G },
-  // --- the shopping street ---
+  { sprite: 'decor/ams/lamp', x: 1540, y: G, depth: 21 },
+  { sprite: 'decor/ams/tulips', x: 1598, y: G, animate: 12, depth: QUAY_PAVEMENT },
+  { sprite: 'decor/ams/bench', x: 1660, y: G, depth: 25 },
+  { sprite: 'decor/ams/elm', x: 1712, y: G, depth: 27 },
+  { sprite: 'decor/ams/bench', x: 1770, y: G, depth: 25 },
+  { sprite: 'decor/ams/flag-nl', x: 1820, y: G, animate: true, depth: 26 },
+  { sprite: 'decor/ams/lamp', x: 1890, y: G, depth: 21 },
+  // --- the shopping street (the house fronts stand at the facade's depth: floor/depth.ts) ---
   ...houseRow('morning', 1904, STREET),
   ...A_AWNINGS.map(([x, y, w], i): DecorDef => ({ sprite: awningSprite(w), frame: i % 4, x, y })),
   { sprite: awningSprite(A_LEDGES[0][2]), frame: 3, x: A_LEDGES[0][0], y: A_LEDGES[0][1] },
   { sprite: balustradeSprite(A_LEDGES[1][2]), x: A_LEDGES[1][0] + (A_LEDGES[1][2] >> 1) + 1, y: A_LEDGES[1][1] + 3 },
-  { sprite: 'decor/ams/tulips', x: 2060, y: G, animate: true },
-  { sprite: 'decor/ams/tulips', x: 2400, y: G, animate: 13 },
+  { sprite: 'decor/ams/tulips', x: 2060, y: G, animate: true, depth: HOUSE_PAVEMENT },
+  { sprite: 'decor/ams/tulips', x: 2400, y: G, animate: 13, depth: HOUSE_PAVEMENT },
   ...bridgeDecor(A_BRIDGES[1][0], A_BRIDGES[1][1], A_BRIDGES[1][2]),
+  ...kitDecor('ams/a', () => [frontRailDecor(A_BRIDGE_2)]),
   // --- arrival at FABEL FRIET ---
   ...houseRow('morning', A_FABEL_X - rowWidth(ARRIVAL), ARRIVAL),
   { sprite: 'decor/ams/fabel-friet-morning', x: A_FABEL_X + 49, y: G },
   { sprite: 'decor/ams/neighbour-morning', x: A_FABEL_X + 96 + 33, y: G },
   ...houseRow('morning', A_FABEL_X + 96 + 66, AFTER),
   { sprite: 'decor/ams/fabel-sign', x: A_FABEL_X + 86, y: 87, animate: true },
-  { sprite: 'decor/ams/flag-ams', x: A_FABEL_X - 30, y: G, animate: 10 },
-  { sprite: 'decor/ams/tulips', x: A_FABEL_X - 56, y: G, animate: true },
-  { sprite: 'decor/ams/lamp', x: A_ARENA[0] + 10, y: G },
-  // --- front decor that half covers the players ---
-  { sprite: 'decor/ams/bollard', x: 96, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 112, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 128, y: G, front: true },
-  { sprite: 'decor/ams/bike-rack', x: 548, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 690, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 1350, y: G, front: true },
-  { sprite: 'decor/ams/bike-rack', x: 1620, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 1940, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 2580, y: G, front: true },
-  { sprite: 'decor/ams/bike-rack', x: 2860, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 3020, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 3036, y: G, front: true },
+  { sprite: 'decor/ams/flag-ams', x: A_FABEL_X - 30, y: G, animate: 10, depth: HOUSE_PAVEMENT },
+  { sprite: 'decor/ams/tulips', x: A_FABEL_X - 56, y: G, animate: true, depth: HOUSE_PAVEMENT },
+  { sprite: 'decor/ams/lamp', x: A_ARENA[0] + 10, y: G, depth: 8 },
+  // --- front decor that half covers the players: the bike racks stand by the front pole rows (on the
+  // near pavement: along the first bulb the kerb gives way to the lane, so that rack stands further front) ---
+  { sprite: 'decor/ams/bike-rack', x: 548, y: G, front: true, depth: BULB_FRONT_DECOR },
+  { sprite: 'decor/ams/bike-rack', x: 1620, y: G, front: true, depth: QUAY_FRONT_ROW },
+  { sprite: 'decor/ams/bike-rack', x: 2860, y: G, front: true, depth: HOUSE_FRONT_ROW },
   { sprite: 'decor/ams/fabel-counter', x: 3330, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 3440, y: G, front: true },
 ];
+
+/** The baker's render depth on the floor: between the counter (the walk plane) and the facade (14). */
+export const BAKER_DEPTH = 7;
 
 /**
  * The city life of section a (cosmetic `npc` entities that sleep off-screen, plus the baker in the
@@ -112,10 +128,13 @@ export function life(ctx: SectionContext): { baker: Entity } {
   // Ducks on the side canal, in the open water between the quay and the first houseboat.
   ctx.spawn('ams-ducks', 1078, WATER_Y, { count: 2, range: 24 });
   ctx.spawn('ams-pigeons', 2470, G, { count: 3 });
-  ctx.spawn('ams-window-waver', 2016, 104, {});
-  ctx.spawn('ams-window-waver', 2380, 92, { look: 'cat' });
-  ctx.spawn('ams-window-waver', 3110, 106, { period: 420 });
+  // On the perspective floor (render only, docs/design/floor.md §3.7): the wavers stand in the
+  // windows at the facades' depth, the baker between the counter and the facade.
+  ctx.spawn('ams-window-waver', 2016, 104, {}).drawDepth = FACADE;
+  ctx.spawn('ams-window-waver', 2380, 92, { look: 'cat' }).drawDepth = FACADE;
+  ctx.spawn('ams-window-waver', 3110, 106, { period: 420 }).drawDepth = FACADE;
   const baker = ctx.spawn('ams-baker', 3330, G, { counter: false, facing: -1 });
+  baker.drawDepth = BAKER_DEPTH;
   return { baker };
 }
 
@@ -300,8 +319,9 @@ export function* script(ctx: SectionContext): ScriptGen {
   prewarm('npc/ams/', 'decor/ams/', 'enemy/fatbike-youth/', 'enemy/delivery-rider/', 'enemy/seagull/');
   const { baker } = life(ctx);
   carillon(ctx);
-  // More life on the quay and in the side canal.
-  ctx.spawn('ams-boat-platform', 1090, 172, { range: 222, speed: 0.45, pause: 60 });
+  // More life on the quay and in the side canal. On the floor the little boat shows its open hull and
+  // its ends (render only: floor/boat.ts).
+  withRowboatFaces(ctx.spawn('ams-boat-platform', 1090, 172, { range: 222, speed: 0.45, pause: 60 }));
   // Secrets (docs/design/ams-extras.md §5): the bike in the elm, the houseboat hatch (a hidden
   // tourist), the crate on a gable's hoist beam.
   placeSecrets(ctx, 'a');
@@ -453,6 +473,8 @@ export const sectionA: SectionDef = {
   terrain: terrainA(),
   terrainStyle: { ground: 'klinker', edge: 'bikepath', platform: 'wood', solid: 'brick' },
   decor,
+  // The perspective floor (docs/design/floor.md §4.4; the kit in ./floor; fail soft: without it if the kit throws).
+  floor: kitFloor('ams/a', () => aFloor(decor)),
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.
   // The stag party and the beer bike (enemy and rideable; docs/api/stag.md §5).

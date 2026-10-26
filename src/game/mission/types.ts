@@ -17,6 +17,7 @@ import type { BannerOpts, CalloutOpts, GoDir, HudState } from '../context';
 import type { Player } from '../player/player';
 import type { SpawnParams } from '../registry';
 import type { CampaignRecords, GameSession } from '../session';
+import type { FloorDef } from './floor/types';
 
 export type { BackgroundDef, BgLayerDef, TerrainDef, TerrainStyleDef };
 
@@ -38,6 +39,12 @@ export interface DecorDef {
   /** 1 = moves with the world (default); smaller = farther away (0 = fixed to the screen). */
   parallax?: number;
   alpha?: number;
+  /**
+   * OPT-IN, a section with a perspective floor only (docs/design/floor.md §1.3): the item's depth
+   * (screen px behind the walk line on flat ground; 0 = the walk plane, negative = in front; null =
+   * hidden). It wins over `FloorDef.decorDepth`. Art only; ignored without a floor.
+   */
+  depth?: number | null;
 }
 
 export type TransitionKind = 'fade' | 'cut';
@@ -128,6 +135,12 @@ export interface SectionDef {
   vehicles?: readonly string[];
   /** Ground x ranges covered in ice: players and vehicles slide (`iceAt(world, x)`, GDD §11.3). */
   iceRanges?: readonly (readonly [number, number])[];
+  /**
+   * OPT-IN: the perspective floor (docs/design/floor.md, docs/api/floor.md): the ground's top surface
+   * seen from above with depth behind and in front of the feet, prop rows, canopies, top faces and
+   * contact shadows. Art only (the sims never read it). Without it the section draws exactly as before.
+   */
+  floor?: FloorDef;
 }
 
 export type SectionScript = (ctx: SectionContext) => ScriptGen;

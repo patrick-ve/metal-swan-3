@@ -240,6 +240,11 @@ export class AmsPigeons extends Entity {
     this.addTag('npc', 'decor');
   }
 
+  /** Render only (the floor's contact shadows): the flock's shadow goes with it when it flies off. */
+  override get castsShadow(): boolean {
+    return !this.fled;
+  }
+
   /** Every bird takes off away from `fromX`. */
   scare(fromX: number): void {
     if (this.fled) return;

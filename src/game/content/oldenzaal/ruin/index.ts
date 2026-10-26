@@ -18,6 +18,15 @@
  * `w` the window's width (art-street.ts `shopWindowX`), `outDir` -1 | 0 | 1 (default 0: the zombie
  * faces the heroes). The entity's x is its spot (`spotX`), y the street line (`floorY`).
  *
+ * The perspective floor (docs/design/floor.md §3.7; render only, a section with a floor only: the
+ * Oldenzaal floor kit `missions/oldenzaal/floor/flat.ts`): a boarded door / window sits in its
+ * shop front, so it is drawn at the fronts' depth (`drawDepth`); the dust of its tell falls from the
+ * drawn opening and its planks fly out of it toward the street (fx spawned at their walk-plane spots
+ * as without a floor, given a render-only depth: `FxDepths`), while the splinters and the dust of
+ * the burst are in the walk plane, where the dead lands. A manhole lies flat in the floor (the floor
+ * draws the shut cover; the entity draws the rattling, lifted cover and the open shaft flat in
+ * perspective). Without a floor both draw as before.
+ *
  * Placement (the layout, terrain.ts `OZ_A_OPENINGS` / `OZ_B_OPENINGS`): `placeRuin(at, defs)`
  * spawns a section's openings (the sections do it before their script: `withRuin`), and the
  * finders `ruinOpenings(world, kind?)`, `openingNear(world, x, kind?)` give them to the scripts.
@@ -31,6 +40,10 @@ import { debris, dust, tumble } from '../../../fx';
 import type { SectionContext, SectionScript } from '../../../mission/index';
 import { defineEntity, paramNum, paramStr, type SpawnParams } from '../../../registry';
 import { SHOP_DOOR_W } from '../../missions/oldenzaal/art-street';
+import { dustAt, FlatCover, FxDepths, ozFacadeDepth, ozFloorLight } from '../../missions/oldenzaal/floor/flat';
+import { OZ_FLOOR_IDS } from '../../missions/oldenzaal/floor/kit';
+import { MANHOLE_R } from '../../missions/oldenzaal/floor/town';
+import { worldFloor } from '../../../mission/floor/hooks';
 import { OZ_RUIN } from '../../missions/oldenzaal/ids';
 import { BP, HP, LP, noise, tone, type Recipes } from '../../sfx/kit';
 import { OZ_OPENING_TAG, type OpeningKind, type ZombieOpening } from '../zombies/api';
@@ -163,6 +176,13 @@ abstract class RuinOpening extends Entity implements ZombieOpening {
 
 const NONE: readonly never[] = [];
 
+/**
+ * On a perspective floor (render only): a tell's dust keeps the front's depth while it lives; a burst's
+ * planks leave it and reach the walk plane after `PLANK_EASE` ticks (about when they come down).
+ */
+const PUFF_HOLD = 1 << 20;
+const PLANK_EASE = 24;
+
 /** `oz-boarded`: a boarded-up shop door or window. */
 export class OzBoarded extends RuinOpening {
   readonly openingKind: 'door' | 'window';
@@ -173,6 +193,10 @@ export class OzBoarded extends RuinOpening {
   private readonly intactFrame: number;
   /** The sprite's anchor x (the frame's left + its ox). */
   private readonly drawX: number;
+  /** The fronts' depth on a perspective floor (0 without one): where it is drawn and its fx start. */
+  private readonly lift: number;
+  /** The render-only depths of its fx on a floor (null without one). */
+  private readonly fxd: FxDepths | null;
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     const kind = paramStr(p, 'kind', 'window') === 'door' ? 'door' : 'window';
@@ -188,6 +212,20 @@ export class OzBoarded extends RuinOpening {
     this.drawX = left - 1 + Math.floor((w + 2) / 2);
     const oy = kind === 'door' ? BOARD_DOOR_OY : BOARD_WIN_OY;
     this.hitbox = { x: -w / 2 - 1, y: -oy, w: w + 2, h: oy };
+    // On a perspective floor it sits in its shop front (render only; it never hits nor is hit).
+    this.lift = ozFacadeDepth(world);
+    this.drawDepth = this.lift;
+    this.fxd = this.lift > 0 ? new FxDepths() : null;
+  }
+
+  override update(): void {
+    super.update();
+    this.fxd?.tick();
+  }
+
+  override onRemove(): void {
+    this.fxd?.clear();
+    super.onRemove();
   }
 
   protected onTell(): void {
@@ -196,11 +234,17 @@ export class OzBoarded extends RuinOpening {
 
   protected onTellTick(): void {
     const w = this.world;
-    if (this.tellLeft % 7 === 3) dust(w, this.spotX + w.fxRng.range(-this.w / 2, this.w / 2), this.floorY - (this.openingKind === 'door' ? 26 : 25), 1);
+    if (this.tellLeft % 7 === 3) {
+      const puff = dustAt(w, this.spotX + w.fxRng.range(-this.w / 2, this.w / 2), this.floorY - (this.openingKind === 'door' ? 26 : 25), 1);
+      // On a floor the dust falls from the drawn opening (render only).
+      this.fxd?.add(puff, this.lift, PUFF_HOLD, 1);
+    }
   }
 
   protected onOpen(dirX: -1 | 0 | 1): void {
     const w = this.world;
+    // The splinters and the dust in the walk plane (where the dead lands); on a floor the planks fly
+    // out of the drawn opening toward the street (render only).
     const cy = this.floorY - (this.openingKind === 'door' ? 15 : 14);
     debris(w, this.spotX, cy, 'wood', 7);
     if (this.openingKind === 'window') debris(w, this.spotX, cy, 'glass', 9);
@@ -208,7 +252,10 @@ export class OzBoarded extends RuinOpening {
     const n = this.openingKind === 'door' ? 2 : 3;
     for (let i = 0; i < n; i++) {
       const vx = (dirX || (i % 2 ? 1 : -1)) * w.fxRng.range(0.6, 1.8);
-      tumble(w, 'prop/oz-boarded/plank', this.spotX + w.fxRng.range(-this.w / 3, this.w / 3), cy + w.fxRng.range(-6, 6), vx, w.fxRng.range(-2.6, -1.2), { life: 46, ticksPerFrame: 4 });
+      const px = this.spotX + w.fxRng.range(-this.w / 3, this.w / 3);
+      const py = cy + w.fxRng.range(-6, 6);
+      const plank = tumble(w, 'prop/oz-boarded/plank', px, py, vx, w.fxRng.range(-2.6, -1.2), { life: 46, ticksPerFrame: 4 });
+      this.fxd?.add(plank, this.lift, 0, PLANK_EASE);
     }
     w.audio.sfx('oz/ruin/boards-burst', { vol: 0.9 });
   }
@@ -225,6 +272,8 @@ export class OzBoarded extends RuinOpening {
 /** `oz-manhole`: a drain cover in the pavers. */
 export class OzManhole extends RuinOpening {
   readonly openingKind = 'manhole' as const;
+  /** On a floor: the shaft and the cover, flat in perspective (made on first use). */
+  private flat: { shaft: FlatCover; cover: FlatCover } | null = null;
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     super(world, x, y, p);
@@ -248,6 +297,18 @@ export class OzManhole extends RuinOpening {
   override draw(r: Renderer): void {
     if (!this.onScreen(24)) return;
     const frame = !this.closed ? 2 : this.tellLeft > 0 && ((this.tellLeft >> 2) & 1) === 0 ? 1 : 0;
+    const floor = worldFloor(this.world);
+    if (floor) {
+      // Flat in the floor: shut, the floor's own opening shows the cover; lifted, the dark gap and
+      // the cover 1.4 px up; open, the shaft and the cover pushed aside onto the pavers.
+      if (frame === 0) return;
+      const light = ozFloorLight(floor);
+      this.flat ??= { shaft: new FlatCover(MANHOLE_R), cover: new FlatCover(MANHOLE_R) };
+      this.flat.shaft.draw(r, floor, this.spotX, 0, 0, OZ_FLOOR_IDS.manholeShaft(light));
+      if (frame === 1) this.flat.cover.draw(r, floor, this.spotX, 0, 1.4, OZ_FLOOR_IDS.manhole(light));
+      else this.flat.cover.draw(r, floor, this.spotX + 14, 1.5, 0, OZ_FLOOR_IDS.manhole(light));
+      return;
+    }
     drawOpts.flipX = false;
     r.sprite('prop/oz-manhole/cover', frame, Math.round(this.spotX), Math.round(this.floorY), drawOpts);
   }

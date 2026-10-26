@@ -119,6 +119,11 @@ export class World implements PhysicsEnv, ScriptHost {
   god = false;
   /** Particles are drawn between entities with z below and at/above this value. */
   particleZ = 55;
+  /**
+   * OPT-IN render hook (the perspective floor, docs/design/floor.md §3.7): draws an entity whose
+   * `drawDepth` is not 0 (shifted to its depth). Null (the default): every entity draws itself.
+   */
+  depthDraw: ((r: Renderer, e: Entity) => void) | null = null;
 
   private readonly pending: Entity[] = [];
   private readonly tagIndex = new Map<string, Entity[]>();
@@ -484,7 +489,8 @@ export class World implements PhysicsEnv, ScriptHost {
         particlesDone = true;
       }
       try {
-        e.draw(r);
+        if (e.drawDepth !== 0 && this.depthDraw) this.depthDraw(r, e);
+        else e.draw(r);
       } catch (err) {
         this.reportError(`${e.type || 'entity'}.draw`, err);
       }

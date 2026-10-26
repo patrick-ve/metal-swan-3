@@ -2,7 +2,7 @@
  * npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6]
  *                 [--seed 1] [--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss]
  *                 [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal]
- *                 [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4]
+ *                 [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4] [--floor-debug] [--floor-overlay] [--floor-off]
  * npm run shot -- --fps 0 [--pose x,y,deg[;x,y,deg…]] [--ticks n] [--every n --count k] [--hold forward,use]
  *                 [--seed 1] [--difficulty normal] [--god] [--unfold] [--out file.png] [--scale 2] [--cols 3]
  *
@@ -41,6 +41,11 @@
  * labelled with its tick, stretch, plan distance, the wagon's lane and screen x and the bot's goal.
  * → tmp/shots/ring-<stretch>-t<tick>.png / ring-sheet.png.
  *
+ * The perspective floor (docs/design/floor.md, docs/api/floor.md): --floor-debug puts the debug floor
+ * (checker, u / v labels, a red v = 0 line, kerbs, a cut on every water hazard, post rows) on every
+ * section of the mission; --floor-overlay draws the depth grid, the walk line and the row lines;
+ * --floor-off draws the sections without their floors (to compare).
+ *
  * --mission rally (the 3D race, docs/design/rally.md §12.3): node has no WebGL, so this tool cannot
  * show it; it prints the `npm run shot3d` command to use instead (tools/shot3d.ts: Playwright
  * captures of the 3D view) and exits with code 2.
@@ -63,6 +68,7 @@ import { createHeadlessRing, type HeadlessRing } from '../src/sim/headless-ring'
 import { SoftRenderer } from '../src/engine/render-soft';
 import { ensureFpsDenseArt, setFpsArtPool } from '../src/game/content/fps/dense-load';
 import { resolveGfx } from './lib/gfx';
+import { debugFloorDef, setFloorOverlay, setFloorOverride } from '../src/game/mission/floor/index';
 import { savePNG, SHEET } from './lib/image';
 
 interface Args {
@@ -99,6 +105,10 @@ interface Args {
   ringRoute?: 'full' | 'short';
   /** --mission ring: entities to put on the road after the first tick. */
   spawns: RingSpawnArg[];
+  /** The perspective floor: the debug floor on every section / the overlay / no floors. */
+  floorDebug: boolean;
+  floorOverlay: boolean;
+  floorOff: boolean;
 }
 
 /** One `--spawn "<id>@+<dx>:<lane>[?k=v&k=v]"`. */
@@ -130,7 +140,7 @@ function parseSpawns(v: string): RingSpawnArg[] {
 
 const USAGE =
   'usage: npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6] [--seed 1] ' +
-  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4]\n' +
+  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4] [--floor-debug] [--floor-overlay] [--floor-off]\n' +
   '       npm run shot -- --mission ring [--seed 1] [--route short|full] [--section <landmark>|zwaan|rf-a|rf-b] [--boss] [--bot] [--god] [--players 1|2] [--ticks 60] [--every 60 --count 6] [--res 8 --art 4] [--spawn "<id>@+<dx>:<lane>[?k=v]"] [--hold up,fire] [--out file.png]';
 
 const BUTTONS: readonly Button[] = ['left', 'right', 'up', 'down', 'fire', 'jump', 'bomb', 'start'];
@@ -156,6 +166,9 @@ function parseArgs(argv: readonly string[]): Args {
     gfx: null,
     art: 2,
     spawns: [],
+    floorDebug: false,
+    floorOverlay: false,
+    floorOff: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
@@ -255,6 +268,15 @@ function parseArgs(argv: readonly string[]): Args {
         break;
       case '--spawn':
         a.spawns.push(...parseSpawns(next()));
+        break;
+      case '--floor-debug':
+        a.floorDebug = true;
+        break;
+      case '--floor-overlay':
+        a.floorOverlay = true;
+        break;
+      case '--floor-off':
+        a.floorOff = true;
         break;
       case '--help':
       case '-h':
@@ -578,6 +600,14 @@ async function ringMain(args: Args): Promise<void> {
   }
 }
 
+/** --floor-debug / --floor-overlay / --floor-off (the perspective floor's look). */
+function applyFloorArgs(a: Args): void {
+  const mission = a.mission;
+  if (a.floorOff) setFloorOverride(() => null);
+  if (a.floorDebug) setFloorOverride((s) => debugFloorDef(s, mission));
+  if (a.floorOverlay) setFloorOverlay(true);
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes('--fps')) {
     await fpsMain(process.argv.slice(2));
@@ -601,6 +631,7 @@ async function main(): Promise<void> {
   if (gfx.warning) console.warn(`[shot] ${gfx.warning}`);
   const holdMask = buttonMask(...args.hold.filter((b) => b !== 'fire'));
   const tapFire = args.hold.includes('fire');
+  applyFloorArgs(args);
   const game = await createHeadlessGame({
     missionId: args.mission,
     sectionId: args.section,

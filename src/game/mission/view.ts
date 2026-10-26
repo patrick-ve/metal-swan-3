@@ -24,6 +24,16 @@
  *   view are prefetched (a tall section would otherwise keep every dense chunk it ever showed).
  * - `backHook(r, tick)`: called in `drawBack` after the background layers, before the pits,
  *   decor and terrain (the mission light pass draws its far fog and the backdrop flash there).
+ * - `floorHook(r, tick)` (a floor only): called at the end of the floor's back half, before the
+ *   contact shadows and the entities (the light pass's ground mist lies there, under the feet).
+ * - THE PERSPECTIVE FLOOR (`SectionDef.floor`, docs/design/floor.md §3.4, docs/api/floor.md): the
+ *   view builds a `SectionFloor` and draws in the floor's order — the non-sky layers lifted by the
+ *   floor's depth behind the feet, `backHook`, the floor band, its openings, back decor and back
+ *   rows at their depths far → near, canopies / slabs / top faces, walk-plane decor, then the
+ *   terrain chunks with EMPTY ground cells (only platforms and solids; no pit shafts: the floor's
+ *   pits and cuts are in its mesh); `drawShadows` (contact shadows, the runner calls it before
+ *   world.draw); `drawFront`: front decor and front rows far → near, the front layers. Without a
+ *   floor none of this runs: every call below draws exactly as before.
  */
 import { PAL } from '../../engine/palette';
 import { PixelBuffer } from '../../engine/pixel';
@@ -53,8 +63,13 @@ import {
   terrainDensityFor,
   type BgLayerDef,
   type SceneryDensity,
+  type TerrainCell,
   type TerrainSampler,
 } from '../art/art-registry';
+import type { World } from '../../engine/world';
+import type { FloorGpu } from '../../engine/floor/gpu';
+import { floorOf, floorOverlay } from './floor/registry';
+import { SectionFloor } from './floor/section-floor';
 import type { DecorDef, SectionDef } from './types';
 
 /** Terrain chunk size (px). */
@@ -157,6 +172,16 @@ export class SectionView {
   private evictRow = -1e9;
   /** OPT-IN: drawn after the background layers, before the terrain (null = nothing; default). */
   backHook: ((r: Renderer, tick: number) => void) | null = null;
+  /**
+   * OPT-IN, a section with a floor only: drawn at the end of the floor's back half (after the
+   * walk-plane decor and the terrain), before the contact shadows and the entities — the light
+   * pass lays its ground mist there, under the feet (null = nothing; default).
+   */
+  floorHook: ((r: Renderer, tick: number) => void) | null = null;
+  /** The perspective floor (`SectionDef.floor`; null without one: the view draws as before). */
+  readonly floor: SectionFloor | null;
+  /** The GPU floor renderer (the runner sets it; null = the CPU raster draws the floor). */
+  floorGpu: FloorGpu | null = null;
 
   constructor(section: SectionDef, terrain: Terrain, seed: number, density = 1) {
     this.section = section;
@@ -167,8 +192,10 @@ export class SectionView {
     const decor = section.decor ?? [];
     this.back = decor.filter((d) => !d.front);
     this.front = decor.filter((d) => d.front);
-    this.sample = (x, y) => terrain.cellAt(x, y);
-    this.pits = pitSpans(terrain);
+    this.floor = makeFloor(section, terrain, seed, this.jobKey);
+    // With a floor the ground cells are empty (the floor draws the ground); platforms and solids stay.
+    this.sample = this.floor ? (x, y) => groundless(terrain.cellAt(x, y)) : (x, y) => terrain.cellAt(x, y);
+    this.pits = this.floor ? [] : pitSpans(terrain);
   }
 
   /** Background colour behind every layer. */
@@ -199,6 +226,11 @@ export class SectionView {
         if (td > 1) this.hiChunk(cx, cy, td as SceneryDensity);
       }
     }
+    // The floor: its visible 1× chunks now, its dense ones queued (the browser), spec §2.6.
+    if (this.floor) {
+      this.floor.gpu = this.floorGpu;
+      this.floor.prepare(camX, want);
+    }
   }
 
   /**
@@ -225,6 +257,7 @@ export class SectionView {
   /** Drop this view's queued 2× jobs (the runner replaces the view). */
   dispose(): void {
     cancelArtJobs(this.jobKey);
+    this.floor?.dispose();
   }
 
   /** Draw dense scenery at all? (density ≥ 2 and dense art not switched off by `setHiArt(false)`). */
@@ -234,12 +267,21 @@ export class SectionView {
 
   /** Background layers, the dark behind pits, terrain and back decor. */
   drawBack(r: Renderer, tick: number): void {
+    if (this.floor) {
+      this.drawBackFloor(r, tick, this.floor);
+      return;
+    }
     for (let i = 0; i < this.layers.length; i++) {
       if (!this.layers[i].def.front) this.drawLayer(r, i, tick);
     }
     if (this.backHook) this.backHook(r, tick);
     this.drawPits(r);
     this.drawDecor(r, this.back, tick);
+    this.drawTerrain(r);
+  }
+
+  /** The terrain chunks (with their prefetch, eviction and the per-frame dense jobs). */
+  private drawTerrain(r: Renderer): void {
     const camX = r.camX;
     const camY = r.camY;
     // A sub-pixel camera (high-resolution backbuffer) shows part of one more pixel column / row.
@@ -276,10 +318,38 @@ export class SectionView {
 
   /** Front decor and foreground layers. */
   drawFront(r: Renderer, tick: number): void {
-    this.drawDecor(r, this.front, tick);
+    const floor = this.floor;
+    if (floor) floor.drawFront(r, tick, SectionView.atRes(this.drawDensity(), r.res));
+    else this.drawDecor(r, this.front, tick);
     for (let i = 0; i < this.layers.length; i++) {
       if (this.layers[i].def.front) this.drawLayer(r, i, tick);
     }
+    if (floor && floorOverlay()) floor.drawOverlay(r);
+  }
+
+  /**
+   * The floor's back half (docs/design/floor.md §3.4 steps 1–5): lifted layers, backHook, the band,
+   * the openings, back decor / rows far → near, canopies and top faces, walk-plane decor, terrain.
+   */
+  private drawBackFloor(r: Renderer, tick: number, floor: SectionFloor): void {
+    for (let i = 0; i < this.layers.length; i++) {
+      const def = this.layers[i].def;
+      if (!def.front) this.drawLayer(r, i, tick, floor.layerLift(def));
+    }
+    if (this.backHook) this.backHook(r, tick);
+    const dd = SectionView.atRes(this.drawDensity(), r.res);
+    floor.gpu = this.floorGpu;
+    floor.drawBand(r, tick, dd);
+    floor.drawOpenings(r, dd);
+    floor.drawBack(r, tick, dd);
+    this.drawTerrain(r);
+    floor.maintain(r.camX, dd);
+    if (this.floorHook) this.floorHook(r, tick);
+  }
+
+  /** Contact shadows on the floor (a floor only; the runner calls it between drawBack and world.draw). */
+  drawShadows(r: Renderer, world: World): void {
+    if (this.floor) this.floor.drawShadows(r, world, SectionView.atRes(this.drawDensity(), r.res));
   }
 
   // ------------------------------------------------------------------------------- pits
@@ -348,7 +418,8 @@ export class SectionView {
     return l.hi[dd] ?? null;
   }
 
-  private drawLayer(r: Renderer, i: number, tick: number): void {
+  /** Draw layer i (`lift`: px up, the floor's lift of a non-sky layer; 0 = as defined). */
+  private drawLayer(r: Renderer, i: number, tick: number, lift = 0): void {
     const buf = this.layerBuf(i);
     if (!buf) return;
     const d = this.layers[i].def;
@@ -372,7 +443,7 @@ export class SectionView {
     o.alpha = d.alpha ?? 1;
     // Drift keeps clouds moving even while the camera is locked (wrapped into the tile, logical px).
     const ox = (d.offsetX ?? 0) + (d.driftX ? (tick * d.driftX) % buf.w : 0);
-    const oy = (d.offsetY ?? 0) + (d.driftY ? (tick * d.driftY) % buf.h : 0);
+    const oy = (d.offsetY ?? 0) - lift + (d.driftY ? (tick * d.driftY) % buf.h : 0);
     r.parallax(hi ?? buf, d.factorX, d.factorY ?? 0, ox, oy, o);
   }
 
@@ -549,4 +620,21 @@ export class SectionView {
       r.sprite(d.sprite, frame, x, y, decorOpts);
     }
   }
+}
+
+/** The floor of a section (null: none, or its def failed to build: warned, the section draws flat). */
+function makeFloor(section: SectionDef, terrain: Terrain, seed: number, jobKey: string): SectionFloor | null {
+  const def = floorOf(section);
+  if (!def) return null;
+  try {
+    return new SectionFloor(section, def, terrain, seed, jobKey);
+  } catch (err) {
+    console.warn(`[floor] section ${section.id}: the floor failed, drawing without it:`, err);
+    return null;
+  }
+}
+
+/** A terrain cell with the ground taken out (the floor draws the ground). */
+function groundless(c: TerrainCell): TerrainCell {
+  return c === 1 ? 0 : c;
 }

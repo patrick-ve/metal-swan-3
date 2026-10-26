@@ -224,6 +224,25 @@ multi-part bosses, and 2-player co-op.
   - The headless `SoftRenderer` and the simulation default to k = 1 (tests and bots are
     unchanged); `--res` / `--gfx` on `shot` and `arena` render the browser look headless. At
     res 1 every policy and mode gives the classic image pixel for pixel.
+  - **The perspective floor (`SectionDef.floor`, docs/design/floor.md, docs/api/floor.md; `ams`
+    and `oldenzaal` from 2026-10-25).** The floor band (the ground's top surface seen by a pinhole
+    camera, from the back edge to the screen bottom) draws at the scenery's density rule
+    (`SectionView.atRes(drawDensity(), res)`: 4 needs 4 | k, else 2 at k ≥ 2, else 1) into ONE band
+    image: the WebGL2 program (`gl-floor.browser.ts`, `AppOptions.floorGpu`) or the CPU raster
+    (`src/engine/floor/raster.ts`; the reference headless, the browser's fallback capped at density
+    2), put in the frame in draw order (`Renderer.surface` / a streamed `frame`). Its textures are
+    world-space chunks of 256 u at density 1, 2 or 4 whose rows are the flat floor's screen rows
+    (box-filtered in v when baked: no mips, no shimmer) and small tiles with v-mips; sampling is
+    sharp bilinear; the camera is the renderer's (1/k): every row scrolls at its own speed s(y) and
+    the walk line exactly with the world. The chunks are art jobs (slices of 64 u at 2×, of 8 u at
+    4×; the tiles and the rows' dense prop frames in slices too: every floor job under ~5 ms),
+    queued at the section start (`SectionView.prepare`: the visible 1× set on the spot, the dense
+    set as jobs; a direct start and the menu flow alike), prefetched ahead and released behind
+    (`FLOOR_EVICT_BEHIND` 2 chunks, a 4× one after 1); the tiles are built and released by the
+    camera's window. Outside `DENSE_BUDGET_BYTES`: the floor's own budget is ONE number,
+    `SectionFloor.cpuBytes()` (textures, the canvas pool of the quads and side faces, row frames)
+    ≤ 16 MB at tier 4; the mission preload warms the GL context (`FloorGpu.warm`). Sections without
+    a floor draw byte-identically.
 - Simulation tick: 60 Hz fixed step. Rendering runs once per animation frame with the latest
   state (no interpolation). Hidden tab → simulation pauses.
 
@@ -553,6 +572,24 @@ particles + shake + sound, via a game-level helper; explosion damage goes throug
   (wheels, treads, plates, rivets, barrels, rotors), `bg.ts` (skies, mountains, clouds, tree
   lines, skylines, parallax layer builders), `terrain-art.ts` (fills for ground polygons with
   top edges: dirt, sand, snow, rock, metal, wood…).
+- **The perspective floor** (`mission/floor/`, engine part `src/engine/floor/`; spec
+  `docs/design/floor.md`, API `docs/api/floor.md`): an ART-ONLY opt-in, `SectionDef.floor:
+  FloorDef` (the camera, the floor painter by registered id, height-field features over the walk
+  profile — kerbs, steps, cuts, decks —, prop rows, canopies / slabs / roofs, top faces, openings,
+  face groups — the side faces of row-end houses, boats, cars, a raised bridge leaf, in perspective
+  and only toward the screen's centre (`floor/faces.ts`) —, decor depths, the shadow strength). `SectionView` builds a `SectionFloor` (the mesh, the texture
+  store, the CPU raster) and draws in the floor's order: non-sky layers lifted by the floor's depth
+  behind the feet, `backHook`, the band, back decor and back rows at their depths, canopies and top
+  faces, walk-plane decor, terrain chunks with EMPTY ground cells, contact shadows (the runner calls
+  `view.drawShadows` before `world.draw`), front decor and front rows. Render-only hooks:
+  `Entity.drawDepth` + `World.depthDraw` (an entity drawn at a depth's shift and the floor's lift
+  there), `worldFloor(world)` and `floorShift` / `floorPool` for the light pass, `SectionView.floorHook`
+  (the light pass's ground mist under the entities). The kits register painters, tiles and props
+  (`defineFloorPainter`, `defineFloorTile`, `defineFloorProp`). Checks every floor section joins:
+  the walk line (the drawn mesh at v = 0 on the physics surface), the platforms' drawn edges, the
+  background factor rule, the front-row rules (`tests/game/floor-sections.test.ts`), the pan and
+  still tests (`tests/game/floor-raster.test.ts`). Tools: `npm run shot -- --floor-debug
+  [--floor-overlay]`, `npm run floor-clip`.
 - **Mission `rally`** (level 2 since 2026-10-22, BINNEN DE RING, the 3D race on the A10;
   `docs/design/rally.md`, `docs/api/rally.md`): `rally/` holds the pure race — `RallyRunner` (a
   fixed 60 Hz step; float64 physics with only + − × ÷ √ and the r3 tables; the grid, three laps,
@@ -955,6 +992,40 @@ for the view, 60 fps at k = 6. "Zero allocations" means no objects, arrays, clos
 built per tick in the simulation; V8's boxing of double arguments in non-inlined hot calls
 (`castRay`, `lineOfSight`: about 24 KB per rendered frame, measured 2026-10-16) is out of scope —
 the young-generation GC absorbs it, and the measured frame times stay far inside the budget.
+
+The perspective floor (`docs/design/floor.md` §2.6, §3.2, §8; measured 2026-10-26, wave A CORE, node,
+Apple M5, the debug floor on `ams` a — the kits' painters will differ; the lead re-measures the browser):
+
+| Measure | Limit | Measured |
+|---|---|---|
+| CPU raster per frame (band 88 rows; the canal and its quay walls / flat lane) | ≤ 4 ms at density 2 (the browser fallback) | d 1: 0.66 / 0.46 ms; d 2: 2.5 / 1.7 ms; d 4 (tools only): 9.1 / 6.4 ms |
+| allocation per frame (band, rows, quads) | none | 11 scavenges of a 1 MB young generation in 18,000 frames (< 1 KB per frame); buffers, scaled props, chains, quad canvases are made once (superseded by the FIX row below: every pass, the kits' floors, no boxed double) |
+| one chunk bake (art jobs of 64 u, 4 per chunk) | ≤ 16 ms per job | 4×: 42.7 ms per chunk (debug painter, ~0.9 M painter calls) = about 11 ms per job; 2×: 10.6 ms; 1×: 2.8 ms (superseded: 4× chunks are 32 jobs of 8 u now, see below) |
+| floor textures resident at tier 4 | ≤ 16 MB (outside `DENSE_BUDGET_BYTES`; over it: 2× textures) | 1.76 MB per 4× chunk; after panning all of ams a 8.5 MB, oz-a 4.4 MB (the debug floor; the kits' floors and every other floor byte: the FIX row below) |
+| smooth (the pan test, 0.25–3 px/tick, res 1 and 2) | every row moves s(y)·Δ within 1/res | worst row 0.33 px at res 1, 0.14 px at res 2; mean 0.01–0.09 px (`tests/game/floor-raster.test.ts`) |
+
+The floor in the browser (wave A integration, 2026-10-26: the kits' floors of `ams` a and oz-a;
+Chromium `--gpu` = ANGLE/Metal on an Apple M5, 3840 × 2160 at dpr 1 = tier 4, k = 8; the
+production build, the hero walking right for 8 s, unless noted; a busy machine, load average 5–11):
+
+| Measure | Limit | Measured |
+|---|---|---|
+| the floor's CPU per frame on the GL path (dev server, the passes timed) | ≤ 0.5 ms | the band (GL) 0.05 ms in both; every floor pass (band, openings, back decor and rows, canopies and top faces, shadows, front rows): `ams` a 0.18 ms, oz-a 0.49 ms (its 26 quads 0.16 ms) |
+| render + present at k = 8 on the GPU | ≤ 2 ms | walking: `ams` a 1.10 ms avg (p95 7.5: the frames that run 4× art jobs), oz-a 1.37 ms (p95 2.7); standing (`npm run perf`): 0.34 ms (p95 0.5), 1.05 ms (p95 1.7); oz-a was 2.26–2.80 ms before the canopies and top faces drew at ≤ 2× (`QUAD_MAX_DENSITY`) and a still camera stopped redrawing them |
+| the side faces (spec §11 R1, LOOK-1; an interleaved A/B of production builds, walking 8 s, 3 rounds each) | inside render + present ≤ 2 ms | oz-a (55 face groups: shop sides at the alleys and steps, car and wall ends, awning cheeks, balcony ends) 1.66–1.69 ms avg with the faces, 1.35–1.37 ms without (+0.3 ms: their per-frame raster at ≤ 2× in power-of-two width classes); `ams` a (30 groups) 0.84–0.89 ms with, 0.80–0.88 ms without; standing (`npm run perf`): `ams` a 0.29–0.30 ms, oz-a 1.02–1.03 ms |
+| the CPU fallback (`?floorgl=0`) at density 2 | ≤ 4 ms per frame | the band 2.24 ms avg (p95 3.6) on `ams` a, 1.26 ms (p95 2.2) on oz-a; render + present 4.19 / 2.52 ms; 60 fps, the governor holds tier 4, no page errors |
+| floor textures at tier 4 | ≤ 16 MB CPU, ≤ 16 MB GPU | CPU (`floor-clip --res 8 --art 4 --pan 24`, the whole section): 9.60 MB / 5.71 MB; GPU (`floorGl.stats().texBytes`): 12.64 MB / 7.32 MB |
+| one floor art job | ≤ 16 ms (and a frame ≤ 16.7 ms) | a 4× slice of 16 u about 3 ms (a 4× chunk about 42 ms in 16 jobs; 64-u slices took 11–13 ms and pushed frames to 17–21 ms); frames that run floor jobs 8–11 ms |
+| the section start | no frame over 16.7 ms from the floor | the load tick builds the floor's 1× set (14–17 ms); the first play frame `ams` a 124–136 ms (103 ms without a floor: +11 ms of row prop frames, +6 ms of CPU band while the GL program compiles on a direct start), oz-a 237–274 ms (237 ms without); frames 2–6 at 20–40 ms with and without the floor (terrain and background 4× jobs, sprite uploads); after them the floor's jobs keep frames at 8–11 ms. The GL context (4–6 ms) is made in the mission preload |
+| **wave A fixes (FIX-ENGINE, 2026-10-26)**: the floor's whole CPU memory at tier 4 (`cpuBytes`: textures resident and being painted, the canvas pool, row frames and chains, ovals, the CPU band until the GPU draws) | ≤ 16 MB CPU, ≤ 16 MB GPU | browser, a real-time 4K walk of the whole section (the hero carried at 1.5 px/frame): `ams` a peak 14.63 MB CPU, 12.05 MB GPU (`texBytes`); oz-a 9.22 MB CPU, 6.98 MB GPU; the 4× store never caps, the GL band draws 4× all the way, no stand-in after frame 60 (the wave-A tree capped at camX 64: a 2× swap and a seam). Node (`tests/game/floor-sections.test.ts`, the same flow): `ams` a ≤ 13.7 MB, oz-a ≤ 8.6 MB. The canvas pool: 40 / 55 canvases, 1.65 / 1.55 MB, made at the section start, none on the frame path |
+| … the floor's CPU per frame on the GL path at 4K | ≤ 0.5 ms (spec §2.6) | the floor's OWN code (node, a renderer that draws nothing: the band's texture requests, the decor / row / face placement, the canvases' raster at ≤ 2×): `ams` a 0.10 ms, oz-a 0.20 ms. In the browser (dev server, every pass timed, the renderer's Canvas 2D draws and the canvases' uploads included, a busy machine): `ams` a 0.4–0.5 ms, oz-a 0.8–1.1 ms (decor, rows and face groups 0.45–0.65, canopies / tops 0.25–0.3, band 0.06–0.08). §2.6 holds for the floor's code; the Canvas 2D work it hands the renderer (≈ 60 decor sprites, ≈ 100 row props, 6–10 streamed canvases) does not fit 0.5 ms in oz-a: proposed budget for the lead, "floor code ≤ 0.5 ms; with its draws ≤ 1.2 ms at 4K, inside render + present ≤ 1.8 ms" |
+| … render + present at k = 8 (production builds, interleaved A/B with the wave-A tree, walking 8 s, 3 rounds; load 5–15) | ≤ 2 ms (FIX goal ≤ 1.8) | oz-a 1.63 / 1.66 / 1.66 ms avg (p95 2.6–2.8) vs 1.73 / 2.24 / 1.94 (p95 3.1–4.0); `ams` a 1.07–1.24 ms (p95 4.1–8.4: the frames that run 4× art jobs — the wave-A tree had dropped to 2× textures after 2 s, hence its 0.85–0.98, p95 1.6–2.3) |
+| … one floor art job / a frame that runs jobs | ≤ 16 ms; a frame ≤ 16.7 ms | browser: the longest single floor job 2.4 ms in play (a tile or row slice; a whole 1× chunk 6–8 ms only in the load tick); frames that run floor jobs 8–11 ms. Node: every job ≤ 5.2 ms (`ams` a), ≤ 3.6 ms (oz-a) |
+| … the section start | no frame over 16.7 ms from the floor | both flows (a direct `?mission=` start and the menu's intro card) prepare the same way: `want` 4, deferred, tier 4 (measured in the browser for both). Direct 4K start of `ams` a, 3 runs: the load frame 91–98 ms (the floor's prepare 21 ms of it, its first draw incl. the decor's first sprite draws ~30 ms; the wave-A tree 124–136 ms); the first play frame 20–22 ms with 4.2–4.8 ms of floor (the GL band's first uploads); frames 2–5 at 20–30 ms with ≤ 0.4 ms of floor (the terrain's and backdrop's 4× jobs, as without a floor); after them frames with floor jobs at 8–11 ms. The menu flow: no frame over 16.7 ms in the first 90 of play. The 114 ms GL frame REVIEW-SMOOTH saw once: not reproduced in 3 direct starts (the floor's passes ≤ 4.8 ms in every play frame) |
+| … allocation per frame | none (Hard Rule 7) | heap sampling of every floor pass (band, openings, decor, rows, face groups, quads, shadows) on the kits' floors, a renderer that draws nothing: 31 B / 48 B per frame over 8,500 / 7,200 frames (`ams` a / oz-a), none of it in the floor's code (`tests/game/floor-sections.test.ts`: < 64 B per frame over 600 frames); the wave-A tree: 2.4–3.3 KB per frame (boxed doubles: decor positions read from many object shapes, int / double merges, double arguments) |
+| boot at 1× (`cache-check` first visit) | ≤ 4.0 s | 4.35–4.50 s; the pre-wave build 4.70–5.05 s on the same busy machine (no regression) |
+| the ams 2× set (`anim-bench ams-hi --density 2`) | pool ≤ 5.0 s; main thread ≤ 8.65 s | pool of 8: 4.57 s (pre-wave 4.89 s); one thread 14.5 s (pre-wave 13.8 s: the set has grown to 3,404 ids since the limit was set); the floor adds two sprites (the bridges' front railings, 13 ms at 2×) |
+| the tier-4 sprite budget | `DENSE_BUDGET_BYTES` | `ams-dense-budget`, `oldenzaal-dense-budget` green (the floor's textures are outside it) |
 
 ## 11. Definition of done (every task)
 
