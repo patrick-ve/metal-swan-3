@@ -15,6 +15,7 @@ import { SolidBox } from '../../../../engine/physics';
 import type { DrawOpts, Renderer } from '../../../../engine/render';
 import type { World } from '../../../../engine/world';
 import { gameOf, hudOf } from '../../../context';
+import { drawEntityFaces, worldFloor } from '../../../mission/floor/hooks';
 import { isPlayer, type Player } from '../../../player/player';
 import { defineEntity, paramNum, type SpawnParams } from '../../../registry';
 import { G } from './art';
@@ -62,6 +63,10 @@ export const LOW_BRIDGE = {
 
 /** The Magere Brug: the bascule between the portals, the whole span with the portals. */
 export const MAGERE_BRUG = { w: 120, gap: 100, top: 112, under: 127 } as const;
+/** The leaves' angles per frame (degrees; art-route.ts `MAGERE_ANGLES`, which imports this file). */
+const LEAF_DEG: readonly number[] = [0, 26, 54, 80];
+/** A lifted walkway closer than this (px) to the floor's vanishing point is left out of its faces (`drawFloorFaces`). */
+const LEAF_EDGE_PX = 2.4;
 
 /** Sounds of the route (sfx/ams-route.ts). */
 export const ROUTE_SFX = { horn: 'ams/route-horn', bell: 'ams/route-bell', creak: 'ams/route-creak', bump: 'ams/route-bump' } as const;
@@ -234,6 +239,11 @@ export class AmsCruiseBoat extends Entity {
     }
   }
 
+  /** Render only: on a perspective floor that lists the kind, its deck, glass roof, cabin ends and hull ends. */
+  override drawFloorFaces(r: Renderer): void {
+    drawEntityFaces(r, this);
+  }
+
   override draw(r: Renderer): void {
     drawOpts.flipX = false;
     drawOpts.flash = false;
@@ -305,6 +315,11 @@ export class AmsLowBridge extends Entity {
     return this.warnT >= LOW_BRIDGE.warn;
   }
 
+  /** Render only: on a perspective floor that lists the kind, its walkway, slab ends and piers in depth (its art is decor). */
+  override drawFloorFaces(r: Renderer): void {
+    drawEntityFaces(r, this);
+  }
+
   override update(): void {
     const cam = this.world.camera;
     const x0 = this.x - this.w / 2;
@@ -370,6 +385,50 @@ export class AmsMagereBrug extends Entity {
     if (this.state === 'closed') sweepFace(this, this.x - MAGERE_BRUG.gap / 2, this.under, true);
   }
 
+  /**
+   * Render only: on a perspective floor that lists the kind, the bascule's walkway and ends in depth (per
+   * frame). A lifting leaf whose walkway lies almost edge-on to the eye is left out (ams/floor/entities.ts
+   * `magereBrugFaces`: state 3f + thin): thinner than about a px, its rows would draw a dashed line that
+   * changes every frame.
+   */
+  override drawFloorFaces(r: Renderer): void {
+    const f = this.frame;
+    const thin = f > 0 ? this.thinLeaves(r, f) : 0;
+    drawEntityFaces(r, this, thin === 0 ? f : 3 * f + thin);
+  }
+
+  /**
+   * Which lifted walkways lie almost edge-on (bit 0 the left leaf, bit 1 the right): the walkway's near
+   * edge (its sprite's line from the hinge to the tip) passes within `LEAF_EDGE_PX` of the floor's
+   * vanishing point, where every receding edge meets, so the face between it and its far edge is
+   * thinner than about a px on screen.
+   */
+  private thinLeaves(r: Renderer, f: number): number {
+    const floor = worldFloor(this.world);
+    if (!floor) return 0;
+    const a = (LEAF_DEG[f] * Math.PI) / 180;
+    const half = MAGERE_BRUG.gap / 2;
+    const thick = this.under - this.top;
+    const ex = half + (thick / 2) * Math.sin(a);
+    const ey = -thick / 2 + (thick / 2) * Math.cos(a);
+    const rx = ex - half * Math.cos(a);
+    const ry = ey + half * Math.sin(a);
+    // The vanishing point in the renderer's world coordinates (the screen's centre column, the horizon).
+    const vx = r.camX + 192;
+    const vy = r.camY + floor.cam.yh;
+    let thin = 0;
+    for (let k = 0; k < 2; k++) {
+      const s = k === 0 ? -1 : 1;
+      const x1 = this.x + s * ex;
+      const y1 = this.top - ey;
+      const dx = s * (rx - ex);
+      const dy = ey - ry;
+      const d = Math.abs(dx * (vy - y1) - dy * (vx - x1)) / Math.hypot(dx, dy);
+      if (d < LEAF_EDGE_PX) thin |= 1 << k;
+    }
+    return thin;
+  }
+
   override draw(r: Renderer): void {
     drawOpts.flipX = false;
     drawOpts.flash = false;
@@ -429,6 +488,11 @@ export class AmsPartyBoat extends Entity {
     if (dx !== 0 || dy !== 0) this.world.moveSolid(this.box, dx, dy);
     this.x = this.box.x + this.w / 2;
     this.y = this.box.y;
+  }
+
+  /** Render only: on a perspective floor that lists the kind, the small boat's open hull and ends (floor/boat.ts). */
+  override drawFloorFaces(r: Renderer): void {
+    drawEntityFaces(r, this, 0, this.facing < 0);
   }
 
   override draw(r: Renderer): void {

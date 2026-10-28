@@ -14,6 +14,7 @@ import type { DrawOpts, Renderer } from '../../../engine/render';
 import { Animator, hasSprite } from '../../../engine/sprites';
 import type { World } from '../../../engine/world';
 import { awardScore } from '../../events';
+import { drawEntityFaces } from '../../mission/floor/hooks';
 import { debris, FxEntity } from '../../fx';
 import { NO_PARAMS, paramBool, paramNum, paramStr, type SpawnParams } from '../../registry';
 import { contentsSpecs, spawnDrops } from './drops';
@@ -123,6 +124,11 @@ export class Crate extends Entity {
       return;
     }
     if (this.hitTicks > 0 && --this.hitTicks === 0) this.anim.play(this.sprite(''));
+  }
+
+  /** Render only: on a perspective floor that lists crates, the lid and the sides (spec §12.1 item 4; broken: none). */
+  override drawFloorFaces(r: Renderer): void {
+    drawEntityFaces(r, this, this.broken ? 1 : this.variant === 'legion' ? 2 : 0);
   }
 
   override draw(r: Renderer): void {

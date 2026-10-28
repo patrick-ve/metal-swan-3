@@ -577,19 +577,33 @@ particles + shake + sound, via a game-level helper; explosion damage goes throug
   FloorDef` (the camera, the floor painter by registered id, height-field features over the walk
   profile — kerbs, steps, cuts, decks —, prop rows, canopies / slabs / roofs, top faces, openings,
   face groups — the side faces of row-end houses, boats, cars, a raised bridge leaf, in perspective
-  and only toward the screen's centre (`floor/faces.ts`) —, decor depths, the shadow strength). `SectionView` builds a `SectionFloor` (the mesh, the texture
-  store, the CPU raster) and draws in the floor's order: non-sky layers lifted by the floor's depth
+  and only toward the screen's centre (`floor/faces.ts`) —, entity kinds with faces and depth steps,
+  decor depths, the shadow strength). `SectionView` builds a `SectionFloor` (the mesh — watertight:
+  no T-junction, no sliver quad, so a GPU's vertex snap opens no crack —, the texture store, the CPU
+  raster) and draws in the floor's order: non-sky layers lifted by the floor's depth
   behind the feet, `backHook`, the band, back decor and back rows at their depths, canopies and top
   faces, walk-plane decor, terrain chunks with EMPTY ground cells, contact shadows (the runner calls
-  `view.drawShadows` before `world.draw`), front decor and front rows. Render-only hooks:
+  `view.drawShadows` before `world.draw`), front decor and front rows. Decor marked
+  `DecorDef.floorOnly` (the floor's own railings, facades) is drawn only with a floor: every no-floor
+  path (none, `--floor-off`, a failed build) draws the section as before the floor. Render-only hooks:
   `Entity.drawDepth` + `World.depthDraw` (an entity drawn at a depth's shift and the floor's lift
-  there), `worldFloor(world)` and `floorShift` / `floorPool` for the light pass, `SectionView.floorHook`
-  (the light pass's ground mist under the entities). The kits register painters, tiles and props
+  there — cosmetic actors only, spec §3.7 has no exceptions: anything that can be hit or hurt is
+  drawn at 0, a test runs the bot through every floor section; `FloorDef.entityDepth` sets it per
+  kind every frame before the shadow pass), `Entity.drawFloorFaces` (entities of the kinds a floor lists in
+  `FloorDef.entityFaces` — crates, breakables, boats, the bascule — draw their side and top faces
+  themselves through `drawEntityFaces`, under every entity, or over them where a face reaches in
+  front of the walk plane; at a depth by the face groups' sprite-px rule), `worldFloor(world)` and
+  `floorShift` / `floorPool` for the light pass,
+  `SectionView.floorHook` (the light pass's ground mist under the entities). The kits register painters, tiles and props
   (`defineFloorPainter`, `defineFloorTile`, `defineFloorProp`). Checks every floor section joins:
   the walk line (the drawn mesh at v = 0 on the physics surface), the platforms' drawn edges, the
-  background factor rule, the front-row rules (`tests/game/floor-sections.test.ts`), the pan and
-  still tests (`tests/game/floor-raster.test.ts`). Tools: `npm run shot -- --floor-debug
-  [--floor-overlay]`, `npm run floor-clip`.
+  background factor rule, the front-row rules, the pan and still tests on a level surface, the
+  memory and allocation tests, the watertight mesh, floor-only decor (`tests/game/floor-sections.test.ts`),
+  the street guard (`floor-street.test.ts`), GL = CPU, no crack and the GPU budget per section
+  (`tests/media/browser-floor.test.ts`). Wave B (`ams`
+  b, c, c1, c2, d) adds one folder per section (`content/missions/ams/floor/<id>/`, switched on in
+  `AMS_WAVE_B`). Tools: `npm run shot -- --floor-debug [--floor-overlay] [--cam-x]`, `npm run
+  floor-clip [-- --bot --cam-x]`.
 - **Mission `rally`** (level 2 since 2026-10-22, BINNEN DE RING, the 3D race on the A10;
   `docs/design/rally.md`, `docs/api/rally.md`): `rally/` holds the pure race — `RallyRunner` (a
   fixed 60 Hz step; float64 physics with only + − × ÷ √ and the r3 tables; the grid, three laps,
@@ -1026,6 +1040,33 @@ production build, the hero walking right for 8 s, unless noted; a busy machine, 
 | boot at 1× (`cache-check` first visit) | ≤ 4.0 s | 4.35–4.50 s; the pre-wave build 4.70–5.05 s on the same busy machine (no regression) |
 | the ams 2× set (`anim-bench ams-hi --density 2`) | pool ≤ 5.0 s; main thread ≤ 8.65 s | pool of 8: 4.57 s (pre-wave 4.89 s); one thread 14.5 s (pre-wave 13.8 s: the set has grown to 3,404 ids since the limit was set); the floor adds two sprites (the bridges' front railings, 13 ms at 2×) |
 | the tier-4 sprite budget | `DENSE_BUDGET_BYTES` | `ams-dense-budget`, `oldenzaal-dense-budget` green (the floor's textures are outside it) |
+
+The floor in wave B (`ams` b, c, c1, c2, d; INTEGRATE-B 2026-10-27; the same machine and browser, the
+production build, 4K tier 4 k = 8 unless noted, two rounds; load average 1–8; budgets spec §8, §12.1):
+
+| Measure | Limit | Measured |
+|---|---|---|
+| entity faces (spec §12.1 item 4: crates, breakables, boats, the bascule draw their sides and tops; CORE-B) | inside render + present ≤ 2 ms; the floor's code ≤ 0.5 ms | `ams` a walking 1.05–1.17 ms render + present (b362c2b 1.15–1.24); the face pass's own code 0.07 ms for 5 entities on screen; < 64 B per frame; a bot run through every section, drawn every tick, shows ≤ 2 of a kind at once and makes no canvas on the frame path |
+| render + present at k = 8, walking 8 s from the section start (avg / p95 ms) | ≤ 2 ms (goal 1.8) | a 1.06 / 3.4, 1.10 / 3.9; b 1.19 / 2.8, 1.27 / 4.7; c 0.72 / 1.0, 0.72 / 1.0; c1 1.35 / 8.6, 1.34 / 8.7 (p95: the frames that run 4× art jobs); c2 riding the cruise boat 20 s 0.92 / 3.3, 0.71 / 2.8; d market 1.09 / 1.7, 1.12 / 2.0; d arena (the boss) 0.33 / 0.6. The GL floor's own CPU 0.02–0.04 ms |
+| the floor's own code per frame at 4K (node: a renderer that draws nothing, the band on a stub GPU, every pass, a 1.5 px/frame pan, no entities) | ≤ 0.5 ms (≤ 1.2 ms with its draws) | a 0.103, b 0.117, c 0.116, c1 0.163, c2 0.015 (0.231 with the cruise boat, the bridges and the party boat: AMS-RIVER), d 0.167, oz-a 0.203 ms. With the renderer's draws (dev server, every pass timed in the browser, walking 8 s): a 0.45, b 0.76, c 0.42, c1 0.82, c2 0.32 (riding), d 0.78 ms |
+| the floor's whole CPU memory at tier 4 (`cpuBytes`, node, the browser's flow over a walk of the section) | ≤ 16 MB CPU, ≤ 16 MB GPU | a 13.98, b 11.53, c 11.28, c1 14.04, c2 6.47, d 10.75, oz-a 8.25 MB; never capped; every canvas made at the section start. The store prefetches only chunks a mesh quad samples (c2 paints none over its river: was 10.81 MB) and builds no tile that nothing draws (the pit tiles: −0.33 MB in every section without a pit). GPU (`texBytes`, browser, at the start): a 12.05, b 11.98, c 8.98, c1 15.55, c2 9.98, d 8.48 MiB |
+| the section start (the runner's own `exitTo`: fade out, the load tick, fade in; a→b, b→c, c→c1, c→c2, c1→d, c2→d) | no frame over 16.7 ms from the floor | the load frame (under the black fade) 71–83 ms at tier 4, 57–70 ms at tier 2 (b362c2b, b–d without a floor: 49–58 ms): the floor's share 12–32 ms there (its prepare 12–23 ms: the visible 1× chunks and tiles; its first draw ≤ 12 ms). After it the floor's work stays ≤ 11.7 ms per frame (two 4× slices in the 8 ms job budget; no bake waits); the 2–8 frames over 16.7 ms in the first 10 come from the base game (b362c2b shows 3–8 per change) |
+| a direct start (`?mission=ams&section=x`, the first play frame) | — | a 95–100, b 256–261 (the Rijksmuseum's 2× art built on its first draw: pre-existing, not the floor; entered from a, its 2× is ready), c 89–94, c1 84–92, c2 132–185, d 203–207, d boss 317–361 ms (a frame this long can trip the governor to tier 2 for the session, in both builds) |
+| the CPU fallback (`?floorgl=0`), every `ams` section walking 8 s | ≤ 4 ms render + present | 1.8–3.7 ms avg, tier 4 held, no page errors |
+| GL = CPU (SwiftShader, every kit floor at its start and on the house stretches, d 1 and 2) | mean ≤ 3/255, p99 ≤ 24/255 | mean ≤ 1.27, p99 ≤ 7 (wave A's kerb rows at density 1 reached p99 25–61: GL's sub-pixel snap put a kerb edge on a pixel centre; the vertex shader keeps the CPU raster's fill rule now) |
+| boot at 1× (`cache-check` first visit, interleaved with a b362c2b build) | ≤ 4.0 s | 4.20–4.26 s vs 4.17–4.24 s (+13 ms mean: noise; over 4.0 s already at b362c2b on this machine) |
+| the ams 2× set (`anim-bench ams-hi --density 2`) | pool ≤ 5.0 s; main thread ≤ 8.65 s | pool of 8: 4.33 s (3,412 ids); one thread 13.9 s (over the limit since before the floor waves) |
+
+After the wave-B review (FIX-ENGINE-B 2026-10-28, the same machine and browser, the production build,
+4K tier 4 k = 8, walking, two rounds):
+
+| Measure | Limit | Measured |
+|---|---|---|
+| GL cracks (the mesh welded: no T-junction, no sliver quad) | none | crack frames over a 7.3-px pan at R 2 / 5 / 8, Apple M5 (Metal): b 92 → 0, c1 27 → 0, c2 14 → 0, a 18 → 0, c 1 → 0, d 0 → 0 (369 / 138 / 308 / 439 / 305 / 123 frames); SwiftShader 0 in every section; the CPU raster never had one. `offCentre` kept: GL = CPU mean ≤ 0.49, p99 ≤ 4 on the M5, ≤ 0.82 / 6 on SwiftShader; without it SwiftShader's house-stretch kerb rows at density 1 reach p99 54–61 |
+| render + present at k = 8, walking 8 s (avg / p95 ms, two rounds) | ≤ 2 ms (goal 1.8) | a 1.07 / 3.0, 1.08 / 5.5; b 1.19 / 5.0, 1.23 / 5.6; c 0.80 / 1.1, 0.73 / 1.0; c1 1.49 / 9.5, 1.44 / 8.9; c2 riding 0.96 / 4.2, 0.97 / 4.4; d 1.14 / 2.1, 1.15 / 3.5; d boss 0.31 / 0.6, 0.34 / 0.5 |
+| the floor's CPU memory at tier 4 (`cpuBytes`; THE MEMORY TEST now with the CPU raster's frames of GL's compile, as a direct start) | ≤ 16 MB | node: a 14.06, b 10.82, c 11.37, c1 13.16, c2 10.98, d 10.76, oz-a 8.26 MiB. Browser, c1 direct start, real time, two rounds: 13.26 MiB (was 16.12: the CPU band's 2× chunks of the compile frames finished after their 4× and stayed to the eviction; a chunk asked at a density it has now drops its lower ones) |
+| the floor's GPU textures at tier 4 (`texBytes`: chunk layers + tile atlas; a browser test per section) | ≤ 16 MiB | peak over a walk of the whole section: a 12.05, b 9.23, c 8.73, c1 14.80, c2 14.23, d 8.48, oz-a 6.98 MiB (was c1 15.55, c2 15.98 at its start: the atlas grew by doubling); the atlas is bounded by what the layers leave of 16 MiB (a tile over it drawn at 2×: none falls back) |
+| after FIX-SECTIONS-B (c1's deck a tile surface, c2's piers and river tiles, b's passage shade): render + present at k = 8, walking (avg / p95 ms, two rounds); CPU memory (the browser flow in node) | ≤ 2 ms; ≤ 16 MB | b 1.22 / 4.0, 1.21 / 4.0; c1 1.38 / 8.8, 1.36 / 8.8; c2 riding 1.12 / 4.4, 1.13 / 4.4; d 1.17 / 2.9, 1.19 / 3.1. Memory b 10.97, c 11.58, c1 13.16, c2 10.85, d 11.26 MiB, never capped; GPU b 8.98, c1 14.80, c2 14.23, d 8.48 MiB; no stand-in, no tile fallback |
 
 ## 11. Definition of done (every task)
 

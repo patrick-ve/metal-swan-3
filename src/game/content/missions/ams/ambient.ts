@@ -10,6 +10,7 @@ import type { DrawOpts, Renderer } from '../../../../engine/render';
 import { PAL } from '../../../../engine/palette';
 import type { World } from '../../../../engine/world';
 import { isPlayer } from '../../../player/player';
+import { drawEntityFaces } from '../../../mission/floor/hooks';
 import { defineEntity, paramNum, type SpawnParams } from '../../../registry';
 import { sfxNear } from '../../props/common';
 import { isSwan } from '../../vehicles/swan/swan';
@@ -121,10 +122,20 @@ export class AmsTourBoat extends Entity {
     }
   }
 
+  /** The bob of this frame (whole px). */
+  private bob(): number {
+    return Math.round(Math.sin((this.t / 90) * TAU));
+  }
+
+  /** Render only: on a perspective floor that lists the kind, its deck, cabin and ends (none while it turns). */
+  override drawFloorFaces(r: Renderer): void {
+    drawEntityFaces(r, this, this.turnT > 0 ? -1 : 0, this.facing < 0, 0, this.bob());
+  }
+
   override draw(r: Renderer): void {
     drawOpts.flipX = this.facing < 0;
     drawOpts.flash = false;
-    const bob = Math.round(Math.sin((this.t / 90) * TAU));
+    const bob = this.bob();
     if (this.turnT > 0) {
       const k = Math.floor((TOUR_BOAT.turn - this.turnT) / (TOUR_BOAT.turn / 4));
       r.sprite('npc/ams/ams-tour-boat/turn', k < 2 ? k : 3 - k, this.x, this.y + bob, drawOpts);
@@ -506,6 +517,11 @@ export class AmsBoatPlatform extends Entity {
     if (dx !== 0 || dy !== 0) this.world.moveSolid(this.box, dx, dy);
     this.x = this.box.x + this.w / 2;
     this.y = this.box.y;
+  }
+
+  /** Render only: on a perspective floor that lists the kind, its open hull and its ends (floor/boat.ts). */
+  override drawFloorFaces(r: Renderer): void {
+    drawEntityFaces(r, this, 0, this.facing < 0);
   }
 
   override draw(r: Renderer): void {

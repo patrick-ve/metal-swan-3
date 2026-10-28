@@ -33,7 +33,10 @@ import { rampOf } from '../art-hd-ab-kit';
 import { A_AWNINGS, A_BOATS, A_CANAL, A_FABEL_X, A_LEDGES, A_W, DECK_Y, ROOF_Y } from '../terrain';
 import { amsDecorDepth } from './depth';
 import { drawbridgeFloor, type Drawbridge } from './drawbridge';
+import { amsEntityFaces } from './entities';
 import {
+  AMS_BACK,
+  AMS_CAMERA,
   BULB_FAR,
   BULB_NEAR_HOUSE,
   BULB_NEAR_QUAY,
@@ -60,10 +63,6 @@ import { ensureFrontRail, RAIL_POST_H, RAIL_POST_W } from './props';
 import { boatSides, boxSides, depthPx, ensureBandTile, houseSides, railPostSides } from './sides';
 import { ensureArchTile, ensureCanopyTile } from './tiles';
 
-/** The `ams` camera (spec §1.1): horizon 60, focal length 210, the floor 30 px behind the feet. */
-export const AMS_CAMERA = { yh: 60, f: 210, back: 146 } as const;
-/** The floor's back edge as a depth: the house sides reach back to it (spec §11 R1). */
-export const AMS_BACK = G - AMS_CAMERA.back;
 
 /** The houseboats in depth (spec §11 R1: the hull ~22 world px wide): the deck top and the hull, the cabin and its roof. */
 export const BOAT_HULL = 11;
@@ -232,7 +231,8 @@ function facadeAt(decor: readonly DecorDef[], u: number): number | undefined {
 /** The front railing of a bridge as front decor at its deck's near edge (pre-scaled for that depth). */
 export function frontRailDecor(b: Bridge): DecorDef {
   const s = sAtDepth({ yh: AMS_CAMERA.yh, yw: G }, b.near);
-  return { sprite: ensureFrontRail(b, s), x: b.x0, y: G, front: true, depth: b.near };
+  // Floor-only (`DecorDef.floorOnly`): without a floor the bridge's own 2D art stands there as before.
+  return { sprite: ensureFrontRail(b, s), x: b.x0, y: G, front: true, depth: b.near, floorOnly: true };
 }
 
 /** The floor of section a (the section's decor list: the canopies find their facades there). */
@@ -311,6 +311,9 @@ export function aFloor(decor: readonly DecorDef[]): FloorDef {
     overhangs,
     tops,
     faces,
+    // The moving and breakable things show their sides and tops too (spec §12.1 item 4): the crates,
+    // the racks, the tulip stall, the herring cart, the little boat in the side canal.
+    entityFaces: amsEntityFaces(['crate', 'ams-bike-rack', 'ams-tulip-stall', 'ams-herring-cart', 'ams-boat-platform'], { max: { 'ams-boat-platform': 1 } }),
     decorDepth: amsDecorDepth,
     hideDecor: ['decor/ams/water-'],
     shadow: 0.3,

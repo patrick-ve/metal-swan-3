@@ -1,5 +1,5 @@
 /**
- * npm run floor-clip -- --mission ams [--section a] [--x 60] [--ticks 150] [--hold right,fire]
+ * npm run floor-clip -- --mission ams [--section a] [--x 60] [--ticks 150] [--bot] [--cam-x 1500] [--hold right,fire]
  *                       [--every 1] [--count 150] [--res 2] [--art 1|2|4] [--gfx pixel|smooth|xbr]
  *                       [--seed 1] [--players 1|2] [--pan <px/tick>] [--floor-debug] [--floor-overlay]
  *                       [--floor-off] [--no-mp4] [--bench] --out tmp/floor-lead/clips/x
@@ -9,7 +9,10 @@
  * `<out>/f0000.png …`, then an MP4 `<out>.mp4` with ffmpeg when it is installed (60 / every fps:
  * --every 1 gives a 60 fps clip of every tick).
  * - Default: the game runs; --hold keeps buttons held (fire is tapped every other tick); --x
- *   teleports the players first, --ticks steps before the first frame.
+ *   teleports the players first, --ticks steps before the first frame; --bot plays (the bot), and
+ *   --cam-x X then steps on until the view's left edge reaches world x X — frames by the CAMERA where
+ *   --x cannot place it (`ams` c2: the cruise boat carries the camera; `--section c2 --bot --cam-x
+ *   1500 --count 300` is a 60 fps clip of the boat-carried camera).
  * - --pan v: a render-only pan: the simulation stops after --ticks and the camera moves v px per
  *   frame from the view at that moment (the floor's clock still runs: water moves). The pure
  *   camera motion of the floor, the rows and the decor.
@@ -29,6 +32,7 @@ import type { UpscaleMode } from '../src/engine/upscale';
 import { debugFloorDef, setFloorOverlay, setFloorOverride, SectionFloor } from '../src/game/mission/floor/index';
 import { isGraphicsMode } from '../src/game/settings';
 import { createHeadlessGame } from '../src/sim/index';
+import { stepToCamera } from './lib/camera-step';
 import { resolveGfx } from './lib/gfx';
 import { savePNG } from './lib/image';
 
@@ -52,16 +56,19 @@ interface Args {
   mp4: boolean;
   bench: boolean;
   out: string;
+  /** The bot plays; step on until the view's left edge reaches this x (frames by the camera). */
+  bot: boolean;
+  camX?: number;
 }
 
 const USAGE =
   'usage: npm run floor-clip -- --mission ams [--section a] [--x 60] [--ticks 150] [--hold right,fire] [--every 1] [--count 150] ' +
-  '[--res 2] [--art 1|2|4] [--gfx pixel|smooth|xbr] [--seed 1] [--players 1|2] [--pan <px/tick>] [--floor-debug] [--floor-overlay] [--floor-off] [--no-mp4] [--bench] --out <dir>';
+  '[--res 2] [--art 1|2|4] [--gfx pixel|smooth|xbr] [--seed 1] [--players 1|2] [--pan <px/tick>] [--bot] [--cam-x 1500] [--floor-debug] [--floor-overlay] [--floor-off] [--no-mp4] [--bench] --out <dir>';
 
 const BUTTONS: readonly Button[] = ['left', 'right', 'up', 'down', 'fire', 'jump', 'bomb', 'start'];
 
 function parse(argv: readonly string[]): Args {
-  const a: Args = { mission: 'ams', ticks: 60, hold: [], every: 1, count: 60, res: 2, art: 2, gfx: null, seed: 1, players: 1, pan: 0, floorDebug: false, floorOverlay: false, floorOff: false, mp4: true, bench: false, out: 'tmp/floor-clip' };
+  const a: Args = { mission: 'ams', ticks: 60, hold: [], every: 1, count: 60, res: 2, art: 2, gfx: null, seed: 1, players: 1, pan: 0, floorDebug: false, floorOverlay: false, floorOff: false, mp4: true, bench: false, out: 'tmp/floor-clip', bot: false };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
     const next = (): string => {
@@ -135,6 +142,12 @@ function parse(argv: readonly string[]): Args {
       case '--bench':
         a.bench = true;
         break;
+      case '--bot':
+        a.bot = true;
+        break;
+      case '--cam-x':
+        a.camX = num();
+        break;
       case '--out':
         a.out = next().replace(/\/$/, '');
         break;
@@ -187,6 +200,7 @@ async function main(): Promise<void> {
     seed: a.seed,
     players: a.players,
     god: true,
+    bot: a.bot ? { route: 'lower' } : false,
     res: a.res,
     gfx: gfx.mode,
     input: a.hold.length ? (tick) => holdMask | (tapFire && tick % 2 === 0 ? buttonMask('fire') : 0) : undefined,
@@ -198,6 +212,10 @@ async function main(): Promise<void> {
       game.teleport(a.x);
     }
     game.step(a.ticks);
+    if (a.camX !== undefined) {
+      const reached = stepToCamera(game, a.camX);
+      console.log(`--cam-x ${a.camX}: ${reached ? 'reached' : 'NOT reached'} at tick ${game.ticks}`);
+    }
     const dir = a.out;
     if (!a.bench) {
       rmSync(dir, { recursive: true, force: true });

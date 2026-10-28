@@ -46,6 +46,9 @@ import { hudOf } from '../../../context';
 import { isPlayer, type Player } from '../../../player/player';
 import { defineEntity, paramBool, paramNum, paramStr, toSpawnSpec, type SpawnParams } from '../../../registry';
 import { Entity } from '../../../../engine/entity';
+import { worldFloor } from '../../../mission/floor/hooks';
+import type { SectionFloor } from '../../../mission/floor/section-floor';
+import type { DecorDef } from '../../../mission/types';
 import { farOff, playerPos } from './ambient';
 import './breakables';
 import { strideRate } from '../../../../engine/math';
@@ -55,6 +58,8 @@ export { AmsBoatPlatform, AmsCyclistBg, AmsPigeons, AmsTourBoat, AmsWindowWaver,
 export { AMS_BREAKABLES, AMS_BREAKABLE_SCORE, AmsBreakable } from './breakables';
 
 const drawOpts: DrawOpts = {};
+/** The hot-dog stand's lower box over the vendor on a perspective floor (`AmsHotdogVendor.draw`). */
+const standOpts: DrawOpts = {};
 
 // ============================================================================== people
 
@@ -272,6 +277,22 @@ export class AmsBaker extends AmsPerson {
 }
 const handPt: [number, number] = [0, 0];
 
+/** The hot-dog stand's lower box (front decor without a floor) and how far from it its vendor may stand. */
+const STAND_FRONT = 'decor/ams/hotdog-front';
+const STAND_REACH = 96;
+
+/** The stand front in `decor` nearest to x (within STAND_REACH) into `out`; out.x NaN when there is none. */
+function standFront(decor: readonly DecorDef[] | undefined, x: number, out: { x: number; y: number }): void {
+  out.x = NaN;
+  let best = STAND_REACH;
+  for (const d of decor ?? []) {
+    if (d.sprite !== STAND_FRONT || Math.abs(d.x - x) > best) continue;
+    best = Math.abs(d.x - x);
+    out.x = d.x;
+    out.y = d.y;
+  }
+}
+
 /** The hot-dog vendor in his stand: salutes every passing player once. */
 export class AmsHotdogVendor extends AmsPerson {
   /** Bit mask of the player slots he saluted. */
@@ -304,6 +325,29 @@ export class AmsHotdogVendor extends AmsPerson {
       this.setMode('salute', 70);
       this.say(w.swan ? 'HEB JIJ NOG NEPNAGELS\nVOOR MIJ?' : 'HALLO DAAR!', 100, 'gag');
     }
+  }
+
+  /** The floor the stand's front was looked up on, and that front's place (x NaN: that floor's section has none by him). */
+  private standFloor: SectionFloor | null = null;
+  private readonly stand = { x: NaN, y: 0 };
+
+  /**
+   * RENDER ONLY (docs/design/floor.md §12.2 b, §3.6 gate 5): without a floor the stand's lower box
+   * (`decor/ams/hotdog-front`, section b) is front decor that hides his legs. On a perspective floor
+   * nothing drawn over the world may cover a hero's head or gun, so the floor hides that decor and he
+   * draws the box over himself, right after his sprite: in the world's pass at his z, under the heroes.
+   * Only where his section has that stand by him (looked up once per floor in its decor list: no other
+   * section's vendor draws b's stand). The simulation never calls `draw`.
+   */
+  override draw(r: Renderer): void {
+    super.draw(r);
+    const floor = worldFloor(this.world);
+    if (!floor) return;
+    if (floor !== this.standFloor) {
+      this.standFloor = floor;
+      standFront(floor.section.decor, this.x, this.stand);
+    }
+    if (this.stand.x === this.stand.x) r.sprite(STAND_FRONT, 0, this.stand.x, this.stand.y, standOpts);
   }
 }
 

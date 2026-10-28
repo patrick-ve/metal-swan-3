@@ -12,6 +12,7 @@ import { placeSecrets, secretArt } from './secrets';
 import { bridgeFaceSprite, waterDecor } from './art';
 import { BG_GOLDEN } from './section-c';
 import { C_AMSTEL, C_BLAUWBRUG, C_BRIDGE_END, C_BRIDGE_Y, C1_W, G, terrainC1, WATER_Y } from './terrain';
+import { c1Floor, c1FloorDecor } from './floor/c1/index';
 
 const SPAN = 128;
 const [BB_X, BB_LEN, BB_H] = C_BLAUWBRUG;
@@ -33,6 +34,8 @@ const decor: DecorDef[] = [
   { sprite: 'decor/ams/bollard', x: 880, y: 175, front: true },
   { sprite: bridgeFaceSprite(BB_LEN, BB_H), x: BB_X, y: G, front: true },
   { sprite: 'decor/ams/bollard', x: 1260, y: G, front: true },
+  // The perspective floor's own decor (docs/design/floor.md §12; none while its floor is off: floor/c1/index.ts).
+  ...c1FloorDecor(),
 ];
 
 /** The city life of c1: tour boats and ducks on the Amstel, pigeons on the Waterlooplein quay. */
@@ -95,6 +98,8 @@ export const sectionC1: SectionDef = {
   terrain: terrainC1(),
   terrainStyle: { ground: 'klinker', edge: 'bikepath', platform: 'whitewood', solid: 'brick' },
   decor,
+  // The perspective floor (docs/design/floor.md §12; its builder's folder floor/c1/; off until its switch is on).
+  floor: c1Floor(decor),
   // Tier 4: the decor this section draws and the fatbike pairs of its last squad.
   art: ['enemy/fatbike-youth-pair', ...new Set(decor.map((d) => d.sprite)), ...secretArt('c1')],
   playerStart: { x: 100, y: C_BRIDGE_Y },

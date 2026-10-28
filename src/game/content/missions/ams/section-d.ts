@@ -18,6 +18,7 @@ import { AmsPerson } from './entities';
 import { at, crate, fromRight, normalUp, prewarm, waitBoss } from './helpers';
 import { placeSecrets, secretArt } from './secrets';
 import { D_ARENA, D_W, G, terrainD } from './terrain';
+import { D_FRONT_ROW, D_PAVEMENT, dFloor, dFloorDecor, STALL_DEPTH } from './floor/d/index';
 
 export const BG_SUNSET: BackgroundDef = {
   sky: PAL.pink[1],
@@ -36,25 +37,31 @@ export const DOORS_X = D_ARENA[0] + 294;
 
 const decor: DecorDef[] = [
   ...houseRow('sunset', 0, [HOUSE.flat, HOUSE.step, HOUSE.bellCream, HOUSE.neck, HOUSE.koffie, HOUSE.spout, HOUSE.bell, HOUSE.boeken, HOUSE.stepBrown, HOUSE.neckRed, HOUSE.flat, HOUSE.bloemen, HOUSE.spout, HOUSE.bell, HOUSE.step, HOUSE.kaas]),
-  { sprite: 'decor/ams/stopera', x: D_ARENA[0], y: G },
-  // Waterlooplein flea market.
-  { sprite: 'decor/ams/market-stall', frame: 0, x: 150, y: G },
-  { sprite: 'decor/ams/market-stall', frame: 1, x: 240, y: G },
-  { sprite: 'decor/ams/lamp', x: 310, y: G },
-  { sprite: 'decor/ams/market-stall', frame: 2, x: 390, y: G },
-  { sprite: 'decor/ams/market-stall', frame: 0, x: 480, y: G },
-  { sprite: 'decor/ams/flag-ams', x: 548, y: G, animate: true },
-  { sprite: 'decor/ams/market-stall', frame: 1, x: 640, y: G },
-  { sprite: 'decor/ams/market-stall', frame: 2, x: 730, y: G },
-  { sprite: 'decor/ams/lamp', x: 820, y: G },
-  { sprite: 'decor/ams/flag-nl', x: 870, y: G, animate: true },
-  { sprite: 'decor/ams/tulips', x: 940, y: G, animate: true },
-  { sprite: 'decor/ams/flag-ams', x: 1250, y: G, animate: 10 },
-  // Front.
-  { sprite: 'decor/ams/bollard', x: 60, y: G, front: true },
-  { sprite: 'decor/ams/bike-rack', x: 330, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 600, y: G, front: true },
-  { sprite: 'decor/ams/bollard', x: 616, y: G, front: true },
+  // On the perspective floor the Stopera stands at its depth anchored on its doors (floor/d/stopera.ts): this 2D one is hidden there.
+  { sprite: 'decor/ams/stopera', x: D_ARENA[0], y: G, depth: null },
+  // Waterlooplein flea market. On the floor (docs/design/floor.md §12.2 d) these stalls stand at the back
+  // of the square as boxes, the lamp and the flag on the pavement in front of the houses.
+  { sprite: 'decor/ams/market-stall', frame: 0, x: 150, y: G, depth: STALL_DEPTH },
+  { sprite: 'decor/ams/market-stall', frame: 1, x: 240, y: G, depth: STALL_DEPTH },
+  { sprite: 'decor/ams/lamp', x: 310, y: G, depth: D_PAVEMENT },
+  { sprite: 'decor/ams/market-stall', frame: 2, x: 390, y: G, depth: STALL_DEPTH },
+  { sprite: 'decor/ams/market-stall', frame: 0, x: 480, y: G, depth: STALL_DEPTH },
+  { sprite: 'decor/ams/flag-ams', x: 548, y: G, animate: true, depth: D_PAVEMENT },
+  { sprite: 'decor/ams/market-stall', frame: 1, x: 640, y: G, depth: STALL_DEPTH },
+  { sprite: 'decor/ams/market-stall', frame: 2, x: 730, y: G, depth: STALL_DEPTH },
+  // The gull sleeps on this lamp (the script's perch): it stays in the walk plane, on the square (floor.md §3.7).
+  { sprite: 'decor/ams/lamp', x: 820, y: G, depth: 0 },
+  // The forecourt's flags and planter (on the floor: in front of the Stopera).
+  { sprite: 'decor/ams/flag-nl', x: 870, y: G, animate: true, depth: 8 },
+  { sprite: 'decor/ams/tulips', x: 940, y: G, animate: true, depth: 6 },
+  { sprite: 'decor/ams/flag-ams', x: 1250, y: G, animate: 10, depth: 8 },
+  // Front (on the floor the front row of poles replaces the bollards; the parked bikes stand by it on the near pavement).
+  { sprite: 'decor/ams/bollard', x: 60, y: G, front: true, depth: null },
+  { sprite: 'decor/ams/bike-rack', x: 330, y: G, front: true, depth: D_FRONT_ROW },
+  { sprite: 'decor/ams/bollard', x: 600, y: G, front: true, depth: null },
+  { sprite: 'decor/ams/bollard', x: 616, y: G, front: true, depth: null },
+  // The perspective floor's own decor (docs/design/floor.md §12; none while its floor is off: floor/d/index.ts).
+  ...dFloorDecor(),
 ];
 
 /** The flea market's repair crate (a fixed `pickup-repair` source for a ridden Swan). */
@@ -169,6 +176,8 @@ export const sectionD: SectionDef = {
   terrain: terrainD(),
   terrainStyle: { ground: 'klinker', edge: 'kerb', platform: 'wood', solid: 'brick' },
   decor,
+  // The perspective floor (docs/design/floor.md §12; its builder's folder floor/d/; off until its switch is on).
+  floor: dFloor(decor),
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.
   art: [...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-bike-rack', 'decor/ams/ams-market-stall', ...secretArt('d')],

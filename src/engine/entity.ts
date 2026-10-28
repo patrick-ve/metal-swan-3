@@ -159,6 +159,15 @@ export abstract class Entity {
     return true;
   }
 
+  /**
+   * RENDER ONLY (the perspective floor's entity faces, docs/design/floor.md §12.1 item 4): draw this
+   * entity's side and top faces (`drawEntityFaces`, src/game/mission/floor/hooks.ts) with this
+   * frame's state, mirror and offsets. The floor calls it for the kinds its `FloorDef.entityFaces`
+   * lists, under every entity (and again over them for faces in front of the walk plane); elsewhere
+   * it is never called. Default: no faces. Never read by the simulation.
+   */
+  drawFloorFaces(_r: Renderer): void {}
+
   /** Called once per tick. */
   update(): void {}
 

@@ -45,6 +45,13 @@ export interface DecorDef {
    * hidden). It wins over `FloorDef.decorDepth`. Art only; ignored without a floor.
    */
   depth?: number | null;
+  /**
+   * OPT-IN: the item belongs to the perspective floor's look (a deck rail, a quay edge, a boat's
+   * hull that the floor draws in the flat view's place). Drawn only while the section has a floor;
+   * every no-floor path (no `SectionDef.floor`, `--floor-off`, a floor that failed to build) skips
+   * it, so the flat view stays as it was before the floor. Art only.
+   */
+  floorOnly?: boolean;
 }
 
 export type TransitionKind = 'fade' | 'cut';

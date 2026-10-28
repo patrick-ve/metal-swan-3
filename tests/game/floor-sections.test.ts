@@ -3,6 +3,7 @@
  * src/game/mission/floor/checks.ts). EVERY section of every registered mission that has a
  * `SectionDef.floor` joins these tests by itself:
  * - the walk line: the drawn floor at v = 0 is on the physics surface (±0.5 px, every px);
+ * - the mesh is watertight: no T-junction (a GPU's vertex snap opens cracks at one);
  * - canopies / slabs: their front edges lie on platform lines;
  * - the factor rule: lifted background layers scroll slower than the floor's back edge;
  * - the front-row rules (spacing, width, height, kept spots);
@@ -14,8 +15,8 @@
  * - the ground mist's rows move at s(y)·Δ (no whole-px snapping), where the section has one;
  * - no contact shadow lies where nothing is drawn (a bot run);
  * - THE MEMORY TEST: the floor's whole CPU memory at tier 4 in the browser's flow (deferred art
- *   jobs, the band on a GPU) stays ≤ 16 MB over a walk of the section, the store never caps, and the
- *   frame path makes no canvas.
+ *   jobs, the band on a GPU after the CPU raster's frames of its compile) stays ≤ 16 MB over a walk
+ *   of the section, the store never caps, and the frame path makes no canvas.
  * The debug floor is also built on every horizontal `ams` and `oldenzaal` section (their humps,
  * steps, gaps and water: the mesh against every real walk profile), and the opt-in hooks are
  * checked to change nothing without a floor. (The factor rule is checked per real floor: oz-c's
@@ -42,16 +43,17 @@ import {
   floorShift,
   frontRowViolations,
   overhangErrors,
+  setFloorOverride,
   walkLineErrors,
   worldFloor,
   FRONT_CLEAR,
 } from '../../src/game/mission/floor/index';
 import type { FloorDef } from '../../src/game/mission/floor/types';
-import type { SectionDef } from '../../src/game/mission/types';
+import type { DecorDef, SectionDef } from '../../src/game/mission/types';
 import { SectionView } from '../../src/game/mission/view';
-import { FLOOR_CX, FLOOR_YW, sOfY, vOfY } from '../../src/engine/floor/cam';
+import { FLOOR_CX, sOfY } from '../../src/engine/floor/cam';
 import type { FloorFrame, FloorGpu } from '../../src/engine/floor/gpu';
-import { heightAt, profileAt } from '../../src/engine/floor/mesh';
+import { heightAt, meshTJunctions, MESH_MIN_GAP, QUAD_FACE_V, QUAD_TOP } from '../../src/engine/floor/mesh';
 import { VIEW_W } from '../../src/engine/render';
 import { artTier, cancelArtJobs, pendingArtJobs, runArtJobs, setArtTier, setDeferDense, setDeferHiArt } from '../../src/engine/sprites';
 import { sectionLight } from '../../src/game/content/oldenzaal/kit/light-api';
@@ -59,6 +61,7 @@ import { frontCoverHits } from '../../src/game/mission/floor/checks';
 import { SectionFloor, SHADOW_MAX_AIR } from '../../src/game/mission/floor/section-floor';
 import type { FaceGroupDef } from '../../src/game/mission/floor/types';
 import { createHeadlessGame } from '../../src/sim/index';
+import { AMS_WAVE_B } from '../../src/game/content/missions/ams/floor/sections';
 
 await loadContent();
 
@@ -74,10 +77,11 @@ function floorSections(): Array<[string, SectionDef]> {
 }
 
 /**
- * The sections that must have a floor now (wave A: `ams` a and oz-a). A floor that disappears fails
- * here instead of silently dropping every check below; a new one (wave B) adds its id.
+ * The sections that must have a floor now (wave A: `ams` a and oz-a; wave B: every `ams` section whose
+ * builder turned its switch on — `AMS_WAVE_B`, read from their folders, so no builder edits this file).
+ * A floor that disappears fails here instead of silently dropping every check below.
  */
-const EXPECTED_FLOORS = ['ams/a', 'oldenzaal/oz-a'];
+const EXPECTED_FLOORS = ['ams/a', 'oldenzaal/oz-a', ...AMS_WAVE_B.filter((s) => s.on).map((s) => `ams/${s.id}`)];
 
 describe('every section with a floor (gates 4 and 5)', () => {
   const list = floorSections();
@@ -98,6 +102,21 @@ describe('every section with a floor (gates 4 and 5)', () => {
     });
     it(`${m}/${s.id}: the front rows keep the rules`, () => {
       expect(frontRowViolations(s)).toEqual([]);
+    });
+    it(`${m}/${s.id}: the mesh is watertight (no vertex inside another quad's edge: no T-junction; no sliver quad: no GPU crack)`, () => {
+      const floor = new SectionFloor(s, floorOf(s) as FloorDef, new Terrain(s.terrain), 1, `tj/${m}/${s.id}/`);
+      const mesh = floor.mesh;
+      expect(meshTJunctions(mesh)).toEqual([]);
+      // A top or a +v face narrower than MESH_MIN_GAP along u folds under a GPU's vertex snap (two
+      // region ends that close: move one).
+      const slivers: string[] = [];
+      for (let q = 0; q < mesh.quadCount; q++) {
+        const k = mesh.quadKind[q];
+        const w = mesh.quadU1[q] - mesh.quadU0[q];
+        if ((k === QUAD_TOP || k === QUAD_FACE_V) && w < MESH_MIN_GAP) slivers.push(`u ${mesh.quadU0[q].toFixed(3)} + ${w.toFixed(3)}`);
+      }
+      expect(slivers).toEqual([]);
+      floor.dispose();
     });
   }
 });
@@ -182,6 +201,41 @@ describe('the opt-ins change nothing without a floor', () => {
     const world = new World({ terrain: new Terrain(s.terrain), seed: 1 });
     view.drawShadows(r, world);
     expect(Buffer.from(r.target.data.buffer).equals(Buffer.from(before.buffer))).toBe(true);
+  });
+
+  it('floor-only decor (DecorDef.floorOnly) is drawn only with a floor: every no-floor path (--floor-off, a failed build) leaves it out', () => {
+    let marked = 0;
+    for (const [, s] of floorSections()) {
+      const only = (s.decor ?? []).filter((d) => d.floorOnly);
+      marked += only.length;
+      const lists = (v: SectionView): DecorDef[] => {
+        const x = v as unknown as { back: DecorDef[]; front: DecorDef[] };
+        return [...x.back, ...x.front];
+      };
+      const on = new SectionView(s, new Terrain(s.terrain), 1, 1);
+      expect(on.floor, `${s.id}: its floor`).not.toBeNull();
+      for (const d of only) expect(lists(on), `${s.id}: ${d.sprite} with the floor`).toContain(d);
+      on.dispose();
+      for (const off of [() => null, () => ({ ...(s.floor as FloorDef), camera: { yh: 200, f: 210, back: 100 } })]) {
+        // --floor-off (no floor), and a floor def that fails to build (the camera's order is wrong).
+        setFloorOverride(off);
+        const warn = console.warn;
+        console.warn = () => {};
+        try {
+          const v = new SectionView(s, new Terrain(s.terrain), 1, 1);
+          expect(v.floor, `${s.id}: no floor`).toBeNull();
+          const drawn = lists(v);
+          expect(drawn.filter((d) => d.floorOnly), `${s.id}: floor-only decor without a floor`).toEqual([]);
+          expect(drawn.length, `${s.id}: the rest of its decor`).toBe((s.decor ?? []).length - only.length);
+          v.dispose();
+        } finally {
+          console.warn = warn;
+          setFloorOverride(null);
+        }
+      }
+    }
+    // The wave-B sections mark theirs (c1's white railing, d's Stopera …).
+    expect(marked).toBeGreaterThan(5);
   });
 
   it('World.draw: entities with drawDepth 0 draw themselves even with a depth hook set', () => {
@@ -309,40 +363,100 @@ function realFloor(s: SectionDef, key: string): SectionFloor {
 }
 
 /**
- * Rows of the flat floor at camera camX: screen rows whose floor is the walk profile across the view
- * (no kerb, step, cut or deck within ±2.5 px of the row): there every texel moves at s(y)·Δ.
+ * The level surfaces a section's band can show a view wide: the walk plane (h 0) first, then the
+ * level of every `cut` (the water of a canal or a river, a plank deck over it). The river sections
+ * (c1, c2) have no flat land a view wide; their pan test runs on the river or the deck.
  */
-function flatRows(floor: SectionFloor, camX: number, k: number): number[] {
+function levelsOf(floor: SectionFloor): number[] {
+  const out = [0];
+  for (const ft of floor.def.features ?? []) {
+    if (ft.kind !== 'cut') continue;
+    const l = ft.level ?? -4;
+    if (!out.includes(l)) out.push(l);
+  }
+  return out;
+}
+
+/** The scale of screen row y on a level surface h over the walk plane: s = (y − yh)/(yw − yh − h) (h 0: s(y)). */
+function sLevel(floor: SectionFloor, y: number, h: number): number {
+  const c = floor.cam;
+  return (y - c.yh) / (c.yw - c.yh - h);
+}
+
+/**
+ * Is the level surface h at screen row y seen across the view at camX? Nothing nearer may rise into the
+ * line of sight (a raised deck hides the river behind it): for screen columns every 16 px and nearer
+ * depths up to the mesh's front, the floor stays under the ray's height (yw − yh) − (y − yh)/s there.
+ */
+function seen(floor: SectionFloor, camX: number, y: number, h: number): boolean {
+  const c = floor.cam;
+  const k = c.yw - c.yh;
+  const s0 = sLevel(floor, y, h);
+  const sFront = c.f / (c.f - c.vFront);
+  for (let xs = -192; xs <= 192; xs += 16) {
+    for (let s = s0 + 0.005; s <= sFront; s += 0.005) {
+      const v = c.f * (1 - 1 / s);
+      const ray = k - (y - c.yh) / s;
+      if (heightAt(floor.field, camX + 192 + xs / s, v) > ray + 1e-6) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Rows of a LEVEL surface h at camera camX: screen rows whose floor is h across the view (and ±2.5 px
+ * around the row: no kerb, step, cut edge or deck edge near it); there every texel moves at
+ * sLevel(y, h)·Δ. h 0 is the flat walk plane (the rows of the original test).
+ */
+function levelRows(floor: SectionFloor, camX: number, k: number, h: number): number[] {
   const cam = floor.cam;
   const out: number[] = [];
   const rows = floor.bandH * k;
   for (let j = 0; j < rows; j++) {
     const y = floor.bandTop + (j + 0.5) / k;
-    if (y < cam.back + 1.5 || y > 214) continue;
-    let flat = true;
+    if (y > 214) continue;
+    let level = true;
     for (const dy of [-2.5, 0, 2.5]) {
-      const v = vOfY(cam, Math.max(cam.back + 0.01, y + dy));
-      const half = (FLOOR_CX + 4) / sOfY(cam, y + dy);
-      for (let u = camX + FLOOR_CX - half; u <= camX + FLOOR_CX + half && flat; u += 6) {
-        const h0 = profileAt(floor.field, u);
-        if (!Number.isFinite(h0) || Math.abs(heightAt(floor.field, u, v) - h0) > 1e-6 || Math.abs(h0 - (cam.yw - FLOOR_YW)) > 1e-6) flat = false;
+      const sl = sLevel(floor, y + dy, h);
+      const v = cam.f * (1 - 1 / sl);
+      if (!(sl > 0) || v < cam.vBack + 1e-3) {
+        level = false;
+        break;
       }
-      if (!flat) break;
+      const half = (FLOOR_CX + 4) / sl;
+      for (let u = camX + FLOOR_CX - half; u <= camX + FLOOR_CX + half && level; u += 6) if (Math.abs(heightAt(floor.field, u, v) - h) > 1e-6) level = false;
+      if (!level) break;
     }
-    if (flat) out.push(j);
+    // A cut's level (not the walk plane: its rows are as before) only where nothing nearer hides it.
+    if (level && h !== 0 && !seen(floor, camX, y, h)) level = false;
+    if (level) out.push(j);
   }
   return out;
 }
 
-/** The camera x of the longest flat stretch of the section's floor (the pan test runs there). */
-function flatCamera(floor: SectionFloor, s: SectionDef): number {
-  let best = 0;
+/** Rows the pan test must check per res (over its 8 camera steps). */
+const PAN_MIN_ROWS = 40;
+
+/**
+ * The camera x and the level of the pan test: the walk plane (h 0) at its longest flat stretch, as
+ * before, wherever it has flat land a view wide (a, b, c, d, oz-a); else, over every cut level, the
+ * level and camera with the most rows (c1 and c2: the river; c1's plank deck, a strip of a few rows, is
+ * pan-tested in ams-floor-river.test.ts). (A raised pavement is a level too, but its tiles'
+ * joint rows repeat every 4 texels: the cross-correlation cannot tell their shift, so it never
+ * replaces the walk plane.)
+ */
+function levelCamera(floor: SectionFloor, s: SectionDef): { x: number; h: number } {
+  let best = { x: 0, h: 0 };
   let bestN = -1;
-  for (let x = 0; x <= Math.max(0, s.width - VIEW_W); x += 64) {
-    const n = flatRows(floor, x, 1).length;
-    if (n > bestN) {
-      bestN = n;
-      best = x;
+  for (const h of levelsOf(floor)) {
+    // The walk plane (first) wherever it shows flat rows; else every cut level, the most rows win.
+    if (h !== 0 && best.h === 0 && bestN > 0) break;
+    for (let x = 0; x <= Math.max(0, s.width - VIEW_W); x += 64) {
+      const n = levelRows(floor, x, 1, h).length;
+      if (n > bestN) {
+        bestN = n;
+        best = { x, h };
+      }
     }
   }
   return best;
@@ -350,9 +464,9 @@ function flatCamera(floor: SectionFloor, s: SectionDef): number {
 
 describe('every floor section: smooth (spec §2.7: the pan test and the still test on its real floor)', () => {
   for (const [m, s] of floorSections()) {
-    it(`${m}/${s.id}: every flat row moves s(y)·Δ within 1/res at 0.5 and 2 px/tick; a still camera draws the same band`, () => {
+    it(`${m}/${s.id}: every row of a level surface (the walk plane, else a cut's level) moves s(y)·Δ within 1/res at 0.5 and 2 px/tick; a still camera draws the same band`, () => {
       const floor = realFloor(s, 'pan');
-      const x0 = flatCamera(floor, s);
+      const { x: x0, h } = levelCamera(floor, s);
       for (const k of [1, 2]) {
         const r = new SoftRenderer(undefined, undefined, undefined, { res: k });
         const bw = VIEW_W * k;
@@ -370,7 +484,7 @@ describe('every floor section: smooth (spec §2.7: the pan test and the still te
             floor.drawBand(r, 0, k);
             const cur = (floor.raster.band as PixelBuffer).data.slice();
             const delta = r.camX - prevCam;
-            for (const j of flatRows(floor, r.camX, k)) {
+            for (const j of levelRows(floor, r.camX, k, h)) {
               const a = new Float64Array(bw);
               const b = new Float64Array(bw);
               let mean = 0;
@@ -384,17 +498,17 @@ describe('every floor section: smooth (spec §2.7: the pan test and the still te
               for (let i = 0; i < bw; i++) vr += (a[i] - mean) ** 2;
               if (vr / bw < 20) continue;
               const y = floor.bandTop + (j + 0.5) / k;
-              const want = -sOfY(floor.cam, y) * delta * k;
+              const want = -sLevel(floor, y, h) * delta * k;
               const err = Math.abs(rowShift(a, b, Math.ceil(Math.abs(want)) + 3) - want) / k;
               worst = Math.max(worst, err);
               checked++;
-              expect(err, `res ${k} speed ${speed} x ${x} row y ${y.toFixed(2)}`).toBeLessThanOrEqual(1 / k);
+              expect(err, `res ${k} speed ${speed} x ${x} level ${h} row y ${y.toFixed(2)}`).toBeLessThanOrEqual(1 / k);
             }
             prev = cur;
             prevCam = r.camX;
           }
         }
-        expect(checked, `res ${k}: rows checked`).toBeGreaterThan(40);
+        expect(checked, `res ${k} level ${h} at x ${x0}: rows checked`).toBeGreaterThan(PAN_MIN_ROWS);
         // THE STILL TEST: the same camera and tick twice.
         r.setCamera(x0 + 3.25, 0);
         floor.drawBand(r, 7, k);
@@ -658,11 +772,19 @@ describe('every floor section: a bot run (gate 5, contact shadows)', () => {
 });
 
 describe('every floor section: THE MEMORY TEST (spec §3.2, §8 gate 7) at tier 4 in the browser\'s flow', () => {
+  /**
+   * The frames GL's program compiles in the background at a direct section start: `live` is already
+   * true (the section prepares its 4× set), but `render` gives null, so the CPU raster draws those
+   * frames at its cap (2×) and asks for 2× chunks and tiles after the 4× ones (gl-floor.browser.ts).
+   */
+  const COMPILE_FRAMES = 8;
+  let frameNo = 0;
   /** A GPU that draws the band (as GL does: it asks the store for the visible chunks and the materials' tiles). */
   const gpu: FloorGpu = {
     cpuCap: 2,
     live: () => true,
     render(fr: FloorFrame) {
+      if (frameNo < COMPILE_FRAMES) return null;
       const mesh = fr.mesh;
       for (let q = fr.q0; q < fr.q1; q++) {
         const mi = mesh.quadMat[q];
@@ -685,6 +807,7 @@ describe('every floor section: THE MEMORY TEST (spec §3.2, §8 gate 7) at tier 
       const floor = realFloor(s, 'memory');
       try {
         floor.gpu = gpu;
+        frameNo = 0;
         floor.prepare(0, 4);
         const made = floor.pool.made;
         // A renderer that draws nothing (the memory is the floor's own).
@@ -701,6 +824,7 @@ describe('every floor section: THE MEMORY TEST (spec §3.2, §8 gate 7) at tier 
           floor.maintain(soft.camX, 4);
           // The browser's per-frame job budget (8 ms) as a count: a few jobs a frame.
           for (let j = 0; j < 4 && pendingArtJobs() > 0; j++) runArtJobs(0);
+          frameNo++;
           peak = Math.max(peak, floor.cpuBytes());
           expect(floor.store.capped, `capped at camX ${x}`).toBe(false);
         }

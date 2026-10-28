@@ -465,3 +465,68 @@ for two changes. They are part of wave A (group LOOK-1, after INTEGRATE, before 
 |---|---|---|
 | R1 | "The edges of houses that are not bordered by two other houses look a bit off as 2D asset. Can we make these edge/corner houses (and canal boats and other elements) more 3D like?" | **Side faces in perspective.** A house at the end of a row (no neighbour on that side), on both sides of an alley, shows its side wall receding in depth (the same brick or plaster, a plain wall with at most a few small windows, the cornice line and the roof's side). Houseboats become boxes: the hull and the cabin show their end faces (bow, stern) besides the deck and roof tops. The same for other box-like props (the drawbridge, the FABEL FRIET counter, cars and low walls in oz-a, the bridges' parapet ends, and in wave B the stalls, the hot-dog stand, the boats of c and c2). Line-scroll rule: only the side that faces the screen's centre column shows, and it narrows to nothing as the prop passes the centre. Drawn from cached textures, inside the 4K frame budget |
 | R2 | "Some street elements make no sense: I saw a tree in the middle of a bike lane and a bike lane that ends before we jump over canal boat houses. Can you check this?" | **A street-logic audit.** Nothing stands in the lane or on the cobbled roadway except traffic: trees, lamps, benches, bins, flags, parked bikes and flowers stand on the pavements (behind or in front). Every lane connects: to a crossing, to a bridge deck, or to a reason to stop. At the side canal of ams a the lane leads to the **raised drawbridge** (back in the walk path at the left bank, spanning the band in depth): a stop line, barrier arms down across the lane and red lights, on both banks; the heroes cross on the houseboats as before. The audit covers every stretch of ams a and oz-a now, and every section in wave B |
+
+## 12. Wave B for Amsterdam (the user, 2026-10-27)
+
+The user played wave A (b362c2b): "Looks good. Can you plan and build the remainder of the 3D work
+for the segments in Amsterdam that have not had this 3D transformation before?" Wave B is now
+**`ams` only**: sections b, c, c1, c2 and d. The Oldenzaal groups of §7 (OZ-TOWN, OZ-CHURCH) wait
+for a later wave; every oldenzaal frame stays byte-identical in this wave.
+
+### 12.1 What wave A taught (binding for every section)
+
+1. **Side faces (§11 R1)** wherever a box shows a side: row ends, both sides of every alley or gap,
+   a front taller than its neighbour, boats, stalls, stands, ramps, pontoons, bridge parapet ends,
+   the passage's mouths. Helpers: `houseSides`, `boatSides`, `boxSides`, `railPostSides`,
+   `wallFace` / `capFace` (look-1-report.md §3, §9; docs/api/floor.md §8.1, §13).
+2. **Street logic (§11 R2)** from the start: nothing in the lane or on the cobbled roadway but
+   traffic; what the script keeps in the walk plane (a lamp with a gull, a tree with a secret, a
+   stall, a cart, a rack, a pickup) stands on a pavement bulb, a square or a quay, never moved in
+   depth; every lane connects (a crossing, a deck, a ramp, or a reason to stop); pole rows stop at
+   crossings, bridges, water, bulbs and barriers. The guard test `tests/game/floor-street.test.ts`
+   enrols every floor section.
+3. **§3.7 has no exceptions:** an entity that can be hit or can hurt draws at depth 0 (its art with
+   its hitbox). Depth steps only for intros that cannot be hit and for cosmetic actors; fx may have
+   a depth. ROBO-HALSEMA's step out of the Stopera doors is a depth step only while the boss cannot
+   be hit.
+4. **Moving and breakable things get their faces in their own draw** (render-only, on a floor only):
+   the rowing boat's faces move from section a's spawn into its entity; the breakables (the racks,
+   the tulip stall, the herring cart, the market stalls), the pickup crates, the boats of c and c2
+   (the tour boat, the party boat, the cruise boat; the houseboats where they are entities) and the
+   Magere Brug's bascule show their sides and tops, before and after they break. A floor opts in
+   per entity kind (the oldenzaal floors do not opt in during this wave, so oz-a stays identical).
+5. Smooth, memory and speed rules as fixed in wave A: world-space textures with full mips, column
+   raster for walls, sub-pixel AA quads, one canvas pool, ONE memory number per section ≤ 16 MB at
+   tier 4, 4K render + present ≤ 2 ms (goal 1.8), the floor's code ≤ 0.5 ms (≤ 1.2 ms with its
+   draws).
+
+### 12.2 The sections (§4.4 stays the base; these are the additions)
+
+| Section | Stretch | Floor and 3D |
+|---|---|---|
+| b | street 0–380 | house stretch, lane; the row's end before the museum shows its side; the museum's corner wing a box |
+| | the passage 400–720 | the museum's cycle passage: the lane runs THROUGH it (it connects at both mouths); tiled side walls in perspective inside (the passage is a tunnel in depth: its far wall, its ceiling's underside above the heroes as a perspective slab, its arches' side faces at both mouths); darker inside, bright at both ends; no pole rows inside; the roof the heroes walk on stays the platform it is |
+| | Museumplein 720–2200 | gravel paths and grass; the long pool a water strip behind the walk line with stone rims (top and inner faces); the hot-dog stand (decor, the vendor in its hatch) a box with its side and roof top; lawn chains as the low front row; trees and flags on the grass, not on the path |
+| | the canal road 2200–3072 | open quay, lane, two pole rows, the crossing before any cobbles |
+| c | quay street 0–600 | open quay, lane |
+| | the canal 600–1400 | water over the whole band, quay walls with their coping at both ends (faces), six houseboats as boxes (their own draw if they are entities), the Swan on the water at its depth (cosmetic) |
+| | the shop quay 1400–2448 | house stretch, cobbles, row ends and alleys with sides; the scan-car arena: the car at the kerb, cobbles under the fight |
+| | the fork 2400–2608 | the ramp up to the bridge (a walk-plane prop with a top face and side faces, ground under it), the jetty steps down to the pontoon (steps in the height field, the pontoon a box on the water), the tour boat at the pontoon a box; the signs BRUG ↑ / RONDVAART ↓ on posts on the pavement |
+| c1 | the white bridge 60–860 | the plank deck as a raised strip around v = 0 over the Amstel, white railings back and front with post sides, the white drawbridge's gallows spanning the deck in depth (the heroes walk under them), the slope up and the ramp down; the river under the deck with the tour boat |
+| | the quay and the Blauwbrug 860–1388 | lane to a crossing; the Blauwbrug's hump (16) in cobbles with its lamp posts on the parapets and the parapet ends' sides; the Waterlooplein market stalls as boxes on the cobbles at the back and on bulbs |
+| c2 | the river 60–2492 | water over the whole band; the cruise boat carries the camera (a box: hull sides, the cabin's end faces, the roof top); the far bank's quay lifted with its coping; the two low bridges span the band from the back edge to the front (the parapet, the far arch, the near slab face in front as today; their piers' sides); the Magere Brug spans the band (portals, the bascule entity with its sides); the party boat and the houseboats as boxes; the jetties at both ends with steps; ducks at their depth |
+| d | the flea market 0–896 | cobbles; the stalls (breakables) as boxes with awning tops in the walk plane on the square, more stalls at the back; the front row: poles at the market's edge, never in front of a stall a hero fights at |
+| | the Stopera arena 896–1280 | the pale stone tiles of the forecourt in a grid; the Stopera's curved glass front and the Stadhuis wing with their sides; the glass doors in depth; ROBO-HALSEMA's depth step only while not hittable; no front row in the arena |
+
+### 12.3 Build (agents at effort xhigh, Agent tool; snapshot `.claude/snapshots/floor-pre-b.tgz`)
+
+| Agent | Owns | Delivers |
+|---|---|---|
+| CORE-B (alone, first) | the floor engine, the SHARED ams kit files (`ams/floor/*.ts` except `section-a.ts`), the entity files of the breakables, boats, crates and the bascule (`ams/breakables.ts`, `ams/ambient.ts`, `ams/cruise.ts`, `content/items/crate.ts`), the floor tools and tests | §12.1 item 4 (entity faces: one render-only API for moving / breakable entities); the §4.1 materials the wave needs (gravel, grass, planks, river water over the whole band, the Stopera tiles, the passage tiles, stone rims, lawn chains) in the kit; one sub-folder per section (`ams/floor/<b|c|c1|c2|d>/`) that the builders fill, registered so a builder never edits a shared file; the shot / floor-clip support for c2 (the camera on the boat: frames by tick); `frames-b.sh` cameras |
+| AMS-B, AMS-C, AMS-RIVER (c1 + c2), AMS-D (in parallel) | `ams/floor/<section>/`, the floor part of `section-<section>.ts`, their own test file | §12.2 for their sections; a need in a shared file goes into the report (INTEGRATE applies it) or a local workaround |
+| INTEGRATE-B | every file the wave touched, for integration | the builders' needs, the section preloads (floor jobs prefetched), the budgets per section, the CI smoke, the scenery fixture, docs |
+| REVIEW (smooth, look, risk) → FIX | | as in wave A, over all five sections |
+
+Gates (§8) per section; frames with `tmp/floor-lead/frames-b.sh` against `base-b-frames` (from
+b362c2b): DIFF only in `ams` sections; every oldenzaal, m0 and m2 frame SAME. Then a local commit, a
+play build and a LOOK STOP: the user plays `ams` b, c, c1, c2 and d.

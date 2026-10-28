@@ -4,7 +4,9 @@
  * projected, the depth of a decor item, and a lamp's pool on the floor. Pure maths over the
  * section's floor; nothing here draws.
  */
+import type { Entity } from '../../../engine/entity';
 import { FLOOR_CX, sAtDepth, sOfV, vAtDepth } from '../../../engine/floor/cam';
+import type { Renderer } from '../../../engine/render';
 import type { World } from '../../../engine/world';
 import type { DecorDef } from '../types';
 import type { SectionFloor } from './section-floor';
@@ -20,6 +22,25 @@ export function bindWorldFloor(world: World, floor: SectionFloor | null): void {
 /** The floor of the section this world plays (null: no floor). */
 export function worldFloor(world: World): SectionFloor | null {
   return floors.get(world) ?? null;
+}
+
+/**
+ * RENDER ONLY (docs/design/floor.md §12.1 item 4; docs/api/floor.md §8.2): a moving or breakable
+ * entity draws its side and top faces itself, from its render-only hook `drawFloorFaces` — which the
+ * floor calls (under every entity: the faces lie behind the walk plane) only on a floor whose
+ * `FloorDef.entityFaces` lists its kind (`e.type`); anywhere else (no floor, a kind the floor does not
+ * list: every oldenzaal floor in wave B) nothing calls it and this draws nothing, so the entity draws
+ * exactly as before. `state` picks the kind's faces (0 whole, 1 broken, an animation frame …), `flip`
+ * mirrors them with a sprite drawn flipX, (dx, dy) whole-px offsets of this frame's sprite (a bob, a
+ * wobble) from the entity's x and y. The simulation never sees it; nothing is allocated per frame.
+ *
+ *   override drawFloorFaces(r: Renderer): void {
+ *     drawEntityFaces(r, this, this.broken ? 1 : 0, false, this.wobbleDx());
+ *   }
+ */
+export function drawEntityFaces(r: Renderer, e: Entity, state = 0, flip = false, dx = 0, dy = 0): void {
+  const floor = floors.get(e.world);
+  if (floor) floor.drawEntityFaces(r, e, state, flip, dx, dy);
 }
 
 /** A point (reused by the caller). */

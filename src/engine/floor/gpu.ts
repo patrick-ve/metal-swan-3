@@ -71,8 +71,11 @@ export interface FloorFrame {
   storeVersion: number;
   /** The best chunk texture ready now (a lower density stands in for one still being built). */
   chunk(k: number): FloorTexture | null;
-  /** The best texture of tile i ready now. */
-  tile(i: number): FloorTexture | null;
+  /**
+   * The best texture of tile i ready now (at most the frame's density; `want`: at most that density —
+   * a GPU whose tile atlas reached its budget asks for 2×, spec §3.2).
+   */
+  tile(i: number, want?: number): FloorTexture | null;
 }
 
 /** A GPU floor renderer (gl-floor.browser.ts); `NullFloorGpu` everywhere else. */

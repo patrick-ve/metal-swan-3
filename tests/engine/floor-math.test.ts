@@ -23,6 +23,7 @@ import {
   buildFloorMesh,
   heightAt,
   meshHeightAt,
+  meshTJunctions,
   QUAD_FACE_UN,
   QUAD_FACE_UP,
   QUAD_FACE_V,
@@ -127,6 +128,17 @@ describe('floor height field and mesh (spec §1.2)', () => {
       }
     }
     expect(n).toBeGreaterThan(5000);
+  });
+
+  it('the mesh is watertight: the weld leaves no vertex inside another quad\'s edge (the deck, the cut, the bend)', () => {
+    expect(meshTJunctions(mesh)).toEqual([]);
+    // The field has T-junctions to weld (the deck's lines end at the cut's walls): welded triangles exist.
+    let tris = 0;
+    for (let q = 0; q < mesh.quadCount; q++) {
+      const b = q * 4;
+      if (mesh.quads[b + 1] === mesh.quads[b + 2] || mesh.quads[b + 3] === mesh.quads[b]) tris++;
+    }
+    expect(tris).toBeGreaterThan(0);
   });
 
   it('the cylinder rule: the hump runs across the band; the gap is a pit; the deck is on the walk profile', () => {

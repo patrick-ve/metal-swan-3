@@ -1,9 +1,13 @@
 # The perspective floor — API (faux-3D streets for `ams` and `oldenzaal`)
 
 Spec: `docs/design/floor.md` (the user's plan; §0 the decisions, §1 the model, §2 smooth, §3 the
-engine, §4 Amsterdam, §5 Oldenzaal, §8 the gates). Built in wave A by CORE (this API), GL (the
-WebGL2 program), AMS-A and OZ-A (the kits and the first sections), joined by INTEGRATE (the
-section-start prefetch, the GL warm-up, the floor's lift, the mist hook, the budgets).
+engine, §4 Amsterdam, §5 Oldenzaal, §8 the gates, §12 wave B). Built in wave A by CORE (this API), GL
+(the WebGL2 program), AMS-A and OZ-A (the kits and the first sections), joined by INTEGRATE (the
+section-start prefetch, the GL warm-up, the floor's lift, the mist hook, the budgets); wave B (`ams`
+b, c, c1, c2, d) by CORE-B (entity faces, the kit's new materials, one folder per section), the four
+section builders and INTEGRATE-B (the depth-step hook, the store's chunk set, GL's fill rule, the
+tests per section, the budgets per section); FIX-ENGINE-B (the watertight mesh, floor-only decor, the
+GPU budget's atlas bound, the stale lower-density chunks, entity faces at a depth, the guards).
 
 A section opts in with `SectionDef.floor: FloorDef`. Without it the section draws byte-identically
 to before (the ring, m0–m5, the tower, the menus). The floor is ART ONLY: it reads the terrain and
@@ -16,9 +20,9 @@ not change (`tmp/floor-lead/id.sh` proves it).
 |---|---|
 | Engine (pure, headless-safe) | `src/engine/floor/`: `cam.ts` (the camera maths), `mesh.ts` (height field + mesh), `tex-layout.ts` (texture layout and sampling rules), `tex.ts` (texture store, art jobs, memory), `raster.ts` (the CPU raster), `quad.ts` (small textured quads: `QuadCanvas`, anti-aliased, on the 1/res grid; the canvas pool `QuadCanvasPool`), `gpu.ts` (the GPU contract, `NullFloorGpu`) |
 | Game | `src/game/mission/floor/`: `types.ts` (`FloorDef`), `registry.ts` (painters, tiles, props, the tools' override, the GPU slot, the overlay flag), `section-floor.ts` (`SectionFloor`: one section's floor and all its passes), `faces.ts` (the face groups' geometry helpers, §8.1), `hooks.ts` (light hooks), `checks.ts` (gates 4 and 5), `debug.ts` (the debug floor), `builtin.ts` (built-in tiles), `scale.ts` (one-time frame scaling, in slices: `ScaleJob`), `place.ts` (`FramePlacer`: draws at sub-pixel positions without boxing a double) |
-| Wiring | `SectionView` (view.ts) builds and draws it; `MissionRunner` passes the GPU, calls `drawShadows`, sets `World.depthDraw`, binds the world to the floor; `Entity.drawDepth`, `World.depthDraw` (render-only opt-ins); `AppOptions.floorGpu` |
+| Wiring | `SectionView` (view.ts) builds and draws it; `MissionRunner` passes the GPU, calls `drawShadows` (the kinds' depth steps, the contact shadows, then the entities' faces), sets `World.depthDraw`, binds the world to the floor; `Entity.drawDepth`, `Entity.castsShadow`, `Entity.drawFloorFaces`, `World.depthDraw` (render-only opt-ins); `AppOptions.floorGpu` |
 | GL (wave A) | `src/engine/gl-floor.browser.ts` implements `FloorGpu`, created in `main.ts`, passed as `createApp({ …, floorGpu })` |
-| Kits | `src/game/content/missions/ams/floor/`, `src/game/content/missions/oldenzaal/floor/` register painters, tiles and props and export each section's `FloorDef` |
+| Kits | `src/game/content/missions/ams/floor/`, `src/game/content/missions/oldenzaal/floor/` register painters, tiles and props and export each section's `FloorDef`; `ams/floor/entities.ts` the `ams` entity kinds' faces (§8.2); `ams/floor/<b, c, c1, c2, d>/` one folder per wave-B section (§14) |
 
 ## 2. Units, the camera, depth
 
@@ -81,6 +85,8 @@ export const A_FLOOR: FloorDef = {
   hideDecor: ['decor/ams/water-'],                       // sprite id prefixes to hide (old water pieces)
   shadow: 0.3,
   keepClear: [340, 1078, 2016, 3330],                    // spawn points, pickups, hostages, doors (front-row rule)
+  entityFaces: amsEntityFaces(['crate', 'ams-bike-rack']), // kinds that draw their sides and tops (§8.2)
+  entityDepth: { 'ams-ducks': () => 20 },                // cosmetic actors only: render-only depth per kind (§8)
 };
 ```
 
@@ -90,8 +96,8 @@ export const A_FLOOR: FloorDef = {
   depth line is a number or `[u, depth]` points (straight in the WORLD between the points, constant
   beyond: a kerb bends over ≥ 32 px between stretches). Over a gap of the ground only a `level`
   feature applies (a `dh` feature has no profile to stand on); a gap without a cut is a pit
-  (`pit`: 48 px deep, the built-in dark `floor/pit` tiles). **Never put a kerb across depth 0**:
-  the walk-line test fails.
+  (`pit`: 48 px deep, the built-in dark `floor/pit` tiles; a mesh without a pit never builds them,
+  §6 tile windows). **Never put a kerb across depth 0**: the walk-line test fails.
 - `surface`: `'chunk'` (default: the painter), a tile id, or an animated tile `{ tile, du, dv,
   over: { tile, du, dv, alpha } }` (world-anchored drift in px per tick; two layers = a shimmer).
 - Faces: wherever two neighbouring cells differ in height, a vertical face in the `face` tile of the
@@ -102,7 +108,8 @@ export const A_FLOOR: FloorDef = {
   `null` hides it; `undefined` = `defaultDepth` (back decor, default 0) or 0 (front decor).
   Back decor with depth > 0 is drawn far → near at its depth together with the back rows; decor at
   depth ≤ 0 is the walk plane (after the canopies). Parallax decor keeps its parallax x and moves up
-  by its depth.
+  by its depth. `DecorDef.floorOnly`: an item that belongs to the floor's look (a deck rail, a facade
+  the floor draws at a depth in the flat one's place) — drawn only while the section has a floor.
 - `skyLayers`: background generator ids that are NOT lifted (default `sky-gradient`, `clouds`,
   `oz-sky`). Every other back layer is lifted by `yw − back` (the floor's depth behind the feet);
   its `factorX` must stay below s(back edge) (the factor test).
@@ -185,8 +192,12 @@ Built-in tiles: `floor/pit`, `floor/pit-wall`, `floor/slab`, the awning stripes
   whole), a tile in jobs of `TILE_SLICE_TEXELS` level-0 texels (its mips with the last) — every
   floor job under ~5 ms, so a frame that runs jobs stays inside its 8 ms job budget plus one small
   job; nothing ready at all → the small 1× texture on the spot. A denser chunk replaces its
-  stand-ins (the lower densities are released when it is published). `prefetch` (the next chunk
-  ahead; below 4× also the one behind; none past the mesh), `evict` (≥ `FLOOR_EVICT_BEHIND` = 2
+  stand-ins (the lower densities are released when it is published, and again whenever the chunk is
+  asked for at a density it has: a lower build that finished after it — the CPU band's 2× of the
+  frames GL's program still compiles — is dropped at once, not kept to the eviction). `prefetch` (the next chunk
+  ahead; below 4× also the one behind; none past the mesh, none that no mesh quad samples:
+  `FloorStoreOpts.usedChunks`, the chunks of the quads with the painter's surface — a river's band
+  is a cut with its own tile, so c2 paints no chunk over its river), `evict` (≥ `FLOOR_EVICT_BEHIND` = 2
   chunks left of the view, a 4× one `FLOOR_EVICT_BEHIND_4X` = 1 chunk once the view is
   `EVICT_MARGIN_U` past it), `prefetchTile` / `releaseTile`, `bytes(d)`, `pendingBytes()` (chunks
   being painted), `capped`: over `FLOOR_BUDGET_BYTES` (16 MB of 4× textures with the ones being
@@ -198,7 +209,9 @@ Built-in tiles: `floor/pit`, `floor/pit-wall`, `floor/slab`, the awning stripes
   `TILE_AHEAD_U` (384) past the view's right edge, at the density it draws at: the band's materials
   and the openings at the band density, every other tile (canopies, tops, faces) at ≤
   `QUAD_MAX_DENSITY` (2×) — a 4× face tile would never be drawn. Its textures are released once
-  everything that draws it is `TILE_BEHIND_U` (128) left of the view.
+  everything that draws it is `TILE_BEHIND_U` (128) left of the view. The entity kinds' face tiles
+  are always in the window (they move); a tile nothing draws (the built-in `floor/pit` tiles of a
+  mesh without a pit) never is: never built, no bytes.
 - **Section start** (`SectionView.prepare` → `SectionFloor.prepare(camX, want)`, spec §2.6). Both
   flows — a direct `?mission=` start and the menu (the intro card) — prepare the same way: the
   gameplay scene's `preloadMissionArt` turns on the deferred dense art before `runner.start()`, so
@@ -233,7 +246,7 @@ createApp({ …, floorGpu: floorGl });
 floorGl.warm();        // the mission preload does it (registry `warmFloorGpu(mission.sections)`, gameplay.ts
                        // `preloadMissionArt`, at every tier) when a section of the mission has a floor
 floorGl.ok / .reason;  // the feature check (reading them makes the context and finishes the compile)
-floorGl.stats();       // { cpuMs, avgCpuMs, frames, res, density, w, h, quads, uploads, texBytes, bufBytes, initMs, … }
+floorGl.stats();       // { cpuMs, avgCpuMs, frames, res, density, w, h, quads, uploads, texBytes, tileFallbacks, bufBytes, initMs, … }
 floorGl.atArtDensity;  // debug knob: draw at the band's density instead of the backbuffer res
 ```
 
@@ -242,13 +255,33 @@ bilinear" has its soft edge one backbuffer px wide) with the art tier's textures
 compiles in the background (KHR_parallel_shader_compile; the CPU raster draws the frames until it
 is linked). In the page: `window.__ms3.floorGl.stats()`.
 
+**The fill rule is the CPU raster's** (wave B): a pixel centre ON an edge belongs to the triangle
+below / right of it. A GPU snaps vertices to its own sub-pixel grid (SwiftShader, the CI's: 1/16
+px) and breaks a tie its own way, so the vertex shader moves a band-px coordinate that lies within
+1/16 px of a pixel centre to 1/16 px off it, on the side the CPU raster sees it (`offCentre`; a grid
+point every GPU keeps). Without it a kerb's top edge 0.025–0.031 px above a band row's centre (the
+house stretches' kerbs at density 1) snapped onto the centre and gave the whole row to the other
+triangle (GL = CPU p99 25–61/255; now ≤ 7). The vertices move each on their own, so the mesh must
+be WATERTIGHT (mesh.ts, FIX-ENGINE-B): no vertex lies inside another quad's edge (a T-junction: a
+moved T vertex leaves the long edge and opens a sub-pixel crack that shows the layer behind the
+floor) and no quad is a sliver narrower than `MESH_MIN_GAP` (a line crossing that close to another
+breakpoint is left out: a sliver folds under the snap). `meshTJunctions(mesh)` lists T-junctions
+(a test runs it on every kit floor); the browser test counts crack pixels at R 5 and 8.
+
+**The GPU budget** (spec §3.2, §8 gate 7): `GPU_BUDGET` = 16 MiB for the chunk layers (≤ 14 MiB:
+`CHUNK_LAYERS` 6, fewer for big chunks) and the tile atlas together. The atlas grows in steps of
+`ATLAS_STEP` rows to its tiles' area (+ ¼ for the shelves), never past what the layers leave; a tile
+that does not fit then is drawn at the next lower density from that moment (`FloorFrame.tile(i, 2)`:
+"over budget, 2× textures at tier 4"; `stats().tileFallbacks` counts them, 0 in every section).
+
 `FloorFrame` (one reused object per floor): `cam`, `mesh` (static per section; upload once per
 `mesh.id`), `materials` (tile layers with du, dv, the `over` layer and its alpha), `camX`, `camY`,
 `eyeU` (camX + 192), `tick`, `density`, `bandTop`, `bandH`, the visible quads `q0 … q1 − 1`,
-`storeVersion`, `chunk(k)` and `tile(i)` (the best ready texture: upload each `key` once; textures
-never change after they are published). The mesh (mesh.ts): quads of 4 vertices (triangles 0-1-2,
-0-2-3), positions `pu, pv, ph` (world), texture coordinates `ta, tb` (world px), `quadMat` (−1 =
-the chunk `quadChunk`, else a material), `quadKind` (`QUAD_TOP`, `QUAD_FACE_V`, `QUAD_FACE_UP`:
+`storeVersion`, `chunk(k)` and `tile(i, want?)` (the best ready texture, at most the frame's density
+or `want`: upload each `key` once; textures never change after they are published). The mesh
+(mesh.ts): quads of 4 vertices (triangles 0-1-2, 0-2-3; a welded triangle repeats a corner, 1 = 2 or
+3 = 0, so one of the two has no area), positions `pu, pv, ph` (world), texture coordinates `ta, tb`
+(world px), `quadMat` (−1 = the chunk `quadChunk`, else a material), `quadKind` (`QUAD_TOP`, `QUAD_FACE_V`, `QUAD_FACE_UP`:
 draw only while eyeU > its u, `QUAD_FACE_UN`: only while eyeU < its u). Depth test: larger
 s = f/(f − v) is nearer. The CPU raster (`FloorRaster`) is the reference picture.
 
@@ -290,10 +323,22 @@ most `cpuCap` (2).
   zombie hidden under the ground or behind the boards (`DeadSoldier`: `!hidden`), a pigeon flock
   that flew off. A blinking hero and a hero on a vehicle (drawn by it) keep theirs.
 - **Depth steps**: `entity.drawDepth = 14` (render only) draws it at that depth's shift, speed and
-  lift, no scaling (`World.depthDraw` → `SectionFloor.drawAtDepth`). Rule (spec §3.7): only while it
-  can neither hit nor be hit (an intro, an emergence ≤ 30 ticks) or for cosmetic entities, and fx
-  (they can neither hit nor be hit). Wave A uses: the window wavers (14) and the baker (7) in `ams`
-  a; the boarded openings (14) in oz-a. The dead who burst out of an opening are hittable from their
+  lift, no scaling (`World.depthDraw` → `SectionFloor.drawAtDepth`). Rule (spec §3.7, §12.1 item 3),
+  with NO exceptions: only an entity that can never be hit and never hurt — a cosmetic actor (no
+  hurtbox a shot can find, no contact damage, no dynamic solid: npcs, wavers, boats, ducks) — and fx
+  get a depth; an entity that can be hit or can hurt is drawn at 0 in every state, its art with its
+  hitbox, an intro included. Wave A uses: the window wavers (14) and the baker (7) in `ams` a; the
+  boarded openings (14) in oz-a; wave B the wavers of b and c (14, set where `life()` spawns them, as
+  a). A depth that changes with the actor's state comes from the FLOOR, not the entity's file:
+  `FloorDef.entityDepth` (cosmetic actors only) maps a kind to a rule `(e) => depth`, and the floor
+  sets the listed entities' `drawDepth` every frame before its shadow pass (an entity at a depth casts
+  no shadow; a rule that throws leaves it at 0, warned once). `ams` c and c2 list the ducks (pure
+  decor: no hurtbox, no contact damage): c −8 (`C_DUCK_DEPTH`, the basin in front of the pontoon), c2
+  20 (`C2_DUCK_DEPTH`, behind the fairway). `ams` d: ROBO-HALSEMA walks out of the Stopera's doors in
+  the walk plane in every tick (her hurtboxes stop shots from her first tick); the doors stand open on
+  the floor as a lit lobby face in the Stopera's side group (`stoperaSides`, `ams/floor/d/stopera.ts`),
+  so she steps out of a lit doorway at the walk line; `bosses/ams/mayor.ts` has no floor code. A test runs the bot through every floor section (and d's boss rush), drawn every tick: no
+  entity that can be hit, can hurt or stops shots is ever at a depth. The dead who burst out of an opening are hittable from their
   first tick out of hiding, so they are drawn in the walk plane from then on (art and hitbox
   together); the step-out shows in the fx instead: the dust of the tell at the opening's depth, the
   planks thrown out of the drawn opening toward the street (14 → 0 over 24 ticks). The fx are
@@ -344,11 +389,84 @@ a house taller than its neighbour; wall + slate roof side), `boatSides`, `boxSid
 holds the rules (facing, narrowing, the front edge on the sprite, the draw order, the canvases, a
 narrowing striped side that keeps its colour steady — the wave-A sampling fails it).
 
-A MOVING entity's faces belong in the entity's own draw, not in `FloorDef.faces` (a face group is
-static): the `ams` kit's `RowboatFaces` / `withRowboatFaces(entity)` (`ams/floor/boat.ts`: the
-rowing boat's open hull and the end toward the centre column, per frame at its x and bob; a
-render-only draw decoration where section a's script spawns it). Wave B: put it in the entity's
-`draw` (`worldFloor(this.world)` → the faces before the sprite), so section c's boats get it too.
+A MOVING or BREAKABLE entity's faces are not a face group (a group is static): they are its KIND's
+faces, drawn by the entity itself (§8.2).
+
+### 8.2 Entity faces: what moves or breaks shows its sides and top (spec §12.1 item 4)
+
+`FloorDef.entityFaces` maps entity KINDS (spawn ids, `Entity.type`) to their faces
+(`EntityFacesDef`): a floor opts in per kind; a kind it does not list draws flat, exactly as without a
+floor (the oldenzaal floors list none in wave B). The entity draws its faces ITSELF, render only, from
+its hook `Entity.drawFloorFaces(r)` → `drawEntityFaces(r, this, state, flip, dx, dy)` (hooks.ts): the
+floor calls the hook of every live entity of a listed kind in `drawShadows` (after the ovals, BEFORE
+`world.draw`: a receding face lies behind the walk plane, so behind every sprite whatever its z — a
+duck, a hero, a handhaver on the bascule), and again in `drawFront` for faces with a corner in front of
+the walk plane (depth < 0: a bridge spanning to the front, drawn over the world).
+
+```ts
+// the entity (render only: the simulation never sees it)
+override drawFloorFaces(r: Renderer): void {
+  drawEntityFaces(r, this, this.broken ? 1 : 0, false, this.wobbleDx());   // state, flip (its sprite's flipX), dx, dy (whole px)
+}
+// the FloorDef (the ams kit builds the map; or write an EntityFacesDef with the faces.ts helpers)
+entityFaces: amsEntityFaces(['crate', 'ams-bike-rack', 'ams-tulip-stall'], { max: { crate: 3 } }),
+entityFaces: { 'my-kind': { states: [[wallFace(-11.5, 0, 19.5, 0, D, -1, tileL, l), topFace(-11.5, 11.5, 19.5, D, 0, top, l)], []], max: 2 } },
+```
+
+- Corners: a face group's whose anchor is the entity in the walk plane — `[x, y, depth]` = x world px
+  right of the entity's x, y px ABOVE its y (the sprite's px: the walk plane's scale is 1), at a depth
+  (0 = the sprite's plane, > 0 behind it); `[x, y, depth, 1]` = y over the walk plane (a waterline, a
+  pier's foot: it does not bob with the boat). Faces show only while they look at the eye (the
+  line-scroll rule: a side narrows to nothing as the entity crosses the centre column).
+- `states`: per state its faces (0 whole, 1 broken, a bascule's frame …; an empty list or a state past
+  the end draws none: a wreck). `flip` mirrors them in x (the corners reversed: the winding holds),
+  `mirror` swaps tiles for a mirrored entity (a lit side becomes a shaded one).
+- Drawing: the face groups' raster (`QuadCanvas`: the tiles' whole v-mip chain, side walls in columns,
+  anti-aliased silhouettes, the sprite's front edges hard, on the entity's own 1/res grid) at ≤ 2×.
+  Each entity on screen holds one canvas of its kind's class from the floor's pool (`max` per kind —
+  how many show at once — are made at the section start: the frame path makes none; the class is the
+  largest box over a sweep of the view at the def's `y`); an entity that stops drawing gives it back a
+  frame later; a still camera and a still entity re-rasterise nothing. Its tiles are always in the
+  tile window (they move). Nothing is allocated per frame. An entity drawn at a depth (`drawDepth` ≠
+  0: a cosmetic actor that `drawAtDepth` draws unscaled at the depth's shift, speed and lift) gets its
+  faces by the face groups' sprite-px rule, per frame (`projectEntityDepth`): a sprite-px corner is
+  u = x + (dx + px)/s₀, h = (yw − y + lift + py)/s₀ at its depth, the corner's own depth added in world
+  v, and the whole set moved to `drawAtDepth`'s snapped camera, so the front edges meet the sprite
+  where the renderer draws it (tests: every kind, every state, both orientations, moving, at res 4
+  and 8; the residual ≤ 1.5). c1's tour boats stay flat (not listed): they sail in front of the white
+  bridge's near face, and their roof and cabin faces would be drawn over that face and the deck
+  (`tmp/floor-lead/fix-engine-b/look/c1-tour-cmp-r4.png`).
+- Gate 5 (`frontBoxes`) asks every live entity of a kind with front faces for them (its own hook, its
+  state and flip), so a face drawn over the world is checked against the heroes' heads and guns.
+- The `ams` kinds (`ams/floor/entities.ts`, `amsEntityFaces(kinds, opts)`; per-kind `max` defaults
+  `AMS_FACES_MAX`): `crate` (lid with the straps, sides; state 2 the Legion crate), the breakables
+  `ams-bike-rack`, `ams-tulip-stall`, `ams-herring-cart`, `ams-market-stall` (awning tops and cheeks,
+  the stands' and the kiosk's ends; broken: none), `ams-boat-platform` and `ams-party-boat` (the small
+  boat's open hull and ends, `boat.ts`), `ams-tour-boat` (deck, glass cabin and roof, hull ends; opts
+  `tour: { beam, cabin }`), `ams-cruise-boat` (deck, glass roof, cabin ends, transom and the raked
+  bow; `cruise: { beam, cabin }`), `ams-magere-brug` (closed: the walkway and the slab's ends; frames
+  1–3: the leaves' walkways turned up; `magere: { back, front }`; the thin states 3f + thin leave out a
+  lifted walkway whose near edge passes within 2.4 px of the vanishing point, so a leaf seen edge-on
+  draws nothing rather than a dashed line), `ams-low-bridge` (walkway, slab ends, the piers' sides down
+  to the water; `lowBridge: { back, front }`: a `front` < 0 spans the band to the front),
+  `ams-scan-car` (a box 16 world px deep: roof, windscreen and bonnet from above, the grille or the
+  tailgate on the end toward the centre; lit left, `mirror` for a mirrored car; the wreck none; the hook
+  in `bosses/ams-scan/car.ts` on the body's grid), `ams-secret` (one kind for every look, the entity
+  picks the state: the museum crate a pine box, closed or open; the chest closed with its domed lid, or
+  open; other looks none; the hook in `secrets.ts`). Section a lists the crate, the rack, the tulip
+  stall, the herring cart and the rowing boat; b the crate, the tulip stall, the herring cart, the
+  secret; c the crate, the herring cart, the market stall, the rowing boats, the scan car; c1 the
+  crate; c2 the cruise boat, the party boat, the low bridges (their own def, `c2LowBridgeFaces`) and the
+  Magere Brug; d the crate, the rack, the market stalls and the secret. The
+  `AMS_FACES_MAX` defaults hold everywhere: a bot run through every section, drawn every tick, shows
+  at most 2 of a kind at once (c's rowing boats, d's market stalls) and makes no canvas on the frame
+  path (INTEGRATE-B).
+- An entity that only draws a piece of the scenery over itself on a floor does it in its own `draw`
+  (render only, `worldFloor(this.world)`): `AmsHotdogVendor` draws the stand's lower box
+  (`decor/ams/hotdog-front`, front decor without a floor, which would cover the heroes' heads and
+  guns) right after his sprite, at his z under the heroes. He finds it in his own section's decor (the
+  `decor/ams/hotdog-front` item within 96 px of him, looked up once per floor) and draws it at that
+  item's place; where his section has no stand he draws none.
 
 ## 9. Light hooks (hooks.ts) — for OZ-A's light pass
 
@@ -367,31 +485,55 @@ if (floor) {
 
 `tests/game/floor-sections.test.ts` runs, for EVERY registered section with a `floor` (wave B joins
 by itself; `EXPECTED_FLOORS` lists the ones that must be there, so a floor that disappears fails):
+- the mesh is watertight: `meshTJunctions` finds no T-junction and no top or +v face is narrower
+  than `MESH_MIN_GAP` (a GPU's vertex snap opens a crack at either);
 - `walkLineErrors` (gate 4: the DRAWN mesh at v = 0 vs `yw − groundY`, every px, ±0.5),
   `overhangErrors` (front edges on platform lines), `factorViolations` (lifted layers' factorX <
   s(back edge)), `frontRowViolations` (front props ≥ 34 px apart, ≤ 8 px wide, top below G − 14,
   ≥ 24 px from the player start, the exits and `keepClear`);
 - GATE 5 over a bot run: `frontCoverHits(floor, world)` — everything drawn over the world (front
-  decor, front rows' props, front face groups: `SectionFloor.frontBoxes`, their opaque pixels) vs
+  decor, front rows' props, front face groups, the live entities' front faces:
+  `SectionFloor.frontBoxes`, their opaque pixels) vs
   every hero's head (the top 10 px of its hitbox, at most 40 %) and gun (its muzzle ± 3 px);
 - no contact shadow where nothing is drawn (the same bot run);
-- THE PAN TEST (0.5 and 2 px/tick, res 1 and 2, every flat row of its real floor moves s(y)·Δ
-  within 1/res) and THE STILL TEST on its real floor;
+- THE PAN TEST (0.5 and 2 px/tick, res 1 and 2, every row of a LEVEL surface of its real floor moves
+  (y − yh)/(yw − yh − h)·Δ within 1/res: the flat walk plane h 0 at its longest flat stretch wherever
+  it has flat land a view wide, else, over every cut level, the level and camera with the most rows
+  that nothing nearer hides — c1 and c2 the river; c1's plank deck in ams-floor-river.test.ts) and
+  THE STILL TEST on its real floor;
 - the face groups' sampling: the footprint left after the mip level ≤ √2 for every group over a pan
   (the cause of M2's shimmer; the wave-A sampling reached 860–1200);
 - the edges of a side wall and of a canopy at res 4 and 8: each step within about one backbuffer px
   of the even motion (the wave-A ½-px grid fails it);
 - the ground mist's rows (a section with a mist) move at s(y)·Δ within 1/res;
-- THE MEMORY TEST: `cpuBytes()` ≤ 16 MB over a walk at tier 4 in the browser's flow (deferred jobs,
-  the band on a GPU), the store never caps, the frame path makes no canvas;
+- THE MEMORY TEST: `cpuBytes()` ≤ 16 MB over a walk at tier 4 in the browser's flow (deferred jobs;
+  the band on a GPU whose program still compiles for the first frames — `live()` true, `render` null —
+  so the CPU raster asks for its 2× set after the 4× one, as a direct start in the browser does), the
+  store never caps, the frame path makes no canvas;
+- floor-only decor (`DecorDef.floorOnly`) is in the view's lists with the floor and out of them on
+  every no-floor path (`setFloorOverride(() => null)`, a def that fails to build);
 - the frame path allocates nothing: 600 frames of every pass, heap-sampled (< 64 B per frame in the
   floor's code; no object, array, closure or boxed double).
 It also builds the debug floor on every horizontal `ams` / `oldenzaal` section (the mesh against
 every real profile). `tests/game/floor-raster.test.ts`: the walk-line rows, a closed band, THE PAN
 TEST and THE STILL TEST on the debug floor, the animated material, the band buffer reused.
 `tests/engine/floor-math.test.ts`: the camera, the mesh against the field, the textures and the mip
-chain. `tests/game/floor-faces.test.ts`: §8.1. `tests/media/browser-floor.test.ts`: GL = CPU on
-every kit's own floor (a missing one fails) and THE PAN TEST on the GL path (R = 4).
+chain. `tests/game/floor-faces.test.ts`: §8.1. `tests/game/floor-wave-b.test.ts`: §8.2 (the opt-in,
+facing and narrowing, a broken one draws none, mirroring, the canvases made at the start, a still
+camera rasterising nothing, the residual footprint, the front pass, no allocation), the wave-B kit
+(§14), the folders' start defs, the depth steps (`entityDepth`: set before the shadow pass, no shadow
+at a depth), every kind's faces smooth (the residual ≤ 1.5; the front edges locked to the sprite
+while it moves, at res 4 and 8; the same for an entity drawn at a depth), the §3.7 guard (a bot run
+through every floor section and d's boss rush, drawn every tick: no entity that can be hit, can hurt
+or stops shots is at a depth) and THE PAN TEST along the cruise boat's real camera path (c2: 1/8-px
+speed steps, accelerating, braking). `tests/media/browser-floor.test.ts`, ONE TEST PER SECTION (a
+failing section hides none of the others): GL = CPU on every kit's own floor at its start and inside
+it (`EXTRA_X`: a x 2000 / 2900, b 2300, c 1800, c1 400 / 1004, c2 1200, d 400; a missing floor
+fails) at densities 1 and 2, THE PAN TEST on the GL path (R = 4) on a level surface as above, THE
+CRACK TEST (no transparent pixel between two opaque ones in the GL band at R 5 and 8, over a fine pan
+at every welded line and at b's passage mouths and pool ends) and THE GPU BUDGET (the chunk layers
+and the atlas ≤ 16 MiB at tier 4 over a walk, no tile fallen back). `EXPECTED_FLOORS`
+(floor-sections.test.ts) adds every wave-B section whose switch is on (`AMS_WAVE_B`).
 
 The kits' own (FIX-STREET, wave A): `tests/game/floor-street.test.ts` — the generic street guard for
 EVERY floor section: nothing but traffic stands in the bike lane or on the cobbled roadway at its u
@@ -399,7 +541,12 @@ EVERY floor section: nothing but traffic stands in the bike lane or on the cobbl
 deck between its granite edges, a raised leaf's hinge pit; oldenzaal: `townGutter(params, vAt)`,
 the gutter), computed from the kits' layout data and the sections' own decor, rows, face groups
 and the props, pickups and hostages a bot run meets (a section on a new painter fails until its kit
-gives a keep-free map); `tests/game/oz-floor.test.ts`: nothing reads as blood — EVERY registered
+gives a keep-free map; its sanity floor of still things met in the walk plane is 3, by design 1 in
+c1 and 0 in c2: `MIN_WALK_PLANE`), and every decor item at a depth stands ON LAND on every kit floor
+(the floor under each column of its foot ≥ −1: no water, pit or cut; no nearer floor rising > 1.5 px
+over its foot on screen; boats, bridges, portals, pontoons, bridge railings and canal houses stand in
+the water by nature, `IN_WATER`; decor deeper than the band's back edge stands on the far bank);
+`tests/game/oz-floor.test.ts`: nothing reads as blood — EVERY registered
 `oz/` floor tile (kit tiles, awnings, the face tiles) and the whole painted band, at d 1 / 2 / 4 and
 every light level (no dark wine: lum < 50 with redness ≥ 30).
 
@@ -415,6 +562,13 @@ every light level (no dark wine: lum < 50 with redness ≥ 30).
   --count 150 --res 2 --out tmp/floor-lead/clips/x` → `x/f0000.png …` + `x.mp4` (60 fps at --every
   1, ffmpeg when installed). `--pan v`: a render-only camera pan (v px per frame, the floor's clock
   runs). `--bench`: frame and band times (avg / p95 / max) and the floor's texture memory.
+- Frames by the CAMERA where `--x` cannot place it (`ams` c2: the cruise boat carries the camera and
+  the players ride it): `npm run shot -- --mission ams --section c2 --bot --cam-x 1800` steps the game
+  (after `--ticks`) until the view's left edge reaches world x 1800 and prints the tick; `npm run
+  floor-clip -- --mission ams --section c2 --bot --cam-x 1500 --count 300 --out …` is a 60 fps clip of
+  the boat-carried camera (`--bot` lets the bot play; `tools/lib/camera-step.ts`). By ticks:
+  `--bot --ticks 900` (the first low bridge) / `2400` (the houseboat and the party boat), as in
+  `tmp/floor-lead/frames-b.sh`.
 - In the browser: `?debug=floor` draws the overlay (main.ts), `?floorgl=0` keeps the GL floor off.
 
 The light pass (`light/pass.ts`, `light/floor.ts`) with a floor: lamp glows at their lamps' depth,
@@ -426,9 +580,9 @@ pools on the floor, the far fog lifted, and the GROUND MIST drawn through the vi
 The floor's whole CPU memory is ONE number, `SectionFloor.cpuBytes()`: the texture store (resident
 and being painted), the canvas pool, the rows' frames and chains, the shadow ovals and the CPU
 band (released once the GPU draws). The measured numbers of wave A (node and Chromium on an Apple
-M5, `ams` a and oz-a) are in `docs/ARCHITECTURE.md` §10 (the floor tables): the CPU raster, the GL
-path's CPU time, render + present at k = 8, the CPU fallback, memory (CPU and GPU), the art jobs and
-the section start.
+M5, `ams` a and oz-a) and of wave B (every `ams` section) are in `docs/ARCHITECTURE.md` §10 (the
+floor tables): the CPU raster, the GL path's CPU time, render + present at k = 8, the CPU fallback,
+memory (CPU and GPU), the art jobs, the section start and the section changes.
 
 ## 13. The kits' street API (FIX-STREET, wave A; for wave B)
 
@@ -437,9 +591,12 @@ the section start.
 // bends ≥ 32 world px; a bulb under every walk-plane thing the script keeps: lamps with gulls, the elm,
 // stalls, carts, racks, the pickup crates at their script x — bulb A from 372, the herring bulb to bridge 2)
 const layout: StreetLayout = { …, bulbs, stops, landings, hingePits: [{ u0: 1045, u1: 1060, far: leafNearDepth }] };
+// a roof's shade over the street (`FloorShade`: u0…u1 from `far` (default the back edge) to `near`, the light
+// ramp `tone` steps lower, soft edges `soft` px across each u end and `softNear` px across the near edge)
+layout.shades = [{ u0: 400, u1: 720, near: 0, tone: 2.1, soft: 8, softNear: 3 }];
 roadwayAt(layout, u, (depth) => floor.vAt(depth));          // [far v, near v] of the lane / roadway at u, or null
 laneMidV(vF, vN, cam.f, cam.yw - cam.yh);                    // the painter's centre line (world v)
-withRowboatFaces(ctx.spawn('ams-boat-platform', 640, 172, { range: 300 }));   // a moving boat in perspective
+entityFaces: amsEntityFaces(['ams-boat-platform']),          // a moving boat in perspective: it draws its faces itself (§8.2)
 // fail soft while a section module loads: a kit that throws logs once; the section has no floor
 floor: kitFloor('ams/b', () => bFloor(decor)), …kitDecor('ams/b', () => [frontRailDecor(B_BRIDGE)])
 export const OZ_B_FLOOR = ozKitFloor('oldenzaal/oz-b', () => ({ … }));
@@ -453,3 +610,79 @@ const fxd = new FxDepths(); fxd.add(dustAt(w, x, y, 1), frontDepth, 1 << 20, 1);
 The raised drawbridge leaf stands over the lane's far half only (far kerb → the lane's centre line,
 behind the heroes' feet); the bank in front of it is the hinge pit's steel plate (`hingePits`, the
 painter); the near half of the lane ends at its stop line.
+
+## 14. Wave B: the kit's new materials and one folder per section (CORE-B, spec §12)
+
+```ts
+import { … } from '../index';   // ams/floor/index.ts exports everything below
+// Street kinds (StreetLayout.street) — painted by `ams/floor`: 'lane' | 'cobbles' | 'fan' | 'deck' and
+// 'gravel' | 'grass' | 'stone' (the Stopera's pale tiles) | 'planks' (a deck across the street) | 'tiles' | 'klinkers'.
+// roadwayAt (the street guard) keeps the lane, cobbles, klinkers, a gravel path and a plank deck free; a lawn, a
+// square, the forecourt are free to stand on.
+// Areas over the layout (later ones win; a bridge, a canal, the leaf's steel strips win over them):
+const layout: StreetLayout = { …, areas: [
+  { u0: 720, u1: 1400, far: 30, near: 4, kind: 'grass', edge: 1.5 },     // a lawn with a granite edging
+  { u0: 900, u1: 1100, far: 24, near: 18, kind: 'gravel' },              // a path across it
+] };
+// A pool behind the walk line: a stone rim (raise, `ams/rim-face`) round a water cut (`ams/rim-inner`), its top an area.
+const p = pool({ u0: 1200, u1: 1900, far: 26, near: 10, rim: 3, surface: riverSurface('noon') });
+features: [...streetFeatures(layout), ...p.features], layout.areas = [..., p.area]
+// River water over the whole band (c, c1, c2): the crests in the light's sky (gold in the late afternoon).
+{ kind: 'cut', u0: 60, u1: 2492, level: WATER_LEVEL, surface: riverSurface('golden'), face: 'ams/quay-wall' }
+// Steps in the height field (off the walk line; the walk line's own steps are the terrain's profile):
+features.push(...stepFeatures({ u0: 2448, u1: 2480, dir: 1, top: 0, bottom: -12, n: 2, from: 30, to: 6 }));
+// The Museumplein's low lawn chains (a front row: knee-high posts ≥ 34 px apart with a sagging chain):
+rows.push(lawnChainRow({ depth: -20, u0: 760, u1: 2160, gaps: [[1300, 1340]] }));
+// A pontoon on the water as a box (top + ends), the passage's tiled walls and its vault:
+faces.push(pontoonFaces('pontoon', 2480, 128, 188, 192, 24));
+wallFace(kx, 0, 60, 14, 30, -1, ensurePassageWallTile(-1, 60, 64), 64);   // a = down, b = depth
+topFace(400, 720, 80, 30, 0, 'ams/passage-ceiling', 64);
+// Materials for your own tiles: gravel, grass, stoneTiles, planks, klinkers, granite, pavementTiles, dt (mat.ts).
+// Helpers: vAtAms / depthAtAms (the ams camera's depth ↔ v), AMS_CAMERA, AMS_BACK.
+```
+
+Wave-B section helpers (each folder's own; reuse them for the same kind of thing elsewhere):
+
+```ts
+// b (b/passage.ts, b/faces.ts): a roof's shade as a layout SHADE (`StreetLayout.shades`, `FloorShade`,
+// layout.ts): the painter lowers the light of whatever lies under it (lane, kerbs, walkway), with soft ramps
+// across each mouth and the roof's front edge — the museum's cycle passage, the lane through it at v 0:
+layout.shades = [passageShade()];                     // far wall → v 0, `PASSAGE_SHADE` 2.1, soft 8 px at 400 / 720
+features.push(...passageKerbs(far, bulbs));           // the far kerb's face under the vault in the darker granite
+// A SOLID's top (a roof the heroes walk on) is a face group with mixed corners, not an overhang
+// (`overhangErrors` reads one-way platforms only): sprite px at the facade's depth, world px at the platform line.
+quadFace([[x0, 92, FACADE], [x1, 92, FACADE], [x1, 92, 0, 1], [x0, 92, 0, 1]], [[0, 0], [w, 0], [w, l], [0, l]], tile)
+passageRoof(); passageMouths(); museumSides(); standSides();
+// c (c/fork.ts): the ramp + white-bridge deck as one group on the bridge sprite, the jetty stair, the pontoon and the moored tour boat as boxes
+forkFeatures(near); forkFaces();
+// c1 (c1/bridge.ts, c1/market.ts): a plank deck as a level `cut` (24 over the walk plane) over the river,
+// its top a TILE surface (`DECK_TOP`: the painter's planks in the painter's light, 102 px long), so no 4×
+// chunk is painted for a strip of deck; one white railing design at every density (flat or sloping); the
+// posts' sides; a decor market stall as a box
+ensureWhiteRail(len, slope, drop); railPostFaces(…); rampFaces(); stallFaces(x, depth, frame);
+// c2 (c2/bridges.ts, c2/pile.ts, c2/water.ts): a low bridge's own EntityFacesDef spanning the river to the far
+// bank (the depth whose s is the bank layer's factor, C2_BRIDGE_BACK 58), on two brick piers per bridge
+// (`C2_PIER_FRONT` 22, just behind the fairway: the boat passes in front) with the dark of the arch between
+// them; the river's far rows fade into the bank layer's water (`c2RiverSurface`), the river in the deck's
+// shade under each bridge (`c2ShadeSurface`); the 2D back sprites pre-scaled for that bank; the Magere Brug's
+// near portals split at the walkway; the mooring dolphins as a row prop; the jetty stall as floor-only decor
+// right of the WATERLOOPLEIN sign (`C2_JETTY_STALL`); the ducks behind the fairway (`C2_DUCK_DEPTH`)
+c2LowBridgeFaces(); ensureFarArch(s); ensureFarPortals(s); ensureNearPortals('top' | 'foot'); prop 'ams/c2-pile'
+c2RiverSurface(); c2ShadeSurface();   // tiles.ts exports riverRipple, riverGlint, RIVER_SKY, TEAL, CANAL for them
+// d (d/stopera.ts, d/market.ts): a big facade at a depth anchored on a point of its sprite (the doors), its
+// sides and the open glass doors as a lit lobby face (the boss walks out of it in the walk plane: no depth
+// step); the back stalls and the planter as boxes
+stoperaDecor(); stoperaSides(); marketStallSides(decor); planterSides(decor);
+// every folder: `floorOnly(items)` (guard.ts) marks the items its `xFloorDecor()` adds (and the kit's
+// `frontRailDecor`), so every no-floor path skips them
+```
+
+The folders (`ams/floor/<b|c|c1|c2|d>/index.ts`, one builder each; README in each file): `X_FLOOR_ON`
+(the switch, off at the start), `X_LAYOUT`, `X_KEEP_CLEAR`, `xFloorDef(decor)` (a valid start: the
+section's walk profile, the quay kerbs, the water, the back poles, the entity faces of its kinds),
+`xFloor(decor)` (what `section-x.ts` sets as `floor`: the def while the switch is on, fail soft) and
+`xFloorDecor()` (floor-only decor, spread into the section's decor list, each item marked
+`DecorDef.floorOnly`: `SectionView` draws it only while the section has a floor, so `--floor-off`
+and a floor that fails to build draw the flat section as before the floor). `ams/floor/sections.ts`
+`AMS_WAVE_B` lists the switches; `EXPECTED_FLOORS` reads it, so turning a switch on enrols the section
+in every floor test without editing a shared file.

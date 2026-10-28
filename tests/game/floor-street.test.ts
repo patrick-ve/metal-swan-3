@@ -15,11 +15,18 @@
  * Footprints: a sprite stands on the opaque columns of its bottom rows (a tree on its trunk, a lamp on
  * its foot, a rack on its wheels), at its depth ± `FOOT` world px; a row's prop on its base ± `ROW_FOOT`
  * (thin posts and railings); a face group on the corners that touch the floor; a walk-plane entity on
- * its hitbox's width at v = 0 ± `ENTITY_FOOT`. Traffic aside: the parked cars (the kits name their face
- * groups `car …`).
+ * its hitbox's width at v = 0 ± `ENTITY_FOOT`, back to its deepest face when it draws its faces on the
+ * floor (`FloorDef.entityFaces`: a crate's or a stall's box). Traffic aside: the parked cars (the kits
+ * name their face groups `car …`).
+ *
+ * And every decor item at a depth stands ON LAND (wave B, the look review's m3: a parked bike stood in
+ * the canal behind a bridge's hump): the floor under its foot is no water, no pit and no cut below the
+ * walk plane, and no nearer floor (a hump, a deck) rises over its foot on screen. Boats and bridge
+ * pieces stand in the water by nature (`IN_WATER`); decor deeper than the band's back edge stands on
+ * the lifted far bank, not on the floor.
  */
 import { describe, expect, it } from 'vitest';
-import { sAtDepth } from '../../src/engine/floor/cam';
+import { sAtDepth, sOfV } from '../../src/engine/floor/cam';
 import type { Frame } from '../../src/engine/render';
 import { getFrame } from '../../src/engine/sprites';
 import { loadContent } from '../../src/game/content/index';
@@ -38,6 +45,22 @@ await loadContent();
 const FOOT = 3;
 const ROW_FOOT = 1;
 const ENTITY_FOOT = 3;
+/**
+ * The fewest still things the bot run must meet in the walk plane (a sanity floor of the guard: it
+ * really saw the script's props, pickups and hostages). Default 3; the river sections have fewer by
+ * design: c1's script keeps one on the ground (the bomb crate; the sack tourist hops), c2 none
+ * (everything rides the cruise boat or stands on the bridges).
+ */
+const MIN_WALK_PLANE: Readonly<Record<string, number>> = { 'ams/c1': 1, 'ams/c2': 0 };
+/**
+ * Decor that stands in the water by nature: boats, bridges with their portals, arches and railings
+ * (`floor-rail-…`: a bridge's front railing), and the canal houses (a row's end house rises from the
+ * canal beside a bridge).
+ */
+const IN_WATER = /boat|bridge|portal|pontoon|floor-rail-|house-/;
+/** The lowest floor (world px over the walk plane) a decor item may stand on, and how far a nearer floor may rise over its foot on screen. */
+const LAND = -1;
+const COVER = 1.5;
 
 interface FloorSection {
   key: string;
@@ -145,6 +168,52 @@ function decorFeet(fs: FloorSection, floor: SectionFloor): Foot[] {
   return out;
 }
 
+/**
+ * The decor items at a depth that do not stand on land: the floor under a column of their foot is
+ * lower than `LAND` (water, a pit, a cut), or a nearer floor rises more than `COVER` px over their foot
+ * on screen (a bridge's hump, a deck in front of them).
+ */
+function wetDecor(fs: FloorSection, floor: SectionFloor): string[] {
+  const def = fs.def;
+  const cam = floor.cam;
+  const k1 = cam.yw - cam.yh;
+  const back = cam.yw - cam.back;
+  const out: string[] = [];
+  (fs.section.decor ?? []).forEach((d, i) => {
+    if (d.parallax !== undefined && d.parallax !== 1) return;
+    if (def.hideDecor?.some((p) => d.sprite.startsWith(p))) return;
+    const rule = d.depth !== undefined ? d.depth : def.decorDepth?.(d, i);
+    const depth = rule === undefined ? (d.front ? 0 : (def.defaultDepth ?? 0)) : rule;
+    if (depth === null || depth === 0 || depth > back || Math.abs(d.y - cam.yw) > 0.5 || IN_WATER.test(d.sprite)) return;
+    const base = standsOn(getFrame(d.sprite, d.frame ?? 0, 1), d.flipX);
+    if (!base) return;
+    const s = sAtDepth(cam, depth);
+    const v = floor.vAt(depth);
+    const what = `decor ${d.sprite}#${d.frame ?? 0} @${d.x} (depth ${depth.toFixed(1)})`;
+    const u0 = d.x + base[0] / s;
+    const u1 = d.x + base[1] / s;
+    for (let u = u0 + 0.5; u <= u1 - 0.5 + 1e-9; u += 1) {
+      const h = floor.heightAt(u, v);
+      if (h >= LAND) continue;
+      out.push(`${what}: the floor at u ${u.toFixed(1)} is ${h.toFixed(1)} (water, a pit or a cut)`);
+      return;
+    }
+    // Its foot on screen (camera-free: y = yh + (yw − yh − h)·s), and every nearer floor row at its middle.
+    const um = (u0 + u1) / 2;
+    const hm = floor.heightAt(um, v);
+    const yFoot = cam.yh + (k1 - hm) * sOfV(cam, v);
+    for (let vv = v + 0.5; vv < v + 80; vv += 0.5) {
+      const h = floor.heightAt(um, vv);
+      if (!Number.isFinite(h)) continue;
+      const y = cam.yh + (k1 - h) * sOfV(cam, vv);
+      if (y >= yFoot - COVER) continue;
+      out.push(`${what}: a nearer floor (v ${vv.toFixed(1)}, h ${h.toFixed(1)}) rises ${(yFoot - y).toFixed(1)} px over its foot`);
+      return;
+    }
+  });
+  return out;
+}
+
 /** Every placed prop of every row (its frame at the row's scale stands on its base). */
 function rowFeet(floor: SectionFloor): Foot[] {
   const out: Foot[] = [];
@@ -225,7 +294,10 @@ async function walkPlaneFeet(fs: FloorSection, floor: SectionFloor): Promise<Foo
     const ground = floor.cam.yw - floor.heightAt(s.x0, 0);
     if (!(Math.abs(s.y0 - ground) <= 3)) continue;
     const v = floor.vAt(s.depth);
-    out.push({ what: `${s.type} @${s.x0.toFixed(0)}`, u0: s.x0 - s.hw, u1: s.x0 + s.hw, v0: v - ENTITY_FOOT, v1: v + ENTITY_FOOT });
+    // An entity that draws its faces here (spec §12.1 item 4: a crate, a stall) stands on its box: back to its deepest face.
+    let deep = 0;
+    for (const f of fs.def.entityFaces?.[s.type]?.states[0] ?? []) for (const p of f.pts) if (p[2] > deep) deep = p[2];
+    out.push({ what: `${s.type} @${s.x0.toFixed(0)}`, u0: s.x0 - s.hw, u1: s.x0 + s.hw, v0: Math.min(v - ENTITY_FOOT, floor.vAt(deep)), v1: v + ENTITY_FOOT });
   }
   return out;
 }
@@ -255,6 +327,10 @@ describe('street logic on every floor (spec §11 R2: nothing in the lane or on t
         expect(violations(free, feet)).toEqual([]);
       });
 
+      it('every decor item at a depth stands on land (no water, no pit; no nearer floor over its foot)', () => {
+        expect(wetDecor(fs, floor)).toEqual([]);
+      });
+
       it('no prop of a row stands in it', () => {
         const feet = rowFeet(floor);
         expect(feet.length).toBeGreaterThan(20);
@@ -267,7 +343,7 @@ describe('street logic on every floor (spec §11 R2: nothing in the lane or on t
 
       it('no prop, pickup or hostage the script puts in the walk plane stands in it', async () => {
         const feet = await walkPlaneFeet(fs, floor);
-        expect(feet.length).toBeGreaterThan(2);
+        expect(feet.length).toBeGreaterThanOrEqual(MIN_WALK_PLANE[fs.key] ?? 3);
         expect(violations(free, feet)).toEqual([]);
       }, 240_000);
     });

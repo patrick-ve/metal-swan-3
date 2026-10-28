@@ -456,3 +456,28 @@ export function boxSides(
   };
 }
 
+
+/**
+ * A pontoon on the water as a box (spec §12.2 c "the pontoon a box on the water"; wave B): its steel
+ * deck's top from the sprite's top edge back `deep` world px, and its two ends from the deck down to
+ * the waterline. `x0` / `w` the box in world px, `deckY` the deck's world y, `waterY` the water's.
+ */
+export function pontoonFaces(name: string, x0: number, w: number, deckY: number, waterY: number, deep: number): FaceGroupDef {
+  const D = depthBehind(0, deep);
+  const l = r4(depthPx(0, D));
+  const h = Math.max(1, waterY - deckY);
+  const side = (s: Side): string => ensureBandTile({ key: 'pontoon-side', h: Math.ceil(h), l, side: s, joint: 0, bands: [[0, PAL_HD.steel, 5], [1, PAL_HD.steel, 3.2], [h - 2, PAL_HD.rust, 2.4]] });
+  const top = G - deckY;
+  return {
+    name,
+    x: x0,
+    y: G,
+    depth: 0,
+    order: 0,
+    faces: [
+      wallFace(0.5, top - h, top, 0, D, -1, side(-1), l),
+      wallFace(w - 0.5, top - h, top, 0, D, 1, side(1), l),
+      topFace(0.5, w - 0.5, top, D, 0, 'ams/pontoon-top', l),
+    ],
+  };
+}

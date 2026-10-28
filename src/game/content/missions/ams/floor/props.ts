@@ -11,6 +11,8 @@
  *   Front decor is drawn over the world at its depth's shift and speed, unscaled (docs/api/floor.md
  *   §5): hence the pre-scaled art. 1× in the 64-colour palette, 2× / 4× on an HdCanvas in PAL_HD.
  *   (The back railing is the old `bridge-rail` sprite in a back row: the row scales it once.)
+ * - `ams/lawn-post` + `lawnChainRow` (wave B): the Museumplein's knee-high posts with their chains,
+ *   the low front row along a lawn.
  */
 import type { Color } from '../../../../../engine/color';
 import { PAL } from '../../../../../engine/palette';
@@ -20,6 +22,7 @@ import type { Frame } from '../../../../../engine/render';
 import { defineSprite, hasSprite, type DenseDensity } from '../../../../../engine/sprites';
 import { HdCanvas, grime } from '../../../../art/hd/index';
 import { defineFloorProp } from '../../../../mission/floor/registry';
+import type { PropRowDef } from '../../../../mission/floor/types';
 import { scaleFrame } from '../../../../mission/floor/scale';
 import { deco, fr, type P } from '../art-hd-ab-kit';
 import type { Bridge } from './layout';
@@ -143,4 +146,67 @@ export function ensureFrontRail(b: Bridge, s: number): string {
   const id = frontRailId(b, s);
   if (!hasSprite(id)) defineSprite(id, () => rail1x(b, s), { hd: (d) => railHd(b, s, d) });
   return id;
+}
+
+// ------------------------------------------------------------------------------- the lawn chains (wave B)
+
+/** The lawn post's size at scale 1 (logical px: a knee-high iron post) and its chain's height over the foot. */
+const LAWN_POST_W = 3;
+const LAWN_POST_H = 9;
+const LAWN_CHAIN_UP = 6.5;
+/** The chain's colours (dark green iron, light and dark links). */
+export const LAWN_CHAIN: readonly [Color, Color] = [PAL_HD.green[2] >>> 0, PAL_HD.green[0] >>> 0];
+
+/**
+ * A lawn post (spec §12.2 b: the Museumplein's low chains as the front row): a short dark-green iron
+ * post with a ball top and the chain's eye (point `chain`), at its row's final scale and density
+ * (feet anchor). Low and thin: a front row of them covers no head or gun.
+ */
+export function lawnPostFrame(k: number, d: number): Frame {
+  const W = Math.max(3, Math.ceil(LAWN_POST_W * k + 1));
+  const H = Math.max(4, Math.ceil(LAWN_POST_H * k));
+  const dd = d >= 2 ? d : 2;
+  const c = new HdCanvas(W, H, dd);
+  const iron = deco(c, PAL_HD.green, { lo: 0, hi: 3, spec: 0.5, shine: 18 });
+  const cx = W / 2;
+  const K = (a: number): number => a * k;
+  const foot = H - 0.5;
+  c.cylinder(cx - K(0.9), foot - K(7.4), K(1.8), K(7.2), { mat: iron, z: 1 });
+  c.ellipsoid(cx, foot - K(7.8), K(1.3), K(1.2), { mat: iron, z: 1.3 });
+  c.ellipsoid(cx, foot - K(LAWN_CHAIN_UP), K(1.15), K(0.8), { mat: iron, z: 1.2, tone: -0.2 });
+  const f = fr(c.render({ outline: 'C', sep: true, ao: 0.2, rimLight: 1 }), cx, H, dd);
+  const out = d >= 2 ? f : scaleFrame(f, 1, 1);
+  return { ...out, pts: { chain: [0, -K(LAWN_CHAIN_UP)] } };
+}
+
+defineFloorProp('ams/lawn-post', (scale, d) => lawnPostFrame(scale, d));
+
+/** Options of a row of lawn posts with their chains (a front row: keep it thin, ≥ 34 px apart). */
+export interface LawnChainRowOpts {
+  name?: string;
+  depth: number;
+  u0: number;
+  u1: number;
+  spacing?: number;
+  offset?: number;
+  gaps?: readonly (readonly [number, number])[];
+}
+
+/**
+ * The low lawn chains of the Museumplein (spec §12.2 b, the low front row): posts every `spacing`
+ * (default 36: the front-row rule's ≥ 34 px) with a sagging dark-green chain between neighbours.
+ */
+export function lawnChainRow(o: LawnChainRowOpts): PropRowDef {
+  const spacing = Math.max(34, o.spacing ?? 36);
+  return {
+    name: o.name ?? 'lawn chains',
+    prop: 'ams/lawn-post',
+    depth: o.depth,
+    u0: o.u0,
+    u1: o.u1,
+    spacing,
+    offset: o.offset ?? spacing / 2,
+    gaps: o.gaps,
+    link: { sag: 1.6, colors: LAWN_CHAIN, max: spacing * 1.05 },
+  };
 }

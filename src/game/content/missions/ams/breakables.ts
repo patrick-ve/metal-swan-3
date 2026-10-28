@@ -9,6 +9,7 @@ import type { DrawOpts, Renderer } from '../../../../engine/render';
 import type { World } from '../../../../engine/world';
 import { awardScore } from '../../../events';
 import { debris, dust, type DebrisKind } from '../../../fx';
+import { drawEntityFaces } from '../../../mission/floor/hooks';
 import { defineEntity, paramNum, type SpawnParams } from '../../../registry';
 import { contentsSpecs, DROP_TABLES, spawnDrops, withVehicleDrops } from '../../items/drops';
 import { spawnReveal } from '../../props/breakables';
@@ -99,10 +100,20 @@ export class AmsBreakable extends Entity {
     if (this.wobble > 0) this.wobble--;
   }
 
+  /** The sprite's shake while hit (whole px). */
+  private wobbleDx(): number {
+    return this.wobble > 0 ? ((this.wobble >> 1) & 1 ? 1 : -1) : 0;
+  }
+
+  /** Render only: on a perspective floor that lists the kind, its sides and top (the wreck: none). */
+  override drawFloorFaces(r: Renderer): void {
+    drawEntityFaces(r, this, this.broken ? 1 : 0, false, this.wobbleDx());
+  }
+
   override draw(r: Renderer): void {
     drawOpts.flipX = false;
     drawOpts.flash = !this.broken && this.flashTicks > 0;
-    const dx = this.wobble > 0 ? ((this.wobble >> 1) & 1 ? 1 : -1) : 0;
+    const dx = this.wobbleDx();
     r.sprite(this.sprite, this.broken ? 1 : 0, this.x + dx, this.y, drawOpts);
     drawOpts.flash = false;
   }

@@ -35,7 +35,6 @@ import {
   kitFloor,
   QUAY_FRONT_ROW,
   QUAY_PAVEMENT,
-  withRowboatFaces,
 } from './floor/index';
 
 export const BG_MORNING: BackgroundDef = {
@@ -108,10 +107,21 @@ const decor: DecorDef[] = [
   { sprite: 'decor/ams/lamp', x: A_ARENA[0] + 10, y: G, depth: 8 },
   // --- front decor that half covers the players: the bike racks stand by the front pole rows (on the
   // near pavement: along the first bulb the kerb gives way to the lane, so that rack stands further front) ---
+  // The flat view's bollards: hidden on the floor (its pole rows stand in their place).
+  { sprite: 'decor/ams/bollard', x: 96, y: G, front: true, depth: null },
+  { sprite: 'decor/ams/bollard', x: 112, y: G, front: true, depth: null },
+  { sprite: 'decor/ams/bollard', x: 128, y: G, front: true, depth: null },
   { sprite: 'decor/ams/bike-rack', x: 548, y: G, front: true, depth: BULB_FRONT_DECOR },
+  { sprite: 'decor/ams/bollard', x: 690, y: G, front: true, depth: null },
+  { sprite: 'decor/ams/bollard', x: 1350, y: G, front: true, depth: null },
   { sprite: 'decor/ams/bike-rack', x: 1620, y: G, front: true, depth: QUAY_FRONT_ROW },
+  { sprite: 'decor/ams/bollard', x: 1940, y: G, front: true, depth: null },
+  { sprite: 'decor/ams/bollard', x: 2580, y: G, front: true, depth: null },
   { sprite: 'decor/ams/bike-rack', x: 2860, y: G, front: true, depth: HOUSE_FRONT_ROW },
+  { sprite: 'decor/ams/bollard', x: 3020, y: G, front: true, depth: null },
+  { sprite: 'decor/ams/bollard', x: 3036, y: G, front: true, depth: null },
   { sprite: 'decor/ams/fabel-counter', x: 3330, y: G, front: true },
+  { sprite: 'decor/ams/bollard', x: 3440, y: G, front: true, depth: null },
 ];
 
 /** The baker's render depth on the floor: between the counter (the walk plane) and the facade (14). */
@@ -320,8 +330,8 @@ export function* script(ctx: SectionContext): ScriptGen {
   const { baker } = life(ctx);
   carillon(ctx);
   // More life on the quay and in the side canal. On the floor the little boat shows its open hull and
-  // its ends (render only: floor/boat.ts).
-  withRowboatFaces(ctx.spawn('ams-boat-platform', 1090, 172, { range: 222, speed: 0.45, pause: 60 }));
+  // its ends (render only: it draws them itself, floor/boat.ts; the floor lists the kind).
+  ctx.spawn('ams-boat-platform', 1090, 172, { range: 222, speed: 0.45, pause: 60 });
   // Secrets (docs/design/ams-extras.md §5): the bike in the elm, the houseboat hatch (a hidden
   // tourist), the crate on a gable's hoist beam.
   placeSecrets(ctx, 'a');

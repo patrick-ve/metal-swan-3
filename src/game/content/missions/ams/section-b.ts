@@ -18,6 +18,9 @@ import { HOUSE, houseRow, lawnSprite, poolSprite } from './art';
 import { at, carillon, crate, fromRight, hostage, normalUp, prewarm, STAG_LOOKS, stagArt, twoPlayers } from './helpers';
 import { placeSecrets, secretArt } from './secrets';
 import { B_HOTDOG_X, B_PASSAGE, B_W, G, terrainB } from './terrain';
+import { B_CABINET_DEPTH, bFloor, bFloorDecor } from './floor/b/index';
+import { HOUSE_PAVEMENT } from './floor/depth';
+import { BULB_FRONT_DECOR, FACADE, HOUSE_FRONT_ROW } from './floor/layout';
 
 export const BG_NOON: BackgroundDef = {
   sky: PAL.sky[1],
@@ -36,51 +39,60 @@ const LAWN1 = 1800;
 
 const decor: DecorDef[] = [
   // --- the street to the museum ---
+  // Depths on the perspective floor (docs/design/floor.md §4.4, §12.2 b; floor/b/index.ts): the house fronts
+  // and the museum at the facade's depth (floor/depth.ts, bDecorDepth); what a hittable entity sits on (the
+  // lamps a gull sleeps on) stays in the walk plane, on a bulb of the pavement.
   ...houseRow('noon', 0, [HOUSE.koffie, HOUSE.step, HOUSE.bell, HOUSE.flat, HOUSE.neck]),
-  { sprite: 'decor/ams/lamp', x: 110, y: G },
-  { sprite: 'decor/ams/flag-nl', x: 300, y: G, animate: true },
+  { sprite: 'decor/ams/lamp', x: 110, y: G, depth: 0 },
+  { sprite: 'decor/ams/flag-nl', x: 300, y: G, animate: true, depth: 8 },
   // --- the Rijksmuseum and its passage ---
   { sprite: 'decor/ams/rijksmuseum', x: B_PASSAGE[0] + 160, y: G },
-  // --- Museumplein ---
+  // --- Museumplein (on the floor: the pool is in the height field; trees, flags and tulips on the grass,
+  // behind the pool or between it and the path; the stand, its lamp and the cabinet on the square) ---
   ...Array.from({ length: Math.ceil((LAWN1 - LAWN0) / 128) }, (_, i): DecorDef => {
     const x = LAWN0 + i * 128;
     return { sprite: poolSprite(Math.min(128, LAWN1 - x)), x, y: 166, animate: true };
   }).filter((d) => d.x >= 1200 && d.x < 1700),
-  { sprite: 'decor/ams/elm', x: 820, y: G },
-  { sprite: 'decor/ams/tulips', x: 900, y: G, animate: true },
-  { sprite: 'decor/ams/hotdog-stand', x: B_HOTDOG_X, y: G },
-  { sprite: 'decor/ams/flag-red', x: B_HOTDOG_X + 57, y: G - 61, animate: true },
-  { sprite: 'decor/ams/lamp-grey', x: B_HOTDOG_X + 74, y: G },
-  { sprite: 'decor/ams/elm', x: 1180, y: G },
-  { sprite: 'decor/ams/flag-ams', x: 1290, y: G, animate: true },
-  { sprite: 'decor/ams/flag-nl', x: 1330, y: G, animate: 10 },
-  { sprite: 'decor/ams/elm', x: 1500, y: G },
-  { sprite: 'decor/ams/tulips', x: 1600, y: G, animate: 13 },
-  { sprite: 'decor/ams/bench', x: 1660, y: G },
-  { sprite: 'decor/ams/elm', x: 1820, y: G },
-  { sprite: 'decor/ams/lamp', x: 1960, y: G },
-  { sprite: 'decor/ams/tulips', x: 2050, y: G, animate: true },
-  { sprite: 'decor/ams/elm', x: 2140, y: G },
+  { sprite: 'decor/ams/elm', x: 820, y: G, depth: 10 },
+  { sprite: 'decor/ams/tulips', x: 900, y: G, animate: true, depth: 13 },
+  { sprite: 'decor/ams/hotdog-stand', x: B_HOTDOG_X, y: G, depth: 0 },
+  { sprite: 'decor/ams/flag-red', x: B_HOTDOG_X + 57, y: G - 61, animate: true, depth: 0 },
+  { sprite: 'decor/ams/lamp-grey', x: B_HOTDOG_X + 74, y: G, depth: 0 },
+  { sprite: 'decor/ams/elm', x: 1180, y: G, depth: 22 },
+  { sprite: 'decor/ams/flag-ams', x: 1290, y: G, animate: true, depth: 28 },
+  { sprite: 'decor/ams/flag-nl', x: 1330, y: G, animate: 10, depth: 28 },
+  { sprite: 'decor/ams/elm', x: 1500, y: G, depth: 28 },
+  { sprite: 'decor/ams/tulips', x: 1600, y: G, animate: 13, depth: 10.5 },
+  { sprite: 'decor/ams/bench', x: 1660, y: G, depth: 10.5 },
+  { sprite: 'decor/ams/elm', x: 1820, y: G, depth: 22 },
+  { sprite: 'decor/ams/lamp', x: 1960, y: G, depth: 9.5 },
+  { sprite: 'decor/ams/tulips', x: 2050, y: G, animate: true, depth: 12 },
+  { sprite: 'decor/ams/elm', x: 2140, y: G, depth: 22 },
   // --- the canal-side road toward the Amstel ---
   ...houseRow('noon', 2200, [HOUSE.stepBrown, HOUSE.spout, HOUSE.boeken, HOUSE.neckRed, HOUSE.bellCream, HOUSE.flat, HOUSE.step, HOUSE.bell, HOUSE.kaas, HOUSE.neck, HOUSE.spout, HOUSE.koffie, HOUSE.step, HOUSE.bloemen, HOUSE.flat, HOUSE.bell]),
-  { sprite: 'decor/ams/lamp', x: 2300, y: G },
-  { sprite: 'decor/ams/lamp', x: 2620, y: G },
-  { sprite: 'decor/ams/flag-ams', x: 2760, y: G, animate: true },
-  { sprite: 'decor/ams/lamp', x: 2940, y: G },
-  // --- front ---
+  { sprite: 'decor/ams/lamp', x: 2300, y: G, depth: 0 },
+  { sprite: 'decor/ams/lamp', x: 2620, y: G, depth: 0 },
+  { sprite: 'decor/ams/flag-ams', x: 2760, y: G, animate: true, depth: HOUSE_PAVEMENT },
+  { sprite: 'decor/ams/lamp', x: 2940, y: G, depth: 8 },
+  // --- front (on the floor: the lawn strips are hidden — the floor's lawns —, the bike racks stand by the
+  // front pole rows on the near pavement, the old bollards give way to the rows) ---
   ...Array.from({ length: Math.ceil((LAWN1 - LAWN0) / 128) }, (_, i): DecorDef => {
     const x = LAWN0 + i * 128;
     return { sprite: lawnSprite(Math.min(128, LAWN1 - x)), x, y: 173, front: true };
   }),
   { sprite: 'decor/ams/bollard', x: 60, y: G, front: true },
   { sprite: 'decor/ams/bollard', x: 76, y: G, front: true },
-  { sprite: 'decor/ams/bike-rack', x: 250, y: G, front: true },
-  { sprite: 'decor/ams/hotdog-front', x: B_HOTDOG_X, y: G, front: true },
-  { sprite: 'decor/ams/cabinet', x: B_HOTDOG_X + 66, y: G, front: true },
-  { sprite: 'decor/ams/bike-rack', x: 2400, y: G, front: true },
+  { sprite: 'decor/ams/bike-rack', x: 250, y: G, front: true, depth: BULB_FRONT_DECOR },
+  // On the floor the vendor draws the stand's lower box over himself (`AmsHotdogVendor.draw`: nothing over the
+  // world may cover a hero's head or gun); the cabinet stands on the square's near side.
+  { sprite: 'decor/ams/hotdog-front', x: B_HOTDOG_X, y: G, front: true, depth: null },
+  { sprite: 'decor/ams/cabinet', x: B_HOTDOG_X + 66, y: G, front: true, depth: B_CABINET_DEPTH },
+  { sprite: 'decor/ams/bike-rack', x: 2400, y: G, front: true, depth: HOUSE_FRONT_ROW },
   { sprite: 'decor/ams/bollard', x: 2560, y: G, front: true },
   { sprite: 'decor/ams/bollard', x: 2576, y: G, front: true },
-  { sprite: 'decor/ams/bike-rack', x: 2860, y: G, front: true },
+  { sprite: 'decor/ams/bike-rack', x: 2860, y: G, front: true, depth: HOUSE_FRONT_ROW },
+  // The perspective floor's own decor (docs/design/floor.md §12; none while its floor is off: floor/b/index.ts).
+  ...bFloorDecor(),
 ];
 
 /** Vendor spot: in the hot-dog stand's box, his head and chest in the hatch (`hotdog-front` hides the rest). */
@@ -94,8 +106,10 @@ export function life(ctx: SectionContext): { vendor: Entity } {
   ctx.spawn('ams-pigeons', B_HOTDOG_X + 112, G, { count: 5 });
   ctx.spawn('ams-pigeons', 1640, G, { count: 4 });
   ctx.spawn('ams-pigeons', 2520, G, { count: 3 });
-  ctx.spawn('ams-window-waver', 2330, 104, {});
-  ctx.spawn('ams-window-waver', 2700, 96, { look: 'cat' });
+  // On the perspective floor (render only, docs/design/floor.md §3.7): the wavers stand in the windows
+  // at the facades' depth.
+  ctx.spawn('ams-window-waver', 2330, 104, {}).drawDepth = FACADE;
+  ctx.spawn('ams-window-waver', 2700, 96, { look: 'cat' }).drawDepth = FACADE;
   const vendor = ctx.spawn('ams-hotdog-vendor', B_VENDOR.x, B_VENDOR.y, { counter: false, facing: -1 });
   return { vendor };
 }
@@ -254,6 +268,8 @@ export const sectionB: SectionDef = {
   terrain: terrainB(),
   terrainStyle: { ground: 'klinker', edge: 'bikepath', platform: 'wood', solid: 'brick' },
   decor,
+  // The perspective floor (docs/design/floor.md §4.4 b, §12.2 b; floor/b/: the passage, the plein, the canal road).
+  floor: bFloor(decor),
   // Tier 4: the fatbike pairs ride in b and c only (the solo sets are in the mission's preloadFirst).
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.

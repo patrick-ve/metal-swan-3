@@ -17,6 +17,13 @@
  * The mesh is exact, not sampled: between two u breakpoints (profile vertices, region ends, bends,
  * chunk bounds, line crossings, and at most `MESH_MAX_SPAN` apart) every cell is planar, so a
  * perspective-correct raster draws the true surface. Quads are sorted by u for the per-frame cull.
+ *
+ * WATERTIGHT: no vertex lies inside another quad's edge (no T-junction). Where a region ends, one
+ * side of a u breakpoint has lines the other side has not; the weld puts every vertex that lies on a
+ * quad's edge at a constant u into that edge (cells, faces along v and faces at u alike) and splits
+ * the quad into a strip of triangles between its two constant-u edges. So every edge is shared by
+ * exactly the same two vertices, and a GPU's sub-pixel vertex snap cannot open a crack. A quad
+ * without such a vertex stays the one quad it was (a mesh without T-junctions is unchanged).
  */
 import { CHUNK_U } from './tex-layout';
 
@@ -77,13 +84,19 @@ export const QUAD_FACE_UN = 3;
 /** Largest u span of one quad (the grid; also keeps the GPU's interpolation short). */
 export const MESH_MAX_SPAN = 64;
 
+/** Least u gap between a line crossing and another breakpoint (world px; no sliver quads). */
+export const MESH_MIN_GAP = 0.5;
+
 /** Serial of mesh builds (the GPU's upload key). */
 let meshSerial = 0;
 
 /**
  * The floor mesh: quads of 4 vertices (two triangles 0-1-2 and 0-2-3), world coordinates and world
  * texture coordinates. Tops: (ta, tb) = (u, v). Faces: ta = along the face (u for a +v face, v for a
- * u face), tb = px below the face's top edge (0 at the top).
+ * u face), tb = px below the face's top edge (0 at the top). Edge 0 → 3 and edge 1 → 2 each lie at
+ * one u (a top: far → near at its u0 and u1). A welded triangle is a quad with one corner repeated
+ * (1 = 2 or 3 = 0: one triangle has no area and draws nothing), so 0 → 1 stays the far edge and
+ * 3 → 2 the near edge of what it covers.
  */
 export interface FloorMesh {
   /** Unique per build (a GPU uploads a mesh once per id). */
@@ -205,6 +218,13 @@ interface Cell {
   k: number;
 }
 
+/** Floats per proto-quad vertex: u, v, h, ta, tb. */
+const PV = 5;
+
+/**
+ * The quads before the weld (`proto`), then the mesh's arrays (`weld`): every proto-quad keeps its
+ * place in the order (u-sorted), and one without a T vertex is emitted exactly as it was built.
+ */
 class MeshBuilder {
   pu: number[] = [];
   pv: number[] = [];
@@ -219,6 +239,9 @@ class MeshBuilder {
   u1: number[] = [];
   hMin = Infinity;
   hMax = -Infinity;
+  /** Proto-quads: 4 × PV floats each, and their quad data. */
+  private readonly pp: number[] = [];
+  private readonly pq: number[] = [];
 
   vert(u: number, v: number, h: number, a: number, b: number): number {
     this.pu.push(u);
@@ -238,6 +261,149 @@ class MeshBuilder {
     this.chunk.push(chunk);
     this.u0.push(u0);
     this.u1.push(u1);
+  }
+
+  /** A proto-vertex (u, v, h, ta, tb); four of them, then `proto`. */
+  pvert(u: number, v: number, h: number, a: number, b: number): void {
+    this.pp.push(u, v, h, a, b);
+  }
+
+  /** Close the proto-quad of the last four `pvert`s (0 → 3 and 1 → 2 at one u each). */
+  proto(mat: number, kind: number, chunk: number, u0: number, u1: number): void {
+    this.pq.push(mat, kind, chunk, u0, u1);
+  }
+
+  /** Emit every proto-quad, split at the vertices that lie inside its two constant-u edges. */
+  weld(): void {
+    const pp = this.pp;
+    const n = this.pq.length / 5;
+    // The nodes of every u line: the (v, h) of each proto-vertex there.
+    const nodes = new Map<number, number[]>();
+    for (let i = 0; i < pp.length; i += PV) {
+      const u = pp[i];
+      let l = nodes.get(u);
+      if (!l) nodes.set(u, (l = []));
+      l.push(pp[i + 1], pp[i + 2]);
+    }
+    const left: number[] = [];
+    const right: number[] = [];
+    for (let q = 0; q < n; q++) {
+      const o = q * 4 * PV;
+      const pq = q * 5;
+      chainOf(pp, o, o + 3 * PV, nodes, left);
+      chainOf(pp, o + PV, o + 2 * PV, nodes, right);
+      if (left.length === 2 * CH && right.length === 2 * CH) {
+        // No T vertex: the quad as it was built.
+        const i0 = this.vert(pp[o], pp[o + 1], pp[o + 2], pp[o + 3], pp[o + 4]);
+        const i1 = this.vert(pp[o + 5], pp[o + 6], pp[o + 7], pp[o + 8], pp[o + 9]);
+        const i2 = this.vert(pp[o + 10], pp[o + 11], pp[o + 12], pp[o + 13], pp[o + 14]);
+        const i3 = this.vert(pp[o + 15], pp[o + 16], pp[o + 17], pp[o + 18], pp[o + 19]);
+        this.quad(i0, i1, i2, i3, this.pq[pq], this.pq[pq + 1], this.pq[pq + 2], this.pq[pq + 3], this.pq[pq + 4]);
+        continue;
+      }
+      this.strip(left, right, this.pq[pq], this.pq[pq + 1], this.pq[pq + 2], this.pq[pq + 3], this.pq[pq + 4]);
+    }
+  }
+
+  /**
+   * The strip between two chains (each from the quad's far / top end to its near / bottom end, with
+   * their parameters 0 … 1): quads where both chains step together, else triangles (a quad with one
+   * corner repeated), as a ladder that always steps the chain whose next point comes first.
+   */
+  private strip(L: readonly number[], R: readonly number[], mat: number, kind: number, chunk: number, u0: number, u1: number): void {
+    const nl = L.length / CH - 1;
+    const nr = R.length / CH - 1;
+    let i = 0;
+    let j = 0;
+    while (i < nl || j < nr) {
+      const tl = i < nl ? L[(i + 1) * CH + 5] : Infinity;
+      const tr = j < nr ? R[(j + 1) * CH + 5] : Infinity;
+      const a = this.cvert(L, i);
+      const b = this.cvert(R, j);
+      if (Math.abs(tl - tr) < 1e-9) {
+        // Both chains step: a quad (far-left, far-right, near-right, near-left).
+        const c = this.cvert(R, j + 1);
+        const d = this.cvert(L, i + 1);
+        this.quad(a, b, c, d, mat, kind, chunk, u0, u1);
+        i++;
+        j++;
+      } else if (tl < tr) {
+        // The left chain steps: triangle (L i, R j, L i+1) as (a, b, b, d).
+        const d = this.cvert(L, i + 1);
+        this.quad(a, b, b, d, mat, kind, chunk, u0, u1);
+        i++;
+      } else {
+        // The right chain steps: triangle (L i, R j, R j+1) as (a, b, c, a).
+        const c = this.cvert(R, j + 1);
+        this.quad(a, b, c, a, mat, kind, chunk, u0, u1);
+        j++;
+      }
+    }
+  }
+
+  /** Vertex of chain point k (CH floats: u, v, h, ta, tb, t). */
+  private cvert(c: readonly number[], k: number): number {
+    const o = k * CH;
+    return this.vert(c[o], c[o + 1], c[o + 2], c[o + 3], c[o + 4]);
+  }
+}
+
+/** Floats per chain point: u, v, h, ta, tb and its parameter t along the edge (0 … 1). */
+const CH = 6;
+
+/**
+ * The chain of the proto-edge from vertex a to vertex b (offsets into `pp`, both at one u): a, every
+ * node of that u line strictly inside the segment (in order), b. A node's position is copied as it
+ * is (so it equals its own quad's vertex bit for bit); its texture coordinates are the edge's at it.
+ */
+function chainOf(pp: readonly number[], a: number, b: number, nodes: ReadonlyMap<number, readonly number[]>, out: number[]): void {
+  out.length = 0;
+  const u = pp[a];
+  const va = pp[a + 1];
+  const ha = pp[a + 2];
+  const dv = pp[b + 1] - va;
+  const dh = pp[b + 2] - ha;
+  out.push(u, va, ha, pp[a + 3], pp[a + 4], 0);
+  const len2 = dv * dv + dh * dh;
+  const l = u === pp[b] && len2 > 1e-12 ? nodes.get(u) : undefined;
+  if (l) {
+    const len = Math.sqrt(len2);
+    for (let k = 0; k < l.length; k += 2) {
+      const nv = l[k];
+      const nh = l[k + 1];
+      const ev = nv - va;
+      const eh = nh - ha;
+      // On the segment's line (distance < 1e-6 px) and strictly between its ends.
+      if (Math.abs(ev * dh - eh * dv) > 1e-6 * len) continue;
+      const t = (ev * dv + eh * dh) / len2;
+      if (t * len < 1e-6 || (1 - t) * len < 1e-6) continue;
+      // Once per position (many quads share a node).
+      let dup = false;
+      for (let m = CH; m < out.length; m += CH) {
+        if (Math.abs(out[m + 1] - nv) < 1e-6 && Math.abs(out[m + 2] - nh) < 1e-6) {
+          dup = true;
+          break;
+        }
+      }
+      if (dup) continue;
+      out.push(u, nv, nh, pp[a + 3] + (pp[b + 3] - pp[a + 3]) * t, pp[a + 4] + (pp[b + 4] - pp[a + 4]) * t, t);
+    }
+  }
+  out.push(pp[b], pp[b + 1], pp[b + 2], pp[b + 3], pp[b + 4], 1);
+  if (out.length > 2 * CH) sortChain(out);
+}
+
+/** Sort the inner points of a chain by t (insertion sort: a handful of points). */
+function sortChain(c: number[]): void {
+  const n = c.length / CH;
+  for (let i = 2; i < n - 1; i++) {
+    for (let j = i; j > 1 && c[j * CH + 5] < c[(j - 1) * CH + 5]; j--) {
+      for (let k = 0; k < CH; k++) {
+        const t = c[j * CH + k];
+        c[j * CH + k] = c[(j - 1) * CH + k];
+        c[(j - 1) * CH + k] = t;
+      }
+    }
   }
 }
 
@@ -296,7 +462,17 @@ export function buildFloorMesh(f: FieldInput): FloorMesh {
       }
     }
   }
-  if (extra.length) us = sortedBreaks([...us, ...extra], uMin, uMax);
+  // A crossing within MESH_MIN_GAP of another breakpoint is left out (the cells clamp the two lines
+  // at that end, `cellsOf`): a sliver quad a fraction of a pixel wide folds under a GPU's vertex snap.
+  if (extra.length) {
+    const keep: number[] = [];
+    for (const u of extra.sort((a, b) => a - b)) {
+      if (keep.length && u - keep[keep.length - 1] < MESH_MIN_GAP) continue;
+      if (nearBreak(us, u) < MESH_MIN_GAP) continue;
+      keep.push(u);
+    }
+    if (keep.length) us = sortedBreaks([...us, ...keep], uMin, uMax);
+  }
   // The grid: no quad wider than MESH_MAX_SPAN.
   const grid: number[] = [us[0]];
   for (let i = 1; i < us.length; i++) {
@@ -321,11 +497,11 @@ export function buildFloorMesh(f: FieldInput): FloorMesh {
     for (let c = 0; c < cells.length; c++) {
       const cl = cells[c];
       const mat = surfaceMat(f, cl.k);
-      const i0 = m.vert(ua, cl.fa, cl.ha, ua, cl.fa);
-      const i1 = m.vert(ub, cl.fb, cl.hb, ub, cl.fb);
-      const i2 = m.vert(ub, cl.nb, cl.hb, ub, cl.nb);
-      const i3 = m.vert(ua, cl.na, cl.ha, ua, cl.na);
-      m.quad(i0, i1, i2, i3, mat, QUAD_TOP, mat < 0 ? chunk : -1, ua, ub);
+      m.pvert(ua, cl.fa, cl.ha, ua, cl.fa);
+      m.pvert(ub, cl.fb, cl.hb, ub, cl.fb);
+      m.pvert(ub, cl.nb, cl.hb, ub, cl.nb);
+      m.pvert(ua, cl.na, cl.ha, ua, cl.na);
+      m.proto(mat, QUAD_TOP, mat < 0 ? chunk : -1, ua, ub);
       // The face along the near line of this cell, when the cell in front of it is lower.
       if (c + 1 < cells.length) {
         const nx = cells[c + 1];
@@ -339,11 +515,11 @@ export function buildFloorMesh(f: FieldInput): FloorMesh {
             const htb = cl.hb;
             const hba = Math.min(nx.ha, hta);
             const hbb = Math.min(nx.hb, htb);
-            const j0 = m.vert(ua, cl.na, hta, ua, 0);
-            const j1 = m.vert(ub, cl.nb, htb, ub, 0);
-            const j2 = m.vert(ub, cl.nb, hbb, ub, htb - hbb);
-            const j3 = m.vert(ua, cl.na, hba, ua, hta - hba);
-            m.quad(j0, j1, j2, j3, fm, QUAD_FACE_V, -1, ua, ub);
+            m.pvert(ua, cl.na, hta, ua, 0);
+            m.pvert(ub, cl.nb, htb, ub, 0);
+            m.pvert(ub, cl.nb, hbb, ub, htb - hbb);
+            m.pvert(ua, cl.na, hba, ua, hta - hba);
+            m.proto(fm, QUAD_FACE_V, -1, ua, ub);
           }
         }
       }
@@ -351,6 +527,7 @@ export function buildFloorMesh(f: FieldInput): FloorMesh {
     prev = cells;
     prevB = ub;
   }
+  m.weld();
 
   const fa = (a: number[]): Float32Array => Float32Array.from(a);
   return {
@@ -377,6 +554,21 @@ export function buildFloorMesh(f: FieldInput): FloorMesh {
   };
 }
 
+/** Distance from u to the nearest value of the sorted list `us`. */
+function nearBreak(us: readonly number[], u: number): number {
+  let lo = 0;
+  let hi = us.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (us[mid] < u) lo = mid + 1;
+    else hi = mid;
+  }
+  let d = Infinity;
+  if (lo < us.length) d = us[lo] - u;
+  if (lo > 0) d = Math.min(d, u - us[lo - 1]);
+  return d;
+}
+
 function sortedBreaks(br: number[], lo: number, hi: number): number[] {
   const s = br.filter((u) => Number.isFinite(u) && u >= lo && u <= hi).sort((a, b) => a - b);
   const out: number[] = [];
@@ -399,6 +591,13 @@ function cellsOf(f: FieldInput, ua: number, ub: number): Cell[] {
     .sort((p, q) => p.m - q.m);
   const uniq: typeof vals = [];
   for (const x of vals) if (uniq.length === 0 || x.m - uniq[uniq.length - 1].m > 1e-6) uniq.push(x);
+  // Two lines that cross close to an end of the interval (their crossing left out: MESH_MIN_GAP)
+  // keep their order at both ends: a line never lies in front of the next one there.
+  for (let i = 1; i < uniq.length; i++) {
+    const p = uniq[i - 1];
+    const x = uniq[i];
+    if (x.a < p.a || x.b < p.b) uniq[i] = { l: x.l, a: Math.max(x.a, p.a), b: Math.max(x.b, p.b), m: x.m };
+  }
   const seg = segmentAt(f.segments, um);
   const cells: Cell[] = [];
   for (let i = 0; i + 1 < uniq.length; i++) {
@@ -451,11 +650,11 @@ function uFaces(f: FieldInput, m: MeshBuilder, left: readonly Cell[], right: rea
     if (fm < 0) continue;
     // The higher side's wall looks toward the lower side.
     const kind = hl > hr ? QUAD_FACE_UP : QUAD_FACE_UN;
-    const j0 = m.vert(u, va, top, va, 0);
-    const j1 = m.vert(u, vb, top, vb, 0);
-    const j2 = m.vert(u, vb, bot, vb, top - bot);
-    const j3 = m.vert(u, va, bot, va, top - bot);
-    m.quad(j0, j1, j2, j3, fm, kind, -1, u, u);
+    m.pvert(u, va, top, va, 0);
+    m.pvert(u, vb, top, vb, 0);
+    m.pvert(u, vb, bot, vb, top - bot);
+    m.pvert(u, va, bot, va, top - bot);
+    m.proto(fm, kind, -1, u, u);
   }
 }
 
@@ -496,4 +695,70 @@ export function meshHeightAt(mesh: FloorMesh, u: number, v: number): number {
     h = mesh.ph[i0] + (mesh.ph[i1] - mesh.ph[i0]) * t;
   }
   return h;
+}
+
+/**
+ * The T-junctions of a mesh (a test's check, not for the frame path): every vertex that lies strictly
+ * inside an edge of a quad (on the edge's line within `tol` world px, at least `tol` from its ends)
+ * without being a corner of that quad. A welded mesh has none. At most `max` are listed.
+ */
+export function meshTJunctions(mesh: FloorMesh, max = 16, tol = 1e-4): Array<{ u: number; v: number; h: number; quad: number }> {
+  const out: Array<{ u: number; v: number; h: number; quad: number }> = [];
+  const n = mesh.vertexCount;
+  const { pu, pv, ph } = mesh;
+  // Vertices sorted by u (one per position), for the range of an edge.
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => pu[a] - pu[b] || pv[a] - pv[b] || ph[a] - ph[b]);
+  const vs: number[] = [];
+  for (const i of order) {
+    const k = vs.length ? vs[vs.length - 1] : -1;
+    if (k >= 0 && pu[k] === pu[i] && pv[k] === pv[i] && ph[k] === ph[i]) continue;
+    vs.push(i);
+  }
+  const lowerU = (u: number): number => {
+    let lo = 0;
+    let hi = vs.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (pu[vs[mid]] < u) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  for (let q = 0; q < mesh.quadCount && out.length < max; q++) {
+    for (let c = 0; c < 4 && out.length < max; c++) {
+      const a = mesh.quads[q * 4 + c];
+      const b = mesh.quads[q * 4 + ((c + 1) & 3)];
+      const du = pu[b] - pu[a];
+      const dv = pv[b] - pv[a];
+      const dh = ph[b] - ph[a];
+      const len2 = du * du + dv * dv + dh * dh;
+      if (len2 < tol * tol) continue;
+      const len = Math.sqrt(len2);
+      const uLo = Math.min(pu[a], pu[b]) - tol;
+      const uHi = Math.max(pu[a], pu[b]) + tol;
+      for (let k = lowerU(uLo); k < vs.length && pu[vs[k]] <= uHi; k++) {
+        const i = vs[k];
+        const eu = pu[i] - pu[a];
+        const ev = pv[i] - pv[a];
+        const eh = ph[i] - ph[a];
+        const t = (eu * du + ev * dv + eh * dh) / len2;
+        if (t * len < tol || (1 - t) * len < tol) continue;
+        // Distance from the edge's line.
+        const xu = eu - du * t;
+        const xv = ev - dv * t;
+        const xh = eh - dh * t;
+        if (xu * xu + xv * xv + xh * xh > tol * tol) continue;
+        // A corner of this quad (a welded triangle repeats one) is not a T.
+        let own = false;
+        for (let m = 0; m < 4; m++) {
+          const j = mesh.quads[q * 4 + m];
+          if (pu[j] === pu[i] && pv[j] === pv[i] && ph[j] === ph[i]) own = true;
+        }
+        if (own) continue;
+        out.push({ u: pu[i], v: pv[i], h: ph[i], quad: q });
+        if (out.length >= max) break;
+      }
+    }
+  }
+  return out;
 }

@@ -118,14 +118,15 @@ export const GUN_R = 3;
 
 /**
  * Gate 5 (spec §3.6, §8): everything the floor draws OVER the world (front decor, the props of front
- * rows, front face groups: `SectionFloor.frontBoxes`) that covers a hero's head (the top HEAD_H px of
+ * rows, front face groups, the entities' faces in front of the walk plane: `SectionFloor.frontBoxes`)
+ * that covers a hero's head (the top HEAD_H px of
  * its hitbox) or its gun (the muzzle ± GUN_R) for the world's camera now; one line per hit. The test
  * runs the bot through every floor section and checks every few frames.
  */
 export function frontCoverHits(floor: SectionFloor, world: World): string[] {
   const camX = world.camera.viewX;
   const camY = world.camera.viewY;
-  const boxes = floor.frontBoxes(camX, camY);
+  const boxes = floor.frontBoxes(camX, camY, world);
   const out: string[] = [];
   const muzzle: [number, number] = [0, 0];
   for (const e of world.players) {

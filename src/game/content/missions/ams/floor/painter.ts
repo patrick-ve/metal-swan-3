@@ -17,6 +17,8 @@
  * swerve round the pavement bulbs (layout.ts `Bulb`; no bike symbol on a bend), a STOP LINE crosses
  * the lane before a raised bridge, a steel LANDING strip crosses the street where the leaf rests, and
  * in front of a raised leaf (over the lane's far half) the bank's HINGE PIT lies under a steel plate.
+ * A SHADE (layout.ts `FloorShade`, wave B: b's passage under its vault) lowers the light of whatever
+ * lies under it, with soft edges at its u ends and its near edge.
  *
  * Cost (docs/api/floor.md §4: ≤ ~60 ns a texel): the layout per texture column is cached (every
  * row of a chunk visits the same columns), then a few compares and hashes per texel; no allocation.
@@ -24,7 +26,7 @@
 import type { Color } from '../../../../../engine/color';
 import { defineFloorPainter, type FloorPaintCtx } from '../../../../mission/floor/registry';
 import { hash2 } from '../../../../art/paint';
-import { asphalt, clamp01, cobbles, depthLight, dt, fan, floorLight, granite, jointSand, klinkers, mix, mod, paint, STEEL, STONE, tiles } from './mat';
+import { asphalt, clamp01, cobbles, depthLight, dt, fan, floorLight, granite, grass, gravel, jointSand, klinkers, mix, mod, paint, planks, smoothstep, STEEL, STONE, stoneTiles, tiles } from './mat';
 import {
   COPING,
   CROSS_BAND,
@@ -36,6 +38,7 @@ import {
   KERB_H,
   laneMidV,
   NEAR_KERB_TOP,
+  type AreaKind,
   type Bridge,
   type StreetKind,
   type StreetLayout,
@@ -59,7 +62,30 @@ const KIND_LANE = 0;
 const KIND_COBBLES = 1;
 const KIND_FAN = 2;
 const KIND_DECK = 3;
-const KINDS: Readonly<Record<StreetKind, number>> = { lane: KIND_LANE, cobbles: KIND_COBBLES, fan: KIND_FAN, deck: KIND_DECK };
+const KIND_GRAVEL = 4;
+const KIND_GRASS = 5;
+const KIND_STONE = 6;
+const KIND_PLANKS = 7;
+const KIND_TILES = 8;
+const KIND_KLINKERS = 9;
+const KIND_GRANITE = 10;
+const KINDS: Readonly<Record<StreetKind | AreaKind, number>> = {
+  lane: KIND_LANE,
+  cobbles: KIND_COBBLES,
+  fan: KIND_FAN,
+  deck: KIND_DECK,
+  gravel: KIND_GRAVEL,
+  grass: KIND_GRASS,
+  stone: KIND_STONE,
+  planks: KIND_PLANKS,
+  tiles: KIND_TILES,
+  klinkers: KIND_KLINKERS,
+  granite: KIND_GRANITE,
+};
+/** Hard surfaces of stone: where two of them meet along u, a straight granite band (a square's edge). */
+const STONY = (k: number): boolean => k === KIND_COBBLES || k === KIND_FAN || k === KIND_DECK || k === KIND_STONE || k === KIND_TILES || k === KIND_KLINKERS;
+/** Areas (`FloorArea`) a texture column can hold at once. */
+const AREAS_PER_COLUMN = 6;
 
 /** The stop line's width and the landing strip's width (world px along u). */
 const STOP_W = 5;
@@ -176,6 +202,8 @@ defineFloorPainter('ams/floor', (c: FloorPaintCtx) => {
   const stops = L.stops ?? [];
   const landings = L.landings ?? [];
   const pits = (L.hingePits ?? []).map((p) => ({ u0: p.u0, u1: p.u1, vFar: c.vAt(p.far) }));
+  const areas = (L.areas ?? []).map((a) => ({ u0: a.u0, u1: a.u1, far: a.far, near: a.near, kind: KINDS[a.kind], edge: a.edge ?? 0 }));
+  const shades = (L.shades ?? []).map((s) => ({ ...s, vF: s.far === undefined ? -Infinity : c.vAt(s.far), vN: c.vAt(s.near) }));
 
   // ---- the per-column cache (keyed by the texture column ⌊u·d⌋)
   const tag = new Float64Array(CACHE).fill(NaN);
@@ -195,6 +223,16 @@ defineFloorPainter('ams/floor', (c: FloorPaintCtx) => {
   const cStop = new Int8Array(CACHE);
   const cLand = new Int8Array(CACHE);
   const cPit = new Int8Array(CACHE);
+  /** The areas over a column (indices, their far and near v there; later ones win). */
+  const cAreaN = new Int8Array(CACHE);
+  const cAreaK = new Int16Array(CACHE * AREAS_PER_COLUMN);
+  const cAreaF = new Float64Array(CACHE * AREAS_PER_COLUMN);
+  const cAreaV = new Float64Array(CACHE * AREAS_PER_COLUMN);
+  /** The shade over a column: its tone there (the u ramps applied; 0 none), its far v, near v and the near edge's half width. */
+  const cShade = new Float64Array(CACHE);
+  const cShadeF = new Float64Array(CACHE);
+  const cShadeN = new Float64Array(CACHE);
+  const cShadeH = new Float64Array(CACHE);
   /** Fill cache slot i for texture column `key` (from its centre: the layout is a function of the column alone). */
   const column = (key: number, i: number): void => {
     tag[i] = key;
@@ -223,7 +261,28 @@ defineFloorPainter('ams/floor', (c: FloorPaintCtx) => {
     for (let k = 0; k < landings.length; k++) if (u >= landings[k] && u < landings[k] + LANDING_W) cLand[i] = k + 1;
     cPit[i] = 0;
     for (let k = 0; k < pits.length; k++) if (u >= pits[k].u0 && u < pits[k].u1) cPit[i] = k + 1;
+    let na = 0;
+    for (let k = 0; k < areas.length && na < AREAS_PER_COLUMN; k++) {
+      const a = areas[k];
+      if (u < a.u0 || u >= a.u1) continue;
+      const j = i * AREAS_PER_COLUMN + na++;
+      cAreaK[j] = k;
+      cAreaF[j] = a.far === undefined ? -Infinity : c.vAt(depthAt(a.far, u));
+      cAreaV[j] = a.near === undefined ? Infinity : c.vAt(depthAt(a.near, u));
+    }
+    cAreaN[i] = na;
     // The nearest bike symbol slot whose symbol is painted here (NaN: none).
+    cShade[i] = 0;
+    for (const s of shades) {
+      const h = s.soft / 2;
+      const wu = Math.min(smoothstep(s.u0 - h, s.u0 + h, u), smoothstep(s.u1 + h, s.u1 - h, u));
+      if (wu <= 0) continue;
+      cShade[i] = s.tone * wu;
+      cShadeF[i] = s.vF;
+      cShadeN[i] = s.vN;
+      cShadeH[i] = s.softNear / 2;
+      break;
+    }
     cSym[i] = NaN;
     if (bikeEvery > 0) {
       for (let side = 0; side < 2; side++) {
@@ -299,11 +358,30 @@ defineFloorPainter('ams/floor', (c: FloorPaintCtx) => {
     return asphalt(u, v, X, Y, lit, tq < 2.4 ? 0.3 : 0);
   };
 
-  /** Cobbles of a kind (the far side of a crossing, a square, a deck). */
+  /** A surface of a kind (the far side of a crossing, a square, a deck, a path, a lawn, a forecourt). */
   const cobbleKind = (u: number, v: number, X: number, Y: number, lit: number, k: number): Color => {
     if (k === KIND_FAN) return fan(u, v, X, Y, lit, d);
-    if (k === KIND_DECK) return klinkers(u, v, X, Y, lit, d);
+    if (k === KIND_DECK || k === KIND_KLINKERS) return klinkers(u, v, X, Y, lit, d);
+    if (k === KIND_GRAVEL) return gravel(u, v, X, Y, lit, d);
+    if (k === KIND_GRASS) return grass(u, v, X, Y, lit, d);
+    if (k === KIND_STONE) return stoneTiles(u, v, X, Y, lit, d);
+    if (k === KIND_PLANKS) return planks(u, v, X, Y, lit, d);
+    if (k === KIND_TILES) return tiles(u, v, X, Y, lit, d, 25);
+    if (k === KIND_GRANITE) return granite(u, X, Y, lit + 0.2, 0.5, 34, 22);
     return cobbles(u, v, X, Y, lit, d);
+  };
+
+  /** An area (a `FloorArea`) at (u, v): its material, a granite border `edge` px inside its outline. */
+  const areaAt = (u: number, v: number, X: number, Y: number, lit: number, k: number, vf: number, vn: number): Color => {
+    const a = areas[k];
+    if (a.edge > 0) {
+      const ev = Math.min(v - vf, vn - v);
+      const eu = Math.min(u - a.u0, a.u1 - u);
+      const e = Math.min(ev, eu);
+      // The border's blocks run along the edge it is nearest to.
+      if (e < a.edge) return granite(ev <= eu ? u : v, X, Y, lit + 0.3, e / a.edge, 35, 18);
+    }
+    return cobbleKind(u, v, X, Y, lit, a.kind);
   };
 
   /** The street between the kerbs. */
@@ -325,7 +403,7 @@ defineFloorPainter('ams/floor', (c: FloorPaintCtx) => {
     // A straight joint where two cobble surfaces meet (a square's edge): a granite band 2.4 px wide.
     for (let i = 1; i < street.length; i++) {
       const b = street[i].u0;
-      if (u >= b - 1.2 && u < b + 1.2 && street[i - 1].kind !== KIND_LANE && street[i].kind !== KIND_LANE) {
+      if (u >= b - 1.2 && u < b + 1.2 && STONY(street[i - 1].kind) && STONY(street[i].kind)) {
         return granite(v * 2, X, Y, lit + 0.2, (u - b + 1.2) / 2.4, 23, 12);
       }
     }
@@ -361,6 +439,15 @@ defineFloorPainter('ams/floor', (c: FloorPaintCtx) => {
     return dt(STEEL, 3 + lit + ((X + Y) & 2 ? 0.5 : 0) + (hash2(X, Y, 43) - 0.5) * 0.4, X, Y);
   };
 
+  /** The last area over column i that holds (u, v), painted; 0 (transparent) when none does. */
+  const areaHit = (u: number, v: number, X: number, Y: number, lit: number, i: number): Color => {
+    for (let n = cAreaN[i] - 1; n >= 0; n--) {
+      const j = i * AREAS_PER_COLUMN + n;
+      if (v >= cAreaF[j] && v < cAreaV[j]) return areaAt(u, v, X, Y, lit, cAreaK[j], cAreaF[j], cAreaV[j]);
+    }
+    return 0;
+  };
+
   return (u: number, v: number): Color => {
     const key = Math.floor(u * d);
     const i = key & (CACHE - 1);
@@ -376,7 +463,8 @@ defineFloorPainter('ams/floor', (c: FloorPaintCtx) => {
     const X = key;
     const Y = Math.floor(v * d);
     // The kits' depth of v on flat ground → the light over the floor's depth.
-    const lit = depthLight((-k1 * v) / (f - v)) + light.tone;
+    let lit = depthLight((-k1 * v) / (f - v)) + light.tone;
+    if (cShade[i] > 0 && v >= cShadeF[i]) lit -= cShade[i] * smoothstep(cShadeN[i] + cShadeH[i], cShadeN[i] - cShadeH[i], v);
     const quay = cQuay[i] === 1;
     const br = cBridge[i];
     const cn = cCanal[i];
@@ -390,6 +478,8 @@ defineFloorPainter('ams/floor', (c: FloorPaintCtx) => {
       const bolt = q > 2 && q < 3.2 && mod(v, 6) < 1.2;
       if (q > LANDING_W - 1.4) col = jointSand(X, Y, lit - 0.6);
       else col = bolt ? dt(STEEL, 5.6 + lit, X, Y) : dt(STEEL, (q < 1.2 ? 5 : q < 4.6 ? 3.4 : 2.4) + lit + (hash2(X, Y, 41) - 0.5) * 0.5, X, Y);
+    } else if (cAreaN[i] > 0 && (col = areaHit(u, v, X, Y, lit, i)) !== 0) {
+      // An area over the layout (a lawn, a path, a rim, a forecourt).
     } else if (cn >= 0) {
       // The coping along a side canal's edge (across the whole band); the water is the cut's tile.
       const [a, b] = canals[cn];

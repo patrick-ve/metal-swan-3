@@ -14,21 +14,30 @@
  *   hoist beam), and
  *   `ensureCanopyTile` (a striped awning canopy in the awning sprite's colours and stripe phase).
  *
+ * Wave B (spec §12.2): `riverSurface(light)` (river water over the whole band, the crests in the
+ * light's sky), `ams/rim-face` / `ams/rim-inner` (a pool's stone rim, outside and in), `ams/step-face`
+ * / `ams/step-tread` (a stair in the height field), `ams/pontoon-top` (a steel pontoon's deck, a face
+ * group's top), `ensurePassageWallTile` and `ams/passage-ceiling` (the museum passage's tiled walls
+ * and its vault).
+ *
  * Tile coordinates (registry.ts): faces a = along the face (world u, or v at a u end), b = px below
- * the face's top edge; tops (a, b) = (u, v); quads a = u, b across. Seamless, hashes only.
+ * the face's top edge; tops (a, b) = (u, v); quads a = u, b across. Face groups' tiles (sides.ts):
+ * a = down the face, b = back in depth. Seamless, hashes only.
  */
 import type { Color } from '../../../../../engine/color';
 import { PAL_HD } from '../../../../../engine/palette-hd';
 import type { Ramp } from '../../../../../engine/pixel';
 import { hash2 } from '../../../../art/paint';
 import { defineFloorTile, hasFloorTile } from '../../../../mission/floor/registry';
+import type { FloorSurface } from '../../../../mission/floor/types';
+import type { Light } from '../art';
 import { archTileId, WATER_LEVEL, type Bridge } from './layout';
 import { band, BRICK, BRICK_DARK, dt, mod, SAND, STONE } from './mat';
 import { hillAt } from './painter';
 
-const TEAL = PAL_HD.teal;
+export const TEAL = PAL_HD.teal;
 const SKY = PAL_HD.sky;
-const CANAL = PAL_HD.canal;
+export const CANAL = PAL_HD.canal;
 
 /** Integer texel coordinates of a tile sample at density d (for the world-anchored dither). */
 function tx(a: number, d: number): number {
@@ -248,3 +257,176 @@ export function ensureCanopyTile(x0: number, colors: readonly [Ramp, Ramp]): str
   });
   return id;
 }
+
+// ------------------------------------------------------------------------------- wave B tiles (spec §4.1, §12.2)
+
+/** The sky the river reflects per time of day (its crests) and the body's ramp shift. */
+export const RIVER_SKY: Readonly<Record<Light, { sky: Ramp; t: number; body: number }>> = {
+  morning: { sky: SKY, t: 4.2, body: 0 },
+  noon: { sky: SKY, t: 4.8, body: 0.2 },
+  golden: { sky: PAL_HD.gold, t: 5, body: -0.15 },
+  sunset: { sky: PAL_HD.orange, t: 4.4, body: -0.35 },
+};
+
+/** The river's ripple at tile px (a, b): period 96 along a, 32 along b; above 0.66 a crest that holds the sky. */
+export function riverRipple(a: number, b: number): number {
+  const p = (Math.PI * 2) / 96;
+  const q = (Math.PI * 2) / 32;
+  return Math.sin(b * q * 2 + Math.sin(a * p * 2) * 1.4 + Math.sin(a * p * 5 + 0.7) * 0.4) * 0.6 + Math.sin(b * q * 5 - a * p * 3) * 0.28;
+}
+
+/** The river's glint field at tile px (a, b): period 64 along a, 16 along b; above 0.8 a glint, under −0.62 a dark trough. */
+export function riverGlint(a: number, b: number): number {
+  const p = (Math.PI * 2) / 64;
+  const q = (Math.PI * 2) / 16;
+  return Math.sin(b * q * 2 + Math.sin(a * p * 3) * 2.2) * 0.7 + Math.sin(a * p * 5 - b * q) * 0.3;
+}
+
+/**
+ * River water over the whole band (spec §12.2: c's canal, c1's Amstel, c2's river): a broader,
+ * slower ripple than the side canal's, the crests holding the sky of the section's time of day (gold
+ * in the late afternoon), and a glint layer drifting against it — world-anchored, it moves with time
+ * (`du`, `dv`), never with the camera. Use it as a cut's `surface` (`riverSurface(light)`).
+ */
+export function riverSurface(light: Light = 'morning'): FloorSurface {
+  const base = `ams/river/${light}`;
+  const glint = `ams/river-glint/${light}`;
+  if (!hasFloorTile(base)) {
+    const L = RIVER_SKY[light];
+    defineFloorTile(base, {
+      w: 96,
+      h: 32,
+      paint: (a, b, d) => {
+        const X = tx(a, d);
+        const Y = tx(b, d);
+        const r = riverRipple(a, b);
+        if (r > 0.66) return dt(L.sky, L.t + (r - 0.66) * 3, X, Y);
+        return dt(TEAL, 1.85 + L.body + r * 0.85, X, Y);
+      },
+    });
+    defineFloorTile(glint, {
+      w: 64,
+      h: 16,
+      paint: (a, b, d) => {
+        const X = tx(a, d);
+        const Y = tx(b, d);
+        const g = riverGlint(a, b);
+        if (g > 0.8) return dt(L.sky, L.t + 1, X, Y);
+        if (g < -0.62) return dt(CANAL, 1.5, X, Y);
+        return dt(TEAL, 2.2 + L.body + g * 0.5, X, Y);
+      },
+    });
+  }
+  return { tile: base, du: 0.045, dv: 0.01, over: { tile: glint, du: -0.035, alpha: 0.34 } };
+}
+
+/** A pool's (or a fountain's) stone rim from outside: a lit granite coping over a short dressed face (a = along, b = down). */
+defineFloorTile('ams/rim-face', {
+  w: 22,
+  h: 4,
+  paint: (a, b, d) => {
+    const X = tx(a, d);
+    const Y = tx(b, d);
+    if (mod(a, 22) < 0.6) return dt(STONE, 2.2, X, Y);
+    return dt(STONE, (b < 0.5 ? 6.2 : b < 1.2 ? 4.8 : 3.4) + (hash2(X, Y, 120) - 0.5) * 0.5, X, Y);
+  },
+});
+
+/** The inside of a pool's rim down to the water: the coping's lip, dressed stone, the dark wet band at the water (a = along, b = down). */
+defineFloorTile('ams/rim-inner', {
+  w: 22,
+  h: 8,
+  paint: (a, b, d) => {
+    const X = tx(a, d);
+    const Y = tx(b, d);
+    if (b < 0.7) return dt(STONE, 5.6, X, Y);
+    if (mod(a, 22) < 0.6) return dt(STONE, 2, X, Y);
+    if (b > 3.2) return dt(PAL_HD.slate, 2 + (hash2(X, Y, 121) - 0.5) * 0.6, X, Y);
+    return dt(STONE, 3.6 - b * 0.25 + (hash2(X, Y, 122) - 0.5) * 0.5, X, Y);
+  },
+});
+
+/** A stair's riser (the jetty's steps, a face of the height field): a lit granite nosing, the riser in shade, a dark joint at its foot (a = along, b = down). */
+defineFloorTile('ams/step-face', {
+  w: 24,
+  h: 8,
+  paint: (a, b, d) => {
+    const X = tx(a, d);
+    const Y = tx(b, d);
+    if (b < 0.6) return dt(STONE, 6.2, X, Y);
+    if (mod(a, 24) < 0.6) return dt(STONE, 2, X, Y);
+    if (mod(b, 8) > 7.2) return dt(STONE, 1.6, X, Y);
+    return dt(STONE, 3.4 + (hash2(Math.floor(a / 24), 3, 123) - 0.5) * 0.6 + (hash2(X, Y, 124) - 0.5) * 0.5, X, Y);
+  },
+});
+
+/** A stair's treads seen from above (a cut's `surface` on the steps): long granite slabs, a joint every 24 px (a = u, b = v). */
+defineFloorTile('ams/step-tread', {
+  w: 24,
+  h: 8,
+  paint: (a, b, d) => {
+    const X = tx(a, d);
+    const Y = tx(b, d);
+    if (mod(a, 24) < Math.max(0.5, 1 / d)) return dt(STONE, 2.6, X, Y);
+    return dt(STONE, 4.9 + (hash2(Math.floor(a / 24), Math.floor(b / 8), 125) - 0.5) * 0.6 + (hash2(X, Y, 126) - 0.5) * 0.6, X, Y);
+  },
+});
+
+/** A steel pontoon's deck seen from above (a face group's top: a = along x, b = depth): tread plate, a lit rim at its far edge, a bollard row's bolts. */
+defineFloorTile('ams/pontoon-top', {
+  w: 16,
+  h: 8,
+  paint: (a, b, d) => {
+    const X = tx(a, d);
+    const Y = tx(b, d);
+    // Diamond tread plate: little raised bars on a 2-px lattice, alternating direction.
+    const ia = Math.floor(a / 2);
+    const ib = Math.floor(b / 2);
+    const la = a - ia * 2;
+    const lb = b - ib * 2;
+    const bar = (ia + ib) & 1 ? Math.abs(la - lb) < 0.45 : Math.abs(la + lb - 2) < 0.45;
+    return dt(PAL_HD.steel, (bar && d >= 2 ? 4.6 : 3.6) + (hash2(X >> 2, Y >> 2, 127) - 0.5) * 0.4, X, Y);
+  },
+});
+
+/**
+ * The cycle passage's tiled walls (spec §12.2 b: the museum's passage, a side wall in perspective;
+ * a = down from the vault's springing, b = back in depth): glazed cream tiles 4 px square with a
+ * blue band at hand height and a darker dado, lit by the bright mouths (lighter toward b = 0).
+ */
+export function ensurePassageWallTile(side: -1 | 1, h: number, l: number): string {
+  const id = `ams/passage-wall/${side < 0 ? 'l' : 'r'}/${h}x${l}`;
+  if (hasFloorTile(id)) return id;
+  const sh = side < 0 ? 0 : -0.6;
+  defineFloorTile(id, {
+    w: h,
+    h: l,
+    paint: (a, b, d) => {
+      const X = tx(b, d);
+      const Y = tx(a, d);
+      const jw = Math.max(0.45, 1 / d);
+      const fromFoot = h - a;
+      if (mod(a, 4) < jw || mod(b, 4) < jw) return dt(STONE, 3 + sh, X, Y);
+      // The dado (the lowest 10 px), the blue band over it, the cream tiles above; the passage darker inside.
+      const inside = -Math.min(1.2, b / 20);
+      if (fromFoot < 10) return dt(PAL_HD.brickDark, 3.6 + sh + inside + (hash2(Math.floor(a / 4), Math.floor(b / 4), 128) - 0.5) * 0.5, X, Y);
+      if (fromFoot < 14) return dt(PAL_HD.sky, 2.6 + sh + inside, X, Y);
+      return dt(PAL_HD.plaster, 5 + sh + inside + (hash2(Math.floor(a / 4), Math.floor(b / 4), 129) - 0.5) * 0.4, X, Y);
+    },
+  });
+  return id;
+}
+
+/** The passage's vault seen from below (a = along x, b = depth): dark brick between pale stone ribs every 24 px, a lamp's glow now and then. */
+defineFloorTile('ams/passage-ceiling', {
+  w: 48,
+  h: 8,
+  paint: (a, b, d) => {
+    const X = tx(a, d);
+    const Y = tx(b, d);
+    const la = mod(a, 24);
+    if (la < 2) return dt(STONE, 3.8, X, Y);
+    if (mod(a, 48) > 34 && mod(a, 48) < 38 && mod(b, 8) < 3) return dt(PAL_HD.gold, 5.4, X, Y);
+    return brickAt(a, b * 3, X, Y, d);
+  },
+});

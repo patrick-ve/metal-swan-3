@@ -238,6 +238,39 @@ const FloorTest = {
     for (let i = 0; i < 50 && !gl.ok; i++) await new Promise((r) => setTimeout(r, 20));
     return { ok: gl.ok, reason: gl.reason };
   },
+  /** Render frame `id` at res `r` (drawn again while stand-ins are resident); its stats only. */
+  stats(id: number, r = 0): GlFloorStats & { none: boolean } {
+    res = r;
+    let out: unknown = gl.render(frames[id]);
+    for (let i = 0; i < 8 && gl.stats().standIns > 0; i++) out = gl.render(frames[id]);
+    return { ...gl.stats(), none: out === null };
+  },
+  /**
+   * Render frame `id` at res `r` (drawn again while stand-ins are resident) and count its CRACK
+   * pixels in the page: a pixel with alpha < 255 whose two neighbours left and right, or above and
+   * below, are opaque (a hole inside the floor's coverage). `first`: up to 8 of them (x, y).
+   */
+  cracks(id: number, r = 0): { w: number; h: number; cracks: number; first: number[]; standIns: number; none: boolean } {
+    res = r;
+    let out: unknown = gl.render(frames[id]);
+    for (let i = 0; i < 8 && gl.stats().standIns > 0; i++) out = gl.render(frames[id]);
+    const band = out ? gl.readBand() : null;
+    if (!band) return { w: 0, h: 0, cracks: 0, first: [], standIns: gl.stats().standIns, none: true };
+    const { w, h, rgba } = band;
+    let cracks = 0;
+    const first: number[] = [];
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const p = (y * w + x) * 4 + 3;
+        if (rgba[p] === 255) continue;
+        if ((rgba[p - 4] === 255 && rgba[p + 4] === 255) || (rgba[p - w * 4] === 255 && rgba[p + w * 4] === 255)) {
+          cracks++;
+          if (first.length < 16) first.push(x, y);
+        }
+      }
+    }
+    return { w, h, cracks, first, standIns: gl.stats().standIns, none: false };
+  },
   /** `?floorgl=0`: an off renderer draws nothing and makes no context. */
   off(id: number): { ok: boolean; reason: string; none: boolean; canvas: boolean; cpuCap: number } {
     const g = createGlFloor({ enabled: false });

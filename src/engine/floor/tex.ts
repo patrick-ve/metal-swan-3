@@ -12,6 +12,9 @@
  *   ready at all the 1× texture is built on the spot (small: about 21 k texels).
  * - `prefetch(camX, want)` queues the chunks just outside the view; `evict(camX)` releases every
  *   chunk EVICT_BEHIND or more chunks left of the view (and cancels its jobs).
+ * - A chunk asked for at a density it has drops its lower densities (and their builds in flight): a
+ *   lower build that finished after the denser one (the CPU band's 2× while GL's program compiles)
+ *   is not kept to the eviction.
  * - Memory: `bytes(d)` / `bytes()`; over FLOOR_BUDGET_BYTES at 4× the store caps itself at 2×
  *   (`capped`), spec §3.2 "over budget, the floor uses 2× textures at tier 4": no NEW 4× texture is
  *   built, a resident one still draws (never a step down), and the cap clears again after the
@@ -93,6 +96,11 @@ export interface FloorStoreOpts {
   readonly deferred: () => boolean;
   /** The floor's last u (its mesh's end): no chunk past it is prefetched. */
   readonly uMax?: number;
+  /**
+   * The chunks the mesh's quads sample (the painter's surface; default every chunk): no other chunk
+   * is prefetched (a river's band is a cut with its own tile: its chunks would be painted for nothing).
+   */
+  readonly usedChunks?: ReadonlySet<number>;
 }
 
 interface Building {
@@ -285,7 +293,12 @@ export class FloorTextureStore {
     for (const dd of DENSITIES) {
       if (dd > top) continue;
       const t = this.chunks[dd].get(k);
-      if (t) return t;
+      if (!t) continue;
+      // Asked at a density that is resident: its lower densities are drawn no more (a lower build
+      // that finished after it — the CPU band's 2× of a GPU's compile frames — would stay to the
+      // eviction): released.
+      if (dd === d && dd > 1) this.releaseBelow(k, dd);
+      return t;
     }
     // Nothing at all: the small 1× texture now.
     this.buildChunkNow(k, 1);
@@ -372,7 +385,8 @@ export class FloorTextureStore {
 
   /**
    * Queue (or build) the chunks just outside the view at the wanted density: the next one ahead, and
-   * below 4× the one behind (a 4× one behind is released soon after, `evict`); none past the floor.
+   * below 4× the one behind (a 4× one behind is released soon after, `evict`); none past the floor,
+   * none that no quad of the mesh samples (`usedChunks`).
    */
   prefetch(camX: number, want: number, sBack: number): void {
     const d = this.buildDensity(want);
@@ -381,8 +395,9 @@ export class FloorTextureStore {
     const k0 = Math.floor((eye - half) / CHUNK_U) - 1;
     const k1 = Math.floor((eye + half) / CHUNK_U) + 1;
     const last = Math.floor((this.opts.uMax ?? Infinity) / CHUNK_U);
-    if (k1 >= 0 && k1 <= last) this.request(k1, d);
-    if (k0 >= 0 && d < 4) this.request(k0, d);
+    const used = this.opts.usedChunks;
+    if (k1 >= 0 && k1 <= last && (!used || used.has(k1))) this.request(k1, d);
+    if (k0 >= 0 && d < 4 && (!used || used.has(k0))) this.request(k0, d);
   }
 
   /**
@@ -502,6 +517,24 @@ export class FloorTextureStore {
       console.warn(`[floor] chunk ${k} at ${d}x failed:`, err);
       for (let y = 0; y < buf.h; y++) buf.data.fill(MAGENTA, y * buf.w + c0, y * buf.w + c1);
       buf.touch();
+    }
+  }
+
+  /** Release the resident chunk k at every density below d (and its builds still in flight). */
+  private releaseBelow(k: number, d: number): void {
+    for (let i = 0; i < DENSITIES.length; i++) {
+      const dd = DENSITIES[i];
+      if (dd >= d) continue;
+      const old = this.chunks[dd].get(k);
+      if (old) {
+        this.residentBytes[dd] -= textureBytes(old);
+        this.chunks[dd].delete(k);
+        this.version++;
+      }
+      if (dd > 1 && this.building[dd].has(k)) {
+        this.building[dd].delete(k);
+        cancelArtJobs(`${this.opts.jobKey}C${dd}:${k}:`);
+      }
     }
   }
 

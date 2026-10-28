@@ -41,6 +41,11 @@
  * labelled with its tick, stretch, plan distance, the wagon's lane and screen x and the bot's goal.
  * → tmp/shots/ring-<stretch>-t<tick>.png / ring-sheet.png.
  *
+ * --cam-x X steps the game on (after --ticks) until the view's left edge reaches world x X (at most
+ * 20000 ticks; with --bot or the section's own script moving the camera): frames by the CAMERA where
+ * --x cannot place it — `ams` c2, where the cruise boat carries the camera (`--section c2 --bot
+ * --cam-x 1800`; the tick it got there is printed). Deterministic, like --ticks.
+ *
  * The perspective floor (docs/design/floor.md, docs/api/floor.md): --floor-debug puts the debug floor
  * (checker, u / v labels, a red v = 0 line, kerbs, a cut on every water hazard, post rows) on every
  * section of the mission; --floor-overlay draws the depth grid, the walk line and the row lines;
@@ -70,6 +75,7 @@ import { ensureFpsDenseArt, setFpsArtPool } from '../src/game/content/fps/dense-
 import { resolveGfx } from './lib/gfx';
 import { debugFloorDef, setFloorOverlay, setFloorOverride } from '../src/game/mission/floor/index';
 import { savePNG, SHEET } from './lib/image';
+import { stepToCamera } from './lib/camera-step';
 
 interface Args {
   /** Extra modules to import first (test missions, e.g. tests/sim/bot-missions.ts). */
@@ -109,6 +115,8 @@ interface Args {
   floorDebug: boolean;
   floorOverlay: boolean;
   floorOff: boolean;
+  /** Step on until the view's left edge reaches this world x (frames by the camera: `ams` c2). */
+  camX?: number;
 }
 
 /** One `--spawn "<id>@+<dx>:<lane>[?k=v&k=v]"`. */
@@ -140,7 +148,7 @@ function parseSpawns(v: string): RingSpawnArg[] {
 
 const USAGE =
   'usage: npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6] [--seed 1] ' +
-  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4] [--floor-debug] [--floor-overlay] [--floor-off]\n' +
+  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4] [--floor-debug] [--floor-overlay] [--floor-off] [--cam-x 1800]\n' +
   '       npm run shot -- --mission ring [--seed 1] [--route short|full] [--section <landmark>|zwaan|rf-a|rf-b] [--boss] [--bot] [--god] [--players 1|2] [--ticks 60] [--every 60 --count 6] [--res 8 --art 4] [--spawn "<id>@+<dx>:<lane>[?k=v]"] [--hold up,fire] [--out file.png]';
 
 const BUTTONS: readonly Button[] = ['left', 'right', 'up', 'down', 'fire', 'jump', 'bomb', 'start'];
@@ -277,6 +285,9 @@ function parseArgs(argv: readonly string[]): Args {
         break;
       case '--floor-off':
         a.floorOff = true;
+        break;
+      case '--cam-x':
+        a.camX = num();
         break;
       case '--help':
       case '-h':
@@ -652,6 +663,10 @@ async function main(): Promise<void> {
       game.teleport(args.x);
     }
     game.step(args.ticks);
+    if (args.camX !== undefined) {
+      const reached = stepToCamera(game, args.camX);
+      console.log(`--cam-x ${args.camX}: ${reached ? 'reached' : 'NOT reached'} at tick ${game.ticks} (view left ${Math.round(game.runner?.world.camera.left ?? NaN)})`);
+    }
     const frames: Array<{ buf: PixelBuffer; label: string }> = [];
     for (let i = 0; i < args.count; i++) {
       if (i > 0) game.step(args.every || 60);

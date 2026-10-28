@@ -37,6 +37,7 @@ import type { ScriptGen } from '../../../../engine/script';
 import { getFrames, hasSprite } from '../../../../engine/sprites';
 import type { World } from '../../../../engine/world';
 import { Boss, type BossPart } from '../../../boss';
+import { drawEntityFaces } from '../../../mission/floor/hooks';
 import { debris, dust, explosion, smokeTrail } from '../../../fx';
 import { isPlayer, type Player } from '../../../player/player';
 import { defineEntity, paramFacing, paramNum, type SpawnParams } from '../../../registry';
@@ -631,6 +632,18 @@ export class AmsScanCar extends Boss {
   }
 
   // ------------------------------------------------------------------------------- drawing
+
+  /**
+   * RENDER ONLY (docs/design/floor.md §12.1 item 4): on a perspective floor that lists this kind (`ams`
+   * c), the car's box — its roof, windscreen and bonnet tops and the end toward the screen's centre
+   * (ams/floor/entities.ts `scanCarFaces`) — on the body's own grid (its shake and rev rock); the wreck
+   * draws none. Without such a floor nothing is drawn.
+   */
+  override drawFloorFaces(r: Renderer): void {
+    const dx = Math.round(this.x) + this.shakeX - this.x;
+    const dy = Math.round(this.y) - this.rockY - this.y;
+    drawEntityFaces(r, this, this.wreckFrame >= 0 ? 1 : 0, this.facing < 0, dx, dy);
+  }
 
   override draw(r: Renderer): void {
     const dead = this.state === 'dying' || this.state === 'done';

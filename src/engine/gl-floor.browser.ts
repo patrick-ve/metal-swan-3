@@ -16,8 +16,12 @@
  * - The camera of spec §1.1 as clip coordinates: w = (f − v)/f = 1/s, x_clip = (u − eyeU)/192,
  *   y_clip = w − 2·(top·w + yw − yh − h)/bandH, z_clip = w − 2/sMax (z_ndc = 1 − 2s/sMax: larger s is
  *   nearer; LESS keeps the first drawn on a tie, as the CPU's z-buffer does). Standard GL
- *   perspective-correct varyings carry the texture coordinates (ta, tb). No vertex snap, no affine
- *   warp, no colour cut, no dither: NOT the rally's PS1 program.
+ *   perspective-correct varyings carry the texture coordinates (ta, tb). The CPU raster's fill rule
+ *   on every GPU: a vertex within 1/16 px of a pixel centre moves 1/16 px off it, on the side the CPU
+ *   raster sees it (`offCentre`: a GPU's own sub-pixel snap — 1/16 px on SwiftShader — cannot put an
+ *   edge on a centre and break the tie the other way; the vertices move each on their own, which the
+ *   mesh allows because it is watertight: mesh.ts welds every T-junction). No other vertex snap, no
+ *   affine warp, no colour cut, no dither: NOT the rally's PS1 program.
  * - The mesh: uploaded once per `mesh.id` (one vertex buffer of 4 vertices per quad with the quad's
  *   kind, u0, material and chunk; one index buffer), drawn with ONE `drawElements` per frame for the
  *   visible quads [q0, q1). The u-faces that look away from the eye are culled in the vertex shader
@@ -26,9 +30,11 @@
  * - Textures, each uploaded once by `key`: the chunk ("rows") textures into the layers of one
  *   TEXTURE_2D_ARRAY (LRU over CHUNK_LAYERS layers; at most one new chunk upload per frame while a
  *   lower density of the same chunk is resident), the tiles with their v-mips stacked into one atlas
- *   (shelf-packed; re-packed when full). Both are fetched texel by texel (`texelFetch`) and filtered
- *   in the shader: the rows layout is an exact anisotropic pre-filter along v and the tiles carry
- *   v-only mips, so hardware mips or anisotropic filtering would leave the CPU's picture; "sharp
+ *   (shelf-packed; re-packed when full, grown in small steps; the layers and the atlas together stay
+ *   within GPU_BUDGET, spec §3.2: a tile the atlas has no room for then is drawn at 2×). Both are
+ *   fetched texel by texel (`texelFetch`) and filtered in the shader: the rows layout is an exact
+ *   anisotropic pre-filter along v and the tiles carry v-only mips, so hardware mips or anisotropic
+ *   filtering would leave the CPU's picture; "sharp
  *   bilinear" per axis (weight clamp((t − ½)·max(1, m) + ½, 0, 1), m = output px per texel from the
  *   screen derivatives), the tile level from the footprint along b, the `over` layer mixed at its
  *   alpha. A PixelBuffer's 0xRRGGBBAA words are uploaded as they lie in memory (little-endian: A, B,
@@ -73,8 +79,13 @@ export interface GlFloorStats {
   /** Textures uploaded in the last frame and so far. */
   uploads: number;
   totalUploads: number;
-  /** GPU bytes: textures (the chunk layers + the tile atlas) and buffers (the mesh). */
+  /** GPU bytes: textures (the chunk layers + the tile atlas: ≤ GPU_BUDGET) and buffers (the mesh). */
   texBytes: number;
+  /**
+   * Tiles of this floor drawn at a lower density because the atlas reached its share of GPU_BUDGET
+   * (spec §3.2: over budget, 2× textures at tier 4); 0 = every tile at the band's density.
+   */
+  tileFallbacks: number;
   bufBytes: number;
   /** Chunk layers allocated, and the layer size (texels). */
   layers: number;
@@ -130,11 +141,24 @@ const MAX_TILE = 48;
 /** Chunk layers (the visible chunks plus spares, LRU); fewer when a layer is big. */
 const CHUNK_LAYERS = 6;
 const MIN_LAYERS = 4;
-/** GPU bytes the chunk layers may take (the floor's GPU budget is 16 MB, spec §3.2; the atlas is small). */
+/** The floor's GPU texture budget (spec §3.2, §8 gate 7): the chunk layers and the tile atlas together. */
+export const GPU_BUDGET = 16 * 1024 * 1024;
+/** GPU bytes the chunk layers may take; the atlas may take what the layers leave of GPU_BUDGET. */
 const LAYER_BUDGET = 14 * 1024 * 1024;
 /** Tile atlas width (texels; wider when a tile is wider) and its first height. */
 const ATLAS_W = 1024;
 const ATLAS_H0 = 128;
+/** The atlas grows in steps of this many rows. */
+const ATLAS_STEP = 64;
+/** x rounded up to a multiple of step. */
+function roundUp(x: number, step: number): number {
+  return Math.ceil(x / step) * step;
+}
+
+/** `repack` results. */
+const REPACK_OK = 0;
+const REPACK_BUDGET = 1;
+const REPACK_FAIL = 2;
 /** Floats per vertex: u, v, h, ta, tb, kind, u0, material, chunk. */
 const FLOATS = 9;
 /** New chunk textures uploaded per frame while a stand-in of the same chunk is resident. */
@@ -167,7 +191,7 @@ layout(location = 0) in vec3 aPos;   // world u, v, h
 layout(location = 1) in vec2 aTex;   // world texture coordinates (ta, tb)
 layout(location = 2) in vec4 aQuad;  // the quad's kind, u0, material (-1 = the chunk painter), chunk k
 uniform vec4 uCam;                   // eyeU, f, yw - yh, yh - camY - bandTop
-uniform vec2 uBand;                  // bandH, 2 / sMax
+uniform vec3 uBand;                  // bandH, 2 / sMax, R (output px per logical px)
 uniform vec4 uChunk[SLOTS * 2];      // per slot: (layer, density, cols, rows), (k, u0, 0, 0)
 uniform vec4 uMat[MAX_MAT * 2];      // per material: (base tile, a0, b0, over tile), (over alpha, a0, b0, 0)
 uniform vec4 uTile[MAX_TILE * 2];    // per tile: (atlas x, y, cols, rows L0), (rows L1, rows L2, density, 0)
@@ -180,6 +204,19 @@ flat out vec4 vO1;                   // over layer: rows L1, rows L2, density
 flat out vec2 vO2;                   // over layer offsets a0, b0
 
 int idx(float x) { return int(floor(x + 0.5)); }
+
+// The CPU raster's fill rule on every GPU (raster.ts: a pixel centre ON an edge belongs to the
+// triangle below / right of it). A GPU snaps the vertices to its sub-pixel grid (SwiftShader: 1/16
+// px) and breaks a tie its own way, so an edge the CPU raster sees just above a centre could land on
+// it and give the whole row to the other triangle (a kerb's face edge on a band row). A band-px
+// coordinate within 1/16 px of a centre moves to 1/16 px off it, on the side the CPU raster sees it
+// (at or before the centre: before), a grid point every GPU keeps: same coverage, no tie.
+float offCentre(float p) {
+  float c = floor(p) + 0.5;
+  float d = p - c;
+  if (abs(d) >= 0.0625) return p;
+  return d <= 0.0 ? c - 0.0625 : c + 0.0625;
+}
 
 void main() {
   vT = aTex;
@@ -220,8 +257,12 @@ void main() {
     keep = false;
   }
   float w = (uCam.y - aPos.y) / uCam.y;
+  // The band px of the vertex (x right, y down from the band's top), off the pixel centres.
+  float R = uBand.z;
+  float px = offCentre((192.0 + (aPos.x - uCam.x) / w) * R);
+  float py = offCentre((uCam.w + (uCam.z - aPos.z) / w) * R);
   gl_Position = keep
-    ? vec4((aPos.x - uCam.x) / 192.0, w - 2.0 * (uCam.w * w + uCam.z - aPos.z) / uBand.x, w - uBand.y, w)
+    ? vec4((px / (192.0 * R) - 1.0) * w, (1.0 - 2.0 * py / (uBand.x * R)) * w, w - uBand.y, w)
     : vec4(2.0, 2.0, 2.0, 1.0);
 }
 `;
@@ -392,6 +433,9 @@ class GlFloorImpl implements GlFloor {
   private readonly chunkTab = new Float32Array(CHUNK_SLOTS * 8);
   private readonly matTab = new Float32Array(MAX_MAT * 8);
   private readonly tileTab = new Float32Array(MAX_TILE * 8);
+  /** Per tile: the density it is asked at once the atlas reached its budget (0 = the band's), and how many fell back. */
+  private readonly tileCap = new Uint8Array(MAX_TILE);
+  private fallbacks = 0;
   private stamp = 0;
   private uploads = 0;
   private totalUploads = 0;
@@ -418,6 +462,7 @@ class GlFloorImpl implements GlFloor {
     uploads: 0,
     totalUploads: 0,
     texBytes: 0,
+    tileFallbacks: 0,
     bufBytes: 0,
     layers: 0,
     layerW: 0,
@@ -657,6 +702,8 @@ class GlFloorImpl implements GlFloor {
     this.tileTex.fill(null);
     this.tileKey.fill('');
     this.tileTab.fill(0);
+    this.tileCap.fill(0);
+    this.fallbacks = 0;
   }
 
   /** After a context loss: the program again; the next frame uploads the mesh and its textures. */
@@ -816,7 +863,7 @@ class GlFloorImpl implements GlFloor {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.prog);
     gl.uniform4f(u.uCam, fr.eyeU, cam.f, cam.yw - cam.yh, cam.yh - fr.camY - fr.bandTop);
-    gl.uniform2f(u.uBand, fr.bandH, 2 / this.sMax);
+    gl.uniform3f(u.uBand, fr.bandH, 2 / this.sMax, R);
     gl.uniform4f(u.uRow, cam.f, (cam.yw - cam.yh) * cam.f, cam.yh - cam.back, R);
     gl.uniform4fv(u.uChunk, this.chunkTab);
     gl.uniform4fv(u.uMat, this.matTab);
@@ -1105,7 +1152,8 @@ class GlFloorImpl implements GlFloor {
       this.warnOnce(`tile${i}`, `tile ${i} is over the table (${MAX_TILE} tiles)`);
       return -1;
     }
-    const tex = fr.tile(i);
+    const cap = this.tileCap[i];
+    const tex = cap > 0 ? fr.tile(i, cap) : fr.tile(i);
     if (!tex || tex.levels.length === 0) return -1;
     const have = this.tileTex[i];
     if (have === tex || (have && this.tileKey[i] === tex.key)) {
@@ -1114,15 +1162,24 @@ class GlFloorImpl implements GlFloor {
     }
     this.tileTex[i] = tex;
     this.tileKey[i] = tex.key;
-    if (!this.place(gl, i)) {
-      // Re-pack every tile into a larger atlas (none fits: every tile is placed again later).
-      if (!this.repack(gl)) {
-        this.tileTex.fill(null);
-        this.tileKey.fill('');
-        return -1;
-      }
+    if (this.place(gl, i)) return i;
+    // Re-pack every tile into a larger atlas, within the atlas's share of the GPU budget.
+    const r = this.repack(gl);
+    if (r === REPACK_OK) return i;
+    if (r === REPACK_BUDGET) {
+      // Over the budget (the atlas stays as it was): this tile at the next lower density from now on.
+      this.tileTex[i] = null;
+      this.tileKey[i] = '';
+      if (tex.density <= 1) return -1;
+      this.tileCap[i] = tex.density >= 4 ? 2 : 1;
+      this.fallbacks++;
+      this.warnOnce('atlas-budget', `the tile atlas is at its share of the ${GPU_BUDGET >> 20} MiB GPU budget: tiles fall back to a lower density`);
+      return this.tileFor(gl, fr, i);
     }
-    return i;
+    // Nothing fits (a new atlas was started): every tile is placed again later.
+    this.tileTex.fill(null);
+    this.tileKey.fill('');
+    return -1;
   }
 
   /**
@@ -1167,8 +1224,12 @@ class GlFloorImpl implements GlFloor {
     return true;
   }
 
-  /** A new atlas big enough for every tile held now; false = over the device limit. */
-  private repack(gl: WebGL2RenderingContext): boolean {
+  /**
+   * A new atlas big enough for every tile held now, no larger than what the chunk layers leave of
+   * GPU_BUDGET: REPACK_OK; REPACK_BUDGET = it would be over that share (nothing changed: the atlas and
+   * its tiles stay as they were); REPACK_FAIL = over the device limit (a new atlas was started).
+   */
+  private repack(gl: WebGL2RenderingContext): number {
     let wMax = ATLAS_W;
     let area = 0;
     for (const t of this.tileTex) {
@@ -1179,19 +1240,23 @@ class GlFloorImpl implements GlFloor {
       area += t.levels[0].w * ch;
     }
     const w = Math.min(this.maxTex, wMax);
-    let h = Math.max(ATLAS_H0, this.atlasH);
+    const budget = GPU_BUDGET - this.arrW * this.arrH * 4 * this.nLayers;
+    // The height the tiles' area needs (+ a quarter for the shelves), in steps of ATLAS_STEP; a shelf
+    // pack that does not fit grows it by a quarter (not doubled: the atlas stays near its tiles' size).
+    let h = Math.max(ATLAS_H0, roundUp((area * 1.25) / w, ATLAS_STEP));
     for (;;) {
-      if (h * w >= area * 1.25 || h >= this.maxTex) {
-        this.allocAtlas(gl, w, Math.min(h, this.maxTex));
-        let ok = true;
-        for (let i = 0; i < MAX_TILE && ok; i++) if (this.tileTex[i]) ok = this.place(gl, i);
-        if (ok) return true;
-        if (h >= this.maxTex) break;
-      }
-      h *= 2;
+      const hh = Math.min(h, this.maxTex);
+      // The budget is checked per try (a shelf pack may need a little more than the area).
+      if (w * hh * 4 > budget) return REPACK_BUDGET;
+      this.allocAtlas(gl, w, hh);
+      let ok = true;
+      for (let i = 0; i < MAX_TILE && ok; i++) if (this.tileTex[i]) ok = this.place(gl, i);
+      if (ok) return REPACK_OK;
+      if (hh >= this.maxTex) break;
+      h = roundUp(h * 1.25, ATLAS_STEP);
     }
     this.warnOnce('atlas', `the tiles do not fit a ${w}×${this.maxTex} atlas`);
-    return false;
+    return REPACK_FAIL;
   }
 
   private allocAtlas(gl: WebGL2RenderingContext, w: number, h: number): void {
@@ -1217,6 +1282,7 @@ class GlFloorImpl implements GlFloor {
     st.avgCpuMs = this.cpuN > 0 ? this.cpuSum / Math.min(this.cpuN, AVG_N) : 0;
     st.totalUploads = this.totalUploads;
     st.texBytes = this.arrW * this.arrH * 4 * this.nLayers + this.atlasW * this.atlasH * 4;
+    st.tileFallbacks = this.fallbacks;
     st.bufBytes = this.bufBytes;
     st.layers = this.nLayers;
     st.layerW = this.arrW;

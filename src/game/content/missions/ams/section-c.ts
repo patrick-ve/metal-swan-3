@@ -18,6 +18,8 @@ import { at, carillon, crate, fromRight, hostage, normalUp, prewarm } from './he
 import { placeSecrets, secretArt } from './secrets';
 import { boatDecor, HOUSE, houseRow, waterDecor } from './art';
 import { C_ARENA, C_BASIN, C_BASIN_Y, C_BOATS, C_CANAL, C_DECK_Y, C_PONTOON_Y, C_RAMP, C_STEPS_X, C_W, DECK_Y, G, ROOF_Y, terrainC } from './terrain';
+import { C_DECK_DEPTH, C_STAIR_FAR, C_TOUR_DEPTH, C_TOUR_X, cFloor, cFloorDecor } from './floor/c/index';
+import { BULB_FRONT_DECOR, FACADE, HOUSE_FRONT_ROW, HOUSE_PAVEMENT, QUAY_PAVEMENT } from './floor/index';
 
 export const BG_GOLDEN: BackgroundDef = {
   sky: PAL.sky[2],
@@ -36,43 +38,50 @@ export const C_SIGN_BRUG_X = C_RAMP[0] - 32;
 export const C_SIGN_RONDVAART_X = C_STEPS_X - 12;
 
 const decor: DecorDef[] = [
-  // --- quay street ---
-  { sprite: 'decor/ams/elm', x: 70, y: G },
-  { sprite: 'decor/ams/lamp', x: 170, y: G },
-  { sprite: 'decor/ams/tulips', x: 240, y: G, animate: true },
-  { sprite: 'decor/ams/elm', x: 330, y: G },
-  { sprite: 'decor/ams/flag-ams', x: 430, y: G, animate: true },
-  { sprite: 'decor/ams/lamp', x: 520, y: G },
+  // --- quay street; depths on the floor (docs/design/floor.md §4.4, §12.2 c; floor/c/index.ts) ---
+  { sprite: 'decor/ams/elm', x: 70, y: G, depth: QUAY_PAVEMENT },
+  { sprite: 'decor/ams/lamp', x: 170, y: G, depth: 21 },
+  { sprite: 'decor/ams/tulips', x: 240, y: G, animate: true, depth: QUAY_PAVEMENT },
+  { sprite: 'decor/ams/elm', x: 330, y: G, depth: QUAY_PAVEMENT },
+  { sprite: 'decor/ams/flag-ams', x: 430, y: G, animate: true, depth: 26 },
+  // What a hittable entity sits on stays in the walk plane (floor.md §3.7): the lamp a gull sleeps on,
+  // on the floor on the quay head's square (the rusty bike of the secret leans on it).
+  { sprite: 'decor/ams/lamp', x: 520, y: G, depth: 0 },
   // --- the canal with houseboats ---
   ...waterDecor(C_CANAL[0], C_CANAL[1]),
   ...boatDecor(C_BOATS, ROOF_Y, DECK_Y - ROOF_Y),
-  // --- quay street with shops, the scan car arena at its end ---
+  // --- quay street with shops, the scan car arena at its end (the house fronts at the facade's depth: floor/depth.ts) ---
   ...houseRow('golden', 1400, [HOUSE.fietsen, HOUSE.step, HOUSE.koffie, HOUSE.bell, HOUSE.boeken, HOUSE.neckRed, HOUSE.flat, HOUSE.kaas, HOUSE.spout, HOUSE.bloemen]),
   ...houseRow('golden', 1928, [HOUSE.neck, HOUSE.bellCream, HOUSE.stepBrown, HOUSE.koffie, HOUSE.spout, HOUSE.step, HOUSE.bell, HOUSE.flat, HOUSE.neckRed, HOUSE.bloemen]),
-  { sprite: 'decor/ams/lamp', x: 1480, y: G },
-  { sprite: 'decor/ams/tulips', x: 1600, y: G, animate: 12 },
-  { sprite: 'decor/ams/lamp', x: 1760, y: G },
-  { sprite: 'decor/ams/flag-nl', x: 1880, y: G, animate: true },
-  { sprite: 'decor/ams/lamp', x: 2000, y: G },
-  { sprite: 'decor/ams/tulips', x: 2120, y: G, animate: 10 },
-  { sprite: 'decor/ams/lamp', x: 2250, y: G },
-  { sprite: 'decor/ams/flag-ams', x: 2330, y: G, animate: 13 },
-  // --- the fork: the tour boat waits at the pontoon, the white bridge rises over it ---
+  { sprite: 'decor/ams/lamp', x: 1480, y: G, depth: HOUSE_PAVEMENT },
+  { sprite: 'decor/ams/tulips', x: 1600, y: G, animate: 12, depth: HOUSE_PAVEMENT },
+  { sprite: 'decor/ams/lamp', x: 1760, y: G, depth: HOUSE_PAVEMENT },
+  { sprite: 'decor/ams/flag-nl', x: 1880, y: G, animate: true, depth: HOUSE_PAVEMENT },
+  // The lamp a gull sleeps on: in the walk plane, on a bulb of the pavement (floor/c/index.ts).
+  { sprite: 'decor/ams/lamp', x: 2000, y: G, depth: 0 },
+  { sprite: 'decor/ams/tulips', x: 2120, y: G, animate: 10, depth: HOUSE_PAVEMENT },
+  { sprite: 'decor/ams/lamp', x: 2250, y: G, depth: HOUSE_PAVEMENT },
+  { sprite: 'decor/ams/flag-ams', x: 2330, y: G, animate: 13, depth: HOUSE_PAVEMENT },
+  // --- the fork: the tour boat waits at the pontoon (moored along its far side on the floor), the
+  // white bridge rises over it (its sprite the deck's far side on the floor, floor/c/fork.ts) ---
   ...waterDecor(C_BASIN[0], C_BASIN[1], C_BASIN_Y),
-  { sprite: 'decor/ams/ams-cruise-boat', frame: 0, x: C_BASIN[0] + 6, y: C_PONTOON_Y },
-  { sprite: 'decor/ams/white-bridge', x: C_RAMP[1], y: C_DECK_Y },
-  { sprite: 'decor/ams/white-portal', x: C_RAMP[1] + 104, y: C_DECK_Y },
-  { sprite: 'decor/ams/route-sign', frame: 0, x: C_SIGN_BRUG_X, y: G },
-  { sprite: 'decor/ams/route-sign', frame: 1, x: C_SIGN_RONDVAART_X, y: G },
-  // --- front ---
+  { sprite: 'decor/ams/ams-cruise-boat', frame: 0, x: C_TOUR_X, y: C_PONTOON_Y, depth: C_TOUR_DEPTH },
+  { sprite: 'decor/ams/white-bridge', x: C_RAMP[1], y: C_DECK_Y, depth: C_DECK_DEPTH },
+  { sprite: 'decor/ams/white-portal', x: C_RAMP[1] + 104, y: C_DECK_Y, depth: C_DECK_DEPTH },
+  { sprite: 'decor/ams/route-sign', frame: 0, x: C_SIGN_BRUG_X, y: G, depth: HOUSE_PAVEMENT },
+  // On the floor: on the quay beside the jetty stair, behind its far side (its posts span the stair's u).
+  { sprite: 'decor/ams/route-sign', frame: 1, x: C_SIGN_RONDVAART_X, y: G, depth: C_STAIR_FAR + 1 },
+  // --- front (on the floor the bollards are hidden: the pole rows replace them; the racks stand on the near pavement) ---
   { sprite: 'decor/ams/bollard', x: 560, y: G, front: true },
   { sprite: 'decor/ams/bollard', x: 576, y: G, front: true },
   { sprite: 'decor/ams/bollard', x: 1420, y: G, front: true },
-  { sprite: 'decor/ams/bike-rack', x: 1540, y: G, front: true },
-  { sprite: 'decor/ams/bike-rack', x: 1820, y: G, front: true },
+  { sprite: 'decor/ams/bike-rack', x: 1540, y: G, front: true, depth: BULB_FRONT_DECOR },
+  { sprite: 'decor/ams/bike-rack', x: 1820, y: G, front: true, depth: HOUSE_FRONT_ROW },
   { sprite: 'decor/ams/bollard', x: 1964, y: G, front: true },
-  { sprite: 'decor/ams/bike-rack', x: 2200, y: G, front: true },
+  { sprite: 'decor/ams/bike-rack', x: 2200, y: G, front: true, depth: HOUSE_FRONT_ROW },
   { sprite: 'decor/ams/pontoon', x: C_BASIN[0], y: C_PONTOON_Y + 1, front: true },
+  // The perspective floor's own decor (docs/design/floor.md §12; none in c: floor/c/index.ts).
+  ...cFloorDecor(),
 ];
 
 /**
@@ -84,9 +93,11 @@ export function life(ctx: SectionContext): void {
   ctx.spawn('ams-pigeons', 1700, G, { count: 5 });
   ctx.spawn('ams-pigeons', 2140, G, { count: 3 });
   ctx.spawn('ams-ducks', C_BASIN[0] + 60, C_BASIN_Y, { count: 2, range: 40 });
-  ctx.spawn('ams-window-waver', 1560, 100, {});
-  ctx.spawn('ams-window-waver', 1830, 92, { look: 'cat' });
-  ctx.spawn('ams-window-waver', 2090, 96, {});
+  // On the perspective floor (render only, docs/design/floor.md §3.7): the wavers stand in the
+  // windows at the facades' depth.
+  ctx.spawn('ams-window-waver', 1560, 100, {}).drawDepth = FACADE;
+  ctx.spawn('ams-window-waver', 1830, 92, { look: 'cat' }).drawDepth = FACADE;
+  ctx.spawn('ams-window-waver', 2090, 96, {}).drawDepth = FACADE;
 }
 
 /** Lamp top (a perched gull's feet) of a `decor/ams/lamp` on the ground line. */
@@ -211,6 +222,8 @@ export const sectionC: SectionDef = {
   terrain: terrainC(),
   terrainStyle: { ground: 'klinker', edge: 'bikepath', platform: 'whitewood', solid: 'brick' },
   decor,
+  // The perspective floor (docs/design/floor.md §12; its builder's folder floor/c/; off until its switch is on).
+  floor: cFloor(decor),
   // Tier 4: the fatbike pairs ride in b and c only (the solo sets are in the mission's preloadFirst).
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.

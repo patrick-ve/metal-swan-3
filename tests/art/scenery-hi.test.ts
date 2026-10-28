@@ -298,7 +298,8 @@ describe('2× scenery', () => {
   });
 
   it('deferred: 2× scenery becomes art jobs; 1× is drawn until they ran', () => {
-    const def = bare(getMission('ams')?.sections.b as SectionDef);
+    // The scenery alone: b's perspective floor (its own deferred jobs, its own first frame) is not under test here.
+    const def: SectionDef = { ...bare(getMission('ams')?.sections.b as SectionDef), floor: undefined };
     const prev = setDeferHiArt(true);
     try {
       const view = new SectionView(def, new Terrain(def.terrain), 3, 2);

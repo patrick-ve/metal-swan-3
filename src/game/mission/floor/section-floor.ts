@@ -6,14 +6,17 @@
  *   lifted background layers (`layerLift`) → backHook → `drawBand` (the floor: GPU or CPU raster)
  *   → `drawOpenings` → `drawBack` (back decor and back rows far → near, canopies / slabs / roofs /
  *   top faces, walk-plane decor) → terrain chunks (platforms and solids only) → the view's
- *   `floorHook` (the ground mist) → `drawShadows` → world.draw (entities with `drawDepth` through
- *   `drawAtDepth`) → `drawFront` (front decor and front rows near the camera last) → front layers →
- *   the light pass.
+ *   `floorHook` (the ground mist) → `drawShadows` (the kinds' render-only depth steps, the contact
+ *   shadows, then the ENTITY FACES of the kinds the def lists: each entity draws its own, spec §12.1
+ *   item 4) → world.draw (entities with `drawDepth` through `drawAtDepth`) → `drawFront` (entity
+ *   faces in front of the walk plane, front decor and front rows near the camera last) → front
+ *   layers → the light pass.
  *
  * Things at a depth stand ON the floor there (`liftAt`: a raised pavement lifts them); the section
  * start builds the visible 1× textures and queues the dense ones (`prepare`).
  *
- * Everything here is art: it reads the terrain and the entities, never writes them, and uses no
+ * Everything here is art: it reads the terrain and the entities and writes only their render-only
+ * `drawDepth` (`FloorDef.entityDepth`, which the simulation never reads), and it uses no
  * randomness. Per frame it makes no objects, arrays or closures: scaled props and chain links are
  * made once per size and density (the dense ones as art jobs), ovals once per size, and the quads'
  * and face groups' canvases come from one pool sized at the section start (`prepare`). Its CPU
@@ -50,6 +53,7 @@ import { FloorRaster } from '../../../engine/floor/raster';
 import { FloorTextureStore, type FloorTexture } from '../../../engine/floor/tex';
 import { PixelBuffer } from '../../../engine/pixel';
 import type { DrawOpts, Frame, Renderer } from '../../../engine/render';
+import { cameraPx } from '../../../engine/render-common';
 import { frameH, frameW, VIEW_H, VIEW_W } from '../../../engine/render';
 import { framesDensityAt, getFrame, getFrames, hasFramesAt, hiArtDeferred, queueArtJob, spriteAnim } from '../../../engine/sprites';
 import type { Terrain } from '../../../engine/terrain';
@@ -60,7 +64,7 @@ import { ensureAwningTile, ensureBuiltinTiles } from './builtin';
 import { getFloorPainter, getFloorProp, getFloorTile, type FloorPaintCtx } from './registry';
 import { FramePlacer } from './place';
 import { scaleFrame, ScaleJob } from './scale';
-import { DEFAULT_SKY_GENS, type DepthLine, type FaceGroupDef, type FloorDef, type FloorSurface, type OverhangDef, type PropRowDef, type TopFaceDef } from './types';
+import { DEFAULT_SKY_GENS, type DepthLine, type EntityFacesDef, type FaceDef, type FaceGroupDef, type FloorDef, type FloorSurface, type OverhangDef, type PropRowDef, type TopFaceDef } from './types';
 
 /** Mesh margin beyond the section's ends (the back rows see wider than the screen). */
 export const FLOOR_U_PAD = 160;
@@ -168,6 +172,108 @@ interface FaceGroup {
   readonly lastTex: (FloorTexture | null)[];
 }
 
+/**
+ * One state of an entity kind's faces in one orientation (spec §12.1 item 4), resolved once: per
+ * corner (4 per face) its u right of the entity's x, its height (`abs` 0: over the entity's y; 1:
+ * over the walk plane), the scale s of its depth and its tile coordinates; per face its tile, both-
+ * sided, column raster and anti-aliased edges (as a face group's).
+ */
+interface EntityFaceSet {
+  readonly n: number;
+  readonly du: Float64Array;
+  readonly dh: Float64Array;
+  readonly abs: Uint8Array;
+  readonly s: Float64Array;
+  /** The corner's world depth behind the sprite's plane (v of its depth: an entity at a depth adds it to its own v). */
+  readonly v: Float64Array;
+  readonly a: Float64Array;
+  readonly b: Float64Array;
+  readonly tile: Int32Array;
+  readonly both: Uint8Array;
+  readonly cols: Uint8Array;
+  readonly aa: Uint8Array;
+}
+
+/**
+ * An entity kind's faces on this floor: its sets (state · 2 + mirrored) for the back pass (faces at
+ * depths ≥ 0: under every entity) and the front pass (a face reaching in front of the walk plane:
+ * over them), the canvas class it plans, how many show at once.
+ */
+interface EntityKind {
+  readonly key: string;
+  readonly sets: readonly EntityFaceSet[];
+  readonly frontSets: readonly EntityFaceSet[];
+  /** Has it faces in front of the walk plane (the front pass)? */
+  readonly front: boolean;
+  /** The most faces of one set (the slots' scratch size). */
+  readonly maxN: number;
+  /** The canvas class every entity of the kind takes (the largest box it ever needs) and how many show at once. */
+  wc: number;
+  hc: number;
+  readonly max: number;
+}
+
+/**
+ * The canvas an entity holds while its faces show (one per entity on screen, found by its id; given
+ * back when it has not drawn for a frame), with what the canvas holds: a still camera and a still
+ * entity re-rasterise nothing.
+ */
+interface EntitySlot {
+  /** The entity's id (−1: free) and the floor frame it last drew in. */
+  id: number;
+  frame: number;
+  cv: QuadCanvas | null;
+  lastCv: QuadCanvas | null;
+  lastCamX: number;
+  lastCamY: number;
+  lastX: number;
+  lastY: number;
+  lastSet: EntityFaceSet | null;
+  /** The entity's `drawDepth` at the last raster. */
+  lastDepth: number;
+  readonly lastTex: (FloorTexture | null)[];
+  /** Projected corners (screen px), their scales (an entity at a depth) and which faces show (sized for the largest kind). */
+  px: Float64Array;
+  py: Float64Array;
+  ps: Float64Array;
+  shown: Uint8Array;
+}
+
+/**
+ * Per face of resolved corners (4 per face: u, h, s, and whether a corner lies on its anchor sprite):
+ * `cols` — a column raster (one u: a side wall) — and `aa`, the edges that are anti-aliased: all but
+ * a receding face's front edge on its sprite (the sprite covers it, no gap opens) and the edges two
+ * faces share (hard on both sides: no seam).
+ */
+function faceEdges(n: number, u: Float64Array, h: Float64Array, s: Float64Array, onSprite: Uint8Array, cols: Uint8Array, aa: Uint8Array): void {
+  const same = (i: number, j: number): boolean => Math.abs(u[i] - u[j]) < 1e-6 && Math.abs(h[i] - h[j]) < 1e-6 && Math.abs(s[i] - s[j]) < 1e-9;
+  for (let f = 0; f < n; f++) {
+    const k = f * 4;
+    cols[f] = Math.abs(u[k] - u[k + 1]) < 1e-6 && Math.abs(u[k] - u[k + 2]) < 1e-6 && Math.abs(u[k] - u[k + 3]) < 1e-6 ? 1 : 0;
+    const flat = onSprite[k] && onSprite[k + 1] && onSprite[k + 2] && onSprite[k + 3];
+    let mask = 0;
+    for (let c = 0; c < 4; c++) {
+      const i = k + c;
+      const j = k + ((c + 1) & 3);
+      if (same(i, j)) continue;
+      // A receding face's front edge on its sprite: hard (the sprite covers it, no gap opens).
+      if (!flat && onSprite[i] && onSprite[j]) continue;
+      // An edge another face shares: hard on both sides (no seam).
+      let shared = false;
+      for (let f2 = 0; f2 < n && !shared; f2++) {
+        if (f2 === f) continue;
+        for (let c2 = 0; c2 < 4 && !shared; c2++) {
+          const i2 = f2 * 4 + c2;
+          const j2 = f2 * 4 + ((c2 + 1) & 3);
+          shared = (same(i, i2) && same(j, j2)) || (same(i, j2) && same(j, i2));
+        }
+      }
+      if (!shared) mask |= 1 << c;
+    }
+    aa[f] = mask;
+  }
+}
+
 /** A screen box of something drawn over the world (`frontBoxes`, gate 5). */
 export interface FrontBox {
   what: string;
@@ -241,6 +347,13 @@ function vLine(cam: FloorCam, l: DepthLine | undefined, dflt: number): FieldLine
   return l.map(([u, d]) => [u, vAtDepth(cam, d)] as [number, number]);
 }
 
+/** The chunks the mesh's quads sample (the painter's surface: material −1); the store prefetches only these. */
+function chunksSampled(mesh: FloorMesh): Set<number> {
+  const out = new Set<number>();
+  for (let q = 0; q < mesh.quadCount; q++) if (mesh.quadMat[q] < 0) out.add(mesh.quadChunk[q]);
+  return out;
+}
+
 /** The ground segments of a terrain, extended flat beyond the section's ends. */
 function profileSegments(t: Terrain, uMin: number, uMax: number, width: number): FieldSegment[] {
   const segs: FieldSegment[] = [];
@@ -287,6 +400,16 @@ export class SectionFloor {
   private readonly quads: QuadThing[] = [];
   /** Face groups (spec §11 R1: side faces), in the depth lists with the decor and rows. */
   readonly groups: FaceGroup[] = [];
+  /** The entity kinds that draw their faces here (spec §12.1 item 4, `FloorDef.entityFaces`), by spawn id. */
+  private readonly entityKinds = new Map<string, EntityKind>();
+  /** The canvases the entities on screen hold (grown only when more show at once than ever before). */
+  private readonly entitySlots: EntitySlot[] = [];
+  /** The entity kinds with a render-only depth step on this floor (`FloorDef.entityDepth`), by spawn id. */
+  private readonly depthKinds = new Map<string, (e: Entity) => number>();
+  /** The floor's frame count (`drawBand`), the frame the slots were last swept in, and the faces' density (`drawBack`). */
+  private frameNo = 0;
+  private sweptAt = -1;
+  private entityD = 1;
   private readonly frame: FrameState;
   private bandFrame: Frame | null = null;
   private readonly shadowStrength: number;
@@ -401,7 +524,7 @@ export class SectionFloor {
           return { w: t.w, h: t.h, paint: (a, b) => t.paint(a, b, d) };
         },
       },
-      { jobKey: this.jobKey, deferred: hiArtDeferred, uMax },
+      { jobKey: this.jobKey, deferred: hiArtDeferred, uMax, usedChunks: chunksSampled(this.mesh) },
     );
     // --- the band
     const top = cam.yh + (cam.yw - cam.yh - Math.max(0, this.mesh.hMax)) * this.sBack - SHAKE_MARGIN;
@@ -413,6 +536,12 @@ export class SectionFloor {
     // --- rows, faces, decor, quads
     for (const rd of def.rows ?? []) this.rows.push(this.makeRow(rd, section.width));
     for (const gd of def.faces ?? []) this.groups.push(this.makeGroup(gd));
+    for (const [kind, ed] of Object.entries(def.entityFaces ?? {})) {
+      const k = this.makeEntityKind(kind, ed);
+      this.entityKinds.set(kind, k);
+      if (k.front) this.frontKinds = true;
+    }
+    for (const [kind, fn] of Object.entries(def.entityDepth ?? {})) this.depthKinds.set(kind, fn);
     this.sortDecor(section.decor ?? []);
     for (const o of def.overhangs ?? []) this.quads.push(this.makeOverhang(o));
     for (const t of def.tops ?? []) this.quads.push(this.makeTop(t));
@@ -485,13 +614,10 @@ export class SectionFloor {
       }
       for (let f = 0; f < g.n; f++) span(g.tile[f], a, b);
     }
-    // A tile nothing draws (yet): always in its window.
-    for (let t = 0; t < n; t++) {
-      if (u0[t] > u1[t]) {
-        u0[t] = -Infinity;
-        u1[t] = Infinity;
-      }
-    }
+    // The entities' face tiles (they move): always in the window. A tile nothing draws (the built-in
+    // pit tiles of a mesh without a pit) is never in it: never built, no bytes (a draw that asks for it
+    // anyway gets it on the spot, `store.tile`).
+    for (const k of this.entityKinds.values()) for (const set of [...k.sets, ...k.frontSets]) for (let f = 0; f < set.n; f++) span(set.tile[f], -Infinity, Infinity);
     this.tileU0 = u0;
     this.tileU1 = u1;
     this.tileBand = new Uint8Array(n);
@@ -651,6 +777,7 @@ export class SectionFloor {
   /** Draw the floor band: the GPU's image, else the CPU raster's (spec §3.3). `d`: the view's density at this res. */
   drawBand(r: Renderer, tick: number, d: number): void {
     this.gpuDrawn = false;
+    this.frameNo++;
     const gpu = this.gpu;
     if (gpu && r.surface) {
       const img = gpu.render(this.setFrame(r, tick, d));
@@ -723,7 +850,15 @@ export class SectionFloor {
     if (this.poolSized.has(key)) return;
     this.poolSized.add(key);
     const plan = this.planCanvases(openings);
-    for (const [k, n] of plan) this.pool.ensure(Math.floor(k / 1000), k % 1000, d, n);
+    // The entities' faces on top (spec §12.1 item 4): each kind its `max` canvases of its own class.
+    const need = new Map(plan);
+    if (!openings) {
+      for (const k of this.entityKinds.values()) {
+        const c = k.wc * 1000 + k.hc;
+        need.set(c, (need.get(c) ?? 0) + k.max);
+      }
+    }
+    for (const [k, n] of need) this.pool.ensure(Math.floor(k / 1000), k % 1000, d, n);
   }
 
   /**
@@ -1048,6 +1183,8 @@ export class SectionFloor {
 
   /** Back decor and back rows (far → near), the canopies and top faces, then the walk-plane decor. */
   drawBack(r: Renderer, tick: number, d: number): void {
+    // The entities' faces of this frame draw at this density (≤ 2×, as the face groups).
+    this.entityD = Math.min(d, QUAD_MAX_DENSITY);
     this.drawEntries(r, this.backDeep, tick, d);
     this.drawQuads(r, d, false);
     this.drawEntries(r, this.backWalk, tick, d);
@@ -1060,6 +1197,8 @@ export class SectionFloor {
 
   /** Front decor and front rows, far → near (over the world). */
   drawFront(r: Renderer, tick: number, d: number): void {
+    // The entities' faces in front of the walk plane (a bridge spanning to the front), then the front decor and rows.
+    if (this.frontKinds && this.faceWorld) this.entityFacePass(r, this.faceWorld, 1);
     this.drawEntries(r, this.frontList, tick, d);
   }
 
@@ -1390,32 +1529,7 @@ export class SectionFloor {
         g.b[k] = t[1];
       }
     }
-    const same = (i: number, j: number): boolean => Math.abs(g.u[i] - g.u[j]) < 1e-6 && Math.abs(g.h[i] - g.h[j]) < 1e-6 && Math.abs(g.s[i] - g.s[j]) < 1e-9;
-    for (let f = 0; f < n; f++) {
-      const k = f * 4;
-      g.cols[f] = Math.abs(g.u[k] - g.u[k + 1]) < 1e-6 && Math.abs(g.u[k] - g.u[k + 2]) < 1e-6 && Math.abs(g.u[k] - g.u[k + 3]) < 1e-6 ? 1 : 0;
-      const flat = onSprite[k] && onSprite[k + 1] && onSprite[k + 2] && onSprite[k + 3];
-      let mask = 0;
-      for (let c = 0; c < 4; c++) {
-        const i = k + c;
-        const j = k + ((c + 1) & 3);
-        if (same(i, j)) continue;
-        // A receding face's front edge on its sprite: hard (the facade covers it, no gap opens).
-        if (!flat && onSprite[i] && onSprite[j]) continue;
-        // An edge another face of the group shares: hard on both sides (no seam).
-        let shared = false;
-        for (let f2 = 0; f2 < n && !shared; f2++) {
-          if (f2 === f) continue;
-          for (let c2 = 0; c2 < 4 && !shared; c2++) {
-            const i2 = f2 * 4 + c2;
-            const j2 = f2 * 4 + ((c2 + 1) & 3);
-            shared = (same(i, i2) && same(j, j2)) || (same(i, j2) && same(j, i2));
-          }
-        }
-        if (!shared) mask |= 1 << c;
-      }
-      g.aa[f] = mask;
-    }
+    faceEdges(n, g.u, g.h, g.s, onSprite, g.cols, g.aa);
     // The canvas: the largest clamped on-screen box over every camera that shows a face.
     let u0 = Infinity;
     let u1 = -Infinity;
@@ -1569,6 +1683,441 @@ export class SectionFloor {
     }
   }
 
+  // ------------------------------------------------------------------------------- entity faces
+
+  /**
+   * Resolve an entity kind's faces once (spec §12.1 item 4): per state and orientation (mirrored in x,
+   * the corners reversed so that a face still runs clockwise from the side that shows) the corners
+   * relative to the entity, their depth's scale, the tiles and the edges (`faceEdges`: a receding
+   * face's front edge on the sprite stays hard); then the canvas class every entity of the kind takes:
+   * the largest box its faces ever need, over a sweep of the entity across the view at the def's y.
+   */
+  private makeEntityKind(key: string, ed: EntityFacesDef): EntityKind {
+    const cam = this.cam;
+    const sets: EntityFaceSet[] = [];
+    const frontSets: EntityFaceSet[] = [];
+    let maxN = 0;
+    // A face reaching in front of the walk plane is drawn over the entities (the front pass).
+    const inFront = (fd: FaceDef): boolean => fd.pts.some((p) => p[2] < 0);
+    for (const all of ed.states) {
+      for (let m = 0; m < 4; m++) {
+        const faces = all.filter((fd) => inFront(fd) === m >= 2);
+        const n = faces.length;
+        const set: EntityFaceSet = {
+          n,
+          du: new Float64Array(n * 4),
+          dh: new Float64Array(n * 4),
+          abs: new Uint8Array(n * 4),
+          s: new Float64Array(n * 4),
+          v: new Float64Array(n * 4),
+          a: new Float64Array(n * 4),
+          b: new Float64Array(n * 4),
+          tile: new Int32Array(n),
+          both: new Uint8Array(n),
+          cols: new Uint8Array(n),
+          aa: new Uint8Array(n),
+        };
+        const onSprite = new Uint8Array(n * 4);
+        // Heights for the edge test: a world corner never equals a sprite corner.
+        const hk = new Float64Array(n * 4);
+        for (let f = 0; f < n; f++) {
+          const fd = faces[f];
+          // A mirrored entity's lit side is a shaded one (the def's `mirror` tiles).
+          set.tile[f] = this.tileIndex((m & 1) === 1 ? (ed.mirror?.[fd.tile] ?? fd.tile) : fd.tile);
+          set.both[f] = fd.both ? 1 : 0;
+          for (let c = 0; c < 4; c++) {
+            // Mirrored: corners 0, 3, 2, 1 (the winding stays clockwise from the side that shows).
+            const src = (m & 1) === 0 ? c : (4 - c) & 3;
+            const p = fd.pts[src] ?? fd.pts[fd.pts.length - 1];
+            const [x, y, depth] = p;
+            const world = p.length === 4;
+            const k = f * 4 + c;
+            set.du[k] = (m & 1) === 0 ? x : -x;
+            set.dh[k] = y;
+            set.abs[k] = world ? 1 : 0;
+            set.s[k] = sAtDepth(cam, depth);
+            set.v[k] = vAtDepth(cam, depth);
+            onSprite[k] = !world && depth === 0 ? 1 : 0;
+            hk[k] = world ? y + 1e6 : y;
+            const t = fd.tex[src] ?? [0, 0];
+            set.a[k] = t[0];
+            set.b[k] = t[1];
+          }
+        }
+        faceEdges(n, set.du, hk, set.s, onSprite, set.cols, set.aa);
+        (m >= 2 ? frontSets : sets).push(set);
+        maxN = Math.max(maxN, n);
+      }
+    }
+    const front = frontSets.some((x) => x.n > 0);
+    const kind: EntityKind = { key, sets, frontSets, front, maxN, wc: CANVAS_W_CLASSES[0], hc: CANVAS_H_CLASSES[0], max: Math.max(1, ed.max ?? 2) * (front ? 2 : 1) };
+    // The canvas class: the largest box over every set and every place on the view.
+    const px = new Float64Array(maxN * 4);
+    const py = new Float64Array(maxN * 4);
+    const shown = new Uint8Array(maxN);
+    let mw = 0;
+    let mh = 0;
+    this.pcx = 0;
+    this.pcy = 0;
+    this.pey = ed.y ?? cam.yw;
+    for (const set of [...sets, ...frontSets]) {
+      for (let x = -400; x <= VIEW_W + 400; x += 3) {
+        this.pex = x;
+        const box = this.projectEntityAt(set, px, py, shown);
+        if (!box) continue;
+        mw = Math.max(mw, box[2] - box[0]);
+        mh = Math.max(mh, box[3] - box[1]);
+      }
+    }
+    kind.wc = canvasClass(Math.ceil(mw + 1) + 1, CANVAS_W_CLASSES);
+    // A bob, a wobble and the screen shake on top.
+    kind.hc = canvasClass(Math.ceil(Math.min(VIEW_H + 4, mh + 3 + SHAKE_MARGIN + 2)), CANVAS_H_CLASSES);
+    return kind;
+  }
+
+  /** The entity being projected (fields: no double passes through a call). */
+  private pex = 0.5;
+  private pey = 0.5;
+  /** Box of `projectEntityAt` (reused). */
+  private readonly entityBox = [0, 0, 0, 0];
+
+  /**
+   * Project an entity's face set at (pex, pey) for the camera (pcx, pcy) into X / Y (screen px), mark
+   * the faces that look at the eye (clockwise on screen; or both-sided) and return their box clamped
+   * to the view (null: nothing shows).
+   */
+  private projectEntityAt(set: EntityFaceSet, X: Float64Array, Y: Float64Array, shown: Uint8Array): number[] | null {
+    const cam = this.cam;
+    const k1 = cam.yw - cam.yh;
+    const eye = this.pcx + FLOOR_CX;
+    const camY = this.pcy;
+    const ex = this.pex;
+    const hy = cam.yw - this.pey;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (let f = 0; f < set.n; f++) {
+      const k = f * 4;
+      for (let c = 0; c < 4; c++) {
+        const s = set.s[k + c];
+        const h = set.abs[k + c] === 1 ? set.dh[k + c] : hy + set.dh[k + c];
+        X[k + c] = FLOOR_CX + (ex + set.du[k + c] - eye) * s;
+        Y[k + c] = cam.yh - camY + (k1 - h) * s;
+      }
+      let area = 0;
+      for (let c = 0; c < 4; c++) {
+        const c1 = (c + 1) & 3;
+        area += X[k + c] * Y[k + c1] - X[k + c1] * Y[k + c];
+      }
+      const show = set.both[f] ? Math.abs(area) > 0.5 : area > 0.5;
+      shown[f] = show ? 1 : 0;
+      if (!show) continue;
+      for (let c = 0; c < 4; c++) {
+        if (X[k + c] < minX) minX = X[k + c];
+        if (X[k + c] > maxX) maxX = X[k + c];
+        if (Y[k + c] < minY) minY = Y[k + c];
+        if (Y[k + c] > maxY) maxY = Y[k + c];
+      }
+    }
+    if (minX > VIEW_W + 1 || maxX < -1 || minY > VIEW_H + 1 || maxY < -1) return null;
+    const box = this.entityBox;
+    box[0] = Math.max(-1, minX);
+    box[1] = Math.max(-1, minY);
+    box[2] = Math.min(VIEW_W + 1, maxX);
+    box[3] = Math.min(VIEW_H + 1, maxY);
+    return box;
+  }
+
+  /** The pass the entities' faces draw in (0: under the entities; 1: over them: the faces in front of the walk plane). */
+  private facePass = 0;
+  /** The world of this frame's entities (`drawShadows`), for the front pass (`drawFront`). */
+  private faceWorld: World | null = null;
+  /** Does a listed kind have faces in front of the walk plane? */
+  private frontKinds = false;
+
+  /**
+   * The entities' faces of one pass (spec §12.1 item 4): every live entity of a listed kind draws
+   * its faces itself (`Entity.drawFloorFaces` → `drawEntityFaces`). The back pass runs before
+   * `world.draw` (a receding face lies behind the walk plane, so behind every sprite: a duck, a
+   * hero, a handhaver on a bascule stay in front of it whatever their z), the front pass with the
+   * front decor.
+   */
+  private entityFacePass(r: Renderer, world: World, pass: number): void {
+    this.facePass = pass;
+    const list = world.entities;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e.removed) continue;
+      const kind = this.entityKinds.get(e.type);
+      if (!kind || (pass === 1 && !kind.front)) continue;
+      try {
+        e.drawFloorFaces(r);
+      } catch (err) {
+        if (!this.faceWarned) {
+          this.faceWarned = true;
+          console.warn(`[floor] ${e.type}.drawFloorFaces failed (its faces are left out):`, err);
+        }
+      }
+    }
+    this.facePass = 0;
+  }
+
+  private faceWarned = false;
+
+  /** Does entity kind `type` draw faces on this floor (`FloorDef.entityFaces`)? */
+  hasEntityFaces(type: string): boolean {
+    return this.entityKinds.has(type);
+  }
+
+  /**
+   * Draw entity e's faces (spec §12.1 item 4; called from its own draw through `drawEntityFaces`,
+   * hooks.ts, before its sprite): its kind's faces of `state` (mirrored with `flip`) at its x + dx,
+   * y + dy — the ones that look at the eye, perspective-correct from their tiles (the whole v-mip
+   * chain, side walls in columns, anti-aliased silhouettes: the face groups' raster) into the canvas
+   * the entity holds (its kind's class, from the floor's pool, at ≤ 2×), on the entity's own grid. A
+   * still camera and a still entity re-rasterise nothing; an entity that stops drawing (it left the
+   * view, it was removed) gives its canvas back a frame later. Nothing for a kind the floor does not
+   * list. An entity drawn at a depth (`drawDepth`, a cosmetic actor: `drawAtDepth` draws its sprite
+   * unscaled at that depth's shift) gets its faces by the face groups' sprite-px rule, per frame
+   * (`projectEntityDepth`): its front edges meet the sprite there, the faces recede from its plane.
+   */
+  drawEntityFaces(r: Renderer, e: Entity, state: number, flip: boolean, dx: number, dy: number): void {
+    const kind = this.entityKinds.get(e.type);
+    if (!kind) return;
+    if (this.boxOut) {
+      this.probeEntityBox(r, e, kind, state, flip, dx, dy, this.boxOut);
+      return;
+    }
+    if (this.sweptAt !== this.frameNo) this.sweepEntitySlots();
+    const pass = this.facePass;
+    const slot = this.entitySlot(e.id * 2 + pass, kind.maxN);
+    slot.frame = this.frameNo;
+    const sets = pass === 0 ? kind.sets : kind.frontSets;
+    const si = state * 2 + (flip ? 1 : 0);
+    const set = state >= 0 && si < sets.length ? sets[si] : null;
+    const camX = r.camX;
+    const camY = r.camY;
+    const depth = e.drawDepth;
+    this.pcx = camX;
+    this.pcy = camY;
+    this.pex = e.x + dx;
+    this.pey = e.y + dy;
+    let box: number[] | null = null;
+    if (set && set.n > 0) {
+      if (depth === 0) {
+        box = this.projectEntityAt(set, slot.px, slot.py, slot.shown);
+      } else {
+        this.pdx = dx;
+        box = this.projectEntityDepth(set, e, depth, r, slot.px, slot.py, slot.ps, slot.shown);
+      }
+    }
+    if (!set || !box) {
+      this.pool.release(slot.cv);
+      slot.cv = null;
+      slot.lastCv = null;
+      return;
+    }
+    const dq = this.entityD;
+    let cv = slot.cv;
+    if (!cv || cv.d !== dq) {
+      this.pool.release(cv);
+      cv = this.pool.acquire(slot, kind.wc, kind.hc, dq);
+      slot.cv = cv;
+    }
+    let same = cv === slot.lastCv && camX === slot.lastCamX && camY === slot.lastCamY && this.pex === slot.lastX && this.pey === slot.lastY && set === slot.lastSet && depth === slot.lastDepth;
+    for (let f = 0; f < set.n; f++) {
+      const tex = slot.shown[f] ? this.store.tile(set.tile[f], dq) : null;
+      if (tex !== slot.lastTex[f]) same = false;
+      slot.lastTex[f] = tex;
+    }
+    if (!same) {
+      slot.lastCv = cv;
+      slot.lastCamX = camX;
+      slot.lastCamY = camY;
+      slot.lastX = this.pex;
+      slot.lastY = this.pey;
+      slot.lastSet = set;
+      slot.lastDepth = depth;
+      // The canvas grid on the entity's own position (its sprite's anchor: the front edges meet it;
+      // at a depth the anchor where `drawAtDepth`'s camera puts the sprite).
+      this.alignX = depth === 0 ? this.pex - camX : this.dax;
+      this.alignY = depth === 0 ? this.pey - camY : this.day;
+      this.placeCanvas(cv, box, r.res);
+      cv.ellipse(0, 0);
+      const X = this.qx;
+      const Y = this.qy;
+      const Q = this.qq;
+      const A = this.qa;
+      const B = this.qb;
+      for (let f = 0; f < set.n; f++) {
+        const tex = slot.lastTex[f];
+        if (!tex) continue;
+        const k = f * 4;
+        for (let c = 0; c < 4; c++) {
+          X[c] = slot.px[k + c];
+          Y[c] = slot.py[k + c];
+          Q[c] = depth === 0 ? set.s[k + c] : slot.ps[k + c];
+          A[c] = set.a[k + c];
+          B[c] = set.b[k + c];
+        }
+        cv.quad(X, Y, Q, A, B, tex, set.aa[f], set.cols[f] === 1);
+      }
+    }
+    if (cv.drawn) {
+      this.placer.x = cv.ox + camX;
+      this.placer.y = cv.oy + camY;
+      this.placer.put(r, cv.frame, this.quadOpts);
+    }
+  }
+
+  /** `frontBoxes`' list while it asks the entities for their front faces (null: drawing). */
+  private boxOut: FrontBox[] | null = null;
+
+  /** Gate 5: the screen box of entity e's faces in front of the walk plane (the front pass's set), into `out`. */
+  private probeEntityBox(r: Renderer, e: Entity, kind: EntityKind, state: number, flip: boolean, dx: number, dy: number, out: FrontBox[]): void {
+    const si = state * 2 + (flip ? 1 : 0);
+    const set = state >= 0 && si < kind.frontSets.length ? kind.frontSets[si] : null;
+    if (!set || set.n === 0) return;
+    const n = set.n * 4;
+    const X = new Float64Array(n);
+    const Y = new Float64Array(n);
+    const S = new Float64Array(n);
+    const shown = new Uint8Array(set.n);
+    this.pcx = r.camX;
+    this.pcy = r.camY;
+    this.pex = e.x + dx;
+    this.pey = e.y + dy;
+    this.pdx = dx;
+    const box = e.drawDepth === 0 ? this.projectEntityAt(set, X, Y, shown) : this.projectEntityDepth(set, e, e.drawDepth, r, X, Y, S, shown);
+    if (box) out.push({ what: `faces of ${e.type} @${Math.round(e.x)}`, x0: box[0], y0: box[1], x1: box[2], y1: box[3] });
+  }
+
+  /** `projectEntityDepth`'s sprite offset (dx: the face set's x is relative to e.x + dx) and the snapped anchor it found. */
+  private pdx = 0.5;
+  private dax = 0.5;
+  private day = 0.5;
+
+  /**
+   * Project an entity's face set for an entity drawn at `depth` (`drawAtDepth`: its sprite unscaled at
+   * the shift and speed of that depth, the floor's lift there) — the face groups' sprite-px rule
+   * (`makeGroup`) per frame: a corner (x, y) in sprite px is the world point u = e.x + (dx + x)/s₀,
+   * h = (yw − ey + lift + y)/s₀ at the entity's depth (s₀), moved back by the corner's own depth (its
+   * world v added to the entity's v); a world corner keeps its height. Then the whole set moves by the
+   * difference between `drawAtDepth`'s snapped camera and the exact one, so its front edges meet the
+   * sprite where the renderer draws it (`dax`, `day`: that anchor, screen px). Into X / Y / S (screen
+   * px, scales); the faces that look at the eye marked; their box clamped to the view (null: none).
+   */
+  private projectEntityDepth(set: EntityFaceSet, e: Entity, depth: number, r: Renderer, X: Float64Array, Y: Float64Array, S: Float64Array, shown: Uint8Array): number[] | null {
+    const cam = this.cam;
+    const k1 = cam.yw - cam.yh;
+    const camX = this.pcx;
+    const camY = this.pcy;
+    const s0 = sAtDepth(cam, depth);
+    const v0 = vAtDepth(cam, depth);
+    const lift = this.liftAt(e.x, depth);
+    // drawAtDepth's camera, exact and as the renderer snaps it: the sprite's anchor (ex, ey) lands at
+    // (ex − cx, ey − cy).
+    const k = r.res;
+    const cxe = e.x - FLOOR_CX - (e.x - camX - FLOOR_CX) * s0;
+    const cye = camY + depth + lift;
+    const cx = cameraPx(cxe, k, r.subpixel) / k;
+    const cy = cameraPx(cye, k, r.subpixel) / k;
+    const ex = this.pex;
+    const ey = this.pey;
+    this.dax = ex - cx;
+    this.day = ey - cy;
+    const mx = cxe - cx;
+    const my = cye - cy;
+    const eye = camX + FLOOR_CX;
+    const ub = e.x + this.pdx / s0;
+    const hy = cam.yw - ey + lift;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (let f = 0; f < set.n; f++) {
+      const q = f * 4;
+      for (let c = 0; c < 4; c++) {
+        const i = q + c;
+        const s = cam.f / (cam.f - v0 - set.v[i]);
+        const u = ub + set.du[i] / s0;
+        const h = set.abs[i] === 1 ? set.dh[i] : (hy + set.dh[i]) / s0;
+        S[i] = s;
+        X[i] = FLOOR_CX + (u - eye) * s + mx;
+        Y[i] = cam.yh - camY + (k1 - h) * s + my;
+      }
+      let area = 0;
+      for (let c = 0; c < 4; c++) {
+        const c1 = (c + 1) & 3;
+        area += X[q + c] * Y[q + c1] - X[q + c1] * Y[q + c];
+      }
+      const show = set.both[f] ? Math.abs(area) > 0.5 : area > 0.5;
+      shown[f] = show ? 1 : 0;
+      if (!show) continue;
+      for (let c = 0; c < 4; c++) {
+        if (X[q + c] < minX) minX = X[q + c];
+        if (X[q + c] > maxX) maxX = X[q + c];
+        if (Y[q + c] < minY) minY = Y[q + c];
+        if (Y[q + c] > maxY) maxY = Y[q + c];
+      }
+    }
+    if (minX > VIEW_W + 1 || maxX < -1 || minY > VIEW_H + 1 || maxY < -1) return null;
+    const box = this.entityBox;
+    box[0] = Math.max(-1, minX);
+    box[1] = Math.max(-1, minY);
+    box[2] = Math.min(VIEW_W + 1, maxX);
+    box[3] = Math.min(VIEW_H + 1, maxY);
+    return box;
+  }
+
+  /** The slot of entity `id` (a free one when it has none; a new one only when every slot is held). */
+  private entitySlot(id: number, n: number): EntitySlot {
+    const list = this.entitySlots;
+    let free: EntitySlot | null = null;
+    for (let i = 0; i < list.length; i++) {
+      const sl = list[i];
+      if (sl.id === id) return sl;
+      if (sl.id < 0 && !free) free = sl;
+    }
+    if (!free) {
+      free = { id: -1, frame: 0, cv: null, lastCv: null, lastCamX: NaN, lastCamY: NaN, lastX: NaN, lastY: NaN, lastSet: null, lastDepth: NaN, lastTex: [], px: new Float64Array(0), py: new Float64Array(0), ps: new Float64Array(0), shown: new Uint8Array(0) };
+      list.push(free);
+    }
+    free.id = id;
+    free.lastCv = null;
+    free.lastSet = null;
+    if (free.shown.length < n) {
+      free.px = new Float64Array(n * 4);
+      free.py = new Float64Array(n * 4);
+      free.ps = new Float64Array(n * 4);
+      free.shown = new Uint8Array(n);
+      for (let i = free.lastTex.length; i < n; i++) free.lastTex.push(null);
+    }
+    return free;
+  }
+
+  /** Once a frame: the slots of entities that did not draw last frame give their canvases back. */
+  private sweepEntitySlots(): void {
+    this.sweptAt = this.frameNo;
+    const list = this.entitySlots;
+    for (let i = 0; i < list.length; i++) {
+      const sl = list[i];
+      if (sl.id < 0 || sl.frame >= this.frameNo - 1) continue;
+      this.pool.release(sl.cv);
+      sl.cv = null;
+      sl.lastCv = null;
+      sl.id = -1;
+    }
+  }
+
+  /** Entity slots holding a canvas now (tests). */
+  get entityCanvases(): number {
+    let n = 0;
+    for (let i = 0; i < this.entitySlots.length; i++) if (this.entitySlots[i].cv) n++;
+    return n;
+  }
+
   // ------------------------------------------------------------------------------- shadows
 
   /**
@@ -1577,6 +2126,42 @@ export class SectionFloor {
    * drawBack and world.draw.
    */
   drawShadows(r: Renderer, world: World, d: number): void {
+    // The kinds' depth steps of this frame first (render only): an entity at a depth casts no shadow.
+    if (this.depthKinds.size > 0) this.stepDepths(world);
+    this.drawOvals(r, world, d);
+    // The entities' faces (spec §12.1 item 4): on the floor, under every entity.
+    this.faceWorld = world;
+    if (this.entityKinds.size > 0) this.entityFacePass(r, world, 0);
+  }
+
+  /**
+   * The render-only depth steps of this frame (`FloorDef.entityDepth`, spec §3.7): every live entity of
+   * a listed kind gets its `drawDepth` from its kind's rule (the world's draw then projects it at that
+   * depth, `drawAtDepth`; the shadow and face passes leave it out). The simulation never reads it.
+   */
+  private stepDepths(world: World): void {
+    const list = world.entities;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e.removed) continue;
+      const fn = this.depthKinds.get(e.type);
+      if (!fn) continue;
+      // Fail soft, as the face pass: a rule that throws leaves the entity in the walk plane.
+      try {
+        e.drawDepth = fn(e);
+      } catch (err) {
+        e.drawDepth = 0;
+        if (!this.depthWarned) {
+          this.depthWarned = true;
+          console.warn(`[floor] the entityDepth rule of ${e.type} failed (drawn at depth 0):`, err);
+        }
+      }
+    }
+  }
+
+  private depthWarned = false;
+
+  private drawOvals(r: Renderer, world: World, d: number): void {
     const strength = this.shadowStrength;
     if (strength <= 0) return;
     const t = world.terrain;
@@ -1656,11 +2241,31 @@ export class SectionFloor {
 
   /**
    * Gate 5 (spec §3.6, §8): the screen boxes (logical px, camera camX / camY) of everything drawn
-   * OVER the world — front decor, the props of front rows, front face groups — for a check against
-   * the heroes' heads and guns. Not for the frame path (it allocates).
+   * OVER the world — front decor, the props of front rows, front face groups, and the faces in front
+   * of the walk plane of the live entities of `world` (each entity asked through its own
+   * `drawFloorFaces`, as the front pass does: its state, its flip) — for a check against the heroes'
+   * heads and guns. Not for the frame path (it allocates).
    */
-  frontBoxes(camX: number, camY: number): FrontBox[] {
+  frontBoxes(camX: number, camY: number, world: World | null = this.faceWorld): FrontBox[] {
     const out: FrontBox[] = [];
+    if (world && this.frontKinds) {
+      const probe = { camX, camY, res: 1, subpixel: 'all' } as unknown as Renderer;
+      this.boxOut = out;
+      try {
+        const list = world.entities;
+        for (let i = 0; i < list.length; i++) {
+          const e = list[i];
+          if (e.removed || !this.entityKinds.get(e.type)?.front) continue;
+          try {
+            e.drawFloorFaces(probe);
+          } catch {
+            // The face pass warns about a hook that throws; its faces are left out there too.
+          }
+        }
+      } finally {
+        this.boxOut = null;
+      }
+    }
     const cam = this.cam;
     const k1 = cam.yw - cam.yh;
     for (const e of this.frontList) {
@@ -1744,8 +2349,8 @@ class FrameState implements FloorFrame {
     return this.floor.store.chunk(k, this.want);
   }
 
-  tile(i: number): FloorTexture | null {
-    return this.floor.store.tile(i, this.want);
+  tile(i: number, want = this.want): FloorTexture | null {
+    return this.floor.store.tile(i, Math.min(want, this.want));
   }
 }
 

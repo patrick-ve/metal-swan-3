@@ -21,6 +21,7 @@ import { AmsCruiseBoat, AmsMagereBrug, AmsPartyBoat, CRUISE, cruiseBoatOf, LOW_B
 import { carillon, fromRight, hostage, normalUp, prewarm, STAG_LOOKS, stagArt } from './helpers';
 import { placeSecrets, secretArt } from './secrets';
 import { C2_FAR_ROOF_Y, C2_HOUSEBOAT, C2_RIVER, C2_W, DECK_Y, G, ROOF_Y, terrainC2, WATER_Y } from './terrain';
+import { c2Floor, c2FloorDecor } from './floor/c2/index';
 
 /** The far quay line of the ams-amstel layer (y) and its parallax (Carré stands on it). */
 export const C2_BANK_Y = 144;
@@ -77,6 +78,8 @@ const decor: DecorDef[] = [
   { sprite: 'decor/ams/route-sign', frame: 2, x: C2_RIVER[1] + 70, y: G },
   { sprite: 'decor/ams/market-stall', frame: 1, x: C2_W - 30, y: G },
   { sprite: 'decor/ams/bollard', x: C2_RIVER[1] + 6, y: G, front: true },
+  // The perspective floor's own decor (docs/design/floor.md §12; none while its floor is off: floor/c2/index.ts).
+  ...c2FloorDecor(),
 ];
 
 /** The life of c2: ducks on the river, pigeons on the Waterlooplein jetty. */
@@ -246,6 +249,8 @@ export const sectionC2: SectionDef = {
   terrain: terrainC2(),
   terrainStyle: { ground: 'klinker', edge: 'kerb', platform: 'whitewood', solid: 'brick' },
   decor,
+  // The perspective floor (docs/design/floor.md §12; its builder's folder floor/c2/; off until its switch is on).
+  floor: c2Floor(decor),
   // Tier 4: the decor this section draws and what its script spawns (the boats, the bridges).
   // The stag party on its boat (docs/api/stag.md §5; no beer bike on the water) and the secret.
   art: [...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-cruise-boat', 'decor/ams/magere-brug', 'decor/ams/ams-boat-platform', ...stagArt(STAG_LOOKS, { groom: true }), ...secretArt('c2')],

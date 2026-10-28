@@ -189,10 +189,12 @@ export class SectionView {
     this.density = density >= 4 ? 4 : density >= HI_SCENERY_DENSITY ? 2 : 1;
     this.layers = (section.background?.layers ?? []).map((def) => ({ def, buf: null, hi: { 2: undefined, 4: undefined } }));
     this.jobKey = `scenery/${++viewSerial}/`;
-    const decor = section.decor ?? [];
+    this.floor = makeFloor(section, terrain, seed, this.jobKey);
+    // Without a floor (none, `--floor-off`, a failed build) the floor-only decor stays out.
+    const all = section.decor ?? [];
+    const decor = this.floor ? all : all.filter((d) => !d.floorOnly);
     this.back = decor.filter((d) => !d.front);
     this.front = decor.filter((d) => d.front);
-    this.floor = makeFloor(section, terrain, seed, this.jobKey);
     // With a floor the ground cells are empty (the floor draws the ground); platforms and solids stay.
     this.sample = this.floor ? (x, y) => groundless(terrain.cellAt(x, y)) : (x, y) => terrain.cellAt(x, y);
     this.pits = this.floor ? [] : pitSpans(terrain);

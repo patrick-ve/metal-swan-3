@@ -36,6 +36,7 @@ import type { World } from '../../../../engine/world';
 import { hash2 } from '../../../art/paint';
 import { awardScore } from '../../../events';
 import { debris, type DebrisKind } from '../../../fx';
+import { drawEntityFaces } from '../../../mission/floor/hooks';
 import type { SectionContext } from '../../../mission/index';
 import { defineEntity, paramNum, paramStr, type SpawnParams, type SpawnSpec } from '../../../registry';
 import { contentsSpecs } from '../../items/drops';
@@ -197,6 +198,18 @@ export class AmsSecret extends Entity {
   override update(): void {
     if (this.wobble > 0) this.wobble--;
     if (this.revealT >= 0 && this.revealT < SECRET.revealTicks) this.revealT++;
+  }
+
+  /**
+   * RENDER ONLY (docs/design/floor.md §12.1 item 4): on a perspective floor that lists `ams-secret` (b,
+   * d), the museum crate and the chest show their box (ams/floor/entities.ts `secretFaces`: state 1 the
+   * crate, 2 the chest closed, 3 open); the other looks draw none. On the sprite's grid, with its wobble.
+   */
+  override drawFloorFaces(r: Renderer): void {
+    const s = this.look === 'museum-crate' ? 1 : this.look === 'chest' ? (this.revealT >= SECRET.revealTicks ? 3 : 2) : 0;
+    if (s === 0) return;
+    const dx = Math.round(this.x) - this.x + (this.wobble > 0 ? ((this.wobble >> 1) & 1 ? 1 : -1) : 0);
+    drawEntityFaces(r, this, s, false, dx, Math.round(this.y) - this.y);
   }
 
   override draw(r: Renderer): void {

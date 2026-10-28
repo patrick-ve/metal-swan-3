@@ -286,3 +286,72 @@ export function klinkers(u: number, v: number, X: number, Y: number, lit: number
   t += (hash2(X, Y, 53) - 0.5) * 0.5;
   return dt(ramp, t, X, Y);
 }
+
+// ------------------------------------------------------------------------------- wave B materials (spec §4.1, §12.2)
+
+/**
+ * Gravel (the Museumplein's paths): pale sandy grit in world-anchored cells of about one px, a few
+ * darker and lighter pebbles, a faint rut along the path. Calm: the far rows box-filter it to sand.
+ */
+export function gravel(u: number, v: number, X: number, Y: number, lit: number, d: number): Color {
+  const cell = d >= 2 ? 0.5 : 1;
+  const h = hash2(Math.floor(u / cell), Math.floor(v / cell), 101);
+  let t = 4.3 + lit + (hash2(Math.floor(u / 7), Math.floor(v / 4), 102) - 0.5) * 0.35;
+  if (h > 0.93) t += 1;
+  else if (h < 0.08) t -= 1.1;
+  else t += (h - 0.5) * 0.5;
+  return dt(SAND, t, X, Y);
+}
+
+/**
+ * Grass (the Museumplein's lawns): blades in world-anchored texels, mown in wide stripes along the
+ * street (light and dark every 24 px of u), a little clover now and then.
+ */
+export function grass(u: number, v: number, X: number, Y: number, lit: number, d: number): Color {
+  const stripe = Math.floor(u / 24) & 1 ? 0.35 : -0.1;
+  const blade = hash2(X, Y, 103);
+  let t = 3.7 + lit + stripe + (blade - 0.5) * 0.9 + (hash2(Math.floor(u / 9), Math.floor(v / 5), 104) - 0.5) * 0.3;
+  if (blade > 0.985 && d >= 2) return dt(PAL_HD.snow, 4.6 + lit, X, Y);
+  if (hash2(Math.floor(u / 3), Math.floor(v / 2), 105) < 0.03) t -= 0.8;
+  return dt(PAL_HD.green, t, X, Y);
+}
+
+/**
+ * The Stopera's forecourt: big pale stone tiles T world px square in a grid, a fine joint (≥ one
+ * texel), each slab its own shade, a polished sheen toward the far edge of the slab.
+ */
+export function stoneTiles(u: number, v: number, X: number, Y: number, lit: number, d: number, T = 18): Color {
+  const iu = Math.floor(u / T);
+  const iv = Math.floor(v / (T * 0.75));
+  const lu = u - iu * T;
+  const lv = v - iv * T * 0.75;
+  const jw = Math.max(0.5, 1 / d);
+  if (lu < jw || lv < jw) return dt(STONE, 3.6 + lit * 0.6, X, Y);
+  const h = hash2(iu, iv, 106);
+  let t = 5.4 + lit + (h - 0.5) * 0.55;
+  if (lv < jw + 0.8) t += 0.35;
+  t += (hash2(X >> 1, Y >> 1, 107) - 0.5) * 0.3;
+  // A warmer slab now and then (the stone is not all from one bed).
+  return h > 0.86 ? dt(PAL_HD.plaster, t - 0.2, X, Y) : dt(STONE, t, X, Y);
+}
+
+/**
+ * Wooden deck planks running ACROSS the street (along v, as on a bridge: the joints run along the
+ * depth, one every 3.4 px of u), weathered grey-brown, the nail rows and a plank end now and then.
+ */
+export function planks(u: number, v: number, X: number, Y: number, lit: number, d: number): Color {
+  const P = 3.4;
+  const k = Math.floor(u / P);
+  const lu = u - k * P;
+  const jw = Math.max(0.45, 1 / d);
+  if (lu < jw) return dt(PAL_HD.wood, 1.2 + lit * 0.5, X, Y);
+  // Planks are 40–70 px long: a butt joint where one ends.
+  const len = 40 + hash2(k, 7, 108) * 30;
+  const lv = mod(v + hash2(k, 9, 109) * len, len);
+  if (lv < jw * 0.9) return dt(PAL_HD.wood, 1.6 + lit * 0.5, X, Y);
+  const h = hash2(k, Math.floor((v + hash2(k, 9, 109) * len) / len), 110);
+  // Weathered boards: one wood, each plank its own shade, the grain along it, the nail rows at its ends.
+  let t = 3.9 + lit + (h - 0.5) * 0.9 + (hash2(X >> 1, Y >> 2, 111) - 0.5) * 0.3;
+  if (lv < 1.4 && Math.abs(lu - P / 2) < 0.6) t -= 1.2;
+  return dt(PAL_HD.wood, t, X, Y);
+}

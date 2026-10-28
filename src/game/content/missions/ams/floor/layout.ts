@@ -11,8 +11,26 @@
  * Units: u = world x; depths are the kits' DEPTH (screen px behind the walk line on flat ground,
  * docs/api/floor.md §2): 0 the walk line, > 0 behind it, < 0 in front.
  */
+import { depthAtV, vAtDepth } from '../../../../../engine/floor/cam';
 import type { DepthLine, FloorFeature, FloorSurface, PropRowDef } from '../../../../mission/floor/types';
 import type { Light } from '../art';
+
+/** The `ams` camera of every section (spec §1.1): horizon 60, focal length 210, the floor 30 px behind the feet. */
+export const AMS_CAMERA = { yh: 60, f: 210, back: 146 } as const;
+/** The floor's back edge as a depth (the walk line at G = 176): the house sides reach back to it (spec §11 R1). */
+export const AMS_BACK = 176 - AMS_CAMERA.back;
+/** The depth unit's camera of every `ams` floor (the walk line at G = 176). */
+const AMS_CAM = { yh: AMS_CAMERA.yh, yw: 176, f: AMS_CAMERA.f };
+
+/** World v of an `ams` depth (`vAtDepth` on the `ams` camera) — for the layout compilers (`rowGaps`, `pool`). */
+export function vAtAms(depth: number): number {
+  return vAtDepth(AMS_CAM, depth);
+}
+
+/** The `ams` depth of a world v (`depthAtV` on the `ams` camera). */
+export function depthAtAms(v: number): number {
+  return depthAtV(AMS_CAM, v);
+}
 
 /** The open quay (spec §4.4): far kerb (lane's far edge) and near kerb (where the near pavement starts). */
 export const QUAY_FAR = 17;
@@ -44,8 +62,48 @@ export const CROSS_TAN = Math.tan((30 * Math.PI) / 180);
 export const ROW_GAP = 24;
 export const ROW_STOP = 12;
 
-/** What the street between the kerbs is made of. */
-export type StreetKind = 'lane' | 'cobbles' | 'fan' | 'deck';
+/**
+ * What the street between the kerbs is made of: the bike lane, cobbles, the fan of a square, a
+ * bridge's klinker deck — and (wave B, spec §4.1, §12.2) a gravel path, a lawn, the Stopera's pale
+ * stone tiles, wooden planks (a bridge deck across the street), grey pavement tiles (a pedestrian
+ * square), klinkers.
+ */
+export type StreetKind = 'lane' | 'cobbles' | 'fan' | 'deck' | 'gravel' | 'grass' | 'stone' | 'planks' | 'tiles' | 'klinkers';
+
+/** The materials a `FloorArea` can paint (a street kind but the lane, or a granite band). */
+export type AreaKind = Exclude<StreetKind, 'lane' | 'deck'> | 'granite';
+
+/**
+ * A patch of material anywhere on the band (spec §12.2: the Museumplein's lawns and gravel paths, a
+ * pool's stone rim, the Stopera's forecourt, a square), painted OVER the street layout (the pavements,
+ * the kerbs, the street; later areas win; a bridge, a canal and the steel strips of a raised bridge
+ * win over it): u0 … u1 and the depths `far` (default the back edge) … `near` (default the front).
+ * `edge` (world px, default 0): a granite border inside its outline (a lawn's edging, a rim).
+ */
+export interface FloorArea {
+  readonly u0: number;
+  readonly u1: number;
+  readonly far?: DepthLine;
+  readonly near?: DepthLine;
+  readonly kind: AreaKind;
+  readonly edge?: number;
+}
+
+/**
+ * A patch of SHADE over the floor (wave B: the vault of b's museum passage): the light `tone` ramp
+ * steps lower over u0 … u1 and from the depth `far` (default the back edge) to `near`, with a soft
+ * edge `soft` world px wide across each u end (centred on it) and `softNear` px wide across the near
+ * edge. Painted by `ams/floor` in texture space (a shadow on whatever material lies there).
+ */
+export interface FloorShade {
+  readonly u0: number;
+  readonly u1: number;
+  readonly far?: number;
+  readonly near: number;
+  readonly tone: number;
+  readonly soft: number;
+  readonly softNear: number;
+}
 
 /** One piece of street: from `u0` to the next piece's u0. */
 export interface StreetPiece {
@@ -169,6 +227,10 @@ export interface StreetLayout {
   readonly landings?: readonly number[];
   /** The hinge pits in front of raised leaves (the leaf itself is a face group: drawbridge.ts). */
   readonly hingePits?: readonly HingePit[];
+  /** Patches of material over the layout (wave B: lawns, gravel, rims, forecourts), later ones win. */
+  readonly areas?: readonly FloorArea[];
+  /** Patches of shade (a vault over the street: b's passage); at most one over a u. */
+  readonly shades?: readonly FloorShade[];
 }
 
 /** A bridge deck's granite edges (world px of v inside its far and near edge): the railings and their stone end posts (5 px deep) stand on them. */
@@ -189,15 +251,17 @@ export function laneMidV(vF: number, vN: number, f: number, k1: number): number 
 
 /**
  * Where nothing may stand at u but traffic (spec §11 R2, the street logic): the lane or the cobbled
- * roadway between the kerb lines (in front of a bulb too), a bridge deck between its granite edges, a
- * raised leaf's hinge pit (the leaf over the far half is the road itself) — as the world-v range
- * [far, near], or null (a square, a canal). `vAt` converts a depth to world v.
+ * roadway between the kerb lines (in front of a bulb too; a brick street, a gravel path and a plank
+ * deck alike), a bridge deck between its granite edges, a raised leaf's hinge pit (the leaf over the
+ * far half is the road itself) — as the world-v range [far, near], or null (a square, a lawn, the
+ * Stopera's forecourt, a canal). `vAt` converts a depth to world v.
  */
 export function roadwayAt(l: StreetLayout, u: number, vAt: (depth: number) => number): readonly [number, number] | null {
   for (const b of l.bridges) if (u >= b.x0 && u < b.x0 + b.len) return [vAt(b.far) + DECK_EDGE_FAR, vAt(b.near) - DECK_EDGE_NEAR];
   for (const [a, b] of l.canals) if (u >= a && u < b) return null;
   const kind = pieceAt(l.street, u);
-  if (kind !== 'lane' && kind !== 'cobbles') return null;
+  // The roadways: the lane, the cobbled street, a brick street, a gravel path, a plank deck across the street.
+  if (kind !== 'lane' && kind !== 'cobbles' && kind !== 'klinkers' && kind !== 'gravel' && kind !== 'planks') return null;
   const vN = vAt(depthAt(l.near, u));
   for (const p of l.hingePits ?? []) if (u >= p.u0 && u < p.u1) return [vAt(p.far), vN];
   return [vAt(depthAt(l.far, u)), vN];
@@ -331,5 +395,81 @@ export function rowGaps(l: StreetLayout, vAt: (depth: number) => number, depth: 
   for (const [a, b] of bends) out.push([a - ROW_STOP, b + ROW_STOP]);
   // A back row has no kerb to stand on along a bulb (a front row keeps its kerb: it gives way in front).
   if (depth > 0) for (const b of l.bulbs ?? []) out.push([b.u0 - ROW_STOP, b.u3 + ROW_STOP]);
+  return out;
+}
+
+// ------------------------------------------------------------------------------- wave B helpers (spec §12.2)
+
+/** Options of a pool (the Museumplein's long pool, a water strip behind the walk line). */
+export interface PoolOpts {
+  u0: number;
+  u1: number;
+  /** Its outline's far and near depths (the rim's outer edge; both > 0: behind the walk line). */
+  far: number;
+  near: number;
+  /** The rim's width (world px) and its height over the floor; the water's level (h over the walk plane). */
+  rim?: number;
+  rimH?: number;
+  level?: number;
+  /** The water (default the side canal's; `riverSurface(light)` for the section's sky). */
+  surface?: FloorSurface;
+  /** `vAt` / `depthAt` of the floor's camera (default the `ams` camera: the rim is world px wide in depth too). */
+  vAt?: (depth: number) => number;
+  depthAt?: (v: number) => number;
+}
+
+/**
+ * A pool in the height field (spec §12.2 b: "the long pool a water strip behind the walk line with
+ * stone rims (top and inner faces)"): a raised stone rim (`raise`, its outer faces `ams/rim-face`)
+ * round a water cut a little under the floor (its inner faces `ams/rim-inner`), and the rim's top as
+ * a granite area for the painter. Put the features after the street's and the area in
+ * `StreetLayout.areas`.
+ */
+export function pool(o: PoolOpts): { features: FloorFeature[]; area: FloorArea } {
+  const rim = o.rim ?? 3;
+  const vAt = o.vAt ?? vAtAms;
+  const depthAt = o.depthAt ?? depthAtAms;
+  const vF = vAt(o.far);
+  const vN = vAt(o.near);
+  const inFar = depthAt(vF + rim);
+  const inNear = depthAt(vN - rim);
+  return {
+    features: [
+      { kind: 'raise', u0: o.u0, u1: o.u1, from: o.far, to: o.near, dh: o.rimH ?? 1.2, face: 'ams/rim-face' },
+      { kind: 'cut', u0: o.u0 + rim, u1: o.u1 - rim, from: inFar, to: inNear, level: o.level ?? -1.5, surface: o.surface ?? WATER, face: 'ams/rim-inner' },
+    ],
+    area: { u0: o.u0, u1: o.u1, far: o.far, near: o.near, kind: 'granite' },
+  };
+}
+
+/** Options of a flight of steps (a jetty's steps down to the water, a stair in a quay). */
+export interface StepsOpts {
+  /** The flight's u range and which way it goes down (+1: down toward +u). */
+  u0: number;
+  u1: number;
+  dir: 1 | -1;
+  /** Its depth range (far, near). */
+  from?: DepthLine;
+  to?: DepthLine;
+  /** The level at its top and at its foot (h over the walk plane), and the number of steps. */
+  top: number;
+  bottom: number;
+  n: number;
+}
+
+/**
+ * A flight of steps in the height field (spec §12.2 c "the jetty steps down to the pontoon"): n
+ * treads as `cut` features at falling levels (granite treads `ams/step-tread`, risers
+ * `ams/step-face`). For steps OFF the walk line (a stair down a quay behind or in front of it): the
+ * walk line's own steps are the terrain's profile already (the cylinder rule runs them across the band).
+ */
+export function stepFeatures(o: StepsOpts): FloorFeature[] {
+  const out: FloorFeature[] = [];
+  const w = (o.u1 - o.u0) / o.n;
+  for (let i = 0; i < o.n; i++) {
+    const level = o.top + ((o.bottom - o.top) * (i + 1)) / o.n;
+    const a = o.dir > 0 ? o.u0 + i * w : o.u1 - (i + 1) * w;
+    out.push({ kind: 'cut', u0: a, u1: a + w, from: o.from, to: o.to, level, surface: 'ams/step-tread', face: 'ams/step-face' });
+  }
   return out;
 }

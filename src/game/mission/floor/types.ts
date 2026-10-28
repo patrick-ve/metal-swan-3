@@ -8,6 +8,7 @@
  * s = 1 − D / (yw − yh); D 0 is the walk plane, D < 0 is in front of it (front rows).
  */
 import type { Color } from '../../../engine/color';
+import type { Entity } from '../../../engine/entity';
 import type { DecorDef } from '../types';
 
 /** A depth line: a constant depth, or [u, depth] points (straight in the world between, constant beyond). */
@@ -205,6 +206,36 @@ export interface FaceGroupDef {
 }
 
 /**
+ * The faces of an ENTITY KIND in perspective (spec §12.1 item 4): a moving or breakable entity (a
+ * boat, a stall, a crate, a bascule) cannot be a static face group, so it draws its faces ITSELF,
+ * render only, each frame before its sprite (`drawEntityFaces`, hooks.ts) — on a floor whose
+ * `entityFaces` lists its kind (its spawn id, `Entity.type`); everywhere else it draws as before.
+ *
+ * The corners are a face group's whose anchor is the entity in the walk plane: [x, y, depth] = x
+ * world px right of the entity's x, y px ABOVE its y (both the sprite's px: the walk plane's scale
+ * is 1), at a depth (DEPTH units: 0 = the sprite's plane, > 0 behind it); [x, y, depth, 1] = y over
+ * the walk plane instead (a waterline, a pier's foot). A face shows only while it looks at the eye,
+ * so a side narrows to nothing as the entity crosses the screen's centre column (the line-scroll
+ * rule). The faces of a mirrored entity (the `flip` it passes: its sprite drawn flipX) are mirrored
+ * in x. Per STATE its own faces (the entity says which: 0 whole, 1 broken, a bascule's frame …); a
+ * state without faces (an empty list, or past the end) draws none.
+ *
+ * Order: every face lies behind the walk plane (depths ≥ 0), so it is drawn UNDER every entity —
+ * the floor's pass before `world.draw` calls `Entity.drawFloorFaces` of each listed entity — and a
+ * face with a corner in front of it (depth < 0: a bridge spanning to the front) OVER them, with the
+ * front decor.
+ */
+export interface EntityFacesDef {
+  states: readonly (readonly FaceDef[])[];
+  /** How many entities of this kind can show at once (their canvases are made at the section start). Default 2. */
+  max?: number;
+  /** The entity's y the canvas plan measures at (default the walk line: feet on the ground). */
+  y?: number;
+  /** The tile a mirrored entity's face takes instead of its own (a side lit from the left becomes a shaded one). */
+  mirror?: Readonly<Record<string, string>>;
+}
+
+/**
  * The floor of a section (spec §3.1). Start values per section: spec §1.1 (`ams` yh 60, f 210,
  * back 146; oz-a yh 56, f 200, back 162 …).
  */
@@ -231,6 +262,23 @@ export interface FloorDef {
   openings?: readonly FloorOpeningDef[];
   /** Side faces and other faces in perspective (spec §11 R1): house sides, boat ends, car ends, a bridge leaf. */
   faces?: readonly FaceGroupDef[];
+  /**
+   * The entity kinds (spawn ids) that draw their faces on this floor, and their faces (spec §12.1
+   * item 4; `EntityFacesDef`). A kind not listed draws flat, exactly as without a floor.
+   */
+  entityFaces?: Readonly<Record<string, EntityFacesDef>>;
+  /**
+   * RENDER-ONLY depth steps for COSMETIC ACTORS only (spawn id → the depth it is drawn at this frame;
+   * spec §3.7, §12.1 item 3): the floor sets the render-only `Entity.drawDepth` of every live entity
+   * of a listed kind from it each frame, before its shadow pass (an entity at a depth casts no contact
+   * shadow; its faces follow it there), so the entity's own file needs no floor code. The simulation
+   * never reads `drawDepth`. Rule, with NO exceptions: list only kinds that can never be hit and never
+   * hurt (no hurtbox, no contact damage, nothing a shot stops on: npcs, wavers, boats, ducks). An entity
+   * that can be hit or can hurt is drawn at depth 0, its art with its hitbox, in every state — a boss's
+   * intro included (a test runs the bot through every floor section). Called once per entity per
+   * drawn frame: no allocation; a rule that throws leaves the entity at 0 (warned once).
+   */
+  entityDepth?: Readonly<Record<string, (e: Entity) => number>>;
   /**
    * The depth of a decor item (spec §1.3): a number (0 = the walk plane, as today), null = hide it,
    * undefined = the default. `DecorDef.depth` on the item wins. Front items default to 0.

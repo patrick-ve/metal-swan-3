@@ -17,7 +17,7 @@
  *   tests/game/floor-street.test.ts): the bulbs lie flush and bend over ≥ 32 px; the lane leads to the
  *   raised drawbridge (stop line, barriers, the landing), whose leaf stands over the lane's far half
  *   only, behind the heroes' feet, with the hinge pit's plate in front of it;
- * - the small canal boat draws its open hull and its ends (render only).
+ * - the small canal boat draws its open hull and its ends itself (its kind's faces, render only).
  */
 import { describe, expect, it } from 'vitest';
 import { depthAtV, makeFloorCam, sAtDepth, vAtDepth } from '../../src/engine/floor/cam';
@@ -46,15 +46,16 @@ import {
   QUAY_FRONT_ROW,
   ROW_GAP,
   ROWBOAT_BEAM,
-  RowboatFaces,
   streetFeatures,
   TEETH_GAP,
   TOOTH_LEN,
 } from '../../src/game/content/missions/ams/floor/index';
 import { getFloorPainter, type FloorPaintCtx } from '../../src/game/mission/floor/registry';
-import { checkFloor, FRONT_MAX_W } from '../../src/game/mission/floor/index';
+import { bindWorldFloor, checkFloor, FRONT_MAX_W } from '../../src/game/mission/floor/index';
+import { Terrain } from '../../src/engine/terrain';
+import { World } from '../../src/engine/world';
 import type { SectionDef } from '../../src/game/mission/types';
-import { getMission } from '../../src/game/registry';
+import { gameEntityFactory, getMission } from '../../src/game/registry';
 import { createHeadlessGame } from '../../src/sim/index';
 
 await loadContent();
@@ -323,8 +324,9 @@ describe('section a: rows and depths', () => {
       if (d.sprite === 'decor/ams/lamp' && [470, 920, 1360].includes(d.x)) expect(dep, `lamp ${d.x}`).toBe(0);
       if (d.sprite === 'decor/ams/elm' && d.x === 620) expect(dep).toBe(0);
       if (d.sprite === 'decor/ams/bike-rack') expect([QUAY_FRONT_ROW, HOUSE_FRONT_ROW, BULB_FRONT_DECOR].includes(dep as number), `rack ${d.x}`).toBe(true);
+      // the flat view's bollards stay in the list for the no-floor paths; the floor's pole rows replace them
+      if (d.sprite === 'decor/ams/bollard') expect(dep, `bollard ${d.x}`).toBeNull();
     });
-    expect(decor.some((d) => d.sprite === 'decor/ams/bollard')).toBe(false);
     expect(def.hideDecor).toContain('decor/ams/water-');
   });
 
@@ -352,17 +354,22 @@ describe('section a: rows and depths', () => {
   }, 60_000);
 });
 
-describe('section a: the small canal boat in perspective (spec §11 R1, render only)', () => {
+describe('section a: the small canal boat in perspective (spec §11 R1, §12.1 item 4: its own faces, render only)', () => {
   const floor = checkFloor(sectionA);
   if (!floor) throw new Error('no floor');
   const BOAT_X = 1150;
   const BOAT_Y = 172;
+  // The real entity in a world bound to the floor: the floor lists its kind, so it draws its faces itself.
+  const world = new World({ terrain: new Terrain(sectionA.terrain), seed: 1, factory: gameEntityFactory });
+  bindWorldFloor(world, floor);
+  const boat = world.spawn('ams-boat-platform', BOAT_X, BOAT_Y, { range: 0, bob: 0 });
+  world.flush();
   /** Opaque px of a draw of the boat's faces with the camera at camX, in [x0, x1) × [y0, y1) (screen px). */
   const paint = (camX: number, x0: number, x1: number, y0: number, y1: number): number => {
     const r = new SoftRenderer();
     r.begin(0);
     r.setCamera(camX, 0);
-    new RowboatFaces().draw(r, floor, BOAT_X, BOAT_Y, false);
+    boat.drawFloorFaces(r);
     r.end();
     let n = 0;
     const t = r.target;
