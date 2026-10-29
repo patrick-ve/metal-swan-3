@@ -7,7 +7,7 @@
  * |---|---|---|---|
  * | `pistol` | — | ∞ | 10 dmg, tap 8 (crouch 6) / hold 10, 8 px/tick, 16 on screen |
  * | `machine-gun` | M | 200 / +150 | 10 per round, 1 per 4 ticks, 4-round tap burst, ±1.5 px jitter, aim sweep, 24 on screen |
- * | `shotgun` | S | 30 / +10 | 150 to each target in a 72 px cone (16 → 40 px tall, 6 ticks), every 28, kick 2 px |
+ * | `shotgun` | S | 30 / +10 | 150 to each target in a 72 px cone (16 → 40 px tall, 6 ticks), every 28, kick 2 px; a big fire blast (shotgun-fire.ts) |
  * | `rocket-launcher` | R | 30 / +20 | 30 hit + 50 in r 16, 2 → 7 px/tick, steers ≤ 1 px/tick, every 20, max 2 |
  * | `flamethrower` | F | 30 / +15 | 10 per 2 ticks per target (≤ 12 per press), 96 px stream for 24 ticks, every 24, max 1 |
  * | `laser` | L | 200 / +150 | 8 per 2 ticks per target, beam to 384 px, 1 ammo per 4 ticks, tap = 12-tick pulse, sweep |
@@ -33,6 +33,7 @@ import { Projectile } from '../../projectile';
 import { defineEntity, defineWeapon, paramFacing, paramNum, paramStr, type SpawnParams } from '../../registry';
 import { TUNING } from '../../tuning';
 import { kickBack, meleeBoxFor, meleeStrike, shootBullet, throwGrenade, weaponSfx, type FireContext, type MeleeBox } from '../../weapons';
+import { shotgunFire } from './shotgun-fire';
 import { FLAME, HOMING, LASER, MINE, ROCKET, SHOTGUN, TUBA, VOICE, KNIFE_SFX } from './stats';
 import {
   FlameStream,
@@ -115,7 +116,8 @@ defineWeapon({
   },
 });
 
-// The crowd-clearer: an instant cone that hits every target in it once; the player is kicked back.
+// The crowd-clearer: an instant cone that hits every target in it once, in a big fire blast
+// (shotgun-fire.ts: the bloom on the barrel is its muzzle flash); the player is kicked back.
 defineWeapon({
   id: 'shotgun',
   name: 'SHOTGUN',
@@ -131,7 +133,6 @@ defineWeapon({
   voiceAgain: VOICE.shotgun[1],
   fire(ctx) {
     fireShotgun(ctx);
-    muzzleFlash(ctx.world, ctx.x, ctx.y, ctx.angle, { kind: 'heavy', weapon: 'shotgun', follow: ctx.shooter });
     if (Math.abs(ctx.dirX) > 0.5) kickBack(ctx.shooter, -Math.sign(ctx.dirX) * SHOTGUN.kick);
   },
 });
@@ -456,7 +457,9 @@ defineEntity(
   'shotgun-blast',
   (w, x, y, p) => {
     const a = spawnAim(p);
-    return ShotgunBlast.spawn(w, { team: a.team, owner: a.owner, x, y: y - SPAWN_LIFT, angle: a.angle });
+    const b = ShotgunBlast.spawn(w, { team: a.team, owner: a.owner, x, y: y - SPAWN_LIFT, angle: a.angle });
+    shotgunFire(b, null);
+    return b;
   },
   { category: 'projectile', description: 'One shotgun cone (params facing, angle, team, owner).' },
 );

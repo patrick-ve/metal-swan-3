@@ -305,19 +305,6 @@ export const FX_STEAM: ParticlePreset = {
   fadeFrom: 0.3,
 };
 
-/** Cosmetic shotgun pellets: hot dots that fly out and fade (the cone does the damage). */
-export const FX_PELLET: ParticlePreset = {
-  kind: 'rect',
-  w: 2,
-  h: 2,
-  life: [9, 13],
-  drag: 0.97,
-  colors: [PAL.fire[6], PAL.gold[3], PAL.fire[4], PAL.fire[3]],
-  fadeFrom: 0.55,
-  additive: true,
-  ground: 'die',
-};
-
 /** Confetti bits (helium pops, kazoo drones, parades): random colours, slow flutter. */
 export const FX_CONFETTI: ParticlePreset = {
   kind: 'sprite',
@@ -629,7 +616,7 @@ interface MuzzleSet {
 
 const muzzleSets = new Map<string, MuzzleSet>();
 
-/** Flash ids for a family base such as 'fx/muzzle-shotgun' (looked up once, then cached). */
+/** Flash ids for a family base such as 'fx/muzzle-rocket-launcher' (looked up once, then cached). */
 function muzzleSet(base: string): MuzzleSet {
   let s = muzzleSets.get(base);
   if (!s) {

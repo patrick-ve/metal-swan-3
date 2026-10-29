@@ -526,7 +526,10 @@ seeded puffs (each lit from the top-left), cooling to smoke that frays with orde
 `chunky: true` renders at half resolution and doubles the pixels (use for l / xl).
 The 2× / 4× fx are separate drawers in `content/fx/hd/` ("UHD art").
 `cloudFrames(radius, frames, ramp, outline)` — smoke, soot and dust puffs.
-All fx are centre-anchored. Debris: `fx/debris-<kind>` has 4 frames = the piece turned in
+All fx are centre-anchored, except the muzzle flashes and the shotgun's fire blast
+(`fx/shotgun-fire[-up]`, `content/weapons/shotgun-fire.art.ts`), which are anchored at the muzzle.
+The shotgun's fire is one drawer for 1×, 2× and 4× (billows in a fire material whose tone is the
+heat), cut at walls with `DrawOpts.src`; its embers, cloud, smoke and floor glow are fx ids too. Debris: `fx/debris-<kind>` has 4 frames = the piece turned in
 quarter steps (random frame = random orientation; playing them = tumbling).
 
 ## 6. Machines kit (`machines.ts`)

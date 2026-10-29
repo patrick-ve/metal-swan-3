@@ -17,7 +17,7 @@ import { RecordingRenderer } from '../engine/helpers';
 
 /** The HD ids of this group (fx, shots, flashes, pickups, the supply crate). */
 function hdIds(): string[] {
-  const mine = /^(fx\/(explosion-|impact|hit|dust|splash|debris-|poof|confetti|music-note|snore|chute|muzzle)|weapon\/|enemy\/(bullet|grenade)$|item\/(pickup|crate))/;
+  const mine = /^(fx\/(explosion-|impact|hit|dust|splash|debris-|poof|confetti|music-note|snore|chute|muzzle|shotgun-)|weapon\/|enemy\/(bullet|grenade)$|item\/(pickup|crate))/;
   return listHiSprites(2).filter((id) => mine.test(id) && id !== 'fx/muzzle-swan-beak-gun');
 }
 
@@ -42,7 +42,7 @@ describe('UHD fx, shots and items', () => {
 
   it('covers every fx / shot / flash / pickup / crate id with 2× art, and each has 4× art too', () => {
     expect(ids.length).toBeGreaterThan(110);
-    for (const must of ['fx/explosion-xl', 'fx/muzzle', 'fx/muzzle-shotgun-diag', 'weapon/bullet', 'weapon/rocket', 'item/pickup-weapon/laser', 'item/crate-break', 'fx/chute', 'fx/snore']) {
+    for (const must of ['fx/explosion-xl', 'fx/muzzle', 'fx/muzzle-rocket-launcher-diag', 'fx/shotgun-fire', 'fx/shotgun-ember', 'weapon/bullet', 'weapon/rocket', 'item/pickup-weapon/laser', 'item/crate-break', 'fx/chute', 'fx/snore']) {
       expect(ids, must).toContain(must);
     }
     for (const id of ids) expect(hasHiSprite(id, 4), id).toBe(true);

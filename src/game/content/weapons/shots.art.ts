@@ -8,10 +8,11 @@
  * - `weapon/mine-disc` (4f spin + blinking light), `weapon/grenade` (4f spin, GDD §6.1 look).
  * - `weapon/flame` (6 sizes × 2 flickers, hot → cool), `weapon/flame-glow` (nozzle, 2f).
  * - `weapon/laser-flare` (muzzle, 2f), `weapon/laser-hit` (impact, 3f).
- * - Muzzle flashes `fx/muzzle-<weapon>[-up|-diag]` (anchored at the flash base): shotgun,
+ * - Muzzle flashes `fx/muzzle-<weapon>[-up|-diag]` (anchored at the flash base):
  *   rocket-launcher, flamethrower, laser, homing, tuba, bounce-mine; the pistol and the machine
  *   gun alias the generic `fx/muzzle` / `fx/muzzle-heavy` families. `fx/muzzle-swan-beak-gun`
- *   belongs to the Swan art (vehicles/swan/art.ts).
+ *   belongs to the Swan art (vehicles/swan/art.ts). The shotgun's bloom and fire blast:
+ *   shotgun-fire.art.ts.
  */
 import { ascii } from '../../../engine/ascii';
 import type { Color } from '../../../engine/color';
@@ -322,15 +323,6 @@ const FIRE_KEY: Readonly<Record<string, Color>> = {
 
 /** Flash families: per frame rows (pointing right). */
 const FLASHES: Readonly<Record<string, { frames: readonly (readonly string[])[]; outline: Color | null }>> = {
-  // A wide, flat burst with side spikes and a smoke tail.
-  shotgun: {
-    outline: PAL.red[1],
-    frames: [
-      ['.y.....y......', '..yY..Yy..o...', 'YWWWWWWYYyOo.o.', 'WWWWWWWWYYyyOo.', 'YWWWWWWYYyOo.o.', '..yY..Yy..o...', '.y.....y......'],
-      ['..............', '...y...y......', '.YYWWYYyyoo....', 'YWWWWWYYyyOo...', '.YYWWYYyyoo....', '...y...y......', '..............'],
-      ['..............', '..............', '..sSSs.s......', '.sSSSSsks.....', '..sSSs.s......', '..............', '..............'],
-    ],
-  },
   // Back-blast is the smoke puff; the front is a round orange bloom.
   'rocket-launcher': {
     outline: PAL.red[1],

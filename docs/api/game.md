@@ -286,7 +286,7 @@ Fallbacks when content is missing: `BUILTIN_KNIFE`, `BUILTIN_GRENADE`, a built-i
 
 Pickup weapons (`content/weapons/index.ts` + `shots.ts`, numbers in `content/weapons/stats.ts` = GDD §5):
 `shotgun` (S, 30 / +10, `ShotgunBlast`: 150 to each target in a 72 px cone 16 → 40 px tall, 6 ticks, every 28,
-kick 2 px, 1 at a time), `rocket-launcher` (R, 30 / +20, `Rocket`: 2 → 7 px/tick, steers sideways ≤ 1 px/tick
+kick 2 px, 1 at a time; its fire, embers and smoke are cosmetic fx: `shotgunFire` in `shotgun-fire.ts`), `rocket-launcher` (R, 30 / +20, `Rocket`: 2 → 7 px/tick, steers sideways ≤ 1 px/tick
 toward the nearest enemy ahead, 30 hit + 50 in r 16, every 20, max 2), `flamethrower` (F, 30 / +15,
 `FlameStream`: 96 px stream for 24 ticks, 10 per 2 ticks per target (≤ 12 per press), pierces, runs 128 px along
 the floor when fired down near it, walls stop it, max 1), `laser` (L, 200 / +150, `LaserBeam`: to the first solid

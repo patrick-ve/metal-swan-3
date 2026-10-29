@@ -105,8 +105,9 @@ describe('fx sprites', () => {
     for (const id of ids) {
       getFrames(id).forEach((f, i) => {
         const label = `${id}[${i}]`;
-        // The drop canopy (fx/chute*) is anchored at its rim centre (tests/art/moves-p1.test.ts).
-        const rim = id.startsWith('fx/chute');
+        // The drop canopy (fx/chute*) is anchored at its rim centre (tests/art/moves-p1.test.ts); the
+        // shotgun's fire blast at the muzzle, like the flashes (weapons/shotgun-fire.art.ts).
+        const rim = id.startsWith('fx/chute') || id.startsWith('fx/shotgun-fire');
         if (!rim) expect(Math.abs(f.ox - f.buf.w / 2), label).toBeLessThanOrEqual(1);
         // Dust and splashes sit on the ground line (anchored near their bottom).
         if (!rim && id !== 'fx/dust' && id !== 'fx/splash') expect(Math.abs(f.oy - f.buf.h / 2), label).toBeLessThanOrEqual(1);
@@ -206,9 +207,9 @@ describe('fx helpers', () => {
     const rig = new Rig();
     const w = rig.world;
     const ids = (): string[] => fxOf(rig).map((f) => f.sprite);
-    expect(muzzleFlash(w, 100, 100, 0, { kind: 'heavy', weapon: 'shotgun' }).sprite).toBe('fx/muzzle-shotgun');
-    expect(muzzleFlash(w, 100, 100, -Math.PI / 2, { kind: 'heavy', weapon: 'shotgun' }).sprite).toBe('fx/muzzle-shotgun-up');
-    expect(muzzleFlash(w, 100, 100, -Math.PI / 4, { kind: 'heavy', weapon: 'shotgun' }).sprite).toBe('fx/muzzle-shotgun-diag');
+    expect(muzzleFlash(w, 100, 100, 0, { kind: 'heavy', weapon: 'rocket-launcher' }).sprite).toBe('fx/muzzle-rocket-launcher');
+    expect(muzzleFlash(w, 100, 100, -Math.PI / 2, { kind: 'heavy', weapon: 'rocket-launcher' }).sprite).toBe('fx/muzzle-rocket-launcher-up');
+    expect(muzzleFlash(w, 100, 100, -Math.PI / 4, { kind: 'heavy', weapon: 'rocket-launcher' }).sprite).toBe('fx/muzzle-rocket-launcher-diag');
     const left = muzzleFlash(w, 100, 100, Math.PI, { kind: 'pistol' });
     expect(left.sprite).toBe('fx/muzzle');
     expect(left.flipX).toBe(true);

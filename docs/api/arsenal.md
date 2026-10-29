@@ -27,7 +27,7 @@ Weapon ids (`player.giveWeapon(id, ammo?)`, `pickup-weapon { weapon }`, crate le
 |---|---|---|---|---|---|
 | `pistol` | — | ∞ | 10 | tap 8 / hold 10 (crouch 6) | 8 px/tick, ≤ 16 on screen; measured 75 dps tapping |
 | `machine-gun` | M | 200 / +150 | 10 | every 4 | 4-round burst per tap, ±1.5 px jitter, 22.5° aim sweep per 2 ticks; 150 dps |
-| `shotgun` | S | 30 / +10 | 150 per target | 28 | instant cone 72 px long, 16 → 40 px tall, 6 ticks, kick 2 px; ≈ 320 dps point blank |
+| `shotgun` | S | 30 / +10 | 150 per target | 28 | instant cone 72 px long, 16 → 40 px tall, 6 ticks, kick 2 px; ≈ 320 dps point blank; a big fire blast (cosmetic, `shotgun-fire.ts`) |
 | `rocket-launcher` | R | 30 / +20 | 30 + 50 r 16 | 20 | 2 → 7 px/tick, steers vertically only ≤ 1 px/tick, max 2; 240 dps |
 | `flamethrower` | F | 30 / +15 | 10 per 2 ticks (≤ 12 hits/press) | 24 | 96 px stream, pierces, 128 px floor run when fired down near the floor; ≈ 290 dps |
 | `laser` | L | 200 / +150 | 8 per 2 ticks | hold | to first solid or 384 px, pierces, tap = 12-tick pulse (3 ammo); 240 dps |

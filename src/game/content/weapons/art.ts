@@ -29,6 +29,7 @@ import { defineDenseAlias, defineSprite, hasSprite, type SpriteOpts } from '../.
 import { grenadeArt } from '../../art/humanoid-gear';
 import { bayer, hash2 } from '../../art/paint';
 import { defineWeaponIcons } from './icons.art';
+import { defineShotgunFireSprites } from './shotgun-fire.art';
 import { defineShotSprites } from './shots.art';
 import {
   casingHd,
@@ -247,6 +248,7 @@ defineSprite('ui/icon-shell', iconShell, { anchor: 'top-left' });
 
 defineWeaponIcons();
 defineShotSprites();
+defineShotgunFireSprites();
 
 /** GDD §5: the pistol fires "one 8×2 px yellow bullet" (a white-hot head, an orange tail). */
 const pistolStrip = (): Frame[] => tracerStrip(7, 2, HOT);

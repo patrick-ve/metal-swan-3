@@ -95,36 +95,6 @@ export function genericFlashHd(id: string, d: number, heavy: boolean, turn: Flas
 
 /** Per-family flash recipes (weapons/shots.art.ts `FLASHES`), local u from the base, v across. */
 const FAMILY: Readonly<Record<string, { frames: readonly (readonly Glow[])[]; ink: Color | null; ramp?: Ramp }>> = {
-  shotgun: {
-    ink: PAL_HD.red[2],
-    frames: [
-      [
-        { k: 'cone', u0: 0.4, u1: 12.6, w0: 1.9, w1: 0.55, h0: 1, h1: 0.24, edge: 0.32 },
-        { k: 'blob', u: 3.8, v: 0, ru: 4.2, rv: 1.45, h: 1.12, fall: 0.3 },
-        { k: 'spike', u0: 3, v0: 0, u1: 1.4, v1: -2.9, r0: 0.55, r1: 0.2, h0: 0.85, h1: 0.55 },
-        { k: 'spike', u0: 3, v0: 0, u1: 1.4, v1: 2.9, r0: 0.55, r1: 0.2, h0: 0.85, h1: 0.55 },
-        { k: 'spike', u0: 6.2, v0: 0, u1: 7.6, v1: -2.9, r0: 0.55, r1: 0.2, h0: 0.8, h1: 0.5 },
-        { k: 'spike', u0: 6.2, v0: 0, u1: 7.6, v1: 2.9, r0: 0.55, r1: 0.2, h0: 0.8, h1: 0.5 },
-        { k: 'blob', u: 10.6, v: -1.9, ru: 0.5, h: 0.42, fall: 0.2 },
-        { k: 'blob', u: 10.6, v: 1.9, ru: 0.5, h: 0.42, fall: 0.2 },
-        { k: 'blob', u: 13.6, v: -1, ru: 0.5, h: 0.36, fall: 0.2 },
-        { k: 'blob', u: 13.6, v: 1, ru: 0.5, h: 0.36, fall: 0.2 },
-      ],
-      [
-        { k: 'cone', u0: 0.4, u1: 11, w0: 1.5, w1: 0.5, h0: 0.95, h1: 0.24, edge: 0.3 },
-        { k: 'blob', u: 3.2, v: 0, ru: 3, rv: 1.15, h: 1.02, fall: 0.3 },
-        { k: 'spike', u0: 3.5, v0: 0, u1: 3.6, v1: -2.2, r0: 0.45, r1: 0.18, h0: 0.72, h1: 0.5 },
-        { k: 'spike', u0: 3.5, v0: 0, u1: 3.6, v1: 2.2, r0: 0.45, r1: 0.18, h0: 0.72, h1: 0.5 },
-        { k: 'spike', u0: 7.4, v0: 0, u1: 7.6, v1: -2.2, r0: 0.45, r1: 0.18, h0: 0.68, h1: 0.45 },
-        { k: 'spike', u0: 7.4, v0: 0, u1: 7.6, v1: 2.2, r0: 0.45, r1: 0.18, h0: 0.68, h1: 0.45 },
-      ],
-      [
-        { k: 'smoke', u: 3.4, v: 0, r: 1.7, seed: 5 },
-        { k: 'smoke', u: 5.6, v: 0.1, r: 1.35, seed: 6 },
-        { k: 'smoke', u: 7.6, v: 0, r: 0.9, seed: 7, fade: 0.3 },
-      ],
-    ],
-  },
   'rocket-launcher': {
     ink: PAL_HD.red[2],
     frames: [

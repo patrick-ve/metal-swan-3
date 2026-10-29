@@ -3,7 +3,7 @@
  *
  * | class | weapon | what it is |
  * |---|---|---|
- * | `ShotgunBlast` | shotgun | an instant cone of damage (72 px, 16 → 40 px tall, 6 ticks, each target once) |
+ * | `ShotgunBlast` | shotgun | an instant cone of damage (72 px, 16 → 40 px tall, 6 ticks, each target once); its fire: shotgun-fire.ts |
  * | `Rocket` | rocket-launcher | accelerates 2 → 7, steers sideways ≤ 1 px/tick toward the nearest enemy ahead, explodes |
  * | `FlameStream` | flamethrower | a 96 px stream that follows the gun for 24 ticks (runs along the floor when fired down) |
  * | `LaserBeam` | laser | one beam per gun, refreshed by every shot; to the first solid or 384 px; lingers |
@@ -23,11 +23,12 @@ import type { DrawOpts, Renderer } from '../../../engine/render';
 import { hasSprite } from '../../../engine/sprites';
 import { makeRayHit, type RayHit } from '../../../engine/terrain';
 import type { World } from '../../../engine/world';
-import { explosion, FX_EMBER, FX_FLAME, FX_PELLET, FX_SMOKE, FX_SPARK, FX_TRAIL, hitSpark, musicNotes, poof } from '../../fx';
+import { explosion, FX_EMBER, FX_FLAME, FX_SMOKE, FX_SPARK, FX_TRAIL, hitSpark, musicNotes, poof } from '../../fx';
 import { Grenade, type GrenadeOpts } from '../../grenade';
 import { acquire, release } from '../../pool';
 import { eraseEnemyShots, Projectile, type ProjectileOpts, type ShotTracker, type Tracked } from '../../projectile';
 import { freeHostages, mountOf, shooterReady, throwStart, type FireContext, type Gun } from '../../weapons';
+import { shotgunFire } from './shotgun-fire';
 import { FLAME, HOMING, LASER, MINE, ROCKET, SHOTGUN, TUBA } from './stats';
 
 const SPREAD: readonly string[] = ['spread'];
@@ -175,7 +176,8 @@ export interface BlastOpts {
 /**
  * The shotgun blast (GDD §5): a damage area 72 px long, 16 px tall at the muzzle and 40 px at
  * the tip, active 6 ticks (the fire tick and the next 5), each target hit once. The cone stops
- * at walls. It draws nothing: the pellets, the flash and the smoke are cosmetic particles.
+ * at walls. It draws nothing: its fire, smoke and embers are cosmetic fx (`shotgunFire`,
+ * shotgun-fire.ts).
  */
 export class ShotgunBlast extends Entity implements Tracked {
   tracker: ShotTracker | null = null;
@@ -184,6 +186,8 @@ export class ShotgunBlast extends Entity implements Tracked {
   readonly quad = new Float64Array(8);
   /** Cone length after clipping at walls. */
   len: number = SHOTGUN.length;
+  /** Aim angle (radians). */
+  angle = 0;
   t = 0;
   private readonly hitList: Entity[] = [];
   private readonly hostageHit = (box: Rect): boolean => quadHitsRect(this.quad, box);
@@ -208,6 +212,7 @@ export class ShotgunBlast extends Entity implements Tracked {
     this.team = o.team;
     this.x = this.prevX = o.x;
     this.y = this.prevY = o.y;
+    this.angle = o.angle;
     this.t = 0;
     this.hitList.length = 0;
     this.tracker = null;
@@ -270,27 +275,6 @@ export class ShotgunBlast extends Entity implements Tracked {
     if (this.team === 'player') freeHostages(world, this.damage.owner ?? -1, this.hostageHit);
   }
 
-  /** The blast reads for 3 ticks: hot streaks fan across the cone and shrink toward its tip. */
-  override draw(r: Renderer): void {
-    if (this.t > 2) return;
-    const q = this.quad;
-    // Muzzle centre and the two tip corners; streaks run from 25 % (later: 55 %) to the tip.
-    const mx = (q[0] + q[2]) / 2;
-    const my = (q[1] + q[3]) / 2;
-    const from = 0.25 + this.t * 0.15;
-    blastDraw.alpha = 0.9 - this.t * 0.25;
-    for (let i = 0; i < 5; i++) {
-      const s = i / 4;
-      const tx = q[6] + (q[4] - q[6]) * s;
-      const ty = q[7] + (q[5] - q[7]) * s;
-      const x0 = mx + (tx - mx) * from;
-      const y0 = my + (ty - my) * from;
-      const x1 = mx + (tx - mx) * (from + 0.3);
-      const y1 = my + (ty - my) * (from + 0.3);
-      r.line(Math.round(x0), Math.round(y0), Math.round(x1), Math.round(y1), i === 2 ? PAL.snow[3] : PAL.fire[5], blastDraw);
-    }
-  }
-
   override onRemove(): void {
     this.tracker?.untrack(this);
     this.tracker = null;
@@ -299,9 +283,7 @@ export class ShotgunBlast extends Entity implements Tracked {
   }
 }
 
-const blastDraw: DrawOpts = { blend: 'add', alpha: 1 };
-
-/** Fire the shotgun from a context: the cone, the pellets and the smoke. */
+/** Fire the shotgun from a context: the cone and its fire (shotgun-fire.ts). */
 export function fireShotgun(ctx: FireContext): ShotgunBlast {
   const b = ShotgunBlast.spawn(ctx.world, {
     team: ctx.team,
@@ -313,18 +295,7 @@ export function fireShotgun(ctx: FireContext): ShotgunBlast {
     weapon: ctx.weapon.id,
   });
   ctx.gun.track(b);
-  // Cosmetic pellets fan out across the cone and fade (6 px/tick); a puff of smoke.
-  const p = ctx.world.particles;
-  const half = Math.atan2((SHOTGUN.farH - SHOTGUN.nearH) / 2, SHOTGUN.length) + 0.05;
-  const n = SHOTGUN.pellets;
-  for (let i = 0; i < n; i++) {
-    const a = ctx.angle + (i / (n - 1) - 0.5) * 2 * half;
-    const off = (i / (n - 1) - 0.5) * (SHOTGUN.nearH - 4);
-    const v = SHOTGUN.pelletSpeed * (0.9 + (i % 3) * 0.06);
-    p.emit(FX_PELLET, ctx.x - ctx.dirY * off, ctx.y + ctx.dirX * off, Math.cos(a) * v, Math.sin(a) * v);
-  }
-  p.burst(FX_SMOKE, ctx.x + ctx.dirX * 6, ctx.y + ctx.dirY * 6, 3, 0.3, 0.9, ctx.angle, 0.8);
-  ctx.world.camera.shake(1, 4);
+  shotgunFire(b, ctx.shooter);
   return b;
 }
 
