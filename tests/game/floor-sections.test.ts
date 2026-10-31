@@ -898,6 +898,7 @@ describe('every floor section: the floor\'s frame path allocates nothing (Hard R
         }
       }
       expect(floorBytes / 600, `bytes per frame in the floor's code: ${where.join(', ')}`).toBeLessThan(64);
-    }, 60_000);
+      // ~10 s on a dev machine; the CI runner is about 6× slower (ams/a timed out at 60 s there).
+    }, 180_000);
   }
 });
