@@ -71,9 +71,11 @@ The slumlord who milks a small house like a cow, at the end of DE WALLEN BY NIGH
 
 - **Huurverhoging** *(user's pick of the attacks)*: a rent sign goes up each phase (€1.900,
   €2.400, €3.100). Each rise makes him faster and drains a little budget.
-- The other attacks are open. Offered and not picked: the milk bottles, the house on legs, the
-  tenants thrown out of the windows. The fight needs more moves than the sign; they come in a later
-  round or in the spec.
+- **De sleutelbos** *(user, round 5)*: he swings a giant ring of keys like a flail, low and then
+  high; the player jumps or crouches under it.
+- Offered and not picked: the milk bottles, the house on legs, the tenants thrown out of the
+  windows (round 3); splitsen (walls that shrink the arena), rolkoffers (rolling suitcases), de
+  kelderluiken (whack-a-mole cellar hatches) (round 5). The spec may still need a third move.
 - The €1.900 studio gag (picked 2026-10-29) fits the end of the fight: a freed tenant says
   `€1.900 PER MAAND` / `EN GEEN KEUKEN!`, and a microwave dings in the hallway.
 
@@ -100,6 +102,18 @@ the A10; the MISSION 3 card shows, and its frame glitches into the 3D race as to
 - **Below €0: rood staan + shop closed** *(user)*: the budget may go red and negative; the
   havermelk-bar then refuses the player (`GEWEIGERD`) until the budget is above €0 again. The
   tally stamps `TEKORT` or `OVERSCHOT` (the `JAARREKENING`).
+- **Two players: two budgets** *(user, round 5)*. Each player has their own euro number (their
+  own fines, pickups and continue costs); the tally compares them. (Not picked: one shared budget,
+  shared + a `WIE BETAALT?` bill split.)
+
+## 5a. Music and voices *(user, round 5)*
+
+- **A day-to-night score:** a new song per section — bright for a, tense for the queue in b, a
+  chase for c, neon synth for d — plus the boss song. (Not picked: a draaiorgel rave, café jazz
+  that hardens through the day, the `ams` sound with new songs.)
+- **Everybody speaks:** short Dutch ElevenLabs lines (designed voices, as in `oldenzaal`) for De
+  Makelaar, De Huisjesmelker, the taxi driver and the havermelk-bar barista, and also for the
+  influencer, the bakfiets-ouder, the dealer and the queue. The speech bubbles stay.
 
 ## 6. Rules that carry over
 
@@ -123,9 +137,9 @@ the A10; the MISSION 3 card shows, and its frame glitches into the 3D race as to
 
 ## 8. Open
 
-- The mission id, the boss's other attacks, the enemy counts per section, the euros per enemy and
-  the start budget, the fine per death.
-- The music (and whether ElevenLabs voices are wanted, as in `ams` and `oldenzaal`).
+- The mission id, a possible third boss move, the enemy counts per section, the euros per enemy
+  and the start budget, the fine per death.
+- The voice lines themselves and the ElevenLabs credit budget.
 - The race's score as euros, and whether the 2D `ring` (dormant) changes at all.
 - Where the ideas not used here go (Vondelpark, De Pont, Albert Cuyp-markt, NDSM-werf, De foodhal,
   houses for sale, the wafel-winkel, the auction, the levend standbeeld): a later level, or not at
