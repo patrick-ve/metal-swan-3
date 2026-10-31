@@ -23,7 +23,7 @@
 import type { Color } from '../../../engine/color';
 import { PixelBuffer, bandIndex, type Ramp } from '../../../engine/pixel';
 import { PAL_HD, hdHome } from '../../../engine/palette-hd';
-import { KEY, LIGHT_DEFAULTS, diffuse, specular, type LightParams } from './light';
+import { DEFAULT_SUN, LIGHT_DEFAULTS, diffuse, specular, type LightParams, type SunDef } from './light';
 
 export type Outline = 'A' | 'B' | 'C' | 'none';
 
@@ -122,6 +122,12 @@ export interface RenderOpts {
    * of every HD ramp lean cool, so the rim reads as cool sky light. 0 = off (default).
    */
   rimLight?: number;
+  /**
+   * OPT-IN (mission `oat`, docs/design/oat.md §8.3): the section's sun (light.ts `sunFrom`) for the
+   * key, the bounce, the specular and the cast shadows. Default `DEFAULT_SUN` (today's `KEY`): every
+   * existing caller renders byte for byte as before.
+   */
+  sun?: SunDef;
 }
 
 const MAX_MATS = 255;
@@ -684,6 +690,8 @@ export class HdCanvas {
     const prot = new Uint8Array(n);
     const aoK = o.ao ?? 0.35;
     const sepZ = o.sepZ ?? 0.5;
+    const sun = o.sun ?? DEFAULT_SUN;
+    const KEY = sun.key;
     const mats = this.mats;
     const { mat, part, pz, nx, ny, nz, tone, fix } = this;
 
@@ -760,7 +768,7 @@ export class HdCanvas {
         if (M.flat) t = 0.5 + tone[i];
         else {
           t =
-            diffuse(nx[i], ny[i], nz[i], M.amb ?? LIGHT_DEFAULTS.amb, M.gain ?? LIGHT_DEFAULTS.gain, M.wrap ?? LIGHT_DEFAULTS.wrap, M.bounce ?? LIGHT_DEFAULTS.bounce, M.rim ?? LIGHT_DEFAULTS.rim) +
+            diffuse(nx[i], ny[i], nz[i], M.amb ?? LIGHT_DEFAULTS.amb, M.gain ?? LIGHT_DEFAULTS.gain, M.wrap ?? LIGHT_DEFAULTS.wrap, M.bounce ?? LIGHT_DEFAULTS.bounce, M.rim ?? LIGHT_DEFAULTS.rim, sun) +
             tone[i];
           if (ao) t -= ao[i] * aoK * 2.2;
           if (shade) t -= shade[i];
@@ -771,7 +779,7 @@ export class HdCanvas {
         if (t < -0.12 && lo > 0) k = lo - 1;
         const sp = M.spec ?? 0;
         if (sp > 0 && !M.flat) {
-          const s = sp * specular(nx[i], ny[i], nz[i], M.shine ?? LIGHT_DEFAULTS.shine);
+          const s = sp * specular(nx[i], ny[i], nz[i], M.shine ?? LIGHT_DEFAULTS.shine, sun);
           if (s > 0.55) {
             k = rn - 1;
             prot[i] = 1;

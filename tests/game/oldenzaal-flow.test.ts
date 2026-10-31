@@ -1,9 +1,12 @@
 /**
  * Mission oldenzaal in the flow (docs/design/oldenzaal.md §1; docs/api/oldenzaal.md "Flow"):
- * the last first-person floor's tally → the story card → the MISSION 4 intro card → the mission
+ * the last first-person floor's tally → the story card → the MISSION 5 intro card (level 5 since the
+ * oat wave, docs/design/oat.md §1) → the mission
  * → its MISSION COMPLETE tally → the TO BE CONTINUED card → today's ending (fps variant) → the
  * final tally. P2 rejoins the 2D runner after the one-slot fps mode; a P1 who went out in the fps
- * mode stays out (P2 plays alone). The m5 trap: m5 still ends the campaign. `?mission=oldenzaal`.
+ * mode stays out (P2 plays alone). The m5 trap: m5 still ends the campaign (flow.ts's route guard:
+ * a mission on FPS_ROUTE opens only from its route predecessor or an explicit `next`).
+ * `?mission=oldenzaal`.
  */
 import { describe, expect, it } from 'vitest';
 import { InputManager, keySetFor, maskFromKeys, type InputContext, type InputSource, type PlayerSlot } from '../../src/engine/input';
@@ -18,7 +21,7 @@ import { DEFAULT_PARAMS } from '../../src/game/params';
 import { bootArt } from '../../src/game/scenes/boot';
 import { EndingScene } from '../../src/game/scenes/ending';
 import { FinalTallyScene } from '../../src/game/scenes/final-tally';
-import { entryFor, missionDone } from '../../src/game/scenes/flow';
+import { entryFor, missionDone, routeAllows } from '../../src/game/scenes/flow';
 import { fpsTallyDone } from '../../src/game/scenes/fps-route';
 import { GameplayScene, startNewGame } from '../../src/game/scenes/gameplay';
 import { missionColumn } from '../../src/game/scenes/high-scores';
@@ -101,7 +104,7 @@ function afterFps(h: H, players: 1 | 2): GameSession {
   return s;
 }
 
-/** The last floor's tally is done: the story card; two presses lead on to the MISSION 4 card. */
+/** The last floor's tally is done: the story card; two presses lead on to the MISSION 5 card. */
 function toIntro(h: H): MissionIntroScene {
   const run = newFpsRun(h.app.session!, 2);
   fpsTallyDone(h.app, run);
@@ -120,7 +123,7 @@ function toIntro(h: H): MissionIntroScene {
   expect(h.until(MissionIntroScene, 60)).toBe(true);
   const intro = h.app.scenes.top as MissionIntroScene;
   expect(intro.mission).toBe(OLDENZAAL_ID);
-  expect(intro.card.label).toBe('MISSION 4');
+  expect(intro.card.label).toBe('MISSION 5');
   expect(intro.card.name).toBe('A HAUNTING IN OTOWN');
   return intro;
 }
@@ -137,7 +140,7 @@ function completeMission(h: H, game: GameplayScene): void {
 }
 
 describe('the route into oldenzaal and out of it', () => {
-  it('fps-2 tally → story card → MISSION 4 → oldenzaal → tally → TO BE CONTINUED → fps ending → final tally', () => {
+  it('fps-2 tally → story card → MISSION 5 → oldenzaal → tally → TO BE CONTINUED → fps ending → final tally', () => {
     const h = harness();
     afterFps(h, 1);
     toIntro(h);
@@ -148,8 +151,8 @@ describe('the route into oldenzaal and out of it', () => {
     expect(game.runner.section.id).toBe('oz-a');
     expect(h.app.session!.missionId).toBe(OLDENZAAL_ID);
     expect(game.runner.players.length).toBe(1);
-    // A game over here would show M4 in the hall of fame.
-    expect(missionColumn(entryFor(h.app, h.app.session!.slots[0], false))).toBe('M4');
+    // A game over here would show M5 in the hall of fame (level 5 since the oat wave).
+    expect(missionColumn(entryFor(h.app, h.app.session!.slots[0], false))).toBe('M5');
     completeMission(h, game);
     expect((h.app.scenes.top as MissionCompleteScene).runner.mission.id).toBe(OLDENZAAL_ID);
     expect(h.until(ToBeContinuedScene, 1200)).toBe(true);
@@ -213,12 +216,16 @@ describe('the route into oldenzaal and out of it', () => {
 });
 
 describe('the m5 trap and the direct start', () => {
-  it('m5 still ends the campaign (its runner names oldenzaal, the flow does not go there)', () => {
+  it('m5 still ends the campaign (its runner names the next sorted id, a route mission; the route guard does not go there)', () => {
     const h = harness();
     startNewGame(h.app, { mission: 'm5', characters: ['vincent'] });
     expect(h.until(GameplayScene, 60)).toBe(true);
     const game = h.app.scenes.top as GameplayScene;
-    expect(game.runner.nextMission()).toBe(OLDENZAAL_ID);
+    // `oat` (lazy) is not loaded in this file: m5's sorted next is oldenzaal (with oat loaded it is
+    // oat: tests/game/oat-flow.test.ts). Neither is m5's route successor.
+    const next = game.runner.nextMission();
+    expect(next).toBe(OLDENZAAL_ID);
+    expect(routeAllows(game.runner.mission, next!)).toBe(false);
     missionDone(h.app, game.runner);
     expect(h.until(EndingScene, 90)).toBe(true);
     expect((h.app.scenes.top as EndingScene).variant).toBe('campaign');

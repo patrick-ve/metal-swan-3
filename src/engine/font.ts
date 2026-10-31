@@ -8,9 +8,10 @@ import type { FontId, TextOpts } from './render';
  * Original bitmap fonts defined in code (docs/ARCHITECTURE.md §5.6).
  *
  * - 'small': proportional, caps 5×7 with lower case (x-height 5, 2-row descenders), digits are
- *   all 5 px wide (tabular, so scores do not wobble), punctuation, arrows ← ↑ → ↓, ∞, ©, ×, ♥, ★.
- * - 'big': chunky 8-row arcade capitals with 2-px strokes, digits and punctuation. Lower case
- *   falls back to capitals.
+ *   all 5 px wide (tabular, so scores do not wobble), punctuation, arrows ← ↑ → ↓, ∞, ©, ×, ♥, ★,
+ *   and the euro sign € (5 px, the budget's notation `€ 1.234,56`; oat wave A).
+ * - 'big': chunky 8-row arcade capitals with 2-px strokes, digits and punctuation (and €). Lower
+ *   case falls back to capitals.
  *
  * Text is laid out by `layoutText`, which BOTH renderers use, so they place glyphs identically.
  * (x, y) is the top-left of the first line's cap height; `align` is per line; '\n' breaks lines.
@@ -161,6 +162,9 @@ const SMALL: GlyphTable = {
   '…': ['.....', '.....', '.....', '.....', '.....', '.....', '#.#.#'],
   '♥': ['.....', '##.##', '#####', '#####', '.###.', '..#..'],
   '★': ['..#..', '..#..', '#####', '.###.', '.#.#.', '#...#'],
+  // The euro sign (mission `oat`, docs/design/oat.md §7.5: `BUDGET € 1.234,56`). Last in the table,
+  // so every older glyph keeps its index (the atlases).
+  '€': ['..###', '.#...', '####.', '.#...', '####.', '.#...', '..###'],
 };
 
 // prettier-ignore
@@ -242,6 +246,8 @@ const BIG: GlyphTable = {
   '©': ['.######.', '##....##', '#..###.#', '#.##...#', '#.##...#', '#..###.#', '##....##', '.######.'],
   '♥': ['.##..##.', '########', '########', '########', '.######.', '..####..', '...##...'],
   '★': ['...##...', '...##...', '########', '.######.', '..####..', '.##..##.', '##....##'],
+  // The euro sign (mission `oat`): last in the table, as in 'small'.
+  '€': ['...#####', '..######', '.##.....', '#####...', '.##.....', '#####...', '..######', '...#####'],
 };
 
 function buildFont(

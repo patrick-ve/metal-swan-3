@@ -6,7 +6,7 @@
  * KILLS n% (10,000 at 100 %), SECRETS a/b (10,000 when all found), TREASURE n% (10,000 at 100 %),
  * TIME m:ss PAR m:ss ((par − seconds) × 500 under par), the bonus info lines of the mission before
  * the bridge on floor 1 (`<MISSION n> BONUS`, only when the bridge paid that mission's tally
- * silently and wrote a bonus record; not in TOTAL; on the normal route the level 2 (the rally) has
+ * silently and wrote a bonus record; not in TOTAL; on the normal route the race (the rally, level 3) has
  * its own tally page, so there is no such line), DIFFICULTY (× 0.5 / 1.0 / 1.5), TOTAL; floor 1's
  * footer shows `RING SEED n`, the seed of the level 2 the run passed (the bonus record's, else the
  * rally's `LEVEL2_SEED_KEY` record)

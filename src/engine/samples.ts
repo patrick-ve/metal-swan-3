@@ -23,7 +23,7 @@
  *   ring/: the Dutch voices, the blockade's and the train's sfx, the songs `ring-foot` / `ring-boot`).
  *   Lazy like 'mission:oldenzaal'. The game registers the group MERGED with the ams group's sfx and
  *   voices (content/samples/ring.ts `ringSampleGroup`): the drive and the foot part load it.
- * - `'mission:rally'`: mission rally, level 2 since 2026-10-22 (docs/design/rally.md §8, §12.6;
+ * - `'mission:rally'`: mission rally, level 3 since 2026-10-31 (docs/design/rally.md §8, §12.6;
  *   public/audio/rally/): FILE FM (the DJ's Dutch lines, the jingles, the three songs). Lazy; the
  *   card's preload and RallyScene load it, the race's end releases it. The game registers it with
  *   its long songs STREAMED (`SampleSong.stream`, content/samples/rally.ts `rallySampleGroup`).

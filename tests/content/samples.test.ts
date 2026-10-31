@@ -277,8 +277,9 @@ describe('sample manifest (src/game/content/samples)', () => {
     for (const k of keys) expect(mayor.has(k), `mayor line voiced: ${k}`).toBe(false);
     if (keys.length === 0) return;
     // The lines come from the generation spec (tools/audio/spec.ts), which the manifest is made from.
-    const spec = (await import('../../tools/audio/spec')) as { LINES: ReadonlyArray<{ speaker: string; text: string }> };
-    const known = new Set(spec.LINES.map((l) => voiceKey(l.text)));
+    const spec = (await import('../../tools/audio/spec')) as { LINES: ReadonlyArray<{ speaker: string; text: string }>; PENDING_RETAKES: ReadonlyArray<{ old: string }> };
+    // The oat route switch (wave A) changed three voiced texts; their old takes stay until wave C.
+    const known = new Set([...spec.LINES.map((l) => voiceKey(l.text)), ...spec.PENDING_RETAKES.map((r) => voiceKey(r.old))]);
     for (const k of keys) expect(known.has(k), `voice key ${k} is not a line of tools/audio/spec.ts`).toBe(true);
     expect(spec.LINES.filter((l) => /HALSEMA|MAYOR/i.test(l.speaker))).toEqual([]);
   });
@@ -420,7 +421,13 @@ describe("FILE FM's takes (group 'mission:rally', docs/design/rally.md §8)", ()
       expect(m!.duration, j.id).toBeLessThan(8);
     }
     const boot = SAMPLE_MANIFEST.boot;
-    for (const t of [...RALLY_CARD_LINES, RALLY_ANNOUNCE]) expect(boot.voice?.[voiceKey(t)], t).toBeDefined();
+    // The oat route switch (docs/design/oat.md §0 #61) changed the first card line and the announce:
+    // their new takes come in wave C (PENDING_RETAKES); until then the old takes stay shipped.
+    const { PENDING_RETAKES } = (await import('../../tools/audio/spec')) as { PENDING_RETAKES: ReadonlyArray<{ old: string; text: string }> };
+    for (const t of [...RALLY_CARD_LINES, RALLY_ANNOUNCE]) {
+      const pending = PENDING_RETAKES.find((r) => r.text === t);
+      expect(boot.voice?.[voiceKey(pending ? pending.old : t)], t).toBeDefined();
+    }
   });
 });
 

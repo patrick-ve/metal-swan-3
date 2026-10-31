@@ -160,8 +160,16 @@ describe('HD glyph tables', () => {
 
 describe('the 1× text path is unchanged', () => {
   it('the bitmap atlases keep their pixels', () => {
-    expect(fnv(glyphAtlas(getFont('small'), PAL.snow[3]))).toBe('1bf367a1');
-    expect(fnv(glyphAtlas(getFont('big'), PAL.snow[3]))).toBe('77594901');
+    // The oat wave (docs/design/oat.md §7.5) appended the € glyph to both fonts: the atlas grew by one
+    // cell at its right end; every older cell keeps its place and pixels (the hashes of before).
+    const old = (id: 'small' | 'big'): PixelBuffer => {
+      const f = getFont(id);
+      const a = glyphAtlas(f, PAL.snow[3]);
+      expect(f.glyphs[f.glyphs.length - 1].code).toBe(0x20ac);
+      return a.crop(0, 0, (f.glyphs.length - 1) * (f.maxW + 1), a.h);
+    };
+    expect(fnv(old('small'))).toBe('1bf367a1');
+    expect(fnv(old('big'))).toBe('77594901');
   });
 
   it('drawText at density 1 and drawTextPx at glyph density 1 keep their pixels', () => {

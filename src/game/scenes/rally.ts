@@ -1,5 +1,5 @@
 /**
- * RallyScene: mission `rally`, level 2 — BINNEN DE RING, the 3D race on the A10 (docs/design/rally.md
+ * RallyScene: mission `rally`, level 3 (since 2026-10-31) — BINNEN DE RING, the 3D race on the A10 (docs/design/rally.md
  * §2, §7.6, §10, §12.2, §12.3; docs/api/rally.md "A.I"). The host of a `RallyRunner`
  * (src/game/rally/runner.ts).
  *

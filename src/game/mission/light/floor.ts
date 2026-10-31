@@ -18,7 +18,7 @@
  * section file, next to its `defineSectionLight`). Without one the lamps stay at depth 0, the
  * pools are off and the mist uses the defaults.
  */
-import type { StaticLight } from '../../content/oldenzaal/kit/light-api';
+import type { StaticLight } from './api';
 
 /** The ground mist's profile over the floor rows (multiples of the fog's density). */
 export interface MistConfig {

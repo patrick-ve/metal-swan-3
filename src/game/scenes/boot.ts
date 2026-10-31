@@ -9,9 +9,11 @@
  * into the glitch bridge with `?mode=bridge`. `?mission=ring` (docs/design/ring.md §1; not a registered
  * mission; dormant since 2026-10-22) starts the RingScene (`startRing`; `section` = a landmark id,
  * `seed` its ring), with the ring's 1× art and the reused ams sample group. `?mission=rally`
- * (docs/design/rally.md §1; level 2, not a registered mission) starts the race (`startRally`: the
+ * (docs/design/rally.md §1; level 3, not a registered mission) starts the race (`startRally`: the
  * glitch into 3D loads the lazy rally content; `lap`, `cam`, `gl=0` in params.ts); the boot loads
- * only the start screens' art and the 'boot' samples for it.
+ * only the start screens' art and the 'boot' samples for it. `?mission=oat` (docs/design/oat.md §1;
+ * level 2, a LAZY registered mission) loads the oat chunk with the boot's content, then its 1× art
+ * and its sample group as any direct start (`section=oat-a … oat-e`, `boss=1` as usual).
  */
 import { listSfx } from '../../engine/audio';
 import { PAL } from '../../engine/palette';
@@ -19,7 +21,7 @@ import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { preloadSprites } from '../../engine/sprites';
 import { blinkOn, centerText, newCampaign, type GameApp } from '../app';
-import { isLazyContent, loadContent } from '../content/index';
+import { isLazyContent, isOatContent, loadContent } from '../content/index';
 import type { LaunchParams } from '../params';
 import type { RingRoute } from '../ring/ids';
 import { getCharacter, getMission, hasCharacter } from '../registry';
@@ -29,6 +31,7 @@ import { startFpsRun } from './fps-route';
 import { GlitchBridgeScene } from './glitch-bridge';
 import { isRing, RING_ART, RING_AUDIO_GROUP, startRing } from './ring-route';
 import { isRally, startRally } from './rally-route';
+import { isOat } from './oat-route';
 import { TitleScene } from './title';
 
 type Phase = 'content' | 'sprites' | 'sounds' | 'samples' | 'done';
@@ -95,8 +98,10 @@ export class BootScene implements Scene {
 
   private async load(): Promise<void> {
     try {
-      // The lazy fps content stays out of the boot (FpsIntroScene loads it).
-      this.app.content = await loadContent((id) => !isLazyContent(id));
+      // The lazy fps, rally and oat content stays out of the boot (their scenes load it); a direct
+      // `?mission=oat` loads the oat chunk with it (docs/design/oat.md §1: its art and samples next).
+      const oat = isOat(this.app.params.mission);
+      this.app.content = await loadContent((id) => !isLazyContent(id) || (oat && isOatContent(id)));
       this.phase = 'sprites';
       // The sprite cache (art-cache.ts) of an earlier visit first: the preload then skips every
       // id it installed. The 2× pack too, so the ams intro card finds its 2× art made already.

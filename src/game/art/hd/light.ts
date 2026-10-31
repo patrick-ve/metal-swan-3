@@ -45,6 +45,37 @@ function norm3(x: number, y: number, z: number): readonly [number, number, numbe
   return [x / l, y / l, z / l];
 }
 
+/**
+ * A key light and its bounce (mission `oat`, docs/design/oat.md §8.3; ADDITIVE): the sun of a
+ * section for `HdCanvas.render({ sun })`, `diffuse(…, sun)` and `specular(…, sun)`. Unit vectors in
+ * this file's frame (x right, y DOWN, z towards the viewer). `DEFAULT_SUN` is today's light (`KEY`,
+ * `BOUNCE`, `HALF`, the very same arrays), so every caller that passes no sun lights every px
+ * exactly as before.
+ */
+export interface SunDef {
+  /** Towards the key light. */
+  readonly key: readonly [number, number, number];
+  /** Towards the bounce light. */
+  readonly bounce: readonly [number, number, number];
+  /** Half vector of the key and the view direction (the specular). */
+  readonly half: readonly [number, number, number];
+}
+
+/** Today's key light: upper left and in front (the heroes' fixed key). */
+export const DEFAULT_SUN: SunDef = { key: KEY, bounce: BOUNCE, half: HALF };
+
+/**
+ * The sun of a section from its elevation e and yaw (degrees; spec §8.3): from the scene toward the
+ * sun (−cos e · cos yaw, sin e, +cos e · sin yaw) with y up, here with y DOWN. The bounce stays
+ * today's (cool sky light from the lower right) unless given.
+ */
+export function sunFrom(elevationDeg: number, yawDeg: number, bounce: readonly [number, number, number] = BOUNCE): SunDef {
+  const e = (elevationDeg * Math.PI) / 180;
+  const y = (yawDeg * Math.PI) / 180;
+  const key = norm3(-Math.cos(e) * Math.cos(y), -Math.sin(e), Math.cos(e) * Math.sin(y));
+  return { key, bounce, half: norm3(key[0], key[1], key[2] + 1) };
+}
+
 /** Light parameters of a material (all optional; defaults in LIGHT_DEFAULTS). */
 export interface LightParams {
   /** Tone floor of the side away from the key light (0..1). */
@@ -65,9 +96,11 @@ export interface LightParams {
 
 export const LIGHT_DEFAULTS: Required<LightParams> = { amb: 0.05, gain: 1, bounce: 0.22, rim: 0.3, spec: 0, shine: 24, wrap: 0.08 };
 
-/** Diffuse tone (0..1-ish) of a unit normal: key (wrapped) + bounce + rim. */
-export function diffuse(nx: number, ny: number, nz: number, amb: number, gain: number, wrap: number, bounce: number, rim: number): number {
-  const k = nx * KEY[0] + ny * KEY[1] + nz * KEY[2];
+/** Diffuse tone (0..1-ish) of a unit normal: key (wrapped) + bounce + rim. `sun` (oat): the section's sun. */
+export function diffuse(nx: number, ny: number, nz: number, amb: number, gain: number, wrap: number, bounce: number, rim: number, sun: SunDef = DEFAULT_SUN): number {
+  const K = sun.key;
+  const B = sun.bounce;
+  const k = nx * K[0] + ny * K[1] + nz * K[2];
   // Contrast: a face turned to the viewer is a mid tone (k ≈ 0.6), only the planes facing the
   // light reach the top bands, the terminator sits where the form turns away (pixel-art form
   // shading, not a soft photographic falloff).
@@ -75,7 +108,7 @@ export function diffuse(nx: number, ny: number, nz: number, amb: number, gain: n
   const k1 = key > 1 ? 1 : key > 0 ? key : 0;
   // A face turned to the viewer lands in the middle of the ramp; only planes facing the light climb to the top.
   const kk = k1 * Math.sqrt(k1) ;
-  const b = nx * BOUNCE[0] + ny * BOUNCE[1] + nz * BOUNCE[2];
+  const b = nx * B[0] + ny * B[1] + nz * B[2];
   // The bounce only lifts what the key does not reach.
   const bb = b > 0 ? b * (1 - kk) : 0;
   // Rim: grazing normals on the shadow side (right / bottom), a thin lit edge.
@@ -85,8 +118,9 @@ export function diffuse(nx: number, ny: number, nz: number, amb: number, gain: n
   return amb + (1 - amb) * kk * gain + bounce * bb * 0.5 + rim * rr;
 }
 
-/** Specular term 0..1 of a unit normal. */
-export function specular(nx: number, ny: number, nz: number, shine: number): number {
-  const h = nx * HALF[0] + ny * HALF[1] + nz * HALF[2];
+/** Specular term 0..1 of a unit normal. `sun` (oat): the section's sun. */
+export function specular(nx: number, ny: number, nz: number, shine: number, sun: SunDef = DEFAULT_SUN): number {
+  const H = sun.half;
+  const h = nx * H[0] + ny * H[1] + nz * H[2];
   return h > 0 ? Math.pow(h, shine) : 0;
 }

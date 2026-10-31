@@ -158,6 +158,11 @@ byte-identical, and the ring's sims stay byte-identical too.
 
 ## 1. Flow and numbering
 
+> **2026-10-31 (docs/design/oat.md §1):** oldenzaal is **level 5** (`MISSION 5`, announce `MISSIE
+> VIJF. BLIJF BIJ ELKAAR, ZWAANTJES!`, high-score column M5); the fps floors are level 4. flow.ts's
+> route guard (a route mission opens only from its predecessor or an explicit `next`) replaces the
+> oldenzaal-only m5 rule. The text below keeps the numbers of 2026-10-21.
+
 - Normal play: … → the first-person floors (level 3, `MISSION 3`) → their tally → the **story
   card** → the `MISSION 4` card → `oldenzaal` → MISSION COMPLETE tally → the **`TO BE CONTINUED`
   card** → today's ending (the first-person variant) → name entry / high scores.

@@ -1,5 +1,5 @@
 /**
- * Mission `oldenzaal` (level 4, MISSION 4 "A HAUNTING IN OTOWN"; docs/design/oldenzaal.md,
+ * Mission `oldenzaal` (level 5 since 2026-10-31, MISSION 5 "A HAUNTING IN OTOWN"; docs/design/oldenzaal.md,
  * docs/api/oldenzaal.md): EVERY id of the oldenzaal waves, with its owner. Builders import their
  * ids from here and never invent ids under another owner's prefix.
  *

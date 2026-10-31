@@ -1,14 +1,16 @@
 /**
  * Art pool worker (src/engine/art-pool.ts): a browser module worker (Vite bundles it as its own
  * chunk) or a node worker_threads worker (tools, tests; run through tsx). It loads the content
- * registry once (the lazy fps content only when an id needs it), builds the sprite ids each
- * request names at the request's density and posts back a raw pack whose pixel ArrayBuffers are
- * transferred, not copied.
+ * registry once (the lazy fps content only when an id needs it; the lazy mission `oat` only when an
+ * id is an oat sprite, docs/design/oat.md decision 49), builds the sprite ids each request names at
+ * the request's density and posts back a raw pack whose pixel ArrayBuffers are transferred, not
+ * copied.
  */
 import { createArtWorkerHandler, type ArtBuildReply, type ArtBuildRequest, type NodeWorkerThreads } from '../engine/art-pool';
-import { isFpsContent, isLazyContent, loadContent } from './content/index';
+import { isFpsContent, isLazyContent, isOatContent, loadContent } from './content/index';
+import { isOatSpriteId } from './content/missions/oat/ids';
 
-const handle = createArtWorkerHandler(
+const base = createArtWorkerHandler(
   async (lazy) => {
     // The lazy fps content when an fps id needs it (the rally's lazy content has no sprites).
     const report = await loadContent(lazy ? isFpsContent : (id) => !isLazyContent(id));
@@ -16,6 +18,19 @@ const handle = createArtWorkerHandler(
   },
   (id) => id.startsWith('fps/'),
 );
+
+/** The oat chunk, loaded once when a request first names an oat sprite (`isOatSpriteId`). */
+let oat: Promise<void> | null = null;
+
+async function handle(req: ArtBuildRequest): ReturnType<typeof base> {
+  if (req.ids.some(isOatSpriteId)) {
+    oat ??= loadContent(isOatContent).then((report) => {
+      if (report.failed.length) console.warn(`[art-worker] oat content failed: ${report.failed.map((f) => f.id).join(', ')}`);
+    });
+    await oat;
+  }
+  return base(req);
+}
 
 interface Sink {
   postMessage(m: ArtBuildReply, transfer: ArrayBuffer[]): void;

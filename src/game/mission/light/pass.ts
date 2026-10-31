@@ -1,9 +1,11 @@
 /**
  * THE MISSION LIGHT PASS (docs/design/oldenzaal.md §10.1, §10.2; docs/api/oldenzaal.md §3).
  * Owner: LIGHT. An ADDITIVE OPT-IN: the runner makes a pass only for a section that registered a
- * light config (`defineSectionLight`, content/oldenzaal/kit/light-api.ts). Every other section
- * (ams, the ring, m0–m5, the first-person floors) has no pass: it simulates and draws exactly as
- * before (the pass never touches game state, `world.rng` or `world.fxRng`).
+ * light config (`defineSectionLight`, ./api.ts since the oat wave A; content/oldenzaal/kit/
+ * light-api.ts re-exports it). Every other section (ams, the ring, m0–m5, the first-person floors)
+ * has no pass: it simulates and draws exactly as before (the pass never touches game state,
+ * `world.rng` or `world.fxRng`). The oat flags of the contract (`glow`, `streaks`, `groups`,
+ * `bakes`; docs/design/oat.md §8.9) default to today's behaviour: LIGHT-WATER implements them.
  *
  * Drawing order (MissionRunner.draw):
  *   background layers → `drawBack` (the far fog bands; the backdrop's lightning flash)
@@ -52,7 +54,7 @@ import {
   type LightSpot,
   type SectionLight,
   type StaticLight,
-} from '../../content/oldenzaal/kit/light-api';
+} from './api';
 import { FxEntity } from '../../fx';
 import { floorPool, floorShift, worldFloor, type FloorPoint, type FloorPool } from '../floor/hooks';
 import { FramePlacer } from '../floor/place';

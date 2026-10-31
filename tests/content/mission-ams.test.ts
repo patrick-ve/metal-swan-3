@@ -36,9 +36,9 @@ describe('mission ams', () => {
     expect(Object.keys(AMS.sections).sort()).toEqual(['a', 'b', 'c', 'c1', 'c2', 'd']);
     expect(AMS.start).toBe('a');
     expect(AMS.bossSection).toBe('d');
-    // After its tally: the 3D race BINNEN DE RING, level 2 (docs/design/rally.md §1); the bridge
-    // follows the race. The 2D ring is dormant since 2026-10-22.
-    expect(AMS.next).toBe('rally');
+    // After its tally: level 2, the day out in the old city `oat` (docs/design/oat.md §1; lazy: the
+    // card loads it), then the 3D race (level 3). The 2D ring is dormant since 2026-10-22.
+    expect(AMS.next).toBe('oat');
     expect(AMS.after).toBeUndefined();
     expect(AMS.music).toBe('ams');
     expect(AMS.bossMusic).toBe('ams-boss');

@@ -476,7 +476,7 @@ describe("audio spec: mission rally (group 'mission:rally', docs/design/rally.md
     expect(Object.keys(RALLY_SAY).sort()).toEqual(RADIO_LINES.map((l) => l.id).sort());
   });
 
-  it("Gusto's MISSION 2 card lines and the announcer's start line are in group 'boot'", () => {
+  it("Gusto's MISSION 3 card lines and the announcer's start line are in group 'boot'", () => {
     const card = MISSION_CARDS.find((c) => c.id === 'rally')!;
     expect([...card.briefing]).toEqual([...RALLY_CARD_LINES]);
     for (const t of card.briefing) {

@@ -3,13 +3,15 @@
  * name, place and time, Gusto's two briefing lines, the announcer line of the start banner and the
  * newspaper headline of the tally. m0–m5 share one line map of Lowmere and Crescendia; each card
  * puts its blinking dot on its own region; ams has its own map of the Amsterdam canal ring; the
- * ring (MISSION 2, docs/design/ring.md §1) a map of the A10 ring road with its dot on the on-ramp
- * at A10 Oost; oldenzaal (MISSION 4, docs/design/oldenzaal.md §1) a map of the flight east to Twente
- * with its dot on the town.
+ * ring (MISSION 2, docs/design/ring.md §1; dormant) a map of the A10 ring road with its dot on the
+ * on-ramp at A10 Oost; oat (MISSION 2, docs/design/oat.md §1.1; missions/oat/card.ts: here because
+ * the oat chunk is lazy) its own map of the old city; the rally (MISSION 3); oldenzaal (MISSION 5,
+ * docs/design/oldenzaal.md §1) a map of the flight east to Twente with its dot on the town.
  *
  * Mission modules may replace a card with their own `defineMissionCard` (the last one wins).
  */
 import { defineMissionCard, type MapLine, type MissionCard } from '../../scenes/flow-data';
+import { OAT_CARD } from '../missions/oat/card';
 
 // ---------------------------------------------------------------------------------------------
 // The line map (screen px; the intro card draws it in teal, segment by segment)
@@ -216,32 +218,38 @@ export const MISSION_CARDS: readonly MissionCard[] = [
     startSub: 'START!',
     map: { lines: RING_LINES, dot: [258, 92], labels: RING_LABELS },
   },
+  // Level 2 since 2026-10-31 (docs/design/oat.md §1.1): the day out in the old city (lazy mission).
+  OAT_CARD,
   {
-    // Level 2 since 2026-10-22 (docs/design/rally.md §1.1): the 3D race on the A10. English like
-    // every card. The headline is the 1st-place one (wave B picks it by the best player's place).
-    // Wave C: Gusto voices both lines (group 'boot'; 4.2 s + 4.9 s, the card waits for him:
-    // mission-intro.ts RALLY_VOICE_HOLD); the announcer's line plays as the card's frame freezes,
-    // before it breaks into 3D (rally-glitch.ts). The ring's card above stays for its URL start
-    // (`?mission=ring`).
+    // Level 3 since 2026-10-31 (docs/design/oat.md §1; level 2 from 2026-10-22, docs/design/rally.md
+    // §1.1): the 3D race on the A10, after the oat taxi ride. English like every card. The headline is
+    // the 1st-place one (wave B picks it by the best player's place). Gusto voices both lines (group
+    // 'boot'; the card waits for him: mission-intro.ts RALLY_VOICE_HOLD); the announcer's line plays
+    // as the card's frame freezes, before it breaks into 3D (rally-glitch.ts). The first line and
+    // the announce changed with the oat wave (spec §0 #61): new takes in wave C. The ring's card
+    // above stays for its URL start (`?mission=ring`).
     id: 'rally',
-    label: 'MISSION 2',
+    label: 'MISSION 3',
     name: 'BINNEN DE RING',
     place: 'A10 RING ROAD, AMSTERDAM - 1615 HOURS',
-    briefing: ['FRIES SAFE. NOW THE SQUAD RACES DE RINGRALLY: THREE LAPS OF THE A10.', 'FIRST PRIZE: A PARKING PERMIT BINNEN DE RING. THE WAITING LIST IS 12 YEARS!'],
+    // = content/rally/radio/lines.ts RALLY_CARD_LINES (Gusto's takes are keyed by the exact text; not
+    // imported: the radio table belongs to the lazy rally chunk).
+    briefing: ['TAXI PAID. NOW THE SQUAD RACES DE RINGRALLY: THREE LAPS OF THE A10.', 'FIRST PRIZE: A PARKING PERMIT BINNEN DE RING. THE WAITING LIST IS 12 YEARS!'],
     headline: 'SQUAD WINS DE RINGRALLY! PERMIT SECURED!',
-    // content/rally/radio/lines.ts RALLY_ANNOUNCE (the take is in group 'boot').
-    announce: 'MISSION TWO. VOL GAS!',
+    // = content/rally/radio/lines.ts RALLY_ANNOUNCE (the take is in group 'boot').
+    announce: 'MISSION THREE. VOL GAS!',
     map: { lines: RALLY_LINES, dot: [198, 113], labels: RING_LABELS },
   },
   {
-    // Level 4 (docs/design/oldenzaal.md §1): after the first-person floors and the story card.
+    // Level 5 since 2026-10-31 (docs/design/oat.md §1; docs/design/oldenzaal.md §1): after the
+    // first-person floors and the story card.
     id: 'oldenzaal',
-    label: 'MISSION 4',
+    label: 'MISSION 5',
     name: 'A HAUNTING IN OTOWN',
     place: 'OLDENZAAL, TWENTE - 2030 HOURS',
     briefing: ['OLDENZAAL CALLED. SOMETHING WALKS THEIR STREETS AFTER DARK.', 'FIND DE SMULHOEK ON THE CORNER. THE OWNER KNOWS MORE. STAY TOGETHER.'],
     headline: 'SAINT FREED! THE DEAD REST! SNACK BAR STILL OPEN!',
-    announce: 'MISSIE VIER. BLIJF BIJ ELKAAR, ZWAANTJES!',
+    announce: 'MISSIE VIJF. BLIJF BIJ ELKAAR, ZWAANTJES!',
     startSub: 'START!',
     map: { lines: OZ_LINES, dot: OZ_DOT, labels: OZ_LABELS },
   },

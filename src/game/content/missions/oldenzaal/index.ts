@@ -1,5 +1,5 @@
 /**
- * Mission `oldenzaal` — level 4, MISSION 4 "A HAUNTING IN OTOWN" (docs/design/oldenzaal.md; the
+ * Mission `oldenzaal` — level 5, MISSION 5 "A HAUNTING IN OTOWN" (docs/design/oldenzaal.md; the
  * API of the waves: docs/api/oldenzaal.md). The squad drops into Oldenzaal at dusk. Revision 2
  * (six sections): the abandoned shopping street (oz-a), De Smulhoek and Meneer Wu (oz-b),
  * Plechelmusplein: Mevrouw Winkel wakes the statue, the mini-boss St. Plechelmus (oz-c), the nave
@@ -32,12 +32,13 @@ export const OZ_NAME = 'A HAUNTING IN OTOWN';
 export const OLDENZAAL: MissionDef = {
   id: OLDENZAAL_ID,
   name: OZ_NAME,
-  subtitle: 'MISSION 4',
+  subtitle: 'MISSION 5',
   music: OZ_SONG.theme,
   bossMusic: OZ_SONG.boss,
   start: OZ_SECTION.a,
   bossSection: OZ_SECTION.c,
-  announce: 'MISSIE VIER. BLIJF BIJ ELKAAR, ZWAANTJES!',
+  // Level 5 since the oat wave (docs/design/oat.md §0 #61; a new take in wave C).
+  announce: 'MISSIE VIJF. BLIJF BIJ ELKAAR, ZWAANTJES!',
   sections: {
     [OZ_SECTION.a]: sectionOzA,
     [OZ_SECTION.b]: sectionOzB,
@@ -80,6 +81,8 @@ export const OLDENZAAL: MissionDef = {
   art: ['item/', 'weapon/', 'fx/', 'ui/', ...OZ_ART_PREFIXES],
   // Sampled music, sfx and voices (ElevenLabs, wave B); until then the synth plays everything.
   audioGroup: OZ_AUDIO_GROUP,
+  // The game-wide budget (docs/design/oat.md §7.1; BUDGET reads it).
+  economy: 'euro',
 };
 
 defineMission(OLDENZAAL);

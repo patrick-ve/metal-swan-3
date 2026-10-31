@@ -1251,7 +1251,9 @@ export const LINES: LineSpec[] = [
   //     the ams briefing's bubble life (150 ticks) for Wu's scene. Revision 3 (the user,
   //     2026-10-21): every line of this mission is Dutch ('nl'). Meneer Wu speaks plain, correct
   //     Dutch (no accent play, no broken language).
-  line(A, 'MISSIE VIER. BLIJF BIJ ELKAAR, ZWAANTJES!', '[booming, theatrical] Missie vier. [ominous, lower] Blijf bij elkaar, zwaantjes!', 'nl', OZ, 3.5),
+  // Level 5 since the oat wave (docs/design/oat.md §0 #61): the new text; its take is made in wave C
+  // (the old take 'MISSIE VIER…' stays in the manifest until then).
+  line(A, 'MISSIE VIJF. BLIJF BIJ ELKAAR, ZWAANTJES!', '[booming, theatrical] Missie vijf. [ominous, lower] Blijf bij elkaar, zwaantjes!', 'nl', OZ, 3.5),
   // The pickup callout of the meal (lines.ts SNACK_POWER_CALLOUT): the announcer says it like a weapon
   // name when the meal is caught (`audio.voice(SNACK_POWER_CALLOUT)`, requested from WUGHOST / INTEGRATE).
   line(A, 'SNACKKRACHT!', '[excited, punchy, in Dutch, with a guttural Dutch g sound] Snack-kracht!', 'nl', OZ, 2.3),
@@ -1304,11 +1306,26 @@ export const LINES: LineSpec[] = [
   line('gusto', 'FRIES SAFE. NOW A SHORT, FAST RUN TO THE ZUIDAS.', '[brisk, quick, upbeat] Fries safe. Now a short, fast run to the Zuidas.', 'en', BOOT, 3.0),
   line('gusto', 'A FRIEND DRIVES, YOU HANG OUT THE WINDOW. ROAD TRAIN AHEAD!', '[brisk, quick, commanding] A friend drives, you hang out the window. [shouts] Road train ahead!', 'en', BOOT, 2.8),
   // --- Mission rally, wave C (docs/design/rally.md §8): FILE FM's DJ (RADIO_LINES, 2 takes each,
-  //     Scribe-checked by tmp/rally-audio/stt.ts + pick.ts), Gusto's MISSION 2 card lines and the
-  //     announcer's start line (group 'boot': the card plays before the mission's group loads).
+  //     Scribe-checked by tmp/rally-audio/stt.ts + pick.ts), Gusto's MISSION 3 card lines and the
+  //     announcer's start line (group 'boot': the card plays before the mission's group loads). The
+  //     rally is level 3 since the oat wave (docs/design/oat.md §0 #61): the first card line and the
+  //     announce have new texts; their takes are made in wave C (the old takes stay until then).
   ...rallyLines(),
   // Both card lines together should fit the card's 360 + 90 ticks (mission-intro.ts): brisk.
-  line(GUSTO_SPEAKER, RALLY_CARD_LINES[0], '[brisk, quick, upbeat] Fries safe. Now the squad races De Ringrally: three laps of the A-ten.', 'en', BOOT, 4.0),
+  line(GUSTO_SPEAKER, RALLY_CARD_LINES[0], '[brisk, quick, upbeat] Taxi paid. Now the squad races De Ringrally: three laps of the A-ten.', 'en', BOOT, 4.0),
   line(GUSTO_SPEAKER, RALLY_CARD_LINES[1], '[brisk, quick, cheerful] First prize: a parking permit binnen de Ring. [amused] The waiting list is twelve years!', 'en', BOOT, 4.4),
-  line(A, RALLY_ANNOUNCE, '[booming, theatrical] Mission two. [shouts] Vol gas!', 'nl', BOOT, 2.6),
+  line(A, RALLY_ANNOUNCE, '[booming, theatrical] Mission three. [shouts] Vol gas!', 'nl', BOOT, 2.6),
+];
+
+/**
+ * Texts that changed with the oat route switch (docs/design/oat.md §0 #61, wave A): each new `text`
+ * is a line above; its take is made in wave C (no generation before the user's OK on the credits).
+ * Until then the old take stays in the manifest under the OLD text's key (the game plays no take for
+ * the new text: the card types it silently, the announcer is silent), and the manifest tests accept
+ * both. SOUND (wave C) makes the new takes, drops the old keys and empties this list.
+ */
+export const PENDING_RETAKES: ReadonlyArray<{ readonly old: string; readonly text: string; readonly group: Group }> = [
+  { old: 'FRIES SAFE. NOW THE SQUAD RACES DE RINGRALLY: THREE LAPS OF THE A10.', text: RALLY_CARD_LINES[0], group: BOOT },
+  { old: 'MISSION TWO. VOL GAS!', text: RALLY_ANNOUNCE, group: BOOT },
+  { old: 'MISSIE VIER. BLIJF BIJ ELKAAR, ZWAANTJES!', text: 'MISSIE VIJF. BLIJF BIJ ELKAAR, ZWAANTJES!', group: OZ },
 ];

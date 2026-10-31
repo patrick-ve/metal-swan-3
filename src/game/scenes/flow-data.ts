@@ -10,6 +10,7 @@
 import type { CampaignRecord } from '../app';
 import type { Difficulty } from '../session';
 import { getMission } from '../registry';
+import { OAT_ID } from '../content/missions/oat/ids';
 import { OLDENZAAL_ID } from '../content/missions/oldenzaal/ids';
 import { RALLY_ID } from '../rally/ids';
 
@@ -32,6 +33,12 @@ export interface MissionCard {
   announce?: string;
   /** Second line of the gameplay start banner (GDD §13.6: 'START!'). */
   startSub?: string;
+  /**
+   * OPT-IN (mission `oat`, docs/design/oat.md §1.1): the card's look. 'folder' = the
+   * toeristenfolder (a glossy tri-fold leaflet with the day plan) instead of the line map; the radio
+   * box and Gusto's voice stay. Drawn by MissionIntroScene from wave C on; default: the line map.
+   */
+  look?: 'folder';
   /** The line map behind the card (screen px), its blinking dot and region names ([text, x, y]). */
   map?: {
     readonly lines: readonly MapLine[];
@@ -66,18 +73,19 @@ export function hasMissionCard(id: string): boolean {
 export const CAMPAIGN_MISSIONS: readonly string[] = ['ams', 'm1', 'm2', 'm3', 'm4', 'm5'];
 
 /**
- * The normal route (docs/design/fps.md §1.9, docs/design/rally.md §1, docs/design/oldenzaal.md §1):
- * ams (MISSION 1), the 3D race `rally` on the A10 (MISSION 2, BINNEN DE RING; since 2026-10-22 it
- * replaces the 2D `ring`, which stays dormant: `?mission=ring`), the two fps floors (level 3,
- * `MISSION 3`), then the haunted town `oldenzaal` (MISSION 4). ALL GOLDEN RECORDS on this route
- * needs the record of each of them (the rally's: first place).
+ * The normal route (docs/design/fps.md §1.9, docs/design/rally.md §1, docs/design/oldenzaal.md §1,
+ * docs/design/oat.md §1): ams (MISSION 1), the day out in the old city `oat` (MISSION 2, OAT OF
+ * CONTROL; since 2026-10-31), the 3D race `rally` on the A10 (MISSION 3, BINNEN DE RING; since
+ * 2026-10-22 it replaces the 2D `ring`, which stays dormant: `?mission=ring`), the two fps floors
+ * (level 4, `MISSION 4`), then the haunted town `oldenzaal` (MISSION 5). ALL GOLDEN RECORDS on this
+ * route needs the record of each of them (the rally's: first place).
  */
-export const FPS_ROUTE: readonly string[] = ['ams', RALLY_ID, 'fps-1', 'fps-2', OLDENZAAL_ID];
+export const FPS_ROUTE: readonly string[] = ['ams', OAT_ID, RALLY_ID, 'fps-1', 'fps-2', OLDENZAAL_ID];
 
 /**
  * The level number of a mission on the route: its place in FPS_ROUTE with the first-person
- * floors counted as ONE level (MISSION 3), so ams = 1, rally = 2, oldenzaal = 4. 0 when it is not
- * on the route (or is an fps floor; the dormant ring: its card still says MISSION 2).
+ * floors counted as ONE level (MISSION 4), so ams = 1, oat = 2, rally = 3, oldenzaal = 5. 0 when it
+ * is not on the route (or is an fps floor; the dormant ring: its card still says MISSION 2).
  */
 function routeNumber(id: string): number {
   if (id.startsWith('fps-')) return 0;
@@ -95,18 +103,28 @@ function routeNumber(id: string): number {
 }
 
 /**
- * The missions ALL GOLDEN RECORDS needs: FPS_ROUTE once the campaign played the rally, the dormant
- * ring (a URL start) or `fps-1`, else CAMPAIGN_MISSIONS.
+ * The missions ALL GOLDEN RECORDS needs: FPS_ROUTE once the campaign played `oat`, the rally, the
+ * dormant ring (a URL start) or `fps-1`, else CAMPAIGN_MISSIONS.
  */
 export function goldenRecordRoute(c: CampaignRecord | null): readonly string[] {
-  return c?.missions.includes(RALLY_ID) || c?.missions.includes('ring') || c?.missions.includes('fps-1') ? FPS_ROUTE : CAMPAIGN_MISSIONS;
+  return c?.missions.includes(OAT_ID) || c?.missions.includes(RALLY_ID) || c?.missions.includes('ring') || c?.missions.includes('fps-1') ? FPS_ROUTE : CAMPAIGN_MISSIONS;
 }
 
 /**
- * The number of a mission: its level on the route (`routeNumber`: ams = 1, rally = 2, the fps
- * floors together 3, oldenzaal = 4), else its place in CAMPAIGN_MISSIONS (the passive m1–m5 keep
- * their old numbers); 0 when it is neither. The fps floors are numbered by the high-score column
- * (F1, F2), not here.
+ * The route predecessor of a mission on FPS_ROUTE (the fps floors count as one level: oldenzaal's
+ * is `fps-2`), or null when it is first or not on the route. flow.ts's route guard opens a route
+ * mission only from its predecessor or an explicit `next` (the m5 trap, docs/design/oat.md §1).
+ */
+export function routePredecessor(id: string): string | null {
+  const i = FPS_ROUTE.indexOf(id);
+  return i > 0 ? FPS_ROUTE[i - 1] : null;
+}
+
+/**
+ * The number of a mission: its level on the route (`routeNumber`: ams = 1, oat = 2, rally = 3, the
+ * fps floors together 4, oldenzaal = 5), else its place in CAMPAIGN_MISSIONS (the passive m1–m5
+ * keep their old numbers); 0 when it is neither. The fps floors are numbered by the high-score
+ * column (F1, F2), not here.
  */
 export function missionNumber(id: string): number {
   const r = routeNumber(id);
@@ -115,8 +133,8 @@ export function missionNumber(id: string): number {
 }
 
 /**
- * 'ams' → 'MISSION 1', 'rally' → 'MISSION 2', 'oldenzaal' → 'MISSION 4' (the route; the dormant
- * 'ring' → 'RING', its own card keeps MISSION 2); 'm1' →
+ * 'ams' → 'MISSION 1', 'oat' → 'MISSION 2', 'rally' → 'MISSION 3', 'oldenzaal' → 'MISSION 5' (the
+ * route; the dormant 'ring' → 'RING', its own card keeps MISSION 2); 'm1' →
  * 'MISSION 2' … 'm4' → 'MISSION 5' (passive, their campaign place); the last campaign mission
  * (m5) → 'FINAL MISSION'; other ids `mN` → 'MISSION N' (m0), else their upper-case name.
  */

@@ -1,5 +1,5 @@
 /**
- * The glitch into 3D (docs/design/rally.md §1.2, §12.3; docs/api/rally.md "A.I"): the MISSION 2
+ * The glitch into 3D (docs/design/rally.md §1.2, §12.3; docs/api/rally.md "A.I"): the MISSION 3
  * card's last frame breaks into blocks, the blocks turn into flat polygons, and the polygons fold
  * into the 3D start grid (about one second; the look of the glitch bridge, glitch-bridge.ts, but
  * its own code and its own synth sounds: the bridge's live in the lazy fps content, which this scene
@@ -7,7 +7,7 @@
  *
  * `RallyGlitchScene` is also the gate into the race:
  * - `hold`: the card's frozen frame (a direct `?mission=rally` start has no card: a black frame
- *   with MISSION 2 / BINNEN DE RING), with a small row twitch now and then, until the lazy rally
+ *   with MISSION 3 / BINNEN DE RING), with a small row twitch now and then, until the lazy rally
  *   content is registered (`loadRallyContent`; usually done during the card) — at least
  *   `HOLD_MIN` ticks, at most `GLITCH_MAX_WAIT`.
  * - `break` (`BREAK_TICKS`): the frame corrupts (8 × 8 blocks copied, row bands shifted, a band of
@@ -51,7 +51,7 @@ export const GLITCH_MIN = HOLD_MIN + BREAK_TICKS;
 /** The content may take this long at most; then the no-3D path (ticks). */
 export const GLITCH_MAX_WAIT = 900;
 /**
- * Wave C: the announcer's line (the card's `announce`, MISSION TWO. VOL GAS!) starts with the frozen
+ * Wave C: the announcer's line (the card's `announce`, MISSION THREE. VOL GAS!) starts with the frozen
  * frame; while it speaks the frame holds up to this tick, so the break comes on its shout ("VOL GAS!"
  * starts 1.6 s into the 2.8 s take). No voice (no sample, the ANNOUNCER option off): no wait.
  */
@@ -64,7 +64,7 @@ const H = 216;
 export interface RallyGlitchOpts {
   /** The prepared race (the card's `prepareRally`). */
   start: RallyOpts;
-  /** The scene whose last frame breaks up (the MISSION 2 card; absent on a direct start). */
+  /** The scene whose last frame breaks up (the MISSION 3 card; absent on a direct start). */
   from?: Scene;
 }
 
@@ -88,7 +88,7 @@ function snapshot(scene: Scene | null): PixelBuffer {
   if (!drawn) {
     // A direct start (or a failed draw): the card's title on black.
     r.begin(0x000000ff);
-    centerText(r, 'MISSION 2', 90, UI_WHITE, 'big');
+    centerText(r, 'MISSION 3', 90, UI_WHITE, 'big');
     centerText(r, 'BINNEN DE RING', 106, UI_GOLD, 'big');
   }
   r.end();
@@ -324,7 +324,7 @@ export class RallyNoGlScene implements Scene {
 
   draw(r: Renderer): void {
     r.begin(0x000000ff);
-    centerText(r, 'MISSION 2', 72, UI_WHITE, 'big');
+    centerText(r, 'MISSION 3', 72, UI_WHITE, 'big');
     centerText(r, 'THIS DEVICE CANNOT SHOW 3D', 96, UI_GOLD, 'big');
     if (this.opts.reason) centerText(r, this.opts.reason.toUpperCase().slice(0, 60), 120, PAL.stone[2]);
     if (this.t >= NO_GL_SKIP_AFTER && blinkOn(this.t)) centerText(r, 'PRESS START', 190, PAL.stone[3]);

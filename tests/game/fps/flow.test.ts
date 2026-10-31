@@ -39,6 +39,7 @@ import { MissionCompleteScene } from '../../../src/game/scenes/mission-complete'
 import { MissionIntroScene } from '../../../src/game/scenes/mission-intro';
 import { RallyScene } from '../../../src/game/scenes/rally';
 import { loadRallyContent } from '../../../src/game/scenes/rally-route';
+import { loadOatContent } from '../../../src/game/scenes/oat-route';
 import { StoryCardScene } from '../../../src/game/scenes/story-card';
 import { missionBonusOf } from '../../../src/game/fps/run';
 import { PauseScene } from '../../../src/game/scenes/pause';
@@ -168,8 +169,9 @@ describe('GlitchBridgeScene before the lazy content', () => {
 });
 
 describe('the route (headless)', () => {
-  it('ams complete → its tally → the rally → its tally → bridge (records) → intro → floor 1', async () => {
+  it('ams complete → its tally → oat → its tally → the rally → its tally → bridge (records) → intro → floor 1', async () => {
     await loadContent();
+    await loadOatContent();
     await loadRallyContent();
     await loadFpsContent(createApp({ input: new InputManager(), audio: new SimAudio(), store: new MemoryStore() }));
     ensureFloors();
@@ -189,7 +191,22 @@ describe('the route (headless)', () => {
     }
     expect(ok).toBe(true);
     expect(h.seen).not.toContain(GlitchBridgeScene.name);
-    // The newspaper → the rally's card (MISSION 2 BINNEN DE RING) → the glitch into 3D → the race
+    // The newspaper → oat's card (MISSION 2 OAT OF CONTROL; its lazy chunk is loaded above) → oat (F4
+    // completes it) → its tally (docs/design/oat.md §1; the newspaper until the kassabon lands).
+    expect(h.until(MissionIntroScene, 900)).toBe(true);
+    expect((h.app.scenes.top as MissionIntroScene).mission).toBe('oat');
+    expect(h.until(GameplayScene, 900)).toBe(true);
+    const oat = h.app.scenes.top as GameplayScene;
+    expect(oat.runner.mission.id).toBe('oat');
+    let oatDone = false;
+    for (let i = 0; i < 4000 && !oatDone; i++) {
+      if (i % 120 === 0 && oat.runner.state === 'playing') oat.runner.skip();
+      h.step(1);
+      const top = h.app.scenes.top as { runner?: { mission?: { id: string } } } | null;
+      oatDone = !(top instanceof GameplayScene) && top?.runner?.mission?.id === 'oat';
+    }
+    expect(oatDone).toBe(true);
+    // The oat tally → the rally's card (MISSION 3 BINNEN DE RING) → the glitch into 3D → the race
     // (docs/design/rally.md §1; the 2D ring is dormant since 2026-10-22).
     expect(h.until(MissionIntroScene, 900)).toBe(true);
     expect((h.app.scenes.top as MissionIntroScene).mission).toBe('rally');
@@ -213,7 +230,7 @@ describe('the route (headless)', () => {
     expect(slot.rescued).toBe(0);
     // The bridge pays nothing more: no bonus record, no MISSION 2 BONUS line on floor 1.
     expect(missionBonusOf(h.app.session!.records.get<unknown>(AMS_BONUS_KEY))).toBeUndefined();
-    expect(h.app.campaign!.missions).toEqual(['ams', 'rally']);
+    expect(h.app.campaign!.missions).toEqual(['ams', 'oat', 'rally']);
     expect(h.app.campaign!.goldenRecords[0].has('ams')).toBe(true);
     expect(h.app.campaign!.goldenRecords[0].has('rally')).toBe(place === 1);
     // The phases, then a press finishes the typing and a second press folds the card.
@@ -396,15 +413,15 @@ describe('pause, continue and game over in the fps mode', () => {
 });
 
 describe('records, route lists and text', () => {
-  it('the golden-record route: ams + rally + fps-1 + fps-2 + oldenzaal on the route, the six missions otherwise', () => {
+  it('the golden-record route: ams + oat + rally + fps-1 + fps-2 + oldenzaal on the route, the six missions otherwise', () => {
     const c = newCampaign();
     expect(goldenRecordRoute(c)).toBe(CAMPAIGN_MISSIONS);
     expect(goldenRecordRoute(null)).toBe(CAMPAIGN_MISSIONS);
     c.missions.push('ams', 'fps-1');
     expect(goldenRecordRoute(c)).toBe(FPS_ROUTE);
-    // The rally is level 2 (docs/design/rally.md §1; the 2D ring is dormant since 2026-10-22).
-    // Level 4, the haunted town, follows the floors (docs/design/oldenzaal.md §1).
-    expect(FPS_ROUTE).toEqual(['ams', 'rally', 'fps-1', 'fps-2', 'oldenzaal']);
+    // Oat is level 2 (docs/design/oat.md §1), the rally level 3 (docs/design/rally.md §1; the 2D ring
+    // is dormant since 2026-10-22). Level 5, the haunted town, follows the floors.
+    expect(FPS_ROUTE).toEqual(['ams', 'oat', 'rally', 'fps-1', 'fps-2', 'oldenzaal']);
     expect(CAMPAIGN_MISSIONS).toEqual(['ams', 'm1', 'm2', 'm3', 'm4', 'm5']);
     const s = new GameSession({ characters: ['vincent', 'thom'] });
     for (const id of FPS_ROUTE) c.goldenRecords[0].add(id);

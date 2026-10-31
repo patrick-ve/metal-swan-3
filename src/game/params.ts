@@ -13,8 +13,8 @@
  * `exit`) and `seed` fixes the ring (without it every play gets a fresh one). Revision R
  * (docs/design/ring.md §R.1): `section=zwaan|rf-a|rf-b` too, and `route=short|full` (the full loop:
  * tests and sims only; absent = the short route, or the full one for an unused landmark).
- * `mission=rally` starts the 3D race BINNEN DE RING (docs/design/rally.md §1; level 2 since
- * 2026-10-22; `mission=ring` still opens the dormant 2D ring): `lap=1|2|3` starts at that lap,
+ * `mission=rally` starts the 3D race BINNEN DE RING (docs/design/rally.md §1; level 2 from
+ * 2026-10-22, level 3 since 2026-10-31; `mission=ring` still opens the dormant 2D ring): `lap=1|2|3` starts at that lap,
  * `cam=chase|bumper` picks the camera, and `gl=0` (a test param) takes the no-WebGL2 path (a short
  * card, then the tally with no race lines, then the bridge).
  */

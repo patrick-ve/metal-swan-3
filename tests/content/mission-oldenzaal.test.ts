@@ -73,10 +73,13 @@ describe('mission oldenzaal: registration and card', () => {
     expect(ids.indexOf('oldenzaal')).toBeGreaterThan(ids.indexOf('m5'));
   });
 
-  it('the card: MISSION 4, the title, OLDENZAAL, a briefing that fits the radio box, a map dot', () => {
+  it('the card: MISSION 5 (level 5 since the oat wave), the title, OLDENZAAL, a briefing that fits the radio box, a map dot', () => {
     const card = missionCard(OLDENZAAL_ID);
-    expect(card.label).toBe('MISSION 4');
-    expect(missionLabel(OLDENZAAL_ID)).toBe('MISSION 4');
+    expect(card.label).toBe('MISSION 5');
+    expect(missionLabel(OLDENZAAL_ID)).toBe('MISSION 5');
+    expect(OLDENZAAL.subtitle).toBe('MISSION 5');
+    expect(card.announce).toBe('MISSIE VIJF. BLIJF BIJ ELKAAR, ZWAANTJES!');
+    expect(OLDENZAAL.announce).toBe(card.announce);
     expect(card.name).toBe('A HAUNTING IN OTOWN');
     expect(card.place).toContain('OLDENZAAL');
     expect(card.briefing.length).toBe(2);

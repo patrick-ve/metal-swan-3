@@ -188,11 +188,12 @@ export function hdTone(r: Ramp | HdRampName, t: number): Color {
 
 /**
  * True when `c` (ignoring alpha) is an HD palette colour: a `PAL_HD` colour or (additive, the
- * oldenzaal wave) a `PAL_HD_OZ` colour. Only art checks call it; no drawer depends on it.
+ * oldenzaal wave) a `PAL_HD_OZ` colour, or (additive, the oat wave) a `PAL_HD_OAT` colour. Only art
+ * checks call it; no drawer depends on it. The oat art's own check is `inOatPalette`.
  */
 export function inHdPalette(c: Color): boolean {
   const key = (c | 255) >>> 0;
-  return HD_SET.has(key) || HD_OZ_SET.has(key) || HD_OZ_R2_SET.has(key);
+  return HD_SET.has(key) || HD_OZ_SET.has(key) || HD_OZ_R2_SET.has(key) || HD_OAT_SET.has(key);
 }
 const HD_SET = new Set<Color>(HD_PALETTE);
 
@@ -316,3 +317,73 @@ const HD_OZ_R2_SET = new Set<Color>(HD_OZ_R2_NEW);
 
 /** `HD_FULL_PALETTE` then the revision-2 colours (≤ 256): every colour the oldenzaal 2× / 4× art may use. */
 export const HD_R2_FULL_PALETTE: readonly Color[] = [...HD_FULL_PALETTE, ...HD_OZ_R2_NEW];
+
+// ---------------------------------------------------------------------------------------------
+// Oat ramps (mission `oat`, docs/design/oat.md §8.5; docs/api/oat.md "Palette")
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The HD ramps of the old city (2026-10-31, oat wave A), dark → light, strictly rising luma: 43
+ * colours in 11 ramps (spec §8.5: ≤ 47 new). Hand-built in even Oklab lightness steps between the
+ * research guide values (tmp/oat/scenery-research.md §4; photo-measured hex values only guided
+ * them, none ships as measured), lower in chroma than the ams ramps by day: real Amsterdam is
+ * greyer, browner, wetter; the colour comes from paint (grachtengroen, oxblood) and, at night, from
+ * the lights. ADDITIVE and kept APART from `PAL_HD` and the oldenzaal sets on purpose: `HD_PALETTE`,
+ * `HD_FULL_PALETTE` and `HD_R2_FULL_PALETTE` stay as they were, so no nearest-colour search
+ * picks a new colour and no existing pixel changes.
+ *
+ * The oat painters index `HD_OAT_FULL_PALETTE` (PAL_HD + the new oat colours, ≤ 255: a BgCanvas
+ * index is a byte and index 0 is clear; `bgPalette(HD_OAT_FULL_PALETTE)`). At 1× everything snaps
+ * to the 64-colour `PAL` as usual (the `Pen` snap rule).
+ */
+export const PAL_HD_OAT = {
+  /** Canal water by day: the opaque olive-brown body (deep under hulls and walls) → the grey-blue sky sheen. */
+  canal: H('#13110f', '#282a21', '#404636', '#58615c', '#707e88', '#8b9dad'),
+  /** Night water and wet black (asphalt, wet clinkers) → the lamp-lit wet sheen. */
+  nightWater: H('#050403', '#181519', '#4b4137', '#948267'),
+  /** Weathered brick: the near-black over-painted shade → the purple-brown deep → the sunlit 18th-century red-brown. */
+  brick: H('#1f191b', '#37282a', '#523837', '#71473b', '#895b49', '#a1705a', '#b8876c'),
+  /** Mortar (a warm recessed grey) and Bentheimer sandstone (cornices, sills, gable edging). */
+  mortar: H('#7b746a', '#948d82', '#aea797', '#cdc1a0'),
+  /** Grachtengroen / monumentengroen: doors, shutters, railings, bridge iron. */
+  green: H('#121a17', '#212d29', '#32423a', '#3f5a4a'),
+  /** Oxblood: doors, lantern posts, the Amsterdammertjes. */
+  oxblood: H('#3a1a1c', '#5a2a2c', '#7a3a3a'),
+  /** The warm LED lantern: its dark spill → the core. */
+  lantern: H('#7a4321', '#ffa757', '#ffd29a', '#fff4d6'),
+  /** Red window light: the wall wash → the tube core (d; architecture only). */
+  redLight: H('#7a0a10', '#e0141e', '#ff6a5a'),
+  /** Neon pink: the glow, the pale core. */
+  neonPink: H('#ff3fa0', '#ffc2e2'),
+  /** Neon cyan: the glow, the pale core. */
+  neonCyan: H('#2fb6ff', '#96dcf7'),
+  /** The night sky and its cloud glow: deep navy → blue → the warm brown of clouds lit from below. */
+  nightSky: H('#0b1030', '#18214a', '#3a2a2a', '#5c4234'),
+} as const satisfies Record<string, Ramp>;
+
+export type HdOatRampName = keyof typeof PAL_HD_OAT;
+export const HD_OAT_RAMP_NAMES: readonly HdOatRampName[] = Object.keys(PAL_HD_OAT) as HdOatRampName[];
+
+/** The colours the oat ramps add (in no PAL_HD ramp), in ramp order. */
+export const HD_OAT_NEW: readonly Color[] = (() => {
+  const seen = new Set<Color>(HD_PALETTE);
+  const out: Color[] = [];
+  for (const n of HD_OAT_RAMP_NAMES) {
+    for (const c of PAL_HD_OAT[n]) {
+      if (seen.has(c)) continue;
+      seen.add(c);
+      out.push(c);
+    }
+  }
+  return out;
+})();
+const HD_OAT_SET = new Set<Color>(HD_OAT_NEW);
+
+/** PAL_HD then the oat colours (≤ 255): every colour the oat 2× / 4× art may use. */
+export const HD_OAT_FULL_PALETTE: readonly Color[] = [...HD_PALETTE, ...HD_OAT_NEW];
+
+/** True when `c` (ignoring alpha) is in the oat set: a PAL_HD or a PAL_HD_OAT colour (the oat palette test). */
+export function inOatPalette(c: Color): boolean {
+  const key = (c | 255) >>> 0;
+  return HD_SET.has(key) || HD_OAT_SET.has(key);
+}

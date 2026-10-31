@@ -13,6 +13,10 @@
  *   result snapped to the nearest PAL_HD colour in Oklab. Painters then only pick indices.
  * - `dq` is the ordered dither (Bayer 8 × 8 on the art grid) used ONLY at band borders of large
  *   gradients (sky, clouds, walls, water); sprites never use it.
+ * - OPT-IN (mission `oat`, docs/design/oat.md §8.5): a canvas may index ANOTHER colour set
+ *   (`new BgCanvas(w, h, d, bgPalette(oatSet))`, ≤ 255 colours, index 0 = clear): `BgPalette` gives
+ *   that set's `ix` / `colourOf` / `nearest` / `tableOf`. The default is `HD_BG_PALETTE` (PAL_HD,
+ *   the module functions' own table), so every existing painter indexes and finishes as before.
  *
  * Same input, same pixels: no randomness except the hashes callers pass.
  */
@@ -300,14 +304,17 @@ export class BgCanvas {
   readonly W: number;
   readonly H: number;
   readonly px: Uint8Array;
+  /** The colour set the indices refer to (default PAL_HD: `HD_BG_PALETTE`). */
+  readonly palette: BgPalette;
 
-  constructor(w: number, h: number, d: Den) {
+  constructor(w: number, h: number, d: Den, palette: BgPalette = HD_BG_PALETTE) {
     this.w = w;
     this.h = h;
     this.d = d;
     this.W = w * d;
     this.H = h * d;
     this.px = new Uint8Array(this.W * this.H);
+    this.palette = palette;
   }
 
   /** Wrap an art x into the tile. */
@@ -466,11 +473,12 @@ export class BgCanvas {
     }
   }
 
-  /** The finished layer: PAL_HD colours, (w·d) × (h·d). */
+  /** The finished layer: the palette's colours (PAL_HD by default), (w·d) × (h·d). */
   finish(): PixelBuffer {
     const out = new PixelBuffer(this.W, this.H);
     const o = out.data;
     const p = this.px;
+    const LUT = this.palette.lut;
     if (LITTLE_ENDIAN && (p.length & 3) === 0 && (p.byteOffset & 3) === 0) {
       // Four indices per read; clear runs are skipped four px at a time.
       const p32 = new Uint32Array(p.buffer, p.byteOffset, p.length >> 2);
@@ -498,4 +506,98 @@ export function tableOf(t: (c: Color) => number): Uint8Array {
   const o = new Uint8Array(256);
   for (let i = 1; i <= HD_PALETTE.length; i++) o[i] = t(LUT[i]);
   return o;
+}
+
+// ------------------------------------------------------------------------------------ other colour sets
+
+/**
+ * A colour set a BgCanvas indexes (index i + 1 = `colours[i]`, index 0 = clear; ≤ 255 colours).
+ * The module functions above (`ix`, `colourOf`, `nearestHd`, `tableOf`, …) are the PAL_HD set's;
+ * a painter of another set (oat: PAL_HD ∪ PAL_HD_OAT) uses its palette's methods instead.
+ */
+export interface BgPalette {
+  /** The colours, in index order (index 1 = colours[0]). */
+  readonly colours: readonly Color[];
+  /** Index → colour (256 entries; 0 = clear). */
+  readonly lut: Uint32Array;
+  /** The index of a colour (snapped to the set's nearest colour in Oklab). */
+  ix(c: Color): number;
+  /** The colour of an index. */
+  colourOf(i: number): Color;
+  /** The set's colour nearest to any colour (a set colour maps to itself). */
+  nearest(c: Color): Color;
+  /** An index table (256) mapping every index of the set through a colour transform. */
+  tableOf(t: (c: Color) => number): Uint8Array;
+}
+
+/** The default set: PAL_HD (the module's own table, so the default canvas finishes as before). */
+export const HD_BG_PALETTE: BgPalette = {
+  colours: HD_PALETTE,
+  lut: LUT,
+  ix,
+  colourOf,
+  nearest: nearestHd,
+  tableOf,
+};
+
+const palettes = new Map<readonly Color[], BgPalette>([[HD_PALETTE, HD_BG_PALETTE]]);
+
+/**
+ * The BgPalette of a colour list (cached by the list; duplicates keep their first index). Throws
+ * when the set has more than 255 colours (index 0 is clear).
+ */
+export function bgPalette(colours: readonly Color[]): BgPalette {
+  const have = palettes.get(colours);
+  if (have) return have;
+  const lut = new Uint32Array(256);
+  const index = new Map<number, number>();
+  const list: Color[] = [];
+  for (const c of colours) {
+    const k = (c | 255) >>> 0;
+    if (index.has(k)) continue;
+    if (list.length >= 255) throw new Error(`bgPalette: more than 255 colours (index 0 is clear)`);
+    list.push(k);
+    lut[list.length] = k;
+    index.set(k, list.length);
+  }
+  const lab = list.map((c) => oklab(c));
+  const near = new Map<number, Color>();
+  const nearest = (c: Color): Color => {
+    const key = (c | 255) >>> 0;
+    if (index.has(key)) return key;
+    let hit = near.get(key);
+    if (hit === undefined) {
+      const [L, a, b] = oklab(key);
+      let best = 0;
+      let bd = Infinity;
+      for (let i = 0; i < lab.length; i++) {
+        const q = lab[i];
+        const dl = q[0] - L;
+        const da = q[1] - a;
+        const db = q[2] - b;
+        const dd = dl * dl + 1.4 * (da * da + db * db);
+        if (dd < bd) {
+          bd = dd;
+          best = i;
+        }
+      }
+      hit = list[best];
+      near.set(key, hit);
+    }
+    return hit;
+  };
+  const pal: BgPalette = {
+    colours: list,
+    lut,
+    ix: (c) => index.get((c | 255) >>> 0) ?? (index.get(nearest(c)) as number),
+    colourOf: (i) => lut[i & 255],
+    nearest,
+    tableOf: (t) => {
+      const o = new Uint8Array(256);
+      for (let i = 1; i <= list.length; i++) o[i] = t(lut[i]);
+      return o;
+    },
+  };
+  palettes.set(colours, pal);
+  return pal;
 }

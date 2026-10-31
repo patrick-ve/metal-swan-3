@@ -1,8 +1,8 @@
 /**
  * The rally's place in the flow (docs/design/rally.md §1, §12.3; docs/api/rally.md "Flow"):
  *
- * `ams` → its tally (MissionCompleteScene) → `missionDone` → MissionIntroScene('rally') (the MISSION 2
- * card BINNEN DE RING: `prepareRally` makes the seed, `preloadRally` loads the lazy rally content and
+ * `oat` (level 2 since 2026-10-31, docs/design/oat.md §1; before it `ams`) → its tally →
+ * `missionDone` → MissionIntroScene('rally') (the MISSION 3 card BINNEN DE RING: `prepareRally` makes the seed, `preloadRally` loads the lazy rally content and
  * creates the GL context — its feature check) → `RallyGlitchScene` (the glitch into 3D) →
  * `RallyScene` (the race) → 'complete' → `rallyDone` → the rally's MISSION COMPLETE page
  * (`rallyTally`: the race lines through `TallyRunner.tallyLines`, the seed in the footer) →

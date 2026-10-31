@@ -3,7 +3,7 @@
  *
  * bridge / `?mode=fps` → `startFpsRun` → FpsIntroScene(floor 1) → FpsScene → `fpsFloorDone` →
  * FpsTallyScene → `fpsTallyDone` → FpsIntroScene(floor 2) → … → after the last floor the story
- * card (StoryCardScene, docs/design/oldenzaal.md §1) → MissionIntroScene('oldenzaal') (MISSION 4)
+ * card (StoryCardScene, docs/design/oldenzaal.md §1) → MissionIntroScene('oldenzaal') (MISSION 5)
  * → the mission → its tally → the TO BE CONTINUED card → EndingScene({ variant: 'fps' }) →
  * FinalTallyScene → finishGame. Without the oldenzaal mission registered (a broken module) the
  * last floor goes straight to the fps ending, as before. The test floor 0 goes back to the title

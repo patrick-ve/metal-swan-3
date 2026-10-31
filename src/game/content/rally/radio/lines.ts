@@ -11,7 +11,7 @@
  *   audio spec's LineSpecs (tools/audio/spec.ts, AUDIO-GEN) use these texts verbatim.
  * - The DJ teases the situation (traffic, fines, the waiting list), never a player's skill; he names
  *   the estates by their liveries (DE ROZZERS, MAJOR COCKTAILS), never a car's brand. The heroes say
- *   nothing in the car; Brigadier Gusto voices only the MISSION 2 card (`RALLY_CARD_LINES`, group 'boot').
+ *   nothing in the car; Brigadier Gusto voices only the MISSION 3 card (`RALLY_CARD_LINES`, group 'boot').
  * - `priority` (0 … 10, higher first in the queue), `cooldown` (ticks at 60 Hz before the same line
  *   may play again; `RADIO_ONCE` = once per race) and the category's `gap` / `maxWait`
  *   (`RADIO_CATEGORIES`) are for the radio scheduler (src/engine/radio.ts, RADIO) and the director
@@ -223,18 +223,22 @@ export function tickerText(text: string): string {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Gusto on the MISSION 2 card (English; group 'boot', like the ring's card lines)
+// Gusto on the MISSION 3 card (English; group 'boot', like the ring's card lines)
 // ---------------------------------------------------------------------------------------------
 
-/** Gusto's two briefing lines: exactly the rally card's `briefing` (content/ui/cards.ts). */
+/**
+ * Gusto's two briefing lines: the rally card's `briefing` (content/ui/cards.ts uses this list).
+ * Level 3 since the oat wave (docs/design/oat.md §0 #61): the first line follows the taxi ride
+ * (`TAXI PAID.`; a new take in wave C, until then the card types it silently).
+ */
 export const RALLY_CARD_LINES: readonly string[] = [
-  'FRIES SAFE. NOW THE SQUAD RACES DE RINGRALLY: THREE LAPS OF THE A10.',
+  'TAXI PAID. NOW THE SQUAD RACES DE RINGRALLY: THREE LAPS OF THE A10.',
   'FIRST PRIZE: A PARKING PERMIT BINNEN DE RING. THE WAITING LIST IS 12 YEARS!',
 ];
 /** Gusto's speaker id (the existing designed voice). */
 export const GUSTO_SPEAKER = 'gusto';
-/** The announcer's line of the MISSION 2 start (speaker 'announcer', group 'boot'). */
-export const RALLY_ANNOUNCE = 'MISSION TWO. VOL GAS!';
+/** The announcer's line of the MISSION 3 start (speaker 'announcer', group 'boot'; a new take in wave C). */
+export const RALLY_ANNOUNCE = 'MISSION THREE. VOL GAS!';
 
 // ---------------------------------------------------------------------------------------------
 // The songs and the jingles (synth fallbacks: content/music/rally.ts; takes: AUDIO-GEN)

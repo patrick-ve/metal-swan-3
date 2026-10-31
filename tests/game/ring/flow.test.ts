@@ -126,7 +126,7 @@ function skipRing(h: H, cls: abstract new (...a: never[]) => unknown, max = 6000
 }
 
 describe('the route through the ring', () => {
-  it('ams completes → its tally (the newspaper) → the MISSION 2 card is the rally now (the ring is dormant); the ring card → RingScene', () => {
+  it('ams completes → its tally (the newspaper) → the MISSION 2 card is oat now (the ring is dormant); the ring card → RingScene', () => {
     const h = harness({ seed: 77 });
     startNewGame(h.app, { mission: 'ams', section: 'd', characters: ['vincent'] });
     expect(h.until(GameplayScene, 60)).toBe(true);
@@ -139,13 +139,13 @@ describe('the route through the ring', () => {
     }
     expect(ok).toBe(true);
     expect(h.seen).not.toContain(GlitchBridgeScene.name);
-    // The newspaper moves on by itself; the next card is the rally's (docs/design/rally.md §1: the 2D
-    // ring is dormant since 2026-10-22).
+    // The newspaper moves on by itself; the next card is oat's (docs/design/oat.md §1; the rally
+    // follows oat; the 2D ring is dormant since 2026-10-22).
     expect(h.until(MissionIntroScene, 900)).toBe(true);
     const next = h.app.scenes.top as MissionIntroScene;
-    expect(next.mission).toBe('rally');
+    expect(next.mission).toBe('oat');
     expect(next.card.label).toBe('MISSION 2');
-    expect(next.card.name).toBe('BINNEN DE RING');
+    expect(next.card.name).toBe('OAT OF CONTROL');
     expect(h.app.campaign!.missions).toEqual(['ams']);
     // The ring's own card (a URL route only now) still starts the RingScene with the play's seed.
     h.app.scenes.reset(new MissionIntroScene(h.app, 'ring'));
@@ -245,19 +245,20 @@ describe('the route through the ring', () => {
 });
 
 describe('numbering, the card and the bridge text', () => {
-  it('the rally is MISSION 2 and M2 on the route; the dormant ring: RING / RIN (its card keeps MISSION 2); m1 keeps its old (passive) label', () => {
-    expect(FPS_ROUTE).toEqual(['ams', 'rally', 'fps-1', 'fps-2', 'oldenzaal']);
-    expect(missionNumber('rally')).toBe(2);
+  it('oat is MISSION 2 and the rally MISSION 3 on the route; the dormant ring: RING / RIN (its card keeps MISSION 2); m1 keeps its old (passive) label', () => {
+    expect(FPS_ROUTE).toEqual(['ams', 'oat', 'rally', 'fps-1', 'fps-2', 'oldenzaal']);
+    expect(missionNumber('oat')).toBe(2);
+    expect(missionNumber('rally')).toBe(3);
     expect(missionNumber('ring')).toBe(0);
-    // The fps floors count as one level (MISSION 3): oldenzaal is MISSION 4 (docs/design/oldenzaal.md §1).
-    expect(missionNumber('oldenzaal')).toBe(4);
-    expect(missionLabel('rally')).toBe('MISSION 2');
+    // The fps floors count as one level (MISSION 4): oldenzaal is MISSION 5 (docs/design/oat.md §1).
+    expect(missionNumber('oldenzaal')).toBe(5);
+    expect(missionLabel('rally')).toBe('MISSION 3');
     expect(missionLabel('ring')).toBe('RING');
     expect(missionCard('ring').label).toBe('MISSION 2');
     expect(missionLabel('ams')).toBe('MISSION 1');
     expect(missionLabel('m1')).toBe('MISSION 2');
     const col = (mission: string): string => missionColumn({ name: 'AAA', score: 0, mission, character: '', continues: 0, difficulty: 'normal' });
-    expect(['ams', 'rally', 'fps-1', 'fps-2', 'oldenzaal', 'all', 'ring'].map(col)).toEqual(['M1', 'M2', 'F1', 'F2', 'M4', 'ALL', 'RIN']);
+    expect(['ams', 'oat', 'rally', 'fps-1', 'fps-2', 'oldenzaal', 'all', 'ring'].map(col)).toEqual(['M1', 'M2', 'M3', 'F1', 'F2', 'M5', 'ALL', 'RIN']);
     // A URL run of the dormant ring still counts the route's golden records.
     const c = newCampaign();
     c.missions.push('ams', 'ring');

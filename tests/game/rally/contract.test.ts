@@ -286,21 +286,21 @@ describe('the tally hook (TallyRunner.tallyLines)', () => {
 });
 
 describe('the flow: card → glitch into 3D → race → tally → bridge', () => {
-  it('the route numbering: rally is MISSION 2 / M2; the dormant ring is RING / RIN', () => {
-    expect(FPS_ROUTE).toEqual(['ams', 'rally', 'fps-1', 'fps-2', 'oldenzaal']);
-    expect(missionLabel('rally')).toBe('MISSION 2');
+  it('the route numbering: rally is MISSION 3 / M3 (after oat, docs/design/oat.md §1); the dormant ring is RING / RIN', () => {
+    expect(FPS_ROUTE).toEqual(['ams', 'oat', 'rally', 'fps-1', 'fps-2', 'oldenzaal']);
+    expect(missionLabel('rally')).toBe('MISSION 3');
     expect(missionLabel('ring')).toBe('RING');
     const col = (mission: string): string => missionColumn({ name: 'AAA', score: 0, mission, character: '', continues: 0, difficulty: 'normal' });
-    expect(['ams', 'rally', 'fps-1', 'oldenzaal', 'ring'].map(col)).toEqual(['M1', 'M2', 'F1', 'M4', 'RIN']);
+    expect(['ams', 'oat', 'rally', 'fps-1', 'oldenzaal', 'ring'].map(col)).toEqual(['M1', 'M2', 'M3', 'F1', 'M5', 'RIN']);
     const c = newCampaign();
     c.missions.push('ams', 'rally');
     expect(goldenRecordRoute(c)).toBe(FPS_ROUTE);
     expect(isRally('rally')).toBe(true);
   });
 
-  it('the card: MISSION 2, BINNEN DE RING (no question mark), the briefing fits the radio box', () => {
+  it('the card: MISSION 3 (after oat), BINNEN DE RING (no question mark), the briefing fits the radio box', () => {
     const card = missionCard('rally');
-    expect(card.label).toBe('MISSION 2');
+    expect(card.label).toBe('MISSION 3');
     expect(card.name).toBe('BINNEN DE RING');
     expect(card.briefing).toHaveLength(2);
     const lines = briefingLines(card);

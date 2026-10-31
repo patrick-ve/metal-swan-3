@@ -22,7 +22,8 @@ import type { Scene } from '../engine/scene';
 import { MemoryStore } from '../engine/storage';
 import type { World } from '../engine/world';
 import { createApp, type GameApp } from '../game/app';
-import { loadContent } from '../game/content/index';
+import { isLazyContent, isOatContent, loadContent } from '../game/content/index';
+import { OAT_ID } from '../game/content/missions/oat/ids';
 import type { MissionRunner } from '../game/mission/runner';
 import { DEFAULT_PARAMS } from '../game/params';
 import type { Player } from '../game/player/player';
@@ -326,12 +327,16 @@ class Headless implements HeadlessGame {
   }
 }
 
-/** Build a headless game (loads the content manifest first unless `loadContent: false`). */
+/**
+ * Build a headless game (loads the content manifest first unless `loadContent: false`; the lazy
+ * mission `oat` too when `missionId` is 'oat', docs/design/oat.md decision 49).
+ */
 export async function createHeadlessGame(o: HeadlessOptions): Promise<HeadlessGame> {
   applyTuning();
   const capture = o.captureConsole === false ? null : captureConsole(o.echoConsole ?? false);
   let failed: Array<{ id: string; error: string }> = [];
-  if (o.loadContent !== false) failed = (await loadContent()).failed;
+  const oat = o.missionId === OAT_ID;
+  if (o.loadContent !== false) failed = (await loadContent((id) => !isLazyContent(id) || (oat && isOatContent(id)))).failed;
   const game = new Headless(o, capture);
   for (const f of failed) game.stats.add(`content "${f.id}"`, f.error.split('\n')[0], f.error, 0);
   return game;

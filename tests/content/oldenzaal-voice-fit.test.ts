@@ -12,6 +12,7 @@ import { SNACK_POWER_CALLOUT, voicedLines, WINKEL_WAKE_LINES, WU_CALL, WU_LINES 
 import { WAKE } from '../../src/game/content/missions/oldenzaal/script-oz-c';
 import { WU_SCENE } from '../../src/game/content/oldenzaal/npcs/index';
 import { SAMPLE_MANIFEST } from '../../src/game/content/samples/manifest';
+import { PENDING_RETAKES } from '../../tools/audio/spec';
 
 const voices = SAMPLE_MANIFEST['mission:oldenzaal']?.voice ?? {};
 
@@ -24,7 +25,9 @@ function ticksOf(text: string): number {
 describe('oldenzaal voice lines (Dutch, shipped)', () => {
   it('every voiced line, the announcer line and the snack callout has a shipped take', () => {
     const texts = [...voicedLines().map((l) => l.text), OLDENZAAL.announce ?? '', SNACK_POWER_CALLOUT];
-    for (const t of texts) expect(voices[voiceKey(t)], t).toBeDefined();
+    // Level 5 since the oat wave (docs/design/oat.md §0 #61): the announce's new take comes in wave C
+    // (PENDING_RETAKES); until then the old take stays shipped.
+    for (const t of texts) expect(voices[voiceKey(PENDING_RETAKES.find((r) => r.text === t)?.old ?? t)], t).toBeDefined();
   });
 
   it("Meneer Wu's call and lines fit their beats (his next line never cuts one off)", () => {

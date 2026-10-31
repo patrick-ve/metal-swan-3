@@ -3,8 +3,8 @@
  * between the first-person floors and mission `oldenzaal`, in the glitch bridge's card pattern:
  * the lines type in one after another, centred, over a dark dusk sky (a few cold stars, a red band
  * low on the horizon); `PRESS START` once they are typed. A press after CARD_PRESS_FROM finishes
- * the typing; the next press (or CARD_HOLD ticks after the last line) moves on to the `MISSION 4`
- * intro card (MissionIntroScene). The lines: missions/oldenzaal/lines.ts `STORY_CARD_LINES`.
+ * the typing; the next press (or CARD_HOLD ticks after the last line) moves on to the `MISSION 5`
+ * intro card (MissionIntroScene; level 5 since the oat wave, docs/design/oat.md §1). The lines: missions/oldenzaal/lines.ts `STORY_CARD_LINES`.
  *
  * On enter the first-person mode's dense art is dropped (the route never goes back to it): the
  * mission's tier-4 working set gets the DENSE_BUDGET_BYTES. Cosmetic only; no randomness.
@@ -41,7 +41,7 @@ const starOpts: DrawOpts = { screen: true, alpha: 0.7 };
 export interface StoryCardOpts {
   /** The lines (default STORY_CARD_LINES). */
   lines?: readonly string[];
-  /** What follows (default: the `MISSION 4` intro card of oldenzaal). */
+  /** What follows (default: the `MISSION 5` intro card of oldenzaal). */
   next?: (app: GameApp) => Scene;
 }
 

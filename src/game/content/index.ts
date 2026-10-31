@@ -124,17 +124,41 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   'fps/art': () => import('./fps/art'),
   'fps/sound': () => import('./fps/sound'),
   'fps/floors': () => import('./fps/floors'),
-  // Mission `rally`, level 2 (docs/design/rally.md §12.1; docs/api/rally.md): LAZY too — the boot
-  // skips it; the MISSION 2 card / the glitch into 3D load it (rally-route.ts `loadRallyContent`).
+  // Mission `rally`, level 3 (docs/design/rally.md §12.1; docs/api/rally.md): LAZY too — the boot
+  // skips it; the MISSION 3 card / the glitch into 3D load it (rally-route.ts `loadRallyContent`).
   rally: () => import('./rally/index'),
+  // Mission `oat`, level 2 (docs/design/oat.md §11; docs/api/oat.md): LAZY — the boot skips it; the
+  // MISSION 2 card (oat-route.ts `loadOatContent`), a direct `?mission=oat` boot and the art workers
+  // load it. One entry per owner folder as the waves add them (`oat/…`, `bosses/oat-…`, `music/oat`,
+  // `sfx/oat…`, `samples/oat`): every id `isOatContent` accepts is lazy. Its card is not lazy
+  // (content/ui/cards.ts `OAT_CARD`).
+  'missions/oat': () => import('./missions/oat/index'),
 };
 
 /**
- * Manifest ids loaded on demand, not at boot: the first-person mode (`fps`, `fps/…`) and the 3D
- * race (`rally`, `rally/…`).
+ * Manifest ids loaded on demand, not at boot: the first-person mode (`fps`, `fps/…`), the 3D race
+ * (`rally`, `rally/…`) and mission `oat` (`isOatContent`).
  */
 export function isLazyContent(id: string): boolean {
-  return isFpsContent(id) || isRallyContent(id);
+  return isFpsContent(id) || isRallyContent(id) || isOatContent(id);
+}
+
+/**
+ * Mission `oat`'s lazy entries (oat-route.ts `loadOatContent`, the boot's direct start, the art
+ * workers): `missions/oat`, `missions/oat/…`, `oat/…`, `bosses/oat-…`, `music/oat`, `sfx/oat…`,
+ * `samples/oat`.
+ */
+export function isOatContent(id: string): boolean {
+  return (
+    id === 'missions/oat' ||
+    id.startsWith('missions/oat/') ||
+    id === 'oat' ||
+    id.startsWith('oat/') ||
+    id.startsWith('bosses/oat-') ||
+    id === 'music/oat' ||
+    id.startsWith('sfx/oat') ||
+    id === 'samples/oat'
+  );
 }
 
 /** The first-person mode's lazy entries (FpsIntroScene's `loadFpsContent`). */

@@ -62,9 +62,9 @@ export const AMS: MissionDef = {
   bossMusic: 'ams-boss',
   start: 'a',
   bossSection: 'd',
-  // After its tally: the 3D race BINNEN DE RING, level 2 (docs/design/rally.md §1; not a registered
-  // mission: flow.ts `missionDone` sends it to its intro card). The glitch bridge follows the race.
-  next: 'rally',
+  // After its tally: level 2, the day out in the old city `oat` OAT OF CONTROL (docs/design/oat.md §1;
+  // lazy: flow.ts `missionDone` opens its card by id, the card loads it); after oat the 3D race.
+  next: 'oat',
   announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
   sections: {
     a: sectionA,
@@ -160,6 +160,9 @@ export const AMS: MissionDef = {
   ],
   // Sampled music, sounds and dialogue (src/game/content/samples), loaded on the intro card.
   audioGroup: 'mission:ams',
+  // The game-wide budget (docs/design/oat.md §7.1, decision 19): the level stays as it is, only the
+  // score changes (BUDGET reads it; until then nothing changes).
+  economy: 'euro',
 };
 
 defineMission(AMS);

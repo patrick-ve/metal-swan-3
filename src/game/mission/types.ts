@@ -18,6 +18,7 @@ import type { Player } from '../player/player';
 import type { SpawnParams } from '../registry';
 import type { CampaignRecords, GameSession } from '../session';
 import type { FloorDef } from './floor/types';
+import type { SectionStripsDef } from './strips/types';
 
 export type { BackgroundDef, BgLayerDef, TerrainDef, TerrainStyleDef };
 
@@ -148,6 +149,14 @@ export interface SectionDef {
    * contact shadows. Art only (the sims never read it). Without it the section draws exactly as before.
    */
   floor?: FloorDef;
+  /**
+   * OPT-IN (mission `oat`, docs/design/oat.md §8.6; docs/api/oat.md "Strips"): the façade rows of
+   * the section as STREAMED STRIPS (src/game/mission/strips/): a registered strip source (the façade
+   * grammar) paints 256 px chunks per density and light set, the strip store keeps a few resident and
+   * the section view draws them at the façade depth with the row's line-scroll speed. Art only (the
+   * sims never read it). Without it the section draws exactly as before.
+   */
+  strips?: SectionStripsDef;
 }
 
 export type SectionScript = (ctx: SectionContext) => ScriptGen;
@@ -232,6 +241,17 @@ export interface MissionDef {
    * Optional and additive: missions without it keep the full budget.
    */
   denseReserve?: number;
+  /**
+   * OPT-IN (docs/design/oat.md §7.1; docs/api/budget.md): 'euro' = the mission pays the game-wide
+   * BUDGET (signed integer cents per player, src/game/budget/) besides the old points; default
+   * (undefined) = points only, as before (the dormant ring, m0–m5). Set for ams, oat and oldenzaal.
+   */
+  economy?: 'euro';
+  /**
+   * OPT-IN (docs/design/oat.md §7.6): the mission's tally page. 'receipt' = the kassabon
+   * (scenes/receipt-tally.ts); default (undefined) = the newspaper (MissionCompleteScene), as before.
+   */
+  tally?: 'receipt';
 }
 
 export interface SpawnGroupOpts {

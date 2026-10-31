@@ -221,7 +221,8 @@ describe('wave C: the card, the announcer and the race sound in the scenes', () 
     startRally(h.app);
     expect(h.until(RallyGlitchScene, 60)).toBe(true);
     const g = h.app.scenes.top as RallyGlitchScene;
-    expect(audio.lines).toEqual(['MISSION TWO. VOL GAS!']);
+    // Level 3 since the oat wave (docs/design/oat.md §0 #61).
+    expect(audio.lines).toEqual(['MISSION THREE. VOL GAS!']);
     h.step(ANNOUNCE_BREAK - 2);
     expect(g.phase).toBe('hold');
     h.step(4);
@@ -229,7 +230,7 @@ describe('wave C: the card, the announcer and the race sound in the scenes', () 
     expect(h.until(RallyScene, BREAK_TICKS + 20)).toBe(true);
   });
 
-  it('the MISSION 2 card waits for Gusto\'s second line (RALLY_VOICE_HOLD; the other cards INTRO_VOICE_HOLD)', () => {
+  it('the MISSION 3 card waits for Gusto\'s second line (RALLY_VOICE_HOLD; the other cards INTRO_VOICE_HOLD)', () => {
     expect(RALLY_VOICE_HOLD).toBeGreaterThan(INTRO_VOICE_HOLD);
     const audio = new RecAudio();
     audio.talking = true;
