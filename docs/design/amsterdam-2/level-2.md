@@ -28,6 +28,10 @@ the A10 out, then the rest of the country.
 - **Name: OAT OF CONTROL** (a pun on oat milk and the havermelkelite).
 - **Route: de binnenstad**, the old centre, day to night, four sections and a boss.
 - **Length:** about the same as `ams` (4 sections plus the boss, roughly 12–15 minutes).
+- **Opening: een toeristenfolder** *(user, round 7)*: the mission card is a glossy tourist folder
+  with the day plan (the 9 Straatjes, the bakery, the canal, the Wallen). Generic city-marketing
+  look, never the real city logo or slogan. (Not picked: Gramps's postcard, a parody booking app,
+  the normal `ams` card.)
 
 ## 3. The sections
 
@@ -38,7 +42,11 @@ the A10 out, then the rest of the country.
 | c | **DE KADEMUUR** | afternoon | **The Swan returns** *(user)*: ride the canal while the old quay wall crumbles behind you (a chase). A closed bridge, pontoon bridges, a sinkhole that swallows a parked scan car. |
 | d | **DE WALLEN BY NIGHT** | night | Neon and closed curtains, narrow alleys, dealers, taxis, `BLOWVERBOD` signs, tour groups stopping on bridges. The hijsbalk again. At **03:00 the neon goes out**, the street goes dark, and the boss lights up the house. |
 
-Section details *(user, round 6)*:
+Section details *(user, rounds 6 and 7)*:
+
+- **a — De conceptstore** *(round 7)*: one item on a pedestal, a single sock for €85. Shoot the
+  glass case: the sock is a weapon crate in disguise. (Not picked: `U BREEKT, U BETAALT` fragile
+  goods, vintage per kilo with hats, the beard barber.)
 
 - **b — U BENT NUMMER 47:** a queue number on screen counts down; each line-cutter the player
   stops moves them up one place. (Not picked: a rain shower with umbrellas as platforms, the
@@ -74,6 +82,11 @@ At the end of DE 9 STRAATJES he sells a canal house. He plants `VERKOCHT` signs 
 `+10%` bidding paddles and yells `OVERBIEDEN!`. While he lives, 1.5 % of every euro the player picks
 up flows to him as `COURTAGE`; his fall returns the pile.
 
+- **De bezichtiging** *(user, round 7)*: he opens a front door and a crowd of about 20 viewers
+  rushes out. They are harmless but push the player along the street.
+- Not picked: the hammer shock wave, the brochure rain, the asking-price sign that sends him into a
+  rage.
+
 ### Boss: De Huisjesmelker *(user)*
 
 The slumlord who milks a small house like a cow, at the end of DE WALLEN BY NIGHT.
@@ -93,6 +106,11 @@ The slumlord who milks a small house like a cow, at the end of DE WALLEN BY NIGH
 After the boss, an aggressive taxi picks up the squad. The driver races out of the centre and onto
 the A10; the MISSION 3 card shows, and its frame glitches into the 3D race as today
 (`rally-glitch.ts`).
+
+- **A playable ride** *(user, round 7)*: a short rail shooter. The players lean out of the taxi's
+  windows and shoot the handhavers and brommobielen that chase the taxi to the ring. (Not picked:
+  a short scene with a €187,50 fare, no ride.) Lead proposal: the meter still runs, and the fare
+  is the last line on the kassabon.
 
 ## 5. The budget
 
