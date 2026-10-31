@@ -72,8 +72,8 @@ name a commercial game, studio or artist in code, ids, comments, docs, prompts o
 | 44 | The taxi ride `oat-e` is a **scripted carrier** (the `ams` c2 cruise pattern: the taxi holds the camera, both heroes sit in its window seats, respawn in the seat), not `startVehicle` (that gives one taxi per player and a new taxi per respawn) and not the ring's `RingRunner` (its global hooks would put the ring sims at risk) | lead |
 | 45 | The budget is a **new signed ledger in integer cents** per player, next to the old points (§7.1); Dutch notation `€ 1.234,56`; one `€` glyph in each 1× font | lead |
 | 46 | Old point missions (the dormant `ring`, m0–m5) keep points and their old high-score table; the route missions (ams, oat, rally, fps, oldenzaal) pay euros; a new high-score key `budgets` | lead |
-| 47 | The kassabon is **oat's own tally** (a new receipt scene); `ams` and `oldenzaal` keep the newspaper with euro lines; the run's final tally gets the `JAARREKENING` stamp (open question Q2) | lead |
-| 48 | The `BOETE` fine and the toeristenbelasting are score rules, so they apply from `ams` on, like the euros (open question Q3) | lead |
+| 47 | The kassabon is **oat's own tally** (a new receipt scene); `ams` and `oldenzaal` keep the newspaper with euro lines; the run's final tally gets the `JAARREKENING` stamp (user: Q2) | lead + user |
+| 48 | The `BOETE` fine and the toeristenbelasting are score rules, so they apply from `ams` on, like the euros (user: Q3) | lead + user |
 | 49 | `oat` loads **lazily** with the MISSION 2 card (like the rally), and the art workers load it on demand; the boot stays as it is | lead |
 | 50 | Scenery memory: `oat` declares a **dense reserve of 84 MB** inside the 256 MB tier-4 cap (oldenzaal style; §8.12) | lead |
 | 51 | Palette: an additive **`PAL_HD_OAT`** (43 new colours + 4 spare, ≤ 47; set total ≤ 256), hand-built ramps; photo-measured hex values only guide them | lead |
@@ -82,7 +82,7 @@ name a commercial game, studio or artist in code, ids, comments, docs, prompts o
 | 54 | Water reflections and light streaks are **Canvas 2D overlays** after the floor band; the GL floor shader stays texture-only (§8.8) | lead |
 | 55 | Façades come from a **façade grammar** (real gable, window and door types) and are **streamed as strips** (L7 + L8), so no house repeats | lead |
 | 56 | Tiers: design and review at 4× and 2×; the **look stop is judged at 4×**; 1× is the automatic snapped version with a readability check | lead |
-| 57 | Time of year: **a late-September day** (sunset 19:39): green elms with the first yellow leaves, a real dark night for d, and a low afternoon sun that is compass-true for c (open question Q4) | lead |
+| 57 | Time of year: **a late-September day** (sunset 19:39): green elms with the first yellow leaves, a real dark night for d, and a low afternoon sun that is compass-true for c (user: Q4) | lead + user |
 | 58 | Three build waves with **one user look stop after wave A** (the first scenery: all of oat-a and a night proof strip of oat-d) | lead |
 | 59 | No hostages in `oat` (`hostages: {}`, as oldenzaal); one golden record in oat-a; no secrets in this build | lead |
 | 60 | Shootable street props (bins, the glass case, the hoist rope and load, the envelope, `VERKOCHT` signs) keep the ink outline: what can be hit has an edge (readability rule); static props have none | lead |
@@ -1202,17 +1202,19 @@ in §0 before wave B.
 
 ## 15. Open questions for the user
 
-- **Q1** — ElevenLabs: OK to generate up to the plan's estimate (about 33,000 planned, cap 35,000
-  credits) in wave C?
-- **Q2** — The kassabon: only for `oat` (lead default), or the tally of every euro mission
-  (`ams` and `oldenzaal` would lose the newspaper)?
-- **Q3** — In `ams`: besides the euros, also the `BOETE` fine on a ticket death and the
-  toeristenbelasting on a continue (lead default: yes, they are score rules)?
-- **Q4** — The season: a late-September day (lead default: green elms with the first yellow
-  leaves, a truly dark night for d, a compass-true low sun in c) or high summer (fuller trees and
-  a dawn at the A10, but June nights never get fully dark)?
-- **Q5** — The way out: the IJtunnel to the A10 north (lead default) or the Wibautstraat to the
-  A10 east?
+Answered by the user (2026-10-31):
+
+- **Q1** — ElevenLabs: **yes**, generate the planned lines in wave C, hard cap 35,000 credits.
+- **Q2** — The kassabon: **only for `oat`**; `ams` and `oldenzaal` keep the newspaper with euro
+  lines (decision 47 stands).
+- **Q3** — In `ams`: **yes**, the `BOETE` fine and the toeristenbelasting apply game-wide from
+  `ams` on (decision 48 stands).
+- **Q4** — The season: **a late-September day** (decision 57 stands).
+
+Still open:
+
+- **Q5** — The way out: the IJtunnel to the A10 north (lead default, used until the user says
+  otherwise) or the Wibautstraat to the A10 east?
 - Still open from the proposal (not needed for this build): where the unused ideas go (Vondelpark,
   De Pont, Albert Cuyp-markt, NDSM-werf, De foodhal, the wafel-winkel, the auction, the levend
   standbeeld), and whether the dormant `ring` ever changes (lead: no; it keeps points).
