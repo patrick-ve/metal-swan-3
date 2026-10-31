@@ -1,0 +1,311 @@
+<meta charset="utf-8">
+<title>Vincent in Six Styles</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* Layout: a dark viewing booth. A sticky transport bar, then one tile per art direction; every
+     clip runs on one clock, so the styles move in step. Single dark theme by choice: the sprites
+     are judged against the game's own dark frame. */
+  :root {
+    --bg: #131116;
+    --panel: #1d1a21;
+    --panel-hi: #27232c;
+    --line: #35303b;
+    --ink: #efe8df;
+    --dim: #a39a90;
+    --gold: #ffb43a;
+    --gold-ink: #241a08;
+    --font-display: "Silkscreen", "Courier New", monospace;
+    --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 var(--font-body);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 0 48px;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
+    z-index: 10; background: var(--bg);
+  }
+  .wrap { max-width: 1360px; margin: 0 auto; }
+  header.intro { padding-block: 28px 18px; display: grid; gap: 8px; }
+  h1 { font: 400 clamp(22px, 3.4vw, 34px)/1.1 var(--font-display); letter-spacing: 0.02em; margin: 0; text-wrap: balance; }
+  h1 .hot { color: var(--gold); }
+  .intro p { margin: 0; max-width: 70ch; color: var(--dim); }
+  .intro p strong { color: var(--ink); font-weight: 700; }
+
+  .bar {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--line);
+    padding-block: 10px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+  }
+  .group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .group > .lbl { font: 400 10px/1 var(--font-display); letter-spacing: 0.08em; color: var(--dim); margin-right: 2px; }
+  button {
+    font: 600 13px/1 var(--font-mono); color: var(--ink); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; cursor: pointer; min-height: 34px;
+  }
+  button:hover { background: var(--panel-hi); }
+  button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  button[aria-pressed="true"] { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #play { min-width: 92px; }
+  .clock { font: 600 13px/1 var(--font-mono); color: var(--dim); font-variant-numeric: tabular-nums; margin-left: auto; white-space: nowrap; }
+  .clock b { color: var(--ink); font-weight: 600; }
+
+  .grid {
+    display: grid; gap: 18px; padding-block: 18px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  @media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 640px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: grid; grid-template-rows: auto 1fr; min-width: 0; }
+  .tile.big { grid-column: 1 / -1; }
+  .tile.now { border-style: dashed; grid-column: 1 / -1; grid-template-rows: none; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: start; }
+  .tile.now .meta { padding: 16px 18px; }
+  .tile.now.big { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  @media (max-width: 760px) { .tile.now, .tile.now.big { grid-template-columns: none; grid-template-rows: auto 1fr; } }
+  .screen { position: relative; background: #000; }
+  .screen video, .screen img { display: block; width: 100%; height: auto; max-width: 100%; }
+  .screen.close video { image-rendering: pixelated; }
+  .meta { padding: 12px 14px 14px; display: grid; gap: 6px; min-width: 0; }
+  .meta .head { display: flex; align-items: baseline; gap: 10px; justify-content: space-between; }
+  .meta h2 { font: 400 17px/1.15 var(--font-display); margin: 0; letter-spacing: 0.02em; }
+  .tile.now h2 { color: var(--dim); }
+  .meta p { margin: 0; color: var(--dim); font-size: 14px; }
+  .meta .facts { font: 400 12px/1.45 var(--font-mono); color: var(--dim); overflow-wrap: anywhere; }
+  .meta .facts code { color: var(--gold); }
+  .enlarge { font-size: 12px; padding: 6px 8px; min-height: 28px; white-space: nowrap; }
+
+  section.try { border-top: 1px solid var(--line); padding-block: 22px 0; display: grid; gap: 12px; }
+  section.try h2 { font: 400 16px/1.2 var(--font-display); margin: 0; }
+  section.try p { margin: 0; color: var(--dim); max-width: 70ch; }
+  .links { display: grid; gap: 6px; }
+  .links .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; min-width: 0; }
+  .links .name { font: 400 12px/1 var(--font-display); width: 160px; color: var(--ink); }
+  .links code { font: 400 13px/1.4 var(--font-mono); color: var(--gold); overflow-wrap: anywhere; min-width: 0; }
+  .links a { color: inherit; }
+  @media (max-width: 560px) {
+    .clock { margin-left: 0; width: 100%; }
+    .links .name { width: 100%; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <h1>Vincent in <span class="hot">Six</span> Styles</h1>
+    <p>One player, six art directions, each drawn by its own renderer over the same rig. Every clip is the same play in the test arena at the 4K art: stand, run, jump and flip, shoot, aim up, crouch and fire. Only the drawing changes.</p>
+    <p>The close-up follows Vincent. Use <strong>Enlarge</strong> to see one style big, or slow the clock down to read single frames.</p>
+  </header>
+
+  <div class="bar" role="toolbar" aria-label="Playback">
+    <div class="group">
+      <button id="play" type="button" aria-pressed="true">Pause</button>
+      <button id="back" type="button" aria-label="Step one tick back">◀ tick</button>
+      <button id="fwd" type="button" aria-label="Step one tick forward">tick ▶</button>
+    </div>
+    <div class="group" id="speeds"><span class="lbl">SPEED</span></div>
+    <div class="group" id="views"><span class="lbl">VIEW</span></div>
+    <div class="clock" id="clock"></div>
+  </div>
+
+  <main class="grid" id="grid"></main>
+
+  <section class="try">
+    <h2>Play them in the game</h2>
+    <p>The play build on this computer has every style as a hidden copy of Vincent. Open a link, enter the password, and play Amsterdam. The links work only on this computer while the play server runs. Some rare strips (the burn and blast deaths, riding the Swan) still show today's Vincent.</p>
+    <div class="links" id="links"></div>
+  </section>
+</div>
+
+<script>
+const DATA = /*DATA*/null;
+const FPS = 60;
+const SPEEDS = [[1, '1×'], [0.5, '½×'], [0.25, '¼×']];
+let speed = 1;
+let view = DATA.views[0].id;
+let playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const grid = document.getElementById('grid');
+const clock = document.getElementById('clock');
+const playBtn = document.getElementById('play');
+const tiles = [];
+
+function media(look, v) {
+  if (v === 'street') {
+    const img = document.createElement('img');
+    img.src = `stills/${look.id}-street.webp`;
+    img.alt = `${look.name}: Vincent on the Amsterdam street`;
+    img.loading = 'lazy';
+    return img;
+  }
+  const vid = document.createElement('video');
+  for (const [ext, type] of [['webm', 'video/webm'], ['mp4', 'video/mp4']]) {
+    const src = document.createElement('source');
+    src.src = `clips/${look.id}-${v}.${ext}`;
+    src.type = type;
+    vid.appendChild(src);
+  }
+  vid.muted = true;
+  vid.loop = true;
+  vid.playsInline = true;
+  vid.preload = 'auto';
+  vid.setAttribute('aria-label', `${look.name}: looping clip`);
+  return vid;
+}
+
+for (const look of DATA.looks) {
+  const tile = document.createElement('article');
+  tile.className = 'tile' + (look.id === 'vincent' ? ' now' : '');
+  const screen = document.createElement('div');
+  screen.className = 'screen';
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const head = document.createElement('div');
+  head.className = 'head';
+  const h2 = document.createElement('h2');
+  h2.textContent = look.name;
+  const big = document.createElement('button');
+  big.type = 'button';
+  big.className = 'enlarge';
+  big.textContent = 'Enlarge';
+  big.addEventListener('click', () => {
+    const on = !tile.classList.contains('big');
+    tile.classList.toggle('big', on);
+    big.textContent = on ? 'Shrink' : 'Enlarge';
+    if (on) tile.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+  head.append(h2, big);
+  const p = document.createElement('p');
+  p.textContent = look.blurb;
+  const f = document.createElement('div');
+  f.className = 'facts';
+  f.innerHTML = `game: <code>?char=${look.char}</code>`;
+  meta.append(head, p, f);
+  tile.append(screen, meta);
+  grid.appendChild(tile);
+  tiles.push({ look, screen, el: null });
+}
+
+function videos() { return tiles.map((t) => t.el).filter((e) => e instanceof HTMLVideoElement); }
+
+function showView() {
+  for (const t of tiles) {
+    t.screen.className = 'screen ' + view;
+    t.screen.replaceChildren();
+    t.el = media(t.look, view);
+    t.screen.appendChild(t.el);
+  }
+  const still = view === 'street';
+  for (const id of ['play', 'back', 'fwd']) document.getElementById(id).disabled = still;
+  for (const b of document.querySelectorAll('#speeds button')) b.disabled = still;
+  updateClock();
+}
+
+function makeButtons(host, items, current, onPick) {
+  const btns = [];
+  for (const [value, label] of items) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(value === current));
+    b.addEventListener('click', () => {
+      for (const o of btns) o.setAttribute('aria-pressed', String(o === b));
+      onPick(value);
+    });
+    btns.push(b);
+    host.appendChild(b);
+  }
+}
+makeButtons(document.getElementById('speeds'), SPEEDS, speed, (v) => {
+  speed = v;
+});
+makeButtons(document.getElementById('views'), DATA.views.map((v) => [v.id, v.label]), view, (v) => {
+  view = v;
+  showView();
+});
+
+// One master clock (seconds into the clip); every video is pulled to it when it drifts.
+const DUR = DATA.frames / FPS;
+let pos = 5 / FPS;
+let last = performance.now();
+
+function setPlaying(on) {
+  playing = on;
+  playBtn.textContent = on ? 'Pause' : 'Play';
+  playBtn.setAttribute('aria-pressed', String(on));
+  if (!on) pos = (Math.floor(pos * FPS) + 0.5) / FPS;
+  last = performance.now();
+}
+playBtn.addEventListener('click', () => setPlaying(!playing));
+function step(d) {
+  setPlaying(false);
+  const n = DATA.frames;
+  const f = (Math.floor(pos * FPS) + d + n) % n;
+  pos = (f + 0.5) / FPS;
+}
+document.getElementById('back').addEventListener('click', () => step(-1));
+document.getElementById('fwd').addEventListener('click', () => step(1));
+document.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLButtonElement && (e.key === ' ' || e.key === 'Enter')) return;
+  if (view === 'street') return;
+  if (e.key === ' ') { e.preventDefault(); setPlaying(!playing); }
+  else if (e.key === 'ArrowLeft') step(-1);
+  else if (e.key === 'ArrowRight') step(1);
+});
+
+function updateClock() {
+  if (view === 'street') {
+    clock.textContent = 'still: tick 150 on the street, fire held';
+    return;
+  }
+  clock.innerHTML = `tick <b>${Math.floor(pos * FPS) + 1}</b> of ${DATA.frames}`;
+}
+
+(function frame(now) {
+  if (playing) pos = (pos + ((now - last) / 1000) * speed) % DUR;
+  last = now;
+  for (const v of videos()) {
+    if (v.playbackRate !== speed) v.playbackRate = speed;
+    if (playing && v.paused) v.play().catch(() => {});
+    if (!playing && !v.paused) v.pause();
+    if (v.readyState < 1 || v.seeking) continue;
+    // Drift on a loop: the short way round.
+    const drift = ((v.currentTime - pos + DUR * 1.5) % DUR) - DUR / 2;
+    if (Math.abs(drift) > (playing ? 3 : 0.4) / FPS) v.currentTime = pos;
+  }
+  updateClock();
+  requestAnimationFrame(frame);
+})(performance.now());
+
+setPlaying(playing);
+showView();
+
+const links = document.getElementById('links');
+for (const look of DATA.looks) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = look.name;
+  const code = document.createElement('code');
+  const a = document.createElement('a');
+  a.href = look.url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.textContent = look.url;
+  code.appendChild(a);
+  row.append(name, code);
+  links.appendChild(row);
+}
+</script>

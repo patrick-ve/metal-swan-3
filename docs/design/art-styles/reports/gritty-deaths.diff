@@ -1,0 +1,85 @@
+--- a/src/game/art/human-sprites.ts
++++ b/src/game/art/human-sprites.ts
+@@ -23,6 +23,9 @@
+ import type { ArmPose, Density, HumanStyle, Pose, RenderPart, WeaponPose } from './humanoid';
+ import * as P from './poses';
+ 
++/** A pose renderer with renderHuman's frame contract (PlayerArtOpts.renderPose). */
++type RenderFn = (style: HumanStyle, pose: Pose, part: RenderPart, d: Density) => HumanFrame;
++
+ export type FrameList = Frame[];
+ 
+ /** Render a list of poses for one part (`density` 2 / 4: the UHD frames). */
+@@ -46,12 +49,12 @@
+  * the HD figure under the same flames and crumbling, drawn natively (`withFlamesDense`,
+  * `crumbleDense`; the effect placed from the 1× frames, so the geometry is the 1× one).
+  */
+-export function burnFrames(style: HumanStyle, base: Pose = {}, seed = 9, density: Density = 1): FrameList {
++export function burnFrames(style: HumanStyle, base: Pose = {}, seed = 9, density: Density = 1, render: RenderFn = renderHuman): FrameList {
+   const out: FrameList = [];
+   const statuePose: Pose = { ...base, ...P.STAND, armN: { sh: 30, el: 60, hand: 'open' }, armF: { sh: -20, el: 50, hand: 'open' }, expr: 'soot' };
+   if (density === 1) {
+-    P.BURN.forEach((p, i) => out.push(withFlames(scorch(renderHuman(style, { ...base, ...p }, 'full'), 1), i * 2 + 1, seed)));
+-    const statue = sootify(renderHuman(style, statuePose, 'full'), 1, true, seed);
++    P.BURN.forEach((p, i) => out.push(withFlames(scorch(render(style, { ...base, ...p }, 'full', 1), 1), i * 2 + 1, seed)));
++    const statue = sootify(render(style, statuePose, 'full', 1), 1, true, seed);
+     out.push(withFlames(statue, 5, seed + 3, 3));
+     out.push(statue);
+     out.push(crumble(statue, 0.35, seed));
+@@ -63,10 +66,10 @@
+   const d = density;
+   P.BURN.forEach((p, i) => {
+     const pose = { ...base, ...p };
+-    out.push(withFlamesDense(scorch(renderHuman(style, pose, 'full'), 1), scorch(renderHuman(style, pose, 'full', d), 1), i * 2 + 1, seed));
++    out.push(withFlamesDense(scorch(render(style, pose, 'full', 1), 1), scorch(render(style, pose, 'full', d), 1), i * 2 + 1, seed));
+   });
+-  const s1 = sootify(renderHuman(style, statuePose, 'full'), 1, true, seed);
+-  const sd = sootify(renderHuman(style, statuePose, 'full', d), 1, true, seed);
++  const s1 = sootify(render(style, statuePose, 'full', 1), 1, true, seed);
++  const sd = sootify(render(style, statuePose, 'full', d), 1, true, seed);
+   out.push(withFlamesDense(s1, sd, 5, seed + 3, 3));
+   out.push(sd);
+   for (const t of [0.35, 0.7, 1]) out.push(crumbleDense(s1, sd, t, seed));
+@@ -74,8 +77,8 @@
+ }
+ 
+ /** Explosion death: a scorched (two shades darker), tumbling launch (DIE_BLAST). */
+-export function blastFrames(style: HumanStyle, base: Pose = {}, density: Density = 1, poses: readonly Pose[] = P.DIE_BLAST): FrameList {
+-  return poses.map((p) => scorch(renderHuman(style, { ...base, ...p }, 'full', density), 2));
++export function blastFrames(style: HumanStyle, base: Pose = {}, density: Density = 1, poses: readonly Pose[] = P.DIE_BLAST, render: RenderFn = renderHuman): FrameList {
++  return poses.map((p) => scorch(render(style, { ...base, ...p }, 'full', density), 2));
+ }
+ 
+ function def(id: string, gen: () => FrameList, opts: SpriteOpts): void {
+@@ -237,8 +240,8 @@
+     def(t + 'knife-b', torsoOf(P.seq(carry, o.knifeB ?? knifeBPoses(o.knife ?? P.KNIFE))), { durations: o.durations?.['knife-b'] ?? P.KNIFE6_TIMING, loop: false });
+   }
+   def(pre + 'die', deco('die', o.die ?? diePoses(style), 'full'), timing('die', { durations: o.die ? [6, 6, 6, 6, 8, 40] : P.DIE12_TIMING }, false));
+-  def(pre + 'die-burn', (d) => burnFrames(style, {}, 9, d), { durations: [5, 5, 8, 12, 8, 8, 40], loop: false });
+-  def(pre + 'die-blast', (d) => blastFrames(style, {}, d, blastPoses(style)), { durations: P.DIE_BLAST10_TIMING, loop: false });
++  def(pre + 'die-burn', (d) => burnFrames(style, {}, 9, d, render ?? renderHuman), { durations: [5, 5, 8, 12, 8, 8, 40], loop: false });
++  def(pre + 'die-blast', (d) => blastFrames(style, {}, d, blastPoses(style), render ?? renderHuman), { durations: P.DIE_BLAST10_TIMING, loop: false });
+   def(pre + 'spawn', full(spawnPoses(style)), { durations: P.SPAWN6_TIMING, loop: false });
+   // Idle fidgets (row 14): the hero's own tables, else the defaults; rare, so deferred.
+   const fidgetA = o.fidgetA ?? tween(style, P.FIDGET_A_KEYS, { perKey: P.FIDGET_A_PER, ease: 'inOut' });
+@@ -252,7 +255,7 @@
+   def(pre + 'flip', full(flipPoses(style)), { ticksPerFrame: 2, loop: false });
+   def(pre + 'mount-hop', full(P.MOUNT_HOP), { durations: MOUNT_HOP_TIMING, loop: false, defer: true });
+   def(pre + 'legs-dangle', lower(danglePoses(style)), { ticksPerFrame: 6 });
+-  def(pre + 'die-drown', (d) => drownFrames(style, d), { durations: P.DROWN_TIMING, loop: false, defer: true });
++  def(pre + 'die-drown', (d) => drownFrames(style, d, render ?? renderHuman), { durations: P.DROWN_TIMING, loop: false, defer: true });
+   def(pre + 'salute', deco('salute', o.salute ?? P.SALUTE, 'full'), timing('salute', { durations: [8, 60] }, false));
+   defineSprite(pre + 'portrait', () => portrait(style), { anchor: 'top-left', hi: () => portrait(style, 2) });
+   defineRiderSprites(id, style);
+@@ -386,9 +389,9 @@
+  * (the water surface: nothing below it), a ripple on the surface, splash drops in frames 0–1,
+  * bubbles at the end (frames 10–11 show no figure).
+  */
+-export function drownFrames(style: HumanStyle, d: Density = 1): FrameList {
++export function drownFrames(style: HumanStyle, d: Density = 1, render: RenderFn = renderHuman): FrameList {
+   return P.DROWN.map((pose, i) => {
+-    const fig = i < 10 ? renderHuman(style, pose, 'full', d) : null;
++    const fig = i < 10 ? render(style, pose, 'full', d) : null;
+     const fw = fig ? fig.buf.w / d : 0;
+     const left = Math.min(fig ? -fig.ox : 0, -10);
+     const right = Math.max(fig ? fw - fig.ox : 0, 10);

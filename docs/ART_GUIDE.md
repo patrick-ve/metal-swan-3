@@ -447,6 +447,10 @@ definePlayerSprites('scout', SCOUT_STYLE, {
 This registers the whole `char/scout/…` contract (legs, torsos for pistol and heavy, deaths,
 victory, spawn, bored, mount, portrait).
 
+`PlayerArtOpts.renderPose` swaps the rig's painter for another pose renderer with the same frame
+contract (the art-direction trial: six styles on VINCENT, `?char=vincent-<style>`; no style is
+picked yet; see `docs/design/art-styles.md`).
+
 ### Adding an enemy soldier
 
 ```ts

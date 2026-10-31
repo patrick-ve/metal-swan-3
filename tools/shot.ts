@@ -97,6 +97,8 @@ interface Args {
   scale: number;
   cols: number;
   weapon?: string;
+  /** Player character id (default: the mission's). */
+  char?: string;
   difficulty: Difficulty;
   /** Backbuffer resolution (1 = the classic image). */
   res: number;
@@ -255,6 +257,9 @@ function parseArgs(argv: readonly string[]): Args {
         break;
       case '--weapon':
         a.weapon = next();
+        break;
+      case '--char':
+        a.char = next();
         break;
       case '--difficulty': {
         const d = next();
@@ -651,6 +656,7 @@ async function main(): Promise<void> {
     god: args.god,
     bot: args.bot ? { route: args.route } : false,
     weapon: args.weapon,
+    characterId: args.char,
     difficulty: args.difficulty,
     bossRush: args.boss,
     res: args.res,

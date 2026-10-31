@@ -91,6 +91,8 @@ export interface ArenaArgs {
   god: boolean;
   bot: boolean;
   weapon?: string;
+  /** Player character id (default: the mission's). */
+  char?: string;
   difficulty: Difficulty;
   seed: number;
   hold: Button[];
@@ -255,6 +257,9 @@ export function parseArenaArgs(argv: readonly string[]): ArenaArgs {
         break;
       case '--weapon':
         a.weapon = next();
+        break;
+      case '--char':
+        a.char = next();
         break;
       case '--difficulty': {
         const d = next();
@@ -877,6 +882,7 @@ export async function runArena(a: ArenaArgs, o: ArenaRunOpts = {}): Promise<Aren
     god: a.god,
     bot: a.bot,
     weapon: a.weapon,
+    characterId: a.char,
     difficulty: a.difficulty,
     res: a.res,
     gfx: resolveGfx(a.res, a.gfx).mode,

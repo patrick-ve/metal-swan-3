@@ -265,9 +265,9 @@ describe('HD hero strips (registry, pool families, duplicates)', () => {
     for (const id of ids) {
       expect(hasHiSprite(id, 2), id).toBe(true);
       // The squad's select busts and menu portraits have 4× art (polish wave); the retired
-      // heroes' menu art stays 2×.
+      // heroes' menu art stays 2×. The art-direction trial's `vincent-<style>` reuse VINCENT's portrait.
       const menu = /\/(portrait|select(-grey)?)$/.test(id);
-      const squad = /^char\/(vincent|thom|dirk|bob|patrick)\//.test(id);
+      const squad = /^char\/(vincent(-[a-z]+)?|thom|dirk|bob|patrick)\//.test(id);
       expect(hasHiSprite(id, 4), id).toBe(!menu || squad);
     }
   });

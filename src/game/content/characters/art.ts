@@ -25,6 +25,7 @@ import { PIP_ART, PIP_STYLE } from './pip.art';
 import { THOM_ART, THOM_STYLE } from './thom.art';
 import { VINCENT_ART, VINCENT_STYLE } from './vincent.art';
 import { heroPortrait, PORTRAITS } from './portrait.art';
+import { defineStyleSprites } from './styles/index';
 // The time-out snore (fx/snore) belongs to the player's sleep strip.
 import '../fx/snore.art';
 
@@ -123,3 +124,5 @@ defineHero('thom', THOM_STYLE, THOM_ART);
 defineHero('dirk', DIRK_STYLE, DIRK_ART);
 defineHero('bob', BOB_STYLE, BOB_ART);
 defineHero('patrick', PATRICK_STYLE, PATRICK_ART);
+// The art-direction trial (styles/kit.ts): every strip of the hidden `vincent-<style>` copies.
+defineStyleSprites(HELIUM_VARIANTS);

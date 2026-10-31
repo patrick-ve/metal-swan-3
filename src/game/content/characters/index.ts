@@ -17,6 +17,7 @@ import { defineCharacter, type CharacterDef, type CharacterStats } from '../../r
 import './helium';
 import './snack-power';
 import { SQUEAK } from './squeak';
+import { defineStyleCharacters } from './styles/index';
 
 /** The held prop of a hero's knife look (GDD §3, §6.2; drawn in `torso-<w>-knife`). */
 export type KnifeProp = 'knife' | 'umbrella' | 'needles' | 'pan' | 'wrench' | 'plan' | 'pistol-butt' | 'plunger' | 'airliner' | 'frikandel';
@@ -235,3 +236,6 @@ defineCharacter({
   color: PAL.olive[3],
   voice: 'Recruit, reporting for duty!',
 });
+
+// The art-direction trial (styles/kit.ts): hidden copies of VINCENT, one per style.
+defineStyleCharacters();
