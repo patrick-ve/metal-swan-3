@@ -12,7 +12,7 @@ race section to a later stage in the game."
 | Level | Mission | Card | Change |
 |---|---|---|---|
 | 1 | `ams` THE FRYING DUTCHMAN | MISSION 1 | unchanged, except the budget score (§5) |
-| 2 | **OAT OF CONTROL** (new, id open) | MISSION 2 | new |
+| 2 | `oat` **OAT OF CONTROL** (new; id: user, round 8) | MISSION 2 | new |
 | 3 | `rally` BINNEN DE RING | MISSION 3 | moved from level 2 *(user: "Level 3, after Amsterdam 2")* |
 | 4 | `fps-1`, `fps-2` OPERATION OSTIA | MISSION 4 | renumbered |
 | 5 | `oldenzaal` A HAUNTING IN OTOWN | MISSION 5 | renumbered |
@@ -42,7 +42,7 @@ the A10 out, then the rest of the country.
 | c | **DE KADEMUUR** | afternoon | **The Swan returns** *(user)*: ride the canal while the old quay wall crumbles behind you (a chase). A closed bridge, pontoon bridges, a sinkhole that swallows a parked scan car. |
 | d | **DE WALLEN BY NIGHT** | night | Neon and closed curtains, narrow alleys, dealers, taxis, `BLOWVERBOD` signs, tour groups stopping on bridges. The hijsbalk again. At **03:00 the neon goes out**, the street goes dark, and the boss lights up the house. |
 
-Section details *(user, rounds 6 and 7)*:
+Section details *(user, rounds 6–8)*:
 
 - **a — De conceptstore** *(round 7)*: one item on a pedestal, a single sock for €85. Shoot the
   glass case: the sock is a weapon crate in disguise. (Not picked: `U BREEKT, U BETAALT` fragile
@@ -54,6 +54,10 @@ Section details *(user, rounds 6 and 7)*:
 - **c — an auto-scroll chase:** the screen scrolls forward on the Swan; the quay wall crumbles
   behind the player and bricks splash into the canal; keep up or get hit. (Not picked: two levels
   with attacks from the quay above, the wall falling ahead.)
+- **d — Gids op de brug** *(round 8)*: a tour group stops on a bridge and blocks the way; a
+  handhaver fines the guide €190 (the real fine for stopping a group on a bridge), and the group
+  moves on. (Not picked: smoke clouds under a `BLOWVERBOD` sign, a pile of parked bikes to climb,
+  a late-night snack bar.)
 
 Lead proposals inside the sections (not decided): the draaiorgel plays once in a, as the first
 "free shooting window" lesson; the blauwe envelop floats in at b's queue first and then appears now
@@ -95,9 +99,12 @@ The slumlord who milks a small house like a cow, at the end of DE WALLEN BY NIGH
   €2.400, €3.100). Each rise makes him faster and drains a little budget.
 - **De sleutelbos** *(user, round 5)*: he swings a giant ring of keys like a flail, low and then
   high; the player jumps or crouches under it.
+- **Schimmel** *(user, round 8)*: he sprays black mould on the walls and the street. It spreads
+  slowly, and the safe floor gets smaller until the player hits him (the hit pushes it back).
 - Offered and not picked: the milk bottles, the house on legs, the tenants thrown out of the
   windows (round 3); splitsen (walls that shrink the arena), rolkoffers (rolling suitcases), de
-  kelderluiken (whack-a-mole cellar hatches) (round 5). The spec may still need a third move.
+  kelderluiken (whack-a-mole cellar hatches) (round 5); matrassen, kamertjes, de huuropzegging
+  (round 8).
 - The €1.900 studio gag (picked 2026-10-29) fits the end of the fight: a freed tenant says
   `€1.900 PER MAAND` / `EN GEEN KEUKEN!`, and a microwave dings in the hallway.
 
@@ -114,6 +121,9 @@ the A10; the MISSION 3 card shows, and its frame glitches into the 3D race as to
 
 ## 5. The budget
 
+- **Real prices** *(user, round 8)*: enemies pay €1–€25, cans €0.15, fines €95–€190, a flat
+  white €4.45; every player starts with €100. (Not picked: arcade-size amounts, a month's pay of
+  €2.500 at the start.)
 - **Game-wide, from `ams` on** *(user)*. In `ams` only the score changes: the HUD shows
   `BUDGET € 1.234,56` and enemies pay euros; the level itself stays as it is.
 - **Statiegeld bins** *(user)*: shoot a street bin, it explodes or collapses, cans and bottles fly
@@ -170,8 +180,7 @@ the A10; the MISSION 3 card shows, and its frame glitches into the 3D race as to
 
 ## 8. Open
 
-- The mission id, a possible third boss move, the enemy counts per section, the euros per enemy
-  and the start budget, the fine per death.
+- The enemy counts per section, the exact euros per enemy (within €1–€25), the fine per death.
 - The voice lines themselves and the ElevenLabs credit budget.
 - The race's score as euros, and whether the 2D `ring` (dormant) changes at all.
 - Where the ideas not used here go (Vondelpark, De Pont, Albert Cuyp-markt, NDSM-werf, De foodhal,
