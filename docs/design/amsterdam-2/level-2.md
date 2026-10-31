@@ -38,6 +38,15 @@ the A10 out, then the rest of the country.
 | c | **DE KADEMUUR** | afternoon | **The Swan returns** *(user)*: ride the canal while the old quay wall crumbles behind you (a chase). A closed bridge, pontoon bridges, a sinkhole that swallows a parked scan car. |
 | d | **DE WALLEN BY NIGHT** | night | Neon and closed curtains, narrow alleys, dealers, taxis, `BLOWVERBOD` signs, tour groups stopping on bridges. The hijsbalk again. At **03:00 the neon goes out**, the street goes dark, and the boss lights up the house. |
 
+Section details *(user, round 6)*:
+
+- **b — U BENT NUMMER 47:** a queue number on screen counts down; each line-cutter the player
+  stops moves them up one place. (Not picked: a rain shower with umbrellas as platforms, the
+  influencer's photo stop that whites out the screen, the wrong queue for a sneaker drop.)
+- **c — an auto-scroll chase:** the screen scrolls forward on the Swan; the quay wall crumbles
+  behind the player and bricks splash into the canal; keep up or get hit. (Not picked: two levels
+  with attacks from the quay above, the wall falling ahead.)
+
 Lead proposals inside the sections (not decided): the draaiorgel plays once in a, as the first
 "free shooting window" lesson; the blauwe envelop floats in at b's queue first and then appears now
 and then in later sections; the Swan comes back in c only (d is on foot, the alleys are too narrow).
@@ -102,6 +111,12 @@ the A10; the MISSION 3 card shows, and its frame glitches into the 3D race as to
 - **Below €0: rood staan + shop closed** *(user)*: the budget may go red and negative; the
   havermelk-bar then refuses the player (`GEWEIGERD`) until the budget is above €0 again. The
   tally stamps `TEKORT` or `OVERSCHOT` (the `JAARREKENING`).
+- **HUD: the bank-app look** *(user, round 6)*: a clean `BUDGET € 1.234,56`, green above €0 and
+  red below, with small `+€0,15` / `−€95` pop-ups. (Not picked: a receipt strip, arcade digits, a
+  parking-meter LCD.)
+- **Tally: de kassabon** *(user, round 6)*: a long receipt rolls out with every can, coffee, fine
+  and continue, then the total, stamped `OVERSCHOT` or `TEKORT`. (Not picked: a tax-form
+  jaarrekening page, a bank statement, an arcade count-up.)
 - **Two players: two budgets** *(user, round 5)*. Each player has their own euro number (their
   own fines, pickups and continue costs); the tally compares them. (Not picked: one shared budget,
   shared + a `WIE BETAALT?` bill split.)

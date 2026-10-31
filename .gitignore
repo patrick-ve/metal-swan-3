@@ -7,3 +7,6 @@ tmp
 # Local secrets (ElevenLabs API key)
 .env.local
 .env*.local
+
+# Python bytecode (docs/design/art-styles/lineup tools)
+__pycache__/
