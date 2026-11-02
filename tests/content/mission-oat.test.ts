@@ -42,6 +42,7 @@ import {
   isOatSpriteId,
 } from '../../src/game/content/missions/oat/ids';
 import { SECTION_BANNERS, voicedLines } from '../../src/game/content/missions/oat/lines';
+import { oatVoiceLines } from '../../src/game/content/samples/oat';
 import { OAT_A, OAT_C1, OAT_D, WATER_Y } from '../../src/game/content/missions/oat/terrain';
 import { OZ_SECTIONS } from '../../src/game/content/missions/oldenzaal/ids';
 import { sectionLight, sectionSun } from '../../src/game/mission/light/api';
@@ -63,8 +64,8 @@ describe('mission oat: lazy registration and the card', () => {
     for (const id of ['missions/oat', 'missions/oat/art', 'oat/traffic', 'bosses/oat-makelaar', 'music/oat', 'sfx/oat', 'sfx/oat-night', 'samples/oat']) expect(isOatContent(id), id).toBe(true);
     for (const id of ['missions/oldenzaal', 'missions/ams', 'oldenzaal/kit', 'bosses/ams', 'music/oldenzaal', 'rally', 'fps']) expect(isOatContent(id), id).toBe(false);
     expect(hasMission(OAT_ID)).toBe(true);
-    // The wave-A stub defines no entity of its own (the cast arrives in waves B and C).
-    expect(listEntities().filter((id) => !beforeOat.entities.has(id))).toEqual([]);
+    // Wave A defines only BUDGET's pieces (content/oat/budget, manifest 'oat/budget'); the cast arrives in waves B and C.
+    expect(listEntities().filter((id) => !beforeOat.entities.has(id)).sort()).toEqual(['oat-bin', 'oat-bottle-l', 'oat-bottle-s', 'oat-can', 'oat-haverbar']);
   });
 
   it('is MISSION 2 "OAT OF CONTROL" with six sections oat-a … oat-e in play order; next the rally', () => {
@@ -171,8 +172,9 @@ describe('mission oat: the section stubs', () => {
     expect(SECTION_BANNERS['oat-d']).toBe('DE WALLEN - 22:30');
     expect(SECTION_BANNERS['oat-e']).toBe('NAAR DE RING - 03:20');
     for (const t of Object.values(SECTION_BANNERS)) expect(measure(t, 'big'), t).toBeLessThanOrEqual(376);
-    // Wave A voices nothing of its own yet.
-    expect(voicedLines()).toEqual([]);
+    // The voiced lines are the sample group's table (AUDIO; INTEGRATE-A wired them).
+    expect(voicedLines()).toEqual(oatVoiceLines());
+    expect(voicedLines().length).toBeGreaterThan(50);
   });
 });
 

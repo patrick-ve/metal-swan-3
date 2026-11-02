@@ -21,6 +21,7 @@ import { applyAudioSettings, blinkOn, centerText, defaultHighScores, graphicsMod
 import { modeAtRes } from '../../engine/render-common';
 import { UPSCALE_MODES, type UpscaleMode } from '../../engine/upscale';
 import { artTier } from '../../engine/sprites';
+import { defaultBudgetEntries } from '../budget/index';
 import { ART_DETAILS, CREDIT_STEPS, saveSettings, type ArtDetail, type GameSettings, type ShakeLevel } from '../settings';
 import { ControlsScene } from './controls';
 import { DIFFICULTIES, DIFFICULTY_INFO } from './flow-data';
@@ -244,6 +245,9 @@ export class OptionsScene implements Scene {
         if (this.confirm === 0) {
           app.highScores.entries = defaultHighScores().entries;
           app.highScores.save(app.store);
+          // The euro runs' table too (docs/design/oat.md §7.7).
+          app.budgets.entries = defaultBudgetEntries();
+          app.budgets.save(app.store);
           app.audio.sfx('ui/confirm');
         } else app.audio.sfx('ui/cancel');
         this.confirm = null;

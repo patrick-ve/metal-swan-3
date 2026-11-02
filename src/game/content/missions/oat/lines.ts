@@ -1,10 +1,11 @@
 /**
  * Mission `oat`: every game text of the mission, verbatim (docs/design/oat.md §1, §9.2; docs/api/
- * oat.md "Lines"). Owner: CORE (wave A: the section banners and the empty voiced list); each wave
- * adds its speakers' lines here (bubbles ≤ 24 characters × 2 lines, `\n` breaks, no diacritics:
- * the font has none; `€` is one glyph) and lists them in `voicedLines()` for the audio spec (AUDIO,
- * SOUND). Pure data: no imports beyond the ids.
+ * oat.md "Lines"). Owner: CORE (wave A: the section banners); the voiced lines live with the sample
+ * group (content/samples/oat.ts `OAT_VOICE`, `OAT_QUEUE_CALLS`: AUDIO, wave A) so the runner and the
+ * audio spec read one table; `voicedLines()` returns them (bubbles ≤ 24 characters × 2 lines, `\n`
+ * breaks, no diacritics: the font has none; `€` is one glyph). Pure data.
  */
+import { oatVoiceLines } from '../../samples/oat';
 import { OAT_SECTION, type OatSectionId } from './ids';
 
 /**
@@ -28,9 +29,10 @@ export interface OatLine {
 }
 
 /**
- * Every voiced line of the mission (the audio spec's source; spec §9.2). Empty in wave A: the
- * builders of waves B and C add their speakers' lines.
+ * Every voiced line of the mission (the audio spec's source; spec §9.2): the sample group's table
+ * (content/samples/oat.ts `oatVoiceLines()`), by speaker; the builders of waves B and C add their
+ * lines there.
  */
 export function voicedLines(): readonly OatLine[] {
-  return [];
+  return oatVoiceLines();
 }

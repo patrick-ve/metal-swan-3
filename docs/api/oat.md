@@ -504,3 +504,26 @@ const id = ensureWaterStrip('oat-water-strip-d0', { u0: 0, len: 1280, v0: vAt(D_
   lights: D_LIGHTS.map((l) => ({ u: l.u, h: l.h, ramp: l.kind === 'lamp' ? 'lantern' : l.kind === 'pink' ? 'neonPink' : l.kind === 'cyan' ? 'neonCyan' : 'redLight' })) });
 features.push({ kind: 'cut', u0: 0, u1: 1280, level: WATER_LEVEL, surface: { tile: id, over: { tile: OAT_WATER_TILE.glintNight, du: -0.03, alpha: 0.3 } } });
 ```
+
+## INTEGRATE-A (wave A): what is wired
+
+- **One façade row table**: `facade/rows.ts` `OAT_STRIPS[id]` is THE `SectionStripsDef` of every
+  section; the section files set exactly that object (`strips: OAT_STRIPS[OAT_SECTION.a]`), so the
+  painters, the shade model and `facadeLots` read the same rows. oat-a's rows and the d proof
+  strip's row are STREET-A's (`art/place-a.ts` `A_STRIP_ROWS`, `art/place-d.ts` `D_STRIP_ROWS`: shop
+  and hoist slots that fit the shop sprites, the d lanterns as `params.lamps`); oat-d continues with
+  GRAMMAR's start rows to the arena and the 03:00 dark set `dark: [3968, 4480]`, `darkFrom: 3500`.
+  `FACADE_HEIGHT` is 168 for every section (the camera never rises; 168 reaches 8 px over the top).
+- **The budget pieces live**: oat-a spawns `oat-bin` at `OAT_A.bins` (sizes `OAT_A.binSizes`; the
+  `SCHIET!` lesson at the first) and `oat-haverbar` with `{ counter: true }` in front of STREET-A's
+  DE HAVERBAR window (the param draws only the counter, the goods and the barista); oat-c spawns the
+  whole kiosk at `OAT_C.kioskX` with `{ greet: false }`. Price tags are compact (`€4,45`, `€9`).
+- **Lazy manifest entries**: `oat/budget`, `music/oat`, `sfx/oat`, `samples/oat` (all
+  `isOatContent`); `ART_MODULE_IDS` accepts `oat/…` so `npm run sprites -- item/oat/` finds them.
+- **Lines**: `missions/oat/lines.ts` `voicedLines()` returns `content/samples/oat.ts`
+  `oatVoiceLines()` (one table).
+- **Scenery bytes**: `missions/oat/index.ts` `oatSceneryBytes(section)` (4× layers + the strip
+  caps + the dark-set cap + `OAT_TERRAIN_MARGIN`) ≤ `OAT_SCENERY_RESERVE`; the gate is
+  `tests/content/oat-dense-budget.test.ts` (1P / 2P working sets + the 84 MB reserve ≤ 254 MB).
+- Tuning: the actors' sun tails `SUN_TAIL_STRENGTH` 0.55 (`light/day.ts`); at 1× the shaded brick
+  floors keep the brick hue (`floor/mat.ts`: no sky cast, one PAL step lower).

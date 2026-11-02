@@ -5,8 +5,9 @@
  *
  * - The 1× scenery of every mission is byte-identical to before (hashes in
  *   fixtures/scenery-1x.json: every layer buffer, every terrain chunk, and drawn frames at res 1
- *   and res 2 — ams also at density 2 on res 1, where the 1× scenery is drawn). Regenerate only
- *   on purpose: UPDATE_SCENERY_FIXTURE=1 npx vitest run tests/art/scenery-hi.test.ts.
+ *   and res 2 — ams also at density 2 on res 1, where the 1× scenery is drawn; the lazy mission oat
+ *   is loaded too). Regenerate only on purpose: UPDATE_SCENERY_FIXTURE=1 npx vitest run
+ *   tests/art/scenery-hi.test.ts.
  * - The ams dense layers (at every density they have) and the HD terrain at d 2 and 4 have the 1×
  *   geometry (size, opaque footprint; terrain exactly), are palette-only (the 64 colours or PAL_HD)
  *   and deterministic, and no dense scenery falls back to a lower density (hiSceneryErrors).
@@ -44,7 +45,7 @@ import {
   makeHiBgLayer,
   makeHiTerrain,
 } from '../../src/game/art/art-registry';
-import { loadContent } from '../../src/game/content/index';
+import { isOatContent, loadContent } from '../../src/game/content/index';
 import { CHUNK, SectionView } from '../../src/game/mission/view';
 import type { SectionDef } from '../../src/game/mission/types';
 import { getMission, listMissions } from '../../src/game/registry';
@@ -118,6 +119,8 @@ function drawHash(view: SectionView, res: number, density: number, x: number, y:
 describe('2× scenery', () => {
   beforeAll(async () => {
     await loadContent();
+    // Mission oat is lazy (docs/design/oat.md decision 49): load it so its sections join the fixture.
+    await loadContent(isOatContent);
   });
 
   it('keeps the 1× scenery of every mission byte-identical', { timeout: 120_000 }, () => {

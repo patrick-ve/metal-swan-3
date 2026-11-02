@@ -53,7 +53,9 @@ export const OAT_A = {
   teKoop: [4352, 4480] as Span,
   hoistX: 2240,
   organX: 3330,
-  bins: [240, 900, 1400] as readonly number[],
+  /** The statiegeld bins (spec §2.1: the lesson at 240, the Berenstraat 900 / 1,400, two in the Oude Spiegelstraat) and their sizes (L). */
+  bins: [240, 900, 1400, 3120, 3880] as readonly number[],
+  binSizes: [100, 200, 100, 200, 100] as readonly (100 | 200)[],
   /** The golden record (spec §2.1: on the hanging piano at 2,240; wave A: on the ground there). */
   recordX: 2240,
   /** Spec §2.1: 0, 1,200, 2,560, 3,700, 4,250 (0 is the start). */

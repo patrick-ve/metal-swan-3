@@ -3,11 +3,14 @@
  * sequencer", §8.4 "The unseen opposite row"; docs/api/oat.md "Grammar"). One source of truth for
  * the painters, LIGHT-WATER's shade model and the tests:
  *
- * - `OAT_STRIPS[id]`: the start `SectionStripsDef` of each section (the rows along spec §2's
- *   layout: the house stretches between the bridges of oat-a, the Huidenstraat of oat-b, the far
- *   Grimburgwal row of c / c1, the Oudezijds night rows of oat-d). INTEGRATE-A sets it on the
- *   section (`strips: OAT_STRIPS['oat-a']`); a section that sets its own rows registers them by
- *   planning (the strip source calls `defineFacadeRows`), or a builder calls it at import time.
+ * - `OAT_STRIPS[id]`: THE `SectionStripsDef` of each section (the rows along spec §2's layout: the
+ *   house stretches between the bridges of oat-a, the Huidenstraat of oat-b, the far Grimburgwal
+ *   row of c / c1, the Oudezijds night rows of oat-d). The section files set exactly this object
+ *   (`strips: OAT_STRIPS[OAT_SECTION.a]`), so the painters, the shade model and `facadeLots` read
+ *   ONE table (INTEGRATE-A, wave A). oat-a's rows and the d proof strip's row are STREET-A's
+ *   (art/place-a.ts `A_STRIP_ROWS`, art/place-d.ts `D_STRIP_ROWS`): their shop and hoist slots fit
+ *   the shop sprites to the pixel and the d row carries the lantern x's (`lamps`). A section that
+ *   sets other rows registers them by planning (the strip source calls `defineFacadeRows`).
  * - `planSection(id, opposite?)`: the planned rows (cached); `opposite` = the unseen row across the
  *   street behind the camera (another seed, the section's sheet, the whole section width).
  * - `facadeLots(id, opposite?)` (re-exported by index.ts): the public lot list.
@@ -16,53 +19,35 @@
  */
 import type { SectionStripsDef, StripRowDef } from '../../../../mission/strips/types';
 import { OAT_SECTION, OAT_STRIP_SOURCE, OAT_WIDTH } from '../ids';
-import { OAT_A, OAT_B, OAT_D } from '../terrain';
+import { A_STRIP_ROWS } from '../art/place-a';
+import { D_STRIP, D_STRIP_ROWS } from '../art/place-d';
+import { OAT_B, OAT_D } from '../terrain';
 import { planRow, type FacadeRowParams, type RowPlan } from './grammar';
 import type { LotPlan, StreetSheetId } from './types';
 
 /** The façade plane: 16 px behind the feet (spec §2.1: the back edge at y 160, s 0.862). */
 export const FACADE_DEPTH = 16;
 /**
- * Strip height (strip px over the façade base): a 22 m house is 226 world px = 195 strip px; the
- * base sits at y 160, so 176 covers the screen top with a margin for the bridges' humps.
+ * Strip height (strip px over the façade base): the base sits at y 160 and the camera never rises
+ * (the bridges' humps move the heroes, not the view), so 168 reaches 8 px over the screen top; a
+ * taller house (a 22 m house is 195 strip px) is cut by the screen top as in a close street view
+ * (spec §8.2). INTEGRATE-A: one height for every section (STREET-A's 168; GRAMMAR started at 176).
  */
-export const FACADE_HEIGHT = 176;
+export const FACADE_HEIGHT = 168;
 
 function row(u0: number, u1: number, sheet: StreetSheetId, params?: FacadeRowParams): StripRowDef {
   return params ? { u0, u1, sheet, params: params as Readonly<Record<string, unknown>> } : { u0, u1, sheet };
 }
-
-const A = OAT_A.streets;
-/** The hijsbalk's warehouse (spec §6.4: LOCK 1, the beam at x 2,240). */
-const HOIST_LOT: readonly [number, number] = [OAT_A.hoistX - 41, OAT_A.hoistX + 41];
 
 /**
  * The start strips of each section (wave A: oat-a complete, oat-b / c / c1 from their sheets, oat-d
  * the night rows with the 03:00 dark set over the arena; the builders of waves B and C tune them).
  */
 export const OAT_STRIPS: Readonly<Record<string, SectionStripsDef>> = {
-  [OAT_SECTION.a]: {
-    source: OAT_STRIP_SOURCE,
-    depth: FACADE_DEPTH,
-    height: FACADE_HEIGHT,
-    rows: [
-      // Berenstraat (the Haverbar's shop front is a slot for STREET-A's decor sprite).
-      row(A.berenstraat[0], A.berenstraat[1], '9-straatjes', { name: 'beren', streetM: 8.3, wet: 0.6, slots: [{ u0: OAT_A.haverbar[0] - 8, u1: OAT_A.haverbar[1] + 8, kind: 'slot', id: 'haverbar' }] }),
-      // Wolvenstraat: the conceptstore's slot and the hijsbalk's warehouse (LOCK 1).
-      row(A.wolvenstraat[0], A.wolvenstraat[1], '9-straatjes', {
-        name: 'wolven',
-        streetM: 8.2,
-        wet: 0.6,
-        slots: [
-          { u0: OAT_A.conceptstore[0] - 6, u1: OAT_A.conceptstore[1] + 6, kind: 'slot', id: 'conceptstore' },
-          { u0: HOIST_LOT[0], u1: HOIST_LOT[1], kind: 'hoist', x: OAT_A.hoistX, id: 'hijsbalk' },
-        ],
-      }),
-      row(A.oudeSpiegelstraat[0], A.oudeSpiegelstraat[1], '9-straatjes', { name: 'spiegel', streetM: 6.6, wet: 0.7 }),
-      // The Singel row after the quay: the TE KOOP house is STREET-A's decor (a slot).
-      row(4352, OAT_A.w, 'canal-front', { name: 'singel', wet: 0.4, slots: [{ u0: OAT_A.teKoop[0], u1: OAT_A.teKoop[1], kind: 'slot', id: 'te-koop' }] }),
-    ],
-  },
+  // oat-a: STREET-A's rows (the Berenstraat, the Wolvenstraat with the conceptstore slot and the
+  // hijsbalk's warehouse, the Oude Spiegelstraat, the Singel after the TE KOOP house; shop slots that
+  // fit the shop sprites of art/shops.ts).
+  [OAT_SECTION.a]: { source: OAT_STRIP_SOURCE, depth: FACADE_DEPTH, height: FACADE_HEIGHT, rows: A_STRIP_ROWS },
   [OAT_SECTION.b]: {
     source: OAT_STRIP_SOURCE,
     depth: FACADE_DEPTH,
@@ -77,17 +62,22 @@ export const OAT_STRIPS: Readonly<Record<string, SectionStripsDef>> = {
     prefetch: 2,
     rows: [row(0, OAT_WIDTH['oat-c1'], 'grimburgwal', { name: 'grimburg', wet: 0.2 })],
   },
+  // oat-d: the proof strip's row 0–1,280 (STREET-A: the Achterburgwal, lit by its lanterns), then the
+  // start rows of the rest (the bridge head, the Trompettersteeg, the Voorburgwal, the square; NIGHT
+  // tunes them in wave C), and the 03:00 dark set over the arena view (spec §8.9: the same range as
+  // the light pass's bake, from the checkpoint at 3,500).
   [OAT_SECTION.d]: {
     source: OAT_STRIP_SOURCE,
     depth: FACADE_DEPTH,
     height: FACADE_HEIGHT,
     rows: [
-      row(OAT_D.achterburgwal[0], OAT_D.bridgeLock[1], 'oudezijds', { name: 'achter', night: true }),
-      row(OAT_D.alley[0], OAT_D.alley[1], 'trompettersteeg', { name: 'steeg', night: true }),
-      row(OAT_D.voorburgwal[0], OAT_D.voorburgwal[1], 'oudezijds', { name: 'voor', night: true }),
-      row(OAT_D.square[0], OAT_D.w, 'oudekerksplein', { name: 'plein', night: true }),
+      ...D_STRIP_ROWS,
+      row(D_STRIP[1], OAT_D.bridgeLock[1], 'oudezijds', { name: 'achter-brug', night: true, wet: 1 }),
+      row(OAT_D.alley[0], OAT_D.alley[1], 'trompettersteeg', { name: 'steeg', night: true, wet: 1 }),
+      row(OAT_D.voorburgwal[0], OAT_D.voorburgwal[1], 'oudezijds', { name: 'voor', night: true, wet: 1 }),
+      row(OAT_D.square[0], OAT_D.w, 'oudekerksplein', { name: 'plein', night: true, wet: 1 }),
     ],
-    dark: [OAT_D.arena[0] - 128, OAT_D.w],
+    dark: [OAT_D.arena[0], OAT_D.arena[1] + 128],
     darkFrom: OAT_D.checkpoints[2],
   },
 };

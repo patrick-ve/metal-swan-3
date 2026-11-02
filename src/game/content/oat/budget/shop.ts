@@ -10,7 +10,9 @@
  *   again once the budget covers the price (the next try).
  * - Point play: the shop is CLOSED (no goods, `GESLOTEN` on the counter; nothing sold).
  * - Params: `greet` (default true: the barista's welcome when a player first comes near; false for
- *   a second visit, e.g. the c kiosk in the afternoon).
+ *   a second visit, e.g. the c kiosk in the afternoon); `counter` (default false: the whole kiosk
+ *   front; true: only the counter, the goods and the barista, standing on the pavement in front of
+ *   a shop window that the scenery draws, e.g. oat-a's DE HAVERBAR window at 704–768).
  * - Team 'neutral', z 12 (behind items and players); nothing hits it. Fixed per-player state (no
  *   per-tick allocation); a price tag's text is rebuilt only when its price changes.
  *
@@ -40,7 +42,7 @@ export const SHOP = {
   zoneHalf: 10,
   zoneDy: 10,
   /** The goods' x on the counter (left to right: flat white, matcha, zuurdesem). */
-  goodDx: [-32, 0, 32] as readonly number[],
+  goodDx: [-34, 0, 34] as readonly number[],
   /** The barista's place behind the counter (her sprite's bottom centre). */
   baristaDx: 16,
   baristaDy: -16,
@@ -57,6 +59,8 @@ const NOTE_REFUSED = 1;
 const drawOpts: DrawOpts = {};
 const tagOpts: TextOpts = { align: 'center', screen: false, outline: PAL.ink[0] };
 const noteOpts: TextOpts = { align: 'center', screen: false, outline: PAL.ink[0] };
+/** The price tags are compact (`€4,45`, `€9`) so three fit side by side on the counter. */
+const TAG_EURO = { compact: true } as const;
 /** The players' tag colours (P1, P2). */
 const TAG_COLOR = [PAL.gold[3], PAL.teal[3]] as const;
 
@@ -83,6 +87,8 @@ export class OatHaverbar extends Entity {
   private pose = 0;
   private poseLeft = 0;
   private greeted: boolean;
+  /** Only the counter (the scenery draws the shop window behind it). */
+  private readonly counterOnly: boolean;
   /** The result of the last buy try (tests, scripts). */
   lastResult: BuyResult | null = null;
 
@@ -93,6 +99,7 @@ export class OatHaverbar extends Entity {
     this.despawnMargin = 240;
     this.hitbox = { x: -HAVERBAR_W / 2, y: -HAVERBAR_H, w: HAVERBAR_W, h: HAVERBAR_H };
     this.greeted = !paramBool(p, 'greet', true);
+    this.counterOnly = paramBool(p, 'counter', false);
     this.addTag('oat-haverbar');
   }
 
@@ -170,7 +177,7 @@ export class OatHaverbar extends Entity {
     const x = this.x;
     const y = this.y;
     drawOpts.flipX = false;
-    r.sprite(HAVERBAR_SPRITE, 0, x, y, drawOpts);
+    if (!this.counterOnly) r.sprite(HAVERBAR_SPRITE, 0, x, y, drawOpts);
     r.sprite(BARISTA_SPRITE, this.pose, x + SHOP.baristaDx, y + SHOP.baristaDy, drawOpts);
     r.sprite(HAVERBAR_SPRITE, 1, x, y, drawOpts);
     const counter = y - COUNTER_TOP;
@@ -193,7 +200,7 @@ export class OatHaverbar extends Entity {
         const price = haverbarPrice(s, HAVERBAR_GOODS[g].key);
         if (this.tagPrice[k] !== price) {
           this.tagPrice[k] = price;
-          this.tagText[k] = euroText(price);
+          this.tagText[k] = euroText(price, TAG_EURO);
         }
         r.text(this.tagText[k], x + SHOP.goodDx[g], ty, tagOpts);
       }

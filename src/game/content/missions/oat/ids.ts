@@ -91,7 +91,7 @@ export const OAT_BOSS = {
 export const OAT_PIECE = {
   /** A statiegeld bin (100 L / 200 L, HP 30). */
   bin: 'oat-bin',
-  /** Its pickups: a can (+€ 0,15), a small bottle (+€ 0,15), a big bottle (+€ 0,25). Category 'item'. */
+  /** Its pickups: a can (+€ 0,15), a small bottle (+€ 0,15), a big bottle (+€ 0,25). Ledger category 'deposit'. */
   can: 'oat-can',
   bottleS: 'oat-bottle-s',
   bottleL: 'oat-bottle-l',

@@ -94,7 +94,9 @@ describe('oat façade grammar: the lot sequencer', () => {
     const hoist = lots.find((l) => l.hoist && l.u0 <= 2240 && l.u0 + l.w > 2240);
     expect(hoist?.hoist?.u).toBe(2240);
     expect(hoist?.window).toBe('loading');
-    for (const id of ['haverbar', 'conceptstore', 'te-koop']) expect(lots.some((l) => l.ground === 'slot' && l.features.some((f) => f.kind === 'slot' && f.text === id))).toBe(true);
+    for (const id of ['haverbar', 'conceptstore']) expect(lots.some((l) => l.ground === 'slot' && l.features.some((f) => f.kind === 'slot' && f.text === id)), id).toBe(true);
+    // The TE KOOP house (4,352–4,480) is STREET-A's decor in a gap of the rows (INTEGRATE-A: one row table, STREET-A's).
+    expect(lots.some((l) => l.u0 < 4480 && l.u0 + l.w > 4352)).toBe(false);
   });
 
   it('marks every lot with at least 6 wear marks (spec §8.10) and flower boxes on at most about 1 lot in 6', () => {

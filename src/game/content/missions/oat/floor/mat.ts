@@ -123,9 +123,13 @@ export function dayMats(d: Dn): DayMats {
   let m = dayCache.get(d);
   if (m) return m;
   const joint = [T('stone', 1, d), T('stone', 2, d), T('oat.mortar', 0, d)];
+  // 1× (INTEGRATE-A): the sky cast of the shade pulled the shaded wet brick to the nearest PAL grey, so
+  // the whole shaded street read flat grey at 1×; at 1× the shade keeps the brick's own hue (no cast),
+  // one PAL step lower, so the red-brown clinkers stay red-brown in the shade too.
+  const brick1 = d === 1 ? { coolT: 0, shadeShift: 1 } : {};
   m = {
-    clinker: build([['oat.brick', 1], ['oat.brick', 2], ['oat.brick', 3], ['oat.brick', 4], ['oat.brick', 5], ['oat.brick', 6]] as unknown as Rn[][], d, { joint }),
-    paver: buildFrom([T('oat.brick', 2, d), mx(T('oat.brick', 3, d), T('brick', 3, d), 0.35, d), mx(T('oat.brick', 4, d), T('brick', 4, d), 0.35, d), mx(T('oat.brick', 5, d), T('brick', 5, d), 0.3, d), T('oat.brick', 6, d)], d, { joint, warm: 0.3 }),
+    clinker: build([['oat.brick', 1], ['oat.brick', 2], ['oat.brick', 3], ['oat.brick', 4], ['oat.brick', 5], ['oat.brick', 6]] as unknown as Rn[][], d, { joint, ...brick1 }),
+    paver: buildFrom([T('oat.brick', 2, d), mx(T('oat.brick', 3, d), T('brick', 3, d), 0.35, d), mx(T('oat.brick', 4, d), T('brick', 4, d), 0.35, d), mx(T('oat.brick', 5, d), T('brick', 5, d), 0.3, d), T('oat.brick', 6, d)], d, { joint, warm: 0.3, ...brick1 }),
     tile: tileMat(d),
     granite: buildFrom([T('slate', 2, d), T('steel', 2, d), T('steel', 3, d), mx(T('steel', 4, d), T('stone', 4, d), 0.4, d), mx(T('steel', 5, d), T('stone', 5, d), 0.4, d), T('stone', 6, d)], d, { joint: [T('slate', 1, d), T('slate', 2, d)], warm: 0.2 }),
     coping: buildFrom([T('stone', 2, d), T('oat.mortar', 0, d), T('oat.mortar', 1, d), T('oat.mortar', 2, d), T('oat.mortar', 3, d), T('stone', 6, d)], d, { joint: [T('stone', 1, d), T('moss', 1, d), T('stone', 2, d)], warm: 0.22 }),

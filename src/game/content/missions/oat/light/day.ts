@@ -23,12 +23,18 @@ import { OAT_SUN } from './sun';
 const G = 176;
 
 /**
+ * The tails' core alpha (INTEGRATE-A: 0.4 → 0.55; at 0.4 the hero's tail was hard to see in a full
+ * 4× frame, the look-stop note of LIGHT-WATER's report; still lighter than the floor's contact oval).
+ */
+export const SUN_TAIL_STRENGTH = 0.55;
+
+/**
  * The tail numbers of a day section: `along` = cot e · cos yaw (world px right per px of height,
  * both at true scale); `up` = the back part cot e · sin yaw (metres per metre) through the shade
  * model's depth scale (v per metre of the section's main street) and the floor camera's rows at the
  * walk line. `lit` asks the shade model at the feet (the floor's v is 0 on the walk line).
  */
-export function sunTail(sectionId: keyof typeof OAT_SUN, strength = 0.4): SunShadowConfig {
+export function sunTail(sectionId: keyof typeof OAT_SUN, strength = SUN_TAIL_STRENGTH): SunShadowConfig {
   const sun = OAT_SUN[sectionId];
   const g = sunGeom(sun.elevation, sun.yaw);
   const cam = shadeCamera(sectionId);

@@ -7,15 +7,17 @@
  *
  * WAVE A STUB (CORE): plain terrain, the checkpoints, the bridge lock and the arena with stand-in
  * waves, the 03:00 callout, the exit. STREET-A paints the night proof strip 0–1,280 in wave A (its
- * light: LIGHT-WATER); NIGHT, CAST-NIGHT and HUISJESMELKER build the rest in wave C.
+ * light: LIGHT-WATER; wired by INTEGRATE-A); NIGHT, CAST-NIGHT and HUISJESMELKER build the rest in
+ * wave C.
  */
 import type { ScriptGen } from '../../../../engine/script';
 import type { SectionContext, SectionDef } from '../../../mission/index';
 import { lockedFight, placeBanner, standInWave } from './helpers';
-import { D_STRIP_ROWS, OAT_D_DECOR } from './art/place-d';
+import { OAT_D_DECOR } from './art/place-d';
+import { OAT_STRIPS } from './facade/index';
 import { BG_OAT_D } from './backgrounds';
 import { OAT_D_FLOOR, OAT_D_STYLE } from './floor/d';
-import { OAT_AMBIENCE, OAT_SECTION, OAT_SONG, OAT_STRIP_SOURCE } from './ids';
+import { OAT_AMBIENCE, OAT_SECTION, OAT_SONG } from './ids';
 import { G, OAT_D, terrainD } from './terrain';
 
 export const OAT_D_EXIT = 'oat-d-end';
@@ -53,12 +55,13 @@ export const sectionD: SectionDef = {
   scroll: 'right',
   // The night proof strip 0–1,280 (STREET-A, spec §8.7 d): the night layers, the wet quay floor with
   // the canal in front, GRAMMAR's Oudezijds row (night bake), lanterns, neon, BLOWVERBOD, elms. The
-  // rest of the section keeps the same quay (no strips) until NIGHT (wave C).
+  // rest of the section keeps the same quay with GRAMMAR's start rows and the 03:00 dark set
+  // (facade/rows.ts `OAT_STRIPS`) until NIGHT (wave C).
   background: BG_OAT_D,
   terrain: terrainD(),
   terrainStyle: OAT_D_STYLE,
   floor: OAT_D_FLOOR,
-  strips: { source: OAT_STRIP_SOURCE, depth: 16, height: 168, rows: D_STRIP_ROWS },
+  strips: OAT_STRIPS[OAT_SECTION.d],
   decor: [...OAT_D_DECOR],
   playerStart: { x: 48, y: G },
   bossStart: { x: OAT_D.bossX, y: G },

@@ -16,7 +16,9 @@
  * Owner: CORE (wave A: this file, the ids, the stubs, the contracts); the builders add their
  * section `art`, preload prefixes and side-effect imports through INTEGRATE.
  */
-import type { MissionDef } from '../../../mission/index';
+import { bgDensityFor } from '../../../art/art-registry';
+import type { MissionDef, SectionDef } from '../../../mission/index';
+import { STRIP_BUDGET_BYTES, STRIP_DARK_BUDGET_BYTES } from '../../../mission/strips/types';
 import { defineMission } from '../../../registry';
 // The scenery kit (spec §11): one index per owner folder (contracts + stubs in wave A).
 import './facade/index';
@@ -39,6 +41,22 @@ export const OAT_NAME = 'OAT OF CONTROL';
  * the 03:00 dark set 11 MB + terrain chunks and margin 5 MB = 84 MB inside the 256 MB tier-4 cap.
  */
 export const OAT_SCENERY_RESERVE = 84 * 1024 * 1024;
+
+/** The terrain chunks and margin of the reserve (spec §8.12; with a floor the chunks hold only platforms). */
+export const OAT_TERRAIN_MARGIN = 5 * 1024 * 1024;
+
+/**
+ * Bytes the 4× scenery of a section takes besides the sprites (the `denseReserve` it must fit; spec
+ * §8.12): every background layer with a 4× generator (width × height × 16 px × 4 bytes), the strip
+ * store's lit cap (STRIP_BUDGET_BYTES: about 5 resident chunks) and, with a 03:00 dark set, its cap
+ * (STRIP_DARK_BUDGET_BYTES), plus the terrain margin. tests/content/oat-dense-budget.test.ts.
+ */
+export function oatSceneryBytes(sec: Pick<SectionDef, 'background' | 'strips'>): number {
+  let b = 0;
+  for (const l of sec.background?.layers ?? []) if (bgDensityFor(l.gen, 4) === 4) b += (l.width ?? 512) * (l.height ?? 216) * 64;
+  if (sec.strips) b += STRIP_BUDGET_BYTES + (sec.strips.dark ? STRIP_DARK_BUDGET_BYTES : 0);
+  return b + OAT_TERRAIN_MARGIN;
+}
 
 export const OAT: MissionDef = {
   id: OAT_ID,

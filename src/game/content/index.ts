@@ -133,6 +133,12 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   // `sfx/oat…`, `samples/oat`): every id `isOatContent` accepts is lazy. Its card is not lazy
   // (content/ui/cards.ts `OAT_CARD`).
   'missions/oat': () => import('./missions/oat/index'),
+  // Wave A (INTEGRATE-A): the budget pieces (BUDGET: the statiegeld bin, its cans, DE HAVERBAR) and the
+  // day-to-night score, the sfx and the sample group 'mission:oat' (AUDIO).
+  'oat/budget': () => import('./oat/budget/index'),
+  'music/oat': () => import('./music/oat'),
+  'sfx/oat': () => import('./sfx/oat'),
+  'samples/oat': () => import('./samples/oat'),
 };
 
 /**
@@ -201,7 +207,10 @@ export async function loadContent(
   return report;
 }
 
-/** Manifest ids that only define sprites (used by `npm run sprites`). */
+/**
+ * Manifest ids that define sprites (used by `npm run sprites`): the art modules, the missions, the
+ * bosses, and mission oat's content folders (`oat/budget` draws its pieces in its own art.ts).
+ */
 export const ART_MODULE_IDS: readonly string[] = Object.keys(CONTENT_MODULES).filter(
-  (id) => id.endsWith('/art') || id.startsWith('missions/') || id.startsWith('bosses/'),
+  (id) => id.endsWith('/art') || id.startsWith('missions/') || id.startsWith('bosses/') || id.startsWith('oat/'),
 );
