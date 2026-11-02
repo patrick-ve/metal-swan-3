@@ -37,8 +37,10 @@ const isOz = (x: { group: string }): boolean => x.group === OZ_AUDIO_GROUP;
 const isRing = (x: { group: string }): boolean => x.group === 'mission:ring';
 /** Mission rally's ids (group 'mission:rally', docs/design/rally.md §8: FILE FM). */
 const isRally = (x: { group: string }): boolean => x.group === 'mission:rally';
+/** Mission oat's ids (group 'mission:oat', docs/design/oat.md §9; checked in tests/content/oat-audio-spec.test.ts). */
+const isOat = (x: { group: string }): boolean => x.group === 'mission:oat';
 /** The rest of the game (the start screens and ams). */
-const isBase = (x: { group: string }): boolean => !isFps(x) && !isOz(x) && !isRing(x) && !isRally(x);
+const isBase = (x: { group: string }): boolean => !isFps(x) && !isOz(x) && !isRing(x) && !isRally(x) && !isOat(x);
 
 /** Every backticked `fps/…` sfx id in docs/design/fps.md §9.1. */
 function fpsSpecSfx(): Set<string> {
@@ -117,8 +119,9 @@ describe('audio spec: sfx', () => {
 
 describe('audio spec: music', () => {
   it('every id is a registered song, once', () => {
-    // The fps songs register with the lazy fps content (group fps-sound), not at boot.
-    for (const m of MUSIC.filter((x) => !isFps(x))) expect(hasSong(m.id), m.id).toBe(true);
+    // The fps songs register with the lazy fps content (group fps-sound), not at boot; the oat songs
+    // with the lazy oat content (tests/content/oat-audio-spec.test.ts).
+    for (const m of MUSIC.filter((x) => !isFps(x) && !isOat(x))) expect(hasSong(m.id), m.id).toBe(true);
     expect(new Set(MUSIC.map((m) => m.id)).size).toBe(MUSIC.length);
     expect(MUSIC.filter(isBase).map((m) => m.id).sort()).toEqual(
       ['ams', 'ams-boss', 'briefing', 'continue', 'game-over', 'high-score', 'mission-complete', 'select', 'title'].sort(),
@@ -149,7 +152,8 @@ describe('audio spec: music', () => {
 
   it('a loop is long enough for its intro, one full loop and 2 s to cut', () => {
     const loopBars: Record<string, number> = { title: 32, select: 16, briefing: 8, ams: 48, 'ams-boss': 40, continue: 6, 'high-score': 8, 'fps-floor': 32, 'fps-boss': 32, 'fps-bridge': 4, oldenzaal: 24, 'oldenzaal-boss': 24, 'oldenzaal-tower': 32, 'ring-foot': 32, 'ring-boot': 24, 'rally-lap1': 80, 'rally-lap2': 80, 'rally-lap3': 72 };
-    for (const m of MUSIC.filter((x) => x.loop)) {
+    // Mission oat's songs are built from their take forms (tests/content/oat-audio-spec.test.ts).
+    for (const m of MUSIC.filter((x) => x.loop && !isOat(x))) {
       const bar = (60 / m.bpm) * m.beatsPerBar;
       const need = ((m.introBars ?? 0) + loopBars[m.id]) * bar + 2;
       expect(m.seconds, m.id).toBeGreaterThanOrEqual(need - 0.01);

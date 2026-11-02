@@ -18,7 +18,9 @@ import { MemoryStore } from '../engine/storage';
 import { NullView3d, type View3d } from '../engine/view3d';
 import { createApp, newCampaign, type GameApp } from '../game/app';
 import { DEFAULT_PARAMS } from '../game/params';
+import { withDifficulty } from '../game/budget/euro-table';
 import type { RallyReport } from '../game/rally/api';
+import { linesCents } from '../game/rally/score';
 import type { RallyCam } from '../game/rally/ids';
 import type { RallyRunner } from '../game/rally/runner';
 import { RallyScene } from '../game/scenes/rally';
@@ -53,6 +55,11 @@ export interface HeadlessRallyOptions {
 }
 
 export interface RallySimReport extends RallyReport {
+  /**
+   * The euro budget per joined slot in cents after the race's prize money (docs/design/oat.md
+   * §7.8, §7.10): the slot's budget + the lines' cents × the difficulty factor (what the tally books).
+   */
+  budget: number[];
   /** Game seconds (ticks / 60, one decimal). */
   seconds: number;
   errors: SimError[];
@@ -156,8 +163,10 @@ export class HeadlessRally {
     const base: RallyReport = r
       ? r.report()
       : { seed: (this.o.seed ?? 1) >>> 0, ticks: 0, complete: false, players: this.o.players ?? 1, difficulty: this.o.difficulty ?? 'normal', laps: 0, places: [], lapTicks: [], finishTicks: [], fines: [], score: [], stateHash: 0 };
+    const budget = r ? r.session.slots.filter((s) => s.joined).map((s) => s.cents + withDifficulty(linesCents(r.raceLines(s.index)), r.session.mods.tallyScore)) : [];
     return {
       ...base,
+      budget,
       seconds: Math.round(base.ticks / 6) / 10,
       errors: this.stats.errorList(),
       warnings: lines,

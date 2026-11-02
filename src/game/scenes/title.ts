@@ -22,7 +22,7 @@ import { PAD } from '../../engine/pads';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { frameW, getFrame, hasSprite } from '../../engine/sprites';
-import { blinkOn, centerText, scoreText, uiText, UI_WHITE, type GameApp } from '../app';
+import { blinkOn, centerText, euroText, uiText, UI_WHITE, type GameApp } from '../app';
 import { getMission, hasCharacter, hasMission } from '../registry';
 import { GameSession } from '../session';
 import { ROSTER, TAGLINES } from './flow-data';
@@ -233,7 +233,8 @@ export class TitleScene implements Scene {
       this.prefetched = true;
       prefetchScreenArt(r, NEXT_TITLES);
     }
-    centerText(r, `HI ${scoreText(this.app.highScores.top)}`, 4, UI_WHITE);
+    // The best budget of the `budgets` table (docs/design/oat.md §7.7).
+    centerText(r, `HI ${euroText(this.app.budgets.top)}`, 4, UI_WHITE);
     centerText(r, '(C) 2026 THE METAL SWAN 3 TEAM', 206, PAL.stone[3]);
     const pads = this.padLine();
     if (pads) centerText(r, pads, 194, PAL.sky[3]);

@@ -6,7 +6,9 @@
  * and the water cuts, and each section's `FloorDef` (camera, features, rows) for its SectionDef.
  * The water tiles and the baked reflection strips are LIGHT-WATER's (missions/oat/light/).
  *
- * WAVE A STUB (CORE): the wetness contract only; the oat sections have no floor yet.
+ * Wave A (STREET-A): `layout.ts` (depths, stretches), `mat.ts` (materials), `painter.ts` (the painter
+ * `oat-street`, the wetness fields of oat-a and oat-d), `tiles.ts` (kerb face, quay walls, arches),
+ * `a.ts` / `d.ts` (the FloorDefs `OAT_A_FLOOR`, `OAT_D_FLOOR`; the section files import them).
  */
 
 /**

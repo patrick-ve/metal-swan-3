@@ -189,9 +189,11 @@ describe('B.5 the score (score.ts)', () => {
     expect(raceLines({ parTicks: 24000, carCount: 8 }, car).map((l) => l.label.split(' ')[0])).toEqual(['PLACE', 'TIME']);
     const lines = raceLines({ parTicks: 24000, carCount: 8, parLapTicks: 7000, book, cars: [car] }, car);
     expect(lines.map((l) => l.points)).toEqual([PLACE_POINTS[1], 66 * 50, BEST_LAP_POINTS, 4 * OVERTAKE_POINTS, NEAR_MISS_POINTS, 3 * FINE_POINTS]);
-    expect(lines[5].label).toBe('FINES 3 EUR 300');
+    // The prize money (docs/design/oat.md §7.8): the joke euro column goes; FINES costs − € 120 each.
+    expect(lines[5].label).toBe('FINES 3');
+    expect(lines[5].cents).toBe(-36000);
     const two = raceLines({ parTicks: 24000, carCount: 8, parLapTicks: 7000, book, cars: [car, mate] }, car);
-    expect(two[6]).toEqual({ label: 'TEAM', points: TEAM_POINTS });
+    expect(two[6]).toEqual({ label: 'TEAM', points: TEAM_POINTS, cents: 10000 });
     const poor = { ...car, place: 8, finishTicks: -1, lapTicks: [], fines: 40 } as unknown as CarState;
     const pl = raceLines({ parTicks: 24000, carCount: 8, parLapTicks: 7000, book: new ScoreBook(), cars: [poor] }, poor);
     expect(pl.reduce((a, l) => a + (l.points ?? 0), 0)).toBe(0);

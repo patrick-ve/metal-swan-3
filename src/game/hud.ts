@@ -26,6 +26,8 @@ import { PixelBuffer, type Ramp } from '../engine/pixel';
 import type { DrawOpts, Frame, Renderer, TextOpts } from '../engine/render';
 import { artDensity, frameH, frameW, getFrame, hasSprite, hiArtOn } from '../engine/sprites';
 import { Boss } from './boss';
+import { budgetLine } from './budget/display';
+import { euroText } from './budget/format';
 import type { World } from '../engine/world';
 import type { Bubble, HudState, Pointer } from './context';
 import type { Player } from './player/player';
@@ -236,6 +238,37 @@ function at(left: boolean, x1: number, w: number): number {
   return left ? x1 : VIEW_W - x1 - w;
 }
 
+/** The bank-app budget colours (spec §7.5): green above € 0, red below; the label grey. */
+const BUDGET_PLUS: Color = PAL.green[3];
+const BUDGET_GREY: Color = PAL.stone[3];
+
+/**
+ * The budget line of a euro play (docs/design/oat.md §7.5, the bank-app look): after the tag,
+ * `BUDGET` (small, grey), the amount (green at ≥ € 0, red below) rolling to its new value over 20
+ * ticks (budget/display.ts), and a small `+€0,15` / `-€95` pop beside it. P2 mirrored: from x 380
+ * leftward the tag, the amount, `BUDGET`, the pop.
+ */
+function drawBudget(r: Renderer, s: PlayerSlot, left: boolean, tag: string, tick: number): void {
+  const line = budgetLine(s, tick);
+  const amount = euroText(line.shown);
+  const amountCol = line.shown < 0 ? RED : BUDGET_PLUS;
+  const pop = line.pop !== 0 && blink(line.popAge, 6) ? euroText(line.pop, { plus: true, compact: true }) : '';
+  const popCol = line.pop < 0 ? RED : GOLD;
+  const x0 = 4 + measure(tag) + 3;
+  if (left) {
+    txt(r, 'BUDGET', x0, 3, BUDGET_GREY);
+    const ax = x0 + measure('BUDGET') + 3;
+    txt(r, amount, ax, 3, amountCol);
+    if (pop) txt(r, pop, ax + measure(amount) + 4, 3, popCol);
+    return;
+  }
+  const ax = VIEW_W - x0;
+  txt(r, amount, ax, 3, amountCol, 'right');
+  const bx = ax - measure(amount) - 3;
+  txt(r, 'BUDGET', bx, 3, BUDGET_GREY, 'right');
+  if (pop) txt(r, pop, bx - measure('BUDGET') - 4, 3, popCol, 'right');
+}
+
 function drawPanel(r: Renderer, h: HudInput, s: PlayerSlot): void {
   const left = s.index === 0;
   const align = left ? 'left' : 'right';
@@ -249,9 +282,13 @@ function drawPanel(r: Renderer, h: HudInput, s: PlayerSlot): void {
     return;
   }
   // Score (always shown, also on the CONTINUE? and GAME OVER screens): the tag, then 7 digits at x 16.
-  const score = String(Math.min(Math.max(0, s.score), 9999999)).padStart(7, '0');
+  // A euro play (docs/design/oat.md §7.5) shows the budget line instead.
   txt(r, tag, edge, 3, col, align);
-  txt(r, score, left ? 16 : VIEW_W - 16, 3, GOLD, align);
+  if (h.session.economy === 'euro') drawBudget(r, s, left, tag, h.ticks);
+  else {
+    const score = String(Math.min(Math.max(0, s.score), 9999999)).padStart(7, '0');
+    txt(r, score, left ? 16 : VIEW_W - 16, 3, GOLD, align);
+  }
 
   if (s.gameOver) {
     // 2 players: the continue countdown runs in the dead player's corner (GDD §13.9); one player
@@ -609,11 +646,12 @@ function drawFlash(r: Renderer, hud: HudState): void {
 /** Score numbers rise 12 px over their 40 ticks at the kill point. */
 function drawPopups(r: Renderer, hud: HudState): void {
   const list = hud.popups;
-  worldText.color = GOLD;
   worldText.outline = INK;
   for (let i = 0; i < list.length; i++) {
     const p = list[i];
     const rise = Math.round(((40 - p.ticks) * 12) / 40);
+    // A cost of the euro budget (`-€95`, docs/design/oat.md §7.5) rises in red.
+    worldText.color = p.text.charCodeAt(0) === 45 ? RED : GOLD;
     r.text(p.text, Math.round(p.x), Math.round(p.y) - rise, worldText);
   }
   worldText.outline = undefined;

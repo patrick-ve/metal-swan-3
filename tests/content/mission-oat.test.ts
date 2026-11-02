@@ -153,12 +153,13 @@ describe('mission oat: the section stubs', () => {
     expect(OAT.sections['oat-e'].timeLimit).toBe(0);
   });
 
-  it('section ids are unique in the game (never ams\'s bare a … d or oldenzaal\'s oz-…); no section light yet (LIGHT-WATER)', () => {
+  it('section ids are unique in the game (never ams\'s bare a … d or oldenzaal\'s oz-…); every oat section has its light (LIGHT-WATER: day passes a–c1, night d, e)', () => {
     const others = listMissions().filter((m) => m !== OAT_ID).flatMap((m) => Object.keys(getMission(m)!.sections));
     for (const id of OAT_SECTIONS) {
       expect(others, id).not.toContain(id);
       expect(id.startsWith('oat-')).toBe(true);
-      expect(sectionLight(id), id).toBeUndefined();
+      expect(sectionLight(id), id).toBeDefined();
+      expect(sectionLight(id)?.day === true, id).toBe(id !== 'oat-d' && id !== 'oat-e');
     }
     for (const id of OZ_SECTIONS) expect(sectionLight(id), id).toBeDefined();
   });

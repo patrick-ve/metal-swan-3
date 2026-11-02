@@ -28,9 +28,9 @@
  *    strips, the floor, the backdrops, the contact shadows). A section without one keeps today's
  *    fixed key light. `sunFloorShadow` / `sunWallShadow` are the spec's shadow offsets.
  *
- * The oat flags of `SectionLight` (`glow`, `streaks`, `groups`, `bakes`) and of `StaticLight`
- * (`group`, `streak`) are OPTIONAL with today's behaviour as their default, so oldenzaal's configs
- * (which set none of them) light every frame exactly as before.
+ * The oat flags of `SectionLight` (`glow`, `streaks`, `groups`, `bakes`, `day`, `water`,
+ * `sunShadows`) and of `StaticLight` (`group`, `streak`) are OPTIONAL with today's behaviour as their
+ * default, so oldenzaal's configs (which set none of them) light every frame exactly as before.
  *
  * Everything here is cosmetic: the pass draws, it never changes game state, and its randomness
  * (flicker, the lightning schedule) uses `world.fxRng` or a hash of the tick (determinism rule).
@@ -40,6 +40,7 @@ import type { Color } from '../../../engine/color';
 import type { Entity } from '../../../engine/entity';
 import type { World } from '../../../engine/world';
 import type { SunDef } from '../../art/hd/light';
+import type { ReflectConfig } from '../floor/reflect';
 
 /** The tag of an entity that gives light (oldenzaal ids.ts `OZ_LIGHT.tag`; every mission uses it). */
 export const LIGHT_TAG = 'oz-light';
@@ -136,6 +137,30 @@ export interface StreakConfig {
   length?: number;
   /** 0..1 strength of the dashes (additive; default the pass's). */
   strength?: number;
+  /**
+   * The water plane, logical px below the light's floor row (the walk plane without a floor; default
+   * 6): a light h px over it mirrors at h px below it (then clamped into [y0, y1]).
+   */
+  level?: number;
+  /** 0..1 ripple: wider, longer, more broken dashes (default 0.5). */
+  ripple?: number;
+}
+
+/**
+ * OPT-IN (oat, spec §8.4 "Actors"): the cast shadow of every hero, enemy and npc in a day section,
+ * a tail from the feet stretched along the sun's floor direction, drawn on the floor before the
+ * floor's own contact ovals (which stay: the ambient contact under the feet). Screen px per px of
+ * the caster's height; a floor only.
+ */
+export interface SunShadowConfig {
+  /** To the right (h · cot e · cos yaw at true scale). */
+  along: number;
+  /** Up the screen (the back part h · cot e · sin yaw through the floor camera). */
+  up: number;
+  /** 0..1 alpha of the tail's core (default 0.4: shade ≤ 1.5 tones, spec §8.4). */
+  strength?: number;
+  /** 0..1 sun at the feet (world x, y; the section's shade model): no tail in shade. Default 1. */
+  lit?: (x: number, y: number) => number;
 }
 
 /** The state of a lamp group (spec §6.9: the neon goes out group by group). */
@@ -200,6 +225,15 @@ export interface SectionLight {
   groups?: readonly LampGroupDef[];
   /** OPT-IN (oat, spec §8.9): the lit / dark bakes of the strips and floor and their cross-fade (default none). */
   bakes?: BakeConfig;
+  /**
+   * OPT-IN (oat, spec §8.1 steps 6–7): a DAY section: no darkness and no light map at all; the pass
+   * only draws the ground overlays (`water`, `sunShadows`) under the entities. `darkness` is ignored.
+   */
+  day?: boolean;
+  /** OPT-IN (oat, spec §8.8): dynamic reflections in these water bands (mission/floor/reflect.ts; a floor only). */
+  water?: ReflectConfig;
+  /** OPT-IN (oat, spec §8.4): sun-stretched cast shadows of the actors (a floor only). */
+  sunShadows?: SunShadowConfig;
 }
 
 const sections = new Map<string, SectionLight>();
@@ -290,6 +324,8 @@ export interface LightControl {
   group?(name: string, state: LampGroupState): void;
   /** OPT-IN (oat): cross-fade the strips' and floor's light set over `fadeTicks` (default the bake's 60). */
   lightSet?(set: LightSetId, fadeTicks?: number): void;
+  /** OPT-IN (oat): the dark bake's share now, 0 (lit) … 1 (dark): the floor's bake reads it. */
+  bakeMix?(): number;
 }
 
 const controls = new WeakMap<World, LightControl>();
@@ -323,4 +359,12 @@ export function lampGroup(world: World, name: string, state: LampGroupState): vo
 /** Cross-fade to the lit or the dark bake (oat, spec §8.9); nothing without a pass that has bakes. */
 export function crossFadeLight(world: World, set: LightSetId, fadeTicks?: number): void {
   controls.get(world)?.lightSet?.(set, fadeTicks);
+}
+
+/**
+ * The dark bake's share of the 03:00 cross-fade now (0 lit … 1 dark; 0 without a pass with bakes):
+ * the hook for the floor's two bakes (the strips get it pushed: `setStripDarkMix`).
+ */
+export function lightSetMix(world: World): number {
+  return controls.get(world)?.bakeMix?.() ?? 0;
 }

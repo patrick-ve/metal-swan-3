@@ -28,6 +28,9 @@ import {
 } from '../../engine/ray';
 import { Rng } from '../../engine/rng';
 import type { FpsLine } from '../content/fps/lines';
+import { bookSlot } from '../budget/pay';
+import { fpsCents } from '../budget/euro-table';
+import type { BudgetCategory } from '../budget/types';
 import type { Difficulty, PlayerSlot } from '../session';
 import { ActorPool, billboardOf, MAX_ACTORS, ST_DIE, type Actor, type ActorFrame } from './actors';
 import { damageActor, makeNoise, stepActors } from './ai';
@@ -43,6 +46,13 @@ import { PushSystem } from './pushwall';
 import type { FloorResult, FpsCarry, FpsEvents, FpsFloorDef, FpsInput, FpsRun } from './types';
 import { emptyFpsInput } from './run';
 import { WeaponSystem, WEAPONS, WP_IDLE } from './weapons';
+
+
+/** What an fps payer is (docs/design/oat.md §7.9; budget/euro-table.ts `fpsCents`). */
+export type FpsPayKind = 'kill' | 'boss' | 'treasure' | 'other';
+
+/** The kassabon category of each fps payer. */
+const FPS_PAY_CATEGORY: Readonly<Record<FpsPayKind, BudgetCategory>> = { kill: 'enemy', boss: 'boss', treasure: 'treasure', other: 'item' };
 
 /** The weapon view goes down this far (px) while the suit breaks (fire is off; spec §7.2). */
 export const WEAPON_LOWER_PX = 60;
@@ -176,6 +186,8 @@ export class FpsGame implements PickupHost {
   private readonly deadEv = { floor: 0 };
   private readonly secretEv = { x: 0, y: 0 };
   private readonly extendEv = { lives: 0 };
+  /** The budget's gross income when the floor started (a restart takes the floor's income back). */
+  private readonly floorGross: number;
   private readonly result: FloorResult = {
     floor: 0,
     ticks: 0,
@@ -196,6 +208,7 @@ export class FpsGame implements PickupHost {
     this.difficulty = o.difficulty;
     this.seed = o.seed >>> 0;
     this.slot = o.slot;
+    this.floorGross = o.slot.ledger.gross;
     this.audio = o.audio;
     this.god = o.god ?? false;
     this.run = o.run ?? null;
@@ -252,6 +265,8 @@ export class FpsGame implements PickupHost {
     this.fxRng = new Rng((this.seed + this.attempt) ^ 0x5eed);
     this.load(null);
     if (this.run) this.slot.score = this.run.floorStartScore;
+    // The euros of this floor go back with the score (costs, such as the continue's tax, stay paid).
+    this.slot.ledger.rewindIncome(this.floorGross);
     // A boss floor: the boss sleeps again, so its song ends (spec §6.2).
     if (this.boss) this.audio.music(this.def.music, { fadeTicks: 30 });
   }
@@ -559,9 +574,15 @@ export class FpsGame implements PickupHost {
     }
   }
 
-  /** Points through the slot (extends apply; spec §4.13). */
-  addScore(points: number): void {
-    const extra = this.slot.addScore(points);
+  /**
+   * Points through the slot (extends apply; spec §4.13). A euro run (docs/design/oat.md §7.9:
+   * `slot.euro`) also pays the euros: a kill by the legacy rule (€ 2–€ 10 by type), a treasure
+   * by its row (€ 5–€ 50; the golden record € 50), the boss € 250; the extends then come from the
+   * budget's gross income.
+   */
+  addScore(points: number, kind: FpsPayKind = 'other', id = ''): void {
+    let extra = this.slot.addScore(points);
+    if (this.slot.euro) extra += bookSlot(this.slot, fpsCents(points, kind, id), FPS_PAY_CATEGORY[kind]);
     if (extra > 0) {
       this.sound.play('item/1up');
       this.extendEv.lives = this.slot.lives;

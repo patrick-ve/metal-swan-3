@@ -3,8 +3,9 @@
 import type { SampleGroupId } from '../../src/engine/samples';
 
 /**
- * A sample group of the game: 'boot', 'mission:ams', 'mode:fps', 'mission:oldenzaal' (the list
- * is `SAMPLE_GROUPS` in src/engine/samples.ts, the one place that names them).
+ * A sample group of the game: 'boot', 'mission:ams', 'mode:fps', 'mission:oldenzaal',
+ * 'mission:ring', 'mission:rally', 'mission:oat' (the list is `SAMPLE_GROUPS` in
+ * src/engine/samples.ts, the one place that names them).
  */
 export type SampleGroupName = SampleGroupId;
 
@@ -37,6 +38,12 @@ export interface MusicSpec {
   introBars?: number;
   loop: boolean;
   takes: number;
+  /**
+   * The beat (from the file start) where each order slot of the synth song begins, one per slot
+   * (`ctx.music(id, fade, { from: slot })` enters a part; mission oat's songs). audio:ship writes
+   * them as the manifest's `marks` in seconds (`SampleSong.marks`), so a take enters the same part.
+   */
+  slotBeats?: readonly number[];
 }
 
 /** One designed voice (POST /v1/text-to-voice/design). */

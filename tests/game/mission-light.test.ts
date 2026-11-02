@@ -38,15 +38,20 @@ beforeAll(async () => {
 });
 
 describe('opt-in: off by default', () => {
-  it('only oldenzaal sections register a light config', () => {
+  it('only oldenzaal and oat sections register a light config (oat: night passes d, e; day passes a–c1)', async () => {
+    const { loadOatContent } = await import('../../src/game/scenes/oat-route');
+    await loadOatContent();
     for (const mid of listMissions()) {
       const m = getMission(mid);
       if (!m) continue;
       for (const sid of Object.keys(m.sections)) {
-        if (mid === 'oldenzaal') expect(sectionLight(sid), `${mid}/${sid}`).toBeDefined();
+        if (mid === 'oldenzaal' || mid === 'oat') expect(sectionLight(sid), `${mid}/${sid}`).toBeDefined();
         else expect(sectionLight(sid), `${mid}/${sid}`).toBeUndefined();
+        // Only oat-d and oat-e darken; the oat day sections draw no darkness (spec §8.9).
+        if (mid === 'oat') expect(sectionLight(sid)?.day === true, sid).toBe(sid !== 'oat-d' && sid !== 'oat-e');
       }
     }
+    expect(listMissions()).toContain('oat');
   });
 
   it('an ams runner has no pass, no back hook and no row eviction; nothing is bound', async () => {

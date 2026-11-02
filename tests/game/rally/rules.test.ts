@@ -624,7 +624,12 @@ describe('the score (score.ts) and the headline', () => {
     const book = new ScoreBook();
     book.fine('white', 8430);
     const lines = raceLines({ parTicks: 26613, carCount: 8, parLapTicks: 8871, book, cars: [car] }, car);
-    expect(lines.find((l) => l.label.startsWith('FINES'))!.label).toBe('FINES 9 EUR 8.430');
+    // The tally's FINES line is now prize money (docs/design/oat.md §7.8: − € 120 each); the fines' joke
+    // euros stay in the book (the report's finesEuros).
+    const fines = lines.find((l) => l.label.startsWith('FINES'))!;
+    expect(fines.label).toBe('FINES 9');
+    expect(fines.cents).toBe(-9 * 12000);
+    expect(book.peek('white')?.finesEuros).toBe(8430);
   });
 
   it('the card headline follows the best player place (spec §1.1)', () => {

@@ -26,8 +26,14 @@ export const START_CENTS: Cents = 10_000;
 /** The HUD and the screens clamp the shown amount at ± € 99.999,99 (spec §7.5). */
 export const DISPLAY_MAX_CENTS: Cents = 9_999_999;
 
-/** The extends (`ONE MORE TRY!`) at € 1.000 and € 3.000 of GROSS income (never reduced by costs; spec §7.1). */
-export const EXTEND_CENTS: readonly Cents[] = [100_000, 300_000];
+/**
+ * The extends (`ONE MORE TRY!`) at a GROSS income of the whole run (never reduced by costs; spec
+ * §7.1). The spec's start values were € 1.000 and € 3.000; spec §7.10 says they must not fire in the
+ * identity sims, but one `ams` god run alone earns € 2.158 gross (kills pay points ÷ 50, not ÷ 500),
+ * and at € 1.000 the extend changed `ams-normal-1`. BUDGET tuned them to € 5.000 and € 15.000
+ * (about where the old 500,000 / 1,500,000 points fell in a run: docs/api/budget.md "Extends").
+ */
+export const EXTEND_CENTS: readonly Cents[] = [500_000, 1_500_000];
 
 /**
  * The kassabon's categories (spec §7.6): a fixed list (≤ 32), so a slot counts into fixed slots
@@ -37,6 +43,8 @@ export const EXTEND_CENTS: readonly Cents[] = [100_000, 300_000];
 export const BUDGET_CATEGORY = {
   /** Kills (enemies; the bosses have their own line). */
   enemy: 'VIJANDEN',
+  /** Knife kills of soft enemies (×2, spec §7.2; BUDGET added it, 2026-11-01). */
+  cash: 'CONTANT',
   boss: 'BAAS',
   /** Pickups and items with a value (food, gems, weapon crates' worth). */
   item: 'BUIT',

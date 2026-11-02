@@ -30,6 +30,7 @@ import { LOCK_GOLD, LOCK_SILVER } from '../fps/map';
 import { fpsFloorByNumber } from '../fps/registry';
 import { emptyFpsInput, reserveLives } from '../fps/run';
 import type { FloorResult, FpsFloorDef, FpsInput, FpsRun } from '../fps/types';
+import { chargeTouristTax } from '../budget/pay';
 import type { PlayerSlot, SlotIndex } from '../session';
 import { ContinueScene, type Continuable } from './continue';
 import { fpsFloorDone } from './fps-route';
@@ -97,6 +98,8 @@ export class FpsScene implements Scene, PauseHost, Continuable {
     const session = app.session;
     if (!session) throw new Error('[fps] FpsScene needs a session');
     this.slot = session.slots[run.slot];
+    // The floors are on the route: they pay euros (docs/design/oat.md §7.1, §7.9).
+    session.setEconomy('euro');
     this.game = new FpsGame({
       floor: def,
       difficulty: session.difficulty,
@@ -233,6 +236,8 @@ export class FpsScene implements Scene, PauseHost, Continuable {
     if (!session.continueSlot(i)) return false;
     this.run.floorStartScore += this.slot.score - before;
     this.game.restart();
+    // The toeristenbelasting (docs/design/oat.md §7.3, §7.9) on the budget the restart left.
+    chargeTouristTax(session, this.slot);
     this.finished = false;
     this.restartCard = RESTART_CARD_TICKS;
     return true;
@@ -316,6 +321,7 @@ export class FpsScene implements Scene, PauseHost, Continuable {
     const info = this.info;
     info.floor = this.def.number;
     info.score = this.slot.score;
+    info.cents = this.slot.euro ? this.slot.cents : undefined;
     info.lives = reserveLives(this.slot);
     info.slot = this.run.slot;
     info.character = this.slot.character;

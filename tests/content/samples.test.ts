@@ -446,7 +446,7 @@ describe('audio:ship keeps the files it did not write', () => {
       put('oldenzaal/sfx/oz-env-old-1.mp3');
       const hand = put('ams/voice/Tot ziens.mp3');
       const empty = (): GroupData => ({ sfx: {}, music: {}, voice: {} });
-      const r = applyShip({ groups: { boot: empty(), 'mission:ams': empty(), 'mode:fps': empty(), 'mission:oldenzaal': empty(), 'mission:ring': empty(), 'mission:rally': empty() }, copies: [], errors: [], warnings: [] }, p, true);
+      const r = applyShip({ groups: { boot: empty(), 'mission:ams': empty(), 'mode:fps': empty(), 'mission:oldenzaal': empty(), 'mission:ring': empty(), 'mission:rally': empty(), 'mission:oat': empty() }, copies: [], errors: [], warnings: [] }, p, true);
       expect(r.removed).toEqual(['public/audio/fps/sfx/fps-old-1.mp3', 'public/audio/oldenzaal/sfx/oz-env-old-1.mp3']);
       expect(r.kept).toEqual(['public/audio/ams/voice/Tot ziens.mp3']);
       expect(existsSync(hand)).toBe(true);
@@ -455,6 +455,7 @@ describe('audio:ship keeps the files it did not write', () => {
       expect(r.manifest).not.toContain('mission:oldenzaal');
       expect(r.manifest).not.toContain('mission:ring');
       expect(r.manifest).not.toContain('mission:rally');
+      expect(r.manifest).not.toContain('mission:oat');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

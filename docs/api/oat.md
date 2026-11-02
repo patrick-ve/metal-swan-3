@@ -227,3 +227,280 @@ npx vitest run tests/content/mission-oat.test.ts tests/game/oat-flow.test.ts tes
 Gates (spec §13): typecheck, the full vitest, `tmp/oat-lead/id.sh` (SAME, or SAME+BUDGET for the
 euro missions), `tmp/oat-lead/frames.sh` (SAME), the oat sims, `npx vite build` + `npm run smoke` on
 your own port (the CI route and `mission=oat&god=1`).
+
+## LIGHT-WATER (wave A): the shade function, the light pass flags, water
+
+Owner LIGHT-WATER (spec §8.3, §8.4, §8.8, §8.9). Files: `missions/oat/light/` (`sun.ts` the sun
+table `OAT_SUN`, `shadow.ts` the pure shade model, `section-shade.ts` the per-section builder, `day.ts`
+the day passes, `night.ts` the oat-d / oat-e lights, `water.ts` the water tiles and reflection strips;
+`index.ts` re-exports all and registers them on import), `mission/light/*` (the pass: `pass.ts` the
+flags, `glow.ts` the smooth glow, `contact.ts` the sun tails), `mission/floor/reflect.ts` (dynamic
+reflections).
+
+### The shade function (spec §8.4) — for GRAMMAR, STREET-A, STRIPS
+
+Space in metres: x = world u to the right (20 px/m on the floor and in the ground band), z = depth
+from the row we look at ("our façade", z 0) toward the camera, h = height over the street. The sun
+is LEFT and in front: shadows fall right and toward the back. `sectionShade(id)` builds the
+section's `StreetShade` once (the sun of `OAT_SUN`, the street widths `OAT_STREETS`, the opposite
+row from `facadeLots(id, true)` — or a seeded skyline from the street sheet until GRAMMAR plans one —
+and the registered casters). Every query returns **0 = full sun … 1 = full shade**; d 1 = a hard
+edge (the 1× snap), d 2 / 4 = a soft penumbra. Night sections (oat-d, oat-e) never shade. Paint
+shade at most `SHADE_TONES` (1.5) tones darker.
+
+```ts
+import { sectionShade, facadeMetres, wallShadowPx, sunGeom } from '../light/index';
+const shade = sectionShade('oat-a');
+shade.floor(u, v, d);                                   // a floor texel (world u, v): STREET-A, wetness
+shade.facade(u, facadeMetres(hPx, lot.bandTop), d);     // a façade art px (u world px, h px over the base)
+shade.facadeLine(u);                                    // the opposite row's line on our façade, metres
+const g = sunGeom(32, 40);                              // or shade.geom (null at night)
+wallShadowPx(g, 0.5, yPx, lot.bandTop, out);            // a 0.5 m cornice's shadow on its wall: out.dx right, out.dy down (px)
+```
+
+- **Mixed scale** (spec §8.2): `facadeMetres(hPx, bandTopPx)` / `facadePx(m, bandTopPx)` (20 px/m up to
+  the lot's band top, 8 px/m above); `PX_PER_M` 20, `PX_PER_M_UPPER` 8, `PX_PER_M_LOT` 12.
+- **Floor depth**: z = W · (v − vFacade) / (vOpposite − vFacade) (the band from our façade's base to
+  the opposite façade's line just below the view is the street's W metres); `shade.zOfV(u, v)`,
+  `shade.vOfZ(u, z)`. The camera defaults are spec §2's (a: yh 60, f 210, back 160); a section with
+  its own floor sets `defineSectionShade(id, { camera: { yh, f, back } })`.
+- **Streets** (`OAT_STREETS`, start values): a Berenstraat 8.3, Wolvenstraat 8.2, Oude Spiegelstraat
+  6.6 m; b Huidenstraat 8; c / c1 23 m; bridges, vistas and open quays have no opposite row (full
+  sun). Tune with `defineSectionShade(id, { streets: [{ u0, u1, w, open? }] })`.
+- **Casters** (one source of truth: the decor list): register a shape per decor sprite prefix,
+  then add the section's decor once at load:
+  `defineCasterShape('decor/oat/a/lantern', lanternShape(4.3))`,
+  `addShadeCasters('oat-a', castersFromDecor('oat-a', A_DECOR))`. Shapes: `postShape(h, r)`,
+  `lanternShape(h)`, `elmShape(crownH, crownR, holes)` (dappled), `boxShape(w, d, h)`; raw casters
+  `{ kind: 'post' | 'box' | 'crown' | 'plate', … }` (u world px; z, h, r metres). Register before
+  the first query (the model is cached; `defineSectionShade` / `addShadeCasters` drop it).
+- Numbers the tests pin: the floor shadow per metre of height a 1.60, b 1.19, c 3.08, c1 3.73 → 5.14;
+  H_s a ≈ 4.5 m (12.5 m eaves, 8.2 m), b below the base (lit; a 0.5 m sun strip at the foot), c ≈
+  2.4 m, c1 4.3 → 6.7 m.
+- Import rule: inside `missions/oat/facade/` import `../light/shadow` and `../light/section-shade`
+  and call `sectionShade` inside your paint functions (section-shade.ts imports `facadeLots`, so a
+  top-level call would be a module cycle).
+
+## STRIPS (wave A): the store, the strip space, the view
+
+Owner STRIPS (spec §8.6, §8.9 hooks, §8.12). Files: `src/game/mission/strips/` (`types.ts` the
+contract, `space.ts` the strip space, `store.ts` the store, `live.ts` the live binding,
+`placeholder.ts` a test source, `source.ts` the registry) and the strip draw in
+`src/game/mission/view.ts`. Tests: `tests/art/oat-strips.test.ts`; `tests/art/oat-strips-demo.ts`
+(a `--import` module that puts the placeholder source on oat sections without strips).
+
+- **The strip space** (`types.ts` "THE STRIP SPACE"): a strip is drawn 1:1 (crisp, palette-exact)
+  and scrolls with the façade plane's line-scroll speed `s` (the floor's s at `strips.depth`; oat-a
+  0.862; 1 without a floor; `StripSectionInfo.scale`). Strip x p = 192 + (u − 192) · s
+  (`stripXOfU`, `uOfStripX`). Chunk cx = strip x [cx · 256, cx · 256 + 256) = world x
+  `chunkWorldRange(cx, s)` (≈ 297 world px at 0.862). Heights in strip px = world px × s. Row
+  bounds, `dark` and `darkFrom` stay in world x. A source paints band b of n into the art rows
+  `stripBandRows(b, n, height · d)`; buffer column c is strip x cx · 256 + c / d; the bottom row is
+  the façade base. This is exactly where a decor item at the façade depth stands (`shiftX`; tested).
+- **The store** (`createStripStore(def, info, opts?)` → `StripStore`; the view makes it):
+  `prepare(viewX, speed, d)` once per drawn frame: the chunks on screen, then the ones ahead (at
+  least `prefetch`, default 1; more by speed: `ceil(|speed| · s · STRIP_LEAD_TICKS / 256)`, ≤ 4), as
+  art jobs (one per band; the shared queue runs ≤ `HI_ART_FRAME_BUDGET_MS` = `STRIP_FRAME_MS` 8 ms
+  per frame). A dense chunk on screen with nothing ready gets its 1× at once (no gap). 1× and the
+  node tools (no deferral) paint at once. Eviction: two chunks behind the view's trailing chunk
+  (one behind stays while the budget has room), and past the prefetch. Budgets (all densities, being
+  painted included): lit `STRIP_BUDGET_BYTES` 18 MiB, dark `STRIP_DARK_BUDGET_BYTES` 11 MiB; near a
+  cap the store releases behind first, then the far prefetch; on screen is always built.
+  `frameOf(cx, d, set)` / `chunk(...)`: the best ready chunk ≤ d. `stats` (built, sync stand-ins,
+  jobs, evicted, squeezed, refused, overBudget, peaks, `maxJobMs` with `opts.now`, failed).
+- **The light sets** (spec §8.9): with `strips.dark: [x0, x1]` the chunks that touch the range also
+  get a 'dark' bake, queued once the view's centre passes `darkFrom` (default x0 − 512). `darkMix`
+  0 … 1: the view draws the lit chunk, then the dark one at alpha `darkMix`; at 1 the lit chunks
+  wholly inside the range are released. **The hook for the light pass:**
+  `setStripDarkMix(sectionId, mix)` (`live.ts`; the view binds its store by section id while it
+  lives; `liveStripStore(id)` reads it). LIGHT-WATER's `lightSet` cross-fade calls it each tick.
+- **The view** (`view.ts`): with a floor the strips draw after the band and its openings, before the
+  back decor and rows; without one after the layers and `backHook`. Each chunk stands on the floor
+  at the depth (`liftAt` of the row it overlaps most). `view.prepare` (the section start in the
+  browser) paints the 1× on screen and queues the dense chunks for the preload. No `strips` = no
+  store, no work, no draw.
+- **For a source** (GRAMMAR): keep every band job under `STRIP_JOB_MS` (16 ms) via `bands(cx, d)`.
+  Measure with `createStripStore(def, info, { deferred: () => false, now: () => performance.now() })`
+  then `store.stats.maxJobMs`.
+
+```ts
+import { setStripDarkMix, createStripStore, stripXOfU } from '../../mission/strips/index';
+setStripDarkMix('oat-d', mix);                          // the 03:00 cross-fade, each tick
+const p = stripXOfU(lot.u0, info.scale ?? 1);           // a lot's left edge in strip x
+// npm run shot -- --mission oat --section oat-b --x 600 --res 4 --art 4 --import tests/art/oat-strips-demo.ts
+```
+
+## GRAMMAR (wave A): the façade grammar and the `oat-facade` strip source
+
+Owner GRAMMAR (spec §8.2, §8.5, §8.6, §8.10, §8.11). Files: `missions/oat/facade/` — `types.ts`
+(ids, `LotPlan`, the scale constants), `sheets.ts` (the street style sheets), `grammar.ts` (the lot
+sequencer), `rows.ts` (the start rows `OAT_STRIPS`, the opposite row, the plan cache), `palette.ts`
+(material ramps, light tables), `raster.ts`, `parts.ts` (the part drawers), `light.ts` (sun, shade,
+night bake, resolve), `source.ts` (the strip source), `index.ts`.
+
+- **The source** `oat-facade` (`OAT_STRIP_SOURCE`) registers when `facade/index.ts` is imported (the
+  oat chunk does). `SectionDef.strips = OAT_STRIPS['oat-a']` (or a section's own `{ source, depth: 16,
+  height, rows }`). Bands per chunk: 1× 1, 2× 4 (night 5), 4× 12 (night 16).
+- **Rows** (`StripRowDef`): `sheet` one of `'9-straatjes' | 'canal-front' | 'grimburgwal' | 'oudezijds' |
+  'trompettersteeg' | 'oudekerksplein'` (the last two copy the Oudezijds numbers until NIGHT tunes
+  them); `params` (`FacadeRowParams`, all optional): `slots: [{ u0, u1, kind: 'slot' | 'hoist', x?, id? }]`
+  (a blank shop front for a decor sprite; the hoist warehouse with its beam at `x`), `night` (the
+  night bake), `wet` (0 … 1: the damp foot), `lamps` (world x of the street lanterns the night bake
+  lights the row from; default one every 150 px), `streetM`, `name` (lamp-group prefix).
+- **One source of truth**: the source calls `defineFacadeRows(id, def.rows)` when it plans, so
+  `facadeLots(id)` (the lots LIGHT-WATER and the tests read) are the drawn ones. A section whose rows
+  differ from `OAT_STRIPS` should call `defineFacadeRows(id, rows)` at import time, so queries before
+  the first paint agree too. `facadeLots(id, true)`: the unseen opposite row (one row over the whole
+  width ± 600 px, the section's sheet, another seed); its ridges cast the shade on our row.
+- **The lot** (`LotPlan`, a superset of `FacadeLot`): `gable`, `wall`, `window`, `ground`, `bandTop`
+  (64–84, the seam), `seam`, `eaves`, `ridge`, `storeys[]` (22–26 px, windows at 1.6–1.9), `door`
+  (44–48 px), `stoep` (26–32 px), `groundWindows` (shop glass 8 → 60), `hoist`, `anchorPts`,
+  `protrusions` (cornice, beam/string, sills, hoist, awning, sign, flower box: depth in m), `wear`
+  (≥ 6 marks), `features` (`hoist`, `slot`, `door`, and at night `lit-window`, `neon`, `red-tube`,
+  `bar-window`, `wall-lamp` with `group` names for the 03:00 lamp groups).
+- Light: day = `sectionShade(id).facade(u, m, d)` per px (the opposite row and the casters) + the
+  protrusions' own `wallShadowPx` shadows; colours through `dayTables(sun.color)`. Night = the
+  plan's lights (`nightLights(row)`), levels 0 … 5 × tints; the 'dark' set drops neon, red tubes,
+  bar windows and two thirds of the lit windows. No outline ink anywhere (the two inks are never
+  resolved to); 1× = the nearest non-ink `PAL` colour.
+
+```ts
+import { facadeLots, OAT_STRIPS, defineFacadeRows, planSection } from './facade/index';
+strips: OAT_STRIPS['oat-a'],                                     // a section's def
+const hoist = (facadeLots('oat-a') as LotPlan[]).find((l) => l.hoist)?.hoist;   // { u, h, roof }
+// contact sheets: npx tsx tmp/oat-lead/grammar/sheet.ts oat-a 544 4 2 1   (SET=dark for the 03:00 bake)
+```
+
+## STREET-A (wave A): the oat-a scenery and the oat-d night proof strip
+
+Owner STREET-A (spec §2.1, §2.5 0–1,280, §8.2, §8.5, §8.7 a and d, §8.10, §8.11). Files:
+`missions/oat/floor/` (`layout.ts` the depths and stretches, `mat.ts` the materials, `painter.ts`
+the floor painter `oat-street` and the wetness fields, `tiles.ts` the kerb face, the quay walls and
+the bridges' arches, `a.ts` / `d.ts` the `FloorDef`s), `missions/oat/art/` (`kit.ts` the Pen kit over
+the oat set, `street.ts`, `bridges.ts`, `vistas.ts`, `shops.ts`, `people.ts`, `night.ts` the sprites,
+`layers.ts` the background generators, `place-a.ts` / `place-d.ts` the decor lists and the strip
+rows), `missions/oat/backgrounds.ts` (`BG_OAT_A`, `BG_OAT_D`), the scenery fields of `section-a.ts`
+and `section-d.ts`; `tests/art/oat-street.test.ts`.
+
+What a section sets (both are wired already; INTEGRATE keeps them):
+
+```ts
+import { A_STRIP_ROWS, OAT_A_DECOR } from './art/place-a';
+import { BG_OAT_A } from './backgrounds';
+import { OAT_A_FLOOR, OAT_A_STYLE } from './floor/a';
+// SectionDef
+background: BG_OAT_A, terrainStyle: OAT_A_STYLE, floor: OAT_A_FLOOR,
+strips: { source: OAT_STRIP_SOURCE, depth: 16, height: 168, rows: A_STRIP_ROWS },
+decor: [...OAT_A_DECOR], art: [..., 'decor/oat/a/'],
+// oat-d: BG_OAT_D, OAT_D_STYLE, OAT_D_FLOOR, D_STRIP_ROWS (0–1,280), OAT_D_DECOR, 'decor/oat/d/'
+```
+
+- **Depths** (floor depth px behind the walk line; camera yh 60, f 210, back 160): the façade plane
+  16 (s 0.862: a façade-plane sprite of w art px spans w / 0.862 world px), the far kerb 11.5, the near
+  kerb −12.5, the bridges' decks from the back edge to −13.6, the d coping −14 … −16.5 (y 192.5) with
+  the canal in front. Decor depths: `A_DEPTH`, `D_DEPTH`.
+- **The floor painter** `oat-street` (`params: { light: 'morning' | 'night', section, wear? }`):
+  clinkers in herringbone, the pavement's stretcher bond, the grey tiles, granite kerbs, the quay
+  coping; lit by `sectionShade(id).floor` (sun / shade ladders, shade ≤ 1.5 tones, a cool sky cast);
+  wet / drying from the wetness field; the wear decals (≥ 12 marks per 256 px); at night the lamps of
+  `D_LIGHTS` lift the wet brick in their own ramps (the streaks are the light pass's). `wear: false`
+  paints the bare materials (the tests count the marks as the difference).
+- **Wetness**: `wetnessOf('oat-a')` (wet in the shade after the night's rain, drying in the sun,
+  puddles along both gutters and at the grates), `wetnessOf('oat-d')` (all wet, puddles).
+- **Shop slots** (GRAMMAR's `slot` lots, `A_SHOP_SLOTS`): `haverbar` 704–768, `boutique-kaars`
+  1,180–1,244, `conceptstore` 1,900–1,964, `boutique-zeep` 3,420–3,484; the hijsbalk's warehouse
+  (`hoist` slot) 2,196–2,284 with its beam at 2,240. The shop fronts are decor at the façade plane.
+- **Sprites** (`decor/oat/a/…`, `decor/oat/d/…`; `OAT_STREET_SPRITES`, `OAT_STREET_HITTABLE`): the bins
+  `decor/oat/a/bin-100` (16 × 22) and `bin-200` (18 × 26) carry outline A (PIECES' `oat-bin` can draw
+  them); every other street sprite has none. `OAT_A_PLATES`, `OAT_D_NEON` (`bar` pink, `snacks` cyan,
+  `koffie` warm; 3 frames), `OAT_D_PLATE`.
+- **Casters**: `floor/a.ts` registers the shapes of the lanterns, elms, Amsterdammertjes, bikes,
+  staples, columns, chalkboards, plants and figures and adds the section's casters once
+  (`addOatACasters`) before any chunk paints.
+- **Layers**: `oat-a-sky`, `oat-a-roofs` (two rows), `oat-a-tower` (the Westertoren, once), `oat-d-sky`,
+  `oat-d-roofs`, `oat-d-tower` (the Oude Kerk, once); the skies are in the FloorDefs' `skyLayers`.
+
+## BUDGET (wave A): the euro budget is live
+
+Owner BUDGET (spec §7). The full API is `docs/api/budget.md`. In short: `pay(world, slot, cents, x,
+y, category)` now books (no longer a stub); the legacy `awardScore` sources pay euros through their
+events with no change at the call sites; `MissionDef.economy: 'euro'` switches a mission's HUD,
+tallies and tables; `MissionDef.tally: 'receipt'` gives oat the kassabon (`ReceiptTallyScene`);
+`slowWorld(world, ticks)` (budget/slow.ts) is the MATCHA-MOMENT. The statiegeld bin, its cans and
+DE HAVERBAR are in `src/game/content/oat/budget/` (`oat-bin`, `oat-can`, `oat-bottle-s`,
+`oat-bottle-l`, `oat-haverbar`; manifest entry `oat/budget` still to add).
+
+### The light pass flags (spec §8.4, §8.8, §8.9) — `mission/light/`
+
+Every flag is off unless a section's `SectionLight` sets it; oldenzaal sets none, so it draws cell for
+cell as before (frames.sh: only the HUD box differs, from BUDGET).
+
+| Flag | What the pass does |
+|---|---|
+| `glow: 'smooth'` | at res ≥ 2 the lights still cut the 1× darkness map, but their colour is a dense additive glow frame at the art density (`GlowFrames`, cached per colour / radius / density): round glows, pools, flashes and streak dashes, no 4 × 4 blocks. 1× keeps the map's glow. |
+| `streaks: true \| { y0, y1, length, strength, level, ripple }` | every `StaticLight.streak` lamp and every entity light whose `lightOf` sets `spot.streak = true` mirrors as a column of short dashes on the rows [y0, y1] (screen; the water or wet floor), centred on its mirror point `level` px under its floor row, swaying smoothly with the tick (no on / off sparkle). |
+| `groups: [{ name, state?, flicker? }]` + `StaticLight.group` | `lampGroup(world, name, 'on' \| 'off' \| 'flicker')`: a flicker is a dying tube (uneven 3–6 tick steps between full and a third, 20–40 ticks, then off); with the reduced flashes a smooth fade. `pass.groupOf(name)` reads the state. |
+| `bakes: { x0, x1, start?, fadeTicks? }` | `crossFadeLight(world, 'dark' \| 'lit', ticks?)` eases the mix over 60 ticks; the pass pushes it to the strips every tick (`setStripDarkMix`), the floor reads `lightSetMix(world)` (0 lit … 1 dark). |
+| `day: true` | a day section: no darkness, no light map; the pass only draws the ground overlays below. |
+| `water: ReflectConfig` | (a floor only, in the ground hook) the dynamic reflections of `mission/floor/reflect.ts`. |
+| `sunShadows: { along, up, strength?, lit? }` | (a floor only, in the ground hook) the actors' cast shadows (`contact.ts`): a tail from the feet, `h · along` px right and `h · up` px up the screen, soft at 2× / 4×, checkered at 1×; none where `lit(x, y)` is 0. The floor's own contact ovals stay. |
+
+The ground hook (`MissionLight.drawGround`, bound to the view's `floorHook` on a floor) draws the mist,
+then the reflections, then the tails: after the floor band, before the contact ovals and the entities
+(spec §8.1 steps 6–7).
+
+```ts
+lampGroup(world, OAT_D_GROUPS.neonWest, 'flicker');   // 03:00, group by group (spec §6.9)
+setDarkness(world, 0.6, 60);
+crossFadeLight(world, 'dark');                        // the arena's dark bake over 60 ticks
+lightSetMix(world);                                   // the floor's bake: 0 … 1
+```
+
+### Dynamic reflections (spec §8.8) — `mission/floor/reflect.ts`
+
+An entity mirrors when it has the tag `REFLECT_TAG` ('reflects') and a `reflectOf(out, tick)` that
+fills the reused `ReflectSpot` (`sprite`, `frame`, `x`, `y` = its water line, `flipX`). At most 6 per
+frame; the sprite is drawn flipped about the water line in 2 px row slices with a world-anchored
+ripple offset (more with depth), alpha 0.5 → 0.35, only on the band's water rows and inside its u
+range (through the floor's row scale). Renderer API only: GL and CPU floors draw the same.
+
+```ts
+class Swan extends Vehicle implements Reflector {   // + addTag(REFLECT_TAG) once in the world
+  reflectOf(out: ReflectSpot): boolean { out.sprite = this.spriteId; out.frame = this.frameIx; out.x = this.x; out.y = this.y; out.flipX = this.facing < 0; return this.onWater; }
+}
+```
+
+### The oat light configs — `missions/oat/light/`
+
+- Day passes (`day.ts`): oat-a, b, c, c1 `{ day: true, sunShadows: sunTail(id), water? }`; a's water
+  bands under the three bridges (y 190–216), c1's canal (96–3,904, y 160–216: KADE tunes it).
+  `sunTail(id)` derives `along` / `up` from the sun and the floor camera; `lit` asks the shade model.
+- Night (`night.ts`): `OAT_D_LIGHTS` / `OAT_E_LIGHTS` (`OatLamp`: u, depth, h, kind, r, k, group,
+  streak) → `setNightLights(id, list)` registers the section light AND the floor light (each lamp at
+  its depth, a pool). oat-d: darkness 0.35, smooth, streaks on the canal (y 193–216), groups
+  `OAT_D_GROUPS` (lanterns, neon-west, neon-east, red-tubes, bars, neon-plein, tower, boss-house
+  (off)), bakes x 3,968–4,480 (the strips' `dark` range), water bands 0–1,664 and 2,432–3,584. oat-e:
+  darkness 0.4, smooth, streaks on the wet road, groups quay / signal / tunnel / ring; the tunnel lamps
+  128 px apart (≤ 2 bands per second at 3 px/tick: no strobe). The proof strip's lights are STREET-A's
+  `D_LIGHTS` (same u, depth, h, kind). NIGHT / TAXIRIT call `setNightLights` with the final lists.
+
+### Water (spec §8.8) — `missions/oat/light/water.ts`
+
+- `waterRipple(u, v, scale = 1, busy = 0)`: THE ripple (−1 … 1), world-anchored, pure; far rows pass
+  a smaller `scale` (the same pattern smaller: one ripple language near and far).
+- Tiles (`ensureWaterTiles()`; ids `OAT_WATER_TILE`): `oat-water-calm` (morning mirror, 03:00),
+  `oat-water-busy` (afternoon wakes), `oat-water-night`, the drifting layers `oat-water-glint-day` /
+  `-night`. Ready cut surfaces: `OAT_WATER.calm | busy | night`. Day = `PAL_HD_OAT.canal` only (olive-
+  brown, never teal), night = `nightWater` + `nightSky`.
+- Reflection strips: `ensureWaterStrip(id, { u0, len, v0, v1, night?, busy?, wall?, hulls?, mirror?,
+  mirrorScale?, lights? })` → a floor tile id for the cut's `surface` (no repeat along `len`): the
+  body darker at the wall (`wall` v) and under `hulls` / bridges, more sky toward the far edge;
+  `mirror(u, h)` (the grammar's colour at h px over the water, 0 = sky) shows through the ripple
+  troughs; `lights` (u, h, ramp) bake as broken columns of their ramp at night. `waterStripBytes(def,
+  4)`: the d proof strip (1,280 × 34 v) is about 2.9 MB at 4×.
+
+```ts
+const id = ensureWaterStrip('oat-water-strip-d0', { u0: 0, len: 1280, v0: vAt(D_COPING_NEAR), v1: vAt(-56), night: true,
+  lights: D_LIGHTS.map((l) => ({ u: l.u, h: l.h, ramp: l.kind === 'lamp' ? 'lantern' : l.kind === 'pink' ? 'neonPink' : l.kind === 'cyan' ? 'neonCyan' : 'redLight' })) });
+features.push({ kind: 'cut', u0: 0, u1: 1280, level: WATER_LEVEL, surface: { tile: id, over: { tile: OAT_WATER_TILE.glintNight, du: -0.03, alpha: 0.3 } } });
+```

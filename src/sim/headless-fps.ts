@@ -74,6 +74,8 @@ export interface FpsReport {
   goldenRecord: boolean;
   /** The fps slot's score. */
   score: number;
+  /** The fps slot's euro budget in cents (docs/design/oat.md §7.9, §7.10). */
+  budget: number[];
   /** Floor clock ticks (stops at the elevator / the boss's 0 HP). */
   clock: number;
   /** Boss floors: the boss phase reached (0 = no boss) and whether he died. */
@@ -230,6 +232,7 @@ class HeadlessFpsImpl implements HeadlessFps {
       treasureTotal: t.total,
       goldenRecord: t.record,
       score: this.session.slots[this.run.slot].score,
+      budget: [this.session.slots[this.run.slot].cents],
       clock: g?.clock ?? 0,
       bossPhase: boss ? boss.phase : 0,
       bossDead: boss ? !boss.actor.alive && boss.phase === 2 : false,

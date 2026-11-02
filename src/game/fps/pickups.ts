@@ -48,7 +48,8 @@ export const PICKUP_MESSAGES: Readonly<Record<string, string>> = {
 /** What a pickup needs from the floor (FpsGame implements it). */
 export interface PickupHost {
   readonly player: FpsPlayer;
-  addScore(points: number): void;
+  /** Points (and in a euro run the euros: docs/design/oat.md §7.9; `kind` / `id` name the payer). */
+  addScore(points: number, kind?: 'kill' | 'boss' | 'treasure' | 'other', id?: string): void;
   /** Add a life; false when the lives are full. */
   addLife(): boolean;
   message(text: string): void;
@@ -120,7 +121,7 @@ export function applyPickup(h: PickupHost, id: string): boolean {
     default: {
       const score = TREASURE_SCORE[id];
       if (score === undefined) return false;
-      h.addScore(score);
+      h.addScore(score, 'treasure', id);
       h.sfx(id === 'golden-record' ? 'fps/pickup-record' : 'fps/pickup-treasure');
       h.message(PICKUP_MESSAGES[id]);
       h.flash();

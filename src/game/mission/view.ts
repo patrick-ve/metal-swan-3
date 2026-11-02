@@ -34,6 +34,14 @@
  *   pits and cuts are in its mesh); `drawShadows` (contact shadows, the runner calls it before
  *   world.draw); `drawFront`: front decor and front rows far → near, the front layers. Without a
  *   floor none of this runs: every call below draws exactly as before.
+ * - THE FAÇADE STRIPS (`SectionDef.strips`, mission `oat`; docs/design/oat.md §8.6, ./strips/): the
+ *   view makes the section's strip store on first use (the section start in the browser, else the
+ *   first frame drawn: the sims never make one) and draws its chunks 1:1 at the façade depth with that
+ *   plane's line-scroll speed s (the floor's s at `strips.depth`; strip x p shows where world x
+ *   192 + (p − 192) / s at that depth shows), on the floor there (the row's `liftAt`): after the floor
+ *   band and its openings, before the back decor and rows (with a floor), or after the layers and
+ *   `backHook` (without one). In the 03:00 cross-fade (`darkMix`, set by the light pass through
+ *   `setStripDarkMix`) the dark bake is drawn over the lit one. Without `strips` nothing of this runs.
  */
 import { PAL } from '../../engine/palette';
 import { PixelBuffer } from '../../engine/pixel';
@@ -69,7 +77,12 @@ import {
 import type { World } from '../../engine/world';
 import type { FloorGpu } from '../../engine/floor/gpu';
 import { floorOf, floorOverlay } from './floor/registry';
+import { FramePlacer } from './floor/place';
 import { SectionFloor } from './floor/section-floor';
+import { bindLiveStripStore, unbindLiveStripStore } from './strips/live';
+import { stripBaseY, stripScale } from './strips/space';
+import { createStripStore, type StripStore } from './strips/store';
+import { STRIP_CHUNK, type StripDensity } from './strips/types';
 import type { DecorDef, SectionDef } from './types';
 
 /** Terrain chunk size (px). */
@@ -93,6 +106,11 @@ interface Layer {
 
 /** Serial number of views (keys of their queued 2× jobs). */
 let viewSerial = 0;
+/**
+ * The density the last façade strips drew at (any section; 0 before the first): a section start
+ * queues its strips at no more than this (a res that cannot show 4× draws 2×), as the floor does.
+ */
+let lastStripDensity = 0;
 
 const decorOpts: DrawOpts = {};
 const pitOpts: DrawOpts = {};
@@ -182,6 +200,15 @@ export class SectionView {
   readonly floor: SectionFloor | null;
   /** The GPU floor renderer (the runner sets it; null = the CPU raster draws the floor). */
   floorGpu: FloorGpu | null = null;
+  /** The façade strips' store (`SectionDef.strips`): undefined = not made yet, null = none. */
+  private stripStore: StripStore | null | undefined = undefined;
+  /** The strip's top at lift 0 (world y: the façade base minus the strip height) and each chunk's lift (by chunk − c0). */
+  private stripTop = 0;
+  private stripLift = new Float64Array(0);
+  /** The camera x of the last strip frame (the scroll speed). */
+  private stripLastX = NaN;
+  private readonly stripPlacer = new FramePlacer();
+  private readonly stripOpts: DrawOpts = { alpha: 1 };
 
   constructor(section: SectionDef, terrain: Terrain, seed: number, density = 1) {
     this.section = section;
@@ -233,6 +260,56 @@ export class SectionView {
       this.floor.gpu = this.floorGpu;
       this.floor.prepare(camX, want);
     }
+    // The façade strips (the browser only: tools and the sims build them when first drawn): the
+    // chunks on screen at 1× now, the dense ones queued (the preload runs them).
+    if (this.section.strips && hiArtDeferred()) {
+      const st = this.strips;
+      const sd = lastStripDensity > 0 && lastStripDensity < want ? lastStripDensity : want;
+      if (st) st.prepare(camX, 0, (sd >= 4 ? 4 : sd >= 2 ? 2 : 1) as StripDensity);
+    }
+  }
+
+  /**
+   * The façade strips' store of this section (`SectionDef.strips`; made on first use: it plans the
+   * section through its source), or null without strips.
+   */
+  get strips(): StripStore | null {
+    if (this.stripStore !== undefined) return this.stripStore;
+    const def = this.section.strips;
+    if (!def) {
+      this.stripStore = null;
+      return null;
+    }
+    const cam = this.floor ? this.floor.cam : null;
+    const scale = stripScale(cam, def.depth);
+    const st = createStripStore(def, { id: this.section.id, width: this.section.width, seed: this.seed, scale }, { jobKey: `${this.jobKey}S/` });
+    this.stripStore = st;
+    this.stripTop = stripBaseY(cam, def.depth) - st.height;
+    // Each chunk stands on the floor at the façade depth: the lift of the row it overlaps most (a row
+    // keeps one lift, so no chunk border steps inside a house).
+    const floor = this.floor;
+    const n = Math.max(0, st.c1 - st.c0 + 1);
+    this.stripLift = new Float64Array(n);
+    if (floor && n > 0) {
+      const rowLift = def.rows.map((row) => floor.liftAt(Math.max(0, Math.min(this.section.width, (row.u0 + row.u1) / 2)), def.depth));
+      for (let i = 0; i < n; i++) {
+        const cx = st.c0 + i;
+        const a = 192 + (cx * STRIP_CHUNK - 192) / scale;
+        const b = 192 + ((cx + 1) * STRIP_CHUNK - 192) / scale;
+        let best = 0;
+        let lift = 0;
+        def.rows.forEach((row, k) => {
+          const o = Math.min(b, row.u1) - Math.max(a, row.u0);
+          if (o > best) {
+            best = o;
+            lift = rowLift[k];
+          }
+        });
+        this.stripLift[i] = Number.isFinite(lift) ? lift : 0;
+      }
+    }
+    bindLiveStripStore(this.section.id, st);
+    return st;
   }
 
   /**
@@ -260,6 +337,11 @@ export class SectionView {
   dispose(): void {
     cancelArtJobs(this.jobKey);
     this.floor?.dispose();
+    const st = this.stripStore;
+    if (st) {
+      st.dispose();
+      unbindLiveStripStore(this.section.id, st);
+    }
   }
 
   /** Draw dense scenery at all? (density ≥ 2 and dense art not switched off by `setHiArt(false)`). */
@@ -277,9 +359,48 @@ export class SectionView {
       if (!this.layers[i].def.front) this.drawLayer(r, i, tick);
     }
     if (this.backHook) this.backHook(r, tick);
+    if (this.section.strips) this.drawStrips(r, SectionView.atRes(this.drawDensity(), r.res));
     this.drawPits(r);
     this.drawDecor(r, this.back, tick);
     this.drawTerrain(r);
+  }
+
+  /**
+   * The façade strips (`SectionDef.strips`): the store's frame (prefetch, eviction, jobs queued), then
+   * the chunks on screen drawn 1:1 at the plane's speed s — strip x p at the renderer's world x
+   * p + camX · (1 − s) — the lit bake, and over it the dark one at `darkMix` (spec §8.9). No allocation.
+   */
+  private drawStrips(r: Renderer, dd: number): void {
+    const st = this.stripStore === undefined ? this.strips : this.stripStore;
+    if (!st || !st.plan) return;
+    const camX = r.camX;
+    const step = Number.isNaN(this.stripLastX) ? 0 : camX - this.stripLastX;
+    this.stripLastX = camX;
+    const d: StripDensity = dd >= 4 ? 4 : dd >= 2 ? 2 : 1;
+    lastStripDensity = d;
+    st.prepare(camX, step, d);
+    const s = st.scale;
+    const p0 = camX * s;
+    const c0 = Math.max(st.c0, Math.floor(p0 / STRIP_CHUNK));
+    const c1 = Math.min(st.c1, Math.floor((p0 + VIEW_W) / STRIP_CHUNK));
+    const mix = st.darkMix;
+    const pl = this.stripPlacer;
+    const o = this.stripOpts;
+    for (let cx = c0; cx <= c1; cx++) {
+      const dark = mix > 0 && st.hasDark(cx) ? st.frameOf(cx, d, 'dark') : null;
+      const lit = dark === null || mix < 1 ? st.frameOf(cx, d, 'lit') : null;
+      if (lit === null && dark === null) continue;
+      pl.x = cx * STRIP_CHUNK + camX * (1 - s);
+      pl.y = this.stripTop - this.stripLift[cx - st.c0];
+      if (lit !== null) {
+        o.alpha = 1;
+        pl.put(r, lit, o);
+      }
+      if (dark !== null) {
+        o.alpha = lit !== null ? mix : 1;
+        pl.put(r, dark, o);
+      }
+    }
   }
 
   /** The terrain chunks (with their prefetch, eviction and the per-frame dense jobs). */
@@ -343,6 +464,7 @@ export class SectionView {
     floor.gpu = this.floorGpu;
     floor.drawBand(r, tick, dd);
     floor.drawOpenings(r, dd);
+    if (this.section.strips) this.drawStrips(r, dd);
     floor.drawBack(r, tick, dd);
     this.drawTerrain(r);
     floor.maintain(r.camX, dd);

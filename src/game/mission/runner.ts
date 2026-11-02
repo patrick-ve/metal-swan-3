@@ -33,6 +33,7 @@ import { World } from '../../engine/world';
 import { Boss } from '../boss';
 import { attachGame, HudState, type BannerOpts, type CalloutOpts, type GameContext, type GoDir } from '../context';
 import { floorY, offscreenX, findFloor, reactInArea, startGloatHold } from '../enemy';
+import { chargeTouristTax, claimCallout, flushAwards, wireBudget } from '../budget/pay';
 import { Player } from '../player/player';
 import { gameEntityFactory, getMission, listMissions, type SpawnParams } from '../registry';
 import type { CampaignRecords, GameSession, PlayerSlot, SlotIndex } from '../session';
@@ -115,6 +116,8 @@ interface PendingExit {
 
 /** A wait that never ends (the script stops when its section unloads). */
 const NEVER: Wait = () => false;
+/** A held entity's tick in a slow world (MissionRunner.slowWorld). */
+const holdTick = (): void => {};
 
 export class MissionRunner {
   readonly session: GameSession;
@@ -186,6 +189,9 @@ export class MissionRunner {
   /** Auto-scroll speed (px/tick; 0 = off) and the scrolled window position. */
   private autoSpeed = 0;
   private autoPos = 0;
+  /** The MATCHA-MOMENT's slow world: ticks left, and the entities held this tick (reused). */
+  private slowLeft = 0;
+  private readonly slowHeld: Entity[] = [];
   /** OPT-IN (revision R): `RunnerOptions.continueMission`. */
   private readonly continueMission: boolean;
 
@@ -209,11 +215,18 @@ export class MissionRunner {
       if (kind === 'gag') this.audio.say?.(text, speaker);
       else this.audio.say?.(text, speaker, { important: true });
     };
+    // The euro budget (docs/design/oat.md §7.2): in a euro play a callout that names its points
+    // (`CAUGHT NAPPING +100`) pays its award in euros and names the euros instead (HUD text only).
+    const callout = this.hud.callout.bind(this.hud);
+    this.hud.callout = (text, o) => callout(this.session.economy === 'euro' && this.world ? claimCallout(this.world, text) : text, o);
   }
 
   /** Load the first section and show the mission banner. */
   start(): void {
     const m = this.mission;
+    // The play's economy (docs/design/oat.md §7.1): `MissionDef.economy` 'euro' (ams, oat,
+    // oldenzaal) pays the budget; every other mission keeps its points only.
+    this.session.setEconomy(m.economy === 'euro' ? 'euro' : 'points');
     if (this.continueMission) this.session.missionId = m.id;
     else this.session.startMission(m.id);
     this.fightStart = -1;
@@ -255,6 +268,7 @@ export class MissionRunner {
     const def = this.mission.sections[id] ?? placeholderSection(id, `section ${id} not found`);
     if (this.world) {
       this.carryVehicles(def);
+      flushAwards(this.world);
       this.world.scripts.cancelAll();
       this.world.events.clear();
     }
@@ -446,8 +460,12 @@ export class MissionRunner {
       if (e.respawn) this.giveStartVehicle(e.player);
     });
     world.events.on('score', (e) => {
+      // A euro play shows the euros instead (budget/pay.ts raises its own pop-ups).
+      if (this.session.economy === 'euro') return;
       if (e.x !== undefined && e.y !== undefined) this.hud.popup(e.x, e.y, String(e.points));
     });
+    // The euro budget's claims and the BOETE fine (a point play is not wired).
+    wireBudget(world);
     world.events.on('enemyKilled', (e) => {
       const slot = this.session.slot(e.player);
       if (slot) slot.mission.kills[e.enemy.type] = (slot.mission.kills[e.enemy.type] ?? 0) + 1;
@@ -507,6 +525,50 @@ export class MissionRunner {
 
   // ------------------------------------------------------------------------------- tick
 
+  /**
+   * The MATCHA-MOMENT (docs/design/oat.md §6.2; budget/slow.ts): for `ticks` every non-player
+   * entity and enemy shot steps on even ticks only (a fixed pattern: deterministic). A second call
+   * keeps the longer time. Off (0) in every play that never calls it.
+   */
+  slowWorld(ticks: number): void {
+    this.slowLeft = Math.max(this.slowLeft, Math.max(0, Math.floor(ticks)));
+  }
+
+  /** Ticks of slow world left (0 = off). */
+  get slowTicks(): number {
+    return this.slowLeft;
+  }
+
+  /**
+   * One world tick, then the euro budget's pending awards (budget/pay.ts `flushAwards`). In a slow
+   * world an odd tick holds every non-player entity (their `update` is a no-op for that tick).
+   */
+  private stepWorld(): void {
+    const world = this.world;
+    if (this.slowLeft <= 0) {
+      world.update();
+      flushAwards(world);
+      return;
+    }
+    this.slowLeft--;
+    const held = this.slowHeld;
+    if ((world.tick & 1) === 1) {
+      for (const e of world.entities) {
+        if (e.removed || e.team === 'player' || e.hasTag('player') || Object.hasOwn(e, 'update')) continue;
+        held.push(e);
+        (e as unknown as { update: () => void }).update = holdTick;
+      }
+    }
+    try {
+      world.update();
+    } finally {
+      // Restore the class method (an own property was never set on these entities before).
+      for (const e of held) delete (e as unknown as { update?: () => void }).update;
+      held.length = 0;
+    }
+    flushAwards(world);
+  }
+
   update(): void {
     this.ticks++;
     this.hud.update();
@@ -517,7 +579,7 @@ export class MissionRunner {
     switch (this.state) {
       case 'playing':
         if (this.autoSpeed !== 0 && !this.held) this.advanceAutoScroll();
-        this.world.update();
+        this.stepWorld();
         this.applyBodyWalls();
         if (!this.held) this.updateTimer();
         this.updateCheckpoints();
@@ -526,7 +588,7 @@ export class MissionRunner {
         if (this.held) this.updateHeld();
         break;
       case 'entering':
-        this.world.update();
+        this.stepWorld();
         this.applyBodyWalls();
         if (++this.fadeT >= this.fadeLen) this.state = 'playing';
         break;
@@ -534,7 +596,7 @@ export class MissionRunner {
         if (++this.fadeT >= this.fadeLen) this.switchSection();
         break;
       case 'victory':
-        this.world.update();
+        this.stepWorld();
         this.applyBodyWalls();
         if (++this.victoryT >= TUNING.transition.victoryTicks) {
           this.state = 'complete';
@@ -1034,6 +1096,8 @@ export class MissionRunner {
     const s = this.session.slots[slot];
     if (p ? p.state !== 'out' : !(s.joined && s.gameOver)) return false;
     if (!this.session.continueSlot(slot)) return false;
+    // The toeristenbelasting of a euro play (docs/design/oat.md §7.3): 12,5 % → 20 % of the budget.
+    chargeTouristTax(this.session, s, this.world);
     this.continueTicks[slot] = -1;
     if (!p) p = this.addPlayer(slot, s);
     p.continueGame();

@@ -10,7 +10,12 @@
  * Pure data, no DOM; safe in tests and headless tools.
  */
 import { loadJson, saveJson, type Store } from '../engine/storage';
+import { Ledger } from './budget/ledger';
+import type { Cents } from './budget/types';
 import { TUNING } from './tuning';
+
+/** The economy of the play in progress (docs/design/oat.md §7.1): legacy points or the euro budget. */
+export type Economy = 'points' | 'euro';
 
 // ---------------------------------------------------------------------------------------------
 // Difficulty
@@ -210,7 +215,18 @@ export class PlayerSlot {
   character = 'recruit';
   /** Lives left INCLUDING the one in play (3 at the start; 0 = game over). */
   lives: number = TUNING.life.livesPerCredit;
+  /** Legacy points: they keep counting in every play (the point missions, the sims; spec §7.10). */
   score = 0;
+  /**
+   * The euro budget's ledger (docs/design/oat.md §7.1): signed integer cents from € 100,00, the
+   * gross income for the extends, this mission's kassabon categories (budget/ledger.ts).
+   */
+  readonly ledger = new Ledger();
+  /**
+   * A euro play (`GameSession.setEconomy`): the extends come from the ledger's gross income, so
+   * the score's extends (EXTEND_SCORES) are off.
+   */
+  euro = false;
   bombs: number = TUNING.grenade.perLife;
   /** Weapon id of the bomb button (characters / status effects may change it). */
   bombType = 'grenade';
@@ -259,7 +275,8 @@ export class PlayerSlot {
     if (!Number.isFinite(points) || points === 0) return 0;
     this.score = Math.max(0, Math.round(this.score + points));
     let extra = 0;
-    while (this.extendsGiven < EXTEND_SCORES.length && this.score >= EXTEND_SCORES[this.extendsGiven]) {
+    // A euro play gives its extends for gross income (budget/pay.ts `bookSlot`), never for points.
+    while (!this.euro && this.extendsGiven < EXTEND_SCORES.length && this.score >= EXTEND_SCORES[this.extendsGiven]) {
       this.extendsGiven++;
       if (this.addLife(1) > 0) extra++;
     }
@@ -271,6 +288,11 @@ export class PlayerSlot {
     const before = this.lives;
     this.lives = Math.min(MAX_LIVES, this.lives + n);
     return this.lives - before;
+  }
+
+  /** The budget in signed cents (the ledger's balance; may be below 0: rood staan, spec §7.4). */
+  get cents(): Cents {
+    return this.ledger.cents;
   }
 
   /** Lives are at the cap (a 1UP pays points instead). */
@@ -285,6 +307,7 @@ export class PlayerSlot {
     this.character = character;
     this.lives = lives;
     this.score = 0;
+    this.ledger.reset();
     this.continues = 0;
     this.extendsGiven = 0;
     this.vehicle = null;
@@ -399,6 +422,13 @@ export class GameSession {
   readonly completed: string[] = [];
   /** Cross-section / cross-mission state for this game (see CampaignRecords). */
   readonly records = new CampaignRecords();
+  /**
+   * The economy of the play in progress (docs/design/oat.md §7.1; `setEconomy`): the mission runner
+   * sets it from `MissionDef.economy`, the rally and the fps floors set 'euro'. Default points.
+   */
+  economy: Economy = 'points';
+  /** This game played a euro play (the end of the game uses the `budgets` table, spec §7.7). */
+  euroRun = false;
 
   constructor(opts: SessionOptions = {}) {
     this.difficulty = opts.difficulty ?? 'normal';
@@ -437,6 +467,13 @@ export class GameSession {
     return s;
   }
 
+  /** Switch the play's economy (both slots follow; a euro play marks the game a euro run). */
+  setEconomy(e: Economy): void {
+    this.economy = e;
+    for (const s of this.slots) s.euro = e === 'euro';
+    if (e === 'euro') this.euroRun = true;
+  }
+
   /** Credit points to a slot (out-of-range owners are ignored). Returns extra lives earned. */
   addScore(index: number, points: number): number {
     return this.slot(index)?.addScore(points) ?? 0;
@@ -472,6 +509,8 @@ export class GameSession {
   startMission(id: string): void {
     this.missionId = id;
     for (const s of this.slots) {
+      // The kassabon's categories count per mission; the balance carries over.
+      s.ledger.startMission();
       s.bonus.vehicle = 0;
       s.mission = newMissionStats();
       s.rescued = 0;

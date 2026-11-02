@@ -4,6 +4,12 @@
  * OVERTAKES, NEAR MISSES, FINES (with the euros as a joke) and TEAM (2P), from the `ScoreBook` that
  * counts the runner's wave-B events. The shape stays (`raceLines(race, car)` → lines with points, or
  * null for a missed bonus); without a book the lines are wave A's (PLACE, TIME).
+ *
+ * The prize money (docs/design/oat.md §7.8, BUDGET, oat wave A): every line also carries its euros
+ * (`cents`; the tally page shows and books them: mission-complete.ts): PLACE € 500 / 350 / 250 /
+ * 150 / 100 / 75 / 50 / 25, TIME € 0,50 per second under par, BEST LAP € 50, OVERTAKES € 2 each,
+ * NEAR MISSES € 1 each, FINES − € 120 each (the real red-light fine; the joke column goes), TEAM
+ * (2P) € 100 each. The points stay as they were (the sims' `score`).
  */
 import type { EventBus } from '../../engine/events';
 import type { CarState, RallyEventsB } from './api';
@@ -13,6 +19,27 @@ export interface RallyLine {
   label: string;
   points: number | null;
   note?: string;
+  /** The prize money in cents (signed; null = missed). */
+  cents?: number | null;
+}
+
+/** The prize money (spec oat §7.8), in cents. */
+export const PRIZE = {
+  /** PLACE by place: 1st … 8th. */
+  place: [50_000, 35_000, 25_000, 15_000, 10_000, 7_500, 5_000, 2_500] as readonly number[],
+  /** TIME: per full second under par (€ 0,50). */
+  timePerSecond: 50,
+  bestLap: 5_000,
+  overtake: 200,
+  nearMiss: 100,
+  /** Per fine (a cost: the real red-light fine). */
+  fine: -12_000,
+  team: 10_000,
+} as const;
+
+/** The PLACE prize of a place (a place past the table: the last; 0 = not placed). */
+export function placeCents(place: number): number {
+  return place >= 1 ? PRIZE.place[Math.min(place, PRIZE.place.length) - 1] : 0;
 }
 
 /** PLACE points by place (spec §9): 1st … 8th. */
@@ -181,15 +208,15 @@ export function playerScore(race: ScoredRace, car: CarState | null): PlayerScore
 
 /** The tally lines of a player's car (an unfinished car: PLACE by its place, no TIME bonus). */
 export function raceLines(race: ScoredRace, car: CarState | null): RallyLine[] {
-  if (!car) return [{ label: 'PLACE', points: null, note: '-' }];
+  if (!car) return [{ label: 'PLACE', points: null, note: '-', cents: null }];
   if (race.book) return scoreLines(race, car);
   const place = car.place;
   // A place past the table (a field of 9: a mid-race join after every rival finished) scores as the last.
   const pts = place >= 1 ? PLACE_POINTS[Math.min(place, PLACE_POINTS.length) - 1] : 0;
-  const lines: RallyLine[] = [{ label: `PLACE ${place}/${race.carCount}`, points: pts }];
+  const lines: RallyLine[] = [{ label: `PLACE ${place}/${race.carCount}`, points: pts, cents: placeCents(place) }];
   const t = car.finishTicks;
   const under = t >= 0 ? Math.floor((race.parTicks - t) / 60) : 0;
-  lines.push({ label: `TIME ${t >= 0 ? raceClock(t) : '-'}`, points: under > 0 ? under * TIME_POINTS_PER_SECOND : null });
+  lines.push({ label: `TIME ${t >= 0 ? raceClock(t) : '-'}`, points: under > 0 ? under * TIME_POINTS_PER_SECOND : null, cents: under > 0 ? under * PRIZE.timePerSecond : null });
   return lines;
 }
 
@@ -202,17 +229,21 @@ export function scoreLines(race: ScoredRace, car: CarState): RallyLine[] {
   const tally = race.book?.peek(car.id) ?? null;
   const t = car.finishTicks;
   const best = bestLapTicks(car);
+  const under = t >= 0 ? Math.floor((race.parTicks - t) / 60) : 0;
+  const overtakes = tally?.overtakes ?? 0;
+  const nearMisses = tally?.nearMisses ?? 0;
+  // The prize money (spec oat §7.8): every line in cents beside its points.
   const lines: RallyLine[] = [
-    { label: `PLACE ${car.place}/${race.carCount}`, points: sc.place },
-    { label: `TIME ${t >= 0 ? raceClock(t) : '-'}`, points: sc.timeBonus > 0 ? sc.timeBonus : null },
-    { label: `BEST LAP ${best >= 0 ? raceClock(best) : '-'}`, points: sc.bestLap > 0 ? sc.bestLap : null },
-    { label: `OVERTAKES ${tally?.overtakes ?? 0}`, points: sc.overtakes > 0 ? sc.overtakes : null },
-    { label: `NEAR MISSES ${tally?.nearMisses ?? 0}`, points: sc.nearMisses > 0 ? sc.nearMisses : null },
-    { label: `FINES ${car.fines} EUR ${eurosText(sc.finesEuros)}`, points: sc.fines < 0 ? sc.fines : null },
+    { label: `PLACE ${car.place}/${race.carCount}`, points: sc.place, cents: placeCents(car.place) },
+    { label: `TIME ${t >= 0 ? raceClock(t) : '-'}`, points: sc.timeBonus > 0 ? sc.timeBonus : null, cents: under > 0 ? under * PRIZE.timePerSecond : null },
+    { label: `BEST LAP ${best >= 0 ? raceClock(best) : '-'}`, points: sc.bestLap > 0 ? sc.bestLap : null, cents: sc.bestLap > 0 ? PRIZE.bestLap : null },
+    { label: `OVERTAKES ${overtakes}`, points: sc.overtakes > 0 ? sc.overtakes : null, cents: overtakes > 0 ? overtakes * PRIZE.overtake : null },
+    { label: `NEAR MISSES ${nearMisses}`, points: sc.nearMisses > 0 ? sc.nearMisses : null, cents: nearMisses > 0 ? nearMisses * PRIZE.nearMiss : null },
+    { label: `FINES ${car.fines}`, points: sc.fines < 0 ? sc.fines : null, cents: car.fines > 0 ? car.fines * PRIZE.fine : null },
   ];
   let players = 0;
   for (const c of race.cars ?? []) if (c.slot >= 0) players++;
-  if (players >= 2) lines.push({ label: 'TEAM', points: sc.team > 0 ? sc.team : null });
+  if (players >= 2) lines.push({ label: 'TEAM', points: sc.team > 0 ? sc.team : null, cents: sc.team > 0 ? PRIZE.team : null });
   return lines;
 }
 
@@ -230,6 +261,13 @@ export function bestLapTicks(car: CarState): number {
     if (b < 0 || t < b) b = t;
   }
   return b;
+}
+
+/** The sum of the lines' prize money (cents, signed). */
+export function linesCents(lines: readonly RallyLine[]): number {
+  let n = 0;
+  for (const l of lines) n += l.cents ?? 0;
+  return n;
 }
 
 /** The sum of the lines' points. */

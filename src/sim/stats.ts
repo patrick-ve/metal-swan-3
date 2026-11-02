@@ -56,6 +56,11 @@ export interface SimReport {
   hostages: number;
   pickups: number;
   score: number;
+  /**
+   * The euro budget per joined slot in cents (docs/design/oat.md §7.10): only in a euro play
+   * (ams, oat, oldenzaal); absent in a point mission (the report stays as it was).
+   */
+  budget?: number[];
   timeouts: number;
   /** Most entities alive in one world at once. */
   maxEntities: number;

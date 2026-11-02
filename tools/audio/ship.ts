@@ -1,16 +1,17 @@
 /**
- * Ships the picked candidates: copies them to public/audio/<boot|ams|fps|oldenzaal>/<sfx|music|voice>/ and
+ * Ships the picked candidates: copies them to public/audio/<boot|ams|fps|oldenzaal|ring|rally|oat>/<sfx|music|voice>/ and
  * regenerates src/game/content/samples/manifest.ts (deterministic order, no timestamps).
  *
  *   npm run audio:ship [-- --dry-run]
  *
  * Reads tmp/audio/picks.json ({ 'sfx:ui/confirm': [1, 3], ... }) and the candidate metas that
  * tools/audio/process.ts wrote (durations, loop points). MP3s under the group folders
- * (public/audio/boot, ams, fps, oldenzaal: lib.ts `GROUP_DIRS`) that are no longer picked are
+ * (public/audio/boot, ams, fps, oldenzaal, ring, rally, oat: lib.ts `GROUP_DIRS`) that are no longer picked are
  * removed, but only files the tool itself names (`<slug>-<n>.mp3`): a file someone placed there by
  * hand (e.g. a recording named 'Tot ziens.mp3') is kept and reported. The lazy groups 'mode:fps'
- * (the first-person mode) and 'mission:oldenzaal' (level 4) are written to the manifest only when
- * they have picks (lib.ts `LAZY_GROUPS`).
+ * (the first-person mode), 'mission:oldenzaal', 'mission:ring', 'mission:rally' and 'mission:oat' are
+ * written to the manifest only when they have picks (lib.ts `LAZY_GROUPS`). A song whose spec lists
+ * `slotBeats` (its parts) gets `marks` (seconds per order slot, `SampleSong.marks`).
  */
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
@@ -18,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import type { CandMeta } from './process';
 import { SAMPLE_GROUPS } from '../../src/engine/samples';
 import { candDir, GROUP_DIRS, groupDir, items, LAZY_GROUPS, paths, pickKey, readJson, slug, type Item, type Paths, type Picks, type Spec } from './lib';
-import type { SampleGroupName } from './spec-types';
+import type { MusicSpec, SampleGroupName } from './spec-types';
 
 interface SfxEntry {
   files: string[];
@@ -30,6 +31,8 @@ interface SongEntry {
   loopStart: number | null;
   loopEnd?: number;
   duration: number;
+  /** Seconds per order slot of the synth song (from the spec's `slotBeats`). */
+  marks?: number[];
 }
 interface VoiceEntry {
   files: string[];
@@ -109,6 +112,11 @@ export function planShip(list: readonly Item[], picks: Picks, p: Paths): ShipPla
       const e: SongEntry = { file: files[0], loopStart: m.loopStart, duration: m.duration };
       // The bar grid can land a hair past the decoded length (MP3 frames): clamp to the file.
       if (m.loopEnd !== null) e.loopEnd = Math.min(m.loopEnd, m.duration);
+      const parts = (it.spec as MusicSpec).slotBeats;
+      if (parts?.length) {
+        const beat = 60 / (it.spec as MusicSpec).bpm;
+        e.marks = parts.map((b) => Math.min(Math.round(b * beat * 1000) / 1000, m.duration));
+      }
       g.music[it.id] = e;
     } else {
       g.voice[it.id] = { files, duration: Math.max(...metas.map((m) => m.duration)) };
@@ -146,7 +154,8 @@ export function renderManifest(groups: Record<SampleGroupName, GroupData>): stri
     out.push('    music: {');
     for (const [id, e] of byKey(g.music)) {
       const loopEnd = e.loopEnd !== undefined ? `, loopEnd: ${num(e.loopEnd)}` : '';
-      out.push(`      ${q(id)}: { file: ${q(e.file)}, loopStart: ${e.loopStart === null ? 'null' : num(e.loopStart)}${loopEnd}, duration: ${num(e.duration)} },`);
+      const marks = e.marks ? `, marks: [${e.marks.map(num).join(', ')}]` : '';
+      out.push(`      ${q(id)}: { file: ${q(e.file)}, loopStart: ${e.loopStart === null ? 'null' : num(e.loopStart)}${loopEnd}, duration: ${num(e.duration)}${marks} },`);
     }
     out.push('    },');
     out.push('    voice: {');

@@ -15,12 +15,18 @@
  * A line every 30 ticks with `ui/tally-tick`, TOTAL with `ui/tally-end`, `fps/tally-100` under a
  * 100 % ratio. PRESS START: the first press shows the page and pays out; it moves on by itself
  * 600 ticks after it opened. `enter` records the floor (campaign, golden record, completed).
+ *
+ * A euro run (docs/design/oat.md §7.2, §7.9: `slot.euro`) shows each bonus in euros (legacy points
+ * ÷ 500: a 100 % line € 20,00, € 1,00 per second under par), × the difficulty factor at TOTAL,
+ * booked into the budget (`BONUS`); the points still count into the score.
  */
 import type { Color } from '../../engine/color';
 import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { blinkOn, centerText, drawPanel, PLAYER_COLORS, uiText, type GameApp } from '../app';
+import { blinkOn, centerText, drawPanel, euroText, PLAYER_COLORS, uiText, type GameApp } from '../app';
+import { bonusCents, withDifficulty } from '../budget/euro-table';
+import { bookSlot } from '../budget/pay';
 import { fpsFloorByNumber, fpsFloorId } from '../fps/registry';
 import { AMS_BONUS_KEY, missionBonusOf } from '../fps/run';
 import type { FloorResult, FpsRun } from '../fps/types';
@@ -150,6 +156,10 @@ export class FpsTallyScene implements Scene {
   private readonly name: string;
   private t = 0;
   private paid = 0;
+  /** A euro run: the TOTAL in cents and the cents booked so far. */
+  private readonly euro: boolean;
+  private readonly totalCents: number;
+  private paidCents = 0;
   /** Lines whose sound played. */
   private sounded = 0;
   private leaving = false;
@@ -177,6 +187,10 @@ export class FpsTallyScene implements Scene {
       bonusLabel: bonus ? `${missionLabel(bonus.mission)} BONUS` : undefined,
       otherJoined: session ? session.slots[1 - slotIndex].joined : false,
     });
+    this.euro = this.slot?.euro === true;
+    let cents = 0;
+    for (const l of this.tally.lines) if (l.counts && l.points) cents += bonusCents(l.points);
+    this.totalCents = withDifficulty(cents, session?.mods.tallyScore ?? 1);
   }
 
   /** Lines shown so far. */
@@ -230,7 +244,7 @@ export class FpsTallyScene implements Scene {
       if (lines[shown - 1]?.perfect) app.audio.sfx('fps/tally-100');
     }
     if (this.rowsShown >= n) this.payOut(false);
-    if (this.doneAt < 0 && this.rowsShown >= n && this.paid >= this.tally.total) this.doneAt = this.t;
+    if (this.doneAt < 0 && this.rowsShown >= n && this.paid >= this.tally.total && (!this.euro || this.paidCents >= this.totalCents)) this.doneAt = this.t;
     if (skip && this.t > 20) {
       if (this.doneAt < 0) {
         // The first press shows the whole page and pays out the rest at once.
@@ -248,8 +262,15 @@ export class FpsTallyScene implements Scene {
 
   /** Count TOTAL into the score (a step per tick, or all at once); extends apply. */
   private payOut(all: boolean): void {
+    if (!this.slot) return;
+    if (this.euro && this.paidCents < this.totalCents) {
+      const left = this.totalCents - this.paidCents;
+      const c = all ? left : Math.min(left, Math.max(100, Math.ceil(this.totalCents / 60)));
+      this.paidCents += c;
+      if (bookSlot(this.slot, c, 'bonus', this.paidCents >= this.totalCents ? 1 : 0) > 0) this.app.audio.sfx('item/1up');
+    }
     const total = this.tally.total;
-    if (this.paid >= total || !this.slot) return;
+    if (this.paid >= total) return;
     const step = all ? total - this.paid : Math.min(total - this.paid, Math.max(100, Math.ceil(total / 60)));
     this.paid += step;
     if (this.slot.addScore(step) > 0) this.app.audio.sfx('item/1up');
@@ -291,7 +312,8 @@ export class FpsTallyScene implements Scene {
       uiText(r, l.label, LABEL_X, y, col);
       if (l.value) uiText(r, l.value, VALUE_X, y, l.perfect ? PAL.gold[3] : PAL.snow[2]);
       const pts = total ? this.paid : l.points;
-      if (pts !== null) uiText(r, pts > 0 || total || info ? fmt(pts) : '---', POINTS_X, y, total ? PAL.gold[3] : PAL.snow[2], 'right');
+      const shown = this.euro ? (total ? euroText(this.paidCents) : pts !== null ? euroText(bonusCents(pts)) : '') : pts !== null ? fmt(pts) : '';
+      if (pts !== null) uiText(r, pts > 0 || total || info ? shown : '---', POINTS_X, y, total ? PAL.gold[3] : PAL.snow[2], 'right');
     }
     // The ring's seed (bug reports and replays; docs/design/ring.md §13).
     if (this.seed !== null) uiText(r, `RING SEED ${this.seed}`, PANEL_X + PANEL_W - 14, PANEL_Y + PANEL_H - 14, PAL.stone[2], 'right');

@@ -15,6 +15,19 @@
  *
  * Determinism: art only. The sims never read `SectionDef.strips`; a source paints from its seed and
  * the section's sun (mission/light/api.ts `sectionSun`), never from an rng, a clock or the DOM.
+ *
+ * THE STRIP SPACE (STRIPS, wave A): a strip is drawn 1:1 — one strip px is one logical px on screen,
+ * one art px at density d is one buffer px — so it stays crisp and palette-exact at every res (a
+ * resampled façade would shimmer and leave the palette). It scrolls with the façade plane's
+ * line-scroll speed `s` (`StripSectionInfo.scale`: the floor's s at `SectionStripsDef.depth`, oat-a
+ * 0.862; 1 without a floor). So its columns are NOT world x: strip x p and world x u (the floor's u,
+ * the decor's x, the lots' u) are tied by p = 192 + (u − 192) · s (space.ts `stripXOfU`, inverse
+ * `uOfStripX`; 192 = FLOOR_CX): a feature painted at p shows exactly where a decor item at depth
+ * `depth` and world x u shows (floor/cam.ts `shiftX`). Chunk cx holds strip x [cx · 256, cx · 256 +
+ * 256), i.e. world x [uOfStripX(cx · 256), uOfStripX(cx · 256 + 256)) — about 297 world px at s 0.862.
+ * Heights are strip px too: the façade's world px (spec §8.2: doors 44–48, the ground band at 20 px/m)
+ * times s on the façade plane (a 173 px house is 149 strip px: its gable tip at y 11 over the base at
+ * y 160). Row bounds (`StripRowDef.u0`/`u1`), `dark` and `darkFrom` stay in WORLD x.
  */
 import type { PixelBuffer } from '../../../engine/pixel';
 
@@ -34,8 +47,27 @@ export const STRIP_JOB_MS = 16;
 export const STRIP_FRAME_MS = 8;
 /** Chunks prefetched ahead of the view (spec §8.6: one; two in auto-scroll sections). */
 export const STRIP_PREFETCH = 1;
-/** Chunks kept behind the view before they are evicted (spec §8.6: two). */
+/**
+ * Eviction behind the view (spec §8.6 "evict two behind", the terrain's EVICT_BEHIND_CHUNKS rule): a
+ * chunk STRIP_KEEP_BEHIND or more chunks behind the chunk at the view's trailing edge is released, so
+ * one chunk behind stays (a shake, a short step back). About 5 resident with one ahead.
+ */
 export const STRIP_KEEP_BEHIND = 2;
+/**
+ * Prefetch by scroll speed: the store keeps at least this many ticks of travel ahead of the view
+ * queued (ahead = max(prefetch, ceil(|speed| · s · STRIP_LEAD_TICKS / STRIP_CHUNK)); 4 s: one chunk
+ * at the c1 auto-scroll of 1.2 px/tick, three at the taxi's 3 px/tick).
+ */
+export const STRIP_LEAD_TICKS = 240;
+/**
+ * The memory accounting (spec §8.12, decision 50: inside oat's 84 MB dense reserve): every byte of
+ * the lit set (resident chunks of every density, the stand-ins and the chunks being painted) stays
+ * under STRIP_BUDGET_BYTES (18 MB: five 216-px chunks at 4×); the dark set (the 03:00 bake) under
+ * STRIP_DARK_BUDGET_BYTES (11 MB: three). Near the cap the store releases what is furthest from the
+ * view (behind first, then the far prefetch); a chunk on screen is always built.
+ */
+export const STRIP_BUDGET_BYTES = 18 * 1024 * 1024;
+export const STRIP_DARK_BUDGET_BYTES = 11 * 1024 * 1024;
 
 /** One façade row of a section: a stretch of street in world x with its street style sheet. */
 export interface StripRowDef {
@@ -76,7 +108,10 @@ export interface SectionStripsDef {
    * as a 'dark' bake, prefetched from `darkFrom` (default the range's start minus two chunks).
    */
   dark?: readonly [number, number];
-  /** World x from which the dark set is prefetched (oat-d: the checkpoint at 3,500). */
+  /**
+   * World x from which the dark set is prefetched: once the view's centre passes it (oat-d: the
+   * checkpoint at 3,500), the dark chunks of the range are queued after the lit ones.
+   */
   darkFrom?: number;
 }
 
@@ -86,6 +121,12 @@ export interface StripSectionInfo {
   readonly width: number;
   /** The section's art seed (the view's seed: the same section paints the same strips every run). */
   readonly seed: number;
+  /**
+   * The façade plane's line-scroll speed s (the floor's s at `SectionStripsDef.depth`; oat-a 0.862):
+   * strip px = world px × s (see "THE STRIP SPACE" above; space.ts `stripXOfU`). Absent = 1 (no
+   * floor: strip x = world x).
+   */
+  readonly scale?: number;
 }
 
 /**
@@ -95,7 +136,7 @@ export interface StripSectionInfo {
 export interface StripPlan {
   /** Strip height in logical px (≤ the def's). */
   readonly height: number;
-  /** Does chunk `cx` (world x from cx · STRIP_CHUNK) have any pixels? false = the store skips it. */
+  /** Does chunk `cx` (STRIP x from cx · STRIP_CHUNK: see the strip space) have any pixels? false = the store skips it. */
   covers(cx: number): boolean;
   /**
    * Into how many horizontal bands the store may slice one paint of chunk `cx` at density d (≥ 1;
@@ -105,7 +146,10 @@ export interface StripPlan {
   /**
    * Paint band `band` (0 … bands − 1, top to bottom) of chunk `cx` at density d in light set `set`
    * into `out`: (STRIP_CHUNK · d) × (height · d) art px, cleared by the store before band 0. Paints
-   * only that band's art rows. The 'dark' set is asked only for chunks inside `SectionStripsDef.dark`.
+   * only that band's art rows (band b of n: rows [floor(b · H / n), floor((b + 1) · H / n)) of the H =
+   * height · d art rows: space.ts `stripBandRows`). Buffer column c is strip x cx · STRIP_CHUNK + c / d;
+   * the bottom row is the façade base. The 'dark' set is asked only for chunks inside
+   * `SectionStripsDef.dark`. Called with the art density 1 set (`withArtDensity`, as every scenery job).
    */
   paint(cx: number, d: StripDensity, set: StripLightSet, band: number, out: PixelBuffer): void;
   /** OPTIONAL: the lot boundaries in world x (debug overlays, the no-repeat tests). */
@@ -122,10 +166,14 @@ export interface StripStoreApi {
   /** The plan (null: unknown source or a source that failed: the section draws no strips). */
   readonly plan: StripPlan | null;
   /**
-   * Once per drawn frame before drawing: the view's left world x and its scroll speed (px per tick,
-   * signed): queue the chunks ahead, evict the ones behind, run at most STRIP_FRAME_MS of jobs.
+   * Once per drawn frame before drawing: the view's left world x, its scroll speed (world px per tick,
+   * signed) and the density it draws at (`d`; default the last one given — none yet: nothing is
+   * built): build the 1× of a chunk on screen that has nothing ready, queue the chunks on screen and
+   * ahead at d (or build them at once when dense art is not deferred: node tools and tests), evict the
+   * ones behind, keep the budgets. The queued jobs run in the shared art job budget (`runArtJobs`,
+   * HI_ART_FRAME_BUDGET_MS = STRIP_FRAME_MS per frame: the view runs it once per frame).
    */
-  prepare(viewX: number, speed: number): void;
+  prepare(viewX: number, speed: number, d?: StripDensity): void;
   /**
    * The best ready chunk image for chunk `cx` at density ≤ d in light set `set` (the lower density
    * while the asked one is not built), or null (nothing ready: draw nothing there).

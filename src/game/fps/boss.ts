@@ -426,7 +426,7 @@ export class FpsBoss {
     a.timer = 0;
     a.forceFrame = BREAK_FRAME;
     g.sound.at('fps/boss/break', a.x, a.y);
-    g.addScore(ACTOR_TYPES.boss.score);
+    g.addScore(ACTOR_TYPES.boss.score, 'kill');
     // Finish the step in progress: the wreck stands on a cell centre.
     this.updateBar();
   }
@@ -545,7 +545,8 @@ export class FpsBoss {
     a.pool = 2;
     a.spurt = 9;
     if (a.placed) pool.kills++;
-    g.addScore(BOSS_FOOT.score);
+    // The boss's fall pays the boss's euros (docs/design/oat.md §7.2, §7.9: € 250).
+    g.addScore(BOSS_FOOT.score, 'boss');
     g.sound.at('fps/blood', a.x, a.y);
     this.taunt(5);
     g.startDeathCam(a);

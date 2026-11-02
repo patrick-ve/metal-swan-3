@@ -13,7 +13,7 @@ import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer, TextOpts } from '../../engine/render';
 import type { Rng } from '../../engine/rng';
 import { artTier, getFrame, hasFramesAt, hasSprite, hiArtOn } from '../../engine/sprites';
-import { PLAYER_COLORS, scoreText, textWidth, uiText } from '../app';
+import { euroText, PLAYER_COLORS, scoreText, textWidth, uiText } from '../app';
 import { KEY_GOLD, KEY_SILVER } from './doors';
 import { MAX_HP } from './player';
 import { WEAPONS } from './weapons';
@@ -152,6 +152,8 @@ export interface SubtitleState {
 export interface HudInfo {
   floor: number;
   score: number;
+  /** A euro run (docs/design/oat.md §7.9): the slot's budget in cents shown instead of the score. */
+  cents?: number;
   /** The reserve lives (`slot.lives − 1`, as the 2D HUD shows them; spec §4.13). */
   lives: number;
   /** The fps slot index (its tag `1P` / `2P` and colour). */
@@ -214,8 +216,13 @@ export function drawStatusBar(r: Renderer, s: HudSource, info: HudInfo): void {
   r.rect(52, 210, 56, 3, PAL.ink[1], plain);
   r.rect(52, 210, Math.round((56 * Math.max(0, p.hp)) / MAX_HP), 3, hpC, plain);
   // Score, lives, floor + tag.
-  uiText(r, 'SCORE', 122, 181, PAL.stone[3]);
-  bigText(r, scoreText(info.score), 234, 181, PAL.snow[3], 1);
+  if (info.cents !== undefined) {
+    uiText(r, 'BUDGET', 122, 181, PAL.stone[3]);
+    bigText(r, euroText(info.cents), 234, 181, info.cents < 0 ? PAL.red[3] : PAL.snow[3], 1);
+  } else {
+    uiText(r, 'SCORE', 122, 181, PAL.stone[3]);
+    bigText(r, scoreText(info.score), 234, 181, PAL.snow[3], 1);
+  }
   if (!spriteTL(r, 'ui/icon-life', 0, 122, 194)) r.rect(123, 195, 8, 8, PLAYER_COLORS[info.slot] ?? PAL.sky[3], plain);
   uiText(r, `X${info.lives}`, 134, 194, PAL.snow[2]);
   uiText(r, `FLOOR ${info.floor}`, 122, 205, PAL.stone[3]);

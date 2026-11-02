@@ -4,6 +4,7 @@
  *
  * Who emits what:
  * - score            awardScore() (enemies, bosses, items, hostages, tally)
+ * - pay              budget/pay.ts `pay()` (the euro budget: every signed booking of a euro play)
  * - enemyKilled      Enemy.die
  * - playerDied / playerSpawned / playerOut / continueLanded / weaponChanged   Player
  * - pickup           Pickup.collect
@@ -15,6 +16,8 @@
  */
 import type { Damage, DamageKind, Entity, Team } from '../engine/entity';
 import type { World } from '../engine/world';
+import { noteAward } from './budget/pay';
+import type { PayEvent } from './budget/types';
 import { gameOf } from './context';
 import type { Player } from './player/player';
 
@@ -35,6 +38,11 @@ export interface ScoreEvent {
 declare module '../engine/world' {
   interface WorldEvents {
     score: ScoreEvent;
+    /**
+     * The euro budget booked signed cents for a slot (docs/design/oat.md §7.1; budget/pay.ts): a
+     * reused record — read it in the listener, never keep it.
+     */
+    pay: PayEvent;
     enemyKilled: { enemy: Entity; damage: Damage; points: number; player: number };
     playerDied: { player: Player; slot: number; cause: DeathCause };
     playerSpawned: { player: Player; slot: number; respawn: boolean };
@@ -70,12 +78,17 @@ declare module '../engine/world' {
 /**
  * Give points to a player slot (0 / 1; anything else is ignored) and emit 'score'.
  * Use this for every score source so the session and the HUD stay in sync.
+ *
+ * In a euro play (docs/design/oat.md §7; `session.economy === 'euro'`) the points still count, and
+ * they also wait as a pending award that the payer's event converts to euros (budget/pay.ts
+ * `noteAward`: the kill, the prop, the pickup; the rest by the legacy rule at the tick's end).
  */
 export function awardScore(world: World, slot: number | undefined, points: number, x?: number, y?: number): void {
   if (slot !== 0 && slot !== 1) return;
   if (!Number.isFinite(points) || points <= 0) return;
   const g = gameOf(world);
   const extra = g.session.addScore(slot, points);
+  if (g.session.economy === 'euro') noteAward(world, slot, points, x, y);
   world.events.emit('score', { player: slot, points, x, y });
   if (extra > 0) {
     // Score extends (GDD §14.5): +1 life at 500,000 and 1,500,000.

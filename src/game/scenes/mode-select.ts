@@ -14,7 +14,7 @@ import { PAD } from '../../engine/pads';
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { centerText, menuKeys, scoreText, textWidth, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { centerText, euroText, menuKeys, textWidth, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { saveSettings } from '../settings';
 import { CharacterSelectScene, MIL_ART } from './character-select';
 import { DIFFICULTIES, DIFFICULTY_INFO } from './flow-data';
@@ -132,7 +132,8 @@ export class ModeSelectScene implements Scene {
     const clock = titleClock() + this.t;
     drawBase(r, clock);
     veil(r, 0.6);
-    centerText(r, `HI ${scoreText(this.app.highScores.top)}`, 4, UI_WHITE);
+    // The best budget of the `budgets` table (docs/design/oat.md §7.7).
+    centerText(r, `HI ${euroText(this.app.budgets.top)}`, 4, UI_WHITE);
     drawStencilTitle(r, 'SELECT OPERATION', 36);
     // The select screen comes next: its HD furniture builds while this menu shows.
     if (!this.prefetched) {

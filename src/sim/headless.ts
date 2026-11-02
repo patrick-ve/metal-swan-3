@@ -312,6 +312,8 @@ class Headless implements HeadlessGame {
       hostages: sum((s) => s.stats.hostages),
       pickups: sum((s) => s.stats.pickups),
       score: sum((s) => s.score),
+      // The euro budget (docs/design/oat.md §7.10): a euro play only; a point play omits the field.
+      budget: this.session.euroRun ? slots.map((s) => s.cents) : undefined,
       timeouts: this.stats.timeouts,
       maxEntities: this.stats.maxEntities,
       errors: this.stats.errorList(),

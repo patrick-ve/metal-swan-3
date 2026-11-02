@@ -21,6 +21,7 @@ import { setFloorGpu } from './mission/floor/registry';
 import type { ArtCache } from './art-cache';
 import type { ContentReport } from './content/index';
 import { DEFAULT_PARAMS, type LaunchParams } from './params';
+import { BudgetTable } from './budget/scores';
 import { HighScoreTable, type GameSession, type HighScoreEntry } from './session';
 import { DEFAULT_SETTINGS, loadSettings, type GameSettings } from './settings';
 
@@ -45,6 +46,11 @@ export interface GameApp {
   readonly debug: Debug;
   readonly params: LaunchParams;
   readonly highScores: HighScoreTable;
+  /**
+   * The `budgets` table (docs/design/oat.md §7.7): the euro runs (the route: ams, oat, the rally,
+   * the fps floors, oldenzaal). `highScores` stays for point runs (the dormant ring, m0–m5 by URL).
+   */
+  readonly budgets: BudgetTable;
   /** Player options (GDD §13.13); content reads them through `settingsOf(world)`. */
   readonly settings: GameSettings;
   /** Filled by the Boot scene. */
@@ -173,6 +179,7 @@ export function createApp(o: AppOptions): GameApp {
     debug,
     params,
     highScores: loadHighScores(o.store),
+    budgets: BudgetTable.load(o.store),
     settings,
     content: null,
     session: null,
@@ -514,6 +521,13 @@ export function drawMenu(r: Renderer, items: readonly string[], selected: number
     if (sel) drawCursor(r, (r.w >> 1) - (measure(items[i], font) >> 1) - 5, iy + (font === 'big' ? 4 : 3), t);
   }
 }
+
+/**
+ * The euro text of the budget screens (docs/design/oat.md §7.5, §7.7): `€ 1.234,56`, `-€ 12,34`
+ * (budget/format.ts; beside `scoreText` for the title and mode-select `HI`, the tables, name
+ * entry, game over and the tallies).
+ */
+export { euroText } from './budget/format';
 
 /** Seven-digit score text (GDD §14: max 9,999,999). */
 export function scoreText(score: number): string {

@@ -1,20 +1,29 @@
 /**
- * The façade grammar of mission `oat` (docs/design/oat.md §8.6, levers L7 + L8; docs/api/oat.md
- * "Grammar"). Owner: GRAMMAR. One-line contract: it registers the strip source `OAT_STRIP_SOURCE`
- * (`defineStripSource`, mission/strips/) that plans a section's façade rows from a street sheet and
- * paints their chunks at 1× / 2× / 4× in either light set, and it exposes the planned lots
- * (`facadeLots`) so LIGHT-WATER's shadow function and the tests read the same heights and
- * protrusions the painters draw.
+ * The façade grammar of mission `oat` (docs/design/oat.md §8.6, levers L7 + L8; §8.2 the MIXED
+ * scale; §8.10 façade wear; §8.11 no ink outlines; docs/api/oat.md "GRAMMAR"). Owner: GRAMMAR.
+ * One-line contract: it registers the strip source `OAT_STRIP_SOURCE` (`defineStripSource`,
+ * mission/strips/) that plans a section's façade rows from a street sheet and paints their chunks
+ * at 1× / 2× / 4× in either light set, and it exposes the planned lots (`facadeLots`) so
+ * LIGHT-WATER's shadow function and the tests read the same heights and protrusions the painters
+ * draw.
  *
- * WAVE A STUB (CORE): the types and the lot query (no lots yet); GRAMMAR fills the folder (parts,
- * street sheets, the sequencer with the no-repeat rule, the opposite row, wear and wetness).
+ * Files: types.ts (ids, plan types, the scale constants), sheets.ts (the street style sheets),
+ * grammar.ts (the lot sequencer: widths, the no-repeat types, the geometry, details, wear,
+ * features), rows.ts (each section's rows `OAT_STRIPS`, the opposite row, the plan cache),
+ * palette.ts (material ramps, light tables), raster.ts (the index raster of a chunk band), parts.ts
+ * (the part drawers), light.ts (sun, shade and night light; the resolve), source.ts (the strip
+ * source).
  */
+import type { GableType } from './types';
+import { sectionLots } from './rows';
+import './source';
 
-/** The street style sheets (spec §8.6 table). */
-export type StreetSheetId = '9-straatjes' | 'canal-front' | 'grimburgwal' | 'oudezijds' | 'trompettersteeg' | 'oudekerksplein';
-
-/** The gable types (spec §8.6 "Gables"). */
-export type GableType = 'trap' | 'hals' | 'verhoogde-hals' | 'klok' | 'tuit' | 'lijst' | 'plastered' | 'infill' | 'none';
+export type { GableType, StreetSheetId } from './types';
+export type { LotPlan, FacadeFeature, WallId, WindowId, GroundKind } from './types';
+export { OAT_STRIPS, FACADE_DEPTH, FACADE_HEIGHT, defineFacadeRows, facadeRows, planSection, sectionLots, oppositeRow } from './rows';
+export { grammarPlan, OAT_FACADE_SOURCE } from './source';
+export { planRow, type FacadeRowParams, type RowPlan } from './grammar';
+export { SHEETS, BUILT_SHEETS, sheetOf } from './sheets';
 
 /** One planned lot of a façade row, in world px (the grammar's output; spec §8.2 numbers). */
 export interface FacadeLot {
@@ -34,8 +43,8 @@ export interface FacadeLot {
 
 /**
  * The planned lots of a section's façade rows (and its unseen opposite row with `opposite`), in
- * world x order. Empty until GRAMMAR plans them (wave A stub).
+ * world x order (empty for a section without rows).
  */
-export function facadeLots(_sectionId: string, _opposite = false): readonly FacadeLot[] {
-  return [];
+export function facadeLots(sectionId: string, opposite = false): readonly FacadeLot[] {
+  return sectionLots(sectionId, opposite);
 }

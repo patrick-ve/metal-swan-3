@@ -12,8 +12,10 @@
 import type { ScriptGen } from '../../../../engine/script';
 import type { SectionContext, SectionDef } from '../../../mission/index';
 import { at, lockedFight, placeBanner, standInWave } from './helpers';
-import { OAT_AMBIENCE, OAT_LOCALS, OAT_SECTION, OAT_SONG } from './ids';
-import { STUB_DAY, STUB_STYLE } from './placeholder';
+import { A_STRIP_ROWS, OAT_A_DECOR } from './art/place-a';
+import { BG_OAT_A } from './backgrounds';
+import { OAT_A_FLOOR, OAT_A_STYLE } from './floor/a';
+import { OAT_AMBIENCE, OAT_LOCALS, OAT_SECTION, OAT_SONG, OAT_STRIP_SOURCE } from './ids';
 import { G, OAT_A, terrainA } from './terrain';
 
 /** The end exit (enabled after De Makelaar's arena). */
@@ -58,15 +60,20 @@ export const sectionA: SectionDef = {
   width: OAT_A.w,
   height: 216,
   scroll: 'right',
-  background: STUB_DAY,
+  // The scenery (STREET-A, spec §8.7 a): the morning layers, the street floor (wet in the shade, drying
+  // in the sun), GRAMMAR's façade strips with the shop slots, the street props, bridges and vistas.
+  background: BG_OAT_A,
   terrain: terrainA(),
-  terrainStyle: STUB_STYLE,
+  terrainStyle: OAT_A_STYLE,
+  floor: OAT_A_FLOOR,
+  strips: { source: OAT_STRIP_SOURCE, depth: 16, height: 168, rows: A_STRIP_ROWS },
+  decor: [...OAT_A_DECOR],
   playerStart: { x: 48, y: G },
   bossStart: { x: OAT_A.bossX, y: G },
   checkpoints: [...OAT_A.checkpoints],
   music: OAT_SONG.a,
   ambience: OAT_AMBIENCE[OAT_SECTION.a],
-  art: ['enemy/handhaver', 'enemy/delivery-rider'],
+  art: ['enemy/handhaver', 'enemy/delivery-rider', 'decor/oat/a/'],
   exits: [{ id: OAT_A_EXIT, rect: { x: OAT_A.w - 32, y: 0, w: 32, h: 216 }, to: OAT_SECTION.b, disabled: true }],
   script: scriptA,
 };

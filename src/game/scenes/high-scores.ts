@@ -7,12 +7,17 @@
  *
  * Modes: 'attract' (300 ticks in the title's attract loop, then the title), 'after-game' (new
  * rows blink; a press or 600 ticks → the title) and 'menu' (from the mode select; back returns).
+ *
+ * Two tables (docs/design/oat.md §7.7): `budgets` (the euro runs: the route) shows the signed
+ * budget (`€ 2.500,00`) right-aligned at x 220; `points` (the dormant ring, m0–m5 by URL) the
+ * 7-digit score as before. The attract loop and the menu show the budgets; after a game the
+ * table of the game just played.
  */
 import { PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import { getFrame, hasSprite } from '../../engine/sprites';
 import type { Scene } from '../../engine/scene';
-import { blinkOn, centerText, menuKeys, scoreText, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { blinkOn, centerText, euroText, menuKeys, scoreText, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import type { HighScoreEntry } from '../session';
 import { missionNumber, rankLabel } from './flow-data';
 import { toTitle } from './flow';
@@ -22,12 +27,33 @@ import { veil } from './lake';
 
 export type HighScoresMode = 'attract' | 'after-game' | 'menu';
 
+/** Which table (docs/design/oat.md §7.7): the euro runs' `budgets` or the point runs' `points`. */
+export type HighScoresTable = 'budgets' | 'points';
+
 export interface HighScoresOpts {
   mode: HighScoresMode;
   /** Ranks (0-based) of the rows just entered: they blink. */
   highlight?: readonly number[];
   /** The title clock to keep the lake moving (attract). */
   clock?: number;
+  /** The table; default: after a game the one of that game (`session.euroRun`), else `budgets`. */
+  table?: HighScoresTable;
+}
+
+/** The table a screen shows when its opts name none. */
+export function tableOf(app: GameApp, opts: HighScoresOpts): HighScoresTable {
+  if (opts.table) return opts.table;
+  return opts.mode === 'after-game' && app.session && !app.session.euroRun ? 'points' : 'budgets';
+}
+
+/** One row of either table, as the screen draws it. */
+interface ShownRow {
+  name: string;
+  value: string;
+  mission: string;
+  character: string;
+  continues: number;
+  difficulty?: 'easy' | 'normal' | 'hard';
 }
 
 /** GDD §13.3: the high scores show for 300 ticks in the attract loop. */
@@ -42,14 +68,19 @@ const AFTER_GAME_TICKS = 600;
  * 'MN'.
  */
 export function missionColumn(e: HighScoreEntry): string {
-  if (e.mission === 'all') return 'ALL';
+  return missionText(e.mission);
+}
+
+/** The mission column of a mission id (both tables: the points' and the budgets'). */
+function missionText(mission: string): string {
+  if (mission === 'all') return 'ALL';
   // The first-person floors (docs/design/fps.md §1.9): fps-1 → F1, fps-2 → F2.
-  const f = /^fps-(\d+)$/.exec(e.mission);
+  const f = /^fps-(\d+)$/.exec(mission);
   if (f) return `F${f[1]}`;
-  const n = missionNumber(e.mission);
+  const n = missionNumber(mission);
   if (n > 0) return `M${n}`;
-  const m = /^m(\d+)$/.exec(e.mission);
-  return m ? `M${m[1]}` : e.mission.toUpperCase().slice(0, 3);
+  const m = /^m(\d+)$/.exec(mission);
+  return m ? `M${m[1]}` : mission.toUpperCase().slice(0, 3);
 }
 
 export class HighScoresScene implements Scene {
@@ -57,10 +88,22 @@ export class HighScoresScene implements Scene {
   private readonly opts: HighScoresOpts;
   private t = 0;
   private leaving = false;
+  /** The table shown (fixed at the start: the session may end while it shows). */
+  readonly table: HighScoresTable;
+  /** Its rows as drawn (made once). */
+  private readonly shown: ShownRow[];
 
   constructor(app: GameApp, opts: HighScoresOpts) {
     this.app = app;
     this.opts = opts;
+    this.table = tableOf(app, opts);
+    this.shown = this.rows();
+  }
+
+  /** The rows of the table shown. */
+  private rows(): ShownRow[] {
+    if (this.table === 'budgets') return this.app.budgets.entries.map((e) => ({ ...e, value: euroText(e.cents) }));
+    return this.app.highScores.entries.map((e) => ({ ...e, value: scoreText(e.score) }));
   }
 
   enter(): void {
@@ -103,7 +146,7 @@ export class HighScoresScene implements Scene {
     drawBase(r, (this.opts.clock ?? 0) + this.t);
     veil(r, 0.72);
     drawStencilTitle(r, 'HALL OF FAME', 12);
-    const list = this.app.highScores.entries;
+    const list = this.shown;
     const hl = this.opts.highlight ?? [];
     for (let i = 0; i < 10; i++) {
       const e = list[i];
@@ -116,9 +159,9 @@ export class HighScoresScene implements Scene {
         continue;
       }
       uiText(r, e.name, 80, y, col);
-      uiText(r, scoreText(e.score), 220, y, col, 'right');
+      uiText(r, e.value, 220, y, col, 'right');
       drawHead(r, e.character, 228, y + 3);
-      uiText(r, missionColumn(e), 252, y, PAL.snow[1]);
+      uiText(r, missionText(e.mission), 252, y, PAL.snow[1]);
       const d = e.difficulty === 'easy' ? 'E' : e.difficulty === 'hard' ? 'H' : 'N';
       uiText(r, d, 284, y, e.difficulty === 'hard' ? PAL.red[3] : e.difficulty === 'easy' ? PAL.green[3] : PAL.snow[1]);
       if (e.continues > 0) uiText(r, `C${Math.min(99, e.continues)}`, 304, y, PAL.stone[3]);

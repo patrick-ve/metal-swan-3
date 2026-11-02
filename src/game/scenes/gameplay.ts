@@ -52,6 +52,7 @@ import { GameOverScene } from './game-over';
 import { hasMissionCard, missionCard, VOICE } from './flow-data';
 import { GlitchBridgeScene } from './glitch-bridge';
 import { MissionCompleteScene } from './mission-complete';
+import { ReceiptTallyScene } from './receipt-tally';
 import type { PauseHost } from './pause';
 import { PlayControls, type PlayHost } from './play-host';
 import { RumbleWatch } from './rumble';
@@ -717,6 +718,8 @@ export class GameplayScene implements Scene, PauseHost, PlayHost {
       else if (handover) handover.onComplete(runner, this);
       // ams → the glitch bridge into the first-person mode (docs/design/fps.md §1.1): no tally page.
       else if (runner.mission.after === 'fps') app.scenes.replace(new GlitchBridgeScene(app, { from: this, runner }), { fade: 0 });
+      // oat's tally is the kassabon (docs/design/oat.md §7.6: `MissionDef.tally: 'receipt'`).
+      else if (runner.mission.tally === 'receipt') app.scenes.replace(new ReceiptTallyScene(app, runner), { fade: 40 });
       else app.scenes.replace(new MissionCompleteScene(app, runner), { fade: 40 });
     });
     // The in-world continue (GDD §4.6): the countdown runs over the live world (runner + HUD);

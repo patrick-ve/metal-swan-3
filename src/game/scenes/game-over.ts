@@ -2,14 +2,15 @@
  * Game over (GDD §13.10): `GAME OVER` (big, C, y 96; the letters drop in 4 ticks apart), `THE
  * CRITICS WERE NOT KIND.` (small, C, y 120), each player's final score (small, C, y 140), music
  * `game-over` and the announcer. After 240 ticks: name entry (when a score qualifies), the high
- * scores, the title. Drawn over the frozen, dimmed world.
+ * scores, the title. Drawn over the frozen, dimmed world. A euro run shows the budgets and enters
+ * the `budgets` table (docs/design/oat.md §7.7; name-entry.ts `finishRun`).
  */
 import { measure } from '../../engine/font';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { centerText, PLAYER_COLORS, scoreText, uiText, UI_RED, UI_WHITE, type GameApp } from '../app';
+import { centerText, euroText, PLAYER_COLORS, scoreText, uiText, UI_RED, UI_WHITE, type GameApp } from '../app';
 import { VOICE } from './flow-data';
-import { finishGame } from './flow';
+import { finishRun } from './name-entry';
 
 /** Ticks before moving on (GDD §13.10); a press after 60 ticks skips the rest. */
 export const GAME_OVER_TICKS = 240;
@@ -40,7 +41,7 @@ export class GameOverScene implements Scene {
     if (this.done) return;
     if (this.t >= GAME_OVER_TICKS || (this.t > 60 && this.app.input.anyPressed())) {
       this.done = true;
-      finishGame(this.app, false);
+      finishRun(this.app, false);
     }
   }
 
@@ -63,9 +64,11 @@ export class GameOverScene implements Scene {
     if (this.t < WORD.length * LETTER_GAP + FALL) return;
     centerText(r, 'UITGEZWAAND!', 120, UI_WHITE);
     const slots = this.app.session?.slots.filter((s) => s.joined) ?? [];
+    // A euro run shows each player's budget (docs/design/oat.md §7.7).
+    const euro = this.app.session?.euroRun === true;
     slots.forEach((s, i) => {
       const tag = slots.length > 1 ? `${s.index === 0 ? '1P' : '2P'} ` : '';
-      centerText(r, `${tag}${scoreText(s.score)}`, 140 + i * 10, PLAYER_COLORS[s.index]);
+      centerText(r, `${tag}${euro ? `BUDGET ${euroText(s.cents)}` : scoreText(s.score)}`, 140 + i * 10, PLAYER_COLORS[s.index]);
     });
   }
 }

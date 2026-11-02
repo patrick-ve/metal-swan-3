@@ -361,7 +361,7 @@ export function killActor(g: FpsGame, a: Actor): void {
   a.pool = 1 + g.fxRng.int(0, 1);
   a.spurt = SPURT_TICKS;
   if (a.placed) pool.kills++;
-  g.addScore(a.def.score);
+  g.addScore(a.def.score, 'kill');
   g.sound.at('fps/blood', a.x, a.y);
   shout(g, a, true);
   const cx = Math.floor(a.x);

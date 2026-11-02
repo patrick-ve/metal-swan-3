@@ -15,6 +15,12 @@
  *    the route's hostages, no life lost, a boss speed bonus, the golden record) and the quote.
  * 4. `PRESS START` (C, y 206); it moves on by itself 600 ticks after the page opened. The next
  *    mission's intro card follows, or the ending after the last mission (flow.ts `missionDone`).
+ *
+ * The euro budget (docs/design/oat.md §7.2, §7.6; decision 47): in a euro play (ams, oldenzaal, the
+ * rally) the same page shows EURO lines: each bonus at legacy points ÷ 500 (the rally's prize
+ * money as its lines give it: `TallyLine.cents`), × the difficulty factor at the TOTAL, which is
+ * booked into the budget (`BONUS` / `PRIJZENGELD`); the points still count into the score as
+ * before. A point play's page is unchanged.
  */
 import type { Color } from '../../engine/color';
 import { INK, PAL } from '../../engine/palette';
@@ -26,6 +32,10 @@ import { wrapText } from '../context';
 import { getCharacter } from '../registry';
 import type { GameSession, PlayerSlot } from '../session';
 import { TUNING } from '../tuning';
+import { bookSlot } from '../budget/pay';
+import { bonusCents, withDifficulty } from '../budget/euro-table';
+import { euroText } from '../budget/format';
+import type { BudgetCategory } from '../budget/types';
 import { CALLOUTS, CRITIC_QUOTES, missionCard, VOICE } from './flow-data';
 import { missionDone, recordMissionClear } from './flow';
 
@@ -71,6 +81,25 @@ export interface TallyLine {
   label: string;
   points: number | null;
   note?: string;
+  /**
+   * The line's euros in cents (docs/design/oat.md §7.8: the rally's prize money; signed). Absent:
+   * a euro page pays the bonus at `points` ÷ 500 (`bonusCents`); null = missed.
+   */
+  cents?: number | null;
+}
+
+/** A tally line's euros on a euro page (null = missed or a note). */
+export function lineCents(l: TallyLine): number | null {
+  if (l.cents !== undefined) return l.cents;
+  return l.points === null ? null : bonusCents(l.points);
+}
+
+/**
+ * Is this a euro page? A euro play (`session.economy`), or lines that carry their own euros (the
+ * rally's prize money: the race has no MissionRunner to set the economy).
+ */
+export function euroTally(session: GameSession, lines: readonly TallyLine[]): boolean {
+  return session.economy === 'euro' || lines.some((l) => l.cents !== undefined);
 }
 
 export interface SlotTally {
@@ -145,7 +174,9 @@ export function tallyLines(runner: TallyRunner, session: GameSession, slot: Play
   // its hostage star is free (below): a mission's star ceiling never depends on having hostages.
   const none = noHostages(runner);
   if (!none) {
-    lines.push({ label: `HOSTAGES ${slot.rescued} X ${S.hostageBonus}`, points: slot.rescued * S.hostageBonus });
+    // A euro play names the euros per hostage (docs/design/oat.md §7.2: points ÷ 500).
+    const each = session.economy === 'euro' ? euroText(bonusCents(S.hostageBonus), { compact: true }) : String(S.hostageBonus);
+    lines.push({ label: `HOSTAGES ${slot.rescued} X ${each}`, points: slot.rescued * S.hostageBonus });
     // STANDING OVATION: 1P every hostage of the route; 2P the two tallies together, 25,000 each.
     const joined = session.slots.filter((s) => s.joined);
     const together = joined.reduce((a, s) => a + s.rescued, 0);
@@ -175,6 +206,10 @@ interface Column {
   total: number;
   /** Points counted into the score so far. */
   paid: number;
+  /** A euro page: the TOTAL in cents (signed), the cents booked so far and their category. */
+  totalCents: number;
+  paidCents: number;
+  category: BudgetCategory;
   quote: string[];
 }
 
@@ -208,6 +243,8 @@ export class MissionCompleteScene implements Scene {
   private t = 0;
   private leaving = false;
   private mul = 1;
+  /** The page shows euros (docs/design/oat.md §7.2). */
+  private euro = false;
   /** Tick at which the page finished (every line, the totals and the stars shown). */
   private doneAt = -1;
   private headline = '';
@@ -247,8 +284,15 @@ export class MissionCompleteScene implements Scene {
         const rows: TallyLine[] = [...tally.lines, ...notes, { label: 'DIFFICULTY', points: null, note: `X${this.mul.toFixed(1)}` }, { label: 'TOTAL', points: total }];
         // The quote wraps to the column (2 players) or the right half of the page (1 player).
         const quote = wrapText(CRITIC_QUOTES[tally.stars - 1], QUOTE_CHARS, 3);
-        return { slot, tally, rows, total, paid: 0, quote };
+        // The euros: the lines' cents, × the difficulty factor at the total.
+        let cents = 0;
+        for (const l of tally.lines) cents += lineCents(l) ?? 0;
+        const own = tally.lines.some((l) => l.cents !== undefined);
+        return { slot, tally, rows, total, paid: 0, totalCents: withDifficulty(cents, this.mul), paidCents: 0, category: (own ? 'prize' : 'bonus') as BudgetCategory, quote };
       });
+    this.euro = this.cols.some((c) => euroTally(session, c.tally.lines));
+    // The race (no MissionRunner) makes this game a euro run too (the `budgets` table at its end).
+    if (this.euro && session.economy !== 'euro') session.setEconomy('euro');
     // The campaign remembers finished missions and golden records (final tally, GDD §14.6).
     recordMissionClear(this.app, this.runner);
     if (!this.runner.tallyLines && this.cols.some((c) => c.tally.lines[1]?.points != null)) app.audio.voice(VOICE.ovation);
@@ -270,7 +314,7 @@ export class MissionCompleteScene implements Scene {
     const starsFrom = LINES_AT + rows * LINE_TICKS;
     const starsT = this.t - starsFrom;
     if (starsT > 0 && starsT % STAR_TICKS === 0 && this.cols.some((c) => starsT / STAR_TICKS <= c.tally.stars)) app.audio.sfx('ui/star');
-    if (this.doneAt < 0 && starsT >= 5 * STAR_TICKS && this.cols.every((c) => c.paid >= c.total)) this.doneAt = this.t;
+    if (this.doneAt < 0 && starsT >= 5 * STAR_TICKS && this.cols.every((c) => c.paid >= c.total && (!this.euro || c.paidCents === c.totalCents))) this.doneAt = this.t;
     if (skip && this.t > 20) {
       if (this.doneAt < 0) {
         // The first press shows the whole page and pays out the rest at once.
@@ -285,9 +329,19 @@ export class MissionCompleteScene implements Scene {
     if (this.doneAt >= 0 && this.t >= Math.max(TALLY_AUTO_TICKS, this.doneAt + 60)) this.next();
   }
 
-  /** Count the totals into the scores (a step per tick, or all at once). */
+  /** Count the totals into the scores (a step per tick, or all at once); a euro page books its cents too. */
   private payOut(all: boolean): void {
     for (const c of this.cols) {
+      if (this.euro && c.paidCents !== c.totalCents) {
+        const left = c.totalCents - c.paidCents;
+        const step = all ? left : Math.sign(left) * Math.min(Math.abs(left), Math.max(100, Math.ceil(Math.abs(c.totalCents) / 60)));
+        c.paidCents += step;
+        // An extend from the tally (spec §7.1: gross income): the life is added by bookSlot.
+        if (bookSlot(c.slot, step, c.category, c.paidCents === c.totalCents ? 1 : 0) > 0) {
+          this.app.audio.sfx('item/1up');
+          this.app.audio.voice(CALLOUTS.oneMoreTry);
+        }
+      }
       if (c.paid >= c.total) continue;
       const step = all ? c.total - c.paid : Math.min(c.total - c.paid, Math.max(100, Math.ceil(c.total / 60)));
       c.paid += step;
@@ -360,8 +414,9 @@ export class MissionCompleteScene implements Scene {
         y += 1;
       }
       inkText(r, row.label, x0, y, INK);
-      const value = total ? String(c.paid) : row.note ?? (row.points === null ? '---' : String(row.points));
-      inkText(r, value, right, y, total ? PAL.red[1] : row.points === null && !row.note ? PAL.stone[1] : INK, 'right');
+      const value = this.euro ? euroValue(row, total, c) : total ? String(c.paid) : row.note ?? (row.points === null ? '---' : String(row.points));
+      const missed = this.euro ? !total && !row.note && lineCents(row) === null : row.points === null && !row.note;
+      inkText(r, value, right, y, total ? PAL.red[1] : missed ? PAL.stone[1] : INK, 'right');
       y += ROW_STEP;
     }
     const rows = this.rowCount;
@@ -404,6 +459,14 @@ export class MissionCompleteScene implements Scene {
       r.sprite(id, 0, x - 16 + f.ox, y + 12 + f.oy, plain);
     }
   }
+}
+
+/** A row's value on a euro page: the euros (`€ 20,00`), `---` when missed, the note, or the TOTAL booked so far. */
+function euroValue(row: TallyLine, total: boolean, c: Column): string {
+  if (total) return euroText(c.paidCents);
+  if (row.note) return row.note;
+  const cents = lineCents(row);
+  return cents === null ? '---' : euroText(cents);
 }
 
 /** Ink on paper: no outline. */

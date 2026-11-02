@@ -5,16 +5,21 @@
  * confirms a slot, bomb steps back; a 30-second timer (small, right-aligned at (380, 4)); music
  * `high-score`; the announcer says "NEW HIGH SCORE! YOU'RE GREAT!" when the screen opens. Co-op: one
  * entry per qualifying player, one after the other, each on their own controls.
+ *
+ * The euro budget (docs/design/oat.md §7.7): a euro run (`session.euroRun`: the route) enters the
+ * `budgets` table with the signed budget (it must beat the 10th row: a red run never enters); a
+ * point run (the dormant ring, m0–m5 by URL) the old `highscores` table as before. `finishRun`
+ * picks the table at the end of a game (game over, the final tally).
  */
 import { PAL } from '../../engine/palette';
 import type { Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { blinkOn, centerText, PLAYER_COLORS, repeatPressed, scoreText, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
+import { blinkOn, centerText, euroText, PLAYER_COLORS, repeatPressed, scoreText, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import { getCharacter } from '../registry';
 import type { PlayerSlot } from '../session';
 import { rankLabel, VOICE } from './flow-data';
-import { entryFor } from './flow';
-import { HighScoresScene } from './high-scores';
+import { entryFor, finishGame } from './flow';
+import { HighScoresScene, type HighScoresTable } from './high-scores';
 import { drawBase, drawStencilTitle } from './base';
 import { veil } from './lake';
 
@@ -22,6 +27,26 @@ import { veil } from './lake';
 export const NAME_CHARS: readonly string[] = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.', 'END'];
 const END = NAME_CHARS.length - 1;
 const SLOT_X: readonly number[] = [168, 184, 200];
+
+/** Does this slot's result enter `table`? */
+function qualifies(app: GameApp, table: HighScoresTable, slot: PlayerSlot): boolean {
+  return table === 'budgets' ? app.budgets.qualifies(slot.cents) : app.highScores.qualifies(slot.score);
+}
+
+/**
+ * The game is over (all players out, or the final tally is done): a euro run enters the `budgets`
+ * table (name entry for every joined player whose budget makes it, then that table, then the
+ * title); a point run goes the old way (`finishGame`).
+ */
+export function finishRun(app: GameApp, finished: boolean): void {
+  if (!app.session?.euroRun) {
+    finishGame(app, finished);
+    return;
+  }
+  const slots = app.session.slots.filter((s) => s.joined && app.budgets.qualifies(s.cents));
+  if (slots.length > 0) app.scenes.reset(new NameEntryScene(app, slots, finished, 'budgets'), { fade: 30 });
+  else app.scenes.reset(new HighScoresScene(app, { mode: 'after-game', table: 'budgets' }), { fade: 30 });
+}
 /** 30 seconds to enter a name (GDD §13.14). */
 export const NAME_TICKS = 30 * 60;
 
@@ -37,11 +62,14 @@ export class NameEntryScene implements Scene {
   private t = 0;
   private readonly ranks: number[] = [];
   private done = false;
+  /** The table the rows enter (default: `budgets` in a euro run, else `points`). */
+  readonly table: HighScoresTable;
 
-  constructor(app: GameApp, queue: readonly PlayerSlot[], finished: boolean) {
+  constructor(app: GameApp, queue: readonly PlayerSlot[], finished: boolean, table?: HighScoresTable) {
     this.app = app;
     this.queue = [...queue];
     this.finished = finished;
+    this.table = table ?? (app.session?.euroRun ? 'budgets' : 'points');
   }
 
   /** The player entering now. */
@@ -57,7 +85,7 @@ export class NameEntryScene implements Scene {
 
   /** In co-op the second score may have dropped out of the table after the first entry. */
   private skipUnqualified(): void {
-    while (this.slot && !this.app.highScores.qualifies(this.slot.score)) this.current++;
+    while (this.slot && !qualifies(this.app, this.table, this.slot)) this.current++;
   }
 
   update(): void {
@@ -111,7 +139,11 @@ export class NameEntryScene implements Scene {
       name += NAME_CHARS[c];
     }
     name = name.trim() || '???';
-    const rank = this.app.highScores.submit(entryFor(this.app, slot, this.finished, name));
+    let rank: number;
+    if (this.table === 'budgets') {
+      const e = entryFor(this.app, slot, this.finished, name);
+      rank = this.app.budgets.submit({ name: e.name, cents: slot.cents, mission: e.mission, character: e.character, continues: e.continues, difficulty: e.difficulty });
+    } else rank = this.app.highScores.submit(entryFor(this.app, slot, this.finished, name));
     if (rank >= 0) this.ranks.push(rank);
     this.current++;
     this.letters = [0, 0, 0];
@@ -123,8 +155,9 @@ export class NameEntryScene implements Scene {
   private finish(): void {
     if (this.done) return;
     this.done = true;
-    this.app.highScores.save(this.app.store);
-    this.app.scenes.replace(new HighScoresScene(this.app, { mode: 'after-game', highlight: this.ranks }), { fade: 30 });
+    if (this.table === 'budgets') this.app.budgets.save(this.app.store);
+    else this.app.highScores.save(this.app.store);
+    this.app.scenes.replace(new HighScoresScene(this.app, { mode: 'after-game', highlight: this.ranks, table: this.table }), { fade: 30 });
   }
 
   draw(r: Renderer): void {
@@ -152,9 +185,11 @@ export class NameEntryScene implements Scene {
     }
     const ch = getCharacter(slot.character);
     const tag = slot.index === 0 ? '1P' : '2P';
-    centerText(r, `${tag}  ${ch.name}  ${scoreText(slot.score)}`, 116, col);
-    const rank = this.app.highScores.entries.findIndex((e) => slot.score > e.score);
-    centerText(r, `YOUR RANK: ${rankLabel(rank < 0 ? this.app.highScores.entries.length : rank)}`, 128, UI_WHITE);
+    const euro = this.table === 'budgets';
+    centerText(r, `${tag}  ${ch.name}  ${euro ? euroText(slot.cents) : scoreText(slot.score)}`, 116, col);
+    const rank = euro ? this.app.budgets.rankOf(slot.cents) : this.app.highScores.entries.findIndex((e) => slot.score > e.score);
+    const n = euro ? this.app.budgets.entries.length : this.app.highScores.entries.length;
+    centerText(r, `YOUR RANK: ${rankLabel(rank < 0 ? n : rank)}`, 128, UI_WHITE);
     centerText(r, 'UP / DOWN: LETTER   FIRE: OK   BOMB: BACK', 196, PAL.stone[3]);
   }
 }

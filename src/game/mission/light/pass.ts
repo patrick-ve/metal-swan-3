@@ -33,6 +33,24 @@
  * the backdrop (drawn before the terrain, so the town stands black against it) and the whole
  * view, may strike twice (`double`), and the thunder sfx `oz/env/thunder` follows (when it is
  * defined) after a delay.
+ *
+ * THE OAT FLAGS (docs/design/oat.md §8.4, §8.8, §8.9; LIGHT-WATER), each off unless the config sets it,
+ * so oldenzaal takes every old path cell for cell:
+ * - `glow: 'smooth'`: at res ≥ 2 the lights still cut the 1× darkness map, but their COLOUR is drawn
+ *   as dense additive glow frames at the art density (./glow.ts): round glows, pools and streak
+ *   dashes instead of 4 × 4 blocks, for one frame draw per light; 1× keeps the map's glow.
+ * - `streaks`: every static lamp with `streak` and every entity light whose `lightOf` sets
+ *   `spot.streak` mirrors as a vertical stack of short dashes on the water / wet floor rows
+ *   [y0, y1]: centred on its mirror point (`level` px under its floor row), wider and longer with
+ *   `ripple`, the dashes swaying smoothly (a sine of world y and the tick: no on / off sparkle).
+ * - `groups`: named lamp groups (`StaticLight.group`) a script switches on, off, or flickering out
+ *   (`lampGroup`): a dying tube in uneven 3–6 tick steps between full and a third, then off; with
+ *   the settings' reduced flashes a smooth fade instead.
+ * - `bakes`: the 03:00 cross-fade of the lit and dark bakes (`crossFadeLight`): the pass eases the
+ *   mix and pushes it to the section's strips (`setStripDarkMix`); the floor reads `lightSetMix`.
+ * - `day`: a day section: no darkness, no light map; only the ground overlays below.
+ * - `water`, `sunShadows` (a floor only, in `drawGround`): the dynamic reflections
+ *   (mission/floor/reflect.ts) and the actors' sun-stretched cast shadows (./contact.ts).
  */
 import type { Color } from '../../../engine/color';
 import { sOfY } from '../../../engine/floor/cam';
@@ -58,10 +76,15 @@ import {
 import { FxEntity } from '../../fx';
 import { floorPool, floorShift, worldFloor, type FloorPoint, type FloorPool } from '../floor/hooks';
 import { FramePlacer } from '../floor/place';
+import { WaterReflections } from '../floor/reflect';
 import type { SectionFloor } from '../floor/section-floor';
+import { setStripDarkMix } from '../strips/live';
 import type { SectionDef } from '../types';
+import { SunShadows } from './contact';
+import { GlowFrames } from './glow';
 import { DEFAULT_MIST, floorLightOf, mistAlpha, type FloorLightConfig, type MistConfig } from './floor';
 import { LightMap } from './lightmap';
+import type { LampGroupState, LightSetId, StreakConfig } from './api';
 
 /** Generator ids (content/oldenzaal/weather; ids.ts OZ_LIGHT.fogLayer / rainLayer). */
 export const FOG_GEN = 'oz-fog';
@@ -89,6 +112,8 @@ const MUZZLE_COLOR: Color = 0xf8c055ff; // PAL_HD_OZ.candle[5]
 const BLAST_COLOR: Color = 0xe19529ff; // PAL_HD_OZ.candle[4]
 const NEUTRAL: Color = 0xffffffff;
 
+/** The walk line (the water plane's reference without a floor). */
+const G_WALK = 176;
 /** Fog / rain tile sizes (logical px). */
 const FOG_W = 512;
 /** The ground mist's texture rows (a floor only: from the mist's top to the view's bottom). */
@@ -97,6 +122,21 @@ const MIST_H = 80;
 const MIST_MAX_DENSITY = 2;
 const RAIN_W = 192;
 const RAIN_H = 216;
+
+/** Streak defaults (spec §8.8): the rows, the length, the dash strength, the water plane, the ripple. */
+const STREAK_Y0 = 184;
+const STREAK_LEN = 26;
+const STREAK_STRENGTH = 0.8;
+const STREAK_LEVEL = 6;
+const STREAK_RIPPLE = 0.5;
+/** A dash every this many logical px down the streak. */
+const DASH_STEP = 2;
+/** A flickering group's default length, ticks (spec §6.9: 20–40). */
+const GROUP_FLICKER: readonly [number, number] = [20, 40];
+/** Group states as numbers. */
+const G_ON = 0;
+const G_OFF = 1;
+const G_FLICKER = 2;
 
 /** One scheduled or scripted flash. */
 interface Flash {
@@ -172,7 +212,7 @@ export class MissionLight implements LightControl {
   private readonly fogFar: WeatherBuf | null;
   private readonly fogNear: WeatherBuf | null;
   private readonly rain: WeatherBuf | null;
-  private readonly spot: LightSpot = { x: 0, y: 0, r: 0, color: NEUTRAL, intensity: 1, flicker: 0 };
+  private readonly spot: LightSpot = { x: 0, y: 0, r: 0, color: NEUTRAL, intensity: 1, flicker: 0, streak: false };
   private readonly darkOpts: DrawOpts = { stream: true };
   private readonly glowOpts: DrawOpts = { stream: true, blend: 'add' };
   private readonly flashOpts: DrawOpts = { screen: true, blend: 'add', alpha: 0 };
@@ -196,6 +236,30 @@ export class MissionLight implements LightControl {
   private readonly placer = new FramePlacer();
   /** Mist rows drawn last frame (tests / debug). */
   mistRows = 0;
+  /** OAT: the smooth glow's dense frames (a section with `glow: 'smooth'`), and this frame's density for them (0: off). */
+  readonly glows: GlowFrames | null;
+  private glowD = 0;
+  /** OAT: the streak settings (null: no streaks). */
+  private readonly streak: StreakConfig | null;
+  /** Streak dashes added last frame (tests / debug). */
+  streakDashes = 0;
+  /** OAT: lamp groups — names, states, flicker ends and lengths; each static lamp's group (−1 none). */
+  private readonly groupNames: readonly string[];
+  private readonly groupState: Uint8Array;
+  private readonly groupEnd: Float64Array;
+  private readonly groupStart: Float64Array;
+  private readonly groupLen: readonly (readonly [number, number])[];
+  private readonly lampGroupIx: Int16Array | null;
+  /** OAT: the bake cross-fade (0 lit … 1 dark): from → to over [b0, b0 + blen). */
+  private mixFrom = 0;
+  private mixTo = 0;
+  private b0 = 0;
+  private blen = 0;
+  private lastMix = -1;
+  private readonly sectionId: string | undefined;
+  /** OAT: the ground overlays (a floor only). */
+  readonly reflections: WaterReflections | null;
+  readonly sunShadows: SunShadows | null;
   /**
    * The ground mist is drawn UNDER the entities (the runner binds `drawGround` to the view's
    * `floorHook`, a floor only); false: `draw` lays it over them, in the old near fog's slot.
@@ -251,6 +315,25 @@ export class MissionLight implements LightControl {
     const lampDepth = this.floorCfg?.lampDepth;
     const lamps = cfg.lamps;
     this.lampDepths = floor && lamps && lampDepth ? Float64Array.from(lamps, (l, i) => lampDepth(l, i)) : null;
+    // The oat opt-ins (none of them set: every field below is inert).
+    this.sectionId = sectionId;
+    const st = cfg.streaks;
+    this.streak = st ? (st === true ? {} : st) : null;
+    const groups = cfg.groups ?? [];
+    this.groupNames = groups.map((g) => g.name);
+    this.groupState = new Uint8Array(groups.length);
+    this.groupEnd = new Float64Array(groups.length);
+    this.groupStart = new Float64Array(groups.length);
+    this.groupLen = groups.map((g) => g.flicker ?? GROUP_FLICKER);
+    for (let i = 0; i < groups.length; i++) this.groupState[i] = groups[i].state === 'off' ? G_OFF : G_ON;
+    this.lampGroupIx = groups.length > 0 && lamps ? Int16Array.from(lamps, (l) => (l.group !== undefined ? this.groupNames.indexOf(l.group) : -1)) : null;
+    if (cfg.bakes?.start === 'dark') {
+      this.mixFrom = 1;
+      this.mixTo = 1;
+    }
+    this.reflections = floor && cfg.water ? new WaterReflections(cfg.water) : null;
+    this.sunShadows = floor && cfg.sunShadows ? new SunShadows(cfg.sunShadows) : null;
+    this.glows = cfg.glow === 'smooth' ? new GlowFrames() : null;
     bindLightControl(world, this);
   }
 
@@ -283,6 +366,62 @@ export class MissionLight implements LightControl {
 
   flash(strength = 1): void {
     this.bolt(this.now, Math.max(0, Math.min(1, strength)), true);
+  }
+
+  /** OAT (spec §6.9): switch a lamp group; 'flicker' = a dying tube for the group's ticks, then off. Unknown names: nothing. */
+  group(name: string, state: LampGroupState): void {
+    const g = this.groupNames.indexOf(name);
+    if (g < 0) return;
+    if (state === 'flicker') {
+      if (this.groupState[g] === G_OFF) return;
+      const [a, b] = this.groupLen[g];
+      this.groupState[g] = G_FLICKER;
+      this.groupStart[g] = this.now;
+      this.groupEnd[g] = this.now + this.rng.int(Math.max(1, a), Math.max(a, b));
+    } else this.groupState[g] = state === 'off' ? G_OFF : G_ON;
+  }
+
+  /** The state of a lamp group now (tests / scripts; undefined: no such group). */
+  groupOf(name: string): LampGroupState | undefined {
+    const g = this.groupNames.indexOf(name);
+    if (g < 0) return undefined;
+    const s = this.groupState[g];
+    return s === G_ON ? 'on' : s === G_OFF ? 'off' : 'flicker';
+  }
+
+  /**
+   * A group's light factor at tick t (1 on, 0 off; flickering: uneven 3–6 tick steps between 1 and
+   * 0.35 that thin out toward the end — a smooth fade with the reduced flashes).
+   */
+  private groupK(g: number, tick: number): number {
+    const s = this.groupState[g];
+    if (s === G_ON) return 1;
+    if (s === G_OFF) return 0;
+    const t0 = this.groupStart[g];
+    const t1 = this.groupEnd[g];
+    if (tick >= t1) return 0;
+    const p = (tick - t0) / Math.max(1, t1 - t0);
+    if (this.flashScale < 1) return 1 - p;
+    // Steps of 3–6 ticks (by hash), each on or dim; more of them dim as the tube dies.
+    const step = Math.floor((tick - t0) / (3 + Math.floor(hash2(g, Math.floor((tick - t0) / 6), 0x6e0) * 4)));
+    return hash2(step, g, 0x7f3) < 0.75 - 0.6 * p ? 1 : 0.35;
+  }
+
+  /** OAT (spec §8.9): cross-fade to the lit or the dark bake over `fadeTicks` (default the bake's, 60). */
+  lightSet(set: LightSetId, fadeTicks?: number): void {
+    if (!this.cfg.bakes) return;
+    this.mixFrom = this.bakeMix();
+    this.mixTo = set === 'dark' ? 1 : 0;
+    this.b0 = this.now;
+    this.blen = Math.max(0, fadeTicks ?? this.cfg.bakes.fadeTicks ?? 60);
+  }
+
+  /** The dark bake's share now (0 lit … 1 dark), eased. */
+  bakeMix(): number {
+    if (this.blen <= 0 || this.now >= this.b0 + this.blen) return this.mixTo;
+    const t = Math.max(0, (this.now - this.b0) / this.blen);
+    const e = t * t * (3 - 2 * t);
+    return this.mixFrom + (this.mixTo - this.mixFrom) * e;
   }
 
   /** Start a flash at t0 (maybe a second one), and schedule its thunder. */
@@ -342,6 +481,15 @@ export class MissionLight implements LightControl {
     this.windX += g * 2.4;
     const drift = this.cfg.fog?.drift ?? 0;
     this.fogX += drift + (drift < 0 ? -g : g) * 0.6;
+    // OAT: flickering groups die out; the bake's mix goes to the strips.
+    for (let i = 0; i < this.groupState.length; i++) if (this.groupState[i] === G_FLICKER && tick >= this.groupEnd[i]) this.groupState[i] = G_OFF;
+    if (this.cfg.bakes && this.sectionId !== undefined) {
+      const mix = this.bakeMix();
+      if (mix !== this.lastMix) {
+        this.lastMix = mix;
+        setStripDarkMix(this.sectionId, mix);
+      }
+    }
   }
 
   // ------------------------------------------------------------------------------- draw
@@ -421,16 +569,29 @@ export class MissionLight implements LightControl {
       const nearTop = Math.round(top + (VIEW_H - top) * 0.3);
       this.drawLayer(r, this.fogNear, want, 1.2, this.fogX * 1.3 + 57, nearTop, fog.density * 0.6, this.layerOpts);
     }
-    // 2. Darkness with the lights cut in, then their colour.
+    // 2. Darkness with the lights cut in, then their colour (a day section: none).
     const f = this.flashAt(tick) * this.flashScale;
-    const dark = this.darkness * (1 - FLASH_LIFT * f);
-    const map = this.map;
-    map.begin(Math.floor(r.camX), Math.floor(r.camY));
-    this.gatherLights(tick, r.camX);
-    const glow = map.resolve(cfg.tint, dark);
-    if (dark > 0.004) r.image(map.dark, map.ox, map.oy, this.darkOpts);
-    this.glowDrawn = glow;
-    if (glow) r.image(map.glow, map.ox, map.oy, this.glowOpts);
+    if (!cfg.day) {
+      const dark = this.darkness * (1 - FLASH_LIFT * f);
+      const glows = this.glows;
+      const smooth = glows !== null && r.res >= 2;
+      this.glowD = smooth ? atRes(density, r.res) : 0;
+      const map = this.map;
+      map.begin(Math.floor(r.camX), Math.floor(r.camY));
+      if (glows) glows.begin();
+      this.gatherLights(map, tick, r.camX);
+      const glow = map.resolve(cfg.tint, dark);
+      if (smooth && glows) {
+        if (dark > 0.004) r.image(map.dark, map.ox, map.oy, this.darkOpts);
+        // The map holds no colour in this mode: the glows are the dense frames.
+        this.glowDrawn = glows.queued > 0;
+        glows.flush(r);
+      } else {
+        if (dark > 0.004) r.image(map.dark, map.ox, map.oy, this.darkOpts);
+        this.glowDrawn = glow;
+        if (glow) r.image(map.glow, map.ox, map.oy, this.glowOpts);
+      }
+    }
     // 3. Rain: a far, slow sheet and a near, fast one (both wrap; the wind pushes them).
     const rain = cfg.rain;
     if (rain && this.rain) {
@@ -452,10 +613,38 @@ export class MissionLight implements LightControl {
    * shadows and `world.draw`): it lies on the floor and the walk-plane decor, and the heroes stand
    * in it. Sets `mistUnder` (then `draw` leaves the mist out).
    */
-  drawGround(r: Renderer, _tick: number, density: number): void {
+  drawGround(r: Renderer, tick: number, density: number): void {
     this.mistUnder = true;
     const fog = this.cfg.fog;
     if (fog && this.floor) this.drawMist(r, atRes(density, r.res), fog.density, this.floor);
+    // OAT (spec §8.1 steps 6–7): the water's dynamic reflections, then the actors' sun tails.
+    if (this.reflections) this.reflections.draw(r, this.world, tick, this.floor);
+    if (this.sunShadows) this.sunShadows.draw(r, this.world, atRes(density, r.res));
+  }
+
+  /**
+   * A round light into the map: as always, or (the smooth glow) its cut in the map and its colour as
+   * a dense glow frame.
+   */
+  private addLight(map: LightMap, x: number, y: number, r: number, intensity: number, color: Color, glow: number): void {
+    const d = this.glowD;
+    if (d === 0 || glow <= 0) {
+      map.add(x, y, r, intensity, color, glow);
+      return;
+    }
+    map.add(x, y, r, intensity, color, 0);
+    (this.glows as GlowFrames).circle(x, y, r, color, glow * intensity, d);
+  }
+
+  /** An elliptical light (a pool, a streak dash) into the map, as `addLight`. */
+  private addOval(map: LightMap, x: number, y: number, rx: number, ry: number, intensity: number, color: Color, glow: number, yMin: number): void {
+    const d = this.glowD;
+    if (d === 0 || glow <= 0) {
+      map.addEllipse(x, y, rx, ry, intensity, color, glow, yMin);
+      return;
+    }
+    map.addEllipse(x, y, rx, ry, intensity, color, 0, yMin);
+    (this.glows as GlowFrames).ellipse(x, y, rx, ry, color, glow * intensity, d, yMin);
   }
 
   /**
@@ -509,8 +698,7 @@ export class MissionLight implements LightControl {
   }
 
   /** Every light of this frame into the map (culled to the view by the map). `camX`: the renderer's camera (the floor's shifts). */
-  private gatherLights(tick: number, camX: number): void {
-    const map = this.map;
+  private gatherLights(map: LightMap, tick: number, camX: number): void {
     const cfg = this.cfg;
     const x0 = map.ox;
     const y0 = map.oy;
@@ -518,13 +706,23 @@ export class MissionLight implements LightControl {
     const y1 = y0 + map.h;
     const lamps = cfg.lamps;
     const floor = this.floor;
-    if (lamps && floor) this.floorLamps(lamps, floor, tick, camX);
+    const gix = this.lampGroupIx;
+    const streak = this.streak;
+    this.streakDashes = 0;
+    if (lamps && floor) this.floorLamps(map, lamps, floor, tick, camX);
     else if (lamps) {
       for (let i = 0; i < lamps.length; i++) {
         const l = lamps[i];
-        if (l.x + l.r < x0 || l.x - l.r > x1 || l.y + l.r < y0 || l.y - l.r > y1) continue;
-        const k = flickerAt(l.flicker ?? 0, tick, i * 7 + 3);
-        map.add(l.x, l.y, l.r, (l.intensity ?? 1) * k, l.color, l.glow ?? LAMP_GLOW);
+        if (l.x + l.r < x0 || l.x - l.r > x1 || l.y + l.r < y0 || l.y - l.r > y1) {
+          if (!(streak && l.streak && l.x + l.r >= x0 && l.x - l.r <= x1)) continue;
+        }
+        let k = flickerAt(l.flicker ?? 0, tick, i * 7 + 3);
+        if (gix && gix[i] >= 0) {
+          k *= this.groupK(gix[i], tick);
+          if (k <= 0) continue;
+        }
+        this.addLight(map, l.x, l.y, l.r, (l.intensity ?? 1) * k, l.color, l.glow ?? LAMP_GLOW);
+        if (streak && l.streak) this.addStreak(map, streak, l.x, l.y, -1, (l.intensity ?? 1) * k, l.color, tick, i * 13 + 5);
       }
     }
     const world = this.world;
@@ -535,15 +733,19 @@ export class MissionLight implements LightControl {
       if (e.removed || !isLightSource(e)) continue;
       spot.flicker = 0;
       spot.intensity = 1;
+      spot.streak = false;
       if (!e.lightOf(spot, tick)) continue;
+      let floorY = -1;
       if (floor && e.drawDepth !== 0) {
         // Drawn at a depth (render only): its light goes with it.
         floorShift(floor, spot.x, spot.y, e.drawDepth, camX, this.pt);
         spot.x = this.pt.x;
         spot.y = this.pt.y;
+        floorY = floor.cam.yw - e.drawDepth;
       }
       if (spot.x + spot.r < x0 || spot.x - spot.r > x1 || spot.y + spot.r < y0 || spot.y - spot.r > y1) continue;
-      map.add(spot.x, spot.y, spot.r, spot.intensity * flickerAt(spot.flicker, tick, e.id), spot.color, LAMP_GLOW);
+      this.addLight(map, spot.x, spot.y, spot.r, spot.intensity * flickerAt(spot.flicker, tick, e.id), spot.color, LAMP_GLOW);
+      if (streak && spot.streak) this.addStreak(map, streak, spot.x, spot.y, floorY, spot.intensity, spot.color, tick, e.id);
     }
     const hero = cfg.heroLight ?? 0;
     if (hero > 0) {
@@ -563,7 +765,7 @@ export class MissionLight implements LightControl {
     const ents = world.entities;
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
-      if (e instanceof FxEntity && !e.removed) this.fxLight(e);
+      if (e instanceof FxEntity && !e.removed) this.fxLight(map, e);
     }
   }
 
@@ -571,12 +773,13 @@ export class MissionLight implements LightControl {
    * The static lamps on a floor: each glow at its lamp's depth (the shift and speed of that depth,
    * so it stays on the lamp head), and its pool on the floor row of that depth, flickering with it.
    */
-  private floorLamps(lamps: readonly StaticLight[], floor: SectionFloor, tick: number, camX: number): void {
-    const map = this.map;
+  private floorLamps(map: LightMap, lamps: readonly StaticLight[], floor: SectionFloor, tick: number, camX: number): void {
     const x0 = map.ox;
     const y0 = map.oy;
     const x1 = x0 + map.w;
     const y1 = y0 + map.h;
+    const gix = this.lampGroupIx;
+    const streak = this.streak;
     const depths = this.lampDepths;
     const pc = this.floorCfg?.pool;
     const pt = this.pt;
@@ -586,27 +789,70 @@ export class MissionLight implements LightControl {
       const l = lamps[i];
       const depth = depths ? depths[i] : 0;
       floorShift(floor, l.x, l.y, depth, camX, pt);
-      const k = flickerAt(l.flicker ?? 0, tick, i * 7 + 3);
+      let k = flickerAt(l.flicker ?? 0, tick, i * 7 + 3);
+      if (gix && gix[i] >= 0) {
+        k *= this.groupK(gix[i], tick);
+        if (k <= 0) continue;
+      }
       const glow = l.glow ?? LAMP_GLOW;
-      if (!(pt.x + l.r < x0 || pt.x - l.r > x1 || pt.y + l.r < y0 || pt.y - l.r > y1)) map.add(pt.x, pt.y, l.r, (l.intensity ?? 1) * k, l.color, glow);
+      if (!(pt.x + l.r < x0 || pt.x - l.r > x1 || pt.y + l.r < y0 || pt.y - l.r > y1)) this.addLight(map, pt.x, pt.y, l.r, (l.intensity ?? 1) * k, l.color, glow);
+      if (streak && l.streak && pt.x + l.r >= x0 && pt.x - l.r <= x1) this.addStreak(map, streak, pt.x, pt.y, floor.cam.yw - depth, (l.intensity ?? 1) * k, l.color, tick, i * 13 + 5);
       if (!pc || pc.intensity <= 0) continue;
       floorPool(floor, l.x, depth, l.r * pc.radius, camX, pool);
       if (pool.x + pool.rx < x0 || pool.x - pool.rx > x1 || pool.y + pool.ry < y0 || pool.y - pool.ry > y1) continue;
-      map.addEllipse(pool.x, pool.y, pool.rx, pool.ry, (l.intensity ?? 1) * k * pc.intensity, l.color, pc.glow, yMin);
+      this.addOval(map, pool.x, pool.y, pool.rx, pool.ry, (l.intensity ?? 1) * k * pc.intensity, l.color, pc.glow, yMin);
     }
   }
 
   /** Muzzle flashes and blasts light the dark for a moment. */
-  private fxLight(e: FxEntity): void {
+  private fxLight(map: LightMap, e: FxEntity): void {
     const s = e.sprite;
     if (s.startsWith('fx/muzzle')) {
       if (e.t > 3) return;
-      this.map.add(e.x, e.y, 22, 0.9, MUZZLE_COLOR, 0.5);
+      this.addLight(map, e.x, e.y, 22, 0.9, MUZZLE_COLOR, 0.5);
     } else if (s.startsWith('fx/explosion')) {
       const fade = 1 - e.t / 24;
       if (fade <= 0) return;
       const big = s.endsWith('-l') || s.endsWith('-xl');
-      this.map.add(e.x, e.y, big ? 72 : 48, fade, BLAST_COLOR, 0.6 * fade);
+      this.addLight(map, e.x, e.y, big ? 72 : 48, fade, BLAST_COLOR, 0.6 * fade);
+    }
+  }
+
+  /**
+   * OAT (spec §8.8 "Night streaks"): a light at world (x, y) mirrors on the water / wet rows
+   * [y0, y1] (world y of the map's frame; `floorY` its floor row, −1: the walk plane): a column of
+   * short dashes from above to below its mirror point, each a thin ellipse in the map (so the
+   * smooth glow rounds them), swaying with a sine of its world row and the tick, fading away from the
+   * mirror point. `key` decorrelates lights.
+   */
+  private addStreak(map: LightMap, st: StreakConfig, x: number, y: number, floorY: number, intensity: number, color: Color, tick: number, key: number): void {
+    if (intensity <= 0.02) return;
+    const camY = map.oy;
+    const yTop = (st.y0 ?? STREAK_Y0) + camY;
+    const yBot = (st.y1 ?? VIEW_H) + camY;
+    if (yBot <= yTop) return;
+    const ripple = Math.max(0, Math.min(1, st.ripple ?? STREAK_RIPPLE));
+    const len = (st.length ?? STREAK_LEN) * (0.8 + 0.6 * ripple);
+    const base = (floorY >= 0 ? floorY : G_WALK) + (st.level ?? STREAK_LEVEL);
+    if (y >= base) return; // a light under the water plane does not mirror
+    let c = 2 * base - y;
+    if (c < yTop + 2) c = yTop + 2;
+    if (c > yBot - 2) c = yBot - 2;
+    const top = Math.max(yTop, c - len * 0.6);
+    const bot = Math.min(yBot, c + len * 0.4);
+    const amp = 0.4 + 1.6 * ripple;
+    const s = (st.strength ?? STREAK_STRENGTH) * Math.min(1, intensity);
+    // Dashes on a world-anchored grid of rows (they do not crawl when the camera moves up or down).
+    for (let yy = Math.ceil(top / DASH_STEP) * DASH_STEP; yy < bot; yy += DASH_STEP) {
+      const dist = Math.abs(yy - c) / len;
+      if (dist >= 1) continue;
+      // A gap in the column (a fixed pattern per light; ripple breaks it more).
+      if (hash2(yy >> 1, key, 0x5b2) < 0.18 + 0.25 * ripple) continue;
+      const sway = Math.sin(yy * 0.83 + tick * 0.045 + key) * amp * (0.4 + dist);
+      const w = 1.2 + ripple * 2 + (yy - yTop) * 0.04 + hash2(yy >> 1, key, 0x2c9) * 1.4;
+      const k = s * (1 - dist * dist) * (0.75 + 0.25 * Math.sin(tick * 0.03 + yy * 0.4 + key));
+      this.addOval(map, x + sway, yy + 0.5, w, 0.75, k, color, 0.9, yTop);
+      this.streakDashes++;
     }
   }
 }

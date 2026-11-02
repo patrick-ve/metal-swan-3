@@ -12,8 +12,10 @@
 import type { ScriptGen } from '../../../../engine/script';
 import type { SectionContext, SectionDef } from '../../../mission/index';
 import { lockedFight, placeBanner, standInWave } from './helpers';
-import { OAT_AMBIENCE, OAT_SECTION, OAT_SONG } from './ids';
-import { STUB_NIGHT, STUB_STYLE } from './placeholder';
+import { D_STRIP_ROWS, OAT_D_DECOR } from './art/place-d';
+import { BG_OAT_D } from './backgrounds';
+import { OAT_D_FLOOR, OAT_D_STYLE } from './floor/d';
+import { OAT_AMBIENCE, OAT_SECTION, OAT_SONG, OAT_STRIP_SOURCE } from './ids';
 import { G, OAT_D, terrainD } from './terrain';
 
 export const OAT_D_EXIT = 'oat-d-end';
@@ -49,15 +51,21 @@ export const sectionD: SectionDef = {
   width: OAT_D.w,
   height: 216,
   scroll: 'right',
-  background: STUB_NIGHT,
+  // The night proof strip 0–1,280 (STREET-A, spec §8.7 d): the night layers, the wet quay floor with
+  // the canal in front, GRAMMAR's Oudezijds row (night bake), lanterns, neon, BLOWVERBOD, elms. The
+  // rest of the section keeps the same quay (no strips) until NIGHT (wave C).
+  background: BG_OAT_D,
   terrain: terrainD(),
-  terrainStyle: STUB_STYLE,
+  terrainStyle: OAT_D_STYLE,
+  floor: OAT_D_FLOOR,
+  strips: { source: OAT_STRIP_SOURCE, depth: 16, height: 168, rows: D_STRIP_ROWS },
+  decor: [...OAT_D_DECOR],
   playerStart: { x: 48, y: G },
   bossStart: { x: OAT_D.bossX, y: G },
   checkpoints: [...OAT_D.checkpoints],
   music: OAT_SONG.d,
   ambience: OAT_AMBIENCE[OAT_SECTION.d],
-  art: ['enemy/handhaver', 'enemy/delivery-rider'],
+  art: ['enemy/handhaver', 'enemy/delivery-rider', 'decor/oat/d/'],
   exits: [{ id: OAT_D_EXIT, rect: { x: OAT_D.w - 32, y: 0, w: 32, h: 216 }, to: OAT_SECTION.e, disabled: true }],
   script: scriptD,
 };
