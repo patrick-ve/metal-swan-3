@@ -1,0 +1,54 @@
+{
+  "lede": "Every enemy and character of the live missions, one frame each, drawn at the squad's approved fidelity on the 384 × 216 grid: hand-drawn parts, IK limbs shaded as cloth tubes, selout, one 1 px outline. These are look samples, not animation sets. VINCENT stands first in every line-up for scale.",
+  "order": ["vincent",
+    "handhaver", "delivery-rider", "fatbike-youth", "seagull", "stag-partier", "stag-partier-2", "stag-groom", "beer-bike",
+    "ams-scan-car", "ams-tow-truck", "ams-wheel-clamp", "ams-mayor",
+    "hostage-tourist", "ams-baker", "ams-hotdog-vendor", "ams-staff-0", "ams-staff-1", "ams-staff-2", "ams-window-waver",
+    "ams-window-cat", "pigeon", "duck-drake", "duck-hen", "swan", "swan-jet",
+    "oz-grunt", "oz-grunt-coat", "oz-rifleman", "oz-mg", "oz-crawler", "oz-tide", "oz-plechelmus", "oz-wu", "oz-winkel"],
+  "old_skip": ["ams-mayor"],
+  "blocks": [
+    {
+      "title": "How to read this page",
+      "items": [
+        "Line-up: each strip is the game's 384 px wide view, so the sizes against VINCENT and against each other are true.",
+        "Viewer: click any card to see it large, next to VINCENT. 'Now 1x' adds the frame the game draws today at 1x; 'Now UHD' adds its 4x frame at the same logical size (what a 4K screen shows today).",
+        "Every sample: each card shows the sample at the largest whole zoom that fits. The button above the cards puts the current 1x game frame beside each one.",
+        "Enemies face left, as they meet the hero in the game."
+      ]
+    },
+    {
+      "title": "Changes from the current designs (please confirm)",
+      "items": [
+        "The Swan is the game's riveted ivory robot (plates, rivets, a lens eye, the beak gun). The squad page's rider poses still use a natural feathered swan; one of the two must change.",
+        "The robot mayor has a steel robot face with red eye slots instead of a human face, so it is no likeness of any real person. It is 173 px tall (the game's layout height), with long wave locks, a silver chain and heavy robot boots.",
+        "The tow truck is 1.2 times longer than in the game (5.3 m instead of 4.3 m at this scale), so it reads as a truck. It faces right, as it backs in during the fight.",
+        "The scan car carries no readable PARKEERCONTROLE: the word needs about 59 px and the door is 25 px wide. A band of letter-like marks takes its place, and there is no light bar (the design follows the real car).",
+        "The beer bike's keg sits as a barrel on the rear deck, not on the roof.",
+        "The trench shovel has a real spade blade; the brute machine gunner is clearly bigger than the other zombies; the crawler has a bare head.",
+        "The handhaver's ticket has no BOETE text (it cannot stay legible); Mevrouw Winkel follows the design doc (middle-aged, dark grey hair)."
+      ]
+    },
+    {
+      "title": "Known weak spots",
+      "items": [
+        "All zombies share one face design; only the headgear tells them apart. On the grunt and the crawler the red band can read as a tie.",
+        "Raised arms are short on the rig, so some cheer and wave poses pass an arm behind the head.",
+        "Small marks need zoom: the baker's F, the party-shirt star, the L-plate, staff-0's freckles, the cat's stripes.",
+        "The Swan is mostly white on white, and its legs are short. The jet Swan's flames are pale on a light sky.",
+        "The tide slice has straight cut sides; its back ranks are dark shapes with glowing eyes."
+      ]
+    },
+    {
+      "title": "Not drawn on purpose",
+      "items": [
+        "Palette-only variants: the handhaver skins b and c, the delivery-rider skins, the black-headed Swan for player 2. They share the sample's body.",
+        "The fatbike looks 1-3 (purple hood, teal cap, orange hood) and the pair on one bike: the same rider and bike with other clothes.",
+        "Stag-party looks 1 and 3: defined in the code, but no live section spawns them.",
+        "The retired heroes (Grace, Gramps, Mittens, Pip): not selectable and not in a live mission.",
+        "The oat mission's cast (makelaar, huisjesmelker, dealer, taxi, bakfiets and others): designed but not built, and the oat work is paused. Its background people are scenery without an outline.",
+        "Boats with people painted in, the background cyclists (not spawned), the 3D rally, the FPS mode, the dormant ring mission and the scrapped missions m0-m5."
+      ]
+    }
+  ]
+}

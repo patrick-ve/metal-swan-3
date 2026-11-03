@@ -1,0 +1,11 @@
+import { resolve } from 'node:path';
+import { writeFileSync } from 'node:fs';
+const imp = (p: string) => import(resolve(process.cwd(), p));
+const S = await imp('src/engine/sprites.ts');
+const C = await imp('src/game/content/index.ts');
+await C.loadContent((id: string) => C.ART_MODULE_IDS.includes(id));
+const pre = ['enemy/handhaver', 'enemy/delivery-rider', 'enemy/fatbike-youth', 'enemy/seagull', 'enemy/stag', 'enemy/cork', 'vehicle/beer-bike', 'item/hostage', 'npc/ams', 'vehicle/swan', 'boss/ams', 'enemy/oz-', 'npc/oz-', 'boss/oz-', 'decor/oz', 'fx/oz'];
+const out: string[] = [];
+for (const p of pre) for (const id of S.listSprites(p)) out.push(`${id}\t${S.getFrames(id, 1).length}f\t${S.getFrames(id,1)[0]?.buf.w}x${S.getFrames(id,1)[0]?.buf.h}`);
+writeFileSync(process.argv[2], out.join('\n') + '\n');
+console.log(out.length);
