@@ -1,0 +1,195 @@
+<title>Squad at 40 Pixels</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* One dark arcade-cabinet column (a deliberate single dark look): the squad line-up first, then the
+   live stage with a hero picker, the viewer, the hero card, the numbers and the build notes. */
+:root{
+  --bg:#13101a; --panel:#1c1825; --panel2:#231e2e; --line:#30293c; --fg:#efe8dc; --mute:#a99fb3;
+  --accent:#e8563b; --gold:#f0c95c; --sky:#99d9ea; --ok:#9fb46a;
+  --display:"Silkscreen", ui-monospace, monospace;
+  --body:"Atkinson Hyperlegible", system-ui, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 72px}
+.wrap{max-width:1060px;margin:0 auto;display:flex;flex-direction:column;gap:48px}
+header{display:flex;flex-direction:column;gap:10px}
+.eyebrow{font-family:var(--display);font-size:15px;letter-spacing:.08em;color:var(--accent);text-transform:uppercase}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(30px,6vw,50px);line-height:1.05;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-weight:400;font-size:24px;margin:0;text-wrap:balance}
+p{margin:0;max-width:68ch}
+.lede{color:var(--mute);font-size:18px}
+section{display:flex;flex-direction:column;gap:14px;min-width:0}
+.stage{background:#000;border:1px solid var(--line);aspect-ratio:16/9;width:100%;max-width:100%;position:relative;overflow:hidden;touch-action:none}
+.stage canvas{position:absolute;left:0;top:0;image-rendering:pixelated;image-rendering:crisp-edges}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font-family:var(--display);font-size:15px;background:var(--panel);color:var(--fg);border:1px solid var(--line);padding:6px 12px;cursor:pointer;touch-action:manipulation}
+button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#13101a}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.readout{font-family:var(--mono);font-size:13px;color:var(--mute)}
+.push{margin-left:auto}
+.keys{font-family:var(--mono);font-size:13px;color:var(--mute);display:flex;flex-wrap:wrap;gap:6px 16px}
+kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-bottom-width:2px;padding:0 5px;color:var(--fg);background:var(--panel)}
+.pad{display:none;gap:10px;justify-content:space-between;flex-wrap:wrap}
+.pad .grp{display:flex;gap:6px;flex-wrap:wrap}
+.pad button{min-width:52px;min-height:46px;user-select:none;-webkit-user-select:none}
+@media (pointer:coarse){.pad{display:flex}}
+.tabwrap{display:flex;flex-direction:column;gap:8px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tabs button{font-size:13px;padding:5px 9px}
+.tabs.cats button{font-size:14px;padding:6px 11px;background:var(--panel2)}
+.tabs.cats button[aria-pressed="true"]{background:var(--gold);border-color:var(--gold);color:#13101a}
+.viewer{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:820px){.viewer{grid-template-columns:1fr}}
+.vbox{background:#000;border:1px solid var(--line);aspect-ratio:16/9;position:relative;overflow:hidden}
+.vbox canvas{position:absolute;left:0;top:0;image-rendering:pixelated}
+.facts{background:var(--panel);border:1px solid var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.facts dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0;font-size:15px}
+.facts dt{color:var(--mute);font-family:var(--mono);font-size:13px;padding-top:2px}
+.facts dd{margin:0}
+.scroll{overflow-x:auto;max-width:100%;border:1px solid var(--line);background:var(--panel2)}
+.scroll canvas{display:block;image-rendering:pixelated}
+table{border-collapse:collapse;width:100%;font-size:15px;min-width:620px}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font-family:var(--display);font-weight:400;font-size:12px;letter-spacing:.06em;color:var(--mute);text-transform:uppercase}
+td.num{font-family:var(--mono);font-size:14px;white-space:nowrap}
+.swatches{display:flex;flex-wrap:wrap;gap:14px}
+.ramp{display:flex;flex-direction:column;gap:4px}
+.ramp .chips{display:flex}
+.ramp .chips span{width:26px;height:26px;display:block}
+.ramp small{font-family:var(--mono);font-size:12px;color:var(--mute)}
+.note{border-left:3px solid var(--gold);padding:10px 14px;background:var(--panel)}
+.steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;max-width:72ch}
+.four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+@media (max-width:900px){.four{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.four{grid-template-columns:1fr}}
+figure{margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+figure .box{background:var(--panel2);border:1px solid var(--line);display:flex;align-items:flex-end;justify-content:center;padding:12px;height:300px;overflow:hidden}
+figure img,figure canvas{image-rendering:pixelated;max-width:100%}
+figcaption{font-size:14px;color:var(--mute)}
+figcaption b{color:var(--fg)}
+.lbox{background:#000;border:1px solid var(--line);aspect-ratio:384/78;width:100%;max-width:100%;position:relative;overflow:hidden}
+.lbox canvas{position:absolute;left:0;top:0;image-rendering:pixelated}
+.heropick{display:flex;flex-wrap:wrap;gap:6px}
+.heropick button{font-size:14px;padding:6px 12px}
+.label{font-family:var(--display);font-size:12px;letter-spacing:.06em;color:var(--mute);text-transform:uppercase}
+.card{display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;align-items:start;background:var(--panel);border:1px solid var(--line);padding:18px}
+@media (max-width:640px){.card{grid-template-columns:1fr}}
+.card canvas{image-rendering:pixelated;background:var(--panel2);border:1px solid var(--line);max-width:100%}
+.card h3{font-family:var(--display);font-weight:400;font-size:22px;margin:0;color:var(--gold)}
+.card .role{color:var(--mute);margin:2px 0 12px}
+.card dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0 0 14px;font-size:15px}
+.card dt{color:var(--mute);font-family:var(--mono);font-size:13px;padding-top:2px}
+.card dd{margin:0;min-width:0}
+td small{font-family:var(--body);color:var(--mute);font-size:12px}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Spike · reference fidelity · five players · 384×216</div>
+  <h1>The squad at 40 pixels</h1>
+  <p class="lede">__LEDE__</p>
+</header>
+
+<section aria-labelledby="h-line">
+  <h2 id="h-line">Side by side</h2>
+  <p>All five play the same animation group, each at his own hold times. Pick a category, then a group. The melee groups show each hero's own weapon.</p>
+  <div class="tabwrap" id="ltabs" aria-label="Animation group for the line-up"></div>
+  <div class="lbox" id="lbox"><canvas id="lscreen" aria-label="The five heroes side by side, scaled by a whole number"></canvas></div>
+  <div class="bar">
+    <button id="lplay" aria-pressed="true">Play</button>
+    <button data-lbg="street" aria-pressed="true">Street</button>
+    <button data-lbg="sheet" aria-pressed="false">Sheet blue</button>
+    <button data-lbg="dark" aria-pressed="false">Dark</button>
+  </div>
+</section>
+
+<section aria-labelledby="h-stage">
+  <h2 id="h-stage">Play it</h2>
+  <div class="bar"><span class="label">Hero</span><div class="heropick" role="group" aria-label="Hero"></div></div>
+  <div class="stage" id="stage"><canvas id="screen" aria-label="Game stage, 384 by 216 pixels, scaled by a whole number"></canvas></div>
+  <div class="bar">
+    <button id="demo" aria-pressed="true">Demo</button>
+    <button id="sc-auto" aria-pressed="true">Fit</button>
+    <button data-s="1" aria-pressed="false">×1</button>
+    <button data-s="2" aria-pressed="false">×2</button>
+    <button data-s="3" aria-pressed="false">×3</button>
+    <span class="readout push" id="readout"></span>
+  </div>
+  <div class="bar"><span class="label">Death on P</span>
+    <button data-death="death" aria-pressed="true">Shot</button><button data-death="death_burn" aria-pressed="false">Burn</button><button data-death="death_blast" aria-pressed="false">Blast</button><button data-death="death_drown" aria-pressed="false">Drown</button><button data-death="death_flat" aria-pressed="false">Crushed</button>
+  </div>
+  <div class="readout" id="animread">&nbsp;</div>
+  <div class="keys">
+    <span><kbd>←</kbd><kbd>→</kbd> run</span><span><kbd>↓</kbd> crouch · aim down in the air</span><span><kbd>↑</kbd> aim up</span>
+    <span><kbd>↑</kbd>+<kbd>→</kbd> aim diagonal</span>
+    <span><kbd>Z</kbd>/<kbd>Space</kbd> jump (hold it to float with Helium Head)</span><span><kbd>X</kbd> fire, hold for the heavy gun (melee when close)</span><span><kbd>C</kbd> grenade</span><span><kbd>V</kbd> <span id="knifeKey">knife</span></span>
+    <span><kbd>Q</kbd> heavy weapon on / off (or walk into the H crate)</span><span><kbd>H</kbd> Helium Head</span><span><kbd>G</kbd> victory</span><span><kbd>T</kbd> time out</span><span><kbd>P</kbd> death</span>
+    <span>Each hero drops in on the parachute. Stand still for the fidgets, longer for the bored animation.</span>
+  </div>
+  <div class="pad" aria-label="Touch controls">
+    <div class="grp"><button data-k="l">◀</button><button data-k="u">▲</button><button data-k="d">▼</button><button data-k="r">▶</button></div>
+    <div class="grp"><button data-k="jump">JUMP</button><button data-k="fire">FIRE</button><button data-k="bomb">BOMB</button><button data-k="knife" id="padKnife">KNIFE</button><button data-k="weapon">WPN</button><button data-k="helium">HE</button><button data-k="cheer">WIN</button><button data-k="die">DIE</button></div>
+  </div>
+</section>
+
+<section aria-labelledby="h-anim">
+  <h2 id="h-anim">Every animation, frame by frame</h2>
+  <div class="bar"><span class="label">Hero</span><div class="heropick" role="group" aria-label="Hero"></div></div>
+  <p>The viewer plays one group of <b class="curname"></b> at the real hold time per frame (60 ticks per second). Use step and slow motion to read single frames.</p>
+  <div class="tabwrap" id="tabs" aria-label="Animation group"></div>
+  <div class="viewer">
+    <div class="vbox" id="vbox"><canvas id="vscreen" aria-label="Animation viewer"></canvas></div>
+    <div class="facts">
+      <div class="bar">
+        <button id="vplay" aria-pressed="true">Play</button>
+        <button id="vprev" aria-label="Previous frame">◀</button>
+        <button id="vnext" aria-label="Next frame">▶</button>
+        <button data-sp="1" aria-pressed="true">1×</button>
+        <button data-sp="0.5" aria-pressed="false">½×</button>
+        <button data-sp="0.25" aria-pressed="false">¼×</button>
+      </div>
+      <div class="bar">
+        <button data-bg="sheet" aria-pressed="true">Sheet blue</button>
+        <button data-bg="street" aria-pressed="false">Street</button>
+        <button data-bg="dark" aria-pressed="false">Dark</button>
+      </div>
+      <dl id="vfacts"></dl>
+    </div>
+  </div>
+  <h3 class="readout" style="margin:4px 0 0">Every frame of the group (×3, hold time in ticks)</h3>
+  <div class="scroll"><canvas id="strip"></canvas></div>
+  <div class="card">
+    <canvas id="cardSprite" aria-label="The selected hero standing, ×5"></canvas>
+    <div>
+      <h3 id="cardName"></h3>
+      <p class="role" id="cardRole"></p>
+      <dl id="cardList"></dl>
+      <div class="swatches" id="swatches"></div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-num">
+  <h2 id="h-num">Against the reference sheet</h2>
+  <p>Sizes and counts measured on the reference sheet, next to the same numbers for each hero. No reference pixels are copied or shown here.</p>
+  <div class="scroll" style="background:transparent;border:0"><table>
+    <thead><tr id="numhead"></tr></thead>
+    <tbody id="numbers"></tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="h-build">
+  <h2 id="h-build">How it is built</h2>
+  <ol class="steps">
+__STEPS__
+  </ol>
+  <div class="note"><p>The faces follow the photos you gave, drawn by hand as caricatures. The photos are not stored in the page or the repo.</p></div>
+</section>
+</div>
+
+__SCRIPT__

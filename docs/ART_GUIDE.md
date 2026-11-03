@@ -451,6 +451,10 @@ victory, spawn, bored, mount, portrait).
 contract (the art-direction trial: six styles on VINCENT, `?char=vincent-<style>`; no style is
 picked yet; see `docs/design/art-styles.md`).
 
+The approved hero look for the next art pass is the 40 px squad spike on the 384×216 grid (five
+heroes, every animation family the strips above need; not in the game yet): see
+`docs/design/squad40.md`.
+
 ### Adding an enemy soldier
 
 ```ts

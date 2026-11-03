@@ -1,0 +1,405 @@
+{
+ "vincent": {
+  "role": "The consultant with a battle plan. The approved look; the other four are built on his rig.",
+  "items": [
+   [
+    "Face",
+    "Short dark-brown hair with high temples, dark brows, short dark beard, a wide toothy grin."
+   ],
+   [
+    "Clothes",
+    "Brown tweed jacket, white shirt, thin maroon tie, dark trousers, black shoes."
+   ],
+   [
+    "Weapon",
+    "One pistol, the far hand on the grip."
+   ],
+   [
+    "Melee",
+    "Knife: an overhead slash and a stab."
+   ],
+   [
+    "Fidget",
+    "Takes out his folded battle plan, reads it, smirks, puts it away."
+   ],
+   [
+    "Victory",
+    "Pistol to the sky, the far fist pumps behind his head, a hop."
+   ],
+   [
+    "Bored",
+    "Checks his watch, shakes the wrist, sighs, taps a foot."
+   ],
+   [
+    "Second fidget",
+    "Straightens his tie, chin up, smooths it down, a smug look."
+   ]
+  ],
+  "ramps": [
+   [
+    "Outline",
+    "K"
+   ],
+   [
+    "Hair",
+    "AHhQ"
+   ],
+   [
+    "Skin",
+    "LSsz"
+   ],
+   [
+    "Beard",
+    "bB"
+   ],
+   [
+    "Teeth",
+    "w"
+   ],
+   [
+    "Tweed",
+    "Jjq"
+   ],
+   [
+    "Shirt",
+    "Tt"
+   ],
+   [
+    "Tie",
+    "Rr"
+   ],
+   [
+    "Trousers",
+    "PpoO"
+   ],
+   [
+    "Shoes",
+    "Xxv"
+   ],
+   [
+    "Pistol",
+    "GgnN"
+   ]
+  ]
+ },
+ "thom": {
+  "role": "\"Little Napoleon\": the cocky gunslinger with 1900 headshots. One pixel shorter than VINCENT.",
+  "items": [
+   [
+    "Face",
+    "A navy cap worn backwards (the brim sticks out behind), a blond buzz cut under it, squinting happy eyes, a huge toothy grin, fair rosy skin, an ear that sticks out."
+   ],
+   [
+    "Clothes",
+    "Dutch army camouflage: a sand base with olive and brown blotches and dark spots, painted along each arm and leg so it moves with the limb. Coyote combat boots."
+   ],
+   [
+    "Weapon",
+    "Two pistols. The near one fires first, the far one four frames later, so every trigger pull sends two bullets."
+   ],
+   [
+    "Melee",
+    "Pistol whip: a chop with the pistol, and a jab with the butt."
+   ],
+   [
+    "Fidget",
+    "Twirls one pistol twice on his trigger finger, blows the smoke off the muzzle, winks."
+   ],
+   [
+    "Victory",
+    "Both pistols up, a hop, one shot into the sky from each."
+   ],
+   [
+    "Bored",
+    "Spins both pistols, slides them into his belt, folds his arms, taps a boot, draws again with a wink."
+   ],
+   [
+    "Second fidget",
+    "Polishes a pistol on his shirt and admires it while a gleam runs along the barrel."
+   ],
+   [
+    "Heavy weapon",
+    "No pistols: a rising butt stroke and a stock jab with both hands on the heavy gun."
+   ]
+  ],
+  "ramps": [
+   [
+    "Outline",
+    "K"
+   ],
+   [
+    "Hair",
+    "AH"
+   ],
+   [
+    "Skin",
+    "LSsz"
+   ],
+   [
+    "Teeth",
+    "w"
+   ],
+   [
+    "Camo base",
+    "Jjq"
+   ],
+   [
+    "Olive",
+    "VY"
+   ],
+   [
+    "Boots + brown",
+    "Xxv"
+   ],
+   [
+    "Cap",
+    "CEU"
+   ],
+   [
+    "Dark",
+    "Q"
+   ],
+   [
+    "Pistols",
+    "GgnN"
+   ]
+  ]
+ },
+ "dirk": {
+  "role": "The plumber with exceptional combat skills. One column wider than VINCENT and one row taller (the hair spikes).",
+  "items": [
+   [
+    "Face",
+    "Messy spiky brown hair with a quiff, a thick drooping mustache, light stubble with a darker chin, a round rosy face, a narrow squint."
+   ],
+   [
+    "Clothes",
+    "Fluorescent yellow hi-vis vest with grey reflective bands over a dark work polo, a tool belt with a pouch, navy work trousers with knee pads, heavy brown work boots."
+   ],
+   [
+    "Weapon",
+    "One pistol."
+   ],
+   [
+    "Melee",
+    "Plunger: an overhead smack with a plop, and a thrust where the cup squashes flat and pops off. The plunger is its own set of hand parts, so a plumb bob can replace it without new poses."
+   ],
+   [
+    "Fidget",
+    "Strokes his mustache twice with his eyes shut, nods, blinks."
+   ],
+   [
+    "Victory",
+    "Pistol up and the plunger raised behind his head like a trophy."
+   ],
+   [
+    "Bored",
+    "Blows on a steel thermos cup, a long sip, a sigh with steam, two foot taps."
+   ],
+   [
+    "Second fidget",
+    "A pipe wrench slaps into his palm, twirls a full turn and goes back on the belt."
+   ]
+  ],
+  "ramps": [
+   [
+    "Outline",
+    "K"
+   ],
+   [
+    "Hair",
+    "AHhQ"
+   ],
+   [
+    "Skin",
+    "LSsz"
+   ],
+   [
+    "Stubble",
+    "bB"
+   ],
+   [
+    "Hi-vis",
+    "Jjq"
+   ],
+   [
+    "Polo",
+    "RrU"
+   ],
+   [
+    "Plunger",
+    "CE"
+   ],
+   [
+    "Trousers",
+    "PpoO"
+   ],
+   [
+    "Boots",
+    "Xxv"
+   ],
+   [
+    "Steel",
+    "GgnN"
+   ]
+  ]
+ },
+ "bob": {
+  "role": "\"Captain Climate\": the superhero who saves the climate and flies to Istanbul every month. Slim build.",
+  "items": [
+   [
+    "Face",
+    "Brown hair with volume, swept up, short sides, blue eyes, pale skin, faint stubble, a slim face, a wide friendly smile."
+   ],
+   [
+    "Clothes",
+    "A leaf-green suit with a white leaf on the chest, brown belt, gloves and knee-high boots."
+   ],
+   [
+    "Cape",
+    "Like the Israeli flag: white, a blue stripe near the shoulders and one near the hem, a blue six-pointed star in the middle. It is its own sprite behind the body and moves with every action."
+   ],
+   [
+    "Weapon",
+    "One pistol in a gloved hand."
+   ],
+   [
+    "Melee",
+    "Hero punch: a haymaker and a straight jab, each with an impact burst."
+   ],
+   [
+    "Fidget",
+    "A hero pose with the cape in the wind, then a guilty look at his boarding pass."
+   ],
+   [
+    "Victory",
+    "A spring onto his toes, the fist punches up and forward, the cape billows."
+   ],
+   [
+    "Bored",
+    "Checks his phone, the cape droops; a ding: a new flight, a guilty grin, the cape lifts."
+   ],
+   [
+    "Second fidget",
+    "A slow sip from a reusable bamboo cup, an “aah”, a thumbs-up."
+   ]
+  ],
+  "ramps": [
+   [
+    "Outline",
+    "K"
+   ],
+   [
+    "Hair + leather",
+    "AHhQ"
+   ],
+   [
+    "Skin",
+    "LSsz"
+   ],
+   [
+    "Stubble",
+    "bB"
+   ],
+   [
+    "Teeth",
+    "w"
+   ],
+   [
+    "Suit",
+    "Jjq"
+   ],
+   [
+    "White",
+    "Tt"
+   ],
+   [
+    "Blue",
+    "UV"
+   ],
+   [
+    "Pistol",
+    "GgnN"
+   ]
+  ]
+ },
+ "patrick": {
+  "role": "The supernerd, AI fan and master of eating frikandellen.",
+  "items": [
+   [
+    "Face",
+    "Black hair with short sides and a slick swept-back top (a blue sheen on the crown), straight dark brows, a calm closed-mouth smile, a thin mustache, a strong jaw. No glasses, as in the photo."
+   ],
+   [
+    "Clothes",
+    "Black zip jacket with a raised collar over a white t-shirt, a blue lanyard with a white badge, blue-black jeans, dark sneakers with white soles."
+   ],
+   [
+    "Weapon",
+    "One pistol."
+   ],
+   [
+    "Melee",
+    "Keyboard: an overhead smash that knocks keycaps off, and a quick jab with the end of the board. Drawn by hand at five angles, so the keys stay clean."
+   ],
+   [
+    "Fidget",
+    "Takes a frikandel out of his jacket, bites, chews, looks happy, bites again, puts the stub away."
+   ],
+   [
+    "Victory",
+    "The pistol up on the diagonal so his face and badge show, a big grin."
+   ],
+   [
+    "Bored",
+    "Plays a tiny handheld game, wins, loses interest; a second frikandel peeks from his jacket."
+   ],
+   [
+    "Second fidget",
+    "Types a question to his AI, waits for the dots, reads the long answer, grins and nods."
+   ]
+  ],
+  "ramps": [
+   [
+    "Outline",
+    "K"
+   ],
+   [
+    "Jacket + hair",
+    "AJjqQ"
+   ],
+   [
+    "Skin",
+    "LSsz"
+   ],
+   [
+    "Stubble",
+    "bB"
+   ],
+   [
+    "T-shirt",
+    "Tt"
+   ],
+   [
+    "Lanyard",
+    "Rr"
+   ],
+   [
+    "Jeans",
+    "PpoO"
+   ],
+   [
+    "Sneakers",
+    "Xxv"
+   ],
+   [
+    "Frikandel",
+    "CE"
+   ],
+   [
+    "Steel",
+    "GgnN"
+   ]
+  ]
+ }
+}
