@@ -8,7 +8,7 @@
  *
  * | id | params | script API |
  * |---|---|---|
- * | `ams-baker` | `facing`, `mode` (idle), `counter` (false: draw a small Fabel Friet counter in front of him), `to` (walk target x), `speed` (0.8), `toss` (what `toss()` throws, default `'crate'`) | see `AmsPerson`; plus `toss(contents?)`: wind-up, throw (the item leaves his hand on the 3rd frame; `tossed` counts throws), back to idle. `talk(ticks)`: talks with the scoop (mouth + gestures) |
+ * | `ams-baker` | `facing`, `mode` (idle), `counter` (false: draw a small Fabel Friet counter in front of him), `to` (walk target x), `speed` (0.8), `toss` (what `toss()` throws, default `'crate'`) | see `AmsPerson`; plus `toss(contents?)`: wind-up, throw (the item leaves the scoop's bowl, the `hand` point, on frame TOSS_RELEASE of the baked strip, tick 14 of 28; `tossed` counts throws), back to idle. `talk(ticks)`: talks with the scoop (mouth + gestures) |
  * | `ams-hotdog-vendor` | `facing`, `mode`, `counter`, `range` (40) | salutes (P.SALUTE, calm face, 70 ticks) once per player who passes within `range` px on foot or riding a vehicle, with a `gag` bubble `HOWDY, SOLDIER!` (on a Swan: `NICE BIRD, SOLDIER!`). `saluted` = bit mask of player slots |
  * | `ams-staff` | `look` 0–2, `facing`, `mode`, `to`, `speed` | modes idle / walk / clap / cheer / wave |
  *

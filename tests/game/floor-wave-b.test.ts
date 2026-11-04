@@ -531,7 +531,7 @@ function threat(e: Entity, w: World): string {
 describe('§3.7 has no exceptions (§12.1 item 3): a bot run through every floor section, drawn every tick', () => {
   const runs: Array<[string, string, boolean]> = [];
   for (const m of ['ams', 'oldenzaal']) for (const sec of Object.values(getMission(m)?.sections ?? {})) if (floorOf(sec)) runs.push([m, sec.id, false]);
-  // The boss's intro (ROBO-HALSEMA walks out of the Stopera's doors): from the boss rush's start.
+  // The boss's intro (MECHA HASLEMA walks out of the Stopera's doors): from the boss rush's start.
   runs.push(['ams', 'd', true]);
   for (const [m, id, boss] of runs) {
     it(`${m}/${id}${boss ? ' (boss rush)' : ''}: no entity that can be hit, can hurt or stops shots is drawn at a depth (drawDepth ≠ 0) in any tick`, async () => {

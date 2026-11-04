@@ -1,6 +1,6 @@
 /**
  * UHD art of the Amsterdam locals (docs/ART_GUIDE.md "UHD art"; cast group, LOCALS): the riders
- * (27 sets), the gull, the handhaver and the BOETE ticket have ONE density-generic generator for
+ * (27 sets) and the gull have ONE density-generic generator for
  * 2× and 4×. Every frame keeps the 1× geometry (size × d, anchor, points; no px cut outside the
  * 1× box), uses PAL_HD only, is new art (not the 1× or the 2× frame scaled), and is deterministic;
  * the wheels turn in a 4-phase loop, the cranks follow the rider's feet, the cube bag's logo stays
@@ -17,7 +17,8 @@ import { gullHd } from '../../src/game/content/locals/seagull.art';
 import { BIKE, bikeHd, cubePackHd, wheelHd } from '../../src/game/content/locals/rider.hd';
 import { duplicateFrames } from '../art/motion';
 
-const PREFIXES = ['enemy/fatbike-youth', 'enemy/delivery-rider', 'enemy/seagull/', 'enemy/handhaver', 'enemy/boete-ticket/'];
+// The handhaver and the BOETE ticket are baked 40 px sets (1x at every tier, docs/design/ams40.md rule 7): tests/art/art40-gates.test.ts.
+const PREFIXES = ['enemy/fatbike-youth', 'enemy/delivery-rider', 'enemy/seagull/'];
 
 let warn: { mock: { calls: unknown[][] }; mockRestore: () => void };
 let ids: string[] = [];
@@ -132,6 +133,5 @@ describe('locals: HD bikes', () => {
     for (const n of ['ride', 'idle', 'kick', 'tell', 'turn', 'die-seat', 'get-up']) expect(duplicateFrames(`enemy/fatbike-youth/${n}`, 4), n).toEqual([]);
     for (const n of ['ride', 'idle', 'kick']) expect(duplicateFrames(`enemy/delivery-rider/${n}`, 4), n).toEqual([]);
     for (const n of ['walk', 'idle', 'tell', 'attack']) expect(duplicateFrames(`enemy/seagull/${n}`, 4), n).toEqual([]);
-    for (const n of ['idle', 'walk', 'throw']) expect(duplicateFrames(`enemy/handhaver/${n}`, 4), n).toEqual([]);
   });
 });

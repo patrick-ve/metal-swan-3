@@ -290,6 +290,68 @@ Motion helpers for the animation wave live in the game layer (docs/ART_GUIDE.md 
 `new Turner(facing, widths, ticksPerFrame, dist, hold)` (`creatures/common.ts`: `update(dx)` is
 true on the flip tick, `frame()` is −1 when not turning, `snap(f)` cancels).
 
+## Baked sets — `baked.ts` (40 px characters, `tools/art40`)
+
+Characters drawn offline at 40 px (docs/design/ams40.md) are **baked**: `npm run art40 -- <slug>`
+renders `tools/art40/chars/<slug>/` and writes `src/game/content/art40/<slug>.gen.ts` (generated,
+checked in, "do not edit"; tools/art40/README.md has the set module API). The file exports
+`SET: BakedSet` and one named constant per event:
+
+```ts
+import { SET, THROW_RELEASE } from '../content/art40/handhaver.gen';
+defineBakedSet(SET);                         // 'enemy/handhaver/idle', ... + every variant prefix
+defineBakedSet(SET, { only: ['idle', 'enemy/handhaver-b/walk'] });   // strip names or full ids
+```
+
+```ts
+interface BakedFrame { w; h; ox; oy; px: string; pts?: Record<string, [x, y]>; smear?: true }
+interface BakedStrip { frames: BakedFrame[]; durations: number[]; loop: boolean; defer?: true; cls?: string; why?: string; face?: 1 | -1 }
+interface BakedSet {
+  v: 2; slug; prefix;                        // strip 'walk' → id '<prefix>/walk'
+  budget: 28 | 40 | 64;                      // plan D1 colour budget (40 / 64 only for listed slugs)
+  face?: 1 | -1;                             // the way the unflipped frames face (a walk moves that way)
+  pal: string[];                             // '#rrggbb', index 0 transparent, at most 91 entries
+  outline: number; hl?: number[]; fx?: number[];   // outline / single-pixel / shared FX ramp indices
+  variants?: Record<string, string[]>;       // another prefix → a palette of the same length
+  strips: Record<string, BakedStrip>;
+  events?: Record<string, number>;           // THROW_RELEASE, KICK_HIT, ... (also named exports)
+}
+defineBakedSet(set, { only? }) → ids         // throws (registering nothing) when an id exists
+bakedSetIds(set, { only? }) / decodeBakedFrame(f, bakedPalette(pal)) / decodeBakedIndices(f)
+encodeBakedIndices(idx) / bakedStreamValues(px) / PX_ALPHABET / BAKED_FORMAT
+```
+
+- `px` = the pixel stream (format v2): pairs of characters over `PX_ALPHABET` (91 printable
+  characters `'#'`..`'~'` without the backslash, value = position): (run length − 1, palette
+  index), row-major (runs cross rows). One character per byte keeps the data byte-aligned for gzip
+  (about 30 % smaller after gzip than base64). `ox`, `oy` = the anchor (a standing figure: 'feet',
+  the line under the soles, `oy == h`); `pts` are relative to the anchor of the unflipped frame, as
+  everywhere in the engine. A v1 (base64) set is refused: bake it again.
+- **Lazy.** Registration decodes nothing; an id decodes its frames on its first `getFrames`
+  (the registry caches them). A variant decodes the same runs through its own palette. Measured
+  (Node, 2026-11-03, format v2): about 6 µs per hero frame (uncropped 80 × 76), 4,375 frames in
+  about 26 ms (the plan budget: 50 ms per mission start).
+- **Size.** VINCENT's 601 kit frames: 64 KB gzip (v1 base64: 93 KB). The gates test
+  (`tests/art/art40-gates.test.ts`) sums the gzip size of every generated file against the plan's
+  400 KB.
+- **1× only.** No dense art is registered: `getFrames(id, 2 | 4)` returns the 1× frames at every
+  art tier (plan rule 7). An id that already exists (also only as dense art or as a dense alias)
+  is an error: delete its old registration first (plan rule 8). A later `defineSprite` of a baked
+  id still overwrites it silently (the engine allows it): the coverage gate
+  (`tools/art40/check/coverage.ts`) catches it.
+- **Bake commands:** `npm run art40 -- <slug> | --all` writes, `--check` compares without writing
+  (exit 1 on any difference: the gate), `--sheet` writes `tmp/art40/<slug>/sheet.png` and
+  `<strip>.gif`, `--list` lists the sets. The bake also writes the joint track
+  `tools/art40/joints/<slug>.json` (not shipped; the smoothness gate reads it).
+  `python3 tools/art40/selftest.py [--heroes]` proves the production kit renders pixel-identical
+  to the frozen spikes. Fixture sets (`_` slugs) bake to `tests/fixtures/art40/`
+  (`tests/engine/baked.test.ts`, `tests/tools/art40-bake.test.ts`).
+- **Gates:** `npm run art40-check [-- <slug>...]` (format, colour, outline, orphan, aa, class,
+  contract, foot, smooth against `docs/design/ams40/contract.json`; exit 1 on a failure);
+  `npm run art40-contract [-- --check]` extracts the contract; `npm run art40-check --
+  --write-rules` writes `tools/art40/rules.json` (the one class table, budgets and FX ramp the
+  Python bake reads).
+
 ## 6. Fonts — `font.ts`
 
 Fonts `'small'` (proportional 5×7 caps, lower case with descenders, tabular 5-px digits,

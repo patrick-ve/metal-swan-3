@@ -1,5 +1,5 @@
 /**
- * Writes a placeholder clip for every ROBO-HALSEMA line that has no file yet
+ * Writes a placeholder clip for every MECHA HASLEMA line that has no file yet
  * (src/game/content/bosses/ams/voice.ts → public/audio/mayor/<voiceKey>.mp3):
  *
  *   npm run audio:mayor-placeholders [-- --dry-run] [-- --force]

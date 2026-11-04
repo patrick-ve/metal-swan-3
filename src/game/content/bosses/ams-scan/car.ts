@@ -34,6 +34,7 @@ import type { Entity } from '../../../../engine/entity';
 import { rectAt, type Rect } from '../../../../engine/math';
 import type { DrawOpts, Renderer } from '../../../../engine/render';
 import type { ScriptGen } from '../../../../engine/script';
+import { PAL } from '../../../../engine/palette';
 import { getFrames, hasSprite } from '../../../../engine/sprites';
 import type { World } from '../../../../engine/world';
 import { Boss, type BossPart } from '../../../boss';
@@ -42,13 +43,85 @@ import { debris, dust, explosion, smokeTrail } from '../../../fx';
 import { isPlayer, type Player } from '../../../player/player';
 import { defineEntity, paramFacing, paramNum, type SpawnParams } from '../../../registry';
 import { AmsTowTruck, AmsWheelClamp, BOSS_HIT, floorNear, isClamped, ScanReticle, ScanTicket } from './adds';
-import { CAB, CLAMP_TAG, ID, SCAN, SCAN_ART, SCAN_ID, SCAN_NAME, SCAN_TAG, TRUCK_ID, TRUCK_TAG, WRECK } from './geometry';
+import {
+  BLINK_BRAKE,
+  BLINK_HAZARD,
+  BLINK_REVERSE,
+  BODY_DIVE,
+  BODY_LEVEL,
+  BODY_SQUAT,
+  BODY_TILT_MILLI,
+  CAB_AIRBAG,
+  CAB_AIRBAG_POP,
+  CAB_BACK,
+  CAB_CALM,
+  CAB_GOTCHA,
+  CAB_SHOCK,
+  CAB_SHOUT,
+  CAB_SHOUT_B,
+  SCAN_DOWN,
+  SCAN_FIRE,
+  SCAN_LIFT1,
+  SCAN_LIFT2,
+  SCAN_LOCK,
+  SCAN_ON,
+  SCAN_RECOIL,
+  SCAN_SWEEP_N,
+  WRECK_FACING,
+  WRECK_IMPACT,
+  WRECK_REST,
+  WRECK_ROLLS,
+} from '../../art40/ams-scan.gen';
+import { SET as OFFICER } from '../../art40/handhaver.gen';
+import { HANDHAVER } from '../../locals/handhaver';
+import { CLAMP_TAG, ID, SCAN, SCAN_ART, SCAN_ID, SCAN_NAME, SCAN_TAG, TRUCK_ID, TRUCK_TAG, WRECK } from './geometry';
 
 const P_SCANNER = 0;
 const P_BODY = 1;
 const drawOpts: DrawOpts = {};
 const ramRect: Rect = { x: 0, y: 0, w: 0, h: 0 };
 const pt: [number, number] = [0, 0];
+
+// Art-only numbers of the baked car (tools/art40/chars/ams-scan; local px, facing right).
+/** The tail light's glow centre (brake and reversing lamps; `blink` frames). */
+const TAIL_GLOW = [-42, -20] as const;
+/** The reference columns the overlays shear with: the scanner box's middle, the officer. */
+const SCAN_REF_X = -8;
+const CAB_REF_X = 1;
+/** The front camera window of the lifted box (the scan beam starts here). */
+const CAMERA = [6, -38] as const;
+/** Ticks of the print kick (SCAN_FIRE) and its recoil (SCAN_RECOIL). */
+const PRINT_KICK = 3;
+const PRINT_TICKS = 8;
+/** Ticks per frame of the scan sweep and of the lock's lens pulse. */
+const SWEEP_TPF = 3;
+const LOCK_TPF = 4;
+/** The beam colours: tracking (dim, dashed), locked (hot). */
+const BEAM_TRACK = PAL.red[1];
+const BEAM_LOCK = PAL.red[3];
+
+/**
+ * The fleeing officer's run: his walk strip's stride (px a cycle at his own walk speed) spread over
+ * its frames by their ticks, so the frame follows the distance he covers (no foot slide at any speed).
+ */
+const DRIVER_WALK = OFFICER.strips.walk.durations;
+const DRIVER_CYCLE = DRIVER_WALK.reduce((a, b) => a + b, 0);
+/** Frame of the walk strip after `dist` px (his walk speed `HANDHAVER.walk` px/tick). */
+export function driverFrame(dist: number): number {
+  let t = (dist / HANDHAVER.walk) % DRIVER_CYCLE;
+  for (let i = 0; i < DRIVER_WALK.length; i++) {
+    if (t < DRIVER_WALK[i]) return i;
+    t -= DRIVER_WALK[i];
+  }
+  return 0;
+}
+
+/** Rows a body column (unflipped local x) moves in a pose: the bake's shear (BODY_TILT_MILLI). */
+export function bodyShift(x: number, pose: number): number {
+  const sgn = pose === BODY_SQUAT ? 1 : pose === BODY_DIVE ? -1 : 0;
+  if (sgn === 0) return 0;
+  return Math.floor((-(x + 0.5) * BODY_TILT_MILLI * sgn) / 1000 + 0.5);
+}
 
 /** One attack of the fight: when its telegraph began and when it struck (ticks; −1 = not yet). */
 export interface ScanAttackTrace {
@@ -65,10 +138,18 @@ export class AmsScanCar extends Boss {
   private readonly arenaFixed: boolean;
 
   // Look state (read by draw; set by the scripts).
-  /** Scanner strip frame: 0 down, 1 half, 2 up, 3 scanning. */
-  scanFrame = 0;
-  /** Cabin frame (CAB). */
-  cabin: number = CAB.calm;
+  /** Scanner strip frame (SCAN_*: down, lifted, the sweep, the lock). */
+  scanFrame = SCAN_DOWN;
+  /** Cabin frame (CAB_*). */
+  cabin: number = CAB_CALM;
+  /** Body pose (BODY_LEVEL / BODY_SQUAT / BODY_DIVE): set by the drive; `poseSeq` plays a settle. */
+  pose: number = BODY_LEVEL;
+  private poseSeq: Array<[number, number]> = [];
+  private poseHold = 0;
+  /** Ticks left of the printer's kick (SCAN_FIRE, then SCAN_RECOIL). */
+  printT = 0;
+  /** The tail lamp: 0 off, BLINK_BRAKE + 1, BLINK_REVERSE + 1. */
+  private tailLamp = 0;
   /** Distance the wheels rolled (px; the turn frame) and the body's rev rock (px up). */
   wheelDist = 0;
   rockY = 0;
@@ -87,13 +168,14 @@ export class AmsScanCar extends Boss {
   readonly trace: ScanAttackTrace[] = [];
 
   // Death.
-  /** −1 upright; wreck strip frame 0–2 rolling, 3 on its roof. */
+  /** −1 upright; wreck strip frame: 0 … WRECK_ROLLS − 1 rolling, WRECK_IMPACT, WRECK_REST on its roof. */
   wreckFrame = -1;
   /** Height over the floor while it flips (px up). */
   lift = 0;
   private liftV = 0;
   private driverOn = false;
   private driverX = 0;
+  private driverX0 = 0;
   private driverY = 0;
   private driverDir: 1 | -1 = 1;
   private driverFrames = 0;
@@ -224,8 +306,8 @@ export class AmsScanCar extends Boss {
   override *intro(): ScriptGen {
     this.trackArena();
     const I = SCAN.intro;
-    this.scanFrame = 0;
-    this.cabin = CAB.calm;
+    this.scanFrame = SCAN_DOWN;
+    this.cabin = CAB_CALM;
     // It drives in and brakes at its spot.
     for (let guard = 0; guard < 600; guard++) {
       this.trackArena();
@@ -238,6 +320,7 @@ export class AmsScanCar extends Boss {
       yield;
     }
     this.speed = 0;
+    this.settle();
     this.world.audio.sfx('swan/skid', { pitch: 0.8, vol: 0.6 });
     dust(this.world, this.x + this.facing * 20, this.y, 3);
     yield 14;
@@ -245,14 +328,30 @@ export class AmsScanCar extends Boss {
     this.world.audio.sfx('ams/scan-up');
     for (let i = 0; i < I.rise; i++) {
       this.trackArena();
-      this.scanFrame = i < 16 ? 0 : i < 32 ? 1 : i < 44 ? 2 : i < 54 ? 3 : 2;
+      this.scanFrame = i < 16 ? SCAN_DOWN : i < 32 ? SCAN_LIFT1 : i < 44 ? SCAN_LIFT2 : i < 54 ? SCAN_ON + (Math.floor((i - 44) / SWEEP_TPF) % SCAN_SWEEP_N) : SCAN_LIFT2;
       if (i === 44) {
         this.world.audio.sfx('ams/scan-beep', { pitch: 0.8 });
         this.say('KENTEKEN GESCAND.', { at: SCAN.sayAt, ticks: 100 });
       }
       yield;
     }
-    this.scanFrame = 2;
+    this.scanFrame = SCAN_LIFT2;
+  }
+
+  /** The brake's settle: the nose dives, rebounds, levels (look only). */
+  private settle(): void {
+    this.poseSeq = [[BODY_DIVE, 5], [BODY_SQUAT, 3]];
+    this.poseHold = 0;
+  }
+
+  /** Advance the pose settle (look only). */
+  private tickPose(): void {
+    if (this.poseHold > 0 && --this.poseHold > 0) return;
+    const next = this.poseSeq.shift();
+    if (next) {
+      this.pose = next[0];
+      this.poseHold = next[1];
+    } else if (this.poseHold <= 0 && !this.revving && !this.ramming && !this.reversing) this.pose = BODY_LEVEL;
   }
 
   // ------------------------------------------------------------------------------- tick
@@ -273,6 +372,8 @@ export class AmsScanCar extends Boss {
     if (this.staggerTicks > 0) this.shakeX = Math.floor(this.world.tick / 2) % 2 === 0 ? 1 : 0;
     else this.shakeX = 0;
     if (this.revving) this.wheelDist += 1.4;
+    if (this.printT > 0) this.printT--;
+    this.tickPose();
     // Damage smoke from the bonnet.
     if (this.partState(this.parts[P_BODY]) === 2 && this.world.tick % 7 === 0) {
       smokeTrail(this.world, this.x + (this.facing < 0 ? -SCAN.bonnet[0] : SCAN.bonnet[0]), this.y + SCAN.bonnet[1], true);
@@ -365,7 +466,8 @@ export class AmsScanCar extends Boss {
     this.busy = true;
     try {
       const tr = this.mark('scan');
-      this.scanFrame = 3;
+      this.scanFrame = SCAN_ON;
+      this.cabin = CAB_GOTCHA;
       this.world.audio.sfx('ams/scan-beep', { pitch: 0.6, vol: 0.7 });
       this.aimPoint(p, pt);
       const ret = new ScanReticle(this.world, pt[0], pt[1]);
@@ -378,6 +480,7 @@ export class AmsScanCar extends Boss {
         p = q;
         this.aimPoint(q, pt);
         ret.follow(pt[0], pt[1], S.follow);
+        this.scanFrame = SCAN_ON + (Math.floor(i / SWEEP_TPF) % SCAN_SWEEP_N);
         yield;
       }
       ret.locked = true;
@@ -386,6 +489,7 @@ export class AmsScanCar extends Boss {
       const freeze = this.telegraphFor(S.freeze);
       for (let i = 0; i < freeze; i++) {
         if (!this.partAlive('scanner')) return;
+        this.scanFrame = SCAN_LOCK + (Math.floor(i / LOCK_TPF) % 2);
         yield;
       }
       const n = this.volleySize(1);
@@ -398,17 +502,20 @@ export class AmsScanCar extends Boss {
         // About when it lands on the spot: the flight over, then the drop.
         land = Math.ceil(Math.abs(ret.x - px) / Math.max(1, Math.abs(tk.vx))) + 24;
         this.world.audio.sfx('ams/ticket-print');
+        this.printT = PRINT_TICKS;
         if (tr.fire < 0) tr.fire = this.world.tick;
         if (k < n - 1) yield S.gap;
       }
       // The reticle stays on the spot (blinking out) until the strip lands.
       ret.fade = Math.max(12, land);
       this.reticle = null;
-      this.scanFrame = 2;
+      this.scanFrame = SCAN_LIFT2;
+      this.cabin = CAB_CALM;
       yield this.recoveryFor(S.rec);
     } finally {
       if (this.reticle) this.dropReticle();
-      if (this.partAlive('scanner')) this.scanFrame = 2;
+      if (this.partAlive('scanner')) this.scanFrame = SCAN_LIFT2;
+      this.cabin = CAB_CALM;
       this.busy = false;
     }
   }
@@ -427,11 +534,13 @@ export class AmsScanCar extends Boss {
     try {
       const tr = this.mark('ram');
       this.revving = true;
-      this.cabin = CAB.shout;
+      this.cabin = CAB_SHOUT;
       this.world.audio.sfx('ams/rev');
       const tele = this.telegraphFor(R.tele);
       for (let i = 0; i < tele; i++) {
         this.rockY = Math.floor(i / 2) % 2;
+        // The rev: the rear squats onto its wheels (from the 4th tick), the body shudders.
+        this.pose = i < 3 ? BODY_LEVEL : BODY_SQUAT;
         if (i % 4 === 0) smokeTrail(this.world, this.x + (this.facing < 0 ? -SCAN.exhaust[0] : SCAN.exhaust[0]), this.y + SCAN.exhaust[1], i % 8 === 0);
         yield;
       }
@@ -444,7 +553,8 @@ export class AmsScanCar extends Boss {
       this.revving = false;
       this.rockY = 0;
       if (this.anyClamped()) {
-        this.cabin = CAB.calm;
+        this.pose = BODY_LEVEL;
+        this.cabin = CAB_CALM;
         yield this.recoveryFor(R.rec);
         return;
       }
@@ -474,7 +584,11 @@ export class AmsScanCar extends Boss {
         const left = (end - this.x) * dir;
         if (left <= 0.01) break;
         // Accelerate to 3 px/tick; brake hard over the last few px (the skid).
+        const was = v;
         v = Math.min(R.speed, v + R.accel, Math.max(0.6, Math.sqrt(2 * 0.45 * left)));
+        // The launch keeps the nose up while it gathers speed; braking dives it, the brake lights glow.
+        this.pose = v < was - 0.01 ? BODY_DIVE : v < R.speed - 0.01 ? BODY_SQUAT : BODY_LEVEL;
+        this.tailLamp = v < was - 0.01 ? BLINK_BRAKE + 1 : 0;
         this.drive(dir * Math.min(v, left));
         if (v < R.speed - 0.1 && left < 14 && guard % 2 === 0) dust(this.world, this.x - dir * 20, this.y, 1);
         else if (guard % 6 === 0) dust(this.world, this.x - dir * 22, this.y, 1);
@@ -482,12 +596,18 @@ export class AmsScanCar extends Boss {
       }
       this.ramming = false;
       this.speed = 0;
+      this.tailLamp = 0;
+      this.settle();
       this.world.audio.sfx('swan/skid', { pitch: 0.75, vol: 0.7 });
       dust(this.world, this.x + dir * 22, this.y, 3);
       if (blocked) {
         // It backs up to its spot (reversing beeps).
         yield 12;
         this.reversing = true;
+        this.cabin = CAB_BACK;
+        this.tailLamp = BLINK_REVERSE + 1;
+        this.poseSeq = [[BODY_DIVE, 4]];
+        this.poseHold = 0;
         const home = this.homeX(this.side);
         for (let guard = 0; guard < 400; guard++) {
           const left = home - this.x;
@@ -497,6 +617,9 @@ export class AmsScanCar extends Boss {
           yield;
         }
         this.reversing = false;
+        this.tailLamp = 0;
+        this.poseSeq = [[BODY_SQUAT, 4]];
+        this.poseHold = 0;
       } else {
         // It turns around at the far side.
         yield 6;
@@ -504,7 +627,7 @@ export class AmsScanCar extends Boss {
         this.side = this.side < 0 ? 1 : -1;
         dust(this.world, this.x, this.y, 4);
       }
-      this.cabin = CAB.calm;
+      this.cabin = CAB_CALM;
       yield this.recoveryFor(R.rec);
     } finally {
       this.revving = false;
@@ -512,7 +635,8 @@ export class AmsScanCar extends Boss {
       this.reversing = false;
       this.rockY = 0;
       this.speed = 0;
-      this.cabin = CAB.calm;
+      this.tailLamp = 0;
+      this.cabin = CAB_CALM;
       this.busy = false;
     }
   }
@@ -526,7 +650,7 @@ export class AmsScanCar extends Boss {
     this.busy = true;
     try {
       const tr = this.mark('tow');
-      this.cabin = CAB.shout;
+      this.cabin = CAB_SHOUT;
       this.say('TAKELWAGEN!', { at: SCAN.sayAt, ticks: 90 });
       yield SCAN.tow.call;
       if (this.holdAdds) return;
@@ -536,7 +660,7 @@ export class AmsScanCar extends Boss {
       tr.fire = this.world.tick;
       yield 20;
     } finally {
-      this.cabin = CAB.calm;
+      this.cabin = CAB_CALM;
       this.busy = false;
     }
   }
@@ -548,8 +672,11 @@ export class AmsScanCar extends Boss {
     this.ramming = false;
     this.reversing = false;
     this.rockY = 0;
+    this.tailLamp = 0;
+    this.pose = BODY_LEVEL;
+    this.poseSeq = [];
     this.dropReticle();
-    this.cabin = CAB.airbag;
+    this.cabin = CAB_AIRBAG;
     this.hazard = true;
     // The helpers go: the truck drives off, the clamps fall apart.
     for (const t of [...this.world.byTag(TRUCK_TAG)]) if (t instanceof AmsTowTruck) t.leave();
@@ -580,22 +707,26 @@ export class AmsScanCar extends Boss {
         self.liftV += 0.2;
         self.lift -= self.liftV;
         const k = Math.min(1, t / air);
-        self.wreckFrame = Math.min(2, Math.floor(k * 4));
+        self.wreckFrame = Math.min(WRECK_ROLLS - 1, Math.floor(k * WRECK_ROLLS));
         if (self.lift <= 0 && t > 4) break;
         yield;
       }
       self.lift = 0;
-      self.wreckFrame = 3;
+      self.wreckFrame = WRECK_IMPACT;
       const c = self.center();
       explosion(w, c[0], self.y - 14, 'm', { debris: 'metal', shake: 3 });
       debris(w, self.x, self.y - 10, 'metal', 10);
       dust(w, self.x - 24, self.y, 4);
       dust(w, self.x + 24, self.y, 4);
-      yield 30;
+      // The roof caves in on the impact, then springs back a little (the same 30 ticks as before).
+      yield 6;
+      self.wreckFrame = WRECK_REST;
+      yield 24;
       // The driver crawls out and runs off (away from the nearest player).
       const t = self.world.nearestPlayer(self.x, self.y);
       self.driverDir = t && t.x > self.x ? -1 : 1;
       self.driverX = self.x + self.driverDir * 8;
+      self.driverX0 = self.driverX;
       self.driverY = self.y;
       self.driverOn = hasSprite(ID.driverRun);
       self.driverFrames = self.driverOn ? getFrames(ID.driverRun).length : 0;
@@ -651,67 +782,103 @@ export class AmsScanCar extends Boss {
     drawOpts.flipX = flip;
     drawOpts.flash = false;
     if (this.wreckFrame >= 0) {
-      // The wreck has frames for each facing (art.ts `wreckFrame`): never flipped, so its
-      // lettering reads left to right.
+      // The wreck has frames for each facing (WRECK_FACING apart): never flipped, so its print
+      // marks are set the same way as on the live car.
       drawOpts.flipX = false;
-      r.sprite(ID.wreck, this.wreckFrame + (flip ? 4 : 0), Math.round(this.x), Math.round(this.y - this.lift), drawOpts);
+      r.sprite(ID.wreck, this.wreckFrame + (flip ? WRECK_FACING : 0), Math.round(this.x), Math.round(this.y - this.lift), drawOpts);
       this.drawDriver(r);
       return;
     }
     const x = Math.round(this.x) + this.shakeX;
     const y = Math.round(this.y);
     const yb = y - this.rockY;
+    const pose = this.pose;
+    const mx = (lx: number): number => x + (flip ? -lx : lx);
     const body = this.parts[P_BODY];
     const scanner = this.parts[P_SCANNER];
-    const cab = this.staggerTicks > 0 && !dead ? CAB.shock : this.cabin;
-    r.sprite(ID.cabin, cab, x, yb, drawOpts);
+    // The scanner first: its rack feet tuck behind the roof (no gap when the body pitches).
+    const sy = yb + bodyShift(SCAN_REF_X, pose);
+    if (scanner.destroyed) r.sprite(ID.scannerGone, 0, x, sy, drawOpts);
+    else {
+      drawOpts.flash = !dead && scanner.flash >= 3;
+      const state = this.partState(scanner);
+      const f = this.printT > PRINT_TICKS - PRINT_KICK ? SCAN_FIRE : this.printT > 0 ? SCAN_RECOIL : this.scanFrame;
+      r.sprite(ID.scanner[state], f, x, sy, drawOpts);
+      drawOpts.flash = false;
+    }
     drawOpts.flash = !dead && body.flash >= 3;
-    r.sprite(ID.body[this.partState(body)], 0, x, yb, drawOpts);
-    // The lettering on the doors (`PARKEERCONTROLE`, `Gemeente Amsterdam`): never mirrored, it
-    // reads left to right on either side (art.ts `wreckComposite` puts it at the same spots); the
+    r.sprite(ID.body[this.partState(body)], pose, x, yb, drawOpts);
+    // The officer behind the glass: shock while staggered, the airbag pops, the shout shakes a fist.
+    let cab = this.staggerTicks > 0 && !dead ? CAB_SHOCK : this.cabin;
+    if (cab === CAB_AIRBAG && this.deathT < 4) cab = CAB_AIRBAG_POP;
+    else if (cab === CAB_SHOUT && Math.floor(this.world.tick / 6) % 2 === 1) cab = CAB_SHOUT_B;
+    // (it carries the front door's glass: it flashes with the body)
+    r.sprite(ID.cabin, cab, x, yb + bodyShift(CAB_REF_X, pose), drawOpts);
+    drawOpts.flash = false;
+    // The print marks on the doors: never mirrored (they read the same way on either side); the
     // rear door's block has a frame for each facing, set against the (mirrored) crosses.
     drawOpts.flipX = false;
     for (let i = 0; i < 2; i++) {
       const [tx, ty] = SCAN.text[i];
-      r.sprite(ID.text, flip ? SCAN.textFlip[i] : i, x + (flip ? -tx : tx), yb + ty, drawOpts);
+      r.sprite(ID.text, flip ? SCAN.textFlip[i] : i, mx(tx), yb + ty + bodyShift(tx, pose), drawOpts);
+    }
+    // The box's number (lifted 1-2 px; askew at state 2: no number).
+    if (!scanner.destroyed && this.partState(scanner) < 2) {
+      const [tx, ty] = SCAN.text[2];
+      const lift = Math.min(this.scanFrame, SCAN_LIFT2);
+      r.sprite(ID.text, 2, mx(tx), sy + ty - lift, drawOpts);
     }
     drawOpts.flipX = flip;
-    drawOpts.flash = false;
     const f = ((Math.floor(this.wheelDist / 1.9) % 4) + 4) % 4;
     for (let i = 0; i < SCAN.wheelX.length; i++) {
       const wx = SCAN.wheelX[i];
-      r.sprite(ID.wheel, f, x + (flip ? -wx : wx), y + SCAN.wheelY, drawOpts);
+      r.sprite(ID.wheel, f, mx(wx), y + SCAN.wheelY, drawOpts);
     }
-    if (scanner.destroyed) r.sprite(ID.scannerGone, 0, x, yb, drawOpts);
-    else {
-      drawOpts.flash = !dead && scanner.flash >= 3;
-      const state = this.partState(scanner);
-      r.sprite(ID.scanner[state], this.scanFrame, x, yb, drawOpts);
-      // The box's number `24` (frames 1–3 lift the box 1–2 px; askew at state 2: no number).
-      if (state < 2) {
-        const [tx, ty] = SCAN.text[2];
-        drawOpts.flipX = false;
-        r.sprite(ID.text, 2, x + (flip ? -tx : tx), yb + ty - Math.min(this.scanFrame, 2), drawOpts);
-        drawOpts.flipX = flip;
-      }
-      drawOpts.flash = false;
-    }
-    // Hazard lights: slow blink; fast while staggered or revving.
+    // Hazard lights: slow blink; fast while staggered or revving. Brake and reversing lamps.
     const fast = this.staggerTicks > 0 || this.revving;
     if (this.hazard && Math.floor(this.world.tick / (fast ? 4 : 16)) % 2 === 0) {
       for (let i = 0; i < SCAN.lamps.length; i++) {
         const [lx, ly] = SCAN.lamps[i];
-        r.sprite(ID.blink, 0, x + (flip ? -lx : lx), yb + ly, drawOpts);
+        r.sprite(ID.blink, BLINK_HAZARD, mx(lx), yb + ly + bodyShift(lx, pose), drawOpts);
       }
     }
+    if (this.tailLamp > 0 && !dead) {
+      r.sprite(ID.blink, this.tailLamp - 1, mx(TAIL_GLOW[0]), yb + TAIL_GLOW[1] + bodyShift(TAIL_GLOW[0], pose), drawOpts);
+    }
+    this.drawBeam(r, x, sy, flip);
     this.drawDriver(r);
+  }
+
+  /** SCAN LOCK's beam: the front camera to the reticle (dashed and dim while it tracks, hot once locked). */
+  private drawBeam(r: Renderer, x: number, sy: number, flip: boolean): void {
+    const ret = this.reticle;
+    if (!ret || !ret.alive || ret.fade >= 0 || this.scanFrame < SCAN_ON) return;
+    if (ret.locked && Math.floor(ret.t / 3) % 2 === 1) return;
+    const x0 = x + (flip ? -CAMERA[0] : CAMERA[0]);
+    const y0 = sy + CAMERA[1];
+    const x1 = Math.round(ret.x);
+    const y1 = Math.round(ret.y);
+    if (ret.locked) {
+      r.line(x0, y0, x1, y1, BEAM_LOCK);
+      return;
+    }
+    // Tracking: a dashed line whose dashes run toward the target.
+    const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / 4));
+    const ph = this.world.tick % 2;
+    for (let k = ph; k < n; k += 2) {
+      const a = k / n;
+      const b = (k + 1) / n;
+      r.line(Math.round(x0 + (x1 - x0) * a), Math.round(y0 + (y1 - y0) * a), Math.round(x0 + (x1 - x0) * b), Math.round(y0 + (y1 - y0) * b), BEAM_TRACK);
+    }
   }
 
   private drawDriver(r: Renderer): void {
     if (!this.driverOn || this.driverFrames === 0) return;
     drawOpts.flipX = this.driverDir < 0;
     drawOpts.flash = false;
-    r.sprite(ID.driverRun, Math.floor(this.world.tick / 3) % this.driverFrames, Math.round(this.driverX), Math.round(this.driverY), drawOpts);
+    // The frame follows the distance he ran: his walk strip's stride at his own walk speed.
+    const f = driverFrame(Math.abs(this.driverX - this.driverX0)) % this.driverFrames;
+    r.sprite(ID.driverRun, f, Math.round(this.driverX), Math.round(this.driverY), drawOpts);
   }
 
   /** The wreck's rotation centre sits WRECK.mid px above its anchor (art.ts). */

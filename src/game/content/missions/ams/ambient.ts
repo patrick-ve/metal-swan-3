@@ -14,6 +14,7 @@ import { drawEntityFaces } from '../../../mission/floor/hooks';
 import { defineEntity, paramNum, type SpawnParams } from '../../../registry';
 import { sfxNear } from '../../props/common';
 import { isSwan } from '../../vehicles/swan/swan';
+import { SET as WINDOW_SET, WAVER_EMPTY, WAVER_IDLE, WAVER_RAISE, WAVER_RAISE_N, WAVER_WAVE_A, WAVER_WAVE_N } from '../../art40/ams-window-waver.gen';
 import { CYCLIST_LOOKS } from './npc.art';
 
 const drawOpts: DrawOpts = {};
@@ -389,8 +390,60 @@ export class AmsDucks extends Entity {
   }
 }
 
-/** Ticks per lean frame of the window waver (3 frames in, 3 out). */
-const LEAN_TICKS = 3;
+/**
+ * The window waver's phases in ticks of its period (logic time, unchanged by the 40 px art): the
+ * empty window until `in`, she leans in and idles until `wave`, waves until `idle`, idles and leans
+ * out until `out`, then the window is empty again.
+ */
+export const WAVER_PHASE = { in: 100, wave: 130, idle: 250, out: 280 } as const;
+
+/** The frame of the run `durations[first .. first + n - 1]` at tick `t` of the run (looped or held). */
+export function frameInRun(durations: readonly number[], first: number, n: number, t: number, loop: boolean): number {
+  let total = 0;
+  for (let i = 0; i < n; i++) total += durations[first + i];
+  let k = Math.max(0, Math.floor(t));
+  if (loop) k %= total;
+  for (let i = 0; i < n; i++) {
+    k -= durations[first + i];
+    if (k < 0) return first + i;
+  }
+  return first + n - 1;
+}
+
+const PERSON_T = WINDOW_SET.strips.person.durations;
+const LEAN_T = WINDOW_SET.strips.lean.durations;
+const SWISH_T = WINDOW_SET.strips['cat-swish'].durations;
+const sumOf = (a: readonly number[], first = 0, n = a.length): number => a.slice(first, first + n).reduce((x, y) => x + y, 0);
+/** Ticks of the lean in (and of the lean out, played backwards): 9, the old 3 frames × 3. */
+export const WAVER_LEAN_TICKS = sumOf(LEAN_T);
+/** Ticks of the arm raise (and of the lowering, the raise played backwards). */
+export const WAVER_RAISE_TICKS = sumOf(PERSON_T, WAVER_RAISE, WAVER_RAISE_N);
+/** One cat-swish cycle (48 ticks, as before). */
+export const CAT_SWISH_TICKS = sumOf(SWISH_T);
+
+/**
+ * The sprite and frame of the window at tick `t` of the waver's period (draw only; the baked strip
+ * durations time the frames inside the phase windows of WAVER_PHASE): the cat swishes; the person
+ * leans in, idles (a blink), raises the arm, waves (the eased 16-tick cycle), lowers it, idles and
+ * sinks out.
+ */
+export function waverPick(t: number, cat: boolean): readonly [strip: 'person' | 'lean' | 'cat-swish', frame: number] {
+  if (cat) return ['cat-swish', frameInRun(SWISH_T, 0, SWISH_T.length, t, true)];
+  const P = WAVER_PHASE;
+  const lean = WAVER_LEAN_TICKS;
+  if (t < P.in || t >= P.out) return ['person', WAVER_EMPTY];
+  if (t < P.in + lean) return ['lean', frameInRun(LEAN_T, 0, LEAN_T.length, t - P.in, false)];
+  if (t >= P.out - lean) return ['lean', frameInRun(LEAN_T, 0, LEAN_T.length, P.out - 1 - t, false)];
+  if (t < P.wave) return ['person', frameInRun(PERSON_T, WAVER_IDLE, 2, t - P.in - lean, true)];
+  if (t >= P.idle) return ['person', frameInRun(PERSON_T, WAVER_IDLE, 2, t - P.idle, true)];
+  const u = t - P.wave;
+  const raise = WAVER_RAISE_TICKS;
+  if (u < raise) return ['person', frameInRun(PERSON_T, WAVER_RAISE, WAVER_RAISE_N, u, false)];
+  if (u >= P.idle - P.wave - raise) return ['person', frameInRun(PERSON_T, WAVER_RAISE, WAVER_RAISE_N, P.idle - P.wave - 1 - u, false)];
+  return ['person', frameInRun(PERSON_T, WAVER_WAVE_A, WAVER_WAVE_N, u - raise, true)];
+}
+
+const WAVER_IDS = { person: 'npc/ams/ams-window-waver/person', lean: 'npc/ams/ams-window-waver/lean', 'cat-swish': 'npc/ams/ams-window-waver/cat-swish' } as const;
 
 export class AmsWindowWaver extends Entity {
   readonly cat: boolean;
@@ -409,47 +462,26 @@ export class AmsWindowWaver extends Entity {
     this.addTag('npc', 'decor');
   }
 
-  /** Frame of the person strip at phase t: empty → idle → waving → idle → empty. */
-  private frame(): number {
+  /** The window is empty at phase t (before the lean in, after the lean out). */
+  private empty(): boolean {
     const t = this.t % this.period;
-    if (t < 100) return 0;
-    if (t < 130) return 1;
-    if (t < 250) return ((t - 130) >> 3) & 1 ? 3 : 2;
-    if (t < 280) return 1;
-    return 0;
+    return t < WAVER_PHASE.in || t >= WAVER_PHASE.out;
   }
 
   override update(): void {
     if (farOff(this, 120)) return;
     this.t++;
     // A player passing by gets a wave: jump to the waving part if the window is empty.
-    if (!this.cat && this.frame() === 0 && (this.t & 7) === 0 && playerNear(this.world, this.x, this.y, 96, 200)) {
-      this.t = this.t - (this.t % this.period) + 100;
+    if (!this.cat && this.empty() && (this.t & 7) === 0 && playerNear(this.world, this.x, this.y, 96, 200)) {
+      this.t = this.t - (this.t % this.period) + WAVER_PHASE.in;
     }
-  }
-
-  /** Lean frame (0–2) while the person rises into / sinks out of the window, else −1 (draw only). */
-  private lean(): number {
-    const t = this.t % this.period;
-    if (t >= 100 && t < 100 + LEAN_TICKS * 3) return Math.floor((t - 100) / LEAN_TICKS);
-    if (t >= 280 - LEAN_TICKS * 3 && t < 280) return 2 - Math.floor((t - (280 - LEAN_TICKS * 3)) / LEAN_TICKS);
-    return -1;
   }
 
   override draw(r: Renderer): void {
     drawOpts.flipX = false;
     drawOpts.flash = false;
-    const x = this.x;
-    const y = this.y;
-    if (this.cat) {
-      // 4-step tail swish (durations in the strip: 48 ticks a cycle).
-      const c = (this.t % 48);
-      r.sprite('npc/ams/ams-window-waver/cat-swish', c < 14 ? 0 : c < 24 ? 1 : c < 38 ? 2 : 3, x, y, drawOpts);
-      return;
-    }
-    const k = this.lean();
-    if (k >= 0) r.sprite('npc/ams/ams-window-waver/lean', k, x, y, drawOpts);
-    else r.sprite('npc/ams/ams-window-waver/person', this.frame(), x, y, drawOpts);
+    const [strip, f] = waverPick(this.cat ? this.t : this.t % this.period, this.cat);
+    r.sprite(WAVER_IDS[strip], f, this.x, this.y, drawOpts);
   }
 }
 

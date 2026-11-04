@@ -1,15 +1,13 @@
 /**
- * 2× art of ROBO-HALSEMA (mission ams boss, docs/ART_GUIDE.md "2x art (mission ams)"): every
- * `boss/ams-mayor/…` strip (the body pieces, the head frames, the wig, the spring, the floor shadow,
- * the lash and her shots) has a 2× generator the registry accepts (no 'id@2x' fallback, no pixels
- * cut outside the 1× frame), with the 1× logical geometry, palette colours only (PAL or, since the UHD
- * wave, PAL_HD) and real 2× detail.
- * The pieces share one anchor, so the medallion centre and the hatch sit where the game reads them.
+ * MECHA HASLEMA's art is one baked 40 px set (docs/design/ams40.md wave 6, plan rule 7): every
+ * `boss/ams-mayor/…` id keeps its name, has 1× frames only (every art tier draws them scaled: no
+ * 2× / 4× drawers, no dense alias), and the pieces share the one anchor, so the medallion's core
+ * sits on MAYOR.medallionC and the hatch in the hair where the game reads them.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PAL, INK } from '../../src/engine/palette';
-import { inHdPalette } from '../../src/engine/palette-hd';
+import { describe, expect, it } from 'vitest';
+import { bakedSetIds } from '../../src/engine/baked';
 import { getFrames, hasHiSprite, listSprites, spriteErrors } from '../../src/engine/sprites';
+import { HEAD_HATCH, MED_FLASH, MED_OPEN, SET } from '../../src/game/content/art40/ams-mayor.gen';
 import { MAYOR } from '../../src/game/content/bosses/ams/geometry';
 import { loadContent } from '../../src/game/content/index';
 
@@ -43,53 +41,38 @@ const EXPECTED = [
   'wig',
 ];
 
-describe('ROBO-HALSEMA: 2× art', () => {
-  let warn: { mock: { calls: unknown[][] }; mockRestore: () => void };
-  beforeEach(() => {
-    warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-  });
-  afterEach(() => warn.mockRestore());
-
-  it('every mayor id has a 2× generator that the registry accepts, with the 1× geometry and palette colours', async () => {
+describe('MECHA HASLEMA: the baked set', () => {
+  it('keeps every id; 1× frames at every tier, no dense art', async () => {
     await loadContent();
     const ids = listSprites(PREFIX);
     expect(ids.map((id) => id.slice(PREFIX.length)).sort()).toEqual(EXPECTED);
-    const palette = new Set<number>([INK >>> 0, ...Object.values(PAL).flatMap((r) => (r as readonly number[]).map((c) => c >>> 0))]);
+    expect([...bakedSetIds(SET)].sort()).toEqual(ids);
     for (const id of ids) {
-      expect(hasHiSprite(id), id).toBe(true);
+      for (const d of [2, 4] as const) expect(hasHiSprite(id, d), `${id}@${d}x`).toBe(false);
       const lo = getFrames(id, 1);
-      const hi = getFrames(id, 2);
-      expect(hi.length, id).toBe(lo.length);
-      let detailed = false;
-      for (let i = 0; i < lo.length; i++) {
-        const f = hi[i];
-        expect(f.density, `${id}[${i}]`).toBe(2);
-        expect([f.buf.w, f.buf.h, f.ox, f.oy], `${id}[${i}]`).toEqual([lo[i].buf.w * 2, lo[i].buf.h * 2, lo[i].ox, lo[i].oy]);
-        expect(f.pts ?? {}, `${id}[${i}]`).toEqual(lo[i].pts ?? {});
-        const odd = new Set<string>();
-        for (const c of f.buf.data) if ((c & 255) !== 0 && !palette.has(c >>> 0) && !inHdPalette(c)) odd.add((c >>> 0).toString(16));
-        expect([...odd], `${id}[${i}] colours`).toEqual([]);
-        const doubled = lo[i].buf.scaled(2).data;
-        if (!f.buf.data.every((c, k) => c === doubled[k])) detailed = true;
-      }
-      // Real 2× art, not the 1× frames doubled.
-      expect(detailed, id).toBe(true);
+      expect(lo.length, id).toBeGreaterThan(0);
+      expect(getFrames(id, 4).map((f) => [f.buf.w, f.buf.h, f.ox, f.oy])).toEqual(lo.map((f) => [f.buf.w, f.buf.h, f.ox, f.oy]));
     }
-    expect(spriteErrors().filter((e) => e.id.startsWith(PREFIX) && e.id.endsWith('@2x'))).toEqual([]);
-    const cut = warn.mock.calls.map((c: unknown[]) => String(c[0])).filter((m: string) => m.includes('outside the 1× frame') && m.includes(PREFIX));
-    expect(cut).toEqual([]);
-  }, 120_000);
+    expect(spriteErrors().filter((e) => e.id.startsWith(PREFIX))).toEqual([]);
+  });
 
-  it('the 2× medallion is centred on MAYOR.medallionC and the hatch sits in the hair, as at 1×', async () => {
+  it('the medallion core sits on MAYOR.medallionC and the hatch in the hair (the one shared anchor)', async () => {
     await loadContent();
-    const at = (id: string, frame: number, d: number, x: number, y: number): number => {
-      const f = getFrames(`${PREFIX}${id}`, d)[frame];
-      return f.buf.get((f.ox + x) * d, (f.oy + y) * d) >>> 0;
+    const at = (id: string, frame: number, x: number, y: number): number => {
+      const f = getFrames(`${PREFIX}${id}`, 1)[frame];
+      return f.buf.get(f.ox + x, f.oy + y) >>> 0;
     };
     const [mx, my] = MAYOR.medallionC;
-    // The open core: the white-hot centre pixel at both densities.
-    for (const d of [1, 2]) expect(at('medallion-0', 1, d, mx, my), `core d${d}`).toBe(PAL.snow[3] >>> 0);
+    for (const s of [0, 1, 2]) {
+      for (const f of [MED_OPEN, MED_FLASH]) expect(at(`medallion-${s}`, f, mx, my) & 255, `medallion-${s}[${f}]`).not.toBe(0);
+    }
     const [hx, hy] = MAYOR.hatch;
-    for (const d of [1, 2]) expect(at('head-0', 0, d, hx, hy) & 255, `hatch d${d}`).not.toBe(0);
+    for (const s of [0, 1, 2]) expect(at(`head-${s}`, HEAD_HATCH, hx, hy) & 255, `head-${s} hatch`).not.toBe(0);
+  });
+
+  it('the pieces stand on the shared floor anchor: no pixel of the legs below it, the stamp lands on it', async () => {
+    await loadContent();
+    for (const f of getFrames(`${PREFIX}legs`, 1)) expect(f.buf.h - f.oy).toBeLessThanOrEqual(0);
+    for (const s of [0, 1, 2]) for (const f of getFrames(`${PREFIX}stamp-arm-${s}`, 1)) expect(f.buf.h - f.oy).toBeLessThanOrEqual(0);
   });
 });

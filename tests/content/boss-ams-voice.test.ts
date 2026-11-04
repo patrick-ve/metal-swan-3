@@ -1,5 +1,5 @@
 /**
- * ROBO-HALSEMA's voice clips (bosses/ams/voice.ts): the line table, the placeholder file, the
+ * MECHA HASLEMA's voice clips (bosses/ams/voice.ts): the line table, the placeholder file, the
  * registration in the 'mission:ams' sample group, and `playVoice` — her clip when one is loaded,
  * the wordless robot chatter (`ams/mayor-babble`) otherwise.
  */
@@ -44,7 +44,7 @@ function firstLine(tw: TestWorld): void {
   tw.run(MAYOR.intro.dim + MAYOR.intro.walk + 6);
 }
 
-describe('ROBO-HALSEMA voice clips', () => {
+describe('MECHA HASLEMA voice clips', () => {
   it('every line fits a bubble and points at a file that exists', () => {
     expect(LINES.length).toBe(10);
     for (const l of LINES) {

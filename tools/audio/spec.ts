@@ -12,7 +12,7 @@
 //   a song, a composer, an artist or a real person.
 // - SFX remake the synth recipes of src/game/content/sfx (the synth stays as the fallback).
 //   Aliases are generated once, under their target recipe id (e.g. hit/armor -> hit/metal).
-// - The mayor ROBO-HALSEMA never gets a voice: her lines stay text-only bubbles.
+// - The mayor MECHA HASLEMA never gets a voice: her lines stay text-only bubbles.
 // - Text in LINES is the exact game text (incl. "\n" and a "GRAMPS: " prefix), so the runtime
 //   voiceKey(text) finds the clip; `say` is what the voice actor reads.
 import type { LineSpec, MusicSpec, SfxSpec, VoiceSpec } from './spec-types';
@@ -178,7 +178,7 @@ export const SFX: SfxSpec[] = [
   one('enemy/alert', AMS, 1, 0.11, `Exclamation alert, two quick high square-wave beeps, a cartoon "notice", close, dry, ${ONE}`),
   one('enemy/double-take', AMS, 2, 0.24, `Comic slide whistle up and down, a quick cartoon double-take, close, dry, ${ONE}`),
 
-  // --- Boss ROBO-HALSEMA (sound effects only; the boss has no voice) ------------------------
+  // --- Boss MECHA HASLEMA (sound effects only; the boss has no voice) ------------------------
   one('ams/stamp', AMS, 1, 0.88, `A giant wooden stamp arm creaking up, then a heavy rubber-stamp SLAM on stone with a low boom, cartoon robot boss attack, close, ${ONE}`, {
     seconds: 1.0,
     trimTo: 0.95,
@@ -233,7 +233,7 @@ export const SFX: SfxSpec[] = [
   one('ams/handhaver-down', AMS, 2, 0.6, `Comic knock-down: a soft body thump on paving with a burst of paper tickets fluttering, close, ${ONE}`, { seconds: 0.8, trimTo: 0.7, isNew: true }),
   one('env/ams-carillon', AMS, 1, 2.5, 'A church-tower carillon playing a short bright original phrase of six bells over about 2.5 s with a ringing tail, heard from a few streets away, outdoor reverb, single one-shot, no other instruments, no voice', { seconds: 4, trimTo: 4, isNew: true }),
   loop('ams/tour-boat', AMS, 12, 'A low diesel boat engine puttering past on a canal with a soft water wash, outdoors', true),
-  // ROBO-HALSEMA has no voice (docs/ORIGINALITY.md): wordless robot chatter plays under her bubbles.
+  // MECHA HASLEMA has no voice (docs/ORIGINALITY.md): wordless robot chatter plays under her bubbles.
   loop('ams/mayor-babble', AMS, 8, 'Cartoon robot gibberish chatter: quick electronic beeps and bloops that rise and fall like syllables of talking, a warbling synth tone, small servo whirs, playful, no words, no human voice, no speech, close, dry', true),
   one('ams/duck', AMS, 3, 0.4, `A mallard duck, two short quacks, close, outdoors, ${ONE}`, { seconds: 0.6, trimTo: 0.5, isNew: true }),
   one('ams/pigeon', AMS, 3, 0.6, `A city pigeon taking off: a soft coo and a quick wing flutter, close, outdoors, ${ONE}`, { seconds: 0.8, trimTo: 0.7, isNew: true }),
@@ -957,7 +957,7 @@ export const MUSIC: MusicSpec[] = [
 // ---------------------------------------------------------------------------------------------
 // VOICES (Voice Design: original voices only; never a real person, never a clone)
 // ---------------------------------------------------------------------------------------------
-// No voice for the mayor ROBO-HALSEMA: her lines stay text-only bubbles.
+// No voice for the mayor MECHA HASLEMA: her lines stay text-only bubbles.
 
 export const VOICES: VoiceSpec[] = [
   {

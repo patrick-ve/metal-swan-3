@@ -51,6 +51,7 @@ import {
   type WeaponDef,
   type WeaponPose,
 } from '../weapons';
+import { MOUNT_HIP_DROP } from './hero-art';
 import { CHUTE_COLLAPSE_SPRITE, drawChute, INTRO_DROP, INTRO_DROP_ID } from './intro-drop';
 import { StatusEffects, type StatusBomb } from './status';
 
@@ -62,8 +63,6 @@ export type PlayerState = 'play' | 'spawn' | 'dead' | 'out' | 'mounted' | 'victo
  */
 export type RidePose = 'sit' | 'lean' | 'up' | 'hunch' | 'hold' | 'brace' | 'duck' | 'ears' | 'cheer';
 export const RIDE_POSES: readonly RidePose[] = ['sit', 'lean', 'up', 'hunch', 'hold', 'brace', 'duck', 'ears', 'cheer'];
-/** `drawRide` falls back to `mount` frame 1 drawn this far below the hip (its hip point is (0, −17)). */
-const MOUNT_HIP_DROP = 17;
 
 /** Something a player can climb into (vehicles implement this). */
 export interface Mountable extends Entity {
@@ -1518,7 +1517,12 @@ export class Player extends Entity {
       // Drawn aim (aimVis) eases through the diagonal; a forward-aiming runner swings his arms.
       let act = this.aimAction(false, this.aimVis);
       if (legs === 'run' && act === 'idle') act = 'run';
-      this.torso.play(this.drawTorsoId(act));
+      // The settle tail of a shot (draw-only, docs/design/ams40.md wave 2): the shoot strip's first
+      // SHOOT_WINDOW frames fill the shot window (shootTicks); the rest (the gun eases back, the
+      // smoke thins) plays on while the hero holds his fire and keeps his aim. A new shot restarts
+      // the strip at frame 0; any other torso change cuts the tail.
+      const tail = this.torso.id === this.drawTorsoId(this.aimAction(true)) && !this.torso.done;
+      if (!tail) this.torso.play(this.drawTorsoId(act));
     }
 
     // Optional idle fidget.

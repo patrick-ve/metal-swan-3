@@ -7,8 +7,11 @@ import * as P from '../../src/game/art/poses';
 import { HERO_STYLES, RECRUIT_STYLE } from '../../src/game/content/characters/art';
 import { assertNoDuplicateFrames, assertSmooth } from './motion';
 
-const HEROES = ['recruit', ...Object.keys(HERO_STYLES)];
-const STYLES = [RECRUIT_STYLE, ...Object.values(HERO_STYLES)];
+// The rig heroes: the squad (vincent, thom, dirk, bob, patrick) are baked 40 px sets since
+// docs/design/ams40.md wave 2 (tests/art/heroes40.test.ts).
+const SQUAD = new Set(['vincent', 'thom', 'dirk', 'bob', 'patrick']);
+const HEROES = ['recruit', ...Object.keys(HERO_STYLES).filter((c) => !SQUAD.has(c))];
+const STYLES = [RECRUIT_STYLE, ...Object.entries(HERO_STYLES).filter(([c]) => !SQUAD.has(c)).map(([, s]) => s)];
 
 beforeAll(async () => {
   await import('../../src/game/content/characters/art');
@@ -18,7 +21,7 @@ beforeAll(async () => {
 
 describe('p1 strips: counts, timing, defer', () => {
   it('every hero has the five strips with the planned frames', () => {
-    expect(HEROES.length).toBe(10);
+    expect(HEROES.length).toBe(5);
     for (const c of HEROES) {
       const pre = `char/${c}/`;
       expect(frameCount(pre + 'flip'), c).toBe(14);

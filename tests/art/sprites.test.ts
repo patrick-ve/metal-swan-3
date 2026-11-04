@@ -156,6 +156,8 @@ describe('player sprite contract (char/recruit)', () => {
 
 describe('Swan rider strips (char/<id>/ride-*, look.md §6.4)', () => {
   const RIDERS = ['recruit', 'vincent', 'thom', 'dirk', 'bob', 'patrick', 'grace', 'mittens', 'pip', 'gramps'];
+  /** The squad's rider poses are part of their baked 40 px sets (docs/design/ams40.md wave 2; wave 7 refits them to the new Swan). */
+  const SQUAD = new Set(['vincent', 'thom', 'dirk', 'bob', 'patrick']);
   const STRIPS: ReadonlyArray<[string, number, number]> = [
     // name, frames, ticks per frame
     ['sit', 2, 20],
@@ -176,7 +178,9 @@ describe('Swan rider strips (char/<id>/ride-*, look.md §6.4)', () => {
         const id = `char/${c}/ride-${name}`;
         contract(id, n, true, ['head', 'hand']);
         for (const f of getFrames(id)) expect(f.pts?.muzzle, `${id} has no muzzle`).toBeUndefined();
-        expect(spriteAnim(id).ticksPerFrame, id).toBe(tpf);
+        const a = spriteAnim(id);
+        // A baked strip carries its holds as durations (the Swan reads them through stripFrame).
+        expect(a.durations ? [...a.durations] : Array<number>(n).fill(a.ticksPerFrame), id).toEqual(Array<number>(n).fill(tpf));
         expect(spriteAnim(id).loop, id).toBe(true);
         total += n;
       }
@@ -195,13 +199,26 @@ describe('Swan rider strips (char/<id>/ride-*, look.md §6.4)', () => {
           const b = bounds(f);
           // Upper body only: the waist (and a satchel) ends a few px under the hip, where the Swan's near
           // wing (hip + 0..10) hides it; the duck lies flat, belly down.
-          expect(b.bottom, `${id}[${i}] bottom`).toBeLessThanOrEqual(name === 'duck' ? 10 : 8);
+          // (Bob's flag cape hangs down behind him: up to the wing's 10 px)
+          // The squad on the natural Swan (ams40 wave 7, tools/art40/chars/_hero/ride.py) draws its near
+          // leg over her flank and drum: the shoe ends 13-16 px under the hip, never lower.
+          if (SQUAD.has(c)) {
+            expect(b.bottom, `${id}[${i}] near leg drawn`).toBeGreaterThanOrEqual(12);
+            expect(b.bottom, `${id}[${i}] bottom`).toBeLessThanOrEqual(16);
+          } else expect(b.bottom, `${id}[${i}] bottom`).toBeLessThanOrEqual(c === 'bob' ? 11 : name === 'duck' ? 10 : 8);
           const hand = f.pts?.hand ?? [0, 0];
           if (name === 'ears' || name === 'cheer') {
             // Hands off the grips: up at the ears / the near fist raised above the shoulder.
-            expect(hand[1], `${id}[${i}] hand raised`).toBeLessThan(-10);
+            // (the squad's 40 px cheer pumps the fist: up at the shoulders on the down beat)
+            expect(hand[1], `${id}[${i}] hand raised`).toBeLessThan(SQUAD.has(c) ? -5 : -10);
+          } else if (SQUAD.has(c) && name === 'up') {
+            // The squad's 'up' (aims 5-6) braces the near hand on the cantle behind him (hip + (-7, -2)),
+            // so the barrel rising to the near grip never passes through his fist.
+            expect(Math.abs(hand[0] + 7) <= 2 && Math.abs(hand[1] + 2) <= 2, `${id}[${i}] hand ${hand} on the cantle`).toBe(true);
           } else {
-            const g = name === 'duck' ? [12, -3] : [9, -5];
+            // The natural Swan's grips (the squad): hip + (9, -5); in the crouch the rider lies 4 px
+            // deeper on the same grips, so the duck's are hip + (9, -9). The older riders: the folded duck.
+            const g = name === 'duck' ? (SQUAD.has(c) ? [9, -9] : [12, -3]) : [9, -5];
             expect(Math.abs(hand[0] - g[0]) <= 1 && Math.abs(hand[1] - g[1]) <= 1, `${id}[${i}] hand ${hand} on grip ${g}`).toBe(true);
           }
         }
@@ -215,7 +232,8 @@ describe('Swan rider strips (char/<id>/ride-*, look.md §6.4)', () => {
     // measured 9 in the duck (the head tilts forward, the bobble stays on top): 9–11.
     const H: Record<string, [number, number, number]> = { gramps: [20, 11, 7], grace: [22, 13, 8], pip: [22, 13, 8], mittens: [24, 15, 9] };
     // The squad (docs/design/squad.md §1) stays inside the same 20–24 band (Bob's quiff = Mittens' bobble).
-    Object.assign(H, { vincent: [21, 12, 7], thom: [22, 13, 8], dirk: [23, 15, 9], bob: [24, 15, 8], patrick: [22, 13, 8] });
+    // The squad at 40 px (docs/design/ams40.md wave 2) sits about 3 px taller: 24–25 above the hip.
+    Object.assign(H, { vincent: [24, 21, 16], thom: [24, 21, 16], dirk: [25, 22, 17], bob: [25, 22, 17], patrick: [25, 22, 17] });
     for (const [c, [sit, hunch, duck]] of Object.entries(H)) {
       expect(top(`char/${c}/ride-sit`), c).toBe(sit);
       expect(top(`char/${c}/ride-hunch`), c).toBe(hunch);

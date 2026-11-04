@@ -22,9 +22,9 @@ import {
   bioText,
   CharacterSelectScene,
   CONFIRM_TICKS,
-  DROP_DONE,
   SELECT_SECONDS,
   SHUTTER_DELAY,
+  SHUTTER_RISE,
   SHUTTER_STAGGER,
   SHUTTER_TICKS,
   wrapSmall,
@@ -104,10 +104,10 @@ function select(players: 1 | 2 = 1): Harness & { scene: CharacterSelectScene } {
 }
 
 /** Ticks until every shutter of the roster is fully raised. */
-const ALL_OPEN = SHUTTER_DELAY + (MIL_PANELS - 1) * SHUTTER_STAGGER + (MIL_SHUTTER_FRAMES - 1) * SHUTTER_TICKS + 2;
+const ALL_OPEN = SHUTTER_DELAY + (MIL_PANELS - 1) * SHUTTER_STAGGER + (SHUTTER_RISE.length - 1) * SHUTTER_TICKS + 2;
 
 describe('REPORT FOR DUTY: art', () => {
-  it('registers the military ui ids (frame, 8 shutter frames, hazard, badges, plate, preview, stencil titles)', async () => {
+  it('registers the military ui ids (frame, the shutter frames, hazard, badges, plate, preview, stencil titles)', async () => {
     const { getFrame, getFrames } = await import('../../src/engine/sprites');
     for (const id of ['ui/mil/frame', 'ui/mil/shutter', 'ui/mil/hazard', 'ui/mil/badge-off', 'ui/mil/badge-p1', 'ui/mil/badge-p2', 'ui/mil/plate', 'ui/mil/preview', 'ui/mil/emblem']) {
       expect(hasSprite(id), id).toBe(true);
@@ -164,10 +164,10 @@ describe('REPORT FOR DUTY: sequence', () => {
     expect(ids.filter((id) => id === 'ui/mil/plate')).toHaveLength(MIL_PANELS);
     const art = (id: string): string => `char/${id}`;
     const [a, b] = scene.roster;
-    if (hasSprite(`${art(b)}/select`)) {
-      expect(ids).toContain(`${art(b)}/select`);
-      if (hasSprite(`${art(a)}/select-grey`)) expect(ids).toContain(`${art(a)}/select-grey`);
-    }
+    // The squad's select art is registered (no fallback path on this screen).
+    expect(hasSprite(`${art(b)}/select`)).toBe(true);
+    expect(ids).toContain(`${art(b)}/select`);
+    expect(ids).toContain(`${art(a)}/select-grey`);
     expect(r.texts).toContain('STAND BY');
   });
 
@@ -181,7 +181,7 @@ describe('REPORT FOR DUTY: sequence', () => {
     expect(log()).toContain('sfx:ui/select-confirm');
     expect(log().some((e) => e.startsWith('voice:') && e.endsWith('!'))).toBe(true);
     expect(scene.previewShown(0)).toBe(false);
-    step(DROP_DONE);
+    step(scene.dropDone(0));
     expect(scene.shutterFrame(1)).toBe(0);
     expect(scene.previewShown(0)).toBe(true);
     expect(log()).toContain('sfx:ui/mil-clank');
@@ -189,7 +189,7 @@ describe('REPORT FOR DUTY: sequence', () => {
     expect(r.sprites.map((s) => s.id)).toContain('ui/mil/preview');
     expect(r.sprites.map((s) => s.id)).toContain('ui/mil/hazard');
     expect(r.texts).toContain('READY!');
-    step(CONFIRM_TICKS + 30);
+    step(CONFIRM_TICKS + scene.pickTicksOf(0) + 30);
     expect(app.scenes.top).toBeInstanceOf(MissionIntroScene);
     expect(app.session?.slots[0].character).toBe(id);
   });
@@ -210,7 +210,7 @@ describe('REPORT FOR DUTY: sequence', () => {
     tap('right', 1);
     tap('fire', 1);
     expect(scene.choices).toEqual([scene.roster[0], scene.roster[2]]);
-    step(CONFIRM_TICKS + 30);
+    step(CONFIRM_TICKS + Math.max(scene.pickTicksOf(0), scene.pickTicksOf(1)) + 30);
     expect(app.scenes.top).toBeInstanceOf(MissionIntroScene);
     expect(app.session?.slots.map((s) => s.character)).toEqual([scene.roster[0], scene.roster[2]]);
   });
@@ -246,9 +246,14 @@ describe('REPORT FOR DUTY: sequence', () => {
     const { scene, step, frame } = select();
     const b = bioText(scene.roster[0]);
     expect(b.lines.length).toBeGreaterThan(0);
+    // The ticker shows the callsign first, then the bio lines one by one.
     step(ALL_OPEN + 40);
-    const r = frame();
-    for (const s of b.callsign) expect(r.texts).toContain(s);
+    const seen = new Set<string>();
+    for (let t = 0; t < 1500; t += 5) {
+      for (const s of frame().texts) seen.add(s);
+      step(5);
+    }
+    for (const s of [...b.callsign, ...b.lines]) expect([...seen], s).toContain(s);
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * UHD ambient life of mission `ams` (docs/ART_GUIDE.md "UHD art"): ONE density-generic drawer
- * (d 2 and 4) per id for `npc/ams/ams-pigeons`, `npc/ams/ams-ducks`, `npc/ams/ams-tour-boat` and
- * `npc/ams/ams-window-waver/cat` (1× art in npc.art.ts) and their motion strips. Each frame is
+ * (d 2 and 4) per id for `npc/ams/ams-pigeons`, `npc/ams/ams-ducks` and `npc/ams/ams-tour-boat`
+ * (1× art in npc.art.ts) and their motion strips. Each frame is
  * painted natively with the UHD kit (HdCanvas, PAL_HD, outline A, rim light) in the 1× frame's
  * logical box and anchor:
  * - the pigeon: blue-grey plumage with scalloped feathers, two dark wing bars, primaries fanned in
@@ -11,15 +11,12 @@
  *   lit ripple ring with glints and a broken reflection under each;
  * - the tour boat: a riveted steel hull with its white band and lit rub rail, the curved glass roof
  *   with sky reflections, tourists behind the glazing, the wheelhouse window, a waving Dutch flag,
- *   and below the water line its broken reflection and the bow and stern foam (no outline);
- * - the window cat: ginger tabby fur with stripes, a cream muzzle, pink ears and nose, green slit
- *   eyes (shut on the blink), whiskers, the swishing tail — inside the HD sash window.
+ *   and below the water line its broken reflection and the bow and stern foam (no outline).
+ * The window waver and the cat are a baked 40 px set (npc.art.ts, tools/art40/chars/ams-window-waver/).
  *
  * Motion strips (docs/ART_GUIDE.md "Motion"; 1× and HD both defined here, drawn by ambient.ts):
  * `npc/ams/ams-pigeons/takeoff` (2: crouch with the wings half up, push off), `npc/ams/ams-ducks/paddle`
  * (8: 4 paddle phases per drake / hen; the HD bob moves in half-logical-px steps),
- * `npc/ams/ams-window-waver/cat-swish` (4: an eased tail swish with a slow blink),
- * `npc/ams/ams-window-waver/lean` (3: the person rises into the window),
  * `npc/ams/ams-tour-boat/turn` (2: `turnSquash` of the boat, played at the ends of its run).
  */
 import type { Color } from '../../../../engine/color';
@@ -29,10 +26,9 @@ import { PixelBuffer, type Ramp } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
 import { defineHdSprite, defineSprite, getFrames } from '../../../../engine/sprites';
 import { BLACK_ONE_HUE, HdCanvas, inPoly, type Texture } from '../../../art/hd';
-import { renderHuman, type Density, type HumanStyle, type Pose } from '../../../art/humanoid';
 import { hash2, noise2 } from '../../../art/paint';
 import { turnSquash } from '../../creatures/draw';
-import { HD_RENDER, WAVER_STYLE, hdOf, windowDone, windowFrame, windowHd, type HdD } from './npc.art';
+import { HD_RENDER, hdOf, type HdD } from './npc.art';
 
 // ------------------------------------------------------------------------------------ helpers
 
@@ -484,117 +480,6 @@ function paintTourBoat(phase: number, d: HdD): Frame {
   return { buf: b, ox: 58, oy: 28, density: d };
 }
 defineHdSprite('npc/ams/ams-tour-boat', (d) => [tourBoatHd(0, hdOf(d)), tourBoatHd(1, hdOf(d))]);
-
-// ------------------------------------------------------------------------------------ window cat
-
-/** The tail tip (1× inner px) per phase of the 4-step swish (`cat-swish`), shut eyes on phase 3. */
-const SWISH: readonly (readonly [number, number])[] = [[2, 6], [1, 7], [0, 9], [1, 8]];
-
-/**
- * The ginger cat on the window sill at density d (the 1× inner 14 × 16 picture): tabby-striped
- * fur, a cream muzzle, pink ears and nose, green slit eyes (shut on the blink), whiskers, the tail
- * swishing (`t` 0 / 1 for the `cat` strip, `phase` 0–3 for `cat-swish`).
- */
-function catHd(t: number, d: HdD, phase = -1): Frame {
-  const draw = (c: HdCanvas): void => {
-    const fur = c.material({ ramp: PAL_HD.orange, lo: 1, hi: 5, wrap: 0.15, spec: 0.15, shine: 10 });
-    const pink = c.material({ ramp: PAL_HD.pink, lo: 3, hi: 6, spec: 0.3 });
-    const tabby: Texture = (s) => {
-      const b = (s.x * 0.75 + s.y * 0.45 + (noise2(s.x, s.y, 2, 51) - 0.5) * 0.8) % 1.7;
-      if (b < 0.45) s.tone -= 0.32;
-    };
-    // Body (sitting, chest towards us) and the tail curling up beside it.
-    c.ellipsoid(7.5, 11.9, 4.4, 4.4, {
-      mat: fur,
-      z: 2.2,
-      tex: (s) => {
-        tabby(s);
-        if (s.x > 6.4 && s.x < 10.2 && s.y > 8.6 && s.y < 12.5) s.tone += 0.22;
-      },
-    });
-    const [tx, ty] = phase >= 0 ? SWISH[phase] : t ? [0, 8] : [1, 7];
-    c.stroke([[3.5, 14.6], [1.6, 12.8], [tx + 0.6, ty + 0.6]], 1.0, 0.75, {
-      mat: fur,
-      z: 2.8,
-      tone: -0.1,
-      tex: (s) => {
-        if (Math.hypot(s.x - tx - 0.6, s.y - ty - 0.6) < 1.1) s.tone -= 0.35;
-        else if (((s.y * 1.2) % 1.4) < 0.4) s.tone -= 0.3;
-      },
-    });
-    // Ears (pink inside), head, muzzle, nose.
-    c.blob([[5.3, 4.8], [6.4, 0.9], [7.9, 4]], 0.3, { mat: fur, z: 3, bulge: 0.1 });
-    c.blob([[9.3, 4], [10.7, 0.9], [11.8, 4.8]], 0.3, { mat: fur, z: 3, bulge: 0.1 });
-    c.poly([[6, 3.9], [6.5, 1.9], [7.2, 3.7]], { mat: pink, z: 3.1 });
-    c.poly([[9.9, 3.7], [10.6, 1.9], [11.2, 3.9]], { mat: pink, z: 3.1 });
-    c.ellipsoid(8.6, 6.6, 3.3, 3, {
-      mat: fur,
-      z: 3.3,
-      tex: (s) => {
-        // The tabby "M" on the forehead, stripes on the cheeks.
-        if (s.y < 5.6 && (Math.abs(s.x - 7.9) < 0.22 || Math.abs(s.x - 8.9) < 0.22 || Math.abs(s.x - 9.9) < 0.2)) s.tone -= 0.35;
-        if (s.y > 6.6 && (s.x < 6.2 || s.x > 11) && ((s.y * 2.2) % 1 < 0.35)) s.tone -= 0.25;
-      },
-    });
-    c.ellipsoid(8.9, 8.2, 1.6, 1.05, { mat: fur, z: 3.8, tone: 0.35 });
-    c.ellipsoid(8.9, 7.65, 0.5, 0.35, { mat: pink, z: 4.2, round: 0.6 });
-    // Eyes: green with a dark slit (a catchlight at 4×), or shut on the blink.
-    for (const ex of [7.5, 10.4]) {
-      if (phase === 3) {
-        paintSeg(c, ex - 0.55, 6.45, ex + 0.55, 6.6, PAL_HD.orange[0]);
-        continue;
-      }
-      paintDot(c, ex, 6.5, 0.6, 0.45, PAL_HD.green[6]);
-      paintDot(c, ex, 6.5, 0.14, 0.42, PAL_HD.ink[0]);
-      if (d >= 4) c.dot(ex - 0.3, 6.25, PAL_HD.snow[6]);
-    }
-    // Whiskers.
-    const wh = PAL_HD.snow[5];
-    paintSeg(c, 10.3, 8.2, 12.9, 7.8, wh);
-    paintSeg(c, 10.3, 8.7, 12.8, 9.1, wh);
-    paintSeg(c, 7.5, 8.2, 5.2, 7.8, wh);
-    paintSeg(c, 7.5, 8.7, 5.3, 9.1, wh);
-  };
-  return windowHd(d, { draw });
-}
-defineHdSprite('npc/ams/ams-window-waver/cat', (d) => [catHd(0, hdOf(d)), catHd(1, hdOf(d))]);
-
-/** The 1× ginger cat (npc.art.ts geometry) at swish `phase` 0–3. */
-function catLo(phase: number): Frame {
-  const inner = new PixelBuffer(14, 16);
-  inner.ellipse(3, 7, 9, 9, PAL.orange[1]);
-  inner.hline(5, 9, 8, PAL.orange[2]);
-  inner.circle(8, 6, 3, PAL.orange[2]);
-  inner.tri(5, 4, 6, 1, 7, 4, PAL.orange[2]);
-  inner.tri(9, 4, 10, 1, 11, 4, PAL.orange[2]);
-  const eye = phase === 3 ? PAL.orange[0] : PAL.green[3];
-  inner.set(7, 6, eye);
-  inner.set(10, 6, eye);
-  inner.set(8, 8, PAL.pink[2]);
-  inner.thickLine(3, 14, SWISH[phase][0], SWISH[phase][1], 2, PAL.orange[0]);
-  return windowDone(windowFrame(), inner);
-}
-defineSprite('npc/ams/ams-window-waver/cat-swish', () => [0, 1, 2, 3].map(catLo), { durations: [14, 10, 14, 10], hd: (d) => [0, 1, 2, 3].map((k) => catHd(0, hdOf(d), k)) });
-
-// ------------------------------------------------------------------------------------ window lean
-
-/** The waver (npc.art.ts `WAVER_STYLE`, `waverFrames` idle pose). */
-const WAVER: HumanStyle = WAVER_STYLE;
-const WAVER_IDLE: Pose = { weapon: 'none', armN: { sh: 6, el: 30, hand: 'open' }, armF: { sh: -4, el: 30, hand: 'open' }, expr: 'normal' };
-/** Lean in: the hip this far (px) below the idle frame's hip and to the side, eased out. */
-export const LEAN_DROP = [9, 5, 2];
-const LEAN_DX = [-3, -1, 0];
-
-/** The 3 lean-in frames (played backwards to lean out); `d` 2 / 4: the rig at d in the HD window. */
-function leanFrames(d: Density): Frame[] {
-  const f = renderHuman(WAVER, WAVER_IDLE, 'upper', d);
-  return LEAN_DROP.map((drop, i) => {
-    const inner = new PixelBuffer(14 * d, 16 * d);
-    inner.blitFrame(f, (7 + LEAN_DX[i]) * d, (16 + 1 + drop) * d, undefined, d);
-    return d === 1 ? windowDone(windowFrame(), inner) : windowHd(hdOf(d), { img: inner });
-  });
-}
-defineSprite('npc/ams/ams-window-waver/lean', () => leanFrames(1), { ticksPerFrame: 3, loop: false, hd: (d) => leanFrames(d) });
 
 // ------------------------------------------------------------------------------------ tour boat turn
 

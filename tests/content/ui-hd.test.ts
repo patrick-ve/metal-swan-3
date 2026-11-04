@@ -29,8 +29,11 @@ import { SimAudio } from '../../src/sim/stats';
 import { RecordingRenderer } from '../engine/helpers';
 
 const BASE = ['ui/base/sky', 'ui/base/land', 'ui/base/net', 'ui/base/puff', 'ui/base/wall'];
-const MIL = ['ui/mil/bolt', 'ui/mil/frame', 'ui/mil/shutter', 'ui/mil/hazard', 'ui/mil/badge-off', 'ui/mil/badge-p1', 'ui/mil/badge-p2', 'ui/mil/plate', 'ui/mil/preview', 'ui/mil/emblem'];
-const STENCILS = [...STENCIL_TITLES, ...STENCIL_GOLD].map(stencilId);
+// The select screen's furniture (frame, shutter, hazard, badges, plate, preview, emblem and the
+// REPORT FOR DUTY stencil) is 1× art only since the select40 redesign (docs/design/select40.md).
+const MIL = ['ui/mil/bolt'];
+const MIL_1X = ['ui/mil/frame', 'ui/mil/shutter', 'ui/mil/hazard', 'ui/mil/badge-off', 'ui/mil/badge-p1', 'ui/mil/badge-p2', 'ui/mil/plate', 'ui/mil/preview', 'ui/mil/emblem', 'ui/mil/stencil-report-for-duty'];
+const STENCILS = [...STENCIL_TITLES, ...STENCIL_GOLD].map(stencilId).filter((id) => !MIL_1X.includes(id));
 const SCREENS = ['ui/logo', 'ui/portrait-gusto', 'ui/radio'];
 const IDS = [...BASE, ...MIL, ...STENCILS, ...SCREENS];
 
@@ -51,26 +54,17 @@ function hash1x(id: string): string {
 /** The 1× frames as they were before the UHD wave (the menus' look since 2026-10-16). */
 const ONE_X: Readonly<Record<string, string>> = {
   'ui/base/land': '8a2aa630',
-  'ui/base/net': '5ca39c1d',
+  // 2026-11-04 (ams40 wave 7): the net draws the baked 40 px Swan (vehicle/swan/shake) - new on purpose.
+  'ui/base/net': '572decc9',
   'ui/base/puff': '27b54f51',
   'ui/base/sky': 'ecb994cd',
   'ui/base/wall': '160b6a30',
-  'ui/mil/badge-off': '792f5f83',
   'ui/mil/bolt': '7f96efc0',
-  'ui/mil/badge-p1': '1e0c5883',
-  'ui/mil/badge-p2': '1cff6383',
-  'ui/mil/emblem': '36ff5eed',
-  'ui/mil/frame': '1b5631cd',
-  'ui/mil/hazard': '7c263193',
-  'ui/mil/plate': '787cb13b',
-  'ui/mil/preview': '22440a85',
-  'ui/mil/shutter': '4c6003b5',
   'ui/mil/stencil-enter-your-initials': '2a73e756',
   'ui/mil/stencil-hall-of-fame': 'd7d8c17c',
   'ui/mil/stencil-how-to-play': '2c07a8a9',
   'ui/mil/stencil-options': 'e82b61c4',
   'ui/mil/stencil-press-start': '09f1332a',
-  'ui/mil/stencil-report-for-duty': '31ea17f9',
   'ui/mil/stencil-select-operation': '070ad83d',
   'ui/logo': '441cf07e',
   'ui/portrait-gusto': '8ff3d4d5',
@@ -139,7 +133,8 @@ describe('UHD art of the menus', () => {
   }, 60_000);
 
   it('draws in PAL_HD only, as new art (not the lower frames scaled)', () => {
-    for (const id of IDS) {
+    // ui/base/net draws the baked 1x Swan (pixel grid path B: 1x art only, every tier scales it).
+    for (const id of IDS.filter((i) => i !== 'ui/base/net')) {
       const lo = getFrames(id, 1);
       const two = getFrames(id, 2);
       const four = getFrames(id, 4);
@@ -200,7 +195,7 @@ describe('UHD art of the menus', () => {
     });
 
     it('draws a group at 1× until the pool delivers it, never building it on this thread', async () => {
-      const ids = ['ui/mil/plate', 'ui/mil/hazard'];
+      const ids = ['ui/mil/bolt', stencilId('OPTIONS')];
       releaseDense(ids, 4);
       releaseDense(ids, 2);
       const pool = new ArtPool([inProcessPort(createArtWorkerHandler(async () => {}))]);
@@ -217,13 +212,14 @@ describe('UHD art of the menus', () => {
       setScreenArtPool(() => null);
       setArtTier(4);
       const r = new DensityRecorder(8);
-      const hero = ['char/vincent/legs-idle', 'char/vincent/torso-pistol-idle'];
-      expect(screenArt(r, ['ui/mil/plate', 'ui/logo'])).toBe(4);
+      // A rig hero (the squad's 40 px sets have no 4× frames: docs/design/ams40.md rule 7).
+      const hero = ['char/grace/legs-idle', 'char/grace/torso-pistol-idle'];
+      expect(screenArt(r, ['ui/mil/bolt', 'ui/logo'])).toBe(4);
       expect(screenArt(r, hero)).toBe(4);
       expect(screenArtBytes()).toBeGreaterThan(0);
-      const freed = releaseScreenArt(keepForHeroes(['vincent']));
+      const freed = releaseScreenArt(keepForHeroes(['grace']));
       expect(freed).toBeGreaterThan(0);
-      expect(hasFramesAt('ui/mil/plate', 4)).toBe(false);
+      expect(hasFramesAt('ui/mil/bolt', 4)).toBe(false);
       expect(hasFramesAt('ui/logo', 4)).toBe(false);
       expect(hero.every((id) => hasFramesAt(id, 4))).toBe(true);
       expect(screenArtBytes()).toBe(0);
@@ -249,35 +245,23 @@ describe('UHD art of the menus', () => {
       expect(r8.densityOf(stencilId('PRESS START')).every((d) => d === 4)).toBe(true);
     }, 30_000);
 
-    it('select: furniture and the preview at the tier, portraits at their densest art', () => {
+    it('select: the furniture and the portraits are 1× art at every tier; the preview hero at the tier', () => {
       setScreenArtPool(() => null);
       setArtTier(4);
       const a = app();
       const s = new CharacterSelectScene(a, 1);
       a.scenes.reset(s);
       for (let i = 0; i < 120; i++) a.scenes.update();
-      const r = new DensityRecorder(8);
-      s.draw(r);
-      expect(r.densityOf('ui/mil/frame')).toEqual([4]);
-      expect(r.densityOf('ui/mil/plate')).toEqual([4]);
-      // The select portraits have 4× art too (polish wave): at tier 4 they draw at 4×.
-      expect(r.densityOf('char/vincent/select')).toEqual([4]);
-      // Tier 2: everything at 2×.
-      setArtTier(2);
-      const r2 = new DensityRecorder(8);
-      s.draw(r2);
-      expect(r2.densityOf('ui/mil/frame')).toEqual([2]);
-      // Res 1: as before.
-      const r1 = new DensityRecorder(1);
-      s.draw(r1);
-      expect(r1.densityOf('ui/mil/frame')).toEqual([1]);
-      // The portraits keep their 2× art at screen tier 1 (its reduction at res 1), as before the wave.
-      expect(r1.densityOf('char/vincent/select')).toEqual([2]);
-      setArtTier(1);
-      const r8t1 = new DensityRecorder(8);
-      s.draw(r8t1);
-      expect(r8t1.densityOf('char/vincent/select')).toEqual([2]);
-      expect(r8t1.densityOf('ui/mil/frame')).toEqual([1]);
+      for (const [tier, res] of [[4, 8], [2, 8], [1, 1], [1, 8]] as const) {
+        setArtTier(tier);
+        const r = new DensityRecorder(res);
+        s.draw(r);
+        // The select40 redesign: the furniture and the baked portraits have no 2× / 4× art.
+        for (const id of MIL_1X.filter((x) => r.densityOf(x).length > 0)) expect(r.densityOf(id), `${id} at tier ${tier}`).toEqual([1]);
+        expect(r.densityOf('ui/mil/frame'), `frame at tier ${tier}`).toEqual([1]);
+        expect(r.densityOf('ui/mil/plate'), `plate at tier ${tier}`).toEqual([1]);
+        expect(r.densityOf('char/vincent/select'), `portrait at tier ${tier}`).toEqual([1]);
+      }
     }, 30_000);
 
     it('menus draw the swan cursor at the tier (mode select, controls)', () => {

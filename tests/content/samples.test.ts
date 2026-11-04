@@ -270,7 +270,7 @@ describe('sample manifest (src/game/content/samples)', () => {
     }
   });
 
-  it('voice keys belong to known lines; ROBO-HALSEMA never has a voice', async () => {
+  it('voice keys belong to known lines; MECHA HASLEMA never has a voice', async () => {
     const keys = (Object.values(SAMPLE_MANIFEST) as SampleGroup[]).flatMap((g) => Object.keys(g.voice ?? {}));
     const mayor = new Set(mayorLines().map(voiceKey));
     expect(mayor.size).toBeGreaterThan(3);
@@ -281,7 +281,7 @@ describe('sample manifest (src/game/content/samples)', () => {
     // The oat route switch (wave A) changed three voiced texts; their old takes stay until wave C.
     const known = new Set([...spec.LINES.map((l) => voiceKey(l.text)), ...spec.PENDING_RETAKES.map((r) => voiceKey(r.old))]);
     for (const k of keys) expect(known.has(k), `voice key ${k} is not a line of tools/audio/spec.ts`).toBe(true);
-    expect(spec.LINES.filter((l) => /HALSEMA|MAYOR/i.test(l.speaker))).toEqual([]);
+    expect(spec.LINES.filter((l) => /HALSEMA|HASLEMA|MAYOR/i.test(l.speaker))).toEqual([]);
   });
 });
 

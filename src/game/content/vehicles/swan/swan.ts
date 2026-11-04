@@ -45,7 +45,7 @@ import { PAL } from '../../../../engine/palette';
 import type { ParticlePreset } from '../../../../engine/particles';
 import { Body, jump, moveBody, SolidBox, type Contact } from '../../../../engine/physics';
 import type { DrawOpts, Renderer } from '../../../../engine/render';
-import { framePoint, getFrame, hasSprite, type PlayOpts } from '../../../../engine/sprites';
+import { frameCount, framePoint, getFrame, hasSprite, spriteAnim, type PlayOpts } from '../../../../engine/sprites';
 import type { World } from '../../../../engine/world';
 import { hudOf, iceAt } from '../../../context';
 import type { EjectMode } from '../../../events';
@@ -69,7 +69,18 @@ import {
   SEAT_ZONE,
   SWAN,
 } from './constants';
+import { RUN_CONTACT_A, RUN_CONTACT_B, RUN_PX, SET as SWAN_ART, SKID_CHATTER, WADDLE_PX } from '../../art40/swan.gen';
+import {
+  DIVE_PX,
+  GLIDE_DIP_FROM,
+  SET as SWAN_WATER_ART,
+  SWIM_CYCLE,
+  SWIM_CYCLE_STILL,
+  SWIM_STROKE_A,
+  SWIM_STROKE_B,
+} from '../../art40/swan-water.gen';
 import { SwanEgg } from './egg';
+import { NECK_REST_AIM, neckFaceTicks, neckFrame, relaxFrame } from './neck';
 import { spawnHonkRing } from './weapons';
 
 export type SwanMedium = 'ground' | 'air' | 'water';
@@ -118,20 +129,23 @@ const LOW_TILT: ReadonlySet<string> = new Set([
   'idle', 'run', 'move', 'fall', 'glide', 'glide-tired', 'crouch', 'slide', 'swim', 'water-duck', 'squat', 'settle', 'flap',
 ]);
 
-const SQUAT_D: readonly number[] = [2, 2];
 /** The limp at ≤ 1 cell: extra ticks on every 4th contact frame (look.md §10.2). */
 const LIMP_TICKS = 3;
-const LAND_D: readonly number[] = [2, 2];
-const HONK_D: readonly number[] = [4, 3, 3, 4, 6];
-const HONK_NECK: readonly number[] = [0, 0, 0, 1, 2];
-const RISE_D: readonly number[] = [4, 4, 4];
-const SIT_D: readonly number[] = [6, 6, 8];
-const HISS_D: readonly number[] = [3, 3];
-const TRIPLE_4: readonly number[] = [4, 4, 4];
-const DOUBLE_4: readonly number[] = [4, 4];
+/** The stomp bounce: the `stomp` strip shows for this many ticks after a stomp. */
+const STOMP_TICKS = 4;
+/**
+ * The run's frames where the body dips (the planted web under the hips: the rider's frame 1), as
+ * offsets inside each half of the cycle (one half per foot): the baked 12-frame run dips on 1-3.
+ */
+const RUN_DIP_FROM = 1;
+const RUN_DIP_TO = 3;
 
-/** Frame of a non-looping strip `elapsed` ticks after it started (holds the last frame). */
-function frameAt(durations: readonly number[], elapsed: number): number {
+/**
+ * Frame of a non-looping strip `elapsed` ticks after it started (holds the last frame). The
+ * timed strips read their OWN baked durations (the logic times of the contract, plan rule 4), so
+ * the code never repeats a frame count.
+ */
+export function frameAt(durations: readonly number[], elapsed: number): number {
   let t = elapsed;
   for (let i = 0; i < durations.length; i++) {
     t -= durations[i];
@@ -140,17 +154,66 @@ function frameAt(durations: readonly number[], elapsed: number): number {
   return durations.length - 1;
 }
 
-/** Frame of an `n`-frame loop at `tpf` ticks per frame. */
-function loopFrame(n: number, tpf: number, tick: number): number {
-  return Math.floor(tick / tpf) % n;
+/** Frame of a looping strip at `tick` (its durations cycled). */
+export function loopAt(durations: readonly number[], tick: number): number {
+  let total = 0;
+  for (let i = 0; i < durations.length; i++) total += durations[i];
+  if (total <= 0) return 0;
+  return frameAt(durations, ((tick % total) + total) % total);
+}
+
+/**
+ * The timing of a strip: its durations, else one ticksPerFrame per frame (an old 1× drawer). An id
+ * that is not registered (logic without the art module: tests, the headless sims) reads the baked
+ * set's own strip, so the frame picks are the same with and without the art.
+ */
+export function stripDurations(id: string): readonly number[] {
+  if (!hasSprite(id)) {
+    const name = id.slice(id.lastIndexOf('/') + 1);
+    return SWAN_ART.strips[name]?.durations ?? SWAN_WATER_ART.strips[name]?.durations ?? [1];
+  }
+  const a = spriteAnim(id);
+  if (a.durations && a.durations.length > 0) return a.durations;
+  const n = Math.max(1, frameCount(id));
+  return new Array<number>(n).fill(Math.max(1, a.ticksPerFrame));
+}
+
+/**
+ * The swim clock: one cycle is SWIM_CYCLE ticks moving and SWIM_CYCLE_STILL still; it counts in
+ * whole units (a moving tick adds SWIM_CYCLE_STILL, a still tick SWIM_CYCLE), so no float drifts.
+ */
+export const SWIM_UNITS = SWIM_CYCLE * SWIM_CYCLE_STILL;
+
+/** The swim clock's step a tick: one cycle per SWIM_CYCLE ticks moving, SWIM_CYCLE_STILL still. */
+export function swimStep(moving: boolean): number {
+  return moving ? SWIM_CYCLE_STILL : SWIM_CYCLE;
+}
+
+/** The swim frame of `n` at the swim clock `units` (SWIM_UNITS a cycle). */
+export function swimFrameAt(units: number, n: number): number {
+  return Math.floor((mod(units, SWIM_UNITS) * n) / SWIM_UNITS) % n;
+}
+
+/** The swim's second power stroke: the baked SWIM_STROKE_B, half a cycle on another strip (m3 socks). */
+export function swimStrokeB(n: number): number {
+  return n === SWIM_STROKE_B * 2 ? SWIM_STROKE_B : n >> 1;
+}
+
+/** The run's second foot contact: the baked RUN_CONTACT_B, half a cycle on another strip (m3 socks). */
+function runContactB(n: number): number {
+  return n === RUN_CONTACT_B * 2 ? RUN_CONTACT_B : n >> 1;
 }
 
 function mod(a: number, n: number): number {
   return ((a % n) + n) % n;
 }
 
-/** The Animator never advances by itself: the Swan picks every body frame (odometers, timers). */
-const HOLD: PlayOpts = { ticksPerFrame: 1e9, loop: true };
+/**
+ * The Animator never advances by itself: the Swan picks every body frame (odometers, timers) and
+ * her update() never steps it. The held durations also override the strip's own (a baked strip
+ * always has durations, and they win over ticksPerFrame), should anything step it.
+ */
+const HOLD: PlayOpts = { ticksPerFrame: 1e9, durations: [1e9], loop: true };
 const drawOpts: DrawOpts = {};
 const tintOpts: DrawOpts = { tint: 0xff3020ff, alpha: 0.45 };
 const pt: [number, number] = [0, 0];
@@ -234,6 +297,8 @@ export class Swan extends Vehicle {
   private readonly stripIds = new Map<string, string>();
   /** Overlay and neck strip ids by name (colour prefix only). */
   private readonly colorIds = new Map<string, string>();
+  /** Strip durations by drawn id (the timed and looping picks). */
+  private readonly durs = new Map<string, readonly number[]>();
 
   // ---- where she is
   medium: SwanMedium = 'ground';
@@ -290,7 +355,8 @@ export class Swan extends Vehicle {
   private honkHang = false;
   private hurtT = 0;
   private joltT = 0;
-  private fireFaceT = 0;
+  /** Ticks since the last round of the beak gun (the neck-fire phases; presentation only). */
+  private fireAge = FIRE_AGE_IDLE;
   private shellFaceT = 0;
   private blinkT = 0;
   private nextBlink = 120;
@@ -422,6 +488,27 @@ export class Swan extends Vehicle {
     id = hasSprite(own) ? own : `vehicle/swan/${name}`;
     this.colorIds.set(name, id);
     return id;
+  }
+
+  /** The durations of the body strip `name` as she draws it (cached per strip id). */
+  private dur(name: string): readonly number[] {
+    const id = this.bodyId(name);
+    let d = this.durs.get(id);
+    if (!d) {
+      d = stripDurations(id);
+      this.durs.set(id, d);
+    }
+    return d;
+  }
+
+  /** Show a looping body strip at the world tick (its own timing). */
+  private loop(name: string, t: number): void {
+    this.show(name, loopAt(this.dur(name), t));
+  }
+
+  /** Show a one-shot body strip `elapsed` ticks after it started (its own timing). */
+  private timed(name: string, elapsed: number): void {
+    this.show(name, frameAt(this.dur(name), elapsed));
   }
 
   private show(name: string, frame: number): void {
@@ -702,7 +789,7 @@ export class Swan extends Vehicle {
     if (this.foldT > 0) this.foldT--;
     if (this.hurtT > 0) this.hurtT--;
     if (this.joltT > 0) this.joltT--;
-    if (this.fireFaceT > 0) this.fireFaceT--;
+    if (this.fireAge < FIRE_AGE_IDLE) this.fireAge++;
     if (this.shellFaceT > 0) this.shellFaceT--;
     this.jumpT++;
     if (this.blinkT > 0) this.blinkT--;
@@ -1107,7 +1194,7 @@ export class Swan extends Vehicle {
     const m = this.beakTip('muzzle', pt);
     const a = this.shotAngle;
     this.mainGun.fire(this.fireArgs(m[0], m[1], aimAngle(this.facing, a), aimDirOf(a)));
-    this.fireFaceT = S.fireFaceTicks;
+    this.fireAge = 0;
     this.idleT = 0;
   }
 
@@ -1253,7 +1340,7 @@ export class Swan extends Vehicle {
     this.swimming = false;
     this.glide = 'ready';
     this.airTopY = this.y;
-    this.stompT = 4;
+    this.stompT = STOMP_TICKS;
     this.jumpT = 4;
     this.landT = 0;
     this.world.audio.sfx('swan/stomp');
@@ -1601,12 +1688,12 @@ export class Swan extends Vehicle {
     this.riderFrame = -1;
     const t = this.world.tick;
     if (this.phase === 'migrate') {
-      this.show(this.soot ? 'migrate-soot' : 'migrate', loopFrame(4, 4, t));
+      this.loop(this.soot ? 'migrate-soot' : 'migrate', t);
       return;
     }
     if (this.state === 'driven' || this.state === 'doomed') this.animateRidden(t);
     else if (this.state === 'ram') this.animateDive(t);
-    else if (this.state === 'wreck') this.show('wreck', loopFrame(2, 6, t));
+    else if (this.state === 'wreck') this.loop('wreck', t);
     else this.animateEmpty(t);
     this.overlay = RIDER_STRIPS.has(this.bodyName);
   }
@@ -1614,20 +1701,21 @@ export class Swan extends Vehicle {
   private animateRidden(t: number): void {
     const rider = this.driver !== null;
     if (this.state === 'doomed') {
-      this.show('wreck', loopFrame(2, 6, t));
+      this.loop('wreck', t);
       this.ridePose('hold', -1, rider);
       return;
     }
     if (this.riseT > 0) {
-      this.show('rise', frameAt(RISE_D, S.riseTicks - this.riseT));
+      this.timed('rise', S.riseTicks - this.riseT);
       this.ridePose(this.pickPose(), -1, rider);
       return;
     }
     if (this.honkT >= 0) {
-      const f = frameAt(HONK_D, this.honkT);
-      this.show(this.medium === 'air' ? 'honk-air' : this.medium === 'water' ? 'honk-swim' : 'honk', f);
-      this.neckName = 'neck-honk';
-      this.neckFrame = HONK_NECK[f];
+      // The body and the neck each follow their own strip's timing over the 20-tick honk.
+      this.timed(this.medium === 'air' ? 'honk-air' : this.medium === 'water' ? 'honk-swim' : 'honk', this.honkT);
+      // On the water the honk neck hangs on the swim posture (its barrel on the drum strapped high).
+      this.neckName = this.medium === 'water' ? 'swim-neck-honk' : 'neck-honk';
+      this.neckFrame = neckFrame(this.neckName, this.neckIndex, this.honkT);
       this.ridePose(this.pickPose(), -1, rider);
       return;
     }
@@ -1639,51 +1727,57 @@ export class Swan extends Vehicle {
   }
 
   private animateSwim(t: number): void {
-    if (this.paddleT > 0) this.show('paddle-up', (S.waterSquatTicks - this.paddleT) >> 1);
+    if (this.paddleT > 0) this.timed('paddle-up', S.waterSquatTicks - this.paddleT);
     else if (this.settleT > 0) this.show('settle', this.settleIn ? (this.settleT > 2 ? 0 : 1) : 1);
-    else if (this.ducking) this.show('water-duck', loopFrame(2, 24, t));
+    else if (this.ducking) this.loop('water-duck', t);
     else this.showSwim(Math.abs(this.vx) > 0.2);
   }
 
-  /** The swim strip: 6 ticks per frame moving, 16 still; a power stroke (f0, f2) paddles. */
+  /**
+   * The swim strip: one cycle per SWIM_CYCLE ticks moving, SWIM_CYCLE_STILL still (the old 4 × 6
+   * and 4 × 16); each power stroke (SWIM_STROKE_A, SWIM_STROKE_B) paddles.
+   */
   private showSwim(moving: boolean): void {
-    this.swimClock += moving ? 1 / 6 : 1 / 16;
-    const f = Math.floor(this.swimClock) % 4;
-    if (f !== this.lastSwimFrame && (f === 0 || f === 2) && this.driver) this.world.audio.sfx('swan/paddle', moving ? PADDLE_LOUD : PADDLE_SOFT);
+    this.swimClock = (this.swimClock + swimStep(moving)) % SWIM_UNITS;
+    const n = this.dur('swim').length;
+    const f = swimFrameAt(this.swimClock, n);
+    if (f !== this.lastSwimFrame && (f === SWIM_STROKE_A || f === swimStrokeB(n)) && this.driver) this.world.audio.sfx('swan/paddle', moving ? PADDLE_LOUD : PADDLE_SOFT);
     this.lastSwimFrame = f;
     this.show('swim', f);
   }
 
   private animateAir(t: number): void {
     if (this.glide === 'open') {
-      if (this.glideT < 6) this.show('flap', this.glideT < 3 ? 0 : 1);
-      else if (this.glideT >= S.glideTicks - S.glideTireTicks) this.show('glide-tired', loopFrame(2, 2, t));
-      else this.show('glide', loopFrame(2, 8, t));
+      if (this.glideT < 6) this.timed('flap', this.glideT);
+      else if (this.glideT >= S.glideTicks - S.glideTireTicks) this.loop('glide-tired', t);
+      else this.loop('glide', t);
       if (t % 4 === 0) this.windStreaks();
     } else if (this.foldT > 0) this.show('fold', 0);
-    else if (this.stompT > 0) this.show('stomp', 0);
-    else if (this.vy < 0) this.show('jump', this.jumpT < 4 ? 0 : 1);
-    else this.show('fall', loopFrame(2, 6, t));
+    else if (this.stompT > 0) this.timed('stomp', STOMP_TICKS - this.stompT);
+    else if (this.vy < 0) this.timed('jump', this.jumpT);
+    else this.loop('fall', t);
   }
 
   private animateGround(t: number): void {
-    if (this.squatT > 0) this.show('squat', frameAt(SQUAT_D, S.squatTicks - this.squatT));
+    if (this.squatT > 0) this.timed('squat', S.squatTicks - this.squatT);
     else if (this.crouching) {
       const s = Math.abs(this.vx);
-      if (s > S.crouchSpeed + 0.05) this.show('slide', loopFrame(2, 3, t));
-      else if (s > 0.05) this.show('waddle', mod(Math.floor(this.odo / 3), 6));
-      else this.show('crouch', loopFrame(2, 24, t));
+      if (s > S.crouchSpeed + 0.05) this.loop('slide', t);
+      else if (s > 0.05) this.show('waddle', mod(Math.floor(this.odo / WADDLE_PX), this.dur('waddle').length));
+      else this.loop('crouch', t);
     } else if (this.skidding) {
-      this.show('skid', this.skidT < 3 ? 0 : 1);
+      this.show('skid', this.skidFrame());
       if (t % 2 === 0) this.world.particles.burst(FX_SPARK, this.x + this.facing * 10, this.y - 1, 2, 0.4, 1.4);
     } else if (this.glideLandT > 0) this.show('skid', 1);
-    else if (this.landT > 0) this.show('land', frameAt(LAND_D, S.landTicks - this.landT));
+    else if (this.landT > 0) this.timed('land', S.landTicks - this.landT);
     else if (this.settleT > 0) this.show('settle', this.settleT > 2 ? 1 : 0);
     else if (Math.abs(this.vx) > 0.05) {
-      // The run odometer: one frame per 6 px along her facing (backward while back-pedalling).
-      const f = mod(Math.floor(this.odo / 6), 8);
-      if (f !== this.lastRunFrame && (f === 0 || f === 4)) {
-        this.step(f === 0 ? 1 : -1);
+      // The run odometer: one frame per RUN_PX px along her facing (backward while back-pedalling).
+      const n = this.dur('run').length;
+      const f = mod(Math.floor(this.odo / RUN_PX), n);
+      const b = runContactB(n);
+      if (f !== this.lastRunFrame && (f === RUN_CONTACT_A || f === b)) {
+        this.step(f === RUN_CONTACT_A ? 1 : -1);
         if (this.cells <= 1 && ++this.contacts % 4 === 0) {
           this.limpT = LIMP_TICKS;
           this.limpFrame = f;
@@ -1695,7 +1789,17 @@ export class Swan extends Vehicle {
         this.limpT--;
         this.show('run', this.limpFrame);
       } else this.show('run', f);
-    } else this.show('idle', loopFrame(2, 24, t));
+    } else this.loop('idle', t);
+  }
+
+  /**
+   * The skid: the brake (frame 0, its baked duration), then the webs chatter on the stones
+   * (frames 1.. alternate every SKID_CHATTER ticks).
+   */
+  private skidFrame(): number {
+    const d = this.dur('skid');
+    if (this.skidT < d[0] || d.length < 2) return this.skidT < d[0] ? 0 : d.length - 1;
+    return 1 + (Math.floor((this.skidT - d[0]) / SKID_CHATTER) % (d.length - 1));
   }
 
   /** A foot contact: `swan/step` and dust (a splash while she wades). */
@@ -1714,12 +1818,26 @@ export class Swan extends Vehicle {
     const single = posture === 'crouch-neck' || posture === 'duck-neck';
     if (this.idleT >= S.neckRelaxTicks && !single) {
       this.neckName = posture === 'swim-neck' ? 'swim-neck-relax' : 'neck-relax';
-      this.neckFrame = this.blinkT > 0 ? 1 : 0;
+      this.neckFrame = relaxFrame(this.neckIndex, this.blinkT > 0);
       return;
     }
-    const face = this.shellFaceT > 0 ? '-shell' : this.fireFaceT > 0 ? '-fire' : this.hurtT > 0 ? '-hurt' : this.blinkT > 0 ? '-blink' : '';
+    // The face and the ticks into it (the timers count down after they are set, so the first
+    // tick shown is elapsed 0); the frame = aim × phases + phase (neck.ts).
+    const fired = this.fireAge - 1;
+    let face = '';
+    let elapsed = 0;
+    if (this.shellFaceT > 0) {
+      face = '-shell';
+      elapsed = S.shellFaceTicks - 1 - this.shellFaceT;
+    } else if (fired >= 0 && fired < neckFaceTicks(`${posture}-fire`)) {
+      face = '-fire';
+      elapsed = fired;
+    } else if (this.hurtT > 0) {
+      face = '-hurt';
+      elapsed = S.hurtTicks - 1 - this.hurtT;
+    } else if (this.blinkT > 0) face = '-blink';
     this.neckName = face ? NECK_FACE[posture][face] : posture;
-    this.neckFrame = single ? 0 : this.neckIndex;
+    this.neckFrame = neckFrame(this.neckName, single ? 0 : this.neckIndex, elapsed);
   }
 
   /** The rider pose: the first matching rule of look.md §6.3. */
@@ -1743,8 +1861,12 @@ export class Swan extends Vehicle {
   private pickRiderFrame(): number {
     const name = this.bodyName;
     const f = this.bodyFrame;
-    if (name === 'run') return f === 1 || f === 5 ? 1 : 0;
-    if (name === 'glide' || name === 'glide-tired' || name === 'squat' || name === 'flap') return f & 1;
+    if (name === 'run') {
+      const h = f % Math.max(1, this.dur('run').length >> 1);
+      return h >= RUN_DIP_FROM && h <= RUN_DIP_TO ? 1 : 0;
+    }
+    if (name === 'glide' || name === 'glide-tired') return this.dur(name).length > 2 ? (f >= GLIDE_DIP_FROM ? 1 : 0) : f & 1;
+    if (name === 'squat' || name === 'flap') return f & 1;
     if (name === 'paddle-up') return f === 1 ? 1 : 0;
     return -1;
   }
@@ -1758,25 +1880,25 @@ export class Swan extends Vehicle {
   private animateDive(t: number): void {
     switch (this.phase) {
       case 'hiss':
-        this.show('hiss', frameAt(HISS_D, this.phaseT));
+        this.timed('hiss', this.phaseT);
         break;
       case 'dive':
-        this.show('dive', mod(Math.floor(this.odo / 8), 8));
+        this.show('dive', mod(Math.floor(this.odo / DIVE_PX), this.dur('dive').length));
         break;
       case 'bash':
-        this.show('bash', 0);
+        this.timed('bash', this.phaseT);
         break;
       case 'tumble':
-        this.show('tumble', this.phaseT < 4 ? 0 : 1);
+        this.timed('tumble', this.phaseT);
         break;
       case 'right':
-        this.show('right', frameAt(TRIPLE_4, this.phaseT));
+        this.timed('right', this.phaseT);
         break;
       case 'shake':
-        this.show('shake', frameAt(DOUBLE_4, this.phaseT));
+        this.timed('shake', this.phaseT);
         break;
       default:
-        this.show('dazed', loopFrame(4, 8, t));
+        this.loop('dazed', t);
     }
   }
 
@@ -1784,25 +1906,25 @@ export class Swan extends Vehicle {
     switch (this.phase) {
       case 'stand':
         // She stands and looks around for 20 ticks.
-        this.show('idle', loopFrame(2, 24, t));
+        this.loop('idle', t);
         this.neckName = 'neck-relax';
-        this.neckFrame = this.phaseT > 10 ? 1 : 0;
+        this.neckFrame = relaxFrame(NECK_REST_AIM, this.phaseT > 10);
         break;
       case 'sit':
-        this.show('sit-down', frameAt(SIT_D, this.phaseT));
+        this.timed('sit-down', this.phaseT);
         break;
       case 'lay':
-        this.show('empty-lay', frameAt(S.layDurations, this.phaseT));
+        this.timed('empty-lay', this.phaseT);
         break;
       case 'float':
         this.showSwim(Math.abs(this.vx) > 0.2);
         this.neckName = 'swim-neck-relax';
-        this.neckFrame = this.blinkT > 0 ? 1 : 0;
+        this.neckFrame = relaxFrame(NECK_REST_AIM, this.blinkT > 0);
         break;
       case 'drop':
-        this.show('fall', loopFrame(2, 6, t));
+        this.loop('fall', t);
         this.neckName = 'neck-relax';
-        this.neckFrame = 0;
+        this.neckFrame = relaxFrame(NECK_REST_AIM, false);
         break;
       default:
         this.showParked(t);
@@ -1813,7 +1935,7 @@ export class Swan extends Vehicle {
   private showParked(t: number): void {
     const p = this.world.nearestPlayer(this.x, this.y);
     if (!p || Math.abs(p.x - this.x) > S.lookRange || Math.abs(p.y - this.y) > S.lookRange) {
-      this.show('empty', loopFrame(2, 30, t));
+      this.loop('empty', t);
       return;
     }
     if (this.blinkT > 0) {
@@ -1922,6 +2044,9 @@ export class Swan extends Vehicle {
     refreshSwanCamera(this.world);
   }
 }
+
+/** fireAge when no round was fired lately (it stops counting there). */
+const FIRE_AGE_IDLE = 1 << 20;
 
 /** Neck strip ids with a face (look.md §9): `<posture>-fire|-shell|-blink|-hurt`, built once. */
 const NECK_FACE: Readonly<Record<string, Readonly<Record<string, string>>>> = Object.freeze(

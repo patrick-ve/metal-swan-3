@@ -46,16 +46,15 @@ describe('ams npcs: registration', () => {
 
   it('has all strips, inside the palette', () => {
     const ids = [
-      ...['idle', 'talk', 'toss', 'walk', 'clap', 'cheer', 'wave'].map((a) => `npc/ams/ams-baker/${a}`),
-      ...['idle', 'salute', 'talk', 'wave'].map((a) => `npc/ams/ams-hotdog-vendor/${a}`),
-      ...[0, 1, 2].flatMap((l) => ['idle', 'walk', 'clap', 'cheer', 'wave'].map((a) => `npc/ams/ams-staff/${l}/${a}`)),
+      // the baker npc/ams/ams-baker: a baked 40 px set with its own palette (tests/art40/ams-baker.test.ts)
+      // the hot-dog vendor npc/ams/ams-hotdog-vendor: a baked 40 px set with its own palette (tests/art40/ams-hotdog-vendor.test.ts)
+      // the crew npc/ams/ams-staff/0..2: baked 40 px sets with their own palettes (tests/art40/ams-staff.test.ts)
       'npc/ams/counter',
       'npc/ams/ams-tour-boat',
       'npc/ams/ams-cyclist-bg/0',
       'npc/ams/ams-pigeons',
       'npc/ams/ams-ducks',
-      'npc/ams/ams-window-waver/person',
-      'npc/ams/ams-window-waver/cat',
+      // the window waver and the cat npc/ams/ams-window-waver: a baked 40 px set with its own palette (tests/art40/ams-window-waver.test.ts)
       'decor/ams/ams-boat-platform',
       ...Object.keys(AMS_BREAKABLES).map((id) => `decor/ams/${id}`),
     ];
@@ -65,11 +64,12 @@ describe('ams npcs: registration', () => {
         for (const c of f.buf.data) if (c !== 0) expect(inPalette(c), `${id} colour ${c.toString(16)}`).toBe(true);
       }
     }
-    // Humans are 35–37 px tall standing.
-    for (const id of ['npc/ams/ams-baker/idle', 'npc/ams/ams-hotdog-vendor/idle', 'npc/ams/ams-staff/0/idle']) {
+    // The baked 40 px people stand about 40-44 px tall (docs/design/ams40.md D7: the cap included).
+    for (const id of ['npc/ams/ams-baker/idle']) {
+      expect(hasSprite(id), id).toBe(true);
       const h = getFrames(id)[0].buf.h;
-      expect(h, id).toBeGreaterThanOrEqual(35);
-      expect(h, id).toBeLessThanOrEqual(39);
+      expect(h, id).toBeGreaterThanOrEqual(39);
+      expect(h, id).toBeLessThanOrEqual(45);
     }
   });
 });

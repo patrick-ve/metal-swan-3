@@ -1,8 +1,11 @@
 /**
- * The squad's select portraits (docs/design/squad.md §2.2): for each friend a large caricature
- * bust `char/<id>/select` (64 × 120, 2×: 128 × 240, top-left anchor), its greyed twin
- * `char/<id>/select-grey` (the same pixels through the steel / stone grey ramp) and the small menu
- * portrait `char/<id>/portrait` (32 × 32, 2×: 64 × 64) drawn from the same face (a zoomed-out view).
+ * The squad's portraits. The select screen's three states per friend are baked 40 px sets
+ * (docs/design/select40.md, the portrait contract; tools/art40/chars/select-<id>/ on the portrait kit
+ * tools/art40/chars/_portrait/): `char/<id>/select-grey` (unlit), `char/<id>/select` (the lit loop)
+ * and `char/<id>/select-pick` (the confirm reaction, played once, held on its last frame), every
+ * frame 64 × 120 with a top-left anchor, 1× only (pixel grid path B). The small menu portrait
+ * `char/<id>/portrait` (32 × 32, 2×: 64 × 64) and the painted bust `selectPortrait` (the FPS faces
+ * read it) are still drawn here by the portrait kit (src/game/art/portrait-kit.ts).
  *
  * Kind arcade caricatures of five private persons at the user's request, built by code from
  * shapes and the palette (src/game/art/portrait-kit.ts); studied from the user's photos, never
@@ -20,7 +23,13 @@
  */
 import { INK, PAL, type Ramp } from '../../../engine/palette';
 import type { PixelBuffer } from '../../../engine/pixel';
+import { defineBakedSet, type BakedSet } from '../../../engine/baked';
 import { defineSprite } from '../../../engine/sprites';
+import { SET as SELECT_BOB } from '../art40/select-bob.gen';
+import { SET as SELECT_DIRK } from '../art40/select-dirk.gen';
+import { SET as SELECT_PATRICK } from '../art40/select-patrick.gen';
+import { SET as SELECT_THOM } from '../art40/select-thom.gen';
+import { SET as SELECT_VINCENT } from '../art40/select-vincent.gen';
 import {
   backdrop,
   beardRegion,
@@ -33,7 +42,6 @@ import {
   fadeBottom,
   frameBorder,
   gauss,
-  greyed,
   hair,
   HAIR_BLACK,
   HAIR_BLOND,
@@ -757,11 +765,6 @@ export function selectPortrait(id: SquadId, density: 1 | 2 | 4 = 1): PixelBuffer
   });
 }
 
-/** The greyed select bust (unselected panel): the colour bust through the grey ramp. */
-export function selectPortraitGrey(id: SquadId, density: 1 | 2 | 4 = 1): PixelBuffer {
-  return cached(`${id}-grey@${density}`, () => greyed(selectPortrait(id, density)));
-}
-
 /** The 32 × 32 menu portrait (64 × 64 at density 2, 128 × 128 at 4): the same face, zoomed out, in an INK frame. */
 export function smallPortrait(id: SquadId, density: 1 | 2 | 4 = 1): PixelBuffer {
   return cached(`${id}-small@${density}`, () => {
@@ -779,10 +782,20 @@ export function isSquad(id: string): id is SquadId {
 
 const topLeft = { anchor: 'top-left' } as const;
 
-// The portrait kit paints natively at any density: 2× for 1080p / 1440p, 4× for 4K (the select
-// screen's portrait group switches to 4× once the pool has built all of it).
+/** The baked select sets (prefix `char/<id>`, shared with the hero sets: strips select-grey, select, select-pick). */
+export const SELECT_SETS: Readonly<Record<SquadId, BakedSet>> = {
+  vincent: SELECT_VINCENT,
+  thom: SELECT_THOM,
+  dirk: SELECT_DIRK,
+  bob: SELECT_BOB,
+  patrick: SELECT_PATRICK,
+};
+
+/** The select portrait's strips (the portrait contract). */
+export const SELECT_STRIPS = ['select-grey', 'select', 'select-pick'] as const;
+
 for (const id of SQUAD) {
-  defineSprite(`char/${id}/select`, () => selectPortrait(id), { ...topLeft, hi: () => selectPortrait(id, 2), hi4: () => selectPortrait(id, 4) });
-  defineSprite(`char/${id}/select-grey`, () => selectPortraitGrey(id), { ...topLeft, hi: () => selectPortraitGrey(id, 2), hi4: () => selectPortraitGrey(id, 4) });
+  defineBakedSet(SELECT_SETS[id]);
+  // The menu portrait: the portrait kit paints natively at any density (2× for 1080p / 1440p, 4× for 4K).
   defineSprite(`char/${id}/portrait`, () => smallPortrait(id), { ...topLeft, hi: () => smallPortrait(id, 2), hi4: () => smallPortrait(id, 4) });
 }

@@ -38,6 +38,8 @@ import { Projectile, type ProjectileOpts } from '../../projectile';
 import { defineEntity, paramNum, paramStr, type SpawnParams } from '../../registry';
 import type { ReactionKind } from '../../enemy';
 import { Creature, contactHit, entryParam, held, Turner } from '../creatures/common';
+import { TICKET_FLAT, TICKET_FRAMES, TICKET_TPF } from '../art40/boete-ticket.gen';
+import { GLOAT_DONE, GLOAT_DROP, GLOAT_HOLD, GLOAT_TEAR, GLOAT_WRITE, GLOAT_WRITE2, THROW_RELEASE } from '../art40/handhaver.gen';
 
 const turnOpts: DrawOpts = {};
 
@@ -71,8 +73,11 @@ export const HANDHAVER = {
   gloatDrop: 14,
 } as const;
 
-/** The frames of the `gloat` strip (handhaver.art.ts draws them in this order); the game picks one per phase. */
-export const GLOAT_FRAME = { write: 0, write2: 1, tear: 2, drop: 3, done: 4 } as const;
+/**
+ * The frames of the baked `gloat` strip (tools/art40/chars/handhaver/strips.py exports their roles);
+ * the game picks one per phase. The tear phase shows `tear` (the rip), then `hold` (the page up).
+ */
+export const GLOAT_FRAME = { write: GLOAT_WRITE, write2: GLOAT_WRITE2, tear: GLOAT_TEAR, hold: GLOAT_HOLD, drop: GLOAT_DROP, done: GLOAT_DONE } as const;
 
 /** The torn-off page (the gloat): its fall speed (px/tick), sway (px, ticks), rest on the ground. */
 export const GLOAT_PAGE = { fall: 0.45, sway: 2, swayTicks: 24, rest: 600, blink: 30, maxFall: 400 } as const;
@@ -131,7 +136,7 @@ export class GloatPage extends Entity {
     if (this.rest > GLOAT_PAGE.rest && this.rest % 4 < 2) return;
     pageOpts.flipX = this.tx < this.x0;
     // Falling: the fluttering frames; on the ground: the flat one.
-    r.sprite('enemy/boete-ticket/fly', this.rest >= 0 ? 2 : (this.t >> 2) & 3, this.x, this.y, pageOpts);
+    r.sprite('enemy/boete-ticket/fly', this.rest >= 0 ? TICKET_FLAT : Math.floor(this.t / TICKET_TPF) % TICKET_FRAMES, this.x, this.y, pageOpts);
   }
 }
 
@@ -167,7 +172,7 @@ export function throwTicket(world: World, x: number, feetY: number, dir: number,
   o.life = HANDHAVER.ticketLife;
   o.sprite = 'enemy/boete-ticket/fly';
   o.look = 'anim';
-  o.ticksPerFrame = 4;
+  o.ticksPerFrame = TICKET_TPF; // the baked tumble: 8 frames x 2 ticks (the old 4 x 4: same 16-tick turn)
   o.offscreen = 32;
   o.type = 'boete-ticket';
   o.shooter = shooter;
@@ -317,7 +322,8 @@ export class Handhaver extends Creature {
     this.tickets[slot] = p;
     this.world.audio.sfx('ams/ticket');
     this.setMode('throw');
-    this.play('throw', { restart: true });
+    // The ticket leaves the hand on the strip's release frame (the flick, the first frame).
+    this.play('throw', { restart: true, frame: THROW_RELEASE });
   }
 
   // ------------------------------------------------------------------------------- reactions
@@ -373,7 +379,7 @@ export class Handhaver extends Creature {
         if (n >= HANDHAVER.gloatWrite) this.setGloatPhase('tear');
         break;
       case 'tear':
-        f = GLOAT_FRAME.tear;
+        f = n <= HANDHAVER.gloatTear >> 1 ? GLOAT_FRAME.tear : GLOAT_FRAME.hold;
         if (n === 1) this.world.audio.sfx('ams/gloat-tear');
         if (n >= HANDHAVER.gloatTear) this.setGloatPhase('drop');
         break;

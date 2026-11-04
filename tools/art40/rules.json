@@ -1,0 +1,202 @@
+{
+ "about": "GENERATED from tools/art40/check/rules.ts and classes.ts by `npm run art40-check -- --write-rules`; do not edit.",
+ "budgets": [
+  28,
+  40,
+  64
+ ],
+ "budgetSlugs": {
+  "40": [
+   "beer-bike",
+   "ams-scan",
+   "ams-tow-truck",
+   "ams-wheel-clamp",
+   "swan",
+   "swan-neck",
+   "swan-water"
+  ],
+  "64": [
+   "ams-mayor",
+   "select-vincent",
+   "select-thom",
+   "select-dirk",
+   "select-bob",
+   "select-patrick"
+  ]
+ },
+ "fxRamp": [
+  "#ffffff",
+  "#fffbd8",
+  "#ffe070",
+  "#ffd040",
+  "#ff8a24",
+  "#e0401c",
+  "#bfe4ff",
+  "#7fb4e8",
+  "#7a6e70",
+  "#4a4046"
+ ],
+ "classes": [
+  {
+   "name": "idle-breathing",
+   "min": 4
+  },
+  {
+   "name": "idle-fidget",
+   "min": 8,
+   "max": 18
+  },
+  {
+   "name": "locomotion",
+   "min": 12,
+   "foot": true
+  },
+  {
+   "name": "ride",
+   "min": 12
+  },
+  {
+   "name": "crouch-walk",
+   "min": 7,
+   "foot": true
+  },
+  {
+   "name": "shoot",
+   "min": 10
+  },
+  {
+   "name": "throw",
+   "min": 6
+  },
+  {
+   "name": "melee",
+   "min": 6
+  },
+  {
+   "name": "death-shot",
+   "min": 10,
+   "max": 12
+  },
+  {
+   "name": "death-blast",
+   "min": 10
+  },
+  {
+   "name": "death-burn",
+   "min": 7
+  },
+  {
+   "name": "death-crush",
+   "min": 5
+  },
+  {
+   "name": "victory",
+   "min": 6,
+   "max": 8
+  },
+  {
+   "name": "respawn",
+   "min": 6
+  },
+  {
+   "name": "jump",
+   "min": 6,
+   "max": 7
+  },
+  {
+   "name": "fall",
+   "min": 2
+  },
+  {
+   "name": "land",
+   "min": 3
+  },
+  {
+   "name": "mount",
+   "min": 5,
+   "max": 6
+  },
+  {
+   "name": "hop",
+   "min": 5
+  },
+  {
+   "name": "mechanical",
+   "min": 1
+  },
+  {
+   "name": "held",
+   "min": 1
+  },
+  {
+   "name": "prop",
+   "min": 1
+  },
+  {
+   "name": "telegraph",
+   "min": 1
+  },
+  {
+   "name": "reaction",
+   "min": 1,
+   "max": 18
+  },
+  {
+   "name": "turn",
+   "min": 1
+  },
+  {
+   "name": "aim",
+   "min": 1
+  },
+  {
+   "name": "overlay",
+   "min": 1
+  },
+  {
+   "name": "piece",
+   "min": 1
+  },
+  {
+   "name": "roles",
+   "min": 1
+  },
+  {
+   "name": "ui",
+   "min": 1
+  },
+  {
+   "name": "other",
+   "min": 1,
+   "why": true
+  }
+ ],
+ "aliases": {
+  "idle": "idle-breathing",
+  "idle-breath": "idle-breathing",
+  "breathing": "idle-breathing",
+  "fidget": "idle-fidget",
+  "loco": "locomotion",
+  "walk": "locomotion",
+  "run": "locomotion",
+  "crouch": "crouch-walk",
+  "fire": "shoot",
+  "die": "death-shot",
+  "death": "death-shot",
+  "die-blast": "death-blast",
+  "die-burn": "death-burn",
+  "die-crush": "death-crush",
+  "cheer": "victory",
+  "victory-cheer": "victory",
+  "respawn-get-up": "respawn",
+  "get-up": "respawn",
+  "pedal": "ride",
+  "flap": "ride",
+  "mount-hop": "hop",
+  "machine": "mechanical",
+  "mech": "mechanical",
+  "part": "held",
+  "hold": "held",
+  "pose": "held"
+ }
+}

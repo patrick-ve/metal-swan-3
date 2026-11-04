@@ -107,9 +107,12 @@ export function groupDir(group: SampleGroupName): string {
   return GROUP_DIRS[group];
 }
 
-/** The mayor's lines stay text-only: no voice is ever designed or spoken for her. */
+/**
+ * The mayor's lines stay text-only: no voice is ever designed or spoken for her. Blocks her name
+ * MECHA HASLEMA and her old name (ROBO-HALSEMA) alike.
+ */
 export function isMayor(s: string): boolean {
-  return /halsema/i.test(s);
+  return /halsema|haslema/i.test(s);
 }
 
 // ------------------------------------------------------------------------------------------ .env.local

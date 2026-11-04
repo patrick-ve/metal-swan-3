@@ -62,7 +62,7 @@ multi-part bosses, and 2-player co-op.
    `tools/audio/`). Every sampled id keeps its synth version as the fallback, and headless runs
    never load them. Files kept by hand
    (the tool never touches them) join the groups in `src/game/content/samples/index.ts`:
-   ROBO-HALSEMA's clips (`public/audio/mayor/`) and the user's own music tracks
+   MECHA HASLEMA's clips (`public/audio/mayor/`) and the user's own music tracks
    (`public/audio/user/music/`, user decision 2026-10-16).
 3. **Deterministic, headless-safe simulation.** Code in `src/engine/` and `src/game/` must not
    touch `window`, `document`, `navigator`, `localStorage`, `performance`, `AudioContext`,

@@ -99,7 +99,7 @@ function* bossFight(ctx: SectionContext): ScriptGen {
     };
     wall.remove();
   });
-  yield ctx.bossIntro('ROBO-HALSEMA', { subtitle: 'THE IRON MAYOR', music: 'ams-boss' });
+  yield ctx.bossIntro('MECHA HASLEMA', { subtitle: 'THE IRON MAYOR', music: 'ams-boss' });
   yield* waitBoss(boss);
   wall.remove();
 }

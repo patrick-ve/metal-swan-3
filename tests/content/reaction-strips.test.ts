@@ -3,7 +3,7 @@
  * screen gloat at the spot — their own business there, docs/design/ams-extras.md §1 — then cower
  * when a hero drops back in): `enemy/<set>/gloat` and `enemy/<set>/cower` for every rider set,
  * every handhaver set and the gull. Each has its frames at 1× and its timing, is deferred (rare
- * art), and its 2× / 4× frames are real dense art (density 2 / 4, never a fallback) with the 1×
+ * art), and (riders, gull; the handhaver is a baked 1× set) its 2× / 4× frames are real dense art (density 2 / 4, never a fallback) with the 1×
  * geometry (count, logical size, anchor, points), PAL_HD only, no two frames alike, and no
  * generator warning. No `laugh` strip is left.
  */
@@ -18,7 +18,8 @@ type Kind = 'wheelie' | 'phone' | 'officer' | 'gull';
 const GLOAT: Record<Kind, { frames: number; anim: { ticksPerFrame: number; durations: readonly number[] | undefined; loop: boolean } }> = {
   wheelie: { frames: 4, anim: { ticksPerFrame: 9, durations: undefined, loop: true } },
   phone: { frames: 2, anim: { ticksPerFrame: 14, durations: undefined, loop: true } },
-  officer: { frames: 5, anim: { ticksPerFrame: 6, durations: [8, 8, 10, 12, 60], loop: false } },
+  // the handhaver: a baked 40 px set (docs/design/ams40.md wave 1): 6 frame roles, the same 98 ticks
+  officer: { frames: 6, anim: { ticksPerFrame: 6, durations: [8, 8, 6, 6, 12, 58], loop: false } },
   gull: { frames: 4, anim: { ticksPerFrame: 6, durations: [16, 6, 12, 10], loop: true } },
 };
 const COWER = { ticksPerFrame: 3, durations: undefined, loop: true };
@@ -53,16 +54,28 @@ describe('continue reaction strips (gloat, cower)', () => {
       expect(anim.loop, `${set}/gloat`).toBe(g.anim.loop);
       if (g.anim.durations) expect(anim.durations, `${set}/gloat`).toEqual(g.anim.durations);
       else expect(anim.ticksPerFrame, `${set}/gloat`).toBe(g.anim.ticksPerFrame);
-      expect(getFrames(`${set}/cower`, 1).length, `${set}/cower`).toBe(2);
-      expect(spriteAnim(`${set}/cower`), `${set}/cower`).toEqual(COWER);
+      if (kindOf(set) === 'officer') {
+        // baked: 4 trembling frames, 3 ticks each, looping
+        expect(getFrames(`${set}/cower`, 1).length, `${set}/cower`).toBe(4);
+        expect(spriteAnim(`${set}/cower`).durations, `${set}/cower`).toEqual([3, 3, 3, 3]);
+        expect(spriteAnim(`${set}/cower`).loop, `${set}/cower`).toBe(true);
+      } else {
+        expect(getFrames(`${set}/cower`, 1).length, `${set}/cower`).toBe(2);
+        expect(spriteAnim(`${set}/cower`), `${set}/cower`).toEqual(COWER);
+      }
       for (const name of ['gloat', 'cower']) expect(isDeferredSprite(`${set}/${name}`), `${set}/${name}`).toBe(true);
     }
     expect(listSprites('').filter((id) => id.endsWith('/laugh'))).toEqual([]);
   });
 
   it('keep the 1× geometry at 2× and 4×, as real dense art in PAL_HD, with two different frames', () => {
-    const ids = [...riders, ...officers, 'enemy/seagull'].flatMap((s) => [`${s}/gloat`, `${s}/cower`]);
-    expect(ids.length).toBe(62);
+    // The handhaver sets are baked 40 px art: 1x at every tier (plan rule 7), no dense art.
+    for (const id of officers.flatMap((s) => [`${s}/gloat`, `${s}/cower`])) {
+      expect(hasHiSprite(id, 2) || hasHiSprite(id, 4), id).toBe(false);
+      expect(duplicateFrames(id, 1), id).toEqual([]);
+    }
+    const ids = [...riders, 'enemy/seagull'].flatMap((s) => [`${s}/gloat`, `${s}/cower`]);
+    expect(ids.length).toBe(56);
     for (const id of ids) {
       expect(hasHiSprite(id, 2) && hasHiSprite(id, 4), id).toBe(true);
       const lo = getFrames(id, 1);

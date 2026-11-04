@@ -129,10 +129,15 @@ describe('2× shading helpers', () => {
 describe('player characters: 2× art for every char/* sprite', () => {
   it('every char/<hero>/* id has a 2× generator that the registry accepts (no fallback)', async () => {
     await loadContent();
-    const ids = listSprites('char/');
-    // 95 ids per character: recruit, the squad of five and the four GDD heroes (+ select art).
-    expect(ids.length).toBeGreaterThanOrEqual(950);
-    for (const hero of ['recruit', 'vincent', 'thom', 'dirk', 'bob', 'patrick', 'grace', 'gramps', 'mittens', 'pip']) expect(ids.some((id) => id.startsWith(`char/${hero}/`)), hero).toBe(true);
+    // The squad's in-game strips are baked 40 px sets with 1× pixels only (docs/design/ams40.md rule 7);
+    // their menu portrait keeps its 2× art; the select40 portraits are baked 1× sets too.
+    const baked = /^char\/(vincent|thom|dirk|bob|patrick)\/(?!portrait$)/;
+    const all = listSprites('char/');
+    for (const id of all.filter((x) => baked.test(x))) expect(hasHiSprite(id), id).toBe(false);
+    const ids = all.filter((x) => !baked.test(x));
+    // 95 ids per rig character: recruit and the four GDD heroes (+ the style trials and select art).
+    expect(ids.length).toBeGreaterThanOrEqual(475);
+    for (const hero of ['recruit', 'vincent', 'thom', 'dirk', 'bob', 'patrick', 'grace', 'gramps', 'mittens', 'pip']) expect(all.some((id) => id.startsWith(`char/${hero}/`)), hero).toBe(true);
     for (const id of ids) {
       expect(hasHiSprite(id), id).toBe(true);
       const lo = getFrames(id, 1);

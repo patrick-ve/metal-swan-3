@@ -24,7 +24,7 @@ import '../../src/game/content/items/index';
 import '../../src/game/content/locals/index';
 import '../../src/game/content/locals/art';
 import { DeliveryRider, FatbikeYouth, Handhaver, Seagull } from '../../src/game/content/locals/index';
-import { GloatPage, HANDHAVER } from '../../src/game/content/locals/handhaver';
+import { GLOAT_FRAME, GloatPage, HANDHAVER } from '../../src/game/content/locals/handhaver';
 import { FLOOR, TestWorld } from './helpers';
 
 const C = TUNING.continues;
@@ -107,7 +107,7 @@ describe('the handhaver gloat', () => {
     let wrote = false;
     hold(tw, spot, 260, () => {
       maxWalk = Math.max(maxWalk, Math.abs(h.x - x0));
-      if (h.anim.id === `${h.art}/gloat` && h.anim.index <= 1) wrote = true;
+      if (h.anim.id === `${h.art}/gloat` && (h.anim.index === GLOAT_FRAME.write || h.anim.index === GLOAT_FRAME.write2)) wrote = true;
       expect(h.y).toBe(FLOOR);
       expect(h.reaction).toBe('gloat');
     });
@@ -124,7 +124,7 @@ describe('the handhaver gloat', () => {
     expect(pages[0].y).toBeGreaterThan(FLOOR - 6);
     // He stands back with the book shut.
     expect(h.anim.id).toBe(`${h.art}/gloat`);
-    expect(h.anim.index).toBe(4);
+    expect(h.anim.index).toBe(GLOAT_FRAME.done);
     expect(shots.n).toBe(0);
     // A second hold: one more line (once per hold), not one per renewal.
     cower(tw, spot);

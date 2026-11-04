@@ -13,7 +13,7 @@
   `GEMEENTE AMSTERDAM`, `BURGEMEESTER`, `GESLOTEN`, `BOETE`, `TOT ZIENS!`, `FIETSPAD`).
 - Real names by the user's explicit wish: Amsterdam, Rijksmuseum, Museumplein, Stopera, Amstel,
   Fabel Friet (a real friet shop, shown in a friendly light), burgemeester Femke Halsema as a
-  robot caricature boss (ROBO-HALSEMA), Uber Eats style delivery riders. All art is drawn by our
+  robot caricature boss (MECHA HASLEMA), Uber Eats style delivery riders. All art is drawn by our
   code; no logo is traced. See the exception paragraph in `docs/ORIGINALITY.md`.
 - Tone: Saturday-morning cartoon, bloodless. The mayor is a ROBOT; no human is hurt. No ethnic
   caricature: the youths use the normal mixed skin/outfit variant pool.
@@ -79,7 +79,12 @@ Every id must spawn and run with `{}` params (tests/content/modules.test.ts).
   flutter (a crouch dodges it); recover 40. Never more than 2 tickets in the air per officer.
 - Death: swoons; tickets scatter like confetti.
 
-## 3. Boss `ams-mayor` — ROBO-HALSEMA, "THE IRON MAYOR" (GDD 10.0 rules)
+## 3. Boss `ams-mayor` — MECHA HASLEMA, "THE IRON MAYOR" (GDD 10.0 rules)
+
+> **D4 (2026-11-03, `docs/design/ams40.md` "The mayor"):** the boss is renamed MECHA HASLEMA
+> (formerly ROBO-HALSEMA; the id `ams-mayor` stays). Her 40 px set gives her a steel robot face
+> with red eye slots and no facial likeness (`docs/ORIGINALITY.md`). The look below is her current
+> art until that set replaces it; hitboxes and numbers stay (D7).
 
 - Size ~140 px tall, ~110 px wide. Stands at the right of the arena (feet y 176, centre about
   arena-left + 300). A walking robot caricature with a recognisable likeness of the mayor
@@ -118,7 +123,7 @@ Every id must spawn and run with `{}` params (tests/content/modules.test.ts).
   `WE NIET!`; phase 2 `REGELS ZIJN REGELS!` and `IK WORD HELEMAAL GEK` / `VAN DIE
   HOTDOGKRAAM...` → `...OP MIJN` / `MUSEUMPLEIN!`; phase 3 `DIT KOST JE EEN` / `FLINKE BOETE!`;
   broken parts `MIJN STEMPEL!`, `MIJN HAAR, MIJN` / `PRACHTIGE HAAR!`; death `TOT ZIENS...`.
-- Intro: she steps out of the Stopera doors (invulnerable entrance), bossIntro `ROBO-HALSEMA`,
+- Intro: she steps out of the Stopera doors (invulnerable entrance), bossIntro `MECHA HASLEMA`,
   subtitle `THE IRON MAYOR`, music `ams-boss`.
 - Death: sparks and small blasts, the hair flies off like a wig (a bald steel skull shows), the
   head boings on a spring, she sits down and powers off, a big explosion, score.

@@ -33,7 +33,26 @@ import type { StatusEffectDef } from '../../../player/status';
 import { Projectile } from '../../../projectile';
 import { defineEntity, defineStatus, paramNum, paramStr, type SpawnParams } from '../../../registry';
 import { TUNING } from '../../../tuning';
-import { CLAMP, CLAMP_ID, CLAMP_TAG, CLAMPED_ID, HOOK, ID, SCAN, SCAN_TAG, TICKET, TICKET_ID, TRUCK, TRUCK_ID, TRUCK_TAG } from './geometry';
+import { HOOK_TILT_DEG, HOOK_TILTS, TOW_DAMAGED, TOW_LOAD_STEP, TOW_LOADS } from '../../art40/ams-tow-truck.gen';
+import {
+  CLAMP_DIP,
+  CLAMP_FOOT_BITE,
+  CLAMP_FOOT_POP,
+  CLAMP_FOOT_RATTLE,
+  CLAMP_FOOT_SNAP,
+  CLAMP_FOOT_STILL,
+  CLAMP_HALF,
+  CLAMP_LAND,
+  CLAMP_LAUNCH,
+  CLAMP_OPEN,
+  CLAMP_SHUT,
+  CLAMP_SNAP,
+  CLAMP_SQUAT,
+  CLAMP_SQUAT_B,
+  CLAMP_WIDE,
+} from '../../art40/ams-wheel-clamp.gen';
+import { RETICLE_LOCK, RETICLE_PULSE, RETICLE_SNAP, RETICLE_TRACK, RETICLE_TRACK_N, TICKET_FRAMES } from '../../art40/ams-scan.gen';
+import { CLAMP, CLAMP_ID, CLAMP_TAG, CLAMPED_ID, HOOK, ID, SCAN, SCAN_TAG, TICKET, TICKET_ID, TRUCK, TRUCK_ART_DX, TRUCK_ID, TRUCK_TAG } from './geometry';
 
 /** Every hit of the fight carries the `boss` tag (a player vehicle loses one cell). */
 export const BOSS_HIT: readonly string[] = ['boss'];
@@ -88,12 +107,18 @@ export class ScanReticle extends EntityBase {
   }
 
   override draw(r: Renderer): void {
-    // Tracking: steady brackets; frozen: the closed crosshair blinks (3 on, 3 off).
-    if (this.locked && Math.floor(this.t / 3) % 2 === 1) return;
+    // Tracking: the brackets breathe; the lock: they snap shut (RETICLE_SNAP), then the crosshair
+    // blinks (3 on, 3 off) with its ring pulsing (ams-scan.gen.ts frame roles).
+    if (this.locked && this.t >= 2 && Math.floor(this.t / 3) % 2 === 1) return;
     if (this.fade >= 0 && this.fade % 4 < 2) return;
     drawOpts.flipX = false;
     drawOpts.flash = false;
-    r.sprite(ID.reticle, this.locked ? 1 : 0, Math.round(this.x), Math.round(this.y), drawOpts);
+    const f = !this.locked
+      ? RETICLE_TRACK + (Math.floor(this.t / 4) % RETICLE_TRACK_N)
+      : this.t < 2
+        ? RETICLE_SNAP
+        : Math.floor(this.t / 6) % 2 === 0 ? RETICLE_LOCK : RETICLE_PULSE;
+    r.sprite(ID.reticle, f, Math.round(this.x), Math.round(this.y), drawOpts);
   }
 }
 
@@ -167,7 +192,7 @@ export class ScanTicket extends Projectile {
   override draw(r: Renderer): void {
     drawOpts.flipX = this.dir > 0;
     drawOpts.flash = false;
-    r.sprite(ID.ticket, Math.floor(this.t / this.ticksPerFrame) % 3, Math.round(this.x), Math.round(this.y), drawOpts);
+    r.sprite(ID.ticket, Math.floor(this.t / this.ticksPerFrame) % TICKET_FRAMES, Math.round(this.x), Math.round(this.y), drawOpts);
   }
 }
 
@@ -206,8 +231,14 @@ export const CLAMPED: StatusEffectDef = {
   },
   onDraw(p, r, left) {
     if (p.state !== 'play') return;
-    // The last 12 ticks it rattles loose.
-    const f = left <= 12 ? Math.floor(p.world.tick / 2) % 2 : 0;
+    // It bites (jaws wide, then snapped shut), holds still, rattles loose in the last 12 ticks and
+    // springs open in the last 3 (presentation only: the status time is CLAMP.ticks).
+    const held = CLAMP.ticks - left;
+    let f: number = CLAMP_FOOT_STILL;
+    if (left <= 3) f = CLAMP_FOOT_POP;
+    else if (left <= 12) f = Math.floor(p.world.tick / 2) % 2 === 0 ? CLAMP_FOOT_RATTLE : CLAMP_FOOT_STILL;
+    else if (held < 3) f = CLAMP_FOOT_BITE;
+    else if (held < 6) f = CLAMP_FOOT_SNAP;
     footOpts.flipX = p.facing < 0;
     footOpts.flash = false;
     r.sprite(ID.clampFoot, f, Math.round(p.x + p.facing * 2), Math.round(p.y), footOpts);
@@ -392,12 +423,32 @@ export class AmsWheelClamp extends EntityBase {
   }
 
   override draw(r: Renderer): void {
-    let f = 0;
-    if (this.state === 'armed') f = this.t % 40 < 34 ? 1 : 2;
-    else if (this.state === 'squat') f = 3;
     drawOpts.flipX = this.facing < 0;
     drawOpts.flash = this.flashTicks > 0 && this.world.tick % 2 === 0;
-    r.sprite(ID.clamp, f, Math.round(this.x), Math.round(this.y), drawOpts);
+    r.sprite(ID.clamp, this.frame(), Math.round(this.x), Math.round(this.y), drawOpts);
+  }
+
+  /**
+   * The clamp's frame role (presentation only; the states and their ticks are the logic): shut in
+   * the toss; armed: the landing squash, then open with a snap every 40 ticks (half, shut, half);
+   * the hop tell: a half squat, then the squat trembling; the hop: the push-off stretch, then the
+   * jaws flung wide.
+   */
+  frame(): number {
+    const t = this.t;
+    switch (this.state) {
+      case 'air':
+        return CLAMP_SHUT;
+      case 'armed': {
+        if (t < 4) return CLAMP_LAND;
+        const c = t % 40;
+        return c < 34 ? CLAMP_OPEN : c < 36 ? CLAMP_HALF : c < 38 ? CLAMP_SNAP : CLAMP_HALF;
+      }
+      case 'squat':
+        return t < 3 ? CLAMP_DIP : Math.floor(t / 2) % 2 === 0 ? CLAMP_SQUAT : CLAMP_SQUAT_B;
+      case 'hop':
+        return t < 4 ? CLAMP_LAUNCH : CLAMP_WIDE;
+    }
   }
 }
 
@@ -585,10 +636,10 @@ export class AmsTowTruck extends EntityBase {
       const [hx, hy] = this.hookPoint(this.hp2);
       r.line(Math.round(this.tipX()), y + TRUCK.tip[1], Math.round(hx), Math.round(hy), PAL.ink[1]);
       drawOpts.flash = false;
-      r.sprite(ID.hook, 0, Math.round(hx), Math.round(hy), drawOpts);
+      r.sprite(ID.hook, this.hookFrame(flip), Math.round(hx), Math.round(hy), drawOpts);
       drawOpts.flash = this.flashTicks > 0 && this.world.tick % 2 === 0;
     }
-    r.sprite(ID.truck, this.broken || this.hp <= this.maxHp / 2 ? 1 : 0, x, y, drawOpts);
+    r.sprite(ID.truck, this.truckFrame(), x + (flip ? -TRUCK_ART_DX : TRUCK_ART_DX), y, drawOpts);
     const f = ((Math.floor(this.wheelDist / 1.9) % 4) + 4) % 4;
     drawOpts.flash = false;
     for (let i = 0; i < TRUCK.wheelX.length; i++) {
@@ -597,10 +648,22 @@ export class AmsTowTruck extends EntityBase {
     }
     // The amber beacon on the cab roof turns (two lamps, alternating).
     if (!this.broken && Math.floor(this.t / 8) % 2 === 0) {
-      const b = TRUCK.beacon;
-      const bx = b.x + (Math.floor(this.t / 16) % 2 === 0 ? 2 : b.w - 2);
-      r.sprite(ID.blink, 0, x + (flip ? -bx : bx), y + b.y + 1, drawOpts);
+      const lamp = TRUCK.lamps[Math.floor(this.t / 16) % 2];
+      r.sprite(ID.blink, 0, x + (flip ? -lamp[0] : lamp[0]), y + lamp[1], drawOpts);
     }
+  }
+
+  /** The truck frame: damaged when broken or at half HP or less; the clamps still on its bed. */
+  truckFrame(): number {
+    const hurt = this.broken || this.hp <= this.maxHp / 2;
+    return (hurt ? TOW_DAMAGED : 0) + TOW_LOAD_STEP * Math.min(TOW_LOADS, this.dropped);
+  }
+
+  /** The hook leans with its cable: one frame per HOOK_TILT_DEG of swing (mirrored with the truck). */
+  hookFrame(flip: boolean): number {
+    const a = ((flip ? -this.hookAng : this.hookAng) * 180) / Math.PI;
+    const k = Math.min(HOOK_TILTS, Math.round(Math.abs(a) / HOOK_TILT_DEG));
+    return k === 0 ? 0 : a > 0 ? k : HOOK_TILTS + k;
   }
 }
 

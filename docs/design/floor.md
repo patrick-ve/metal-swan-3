@@ -218,7 +218,7 @@ kerb between stretches (§4.4). The front row:
   none.
 - **Depth steps (render only):** a few entities come out of the lifted back plane: zombies
   bursting from boarded openings (oz-a), Meneer Wu at his door (oz-b), window wavers and the baker
-  at Fabel Friet (`ams` a), ROBO-HALSEMA stepping out of the Stopera's doors (`ams` d). They get
+  at Fabel Friet (`ams` a), MECHA HASLEMA stepping out of the Stopera's doors (`ams` d). They get
   `drawDepth` (px behind the walk line), which the world draw projects (shift and speed of that
   depth; no scaling). It is read only in drawing, so the sims cannot change. Rule: an entity is
   drawn at a depth only while it cannot be hit and cannot hurt (an intro, an emergence of ≤ 30
@@ -314,7 +314,7 @@ with the front row (about 197) · pavement. Between stretches the kerbs bend ove
 | | the quay and the Blauwbrug 860–1388 | lane to a crossing; the Blauwbrug's hump (16) in cobbles, its lamps on the railings; the market at Waterlooplein in cobbles |
 | c2 (2632) | the river 60–2492 | water over the whole band (the boat carries the camera); the far bank lifted. The low bridges and the Magere Brug span the band from the back edge to the front (their art projects in depth; their hitboxes stay); quays at both ends |
 | d (1280) | the flea market 0–896 | cobbles; stalls at the back and in the walk plane with top faces; the front row: poles at the market's edge |
-| | the Stopera arena 896–1280 | the big pale stone tiles of the forecourt; ROBO-HALSEMA steps out of the glass doors (depth step); no front row in the arena |
+| | the Stopera arena 896–1280 | the big pale stone tiles of the forecourt; MECHA HASLEMA steps out of the glass doors (depth step); no front row in the arena |
 
 ## 5. Oldenzaal
 
@@ -487,7 +487,7 @@ for a later wave; every oldenzaal frame stays byte-identical in this wave.
    enrols every floor section.
 3. **§3.7 has no exceptions:** an entity that can be hit or can hurt draws at depth 0 (its art with
    its hitbox). Depth steps only for intros that cannot be hit and for cosmetic actors; fx may have
-   a depth. ROBO-HALSEMA's step out of the Stopera doors is a depth step only while the boss cannot
+   a depth. MECHA HASLEMA's step out of the Stopera doors is a depth step only while the boss cannot
    be hit.
 4. **Moving and breakable things get their faces in their own draw** (render-only, on a floor only):
    the rowing boat's faces move from section a's spawn into its entity; the breakables (the racks,
@@ -516,7 +516,7 @@ for a later wave; every oldenzaal frame stays byte-identical in this wave.
 | | the quay and the Blauwbrug 860–1388 | lane to a crossing; the Blauwbrug's hump (16) in cobbles with its lamp posts on the parapets and the parapet ends' sides; the Waterlooplein market stalls as boxes on the cobbles at the back and on bulbs |
 | c2 | the river 60–2492 | water over the whole band; the cruise boat carries the camera (a box: hull sides, the cabin's end faces, the roof top); the far bank's quay lifted with its coping; the two low bridges span the band from the back edge to the front (the parapet, the far arch, the near slab face in front as today; their piers' sides); the Magere Brug spans the band (portals, the bascule entity with its sides); the party boat and the houseboats as boxes; the jetties at both ends with steps; ducks at their depth |
 | d | the flea market 0–896 | cobbles; the stalls (breakables) as boxes with awning tops in the walk plane on the square, more stalls at the back; the front row: poles at the market's edge, never in front of a stall a hero fights at |
-| | the Stopera arena 896–1280 | the pale stone tiles of the forecourt in a grid; the Stopera's curved glass front and the Stadhuis wing with their sides; the glass doors in depth; ROBO-HALSEMA's depth step only while not hittable; no front row in the arena |
+| | the Stopera arena 896–1280 | the pale stone tiles of the forecourt in a grid; the Stopera's curved glass front and the Stadhuis wing with their sides; the glass doors in depth; MECHA HASLEMA's depth step only while not hittable; no front row in the arena |
 
 ### 12.3 Build (agents at effort xhigh, Agent tool; snapshot `.claude/snapshots/floor-pre-b.tgz`)
 

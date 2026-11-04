@@ -1,5 +1,5 @@
 /**
- * ROBO-HALSEMA (`ams-mayor`, docs/design/amsterdam.md §3): spawn and intro, every attack after its
+ * MECHA HASLEMA (`ams-mayor`, docs/design/amsterdam.md §3): spawn and intro, every attack after its
  * telegraph, the parts breaking in order (the medallion armoured until the stamp arm and the
  * chain are gone), the add caps, a won fight with the pistol (forward, then the 45° diagonal) and
  * grenades (time to kill measured), the death sequence and 'bossDefeated', no errors.
@@ -36,7 +36,7 @@ function runAttack(tw: TestWorld, boss: AmsMayor, gen: ScriptGen): void {
   tw.world.scripts.run(gen, { owner: boss });
 }
 
-describe('ROBO-HALSEMA (ams-mayor)', () => {
+describe('MECHA HASLEMA (ams-mayor)', () => {
   it('spawns with the parts, HP and score from the brief; the intro steps her out of the doors', () => {
     const { tw, boss } = arena();
     expect(boss).toBeInstanceOf(AmsMayor);

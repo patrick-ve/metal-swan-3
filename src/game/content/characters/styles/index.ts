@@ -7,6 +7,7 @@ import { defineSprite, getFrames } from '../../../../engine/sprites';
 import { definePlayerSprites } from '../../../art/human-sprites';
 import type { Pose } from '../../../art/humanoid';
 import { defineCharacter, getCharacter } from '../../../registry';
+import { defineRigCrush } from '../crush.art';
 import { VINCENT_ART, VINCENT_STYLE } from '../vincent.art';
 import type { ArtStyle } from './kit';
 import { STYLE as ARCADE } from './arcade';
@@ -31,8 +32,10 @@ export function defineStyleSprites(variants: Readonly<Record<string, (p: Pose) =
   for (const s of ART_STYLES) {
     const id = `vincent-${s.id}`;
     definePlayerSprites(id, VINCENT_STYLE, { ...VINCENT_ART, variants, renderPose: s.renderPose, defer: true });
-    // The crushed death and the portrait stay VINCENT's own.
-    for (const name of ['die-flat', 'portrait']) {
+    // The crushed death: the rig's (VINCENT's own is his 40 px set now, docs/design/ams40.md wave 2);
+    // the portrait stays VINCENT's own.
+    defineRigCrush(`char/${id}`, VINCENT_STYLE);
+    for (const name of ['portrait']) {
       const src = `char/vincent/${name}`;
       defineSprite(`char/${id}/${name}`, () => [...getFrames(src, 1)], { defer: true, anchor: name === 'portrait' ? 'top-left' : undefined, hd: (d) => [...getFrames(src, d)] });
     }

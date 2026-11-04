@@ -26,8 +26,9 @@ describe('dense aliases of the content', () => {
     const four = listDenseAliases(4);
     expect(four).toEqual(listDenseAliases(2));
     // 174 + 14 HUD weapon icon names (weapons/icons.art.ts: the GDD `ui/icon-weapon-<id>` names
-    // and the old art names rocket / flame / bouncer show the weapon's own icon).
-    expect(four.length).toBe(188);
+    // and the old art names rocket / flame / bouncer show the weapon's own icon), minus the Swan's
+    // 6 (move, move-front, swim-neck-relax in P1 and P2: 1× baked art, docs/design/ams40.md wave 7).
+    expect(four.length).toBe(182);
     for (const [id, target] of four) {
       expect(hasSprite(id) && hasSprite(target), id).toBe(true);
       expect(denseTarget(target, 4), id).toBe(target);
@@ -49,9 +50,6 @@ describe('dense aliases of the content', () => {
       [`${P}-0c/bike`, `${P}/bike`],
       [`${P}-pair-3b/bike`, `${P}-pair-3a/bike`],
       ['enemy/delivery-rider-a/bike', 'enemy/delivery-rider/bike'],
-      ['vehicle/swan/move', 'vehicle/swan/run'],
-      ['vehicle/swan-mute/move-front', 'vehicle/swan-mute/run-front'],
-      ['vehicle/swan/swim-neck-relax', 'vehicle/swan/neck-relax'],
       ['enemy/seagull/idle', 'enemy/seagull/walk'],
       ['decor/ams/house-noon', 'decor/ams/house-morning'],
       ['decor/ams/fabel-friet-noon', 'decor/ams/fabel-friet-morning'],
@@ -68,7 +66,7 @@ describe('dense aliases of the content', () => {
   });
 
   it('an alias draws its target frames without an error', () => {
-    for (const id of ['enemy/fatbike-youth-pair-1a/die-crush', 'enemy/fatbike-youth-2b/bike', 'vehicle/swan/move', 'item/pickup-gem', 'fx/muzzle-up']) {
+    for (const id of ['enemy/fatbike-youth-pair-1a/die-crush', 'enemy/fatbike-youth-2b/bike', 'item/pickup-gem', 'fx/muzzle-up']) {
       expect(getFrames(id, 2), id).toBe(getFrames(denseTarget(id, 2), 2));
       expect(getFrames(id, 2)[0].density, id).toBe(2);
     }

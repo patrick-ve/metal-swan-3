@@ -75,7 +75,7 @@ export const MAYOR = {
   death: 230,
 } as const;
 
-export const MAYOR_NAME = 'ROBO-HALSEMA';
+export const MAYOR_NAME = 'MECHA HASLEMA';
 export const MAYOR_SUBTITLE = 'THE IRON MAYOR';
 /** Tag carried by her adds (the cap counts it). */
 export const ADD_TAG = 'ams-mayor-add';

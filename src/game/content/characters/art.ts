@@ -1,29 +1,35 @@
 /**
  * Content category "characters": sprite definitions only (docs/ARCHITECTURE.md §6.1, §7).
- * Each playable character is one rig style plus its own pose tables and props, registered with
- * definePlayerSprites (docs/ART_GUIDE.md §3): the whole `char/<id>/…` contract, `salute`,
- * `bored`, the nine Swan rider strips `ride-*` and the Helium Head variants `helium-*`. The
- * squad (docs/design/squad.md §1, the playable roster): vincent.art.ts, thom.art.ts,
- * dirk.art.ts, bob.art.ts, patrick.art.ts. The retired heroes (registered, not playable; m1–m5
- * and Gramps' radio role still use them): grace.art.ts, mittens.art.ts, pip.art.ts,
- * gramps.art.ts (GDD §3.1–§3.4). Menu portraits: portrait.art.ts (`PORTRAITS[id]` replaces the
- * rig's default portrait).
+ * The squad (docs/design/squad.md §1, the playable roster: VINCENT, THOM, DIRK, BOB, PATRICK) are
+ * baked 40 px sets (docs/design/ams40.md wave 2): `src/game/content/art40/<id>.gen.ts`, drawn
+ * offline by tools/art40/chars/<id>/ through the shared hero module tools/art40/chars/_hero/:
+ * the whole `char/<id>/…` contract (legs, torsos, full-body strips, `salute`, the nine Swan rider
+ * strips `ride-*` and the Helium Head twins `helium-*` / `helium-wob-*`), one 1× picture at every
+ * art tier. Their `*.art.ts` keep the HumanStyle for the menu portrait and the ending heads; the
+ * select panels (select.art.ts) and portraits (portrait.art.ts) are UI and stay.
+ * The retired heroes (registered, not playable; m1–m5 and Gramps' radio role still use them) and
+ * the test recruit keep the rig (definePlayerSprites, docs/ART_GUIDE.md §3): grace.art.ts,
+ * mittens.art.ts, pip.art.ts, gramps.art.ts (GDD §3.1–§3.4).
  */
-import { defineSprite, getFrames } from '../../../engine/sprites';
-import { crushStripHi } from '../../art/hi-strips';
+import { defineSprite } from '../../../engine/sprites';
 import { definePlayerSprites, type PlayerArtOpts } from '../../art/human-sprites';
-import { renderHuman, type Density, type HumanStyle, type Pose } from '../../art/humanoid';
-import * as P from '../../art/poses';
-import { CRUSH_TIMING, crushStrip } from '../creatures/draw';
-import { BOB_ART, BOB_STYLE } from './bob.art';
-import { DIRK_ART, DIRK_STYLE } from './dirk.art';
+import type { HumanStyle, Pose } from '../../art/humanoid';
+import { defineBakedSet } from '../../../engine/baked';
+import { SET as BOB_SET } from '../art40/bob.gen';
+import { SET as DIRK_SET } from '../art40/dirk.gen';
+import { SET as PATRICK_SET } from '../art40/patrick.gen';
+import { SET as THOM_SET } from '../art40/thom.gen';
+import { SET as VINCENT_SET } from '../art40/vincent.gen';
+import { BOB_STYLE } from './bob.art';
+import { DIRK_STYLE } from './dirk.art';
 import { GRACE_ART, GRACE_STYLE } from './grace.art';
 import { GRAMPS_ART, GRAMPS_STYLE } from './gramps.art';
 import { MITTENS_ART, MITTENS_STYLE } from './mittens.art';
-import { PATRICK_ART, PATRICK_STYLE } from './patrick.art';
+import { PATRICK_STYLE } from './patrick.art';
 import { PIP_ART, PIP_STYLE } from './pip.art';
-import { THOM_ART, THOM_STYLE } from './thom.art';
-import { VINCENT_ART, VINCENT_STYLE } from './vincent.art';
+import { THOM_STYLE } from './thom.art';
+import { VINCENT_STYLE } from './vincent.art';
+import { defineRigCrush } from './crush.art';
 import { heroPortrait, PORTRAITS } from './portrait.art';
 import { defineStyleSprites } from './styles/index';
 // The time-out snore (fx/snore) belongs to the player's sleep strip.
@@ -86,30 +92,12 @@ export const HERO_STYLES: Readonly<Record<string, HumanStyle>> = {
 /** Register a playable character: the whole §6.1 contract, the rider strips and Helium Head. */
 function defineHero(id: string, style: HumanStyle, art: PlayerArtOpts = {}): void {
   definePlayerSprites(id, style, { ...art, variants: HELIUM_VARIANTS });
-  // A hero's own portrait replaces the rig's default one.
-  // Crushed flat (anim wave p1): the shared pancake / peel strip over the hero's standing pose.
-  // Frame 2 (the long hold) is the pancake settling with its arms splayed, so no two frames match.
-  const stand = (d: Density) => renderHuman(style, P.STAND, 'full', d);
-  const splay = (d: Density) => renderHuman(style, { ...P.STAND, armN: { sh: 80, el: 10, hand: 'open' }, armF: { sh: -70, el: 10, hand: 'open' }, expr: 'dazed' }, 'full', d);
-  const flat = `char/${id}/die-flat`;
-  defineSprite(
-    flat,
-    () => {
-      const a = crushStrip(stand(1));
-      a[2] = crushStrip(splay(1))[1];
-      return a;
-    },
-    {
-      durations: CRUSH_TIMING,
-      loop: false,
-      defer: true,
-      hd: (d) => {
-        const a = crushStripHi(stand(1), stand(d), getFrames(flat, 1));
-        a[2] = crushStripHi(splay(1), splay(d), crushStrip(splay(1)))[1];
-        return a;
-      },
-    },
-  );
+  defineRigCrush(`char/${id}`, style);
+  heroPortraitSprite(id, style);
+}
+
+/** A hero's own portrait replaces the rig's default one (`char/<id>/portrait`, UI). */
+function heroPortraitSprite(id: string, style: HumanStyle): void {
   const pc = PORTRAITS[id];
   if (pc) defineSprite(`char/${id}/portrait`, () => heroPortrait(style, pc), { anchor: 'top-left', hi: () => heroPortrait(style, pc, 2) });
 }
@@ -119,10 +107,16 @@ defineHero('grace', GRACE_STYLE, GRACE_ART);
 defineHero('mittens', MITTENS_STYLE, MITTENS_ART);
 defineHero('pip', PIP_STYLE, PIP_ART);
 defineHero('gramps', GRAMPS_STYLE, GRAMPS_ART);
-defineHero('vincent', VINCENT_STYLE, VINCENT_ART);
-defineHero('thom', THOM_STYLE, THOM_ART);
-defineHero('dirk', DIRK_STYLE, DIRK_ART);
-defineHero('bob', BOB_STYLE, BOB_ART);
-defineHero('patrick', PATRICK_STYLE, PATRICK_ART);
+/** The squad: the baked 40 px sets and the menu portrait (UI, drawn by the rig). */
+for (const [id, set, style] of [
+  ['vincent', VINCENT_SET, VINCENT_STYLE],
+  ['thom', THOM_SET, THOM_STYLE],
+  ['dirk', DIRK_SET, DIRK_STYLE],
+  ['bob', BOB_SET, BOB_STYLE],
+  ['patrick', PATRICK_SET, PATRICK_STYLE],
+] as const) {
+  defineBakedSet(set);
+  heroPortraitSprite(id, style);
+}
 // The art-direction trial (styles/kit.ts): every strip of the hidden `vincent-<style>` copies.
 defineStyleSprites(HELIUM_VARIANTS);

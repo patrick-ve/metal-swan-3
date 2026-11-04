@@ -263,10 +263,17 @@ describe('HD hero strips (registry, pool families, duplicates)', () => {
     const ids = listSprites('char/');
     expect(ids.length).toBeGreaterThan(1000);
     for (const id of ids) {
+      // The squad's in-game strips are baked 40 px sets: 1× pixels at every tier (docs/design/ams40.md
+      // rule 7), no 2× / 4× art.
+      // The select40 portraits (select, select-grey, select-pick) are baked 1× sets as well.
+      const menu = /\/(portrait|select(-grey)?)$/.test(id);
+      if (/^char\/(vincent|thom|dirk|bob|patrick)\//.test(id) && !/\/portrait$/.test(id)) {
+        expect(hasHiSprite(id, 2), id).toBe(false);
+        continue;
+      }
       expect(hasHiSprite(id, 2), id).toBe(true);
       // The squad's select busts and menu portraits have 4× art (polish wave); the retired
       // heroes' menu art stays 2×. The art-direction trial's `vincent-<style>` reuse VINCENT's portrait.
-      const menu = /\/(portrait|select(-grey)?)$/.test(id);
       const squad = /^char\/(vincent(-[a-z]+)?|thom|dirk|bob|patrick)\//.test(id);
       expect(hasHiSprite(id, 4), id).toBe(!menu || squad);
     }

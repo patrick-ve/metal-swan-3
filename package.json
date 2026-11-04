@@ -29,7 +29,10 @@
     "anim-bench": "tsx tools/anim-bench.ts",
     "uhd-spike": "tsx tools/uhd-spike.ts",
     "geometry-fixture": "tsx tools/geometry-fixture.ts",
-    "art:import-face": "tsx tools/art/import-face.ts"
+    "art:import-face": "tsx tools/art/import-face.ts",
+    "art40": "python3 tools/art40/bake.py",
+    "art40-check": "tsx tools/art40/check/index.ts",
+    "art40-contract": "tsx tools/art40/contract/extract.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

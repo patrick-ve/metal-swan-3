@@ -16,8 +16,6 @@ import '../../src/game/content/props/index';
 import '../../src/game/content/locals/index';
 import '../../src/game/content/locals/art';
 import { AmsStaff, type AmsBaker } from '../../src/game/content/missions/ams/entities';
-import { CLAP4, IDLE, STAFF_STYLES, BAKER_STYLE, WAVE4 } from '../../src/game/content/missions/ams/npc.art';
-import { HANDHAVER_STYLE, HANDHAVER_THROW_TIMING, THROW_ALL, WALK_SWING } from '../../src/game/content/locals/handhaver.art';
 import { BOW5, FREED7, HOSTAGE_STYLES, TOURIST_BOW_TIMING, TOURIST_FREED_TIMING } from '../../src/game/content/items/hostage.art';
 import { TurningHostage } from '../../src/game/content/items/hostages';
 import type { Handhaver } from '../../src/game/content/locals/index';
@@ -31,38 +29,33 @@ beforeAll(async () => {
 });
 
 describe('people strips: motion gate', () => {
-  it('handhaver: idle 4, walk 8 with arm swing, turn 2, throw 5 (flick timing kept)', () => {
+  it('handhaver (baked 40 px, tools/art40): idle 4, walk 12 (48 ticks), turn 2, throw 6 (20 ticks inside throw + recover)', () => {
     for (const set of ['handhaver', 'handhaver-b', 'handhaver-c']) {
       expect(frameCount(`enemy/${set}/idle`)).toBe(4);
-      expect(frameCount(`enemy/${set}/walk`)).toBe(8);
+      expect(frameCount(`enemy/${set}/walk`)).toBe(12);
       expect(frameCount(`enemy/${set}/turn`)).toBe(2);
-      expect(frameCount(`enemy/${set}/throw`)).toBe(5);
+      expect(frameCount(`enemy/${set}/throw`)).toBe(6);
       for (const a of ['idle', 'walk', 'turn', 'throw']) assertNoDuplicateFrames(`enemy/${set}/${a}`);
     }
-    expect(HANDHAVER_THROW_TIMING.slice(0, 2)).toEqual([3, 5]);
-    expect(HANDHAVER_THROW_TIMING.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(HANDHAVER.throwTicks + HANDHAVER.recover);
-    expect(spriteAnim('enemy/handhaver/tell').durations).toEqual([8, 8, 9999]);
-    assertSmooth({ style: HANDHAVER_STYLE, poses: WALK_SWING, durations: [6], loop: true });
-    assertSmooth({ style: HANDHAVER_STYLE, poses: THROW_ALL(HANDHAVER_STYLE).slice(1), durations: HANDHAVER_THROW_TIMING.slice(1) });
+    const sum = (d: readonly number[] | undefined): number => (d ?? []).reduce((a, b) => a + b, 0);
+    expect(sum(spriteAnim('enemy/handhaver/walk').durations)).toBe(48);
+    expect(sum(spriteAnim('enemy/handhaver/throw').durations)).toBe(20);
+    expect(sum(spriteAnim('enemy/handhaver/throw').durations)).toBeLessThanOrEqual(HANDHAVER.throwTicks + HANDHAVER.recover);
+    // the tell: the wind-up (last frame) is held until the ticket leaves
+    const tell = spriteAnim('enemy/handhaver/tell').durations ?? [];
+    expect(tell[tell.length - 1]).toBe(9999);
+    expect(sum(tell.slice(0, -1))).toBeLessThanOrEqual(HANDHAVER.tele);
   });
 
-  it('townspeople: idle 4, clap 4, wave 4, in-<mode> 2, turn 2', () => {
-    const sets = ['npc/ams/ams-baker', 'npc/ams/ams-hotdog-vendor', 'npc/ams/ams-staff/0', 'npc/ams/ams-staff/1', 'npc/ams/ams-staff/2'];
-    for (const s of sets) {
-      expect(frameCount(`${s}/idle`), s).toBe(4);
-      expect(frameCount(`${s}/turn`), s).toBe(2);
-      expect(frameCount(`${s}/wave`), s).toBe(4);
-      for (const a of ['idle', 'turn', 'wave', 'in-wave']) assertNoDuplicateFrames(`${s}/${a}`);
-    }
-    for (const s of ['npc/ams/ams-baker', 'npc/ams/ams-staff/0']) {
-      expect(frameCount(`${s}/clap`)).toBe(4);
-      for (const a of ['clap', 'in-clap', 'in-cheer']) assertNoDuplicateFrames(`${s}/${a}`);
-    }
-    for (const style of [BAKER_STYLE, ...STAFF_STYLES]) {
-      assertSmooth({ style, poses: CLAP4, durations: [3], loop: true });
-      assertSmooth({ style, poses: WAVE4, durations: [5], loop: true });
-      assertSmooth({ style, poses: IDLE, durations: [15], loop: true });
-    }
+  it('townspeople: baked 40 px sets at the plan class counts, transitions and turns 2 frames', () => {
+    // the crew (npc/ams/ams-staff/0..2): tests/art40/ams-staff.test.ts; the hot-dog vendor: tests/art40/ams-hotdog-vendor.test.ts;
+    // the baker (npc/ams/ams-baker): tests/art40/ams-baker.test.ts (every strip, timing, point and the toss release)
+    const s = 'npc/ams/ams-baker';
+    expect(frameCount(`${s}/idle`)).toBe(4);
+    expect(frameCount(`${s}/turn`)).toBe(2);
+    expect(frameCount(`${s}/wave`)).toBe(6);
+    expect(frameCount(`${s}/clap`)).toBe(6);
+    for (const a of ['idle', 'turn', 'wave', 'in-wave', 'clap', 'in-clap', 'in-cheer', 'cheer', 'talk', 'walk', 'toss']) assertNoDuplicateFrames(`${s}/${a}`);
   });
 
   it('tourist: bow 5 in 12 ticks, freed 7 in 20 ticks, turn 2, sack-turn 2', () => {

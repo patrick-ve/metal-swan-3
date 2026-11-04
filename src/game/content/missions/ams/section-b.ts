@@ -18,6 +18,7 @@ import { HOUSE, houseRow, lawnSprite, poolSprite } from './art';
 import { at, carillon, crate, fromRight, hostage, normalUp, prewarm, STAG_LOOKS, stagArt, twoPlayers } from './helpers';
 import { placeSecrets, secretArt } from './secrets';
 import { B_HOTDOG_X, B_PASSAGE, B_W, G, terrainB } from './terrain';
+import { STAND_DY } from '../../art40/ams-hotdog-vendor.gen';
 import { B_CABINET_DEPTH, bFloor, bFloorDecor } from './floor/b/index';
 import { HOUSE_PAVEMENT } from './floor/depth';
 import { BULB_FRONT_DECOR, FACADE, HOUSE_FRONT_ROW } from './floor/layout';
@@ -95,8 +96,11 @@ const decor: DecorDef[] = [
   ...bFloorDecor(),
 ];
 
-/** Vendor spot: in the hot-dog stand's box, his head and chest in the hatch (`hotdog-front` hides the rest). */
-export const B_VENDOR = { x: B_HOTDOG_X + 32, y: G - 8 } as const;
+/**
+ * Vendor spot: in the hot-dog stand's box, his head and chest in the hatch (`hotdog-front` hides the rest).
+ * STAND_DY (baked with the 40 px figure) lowers his feet so the cap stays under the hatch top (rule 10).
+ */
+export const B_VENDOR = { x: B_HOTDOG_X + 32, y: G - 8 + STAND_DY } as const;
 
 /**
  * The city life of section b (cosmetic, sleeps off-screen) and the hot-dog vendor in his hatch

@@ -8,7 +8,8 @@
  * Every HD frame keeps the 1× geometry (size × d, anchor, points; no px cut outside the 1× box),
  * uses PAL_HD only, is new art (not the 1× or 2× frame scaled up), and consecutive frames of the
  * ams strips never repeat at 4×. The tourist's and Mrs. Dollop's blush is warm (not their teal
- * accent), the vendor's cap keeps its white band and blue peak, the pigeons' wings fan out in flight.
+ * accent), the pigeons' wings fan out in flight. (The hot-dog vendor is a baked 40 px set now:
+ * tests/art40/ams-hotdog-vendor.test.ts.)
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PAL_HD, inHdPalette } from '../../src/engine/palette-hd';
@@ -35,6 +36,14 @@ beforeAll(async () => {
   warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   await import('../../src/game/content/missions/ams/index');
   ids = listSprites().filter((id) => id.startsWith('npc/ams/') || id.startsWith('item/hostage') || id.startsWith('item/bind/'));
+  // the Fabel Friet crew: baked 40 px sets, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/ams-staff.test.ts)
+  ids = ids.filter((id) => !id.startsWith('npc/ams/ams-staff/'));
+  // the Fabel Friet baker: a baked 40 px set, 1x at every tier (tests/art40/ams-baker.test.ts)
+  ids = ids.filter((id) => !id.startsWith('npc/ams/ams-baker/'));
+  // the hot-dog vendor: a baked 40 px set, 1x at every tier (tests/art40/ams-hotdog-vendor.test.ts)
+  ids = ids.filter((id) => !id.startsWith('npc/ams/ams-hotdog-vendor/'));
+  // the window waver and the cat: a baked 40 px set, 1x at every tier (tests/art40/ams-window-waver.test.ts)
+  ids = ids.filter((id) => !id.startsWith('npc/ams/ams-window-waver/'));
 });
 afterAll(() => warn.mockRestore());
 
@@ -42,7 +51,7 @@ const same = (a: PixelBuffer, b: PixelBuffer): boolean => a.w === b.w && a.h ===
 
 describe('people: UHD art', () => {
   it('every id has HD art (2× and 4× for the ams flow, 2× for the rest) with the 1× geometry, PAL_HD only, nothing cut', () => {
-    expect(ids.length).toBeGreaterThan(150);
+    expect(ids.length).toBeGreaterThan(100); // was 150: the baked 40 px people (crew, ...) left the list
     let four = 0;
     for (const id of ids) {
       expect(hasHiSprite(id, 2), `${id}@2x`).toBe(true);
@@ -61,7 +70,7 @@ describe('people: UHD art', () => {
         }
       }
     }
-    expect(four).toBeGreaterThan(70);
+    expect(four).toBeGreaterThan(20); // was 70: the baked 40 px people (crew, baker, vendor, window waver) draw 1x at every tier
     const mine = (e: string): boolean => ids.some((id) => e === `${id}@2x` || e === `${id}@4x`);
     expect(spriteErrors().filter((e) => mine(e.id))).toEqual([]);
     const cut = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('outside the 1× frame') && ids.some((id) => m.includes(`"${id}"`)));
@@ -114,28 +123,14 @@ describe('people: UHD art', () => {
     expect(collar).toBe(true);
   });
 
-  it("the vendor's cap keeps its tricolour at 2× and 4×: red crown, white band, blue peak", () => {
-    for (const d of [2, 4]) {
-      const f = getFrames('npc/ams/ams-hotdog-vendor/idle', d)[0];
-      const head = f.pts?.head ?? [0, -30];
-      const yMax = (f.oy + head[1]) * d;
-      const has = (r: readonly number[]): boolean => {
-        for (let y = 0; y < yMax; y++) for (let x = 0; x < f.buf.w; x++) if (r.includes(f.buf.get(x, y))) return true;
-        return false;
-      };
-      expect(has(PAL_HD.red), `red crown @${d}`).toBe(true);
-      expect(has(PAL_HD.snow), `white band @${d}`).toBe(true);
-      expect(has(PAL_HD.navy) || has(PAL_HD.sky), `blue peak @${d}`).toBe(true);
-    }
-  });
+  // the vendor's tricolour cap: a baked 40 px set now (1x at every tier, plan rule 7): tests/art40/ams-hotdog-vendor.test.ts
 
   it('the HD props are drawn: the baker holds a scoop of fries, the critic a notepad, the tea lady a teapot (gold, white and navy px beyond the bare figure)', () => {
     const count = (id: string, d: number, r: readonly number[]): number => {
       const fr = getFrames(id, d);
       return fr.reduce((n, f) => n + f.buf.data.filter((c) => r.includes(c)).length, 0) / fr.length;
     };
-    // The baker holds the scoop of fries at rest, not on the walk.
-    expect(count('npc/ams/ams-baker/idle', 4, PAL_HD.gold)).toBeGreaterThan(count('npc/ams/ams-baker/walk', 4, PAL_HD.gold) + 100);
+    // (the baker's scoop of fries: a baked 40 px set now, tests/art40/ams-baker.test.ts)
     expect(count('item/hostage/critic/walk', 2, PAL_HD.navy)).toBeGreaterThan(0);
     expect(count('item/hostage/tea-lady/walk', 2, PAL_HD.navy)).toBeGreaterThan(0);
   });

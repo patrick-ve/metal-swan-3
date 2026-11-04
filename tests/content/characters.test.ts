@@ -31,6 +31,12 @@ const SQUAD = ['vincent', 'thom', 'dirk', 'bob', 'patrick'] as const;
 const OLD = ['grace', 'mittens', 'pip', 'gramps'] as const;
 const HEROES = [...SQUAD, ...OLD] as const;
 const ALL = ['recruit', ...HEROES] as const;
+/**
+ * The characters drawn by the rig (definePlayerSprites). The squad are baked 40 px sets since
+ * docs/design/ams40.md wave 2: their sprite contract is tested in tests/art/heroes40.test.ts.
+ */
+const RIG = ['recruit', ...OLD] as const;
+const SQUAD_ART = /^char\/(vincent|thom|dirk|bob|patrick)\//;
 /** The select-screen portraits (another agent's select.art.ts) are not part of the 95-id rig set. */
 const SELECT_ART = /\/select(-grey)?$/;
 
@@ -272,7 +278,7 @@ describe('character definitions (GDD §3, §13.5, §12.3)', () => {
 // ------------------------------------------------------------------------------------ sprites
 
 describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => {
-  it.each(ALL)('%s: legs with hip points, feet on the ground line', (c) => {
+  it.each(RIG)('%s: legs with hip points, feet on the ground line', (c) => {
     const P = `char/${c}/`;
     for (const [a, n, exact] of [
       ['idle', 4, false],
@@ -291,7 +297,7 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     expect(new Set(getFrames(`${P}legs-run`).map((f) => f.pts?.hip?.[1])).size, `${c} run hip bobs`).toBeGreaterThanOrEqual(1);
   });
 
-  it.each(ALL)('%s: torsos for pistol and heavy (muzzle on aim / shoot, hand on throw / knife)', (c) => {
+  it.each(RIG)('%s: torsos for pistol and heavy (muzzle on aim / shoot, hand on throw / knife)', (c) => {
     for (const w of ['pistol', 'heavy']) {
       for (const [a, n, pts] of TORSO) strip(`char/${c}/torso-${w}-${a}`, n, false, pts);
     }
@@ -315,7 +321,7 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     }
   });
 
-  it.each(ALL)('%s: UHD art at 2× and 4× (the HD body) with the 1× counts, sizes, anchors, points; feet on the ground line', (c) => {
+  it.each(RIG)('%s: UHD art at 2× and 4× (the HD body) with the 1× counts, sizes, anchors, points; feet on the ground line', (c) => {
     const logical = (f: Frame): string => {
       const d = f.density ?? 1;
       return `${f.buf.w / d}x${f.buf.h / d}@${f.ox},${f.oy}|${JSON.stringify(f.pts ?? {})}`;
@@ -355,7 +361,7 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     expect(Math.abs(shots[0].y - m[1])).toBeLessThan(1);
   });
 
-  it.each(ALL)('%s: full-body strips, salute (2 f) and the 32×32 portrait', (c) => {
+  it.each(RIG)('%s: full-body strips, salute (2 f) and the 32×32 portrait', (c) => {
     const P = `char/${c}/`;
     strip(P + 'die', 6);
     strip(P + 'die-burn', 4);
@@ -396,7 +402,7 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     expect(listSprites(`char/${c}/helium-ride`)).toEqual([]);
   });
 
-  it.each(ALL)('%s: Helium Head variants of every torso strip, bored and victory', (c) => {
+  it.each(RIG)('%s: Helium Head variants of every torso strip, bored and victory', (c) => {
     for (const infix of [HELIUM.art, HELIUM.wobArt]) {
       for (const w of ['pistol', 'heavy']) {
         for (const [a, n, pts] of TORSO) {
@@ -423,7 +429,7 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
 
   it('standing heights fit the human contract (34–38 px; hats up to 42) and differ by silhouette', () => {
     const h: Record<string, number> = {};
-    for (const c of ALL) {
+    for (const c of RIG) {
       const f = stackFrames(getFrames(`char/${c}/legs-idle`)[0], getFrames(`char/${c}/torso-pistol-idle`)[0]);
       const b = bounds(f);
       expect(b.bottom, c).toBe(0);
@@ -439,13 +445,7 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     // Heavy build: Mittens is the widest of them.
     const w = (c: string): number => getFrames(`char/${c}/legs-idle`)[0].buf.countOpaque() + getFrames(`char/${c}/torso-pistol-idle`)[0].buf.countOpaque();
     for (const c of ['grace', 'pip', 'gramps']) expect(w('mittens')).toBeGreaterThan(w(c));
-    // The squad (docs/design/squad.md §1): Thom is short and sturdy (the shortest, on shorter
-    // legs), Bob tall and slim (the tallest, on longer legs).
-    for (const c of SQUAD.filter((x) => x !== 'thom')) expect(h.thom, c).toBeLessThan(h[c]);
-    for (const c of SQUAD.filter((x) => x !== 'bob')) expect(h.bob, c).toBeGreaterThan(h[c]);
-    const hip = (c: string): number => getFrames(`char/${c}/legs-idle`)[0].pts!.hip[1];
-    expect(hip('thom')).toBeGreaterThan(hip('vincent'));
-    expect(hip('bob')).toBeLessThan(hip('vincent'));
+    // The squad's heights: tests/art/heroes40.test.ts (40 px sets).
   });
 
   it("Thom's second pistol: drawn in the off hand on every pistol torso strip, never on the heavy gun; the muzzle stays the aimed gun's", () => {
@@ -458,9 +458,7 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     const akimbo = renderHuman(THOM_STYLE, { weapon: 'pistol', offhand: 'pistol' }, 'upper');
     expect(steel(akimbo)).toBeGreaterThan(steel(plain) + 5);
     expect(akimbo.pts.muzzle).toEqual(plain.pts.muzzle);
-    for (const a of ['idle', 'shoot', 'up', 'down', 'diag-up']) {
-      expect(steel(getFrames(`char/thom/torso-pistol-${a}`)[0]), a).toBeGreaterThan(steel(getFrames(`char/vincent/torso-pistol-${a}`)[0]) + 4);
-    }
+    // Thom's in-game strips (the 40 px set) carry both pistols: tests/art/heroes40.test.ts.
     // The heavy gun and a gun carried low (throw, knife) get no second pistol.
     const heavy = renderHuman(THOM_STYLE, { weapon: 'heavy', offhand: 'pistol' }, 'upper');
     expect(Array.from(heavy.buf.data)).toEqual(Array.from(renderHuman(THOM_STYLE, { weapon: 'heavy' }, 'upper').buf.data));
@@ -495,7 +493,7 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
 
   it('knife looks: each hero holds its prop (the hand point reaches past a plain knife)', () => {
     const reach = (c: string): number => Math.max(...getFrames(`char/${c}/torso-pistol-knife`).map((f) => f.pts?.hand?.[0] ?? 0));
-    for (const c of HEROES) expect(reach(c), c).toBeGreaterThan(10);
+    for (const c of OLD) expect(reach(c), c).toBeGreaterThan(10);
     // The umbrella jab reaches furthest forward.
     expect(reach('grace')).toBeGreaterThanOrEqual(reach('recruit'));
   });
@@ -508,9 +506,11 @@ describe('sprite contract per character (ARCHITECTURE §6.1, GDD §3.6)', () => 
     // legs-dangle, die-drown, die-flat); + 16 of anim wave p2 (legs-crouch-in / -out,
     // timeout-yawn / -sleep, and per weapon torso run, crouch, crouch-shoot, -throw, -knife, knife-b)
     // + 2 idle fidgets (fidget-a / -b) + 1 of mission ring (torso-pistol-diag-down).
-    for (const c of ALL) expect(listSprites(`char/${c}/`).filter((id) => !SELECT_ART.test(id)).length, c).toBe(7 + 66 + 6 + 7 + 9 + 5 + 16 + 2 + 1);
+    for (const c of RIG) expect(listSprites(`char/${c}/`).filter((id) => !SELECT_ART.test(id)).length, c).toBe(7 + 66 + 6 + 7 + 9 + 5 + 16 + 2 + 1);
     expect(ids.length).toBeGreaterThanOrEqual(ALL.length * 95);
-    for (const id of ids) {
+    // The squad's baked sets have palettes of their own (28 colours each, docs/design/ams40.md D1),
+    // only their menu portrait is drawn in the game palette (the select40 portraits are baked sets).
+    for (const id of ids.filter((x) => !SQUAD_ART.test(x) || /\/portrait$/.test(x))) {
       for (const f of getFrames(id)) {
         expect(f.buf.w, id).toBeLessThanOrEqual(128);
         expect(f.buf.h, id).toBeLessThanOrEqual(128);

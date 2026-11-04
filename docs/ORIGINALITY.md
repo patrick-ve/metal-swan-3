@@ -47,16 +47,20 @@ Do not use, imitate or closely paraphrase any of the following from the *Metal S
 By the user's explicit decision (2026-10-12), mission `ams` uses real-world names: the city of
 Amsterdam and its landmarks (Rijksmuseum, Museumplein, Stopera, Amstel, Blauwbrug), the friet
 shop Fabel Friet (shown in a friendly light), food-delivery riders in the style of Uber Eats, and
-a robot caricature of the city's mayor, Femke Halsema (ROBO-HALSEMA). Rules for this exception:
+a robot caricature of the city's mayor, Femke Halsema, named MECHA HASLEMA (user decision D4,
+2026-11-03, `docs/design/ams40.md`; her earlier name ROBO-HALSEMA is retired). Rules for this
+exception:
 
 - All art is drawn by this project's code. Never trace a logo or a photo; shop lettering is our
   own pixel lettering.
-- The mayor is a ROBOT caricature with a recognisable likeness (user decision 2026-10-13): her
-  big wavy dark-brown hair, her face (strong arched brows, brown eyes, red lips, a confident
-  closed smile), a round gold earring, a white bouclé jacket over a red blouse and the silver
-  chain of office. The likeness is hand-built from shapes and the palette by our code, studied
-  from a reference photo but never traced, sampled or pixel-copied from it. She stays a machine
-  (steel neck, joints, hands, a wig over a steel skull); no insults, no human harm.
+- The mayor is a ROBOT caricature with a ROBOT FACE and no facial likeness (user decision D4,
+  2026-11-03, replacing the likeness of 2026-10-13): a steel face with red eye slots and a mouth
+  grille, long wavy locks, the chain of office, a jacket and heavy robot boots. Only the name,
+  the office (the chain) and the long wavy hair point at the real mayor; no human face is drawn
+  and no photo is studied for her 40 px art. Her older art (`src/game/content/bosses/ams/`) keeps
+  its hand-built shapes until the 40 px set replaces it; it was never traced, sampled or
+  pixel-copied from a photo. She stays a machine (steel neck, joints, hands); no insults, no
+  human harm.
 - The rules above about other games (names, designs, music, text) still apply in full. The
   music for `ams` is original and never quotes an existing song.
 - The self-check question 2 below does not apply to these listed real names.
@@ -90,8 +94,11 @@ dialogue), shipped as MP3 files under `public/audio/`. Rules for this exception:
   quote an existing melody.
 - Voices are designed from text descriptions (ElevenLabs Voice Design). Never clone, name or
   imitate a real person's voice.
-- ROBO-HALSEMA never gets a voice: her lines stay text-only bubbles (the code passes
-  `voice: false` for them).
+- MECHA HASLEMA never gets a voice: her lines stay text-only bubbles (the code passes
+  `voice: false` for them). The audio tools refuse a voice or a line for her new name and her
+  old name alike (`isMayor` in `tools/audio/lib.ts`). The baker's line that names the real
+  mayor (`BURGEMEESTER HALSEMA / WIL ONS VOOR ALTIJD...`) is the baker's, not hers, and keeps
+  its recording.
 - Dialogue text is our own (the game's lines). The generation spec lives in `tools/audio/spec.ts`.
 - **The user's own music (2026-10-16).** Four tracks supplied by the user replace the generated
   takes of `title` (title screen and mode select), `select` (REPORT FOR DUTY), `ams` and `ams-boss`

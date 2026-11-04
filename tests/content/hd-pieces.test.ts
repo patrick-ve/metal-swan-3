@@ -5,11 +5,9 @@ import { frameH, frameW, type Frame } from '../../src/engine/render';
 import { withPieces, type Piece } from '../../src/game/art/human-fx';
 import { poseFrames, type PlayerArtOpts } from '../../src/game/art/human-sprites';
 import type { HumanStyle, Pose } from '../../src/game/art/humanoid';
-import { BOB_ART, BOB_STYLE } from '../../src/game/content/characters/bob.art';
 import { GRACE_ART, GRACE_STYLE } from '../../src/game/content/characters/grace.art';
 import { GRAMPS_ART, GRAMPS_STYLE } from '../../src/game/content/characters/gramps.art';
 import { MITTENS_ART, MITTENS_STYLE } from '../../src/game/content/characters/mittens.art';
-import { PATRICK_ART, PATRICK_STYLE } from '../../src/game/content/characters/patrick.art';
 import { PIP_ART, PIP_STYLE } from '../../src/game/content/characters/pip.art';
 import { allPieces, at, bobbleHat, decorateFrames, hdPiece, onGround, pieceHd, yarnBall } from '../../src/game/content/characters/pieces';
 import { VINCENT_ART, VINCENT_STYLE } from '../../src/game/content/characters/vincent.art';
@@ -172,10 +170,10 @@ describe('decorateFrames at every density', () => {
 describe('hero strips with pieces: the same geometry at 1×, 2× and 4×', () => {
   type Strip = 'bored' | 'fidget-a' | 'die' | 'victory';
   const KEY: Record<Strip, keyof PlayerArtOpts> = { bored: 'bored', 'fidget-a': 'fidgetA', die: 'die', victory: 'victory' };
+  // VINCENT_ART stays for the stored style trials (char/vincent-<style>); the squad's own sprites
+  // are baked 40 px sets (docs/design/ams40.md wave 2).
   const HEROES: Array<[string, HumanStyle, PlayerArtOpts]> = [
     ['vincent', VINCENT_STYLE, VINCENT_ART],
-    ['bob', BOB_STYLE, BOB_ART],
-    ['patrick', PATRICK_STYLE, PATRICK_ART],
     ['grace', GRACE_STYLE, GRACE_ART],
     ['mittens', MITTENS_STYLE, MITTENS_ART],
     ['pip', PIP_STYLE, PIP_ART],

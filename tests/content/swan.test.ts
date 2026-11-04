@@ -11,6 +11,8 @@ import { buttonMask, VirtualPad } from '../../src/engine/input';
 import { Terrain, terrain, type TerrainBuilder } from '../../src/engine/terrain';
 import { World } from '../../src/engine/world';
 import '../../src/game/content/characters/index';
+import { RUN_CONTACT_A, RUN_CONTACT_B } from '../../src/game/content/art40/swan.gen';
+import { MUZZLE_REL, REST } from '../../src/game/content/vehicles/swan/constants';
 import { HonkRing, isSwan, SWAN, Swan } from '../../src/game/content/vehicles/swan/index';
 import '../../src/game/content/weapons/index';
 import { attachGame, gameOf, HudState } from '../../src/game/context';
@@ -327,7 +329,7 @@ describe('swan: ground movement (feel §3)', () => {
         const f = s.anim.index;
         streak = f === last ? streak + 1 : 1;
         last = f;
-        if (f === 0 || f === 4) best = Math.max(best, streak);
+        if (f === RUN_CONTACT_A || f === RUN_CONTACT_B) best = Math.max(best, streak);
       }
       expect(s.vx).toBeCloseTo(SWAN.runMax, 6); // the limp never slows her
       return best;
@@ -872,8 +874,9 @@ describe('swan: aim and weapons (feel §7)', () => {
     expect(b).toBeDefined();
     expect(b.damage.amount).toBe(10);
     expect(Math.hypot(b.vx, b.vy)).toBeCloseTo(8, 6);
-    expect(b.x).toBeCloseTo(s.x + 44, 0);
-    expect(Math.abs(b.y - (s.y - 24))).toBeLessThanOrEqual(1);
+    // The 0° muzzle: the socket (no art loaded: REST.neck) + the neck frame's tip (MUZZLE_REL).
+    expect(b.x).toBeCloseTo(s.x + REST.neck[0] + MUZZLE_REL.land[2][0], 0);
+    expect(Math.abs(b.y - (s.y + REST.neck[1] + MUZZLE_REL.land[2][1]))).toBeLessThanOrEqual(1);
     rig.run(40);
     expect(ticks.length).toBe(5);
     for (let i = 1; i < ticks.length; i++) expect(ticks[i] - ticks[i - 1]).toBe(4);
@@ -886,9 +889,9 @@ describe('swan: aim and weapons (feel §7)', () => {
     expect(s.facing).toBe(-1);
     rig.tap(['fire']);
     const b = shots(rig, 'beak-bullet')[0];
-    expect(b.x).toBeCloseTo(s.x - 44, 0);
+    expect(b.x).toBeCloseTo(s.x - REST.neck[0] - MUZZLE_REL.land[2][0], 0);
     // ±1 px jitter, and the idle breath (hull dy 0 / 1) moves the neck socket with the hull.
-    expect(Math.abs(b.y - (s.y - 24))).toBeLessThanOrEqual(2);
+    expect(Math.abs(b.y - (s.y + REST.neck[1] + MUZZLE_REL.land[2][1]))).toBeLessThanOrEqual(2);
     expect(b.vx).toBeCloseTo(-8, 6);
     rig.run(40);
     rig.hold(['up', 'right']).run(20);
@@ -899,9 +902,10 @@ describe('swan: aim and weapons (feel §7)', () => {
     const back = shots(rig, 'beak-bullet')[before];
     expect(back.vx).toBeGreaterThan(0);
     expect(back.vy).toBeLessThan(0);
-    // look.md: the −135° tip is (−12, −78), mirrored; ±1 px jitter across the aim.
-    expect(Math.abs(back.x - (s.x + 12))).toBeLessThanOrEqual(1);
-    expect(Math.abs(back.y - (s.y - 78))).toBeLessThanOrEqual(2);
+    // The −135° tip (socket + MUZZLE_REL.land[8]), mirrored; ±1 px jitter across the aim, and
+    // the idle breath (hull dy 0 / 1) moves the socket.
+    expect(Math.abs(back.x - (s.x - REST.neck[0] - MUZZLE_REL.land[8][0]))).toBeLessThanOrEqual(1.5);
+    expect(Math.abs(back.y - (s.y + REST.neck[1] + MUZZLE_REL.land[8][1]))).toBeLessThanOrEqual(2.5);
   });
 
   it('BEAK GUN: a held stream fans out through the in-between angles while the neck turns', () => {
@@ -944,12 +948,16 @@ describe('swan: aim and weapons (feel §7)', () => {
       expect(shell.vx).toBeCloseTo(SWAN.shell.speed + (sprint ? SWAN.runMax : 0), 6);
       expect(shell.damage.amount).toBe(SWAN.shell.direct);
       expect(s.shells).toBe(SWAN.shells - 1);
+      // The ballistic flight from the gun's tip (the art point: the beak / barrel tip at 0°):
+      // SWAN.shell.speed ahead of her for sqrt(2 h / g) ticks (113 px from the old 24 px beak).
+      const ahead = shell.x - s.x;
+      const fall = s.y - shell.y;
+      expect(fall).toBeGreaterThan(15);
+      const want = ahead + SWAN.shell.speed * Math.sqrt((2 * fall) / SWAN.shell.gravity);
       let landX = 0;
       rig.world.events.on('explosion', (e) => (landX = e.x));
       rig.until(() => shell.removed, 80);
-      // 113 px [112] in front of the beak tip (+40), wherever she is now.
-      expect(landX - (s.x + 40)).toBeGreaterThan(106);
-      expect(landX - (s.x + 40)).toBeLessThan(118);
+      expect(Math.abs(landX - s.x - want)).toBeLessThan(8);
     }
   });
 

@@ -14,6 +14,16 @@ import { inHdPalette } from '../../src/engine/palette-hd';
 import { loadContent } from '../../src/game/content/index';
 import { AmsScanCar, CLAMPED, isClamped, SCAN, SCAN_ID } from '../../src/game/content/bosses/ams-scan/index';
 import { ID } from '../../src/game/content/bosses/ams-scan/geometry';
+import { bakedSetIds } from '../../src/engine/baked';
+import { SET as TOW_SET } from '../../src/game/content/art40/ams-tow-truck.gen';
+import { SET as CLAMP_SET } from '../../src/game/content/art40/ams-wheel-clamp.gen';
+import { SCAN_FIRE, SCAN_LOCK, SCAN_RECOIL, SET as SCAN_SET, WRECK_FACING } from '../../src/game/content/art40/ams-scan.gen';
+import { driverFrame } from '../../src/game/content/bosses/ams-scan/car';
+import { HANDHAVER } from '../../src/game/content/locals/handhaver';
+import { SET as OFFICER } from '../../src/game/content/art40/handhaver.gen';
+
+const BAKED_TOW_CLAMP = new Set([...bakedSetIds(TOW_SET), ...bakedSetIds(CLAMP_SET)]);
+const BAKED_SCAN = new Set(bakedSetIds(SCAN_SET));
 import { getEntityMeta } from '../../src/game/registry';
 import { Vehicle } from '../../src/game/vehicle';
 import { TestWorld } from './helpers';
@@ -176,6 +186,15 @@ describe('scan car: art', () => {
     const ids = listSprites('boss/ams-scan/');
     expect(ids.length).toBeGreaterThanOrEqual(18);
     for (const id of ids) {
+      // Baked 40 px sets (the tow truck, the hook, the wheel clamp): their own palettes, 1× at every
+      // tier (tests/art/art40-gates.test.ts, tests/content/ams-tow-clamp40.test.ts).
+      if (BAKED_TOW_CLAMP.has(id)) continue;
+      // The car's own strips: a baked 40 px set (tools/art40/chars/ams-scan), 1× at every tier.
+      if (BAKED_SCAN.has(id)) {
+        expect(getFrames(id, 1).length, id).toBeGreaterThan(0);
+        for (const d of [2, 4] as const) expect(hasHiSprite(id, d), `${id} at ${d}×: no dense art (plan rule 7)`).toBe(false);
+        continue;
+      }
       const lo = getFrames(id, 1);
       for (const f of lo) for (const c of f.buf.data) if ((c & 255) !== 0) expect(inPalette(c), `${id} 1×`).toBe(true);
       for (const d of [2, 4] as const) {
@@ -195,6 +214,7 @@ describe('scan car: art', () => {
     const drawn: Array<[string, number, boolean]> = [];
     const r = {
       sprite: (id: string, f: number, _x: number, _y: number, o?: { flipX?: boolean }) => drawn.push([id, f, o?.flipX === true]),
+      line: () => {},
     } as unknown as Parameters<AmsScanCar['draw']>[0];
     car.draw(r);
     return drawn;
@@ -218,15 +238,15 @@ describe('scan car: art', () => {
   });
 
   it('the wreck has roll frames for each facing and is never drawn mirrored (its lettering reads left to right)', () => {
-    expect(getFrames(ID.wreck, 1)).toHaveLength(8);
+    expect(getFrames(ID.wreck, 1)).toHaveLength(2 * WRECK_FACING);
     const { tw, car } = arena({ hpScale: 0.05 });
     tw.until(() => car.state === 'fight', 600);
     for (let i = 0; i < 2; i++) tw.world.damage(car, { amount: 1e4, kind: 'explosion', dirX: -1 }, i);
     tw.until(() => car.defeated, 900);
     const wreck = drawCalls(car).filter(([id]) => id === ID.wreck);
     expect(wreck).toHaveLength(1);
-    // The car faces left: frames 4–7, unflipped.
-    expect(wreck[0][1]).toBeGreaterThanOrEqual(4);
+    // The car faces left: the second half of the frames, unflipped.
+    expect(wreck[0][1]).toBeGreaterThanOrEqual(WRECK_FACING);
     expect(wreck[0][2]).toBe(false);
   });
 
@@ -245,9 +265,25 @@ describe('scan car: art', () => {
         }
         // The art (its ink outline included) lies inside the box, which keeps at most 3 px of slack per end.
         expect(x0, `${id}[${k}]`).toBeGreaterThanOrEqual(B.x);
-        expect(x1, `${id}[${k}]`).toBeLessThanOrEqual(B.x + B.w);
-        if (id !== ID.scannerGone) expect(x0 - B.x + (B.x + B.w - x1), `${id}[${k}]`).toBeLessThanOrEqual(6);
+        // The lock's glare and the printer's flash / puff (FX, not the box) may reach past the front end.
+        const glow = k === SCAN_LOCK + 1 || k === SCAN_FIRE || k === SCAN_RECOIL;
+        expect(x1, `${id}[${k}]`).toBeLessThanOrEqual(B.x + B.w + (glow ? 8 : 0));
+        if (id !== ID.scannerGone && !glow) expect(x0 - B.x + (B.x + B.w - x1), `${id}[${k}]`).toBeLessThanOrEqual(6);
       });
     }
+  });
+
+  it('the fleeing officer runs without a foot slide: his walk frame follows the distance at his own stride', () => {
+    const durs = OFFICER.strips.walk.durations;
+    expect(getFrames(ID.driverRun, 1)).toHaveLength(durs.length);
+    // Frame i starts after the ticks of the frames before it × his walk speed (px), whatever speed
+    // the fleeing driver runs at; one stride later the cycle starts again.
+    let start = 0;
+    for (let i = 0; i < durs.length; i++) {
+      expect(driverFrame(start + 0.01), `frame ${i}`).toBe(i);
+      start += durs[i] * HANDHAVER.walk;
+      expect(driverFrame(start - 0.01), `end of frame ${i}`).toBe(i);
+    }
+    expect(driverFrame(start + 0.01)).toBe(0);
   });
 });

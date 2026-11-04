@@ -53,7 +53,7 @@ or cheer.
 ## 2. The stag party and the beer bike
 
 A stag party on a pedal beer bike rolls through the old centre (the city banned beer bikes from the
-centre in 2017; ROBO-HALSEMA's rule book is a running joke). Look: matching bright party T-shirts,
+centre in 2017; MECHA HASLEMA's rule book is a running joke). Look: matching bright party T-shirts,
 shorts, sunburn; the **groom** in a pink tutu and a veil with an L-plate on his chest. Own designs,
 not soldiers.
 
@@ -210,7 +210,7 @@ not soldiers.
 
 ## 7. Bug fixes
 
-1. ROBO-HALSEMA's adds always enter from the same side (`mayor.ts` `adds()`: the side flips every
+1. MECHA HASLEMA's adds always enter from the same side (`mayor.ts` `adds()`: the side flips every
    tick and every spawn tick is even). Flip the side only when an add spawns.
 2. `Boss.stagger` freezes a running attack: a lash or slam box can stay hot for up to 60 ticks
    and the baked-in slam sound plays at the wrong time. A stagger must not leave a live attack:

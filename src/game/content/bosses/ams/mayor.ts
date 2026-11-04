@@ -39,7 +39,81 @@ import { difficultyOf } from '../../../context';
 import { debris, dust, explosion, hitSpark, smokeTrail } from '../../../fx';
 import { defineEntity, paramFacing, paramNum, type SpawnParams } from '../../../registry';
 import { easeInQuad } from '../../../../engine/math';
-import { ARM_FRAMES, MAYOR_WALK } from './art';
+import { getFrames } from '../../../../engine/sprites';
+import {
+  ARM_ANTICIPATION,
+  ARM_COIL,
+  ARM_FRAMES,
+  ARM_IMPACT,
+  ARM_LIFT,
+  ARM_LOW,
+  ARM_LOWER,
+  ARM_OVERSHOOT,
+  ARM_RAISED,
+  ARM_RECOIL,
+  ARM_RISE_A,
+  ARM_RISE_B,
+  ARM_RISE_HIGH,
+  ARM_RISE_LOW,
+  ARM_RISE_MID,
+  ARM_SAG,
+  ARM_SETTLE,
+  ARM_SLAM,
+  ARM_SMEAR,
+  ARM_SMEAR_LOW,
+  ARM_TREMBLE,
+  BACK_CATCH,
+  BACK_HIGH,
+  BACK_LOW,
+  BACK_PULL_HIGH,
+  BACK_PULL_LOW,
+  BACK_RELEASE_HIGH,
+  BACK_RELEASE_LOW,
+  BACK_REST,
+  BACK_WHIRL_HIGH,
+  BACK_WHIRL_LOW,
+  BACK_WHIRL_STEPS,
+  BACK_WIND_HIGH,
+  BACK_WIND_LOW,
+  HEAD_BALD,
+  HEAD_BALD_B,
+  HEAD_BLINK,
+  HEAD_BLINK_HALF,
+  HEAD_HATCH,
+  HEAD_HATCH_AJAR,
+  HEAD_OFF,
+  HEAD_SHOUT,
+  HEAD_SHOUT_IN,
+  HEAD_SMILE,
+  LASH_BACK_A,
+  LASH_OUT_A,
+  LASH_SNAP_A,
+  LASH_SNAP_B,
+  LEGS_AIR,
+  LEGS_BRACE,
+  LEGS_GIVE,
+  LEGS_HALF_SQUAT,
+  LEGS_LAND,
+  LEGS_PUSH_OFF,
+  LEGS_REACH,
+  LEGS_REEL,
+  LEGS_SIT,
+  LEGS_SQUAT,
+  LEGS_STAND,
+  LEGS_WALK_FRAMES,
+  LEGS_WALK_TICKS,
+  MAYOR_WALK,
+  MED_CHARGE,
+  MED_CLOSED,
+  MED_CRACK,
+  MED_FLASH,
+  MED_GLOW,
+  MED_OPEN,
+  MED_PART,
+  STUMP_FRAMES,
+  WIG_FRAMES,
+} from '../../art40/ams-mayor.gen';
+import { HEAD_SHOW, MED_SHOW, STAMP_SHOW, STOMP_SHOW, WHIP_SHOW, WIG_ANCHOR, WIG_REST } from './layout';
 import { ADD_TAG, MAYOR, MAYOR_NAME } from './geometry';
 import { floorAt, NoiseLetter, ShieldShot, StampWave } from './shots';
 import { MAYOR_LINES, type MayorLineId } from './voice';
@@ -49,6 +123,7 @@ const ART = 'boss/ams-mayor';
 const ID_ARM_BACK = ART + '/arm-back';
 const ID_LEGS = ART + '/legs';
 const ID_WIG = ART + '/wig';
+const ID_LASH = ART + '/lash';
 const OFFICER_TAG = 'ams-mayor-officer';
 const RIDER_TAG = 'ams-mayor-rider';
 const drawOpts: DrawOpts = {};
@@ -115,6 +190,24 @@ export class AmsMayor extends Boss {
   private legsAt = -99;
   private legsFrom = 0;
   private legsSeen = 0;
+  /**
+   * Draw-only trackers of the presentation (layout.ts): when the far arm, the head and the medallion
+   * last changed and from what, the tick the slam is due, the last tick in the air, the tick the
+   * lash reached full length and the tick of the shield volley. Nothing in the fight reads them.
+   */
+  private armDueAt = -99;
+  private backAt = -99;
+  private backFrom = 0;
+  private backSeen = 0;
+  private headAt = -99;
+  private headFrom = 0;
+  private headSeen = 0;
+  private medAt = -99;
+  private medFrom = 0;
+  private medSeen = 0;
+  private airAt = -99;
+  private lashFullAt = -99;
+  private medFireAt = -99;
   private nextLane: Lane = 'high';
   private addT = 0;
   /** The side the next add comes in from (flips only when an add spawns). */
@@ -239,26 +332,28 @@ export class AmsMayor extends Boss {
       if (t >= I.dim && t < I.dim + I.walk) {
         const k = (t - I.dim + 1) / I.walk;
         this.x = this.doorX + (this.homeX - this.doorX) * k;
-        // A 6-frame walk loop over the 16-tick stride (the footfall stays on tick 15).
-        this.legsFrame = MAYOR_WALK[(((t - I.dim) % 16) * 6) >> 4];
+        // The 12-frame walk over two 16-tick strides (the footfalls stay on ticks 15 and 31: the
+        // near foot lands on walk frame 5, the far one on frame 11).
+        this.legsFrame = MAYOR_WALK + Math.floor((((t - I.dim) % LEGS_WALK_TICKS) * LEGS_WALK_FRAMES) / LEGS_WALK_TICKS);
         if ((t - I.dim) % 16 === 15) {
           this.world.audio.sfx('hit/ground', { vol: 0.6 });
           this.world.camera.shake(2, 6);
           dust(this.world, this.x, this.floorY, 3);
         }
-      } else this.legsFrame = 0;
+      } else this.legsFrame = LEGS_STAND;
       if (t === I.dim + I.walk + 4) {
-        this.headFrame = 2;
+        this.headFrame = HEAD_SHOUT;
         this.say2('complained', 70);
       }
-      if (t === I.dim + I.walk + 20) this.headFrame = 0;
+      if (t === I.dim + I.walk + 20) this.headFrame = HEAD_SMILE;
       if (t === I.dim + I.walk + 76) {
-        this.headFrame = 2;
+        this.headFrame = HEAD_SHOUT;
         this.setArm(1);
+        this.armDueAt = this.world.tick + (I.total - 12 - t);
         this.say2('closed', 56);
       }
       if (t === I.total - 12) {
-        this.headFrame = 0;
+        this.headFrame = HEAD_SMILE;
         this.setArm(2);
         // A plain thud: the arm rises only 12 ticks before, too short for the `ams/stamp` creak.
         this.world.audio.sfx('hit/ground', { pitch: 0.7 });
@@ -315,6 +410,7 @@ export class AmsMayor extends Boss {
     // A stagger waits for that slam (`canStagger`): it never leaves the sound's slam for later.
     this.world.audio.sfx('ams/stamp', { pitch: STAMP_SFX_SLAM / tele });
     this.slamAt = this.world.tick + tele;
+    this.armDueAt = this.slamAt;
     yield tele;
     if (!this.partAlive('stamp-arm')) return;
     this.setArm(2);
@@ -327,6 +423,8 @@ export class AmsMayor extends Boss {
       if (i > 0) {
         yield 24;
         if (!this.partAlive('stamp-arm')) return;
+        // Draw only: the stamp thumps again (the impact, the recoil, the settle replay).
+        this.armAt = this.world.tick;
         this.world.audio.sfx('hit/ground', { vol: 0.8, pitch: 0.7 });
         this.world.camera.shake(3, 10);
       }
@@ -342,11 +440,11 @@ export class AmsMayor extends Boss {
     if (!this.partAlive('head')) return;
     const L = MAYOR.letters;
     const tele = this.telegraphFor(L.tele);
-    this.headFrame = 1;
+    this.headFrame = HEAD_HATCH;
     this.world.audio.sfx('ams/ticket');
     yield tele;
     if (!this.partAlive('head')) {
-      this.headFrame = 0;
+      this.headFrame = HEAD_SMILE;
       return;
     }
     const w = this.world;
@@ -364,7 +462,7 @@ export class AmsMayor extends Boss {
       yield L.gap;
     }
     yield 12;
-    this.headFrame = 0;
+    this.headFrame = HEAD_SMILE;
     yield this.recoveryFor(L.rec);
   }
 
@@ -381,11 +479,11 @@ export class AmsMayor extends Boss {
   *phaseTwo(resume = false): ScriptGen {
     if (resume) yield RESUME_GAP;
     else {
-      this.headFrame = 2;
+      this.headFrame = HEAD_SHOUT;
       // The bubble hangs where the chain loop whirls: it clears before the first whip tell.
       this.say2('rules', 48);
       yield 52;
-      this.headFrame = 0;
+      this.headFrame = HEAD_SMILE;
     }
     let taunted = resume;
     for (;;) {
@@ -444,7 +542,7 @@ export class AmsMayor extends Boss {
     this.lashHot = false;
     this.backArm = 0;
     this.medPart.armored = false;
-    this.medFrame = 1;
+    this.medFrame = MED_OPEN;
     this.addT = 0;
   }
 
@@ -457,10 +555,10 @@ export class AmsMayor extends Boss {
         yield 20;
       }
     } else {
-      this.headFrame = 2;
+      this.headFrame = HEAD_SHOUT;
       this.say2('fine', 110);
       yield 30;
-      this.headFrame = 0;
+      this.headFrame = HEAD_SMILE;
     }
     for (;;) {
       yield* this.shieldFan();
@@ -480,7 +578,7 @@ export class AmsMayor extends Boss {
   *shieldFan(): ScriptGen {
     const F = MAYOR.fan;
     const tele = this.telegraphFor(F.tele);
-    this.medFrame = 2;
+    this.medFrame = MED_GLOW;
     this.glowT = tele;
     this.world.audio.sfx('machine/pipe-charge');
     yield tele;
@@ -493,8 +591,9 @@ export class AmsMayor extends Boss {
       ShieldShot.fire(this.world, mx, my, ang, this);
     }
     this.world.audio.sfx('hit/shield');
+    this.medFireAt = this.world.tick;
     yield 16;
-    this.medFrame = 1;
+    this.medFrame = MED_OPEN;
     yield this.recoveryFor(F.rec);
   }
 
@@ -512,10 +611,10 @@ export class AmsMayor extends Boss {
     this.shadowX = to;
     this.shadowFrame = 1;
     this.shadowT = tele + S.air;
-    this.legsFrame = 3;
+    this.legsFrame = LEGS_SQUAT;
     this.world.audio.sfx('machine/brake', { vol: 0.5 });
     yield tele;
-    this.legsFrame = 0;
+    this.legsFrame = LEGS_STAND;
     for (let t = 1; t <= S.air; t++) {
       const k = t / S.air;
       this.x = from + (to - from) * k;
@@ -524,7 +623,7 @@ export class AmsMayor extends Boss {
     }
     this.lift = 0;
     this.x = to;
-    this.legsFrame = 3;
+    this.legsFrame = LEGS_SQUAT;
     // A stagger that came in mid-air waited for this landing: it lands harmless.
     this.stompHot = this.staggering ? 0 : S.land;
     this.world.camera.shake(5, 16);
@@ -533,7 +632,7 @@ export class AmsMayor extends Boss {
     dust(this.world, this.x - 16, this.floorY, 5);
     dust(this.world, this.x + 16, this.floorY, 5);
     yield 10;
-    this.legsFrame = 0;
+    this.legsFrame = LEGS_STAND;
     yield this.recoveryFor(S.rec);
   }
 
@@ -546,6 +645,25 @@ export class AmsMayor extends Boss {
       this.legsSeen = this.legsFrame;
       this.legsAt = this.world.tick;
     }
+    // Draw-only trackers (the presentation of layout.ts).
+    const now = this.world.tick;
+    if (this.backArm !== this.backSeen) {
+      this.backFrom = this.backSeen;
+      this.backSeen = this.backArm;
+      this.backAt = now;
+    }
+    if (this.headFrame !== this.headSeen) {
+      this.headFrom = this.headSeen;
+      this.headSeen = this.headFrame;
+      this.headAt = now;
+    }
+    if (this.medFrame !== this.medSeen) {
+      this.medFrom = this.medSeen;
+      this.medSeen = this.medFrame;
+      this.medAt = now;
+    }
+    if (this.lift > 0) this.airAt = now;
+    if (!this.lashHot || this.lashLen < MAYOR.whip.reach) this.lashFullAt = now + 1;
     if (this.babbleT > 0 && --this.babbleT === 0) this.world.audio.stopSfx?.(BABBLE_KEY);
   }
 
@@ -612,10 +730,10 @@ export class AmsMayor extends Boss {
     this.stompHot = 0;
     this.glowT = 0;
     this.shadowT = 0;
-    this.legsFrame = 0;
+    this.legsFrame = LEGS_STAND;
     if (this.partAlive('stamp-arm')) this.setArm(0);
-    if (this.headFrame === 1 || this.headFrame === 2) this.headFrame = 0;
-    if (this.medFrame === 2) this.medFrame = 1;
+    if (this.headFrame === HEAD_HATCH || this.headFrame === HEAD_SHOUT) this.headFrame = HEAD_SMILE;
+    if (this.medFrame === MED_GLOW) this.medFrame = MED_OPEN;
     return true;
   }
 
@@ -740,12 +858,12 @@ export class AmsMayor extends Boss {
       this.world.audio.sfx('ams/chain', { pitch: 0.7 });
       debris(this.world, this.wx(0), this.wy(-96), 'metal', 8);
     } else if (p === this.headPart) {
-      this.headFrame = 0;
+      this.headFrame = HEAD_SMILE;
       this.say2('hair', 90);
     }
     if (!this.partAlive('stamp-arm') && !this.partAlive('chain')) {
       this.medPart.armored = false;
-      this.medFrame = 1;
+      this.medFrame = MED_OPEN;
     }
     this.checkPhases();
   }
@@ -765,8 +883,8 @@ export class AmsMayor extends Boss {
     this.glowT = 0;
     this.lift = 0;
     this.backArm = 0;
-    this.medFrame = 1;
-    this.headFrame = 2;
+    this.medFrame = MED_OPEN;
+    this.headFrame = HEAD_SHOUT;
   }
 
   protected override deathSequence(): ScriptGen | null {
@@ -783,23 +901,26 @@ export class AmsMayor extends Boss {
         explosion(w, c[0], c[1] - this.lift, t % 27 === 0 ? 'm' : 's', { silent: t % 18 !== 0, shake: 2 });
       }
       if (t % 5 === 0) hitSpark(w, this.wx(w.fxRng.range(-20, 20)), this.wy(w.fxRng.range(-120, -50)) + this.sitDrop, w.fxRng.range(-1, 1));
+      // Draw only: the hatch pops before the hair flies off.
+      if (t === 32) this.headFrame = HEAD_HATCH;
       // The hair flies off like a wig.
       if (t === 40) {
         this.wigOn = false;
-        this.wigX = this.wx(-6);
-        this.wigY = this.wy(-128);
+        // wigX / wigY: the wig's anchor (the launch point and the turn's centre, wig.py ANCHOR).
+        this.wigX = this.wx(WIG_ANCHOR[0]);
+        this.wigY = this.wy(WIG_ANCHOR[1]) + this.sitDrop - this.lift;
         this.wigVx = -this.facing * 1.4;
         this.wigVy = -4.2;
-        this.headFrame = 5;
+        this.headFrame = HEAD_BALD;
         w.audio.sfx('boss/part-break', { vol: 0.7 });
       }
       if (!this.wigOn) {
         this.wigVy += 0.15;
         this.wigX += this.wigVx;
-        this.wigY = Math.min(this.floorY - 34, this.wigY + this.wigVy);
-        if (this.wigY >= this.floorY - 34) this.wigVx *= 0.8;
+        this.wigY = Math.min(this.floorY - WIG_REST, this.wigY + this.wigVy);
+        if (this.wigY >= this.floorY - WIG_REST) this.wigVx *= 0.8;
         // It tumbles in flight and finishes the turn it is in once it lands.
-        if (this.wigY < this.floorY - 34 || this.wigSpin % 24 !== 0) this.wigSpin++;
+        if (this.wigY < this.floorY - WIG_REST || this.wigSpin % 24 !== 0) this.wigSpin++;
       }
       // The head boings on a spring.
       if (t >= 50 && t < 150) {
@@ -811,7 +932,7 @@ export class AmsMayor extends Boss {
       if (t >= 120 && t < 140) {
         // Eased: the knees give slowly, then she drops onto the floor.
         this.sitDrop = Math.round(easeInQuad((t - 119) / 20) * 24);
-        this.legsFrame = 4;
+        this.legsFrame = LEGS_SIT;
       }
       // A small bounce as she lands on the floor.
       if (t >= 140 && t < 144) this.sitDrop = [22, 23, 24, 24][t - 140];
@@ -821,8 +942,8 @@ export class AmsMayor extends Boss {
         dust(w, this.x, this.floorY, 8);
       }
       if (t === 160) {
-        this.headFrame = 4;
-        this.medFrame = 0;
+        this.headFrame = HEAD_OFF;
+        this.medFrame = MED_CLOSED;
         w.audio.sfx('machine/sad-notes', { vol: 0.7 });
       }
       yield;
@@ -860,33 +981,138 @@ export class AmsMayor extends Boss {
     drawOpts.alpha = undefined;
   }
 
-  /** Stamp arm frame (0–5, facing right) with the draw-only in-betweens round `armPose`. */
+  /**
+   * Stamp arm role (ARM_*, facing right) round `armPose` (layout.ts STAMP_SHOW): the raise is a dip,
+   * a coil, a 2-step rise, an overshoot and a trembling hold; the last ticks before the slam are
+   * the 2-frame smear; the slam is the impact squash, a recoil and a settle; the way back lifts the
+   * stamp off the floor. Draw only: the hitbox follows `armPose` (setArm).
+   */
   private armShown(): number {
-    const t = this.world.tick - this.armAt;
+    const S = STAMP_SHOW;
+    const now = this.world.tick;
+    const t = now - this.armAt;
+    if (this.sitDrop > 0) return this.sitDrop >= S.sag ? ARM_SAG : ARM_LOW;
     if (this.armPose === 1) {
-      if (this.glowT > 0 && this.glowT <= 2) return 4; // smear into the slam
-      return t < 3 ? 3 : t < 6 ? 4 : 1; // anticipation, smear, raised
+      const left = this.armDueAt - now;
+      if (left >= 0 && left < S.smear) return left >= S.smear / 2 ? ARM_SMEAR : ARM_SMEAR_LOW;
+      if (t < S.antic) return ARM_ANTICIPATION;
+      if (t < S.coil) return ARM_COIL;
+      if (t < S.riseLow) return ARM_RISE_LOW;
+      if (t < S.riseA) return ARM_RISE_A;
+      if (t < S.riseMid) return ARM_RISE_MID;
+      if (t < S.riseB) return ARM_RISE_B;
+      if (t < S.riseHigh) return ARM_RISE_HIGH;
+      if (t < S.over) return ARM_OVERSHOOT;
+      return Math.floor((t - S.over) / S.tremble) & 1 ? ARM_TREMBLE : ARM_RAISED;
     }
-    if (this.armPose === 2) return t < 4 ? 2 : t < 9 ? 5 : 2; // impact, recoil, settle
-    if (this.armFrom === 2 && t < 4) return 5;
-    if (this.armFrom === 1 && t < 3) return 4;
-    return 0;
+    if (this.armPose === 2) {
+      if (t < S.impact) return ARM_IMPACT;
+      if (t < S.slam) return ARM_SLAM;
+      if (t < S.recoil) return ARM_RECOIL;
+      if (t < S.settle) return ARM_SETTLE;
+      return ARM_SLAM;
+    }
+    if (this.armFrom === 2 && t < S.lower) return t < S.lift ? ARM_LIFT : ARM_LOWER;
+    if (this.armFrom === 1 && t < 6) return t < 2 ? ARM_RISE_B : t < 4 ? ARM_RISE_MID : ARM_RISE_A;
+    return ARM_LOW;
   }
 
-  /** Legs frame with the squat / hop transitions (half squat 9, push-off 10). */
+  /** The upper body's drop for a legs frame: the frame's `hip` point against the stand (draw only). */
+  private hipDy(f: number): number {
+    const fs = getFrames(ID_LEGS);
+    const p = fs[f]?.pts?.hip;
+    const s = fs[LEGS_STAND]?.pts?.hip;
+    return p && s ? p[1] - s[1] : 0;
+  }
+
+  /** Legs role (LEGS_*): the stomp hop (layout.ts STOMP_SHOW), the stagger brace, the death sit. */
   private legsShown(): number {
-    const t = this.world.tick - this.legsAt;
+    const now = this.world.tick;
+    const t = now - this.legsAt;
     const f = this.legsFrame;
-    if (f === 3 && this.legsFrom === 0 && t < 4) return 9;
-    if (f === 0 && this.legsFrom === 3 && t < 4) return this.lift > 0 ? 10 : 9;
+    const S = STOMP_SHOW;
+    if (f === LEGS_SIT) return this.sitDrop < STAMP_SHOW.sag ? LEGS_GIVE : LEGS_SIT;
+    if (f === LEGS_SQUAT) {
+      // Landing (she was in the air just before): the squash, then the squat.
+      // (The hop's last tick has lift 0: the landing is up to 2 ticks after the last lift.)
+      if (this.legsAt - this.airAt <= 2) return t < S.land ? LEGS_LAND : LEGS_SQUAT;
+      return t < S.half ? LEGS_HALF_SQUAT : LEGS_SQUAT;
+    }
+    if (f === LEGS_STAND) {
+      if (this.lift > 0) return t < S.pushOff ? LEGS_PUSH_OFF : t < S.tuck ? LEGS_AIR : LEGS_REACH;
+      if (this.legsFrom === LEGS_SQUAT && now - this.airAt <= 1) return LEGS_REACH;
+      if (this.legsFrom === LEGS_SQUAT && t < S.half) return LEGS_HALF_SQUAT;
+      if (this.staggering) return (now >> 3) & 1 ? LEGS_BRACE : LEGS_REEL;
+    }
     return f;
   }
 
-  /** Far-arm frame: the chain loop whirls through 6 frames (2 ticks each). */
+  /** Far-arm role (BACK_*): the wind-up, the flail whirl (faster in the last telegraph ticks), the release, the pull, the catch. */
   private backArmShown(): number {
-    const p = (this.world.tick >> 1) % 6;
-    if (this.backArm === 0 || p === 0) return this.backArm;
-    return (this.backArm === 1 ? 2 : 7) + p;
+    const W = WHIP_SHOW;
+    const now = this.world.tick;
+    const t = now - this.backAt;
+    if (this.backArm === 0) return this.backFrom > 0 && t < W.catch && this.partAlive('chain') ? BACK_CATCH : BACK_REST;
+    const high = this.backArm === 1;
+    if (this.lashLen > 0) {
+      if (this.lashHot) return high ? BACK_RELEASE_HIGH : BACK_RELEASE_LOW;
+      return high ? BACK_PULL_HIGH : BACK_PULL_LOW;
+    }
+    if (t < W.wind) return high ? BACK_WIND_HIGH : BACK_WIND_LOW;
+    const fast = this.glowT > 0 ? Math.max(0, W.fast - this.glowT) : 0;
+    const k = (Math.floor((t - W.wind - fast) / W.step) + fast) % BACK_WHIRL_STEPS;
+    if (k === 0) return high ? BACK_HIGH : BACK_LOW;
+    return (high ? BACK_WHIRL_HIGH : BACK_WHIRL_LOW) + k - 1;
+  }
+
+  /** The low whirl and its wind-up swing at her back hip: drawn behind the body, as the rest arm. */
+  private static backBehind(f: number): boolean {
+    return f === BACK_REST || f === BACK_LOW || f === BACK_WIND_LOW || (f >= BACK_WHIRL_LOW && f < BACK_WHIRL_LOW + BACK_WHIRL_STEPS - 1);
+  }
+
+  /** Head role (HEAD_*, layout.ts HEAD_SHOW). */
+  private headShown(idle: boolean): number {
+    const H = HEAD_SHOW;
+    const now = this.world.tick;
+    const t = now - this.headAt;
+    const f = this.headFrame;
+    // A stagger sputters: the shout and its in-breath.
+    if (this.staggering) return (now >> 2) & 1 ? HEAD_SHOUT_IN : HEAD_SHOUT;
+    if (f === HEAD_SHOUT && t < H.shoutIn) return HEAD_SHOUT_IN;
+    if (f === HEAD_HATCH && t < H.ajar) return HEAD_HATCH_AJAR;
+    if (f === HEAD_SMILE && this.headFrom === HEAD_HATCH && t < H.close) return HEAD_HATCH_AJAR;
+    if (f === HEAD_BALD) return Math.floor(now / H.bald) & 1 ? HEAD_BALD_B : HEAD_BALD;
+    if (f === HEAD_OFF && this.headFrom === HEAD_BALD && t < H.offFlicker) return Math.floor(t / 3) & 1 ? HEAD_BALD : HEAD_OFF;
+    if (f === HEAD_SMILE && idle) {
+      const k = now % H.blinkEvery;
+      if (k < H.blink[0]) return HEAD_BLINK_HALF;
+      if (k < H.blink[1]) return HEAD_BLINK;
+      if (k < H.blink[2]) return HEAD_BLINK_HALF;
+    }
+    return f;
+  }
+
+  /** Medallion role (MED_*, layout.ts MED_SHOW): the core opens, charges and pulses, flashes at the volley, closes. */
+  private medShown(): number {
+    const M = MED_SHOW;
+    const now = this.world.tick;
+    const t = now - this.medAt;
+    const f = this.medFrame;
+    if (f === MED_OPEN) {
+      if (this.medFrom === MED_CLOSED && t < M.part) return t < M.crack ? MED_CRACK : MED_PART;
+      if (this.medFrom === MED_GLOW && t < M.cool) return MED_CHARGE;
+      return MED_OPEN;
+    }
+    if (f === MED_GLOW) {
+      if (this.glowT > 0) {
+        if (t < M.charge) return MED_CHARGE;
+        if (this.glowT > M.settle) return Math.floor(t / M.pulse) & 1 ? MED_CHARGE : MED_GLOW;
+        return MED_GLOW;
+      }
+      return now - this.medFireAt < M.flash ? MED_FLASH : MED_GLOW;
+    }
+    if (f === MED_CLOSED && this.medFrom !== MED_CLOSED && t < M.close) return MED_PART;
+    return f;
   }
 
   override draw(r: Renderer): void {
@@ -902,18 +1128,24 @@ export class AmsMayor extends Boss {
       r.sprite(`${ART}/shadow`, this.shadowFrame, this.shadowX, this.floorY, drawOpts);
       drawOpts.alpha = undefined;
     }
-    // Idle life while standing: a 1-px hydraulic breath on the upper body every 32 ticks.
-    const idle = this.state === 'fight' && !this.dead && this.legsFrame === 0 && this.sitDrop === 0 && this.lift === 0;
-    const dy = this.sitDrop - this.lift + (idle ? (w.tick >> 5) & 1 : 0);
-    // Blink (the powered-off eyes) for 6 ticks every 150 ticks while the face rests; a stagger
-    // shows the shout face and shakes her 1 px (draw only).
-    const headFrame = this.staggering ? 2 : idle && this.headFrame === 0 && w.tick % 150 < 6 ? 3 : this.headFrame;
+    // Idle life while standing: a 1-px hydraulic breath on the upper body every 32 ticks. The upper
+    // body follows the legs' hip (a squat squats; the walk bobs); the death sit uses its own drop.
+    const idle = this.state === 'fight' && !this.dead && this.legsFrame === LEGS_STAND && this.sitDrop === 0 && this.lift === 0;
+    const legsF = this.legsShown();
+    const dy = this.sitDrop > 0 ? this.sitDrop - this.lift : this.hipDy(legsF) - this.lift + (idle ? (w.tick >> 5) & 1 : 0);
+    const headFrame = this.headShown(idle);
+    // A stagger shakes her 1 px (draw only).
     this.shakeX = this.staggering ? ((w.tick >> 1) & 1 ? 1 : -1) : 0;
     const telegraphOn = this.glowT > 0 && this.glowT % 8 < 5;
     const glowCol = this.glowT % 16 < 8 ? PAL.gold[3] : PAL.snow[3];
-    // Far arm at rest sits behind the body.
-    if (this.backArm === 0) this.piece(r, ID_ARM_BACK, 0, dy);
-    this.piece(r, ID_LEGS, this.legsShown(), this.lift > 0 ? -this.lift : 0);
+    // The far arm at rest (and the low whirl at her back hip) sits behind the body.
+    const bf = this.backArmShown();
+    const behind = AmsMayor.backBehind(bf);
+    if (behind) {
+      this.piece(r, ID_ARM_BACK, bf, dy);
+      if (this.backArm > 0 && telegraphOn) this.glow(r, ID_ARM_BACK, bf, dy, glowCol);
+    }
+    this.piece(r, ID_LEGS, legsF, this.lift > 0 ? -this.lift : 0);
     const bodyId = `${ART}/body-${this.dead ? 2 : this.damageState}`;
     this.piece(r, bodyId, 0, dy);
     // Head (on its spring during the death boing).
@@ -927,43 +1159,52 @@ export class AmsMayor extends Boss {
     else this.piece(r, `${ART}/chain-${this.partState(chain)}`, 0, dy, chain.flash >= 3);
     const med = this.medPart;
     const medId = `${ART}/medallion-${this.partState(med)}`;
-    this.piece(r, medId, this.medFrame, dy, med.flash >= 3 && !med.armored);
-    if (this.medFrame === 2 && telegraphOn) this.glow(r, medId, 2, dy, glowCol);
-    // Far arm holding the chain loop (in front of the chest).
-    if (this.backArm > 0) {
-      const bf = this.backArmShown();
+    const mf = this.medShown();
+    this.piece(r, medId, mf, dy, med.flash >= 3 && !med.armored);
+    if (this.medFrame === MED_GLOW && telegraphOn) this.glow(r, medId, mf, dy, glowCol);
+    // The far arm whirling, throwing or catching the chain (in front of the chest).
+    if (!behind) {
       this.piece(r, ID_ARM_BACK, bf, dy);
-      if (telegraphOn) this.glow(r, ID_ARM_BACK, bf, dy, glowCol);
+      if (this.backArm > 0 && telegraphOn) this.glow(r, ID_ARM_BACK, bf, dy, glowCol);
     }
     // Stamp arm.
     const arm = this.armPart;
-    if (arm.destroyed) this.piece(r, `${ART}/stamp-arm-gone`, 0, dy);
+    if (arm.destroyed) this.piece(r, `${ART}/stamp-arm-gone`, (w.tick >> 3) % STUMP_FRAMES, dy);
     else {
       const id = `${ART}/stamp-arm-${this.partState(arm)}`;
       const fr = this.armShown() + (this.facing < 0 ? ARM_FRAMES : 0);
       this.piece(r, id, fr, dy, arm.flash >= 3, true);
       if (this.armPose === 1 && telegraphOn) this.glow(r, id, fr, dy, glowCol, true);
     }
-    // The lash.
+    // The lash: the frame's last (lashLen + 4) px, so the tip weight leads (out, the snap, back).
     if (this.lashLen > 0) {
       const lane = this.lashLane === 'high' ? MAYOR.whip.high : MAYOR.whip.low;
+      let lf: number;
+      if (this.lashHot && this.lashLen < MAYOR.whip.reach) lf = LASH_OUT_A + ((w.tick >> 1) & 1);
+      else if (this.lashHot) lf = w.tick - this.lashFullAt < WHIP_SHOW.snap ? LASH_SNAP_A : LASH_SNAP_B;
+      else lf = LASH_BACK_A + ((w.tick >> 2) & 1);
+      const f = getFrames(ID_LASH)[lf];
+      const vis = Math.min(f.buf.w, this.lashLen + 4);
       drawOpts.flipX = this.facing < 0;
       drawOpts.flash = false;
       drawOpts.tint = undefined;
       drawOpts.alpha = undefined;
-      srcRect.x = 0;
+      srcRect.x = f.buf.w - vis;
       srcRect.y = 0;
-      srcRect.w = Math.min(165, this.lashLen + 4);
-      srcRect.h = 11;
+      srcRect.w = vis;
+      srcRect.h = f.buf.h;
       drawOpts.src = srcRect;
-      r.sprite(`${ART}/lash`, w.tick >> 1, this.wx(28), Math.round(this.floorY - (lane[0] + lane[1]) / 2), drawOpts);
+      r.sprite(ID_LASH, lf, this.wx(28 + vis - (f.buf.w - f.ox)), Math.round(this.floorY - (lane[0] + lane[1]) / 2), drawOpts);
       drawOpts.src = undefined;
     }
     // The wig in flight (death).
     if (!this.wigOn) {
       drawOpts.flipX = this.facing < 0;
       drawOpts.flash = false;
-      r.sprite(ID_WIG, ((this.wigSpin / 3) | 0) % 8, this.wigX, this.wigY, drawOpts);
+      // The baked frames keep the boss's floor origin (0, 0): draw them so that their anchor
+      // (WIG_ANCHOR, mirrored with her) lands on (wigX, wigY).
+      const ax = this.facing < 0 ? -WIG_ANCHOR[0] : WIG_ANCHOR[0];
+      r.sprite(ID_WIG, ((this.wigSpin / 3) | 0) % WIG_FRAMES, Math.round(this.wigX - ax), Math.round(this.wigY - WIG_ANCHOR[1]), drawOpts);
     }
   }
 }
@@ -971,7 +1212,7 @@ export class AmsMayor extends Boss {
 defineEntity('ams-mayor', (w, x, y, p) => new AmsMayor(w, x, y, p), {
   category: 'boss',
   score: MAYOR.score,
-  description: 'ROBO-HALSEMA, THE IRON MAYOR (ams boss): x = the Stopera doors, y = the floor; parts stamp-arm, chain, medallion (core), head (bonus).',
+  description: 'MECHA HASLEMA, THE IRON MAYOR (ams boss): x = the Stopera doors, y = the floor; parts stamp-arm, chain, medallion (core), head (bonus).',
 });
 
 /** Exposed for tests: the difficulty factor of the waves. */

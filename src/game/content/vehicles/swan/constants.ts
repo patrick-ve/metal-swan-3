@@ -9,6 +9,9 @@
  * peaks 93.8 px up (formula 5.9² / 0.36 = 96.7 px) after 32 ticks and lands after 65 ticks.
  */
 
+import { SET as SWAN_ART } from '../../art40/swan.gen';
+import { SET as SWAN_WATER_ART } from '../../art40/swan-water.gen';
+
 type Box = readonly [number, number, number, number];
 type Pt = readonly [number, number];
 
@@ -205,67 +208,67 @@ export const SEAT_POINT = deepFreeze({
   parked: [-4, -20] as Pt,
 });
 
+/** The standing deck top (PERCH_TOP.stand): the rest of every baked frame's `perch` point. */
+const PERCH_TOP_STAND = -48;
+
 /** The perch deck top per posture (feel §10): standing, crouched / parked, swimming, ducked. */
-export const PERCH_TOP = deepFreeze({ stand: -48, crouch: -20, swim: -30, duck: -22 });
+export const PERCH_TOP = deepFreeze({ stand: PERCH_TOP_STAND, crouch: -20, swim: -30, duck: -22 });
 
 // ---------------------------------------------------------------------------------------------
 // Art fallbacks (look.md §8, §10, §11.3): used only while a frame has no such point
 // ---------------------------------------------------------------------------------------------
 
-/** Rest positions of the hull-attached points; a frame's hull offset dy moves them down. */
+/**
+ * Rest positions of the hull-attached points; a frame's hull offset dy moves them down. The 40 px
+ * Swan (docs/design/ams40.md wave 7, art only): the neck socket sits at (16, -43) on her breast,
+ * the seat at (-3, -48) on the saddle (the seat zones, the hurtboxes and PERCH_TOP stay).
+ */
 export const REST = deepFreeze({
-  neck: [16, -45] as Pt,
+  neck: [16, -43] as Pt,
   hull: [-3, -38] as Pt,
   smoke: [-20, -50] as Pt,
-  seat: [-4, -48] as Pt,
+  seat: [-3, -48] as Pt,
 });
 
-/** Hull offset dy per frame of each body strip (look.md §10); missing strips use 0. */
-export const HULL_DY: Readonly<Record<string, readonly number[]>> = deepFreeze({
-  idle: [0, 1],
-  run: [0, 2, 1, -1, 0, 2, 1, -1],
-  move: [0, 2, 1, -1, 0, 2, 1, -1],
-  squat: [3, 6],
-  jump: [-2, 0],
-  fall: [0, 0],
-  stomp: [3],
-  land: [6, 2],
-  flap: [0, -1],
-  glide: [0, 0],
-  'glide-tired': [0, 0],
-  fold: [0],
-  skid: [2, 3],
-  crouch: [28, 29],
-  waddle: [28, 27, 28, 28, 27, 28],
-  slide: [28, 28],
-  settle: [6, 12],
-  swim: [18, 19, 18, 17],
-  'water-duck': [26, 26],
-  'paddle-up': [15, 10, 5, 0],
-  honk: [1, 2, 0, -2, -1],
-  'honk-air': [1, 2, 0, -2, -1],
-  'honk-swim': [19, 20, 18, 16, 17],
-  rise: [20, 10, 2],
-  wreck: [6, 6],
-  'sit-down': [6, 16, 28],
-  empty: [28, 29],
-  'empty-look': [28, 28, 28, 28, 28],
-  'empty-lay': [28, 28, 28, 26, 26, 27, 28, 28],
-});
+/**
+ * Hull (deck) offset dy per frame of each body strip (look.md §10); missing strips use 0. The
+ * perch deck follows it (feel §10). Every strip comes from the baked 40 px Swan sets
+ * (docs/design/ams40.md wave 7: the core `swan` and `swan-water`; the neck strips have no deck):
+ * the deck of the drawn frame is its `perch` point − the rest deck PERCH_TOP.stand, one entry per
+ * baked frame, so the table follows the art.
+ */
+export const HULL_DY: Readonly<Record<string, readonly number[]>> = deepFreeze(bakedDecks());
+
+/** The deck offsets of the baked body strips (every frame with a `perch` point). */
+function bakedDecks(): Record<string, number[]> {
+  const out: Record<string, number[]> = {};
+  for (const set of [SWAN_ART, SWAN_WATER_ART]) {
+    for (const [name, st] of Object.entries(set.strips)) {
+      if (name.endsWith('-front') || !st.frames.every((f) => f.pts?.perch)) continue;
+      out[name] = st.frames.map((f) => (f.pts?.perch?.[1] ?? PERCH_TOP_STAND) - PERCH_TOP_STAND);
+    }
+  }
+  return out;
+}
 
 /** Strips whose rider sits 4 px deeper (lying flat in the crouch, look.md §6.1). */
 export const CROUCH_STRIPS: ReadonlySet<string> = new Set(['crouch', 'waddle', 'slide']);
 
 /**
- * Beak tip (`muzzle` = `cannon`) relative to the neck socket per posture and neck frame
- * i = 0..8 (θ = +45° − 22.5°·i), look.md §11.3 "Muzzle (rel.)". Water frames 0–1 equal frame 2;
+ * The muzzle (`muzzle` = `cannon`) relative to the neck socket per posture and aim i = 0..8
+ * (θ = +45° − 22.5°·i): the tip of the barrel on the drum's hub at rest (docs/design/ams40.md
+ * "The Swan", D3; the values of the baked neck strips, tools/art40/chars/swan-neck/draw.py
+ * rest_tip). The drum sits low on her flank (hub (5, −27) standing), so the level shot leaves at
+ * y −27: inside the 30 px hurtboxes of the people on the street (D7: they still take it). Crouched
+ * (her body pressed down) and afloat the drum is strapped higher on her flank (body.py drum_s), so
+ * on the water the level shot leaves over the surface (y −18, the surface at −16). Used only while a neck frame lacks the point. Water aims 0–1 shoot level (= aim 2);
  * crouch and water duck aim 0° only.
  */
 export const MUZZLE_REL = deepFreeze({
-  land: [[21, 31], [26, 27], [28, 21], [28, 3], [19, -13], [11, -25], [-2, -31], [-16, -36], [-28, -33]] as readonly Pt[],
-  water: [[26, 4], [26, 4], [26, 4], [24, -11], [19, -13], [11, -25], [-2, -31], [-16, -36], [-28, -33]] as readonly Pt[],
-  crouch: [[22, 3]] as readonly Pt[],
-  duck: [[24, 1]] as readonly Pt[],
+  land: [[1, 28], [5, 23], [6, 16], [5, 9], [1, 4], [-5, 0], [-11, -1], [-18, 0], [-23, 4]] as readonly Pt[],
+  water: [[6, 7], [6, 7], [6, 7], [5, 0], [1, -5], [-5, -9], [-11, -10], [-18, -9], [-23, -5]] as readonly Pt[],
+  crouch: [[6, 5]] as readonly Pt[],
+  duck: [[6, 7]] as readonly Pt[],
 });
 
 /** The neck socket per posture at rest (look.md §11.3): land, water, crouch, water duck. */

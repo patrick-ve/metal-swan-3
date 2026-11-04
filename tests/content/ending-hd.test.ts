@@ -186,8 +186,9 @@ describe('UHD art of the ending flow', () => {
   it('drops the mission\'s 4× frames when the bridge starts (the snapshot keeps the picture)', () => {
     const a = app();
     setArtTier(4);
-    // A mission's tier-4 working set: a hero strip and a backdrop, built at 4× (and at 2×).
-    const set = ['char/vincent/legs-idle', 'ui/base/sky'];
+    // A mission's tier-4 working set: a rig hero strip and a backdrop, built at 4× (and at 2×). (The
+    // squad's 40 px sets draw their 1× pixels at every tier: docs/design/ams40.md rule 7.)
+    const set = ['char/grace/legs-idle', 'ui/base/sky'];
     for (const id of set) {
       getFrames(id, 4);
       getFrames(id, 2);

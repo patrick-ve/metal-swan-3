@@ -21,24 +21,16 @@ import { renderHuman, type HumanStyle, type Pose } from '../../src/game/art/huma
 import { tween } from '../../src/game/art/tween';
 import * as P from '../../src/game/art/poses';
 import { HERO_STYLES, RECRUIT_STYLE } from '../../src/game/content/characters/art';
-import { BOB_ART } from '../../src/game/content/characters/bob.art';
-import { DIRK_ART } from '../../src/game/content/characters/dirk.art';
 import { GRACE_ART } from '../../src/game/content/characters/grace.art';
 import { GRAMPS_ART } from '../../src/game/content/characters/gramps.art';
 import { MITTENS_ART } from '../../src/game/content/characters/mittens.art';
-import { PATRICK_ART } from '../../src/game/content/characters/patrick.art';
 import { PIP_ART } from '../../src/game/content/characters/pip.art';
-import { THOM_ART } from '../../src/game/content/characters/thom.art';
-import { VINCENT_ART } from '../../src/game/content/characters/vincent.art';
 import { assertNoDuplicateFrames, assertSmooth, motionReport } from './motion';
 
+// The rig heroes only: the squad (vincent, thom, dirk, bob, patrick) are baked 40 px sets since
+// docs/design/ams40.md wave 2 (tests/art/heroes40.test.ts).
 const ART: Readonly<Record<string, PlayerArtOpts>> = {
   recruit: {},
-  vincent: VINCENT_ART,
-  thom: THOM_ART,
-  dirk: DIRK_ART,
-  bob: BOB_ART,
-  patrick: PATRICK_ART,
   grace: GRACE_ART,
   mittens: MITTENS_ART,
   pip: PIP_ART,
@@ -56,7 +48,7 @@ const sum = (a: readonly number[]): number => a.reduce((x, y) => x + y, 0);
 
 describe('p2 strips: counts, timing, defer', () => {
   it('every hero has the planned frames', () => {
-    expect(HEROES.length).toBe(10);
+    expect(HEROES.length).toBe(5);
     for (const c of HEROES) {
       const pre = `char/${c}/`;
       const legs: Array<[string, number]> = [

@@ -15,6 +15,7 @@ import { clearRegen, planJobs, runJobs } from '../../tools/audio/gen';
 import {
   creditsPerTake,
   designRequest,
+  isMayor,
   items,
   lineRequest,
   musicRequest,
@@ -106,15 +107,22 @@ describe('spec checks', () => {
     expect(errs).toMatch(/same line name/);
   });
 
-  it('never gives the mayor a voice', () => {
-    const errs = validateSpec({
-      ...SPEC,
-      VOICES: [...VOICES, { speaker: 'ROBO-HALSEMA', name: 'Mayor', description: 'A robot mayor with a cold voice.', previewText: PREVIEW }],
-      LINES: [...LINES, { speaker: 'ROBO-HALSEMA', text: 'ORDE!', say: 'Orde!', lang: 'nl', group: 'mission:ams', takes: 1 }],
-    });
-    expect(errs.filter((e) => /mayor/.test(e))).toHaveLength(2);
-    const all = items({ ...SPEC, LINES: [...LINES, { speaker: 'ROBO-HALSEMA', text: 'ORDE!', say: 'Orde!', lang: 'nl', group: 'mission:ams', takes: 1 }] });
-    expect(all.some((i) => i.id === 'orde')).toBe(false);
+  it('never gives the mayor a voice (MECHA HASLEMA, and her old name ROBO-HALSEMA)', () => {
+    for (const speaker of ['MECHA HASLEMA', 'ROBO-HALSEMA']) {
+      const errs = validateSpec({
+        ...SPEC,
+        VOICES: [...VOICES, { speaker, name: 'Mayor', description: 'A robot mayor with a cold voice.', previewText: PREVIEW }],
+        LINES: [...LINES, { speaker, text: 'ORDE!', say: 'Orde!', lang: 'nl', group: 'mission:ams', takes: 1 }],
+      });
+      expect(errs.filter((e) => /mayor/.test(e)), speaker).toHaveLength(2);
+      const all = items({ ...SPEC, LINES: [...LINES, { speaker, text: 'ORDE!', say: 'Orde!', lang: 'nl', group: 'mission:ams', takes: 1 }] });
+      expect(all.some((i) => i.id === 'orde'), speaker).toBe(false);
+    }
+  });
+
+  it('the mayor guard matches both her names in any case, and not the baker', () => {
+    for (const s of ['MECHA HASLEMA', 'Mecha Haslema', 'ROBO-HALSEMA', 'robo-halsema']) expect(isMayor(s), s).toBe(true);
+    for (const s of ['baker', 'MECHA', 'THE IRON MAYOR']) expect(isMayor(s), s).toBe(false);
   });
 
   it('names items by id slug, voice key and speaker', () => {

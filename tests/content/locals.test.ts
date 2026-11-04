@@ -110,7 +110,10 @@ describe('locals: registration', () => {
   });
 
   it('every sprite is palette-only and has frames', () => {
-    const ids = [...listSprites('enemy/fatbike-youth'), ...listSprites('enemy/delivery-rider'), ...listSprites('enemy/seagull/'), ...listSprites('enemy/handhaver'), ...listSprites('enemy/boete-ticket/')];
+    // The handhaver and the BOETE ticket are baked 40 px sets with their own palettes (docs/design/ams40.md
+    // "colour design"): the art40 gates check them (tests/art/art40-gates.test.ts); here only frames.
+    for (const id of [...listSprites('enemy/handhaver'), ...listSprites('enemy/boete-ticket/')]) expect(getFrames(id).length, id).toBeGreaterThan(0);
+    const ids = [...listSprites('enemy/fatbike-youth'), ...listSprites('enemy/delivery-rider'), ...listSprites('enemy/seagull/')];
     expect(ids.length).toBeGreaterThan(100);
     for (const id of ids) {
       const frames = getFrames(id);

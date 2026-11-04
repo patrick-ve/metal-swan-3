@@ -94,7 +94,7 @@ Attract-mode alternates (cycled under the logo, 300 ticks each):
 
 | Mission | Name | Biome | Sections played | Vehicle | Boss | Time (good player) |
 |---|---|---|---|---|---|---|
-| ams | THE FRYING DUTCHMAN (MISSION 1, prologue) | Amsterdam canals, morning → sunset | `a` → `b` → `c` → `c1`/`c2` → `d` | SWAN-3 (parked in `b`, may continue to `c`, `c1`/`c2`, `d`); BIERFIETS (hijacked in `a` and `b`) | ROBO-HALSEMA (robot mayor); mid-boss the parking scan car (`c`) | 4:30 |
+| ams | THE FRYING DUTCHMAN (MISSION 1, prologue) | Amsterdam canals, morning → sunset | `a` → `b` → `c` → `c1`/`c2` → `d` | SWAN-3 (parked in `b`, may continue to `c`, `c1`/`c2`, `d`); BIERFIETS (hijacked in `a` and `b`) | MECHA HASLEMA (robot mayor); mid-boss the parking scan car (`c`) | 4:30 |
 | m1 | BRASS ON THE RIVERBANK | river town, spring morning | `a` → `b1`/`b2` → `c` | SWAN-3 (`c`) | THE ENCORE (riverboat) | 4:00 |
 | m2 | DUNE BUGLE | desert flats and canyon, noon | `a` → `b` → `c1`/`c2` → `d` | SUNDAE DRIVER (`b`, may continue) | THE BA-DUM BEHEMOTH (drum tank) | 5:00 |
 | m3 | THE HIGH NOTE | ski resort mountain, sunset | `a` → `b1`/`b2` (vertical) → `c` | SWAN-3 (`a`; `c` if she survives `a`) | THE WINDBAG (bagpipe airship) | 4:30 |
@@ -492,7 +492,7 @@ fire is always a plain jump: her squat starts and fire is a shot (8.2).
   damage. The boss's attacks run on.
 - **The hero is back:** when a continued hero lands, every non-boss enemy on screen cowers in
   place for 90 ticks (reaction `cower`: a `!`, no attacks, still takes damage) and the boss
-  staggers for 60 ticks (its attack holds, no adds; ROBO-HALSEMA shows her shout face and
+  staggers for 60 ticks (its attack holds, no adds; MECHA HASLEMA shows her shout face and
   shakes). The hold ends.
 - 2 players: while a partner plays, the countdown shows in the out player's HUD corner and the
   world runs as normal.
@@ -1478,7 +1478,12 @@ background cyclists, pigeons, window wavers; breakable stalls and bike racks.
 | `organ-console` (m5) | reading the sheet-music lanes | the telegraph is the score itself |
 | `maestro` (m5) | using cover | a tiny man with a giant scream |
 
-### 10.0a ams — `ams-mayor` — ROBO-HALSEMA, THE IRON MAYOR
+### 10.0a ams — `ams-mayor` — MECHA HASLEMA, THE IRON MAYOR
+
+> **D4 (2026-11-03, `docs/design/ams40.md` "The mayor"):** the boss is renamed MECHA HASLEMA
+> (formerly ROBO-HALSEMA; the id `ams-mayor` stays). Her 40 px set gives her a steel robot face
+> with red eye slots and no facial likeness (`docs/ORIGINALITY.md`). The look below is her current
+> art until that set replaces it; hitboxes and numbers stay (D7).
 
 Spec `docs/design/amsterdam.md` §3, code `src/game/content/bosses/ams/`. A ~140 px walking robot
 caricature with a recognisable likeness of the burgemeester (big wavy dark-brown hair as a wig
@@ -1935,7 +1940,7 @@ after the scan car, the scan car's drop); bug fixes (§7); Bluetooth controllers
   for the boat) with Carré on the far bank; the boat docks at the Waterlooplein jetty. On foot the
   river drowns; the Swan swims alongside. Secret: the moored houseboat's roof hatch.
 - **`d` Stopera** (1280, checkpoint 896; vehicles `swan`): the flea market (stalls, a few
-  handhavers, a repair crate, the flea-market chest secret), then ROBO-HALSEMA (10.0a), the
+  handhavers, a repair crate, the flea-market chest secret), then MECHA HASLEMA (10.0a), the
   cheering finale and MISSION COMPLETE.
 
 ### 11.1 m1 — BRASS ON THE RIVERBANK
@@ -2789,7 +2794,7 @@ Instrument names are the engine presets (`pulse12`, `pulse25`, `pulse50`, `trian
 | `credits` | credits roll | relaxed | 100 | G major | swing version of the `title` theme: `pulse25` + `triangle` + brushed drums | 32-bar loop |
 | `high-score` | name entry, high scores | perky | 132 | A major | short `pulse25` melody, `triangle` bass | 8-bar loop |
 | `ams` | mission `ams` (THE FRYING DUTCHMAN) | a cheerful Amsterdam street-organ waltz | 150 | F major, 3/4 (`rowsPerBeat: 3`, 9 rows per bar) | organ (`pad`) lead doubled by a `pulse12` piping rank an octave up, FM glockenspiel counter-line, `triangle` oom on 1, `pulse25` chords on 2 and 3, kick + rim | intro 4 → A 16 → B 16 (B♭ major) → A′ 16 (glockenspiel in thirds, a second organ voice) → loop to A |
-| `ams-boss` | ROBO-HALSEMA (`ams-mayor`) | driving, bossy, a little pompous | 160 | D minor | 16th-note `saw` bass ostinato, organ stabs in a 3+3+2 push, bold `pulse12` lead, snare rolls into each phrase | intro 4 → A 16 → B 16 ("rules are rules" call) → C 8 (organ break, rising build) → loop to A |
+| `ams-boss` | MECHA HASLEMA (`ams-mayor`) | driving, bossy, a little pompous | 160 | D minor | 16th-note `saw` bass ostinato, organ stabs in a 3+3+2 push, bold `pulse12` lead, snare rolls into each phrase | intro 4 → A 16 → B 16 ("rules are rules" call) → C 8 (organ break, rising build) → loop to A |
 | `ring` | mission `ring` (DE RING, the A10) | a highway drive: steady, bright, never tiring | 140 | A major (mixolydian G) | motorik pulse (`saw` bass in 8ths with an octave pop, kick on 1 and 3, a steady hat); a bright `pulse25` lead calls the hook (a syncopated leap up and a fall back), a brassy detuned `saw` answers two bars later (call and response); a `pulse12` 16th "streetlight" arpeggio and a dark `pad` in B; ride in B, open hats in C, rim "blinker" and shaker in D | intro 4 → A 16 (call / response, then the long phrase) → B 16 (the singing line over D–E–C♯m–F♯m, a climbing build onto F♯) → C 8 (`'C+2'`: THE LIFT, the hook a whole step up in B major, the lead doubled an octave up, 16th bass) → D 8 (breakdown in F♯m, a snare build) → loop to A (82.3 s). The tunnels jump to C (`ring/cues.ts`) |
 | `ring-boss` | the ring's test mid-boss (the container lorry) | heavy, urgent, the theme turned dark | 152 | F♯ minor | 16th-note `saw` "air-brake" ostinato, off-beat detuned `saw` stabs in a 3+3+2 push, the ring hook bent into minor on the `pulse25` lead, a `saw` double an octave down in B | intro 2 (snare roll) → A 8 → B 8 (long defiant notes) → C 8 (half-time, the major call returns, a build) → loop to A (37.9 s) |
 
@@ -3245,7 +3250,7 @@ Drop tables: `table-a` (critic), `table-b` (roadie), `table-c` (tea-lady), `tabl
 - **Mini-bosses:** `golden-goose` (`bosses/m2`; parts `neck`, `hull`), `big-head` (`bosses/m4`;
   parts `moustache-left`, `moustache-right`, `mouth-speaker`, `head`).
 - **Bosses:**
-  - `bosses/ams`: `ams-mayor` (ROBO-HALSEMA) — parts `stamp-arm`, `chain`, `medallion`, `head`
+  - `bosses/ams`: `ams-mayor` (MECHA HASLEMA) — parts `stamp-arm`, `chain`, `medallion`, `head`
     (optional); projectile entities `noise-letter`, `shield-shot` (the stamp wave is internal).
   - `bosses/ams-scan`: `ams-scan-car` (the mid-boss of ams-c) — parts `scanner`, `body`; adds
     `ams-tow-truck`, `ams-wheel-clamp`; the printer's `ams-scan-ticket`; status `clamped`.
@@ -3397,7 +3402,7 @@ recipe as the fallback of its ElevenLabs take): `player/step` (footsteps in miss
 `ui/title-sting` (the first title visit), `env/title-lake` (loop under the title), the section
 ambience loops `env/ams-canal` and `env/ams-street`, `env/ams-carillon` (now and then in sections
 a–c), `ams/rider-crash`, `ams/handhaver-down`, `ams/tour-boat` (loop while a tour boat is in
-view), `ams/duck`, `ams/pigeon`, `ams/mayor-intro` (ROBO-HALSEMA steps out) and `ams/mayor-babble` (loop: her
+view), `ams/duck`, `ams/pigeon`, `ams/mayor-intro` (MECHA HASLEMA steps out) and `ams/mayor-babble` (loop: her
 wordless robot chatter while one of her bubbles is up; a placeholder, she has no voice). `ui/go` plays when
 the GO arrow comes up.
 
@@ -3662,7 +3667,7 @@ UNLOCK); the SHE TOOK THE LIFT record (11.3); the Swan marker (13.7); `die-crush
 ## 17. First-person mode (after `ams`) — see `docs/design/fps.md`
 
 By the user's decision (2026-10-14), the game changes style, direction and gameplay after the
-`ams` boss ROBO-HALSEMA: a glitch and a story card lead into a first-person raycaster shooter
+`ams` boss MECHA HASLEMA: a glitch and a story card lead into a first-person raycaster shooter
 with the classic mechanics of the genre (doors, keys, push-wall secrets, treasure, health, ammo,
 lives) against Nazi soldiers, one floor ("SUPPLY DEPOT") and a boss floor ("HANGAR") with the
 final boss MechaHitler (a mech suit, then on foot), then the ending. Only one player plays it

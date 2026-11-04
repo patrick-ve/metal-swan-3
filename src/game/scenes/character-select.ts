@@ -12,22 +12,26 @@
  * (gold) and the bio in a dark box at its bottom, typed in and scrolling a line at a time when it
  * is longer than 3 lines.
  *
- * Sequence: all shutters closed; after SHUTTER_DELAY ticks they rise one after another
- * (SHUTTER_STAGGER apart, `ui/mil-shutter`), showing the grey portraits (`char/<id>/select-grey`);
- * the highlighted one shows in colour (`char/<id>/select`) and its lamp lights (`ui/move` on a
- * change). Confirm: `ui/select-confirm` and the name callout, the portrait flashes white for
- * FLASH_TICKS, the shutter drops (`ui/mil-clank` as it lands) and a glass preview window on it
- * shows the soldier's in-game idle (legs-idle + torso-pistol-idle at 1×) over a hazard strip. A
- * soldier the other player took cannot be picked (`ui/cancel`). When every player has chosen
- * and every shutter is down, the screen holds 40 ticks, then the campaign starts
- * (`startCampaign`). The timer (SELECT_SECONDS) picks the highlighted (or the next free) soldier
- * at 0. Back (bomb) before any pick: the mode select.
+ * Sequence (docs/design/select40.md): all shutters closed; after SHUTTER_DELAY ticks they rise
+ * one after another (SHUTTER_STAGGER apart, `ui/mil-shutter`), easing out into a small bounce at
+ * the top (SHUTTER_RISE), showing the unlit portraits (`char/<id>/select-grey`); the highlighted
+ * one plays its lit loop (`char/<id>/select`, from its key pose at each highlight) and its lamp
+ * lights with a glow halo and a blink (`ui/move` on a change). Confirm: `ui/select-confirm` and
+ * the name callout; the pick reaction (`char/<id>/select-pick`) plays once with a white flash on
+ * its first FLASH_TICKS and holds its last frame; when it ends (its total time from the sprite
+ * durations; FLASH_TICKS without one) the shutter falls (SHUTTER_DROP), slams down with a squash
+ * (`ui/mil/shutter-slam`), a 1-px shake and dust puffs (`ui/mil/dust`), `ui/mil-clank` as it
+ * lands, and a glass preview window on it shows the soldier's in-game idle (legs-idle +
+ * torso-pistol-idle) behind reflections, over a hazard strip. A soldier the other player took
+ * cannot be picked (`ui/cancel`). When every player has chosen and every shutter is down, the
+ * screen holds CONFIRM_HOLD ticks, then the campaign starts (`startCampaign`). The timer
+ * (SELECT_SECONDS) picks the highlighted (or the next free) soldier at 0. Back (bomb) before any
+ * pick: the mode select.
  *
- * Screen art at the tier (UHD, base.ts `screenArt`): the military furniture (frame, title,
- * shutters, lamps, plates, preview window, hazard strip) is one group, the portraits another, and
- * each preview figure a third; each group draws at the art tier once the screen art pool has
- * built it (the 2× or 1× art until then), so a large display shows the HD art. A character
- * without select art shows its 32 × 32 portrait on a dark panel (the retired heroes, tests).
+ * Art: the furniture and the portraits are 1× art (pixel grid path B), drawn like any 1× sprite
+ * at every art tier; each preview figure draws at the art tier of its group (base.ts
+ * `screenArt`). A character without select art shows its 32 × 32 portrait on a dark panel (the
+ * retired heroes, tests).
  *
  * Gamepads (docs/design/ams-extras.md §10): with 2 players each pad drives its own player's
  * cursor. START or the south button on a free pad claims the first player without a pad (that
@@ -41,7 +45,7 @@ import { PAD } from '../../engine/pads';
 import { INK, PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
-import { frameW, getFrame, hasSprite, setArtDensity, type ArtDensity } from '../../engine/sprites';
+import { frameCount, frameW, getFrame, hasSprite, setArtDensity, spriteAnim, type ArtDensity } from '../../engine/sprites';
 import { centerText, menuKeys, uiText, UI_GOLD, UI_WHITE, type GameApp } from '../app';
 import {
   MIL_HAZARD_Y,
@@ -54,47 +58,102 @@ import {
   MIL_SHUTTER_DX,
   MIL_SHUTTER_DY,
   MIL_SHUTTER_FRAMES,
+  MIL_SLAM_TICKS,
+  MIL_TITLE_RECESS,
   milPanelX,
+  milShutterFrame,
   stencilId,
 } from '../content/ui/military.art';
 import { getCharacter, hasCharacter, listCharacters, type CharacterDef } from '../registry';
 import { CHARACTER_TEXTS, ROSTER } from './flow-data';
 import { startCampaign } from './flow';
 import { ModeSelectScene } from './mode-select';
-import { screenArt, screenTier } from './base';
+import { screenArt } from './base';
 
 /** 20 seconds to choose (GDD §13.5). */
 export const SELECT_SECONDS = 20;
 /** The shutters stay closed this long after the screen opens, then rise one by one. */
 export const SHUTTER_DELAY = 20;
 export const SHUTTER_STAGGER = 8;
-/** Ticks per shutter frame (rising and dropping). */
+/** Ticks per shutter step (rising and dropping). */
 export const SHUTTER_TICKS = 2;
-/** The white flash of a confirmed portrait. */
-export const FLASH_TICKS = 2;
-/** A confirmed shutter is down (the preview shows) this many ticks after the confirm. */
-export const DROP_DONE = FLASH_TICKS + (MIL_SHUTTER_FRAMES - 1) * SHUTTER_TICKS;
-/** After the last confirm: the shutter drops, then the screen holds 40 ticks before the campaign starts. */
-export const CONFIRM_TICKS = DROP_DONE + 40;
 /**
- * Bio box: the bio lines shown at once. The box slides up BIO_DELAY ticks after a highlight,
- * types the bio in, scrolls it, holds BIO_HOLD ticks, then slides down for BIO_REST ticks so the
- * whole face shows, and starts again.
+ * The rise: px the door is raised at each step (SHUTTER_TICKS each): a jolt, fast, easing out
+ * into the top stop, a small bounce back down and up again. Every value is a shutter frame
+ * offset (MIL_SHUTTER_OFFSETS).
  */
-export const BIO_LINES = 3;
-export const BIO_DELAY = 24;
-const BIO_SLIDE = 8;
-const BIO_HOLD = 150;
-const BIO_REST = 90;
-/** Ticks per typed character and per scrolled line. */
+export const SHUTTER_RISE: readonly number[] = [0, 2, 8, 18, 32, 50, 70, 90, 106, 118, 126, 128, 120, 114, 116, 122, 128];
+/** The drop: the door falls faster and faster (SHUTTER_TICKS per step) and lands at 0. */
+export const SHUTTER_DROP: readonly number[] = [128, 126, 118, 106, 90, 70, 50, 18, 0];
+/** Ticks per impact frame (`ui/mil/shutter-slam`) after the door lands (the art's own speed). */
+export const SLAM_TICKS = MIL_SLAM_TICKS;
+/** A lit P1 / P2 lamp blinks bright LAMP_BLINK ticks every LAMP_PERIOD; the two sides LAMP_PHASE ticks apart. */
+const LAMP_PERIOD = 72;
+const LAMP_BLINK = 4;
+const LAMP_PHASE = 23;
+/** The 1-px shake of a landed door, per tick after the impact (px down). */
+export const SHAKE: readonly number[] = [1, 0, 1, 0];
+/** The white flash at the start of the pick reaction. */
+export const FLASH_TICKS = 2;
+/** Ticks from the drop's start until the door lands (the preview shows, `ui/mil-clank`). */
+export const DROP_TICKS = (SHUTTER_DROP.length - 1) * SHUTTER_TICKS;
+/** A confirmed shutter of a soldier without a pick reaction is down this many ticks after the confirm. */
+export const DROP_DONE = FLASH_TICKS + DROP_TICKS;
+/** Every shutter down: the screen holds this long before the campaign starts. */
+export const CONFIRM_HOLD = 40;
+/** After the last confirm (no pick reaction): the shutter drops, then the screen holds CONFIRM_HOLD ticks. */
+export const CONFIRM_TICKS = DROP_DONE + CONFIRM_HOLD;
+
+/** Total ticks of one pass of a strip (its durations, else ticksPerFrame per frame); 0 for an unknown id. */
+export function stripTotal(id: string): number {
+  if (!hasSprite(id)) return 0;
+  const n = frameCount(id);
+  const a = spriteAnim(id);
+  let total = 0;
+  for (let i = 0; i < n; i++) total += Math.max(1, Math.round(a.durations?.[i % a.durations.length] ?? a.ticksPerFrame));
+  return total;
+}
+
+/** The frame of a strip `age` ticks after it started: looping, or held on its last frame (`once`). */
+export function stripFrameAt(id: string, age: number, once = false): number {
+  const n = hasSprite(id) ? frameCount(id) : 0;
+  if (n <= 1) return 0;
+  const a = spriteAnim(id);
+  const total = stripTotal(id);
+  let t = once ? Math.max(0, age) : ((age % total) + total) % total;
+  if (once && t >= total) return n - 1;
+  for (let i = 0; i < n; i++) {
+    t -= Math.max(1, Math.round(a.durations?.[i % a.durations.length] ?? a.ticksPerFrame));
+    if (t < 0) return i;
+  }
+  return n - 1;
+}
+
+/** Ticks of a character's pick reaction (`<art>/select-pick`); 0 without one. */
+export function pickTicks(id: string): number {
+  return stripTotal(`${getCharacter(id).art}/select-pick`);
+}
+/**
+ * Bio ticker: one line at the foot of the window, over the collar only (the face, the mouth and
+ * the chin of the portrait stay clear: they carry the likeness and the loop's twitches). It slides
+ * up BIO_DELAY ticks after a highlight, types the callsign and then each bio line in turn (each
+ * held BIO_LINE_HOLD ticks), slides down, rests BIO_REST ticks and starts again.
+ */
+export const BIO_DELAY = 48;
+/** The ticker's height: it covers the panel rows from BIO_TOP down to the bottom of the window. */
+export const BIO_H = 11;
+export const BIO_TOP = MIL_PANEL_H - BIO_H;
+const BIO_SLIDE = 6;
+const BIO_LINE_HOLD = 70;
+const BIO_REST = 60;
+/** Ticks per typed character. */
 const TYPE_TICKS = 1;
-const SCROLL_TICKS = 75;
-/** Text width in the bio box and the line steps (bio lines have room for descenders). */
+/** Text width in the ticker. */
 const BIO_W = MIL_PANEL_W - 4;
-const CALL_H = 8;
-const BIO_H = 9;
 
 const TITLE = 'REPORT FOR DUTY';
+/** The top of the title sprite: its letters (16 px, 3 px of overspray above) centred in the recess. */
+const TITLE_Y = MIL_TITLE_RECESS.y + ((MIL_TITLE_RECESS.h - 16) >> 1) - 3;
 const BADGE_Y = 31;
 const PLATE_Y = 172;
 const ROW_Y = 196;
@@ -126,7 +185,7 @@ export function selectRoster(): string[] {
 export interface BioText {
   callsign: string[];
   lines: string[];
-  /** Per bio line: the x offset after each character (for the typing cover). */
+  /** Per ticker line (the callsign lines, then the bio lines): the x offset after each character (for the typing cover). */
   stops: number[][];
 }
 
@@ -174,12 +233,13 @@ export function bioText(id: string): BioText {
   const bio = def.description ?? t.quote;
   const width = BIO_W;
   const lines = bio ? wrapSmall(bio, width) : [];
-  const stops = lines.map((l) => {
+  const call = callsign ? wrapSmall(callsign, width).slice(0, 2) : [];
+  const stops = [...call, ...lines].map((l) => {
     const out: number[] = [];
     for (let i = 1; i <= l.length; i++) out.push(measure(l.slice(0, i), 'small'));
     return out;
   });
-  b = { callsign: callsign ? wrapSmall(callsign, width).slice(0, 2) : [], lines, stops };
+  b = { callsign: call, lines, stops };
   bioCache.set(id, b);
   return b;
 }
@@ -188,6 +248,7 @@ export function bioText(id: string): BioText {
 interface PanelArt {
   select: string;
   grey: string;
+  pick: string;
   portrait: string;
   legs: string;
   torso: string;
@@ -195,19 +256,31 @@ interface PanelArt {
 
 function panelArt(id: string): PanelArt {
   const art = getCharacter(id).art;
-  return { select: `${art}/select`, grey: `${art}/select-grey`, portrait: `${art}/portrait`, legs: `${art}/legs-idle`, torso: `${art}/torso-pistol-idle` };
+  return {
+    select: `${art}/select`,
+    grey: `${art}/select-grey`,
+    pick: `${art}/select-pick`,
+    portrait: `${art}/portrait`,
+    legs: `${art}/legs-idle`,
+    torso: `${art}/torso-pistol-idle`,
+  };
 }
 
-/** The military furniture of the screen (one screen-art group: it switches to HD at once). */
+/** The military furniture of the screen (1× art; one screen-art group). */
 export const MIL_ART: readonly string[] = [
   'ui/mil/frame',
   stencilId(TITLE),
   'ui/mil/shutter',
+  'ui/mil/shutter-slam',
+  'ui/mil/dust',
   'ui/mil/badge-off',
   'ui/mil/badge-p1',
   'ui/mil/badge-p2',
+  'ui/mil/glow-p1',
+  'ui/mil/glow-p2',
   'ui/mil/plate',
   'ui/mil/preview',
+  'ui/mil/preview-glare',
   'ui/mil/hazard',
 ];
 
@@ -224,6 +297,10 @@ const plain: DrawOpts = { screen: true };
 const greyOpts: DrawOpts = { screen: true, tint: PAL.stone[1], alpha: 0.65 };
 const flashOpts: DrawOpts = { screen: true, flash: true };
 const boxOpts: DrawOpts = { screen: true };
+const glowOpts: DrawOpts = { screen: true, blend: 'add', alpha: 0.6 };
+const glareOpts: DrawOpts = { screen: true, blend: 'add', alpha: 0.45 };
+const dustL: DrawOpts = { screen: true, flipX: true };
+const engraved: Color = PAL.sand[3];
 
 export class CharacterSelectScene implements Scene {
   private readonly app: GameApp;
@@ -232,6 +309,8 @@ export class CharacterSelectScene implements Scene {
   private readonly art: PanelArt[];
   /** The portraits (one screen-art group) and each soldier's preview figure (legs, torso). */
   private readonly portraitIds: string[];
+  /** Ticks of each panel's pick reaction (0: none). */
+  private readonly pickT: number[];
   private readonly previewIds: string[][];
   /** The screen density of the furniture this frame (set at the top of draw). */
   private mil: ArtDensity = 1;
@@ -245,7 +324,8 @@ export class CharacterSelectScene implements Scene {
     this.players = players;
     this.roster = selectRoster();
     this.art = this.roster.map(panelArt);
-    this.portraitIds = this.art.flatMap((a) => [a.select, a.grey, a.portrait]).filter(hasSprite);
+    this.portraitIds = this.art.flatMap((a) => [a.select, a.grey, a.pick, a.portrait]).filter(hasSprite);
+    this.pickT = this.art.map((a) => stripTotal(a.pick));
     this.previewIds = this.art.map((a) => [a.legs, a.torso]);
     this.cursors = [];
     for (let i = 0; i < players; i++) this.cursors.push({ index: Math.min(i, this.roster.length - 1), chosen: null, chosenT: 0, since: 0 });
@@ -297,23 +377,44 @@ export class CharacterSelectScene implements Scene {
     return !!c && i < this.roster.length && c.index === i;
   }
 
-  /** The shutter frame of panel i: 0 closed … 7 fully raised (panels without a soldier stay closed). */
-  shutterFrame(i: number): number {
+  /** The px panel i's door is raised now (0 closed … 128 fully raised; panels without a soldier stay closed). */
+  shutterOffset(i: number): number {
     if (i >= this.roster.length) return 0;
-    const last = MIL_SHUTTER_FRAMES - 1;
-    const open = Math.max(0, Math.min(last, Math.floor((this.t - SHUTTER_DELAY - i * SHUTTER_STAGGER) / SHUTTER_TICKS)));
+    const k = Math.floor((this.t - SHUTTER_DELAY - i * SHUTTER_STAGGER) / SHUTTER_TICKS);
+    const open = k < 0 ? 0 : SHUTTER_RISE[Math.min(k, SHUTTER_RISE.length - 1)];
     const p = this.chosenBy(i);
     if (p < 0) return open;
-    const ct = this.cursors[p].chosenT;
-    if (ct < FLASH_TICKS) return open;
-    const drop = Math.min(last, Math.floor((ct - FLASH_TICKS) / SHUTTER_TICKS) + 1);
-    return Math.max(0, Math.min(open, last - drop));
+    const d = this.cursors[p].chosenT - this.dropStart(p);
+    if (d < 0) return open;
+    return Math.min(open, SHUTTER_DROP[Math.min(SHUTTER_DROP.length - 1, Math.floor(d / SHUTTER_TICKS))]);
+  }
+
+  /** The shutter frame of panel i: 0 closed … MIL_SHUTTER_FRAMES − 1 fully raised. */
+  shutterFrame(i: number): number {
+    return milShutterFrame(this.shutterOffset(i));
+  }
+
+  /** Ticks of the pick reaction player p plays (0: none, or not chosen). */
+  pickTicksOf(p: number): number {
+    const c = this.cursors[p];
+    if (!c?.chosen) return 0;
+    return this.pickT[this.roster.indexOf(c.chosen)] ?? 0;
+  }
+
+  /** Ticks after player p's confirm when the door starts to fall: the pick reaction's end (FLASH_TICKS at least). */
+  dropStart(p: number): number {
+    return Math.max(FLASH_TICKS, this.pickTicksOf(p));
+  }
+
+  /** Ticks after player p's confirm when the door lands (the preview shows, the clank). */
+  dropDone(p: number): number {
+    return this.dropStart(p) + DROP_TICKS;
   }
 
   /** Is player p's preview window showing (chosen, and the shutter is down)? */
   previewShown(p: number): boolean {
     const c = this.cursors[p];
-    return !!c?.chosen && c.chosenT >= DROP_DONE;
+    return !!c?.chosen && c.chosenT >= this.dropDone(p);
   }
 
   update(): void {
@@ -327,7 +428,7 @@ export class CharacterSelectScene implements Scene {
       const c = this.cursors[p];
       if (c.chosen) {
         c.chosenT++;
-        if (c.chosenT === DROP_DONE) app.audio.sfx('ui/mil-clank');
+        if (c.chosenT === this.dropDone(p)) app.audio.sfx('ui/mil-clank');
         continue;
       }
       const k = menuKeys(app.input, p as 0 | 1);
@@ -356,7 +457,7 @@ export class CharacterSelectScene implements Scene {
         for (let p = 0; p < this.cursors.length; p++) if (!this.cursors[p].chosen) this.choose(p, true);
       }
     }
-    if (this.cursors.every((c) => c.chosen && c.chosenT >= CONFIRM_TICKS)) {
+    if (this.cursors.every((c, p) => c.chosen && c.chosenT >= this.dropDone(p) + CONFIRM_HOLD)) {
       this.leaving = true;
       startCampaign(app, { players: this.players, characters: this.cursors.map((c) => c.chosen ?? 'recruit') });
     }
@@ -416,9 +517,9 @@ export class CharacterSelectScene implements Scene {
   draw(r: Renderer): void {
     r.rect(0, 0, r.w, r.h, INK, plain);
     const n = Math.min(MIL_PANELS, this.roster.length);
-    // Portraits, furniture and previews at the screen density of their group. At screen tier 1
-    // the portraits keep their 2× art (its reduction at res 1), as before the UHD wave.
-    const prev = setArtDensity(screenTier(r) === 1 ? 2 : screenArt(r, this.portraitIds));
+    // Portraits, furniture and previews at the screen density of their group (the portraits and
+    // the furniture are 1× art: they draw their 1× frames at every tier).
+    const prev = setArtDensity(screenArt(r, this.portraitIds));
     for (let i = 0; i < n; i++) this.drawPortrait(r, i);
     this.mil = screenArt(r, MIL_ART);
     setArtDensity(this.mil);
@@ -428,14 +529,38 @@ export class CharacterSelectScene implements Scene {
     }
     if (hasSprite('ui/mil/frame')) r.sprite('ui/mil/frame', 0, 0, 0, plain);
     const sid = stencilId(TITLE);
-    if (hasSprite(sid)) r.sprite(sid, 0, (r.w - frameW(getFrame(sid, 0))) >> 1, 6, plain);
+    if (hasSprite(sid)) r.sprite(sid, 0, (r.w - frameW(getFrame(sid, 0))) >> 1, TITLE_Y, plain);
     else centerText(r, TITLE, 10, UI_GOLD, 'big');
     for (let i = 0; i < MIL_PANELS; i++) {
+      this.drawDust(r, i);
       this.drawBadges(r, i);
       this.drawPlate(r, i);
     }
     setArtDensity(prev);
     this.drawBottomRow(r);
+  }
+
+  /** The tick panel i was last highlighted by a player still choosing (its lit loop starts there). */
+  private litSince(i: number): number {
+    let since = 0;
+    for (const c of this.cursors) if (!c.chosen && c.index === i && c.since > since) since = c.since;
+    return since;
+  }
+
+  /** The portrait sprite and frame panel i shows now (null: no select art). */
+  portraitAt(i: number): { id: string; frame: number } | null {
+    const art = this.art[i];
+    if (!art || !hasSprite(art.select)) return null;
+    const p = this.chosenBy(i);
+    if (p >= 0) {
+      // Chosen: the pick reaction once, held on its last frame (the lit key pose without one).
+      if (!hasSprite(art.pick)) return { id: art.select, frame: 0 };
+      return { id: art.pick, frame: stripFrameAt(art.pick, this.cursors[p].chosenT, true) };
+    }
+    if (this.highlighted(i)) return { id: art.select, frame: stripFrameAt(art.select, this.t - this.litSince(i)) };
+    // Unlit: the grey state (a slow breath when it has two frames), out of step per panel.
+    if (hasSprite(art.grey)) return { id: art.grey, frame: stripFrameAt(art.grey, this.t + i * 37) };
+    return { id: art.select, frame: 0 };
   }
 
   private drawPortrait(r: Renderer, i: number): void {
@@ -445,13 +570,12 @@ export class CharacterSelectScene implements Scene {
     const lit = this.highlighted(i);
     const p = this.chosenBy(i);
     const flash = p >= 0 && this.cursors[p].chosenT < FLASH_TICKS;
-    const colour = art.select;
-    const grey = art.grey;
-    if (hasSprite(colour)) {
-      const sid = lit || !hasSprite(grey) ? colour : grey;
-      r.sprite(sid, 0, x, y, plain);
-      if (!lit && sid === colour) r.sprite(colour, 0, x, y, greyOpts);
-      if (flash) r.sprite(colour, 0, x, y, flashOpts);
+    const at = this.portraitAt(i);
+    if (at) {
+      r.sprite(at.id, at.frame, x, y, plain);
+      // No grey art: the colour portrait dimmed.
+      if (!lit && at.id === art.select) r.sprite(at.id, at.frame, x, y, greyOpts);
+      if (flash) r.sprite(at.id, at.frame, x, y, flashOpts);
       return;
     }
     // No select art: the small portrait on a dark panel.
@@ -467,55 +591,68 @@ export class CharacterSelectScene implements Scene {
     if (flash) r.sprite(pid, 0, px, py, flashOpts);
   }
 
-  /** The callsign and bio box at the bottom of a panel highlighted by a player still choosing. */
-  private drawBio(r: Renderer, i: number): void {
+  /**
+   * The bio ticker of panel i now: its top row on screen, the slide (0: fully up), the ticker line
+   * and how many of its characters are typed; null when it is not shown. Only on a panel that is
+   * highlighted by a player still choosing and not chosen yet (a chosen panel plays its pick).
+   */
+  bioAt(i: number): { y: number; slide: number; line: number; typed: number } | null {
+    if (i >= this.roster.length || this.chosenBy(i) >= 0 || this.shutterFrame(i) <= 0) return null;
     let c: Cursor | null = null;
     for (let p = 0; p < this.cursors.length; p++) {
       const q = this.cursors[p];
       if (!q.chosen && q.index === i && (!c || q.since > c.since)) c = q;
     }
-    if (!c) return;
+    if (!c) return null;
     const age = this.t - c.since;
-    if (age < BIO_DELAY) return;
+    if (age < BIO_DELAY) return null;
+    const b = bioText(this.roster[i]);
+    const n = b.stops.length;
+    if (!n) return null;
+    // One cycle: slide up, per line (type it, hold it), slide down, rest.
+    let up = BIO_SLIDE;
+    for (const st of b.stops) up += st.length * TYPE_TICKS + BIO_LINE_HOLD;
+    const phase = (age - BIO_DELAY) % (up + BIO_SLIDE + BIO_REST);
+    if (phase >= up + BIO_SLIDE) return null;
+    const slide = phase < BIO_SLIDE ? BIO_SLIDE - phase : phase >= up ? phase - up + 1 : 0;
+    let left = phase - BIO_SLIDE;
+    let line = 0;
+    if (left >= 0) {
+      while (line < n - 1 && left >= b.stops[line].length * TYPE_TICKS + BIO_LINE_HOLD) left -= b.stops[line++].length * TYPE_TICKS + BIO_LINE_HOLD;
+    } else left = phase >= up ? 1e9 : 0;
+    const typed = Math.min(b.stops[line].length, Math.max(0, Math.floor(left / TYPE_TICKS)));
+    const y = MIL_PANEL_Y + BIO_TOP + Math.ceil((slide * BIO_H) / BIO_SLIDE);
+    return { y, slide, line: phase >= up ? n - 1 : line, typed: phase >= up ? b.stops[n - 1].length : typed };
+  }
+
+  /** The bio ticker at the foot of a panel highlighted by a player still choosing. */
+  private drawBio(r: Renderer, i: number): void {
+    const at = this.bioAt(i);
+    if (!at) return;
     const b = bioText(this.roster[i]);
     const x = milPanelX(i);
-    const shown = Math.min(BIO_LINES, b.lines.length);
-    let typedAll = 0;
-    for (let k = 0; k < shown; k++) typedAll += b.lines[k].length;
-    const scrolls = Math.max(0, b.lines.length - BIO_LINES);
-    // One cycle: slide up, type, scroll, hold (`up` ticks), slide down, rest.
-    const up = BIO_SLIDE + typedAll * TYPE_TICKS + scrolls * SCROLL_TICKS + BIO_HOLD;
-    const phase = (age - BIO_DELAY) % (up + BIO_SLIDE + BIO_REST);
-    if (phase >= up + BIO_SLIDE) return;
-    const slide = phase < BIO_SLIDE ? BIO_SLIDE - phase : phase >= up ? phase - up + 1 : 0;
-    const h = 4 + b.callsign.length * CALL_H + shown * BIO_H + (shown ? 2 : 0);
-    // Slide from the bottom edge of the window (the frame hides the part below it).
-    const y = MIL_PANEL_Y + MIL_PANEL_H - h + Math.ceil((slide * h) / BIO_SLIDE);
-    r.rect(x, y, MIL_PANEL_W, h, PAL.ink[1], boxOpts);
-    r.rect(x, y, MIL_PANEL_W, 1, PAL.gold[0], plain);
-    if (slide > 0) return;
-    let ly = y + 3;
-    for (let k = 0; k < b.callsign.length; k++) {
-      uiText(r, b.callsign[k], x + 2, ly, UI_GOLD, 'left', 'small', null);
-      ly += CALL_H;
+    r.rect(x, at.y, MIL_PANEL_W, BIO_H, PAL.ink[1], boxOpts);
+    r.rect(x, at.y, MIL_PANEL_W, 1, PAL.gold[0], plain);
+    if (at.slide > 0 || at.typed <= 0) return;
+    const call = at.line < b.callsign.length;
+    const text = call ? b.callsign[at.line] : b.lines[at.line - b.callsign.length];
+    const ly = at.y + 3;
+    uiText(r, text, x + 2, ly, call ? UI_GOLD : PAL.snow[2], 'left', 'small', null);
+    const stops = b.stops[at.line];
+    if (at.typed < stops.length) {
+      // Cover the part not typed yet; a block cursor blinks at the typing point.
+      const cx = x + 2 + stops[at.typed - 1] + 1;
+      r.rect(cx, ly - 1, x + MIL_PANEL_W - cx, BIO_H - 2, PAL.ink[1], plain);
+      if ((this.t >> 3) & 1) r.rect(cx, ly, 4, 7, PAL.snow[2], plain);
     }
-    ly += 2;
-    // Type the first lines in; then scroll one line every SCROLL_TICKS when the bio is longer.
-    let typed = Math.floor((phase - BIO_SLIDE) / TYPE_TICKS);
-    const first = typed > typedAll ? Math.min(scrolls, Math.floor((typed - typedAll) / SCROLL_TICKS)) : 0;
-    for (let k = 0; k < shown && typed > 0; k++) {
-      const li = first + k;
-      const line = b.lines[li];
-      uiText(r, line, x + 2, ly, PAL.snow[2], 'left', 'small', null);
-      if (first === 0 && typed < line.length) {
-        // Cover the part not typed yet; a block cursor blinks at the typing point.
-        const cx = x + 2 + b.stops[li][typed - 1] + 1;
-        r.rect(cx, ly - 1, x + MIL_PANEL_W - cx, BIO_H, PAL.ink[1], plain);
-        if ((this.t >> 3) & 1) r.rect(cx, ly, 4, 7, PAL.snow[2], plain);
-      }
-      if (first === 0) typed -= line.length;
-      ly += BIO_H;
-    }
+  }
+
+  /** Ticks since panel i's door landed (-1: it has not landed: not chosen, or still falling). */
+  private landedFor(i: number): number {
+    const p = this.chosenBy(i);
+    if (p < 0) return -1;
+    const d = this.cursors[p].chosenT - this.dropDone(p);
+    return d >= 0 ? d : -1;
   }
 
   private drawShutter(r: Renderer, i: number): void {
@@ -523,10 +660,26 @@ export class CharacterSelectScene implements Scene {
     const f = this.shutterFrame(i);
     if (f >= MIL_SHUTTER_FRAMES - 1) return;
     const sx = milPanelX(i) + MIL_SHUTTER_DX;
-    const sy = MIL_PANEL_Y + MIL_SHUTTER_DY;
-    r.sprite('ui/mil/shutter', f, sx, sy, plain);
+    const land = this.landedFor(i);
+    // The impact: the 1-px shake and the squash frames (the slats bunch, then settle).
+    const sy = MIL_PANEL_Y + MIL_SHUTTER_DY + (land >= 0 && land < SHAKE.length ? SHAKE[land] : 0);
+    const slam = land >= 0 && land < stripTotal('ui/mil/shutter-slam');
+    if (slam) r.sprite('ui/mil/shutter-slam', stripFrameAt('ui/mil/shutter-slam', land, true), sx, sy, plain);
+    else r.sprite('ui/mil/shutter', f, sx, sy, plain);
     const p = this.chosenBy(i);
     if (p >= 0 && this.previewShown(p)) this.drawPreview(r, p, sx, sy);
+  }
+
+  /** Dust puffs out from under a landed door, both sides (over the frame). */
+  private drawDust(r: Renderer, i: number): void {
+    const land = this.landedFor(i);
+    if (land < 0 || !hasSprite('ui/mil/dust')) return;
+    if (land >= stripTotal('ui/mil/dust')) return;
+    const f = stripFrameAt('ui/mil/dust', land, true);
+    const x = milPanelX(i);
+    const y = MIL_PANEL_Y + MIL_PANEL_H - 9;
+    r.sprite('ui/mil/dust', f, x - 12, y, dustL);
+    r.sprite('ui/mil/dust', f, x + MIL_PANEL_W - 12, y, plain);
   }
 
   /** The glass preview window on a dropped shutter with the soldier's idle in it. */
@@ -542,12 +695,16 @@ export class CharacterSelectScene implements Scene {
     if (!hasSprite(legs) || !hasSprite(torso)) return;
     const fx = px + 22;
     const fy = py + 46;
-    const hip = getFrame(legs, 0, 1).pts?.hip;
-    // The soldier's in-game idle at the art tier (the HD rig at 2× / 4× on a large display).
+    // The soldier's in-game idle (the 40 px hero) at the art tier of its group.
+    const age = c.chosenT - this.dropDone(p);
     setArtDensity(screenArt(r, this.previewIds[this.roster.indexOf(c.chosen ?? '')]));
-    r.sprite(legs, 0, fx, fy, plain);
-    r.sprite(torso, Math.floor(c.chosenT / 20), fx + (hip?.[0] ?? 0), fy + (hip?.[1] ?? -14), plain);
+    const lf = stripFrameAt(legs, age);
+    const hip = getFrame(legs, lf, 1).pts?.hip;
+    r.sprite(legs, lf, fx, fy, plain);
+    r.sprite(torso, stripFrameAt(torso, age), fx + (hip?.[0] ?? 0), fy + (hip?.[1] ?? -14), plain);
     setArtDensity(this.mil);
+    // Reflections on the glass, over the figure.
+    if (hasSprite('ui/mil/preview-glare')) r.sprite('ui/mil/preview-glare', 0, px, py, glareOpts);
   }
 
   private drawBadges(r: Renderer, i: number): void {
@@ -558,9 +715,18 @@ export class CharacterSelectScene implements Scene {
       // A lamp blinks while its shutter is still closed, and burns steady once the panel is open.
       const on = this.badgeLit(side, i) && (c.chosen !== null || this.shutterFrame(i) > 0 || ((this.t >> 3) & 1) === 1);
       const id = on ? (side === 0 ? 'ui/mil/badge-p1' : 'ui/mil/badge-p2') : 'ui/mil/badge-off';
-      if (hasSprite(id)) r.sprite(id, 0, bx, BADGE_Y, plain);
+      if (on) {
+        const glow = side === 0 ? 'ui/mil/glow-p1' : 'ui/mil/glow-p2';
+        if (hasSprite(glow)) r.sprite(glow, 0, bx - 4, BADGE_Y - 4, glowOpts);
+      }
+      if (hasSprite(id)) r.sprite(id, on ? this.lampFrame(side) : 0, bx, BADGE_Y, plain);
       else if (on) uiText(r, side === 0 ? 'P1' : 'P2', bx + 14, BADGE_Y + 2, SIDE_COLORS[side], 'center');
     }
+  }
+
+  /** A lit lamp's frame: steady (0), with a short bright blink (1) now and then, out of step per side. */
+  lampFrame(side: number): number {
+    return (this.t + side * LAMP_PHASE) % LAMP_PERIOD < LAMP_BLINK ? 1 : 0;
   }
 
   private drawPlate(r: Renderer, i: number): void {
@@ -569,6 +735,8 @@ export class CharacterSelectScene implements Scene {
     const id = this.roster[i];
     const name = id === undefined ? '- - -' : getCharacter(id).name;
     const col: Color = id === undefined ? PAL.sand[0] : this.chosenBy(i) >= 0 ? PAL.red[1] : INK;
+    // Stencilled into the plate: a lit lip under the letters.
+    uiText(r, name, x + (MIL_PANEL_W >> 1), PLATE_Y + 5, engraved, 'center', 'small', null);
     uiText(r, name, x + (MIL_PANEL_W >> 1), PLATE_Y + 4, col, 'center', 'small', null);
   }
 

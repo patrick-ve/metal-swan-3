@@ -27,32 +27,74 @@ import { PAL_HD } from '../../../../engine/palette-hd';
 import { PixelBuffer } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
 import { getFrames } from '../../../../engine/sprites';
+// The ams strips these drawers take their geometry from (registered at import, as before).
+import './art';
 import { HdCanvas, polyDist, type RenderOpts, type TexSample } from '../../../art/hd/canvas';
 import { hash2 } from '../../../art/paint';
 import { HdPiece, geomOf } from '../ams/canvas';
-import { BOX_DENT, crackAt, dents, DRIVER_EXPR, glintAt, HEADLIGHT, scuffs, sootAt, SPOKES, SPOKE_TURN, TAIL } from './art';
-import { ID, SCAN } from './geometry';
+import { ID, SCAN, type Pt } from './geometry';
 import {
   bandPart,
   barAt,
   beltY,
-  boxLocal,
-  camAt,
   creaseY,
   inBand,
   inBody,
   inCross,
   inGlass,
-  inGreyBand,
-  inRack,
-  inShell,
   inSill,
   inStripe,
   inTrim,
   inWell,
-  shellEdge,
   wheelDist,
+  windowOf,
 } from './shape';
+
+// ---------------------------------------------------------------------------------------------
+// Shared look (the old 1× numbers the HD drawers were made from)
+// ---------------------------------------------------------------------------------------------
+
+/** Cabin frame → the driver's look ('' = no driver). */
+export const DRIVER_EXPR = ['calm', 'shout', 'shock', 'airbag', ''] as const;
+
+/** Dent spots of a damage state (continuous local centres). */
+export function dents(state: number): ReadonlyArray<Pt> {
+  if (state === 0) return [];
+  const one: Pt[] = [[-37.5, -12.5], [8.5, -9.5], [34.5, -11.5]];
+  return state === 1 ? one : [...one, [-15.5, -10.5], [-39.5, -9.5], [20.5, -14.5], [1.5, -9.0]];
+}
+
+/** Scratches across the red bars (state ≥ 1): [x0, y0, x1, y1] continuous. */
+export function scuffs(state: number): ReadonlyArray<readonly [number, number, number, number]> {
+  if (state === 0) return [];
+  const one = [[3.5, -10.5, 8, -8.5], [10.5, -7.5, 14, -9.6]] as const;
+  return state === 1 ? one : [...one, [-3.8, -7, 0.4, -9.8], [17.6, -12.4, 20.4, -11.2]];
+}
+
+/** The soot smudge over the bonnet and the front (state 2): 0..1. */
+export function sootAt(x: number, y: number): number {
+  return Math.max(0, 1 - Math.hypot((x - 35) / 8.5, (y + 13.5) / 5.5));
+}
+
+/** The slim swept-back LED headlight (continuous polygon) and the tail light's box (x0, y0, y1). */
+export const HEADLIGHT: readonly Pt[] = [[34.4, -13.7], [38.4, -13.85], [40.5, -13.4], [41.4, -12.4], [40.4, -12.0], [36.4, -12.75]];
+export const TAIL = { x: -40.0, y0: -22.8, y1: -17.2 } as const;
+
+/** Glint streaks per side window: the streak's start x on the belt line. */
+export const GLINTS: readonly number[] = [9.5, -12.5, -33.0];
+
+/** Is (x, y) on a glint streak (0 = main, 1 = thin second, -1 = none)? */
+export function glintAt(x: number, y: number, k = 1): number {
+  const w = windowOf(x);
+  const u = x - GLINTS[w] + (y - beltY(x)) * 0.55;
+  if (u >= 0 && u < 1.2 * k) return 0;
+  if (u >= 2.2 * k && u < 2.8 * k) return 1;
+  return -1;
+}
+
+/** Spokes of the alloy: count; the turn per frame (radians). */
+export const SPOKES = 5;
+export const SPOKE_TURN = (Math.PI * 2) / SPOKES / 4;
 
 const R = PAL_HD;
 
@@ -61,7 +103,12 @@ const RENDER: RenderOpts = { outline: 'A', ao: 0.3, rimLight: 2 };
 /** Inner layers (the glass, the lettering): no outline. */
 const INNER: RenderOpts = { outline: 'none', ao: 0.2, rimLight: 0 };
 
-/** The 1× frame i of a strip (the HD frame's geometry). */
+/**
+ * The 1× frame i of a strip (the HD frame's geometry: its size and anchor). The ams ids are baked
+ * 40 px art now (ams40.md wave 6, `ams-scan.gen.ts`) and draw no HD frames; these drawers stay only
+ * for the dormant ring convoy (ring/convoy/art-car.ts), whose 1× frames are copies of the ams 1×
+ * frames: its HD frames keep their geometry.
+ */
 function lo(id: string, i = 0): Frame {
   return getFrames(id, 1)[i];
 }
@@ -317,114 +364,6 @@ export function cabinHd(frame: number, d: number): Frame {
   }
   p.erase(K.x0, K.y0, K.x1 - K.x0 + 1, K.y1 - K.y0 + 1, (x, y) => !inGlass(x, y));
   return p.frame(INNER);
-}
-
-// ---------------------------------------------------------------------------------------------
-// The scanner box and its rack
-// ---------------------------------------------------------------------------------------------
-
-const pt: [number, number] = [0, 0];
-
-function rackHd(p: HdPiece, bent: boolean): void {
-  const black = p.material({ ramp: R.black, lo: 1, hi: 5, spec: 0.45, shine: 22 });
-  const K = SCAN.scanner;
-  // The mounting bar and the feet (rubber pads on the roof, a lit top edge).
-  p.field(-26, -35, 32, 7, (x, y) => {
-    if (!inRack(x, y, bent)) return NaN;
-    const top = y < K.bar[3] ? 0.35 : 0;
-    return 0.5 + top + (y > K.feetTo - 0.6 ? -0.2 : 0);
-  }, {
-    mat: black,
-    z: 0,
-    tex: (s) => {
-      // The foot's clamp seam at 4×.
-      if (s.d >= 4 && Math.abs(s.y - (K.bar[3] + 1.2)) < 0.1) s.tone -= 0.3;
-    },
-  });
-}
-
-export function scannerHd(state: 0 | 1 | 2, frame: number, d: number): Frame {
-  const p = new HdPiece(geomOf(lo(ID.scanner[state], frame)), d);
-  const K = SCAN.scanner;
-  const rise = K.rise[frame];
-  const scanning = frame === 3;
-  const askew = state === 2;
-  const shell = p.material({ ramp: R.gable, lo: 3, hi: 6, spec: 0.7, shine: 36, wrap: 0.06, rim: 0.3 });
-  const grey = p.material({ ramp: R.steel, lo: 3, hi: 6, spec: 0.5, shine: 30, wrap: 0.06 });
-  const smoke = p.material({ ramp: R.steel, lo: 0, hi: 2, spec: 1, shine: 70 });
-  const glow = p.material({ ramp: [R.red[0], R.red[1], R.red[2], R.red[3], R.red[5]], flat: true, lo: 0, hi: 4 });
-  const steel = p.material({ ramp: R.steel, lo: 2, hi: 6, spec: 1, shine: 34, rim: 0.4 });
-  rackHd(p, false);
-  if (rise > 0) {
-    for (const sx of K.struts) p.cyl(sx, K.bar[2] - rise - 0.4, 1.2, rise + 0.6, { mat: steel, z: -0.2, axis: 'v' });
-  }
-  const top = K.shell[0][1];
-  p.field(-36, -44, 46, 13, (x, y) => {
-    const [u, v] = boxLocal(x, y, rise, askew, pt);
-    if (!inShell(u, v)) return NaN;
-    let h = roll(shellEdge(u, v), 1.2) + 0.3;
-    // The lid's top face rises towards its rim (seen from above), the rim rolls over, the lower
-    // body's sides slope in towards the bottom (they face down, away from the light).
-    if (v < K.lidTop) h += 1.0 + (v - top) * 1.6;
-    else if (v < K.shut) h += 1.9 - ((v - K.lidTop) / (K.shut - K.lidTop)) * 0.2;
-    else h += 1.3 - (v - K.shut) * 0.32;
-    if (state >= 1 && Math.hypot(u - BOX_DENT[0], v - BOX_DENT[1]) < 1.1) h -= 0.5 * (1.1 - Math.hypot(u - BOX_DENT[0], v - BOX_DENT[1]));
-    // The camera windows sit in shallow recesses.
-    if (camAt(u, v) >= 0) h -= 0.3;
-    return h;
-  }, {
-    mat: shell,
-    z: 1,
-    tex: p.tex((s) => {
-      const [u, v] = boxLocal(s.x, s.y, rise, askew, pt);
-      const cam = camAt(u, v);
-      if (cam >= 0) {
-        if (crackAt(u, v, state)) {
-          s.fix = scanning ? R.red[4] : R.snow[5];
-          return;
-        }
-        const lens = cam === 1 ? Math.hypot((u - K.lens[0]) / 1.3, (v - K.lens[1]) / 0.8) : 9;
-        if (scanning) {
-          // A faint red cast behind the smoked glass (never a light bar), the lens lit.
-          s.mat = glow;
-          const [x0, x1, y0, y1] = cam < 2 ? K.windows[cam] : [u - 0.6, u + 0.6, -36.8, -34.3];
-          const q = Math.hypot((u - (x0 + x1) / 2) / ((x1 - x0) / 2), (v - (y0 + y1) / 2) / ((y1 - y0) / 2));
-          s.tone = (q < 0.55 ? -0.2 : -0.4) + (lens < 1 ? (lens < 0.5 ? 0.6 : 0.36) : 0);
-        } else {
-          s.mat = smoke;
-          if (lens < 1) s.tone += lens < 0.45 ? 0.75 : 0.45;
-          // A sky reflection along the top of the smoked glass.
-          else if (cam < 2 && v < K.windows[cam][2] + 0.45) s.tone += 0.5;
-        }
-        return;
-      }
-      if (inGreyBand(u, v)) s.mat = grey;
-      // The seam line round the lid and the joint at the bottom.
-      if (Math.abs(v - K.shut) < 0.16) s.tone -= 0.9;
-      if (state === 2) {
-        const q = Math.max(0, 1 - Math.hypot((u + 18) / 5, (v + 35) / 3));
-        if (q > 0.1) s.tone -= q * (1.1 + 0.4 * hash2(Math.floor(u * 2), Math.floor(v * 2), 3));
-      }
-    }),
-  });
-  return p.frame(RENDER);
-}
-
-export function scannerGoneHd(d: number): Frame {
-  const p = new HdPiece(geomOf(lo(ID.scannerGone)), d);
-  const steel = p.material({ ramp: R.steel, lo: 2, hi: 6, spec: 1, shine: 34, rim: 0.4 });
-  const wire = p.material({ ramp: R.red, lo: 3, hi: 6, spec: 0.5 });
-  const wire2 = p.material({ ramp: R.gold, lo: 3, hi: 6, spec: 0.5 });
-  const shell = p.material({ ramp: R.gable, lo: 3, hi: 6, spec: 0.6, shine: 34 });
-  const K = SCAN.scanner;
-  const y0 = K.bar[2];
-  rackHd(p, true);
-  // Sheared strut stubs with jagged tops, a dangling wire, a shard of the shell on the bar.
-  for (const sx of K.struts) p.poly([[sx, y0], [sx, y0 - 1.4], [sx + 0.5, y0 - 2.2], [sx + 0.8, y0 - 1.2], [sx + 1.2, y0 - 1.8], [sx + 1.2, y0]], { mat: steel, z: 0.4 });
-  p.stroke([[-5.4, y0 - 1.4], [-4.6, y0 - 0.2], [-4.2, y0 + 1.2], [-3.4, y0 + 2.4]], 0.28, 0.24, { mat: wire, z: 1 });
-  p.stroke([[-5.8, y0 - 1.2], [-5.4, y0 + 0.4], [-5.6, y0 + 1.4]], 0.24, 0.2, { mat: wire2, z: 1.1 });
-  p.poly([[-12.6, y0 - 0.1], [-9.4, y0 - 0.1], [-9.8, y0 - 1.8], [-11.2, y0 - 1.3], [-12.3, y0 - 2.1]], { mat: shell, z: 0.8 });
-  return p.frame(RENDER);
 }
 
 // ---------------------------------------------------------------------------------------------

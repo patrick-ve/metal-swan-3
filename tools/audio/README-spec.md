@@ -3,7 +3,7 @@
 `spec.ts` lists every generation request; the types are in `spec-types.ts`.
 `tests/tools/audio-spec.test.ts` keeps it in step with the game: every sfx id is a registered
 recipe or a new gap sound (`isNew`), every music id is a registered song, every line is the game
-text verbatim, and no line or voice belongs to the mayor ROBO-HALSEMA (text-only, never voiced).
+text verbatim, and no line or voice belongs to the mayor MECHA HASLEMA (text-only, never voiced).
 
 ## Counts
 

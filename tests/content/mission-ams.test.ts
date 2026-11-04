@@ -141,7 +141,7 @@ describe('ams scripts in god mode', () => {
     g.dispose();
   }, 120000);
 
-  it('the boss section: the bot (god) beats ROBO-HALSEMA well inside the section timer', async () => {
+  it('the boss section: the bot (god) beats MECHA HASLEMA well inside the section timer', async () => {
     const g = await createHeadlessGame({ missionId: 'ams', sectionId: 'd', seed: 2, players: 1, god: true, bot: true, captureConsole: true });
     g.runUntil((gg) => gg.missionComplete, 15000);
     expect(g.missionComplete).toBe(true);

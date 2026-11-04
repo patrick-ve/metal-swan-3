@@ -1,104 +1,32 @@
 /**
  * The scan car fight's helpers — the UHD art (docs/ART_GUIDE.md "UHD art"): ONE density-generic
  * drawer per strip makes its 2× and 4× frames natively with the HD kit (PAL_HD, the key light from
- * the upper left, outline A): the SCAN LOCK reticle and the ticket strip, the tow truck (navy cab,
- * yellow hazard-banded crane, chequer-plate bed) and its hook, the yellow wheel clamp with its
- * steel lock disc and the clamp on a boot. Each frame keeps its 1× frame's logical size and anchor.
+ * the upper left, outline A): the OLD tow truck
+ * (navy cab, yellow hazard-banded crane, chequer-plate bed) and its hook on the old layout TRUCK_LO
+ * (geometry from `truckLo` / `hookLo`): only the ring convoy's dormant tow truck draws them; the ams
+ * fight's truck, hook and wheel clamp are baked 40 px sets (1× at every tier). Each frame keeps its
+ * 1× frame's logical size and anchor.
  */
 import { PAL_HD } from '../../../../engine/palette-hd';
 import type { Frame } from '../../../../engine/render';
-import { getFrames } from '../../../../engine/sprites';
-import { HdCanvas, type RenderOpts, type TexSample } from '../../../art/hd/canvas';
+import { type RenderOpts, type TexSample } from '../../../art/hd/canvas';
 import { hash2 } from '../../../art/paint';
 import { HdPiece, geomOf } from '../ams/canvas';
-import { CLAMP_ARMS, CLAMP_DISC, inCab } from './art-adds';
-import { ID, RETICLE_R, TICKET, TRUCK, type Pt } from './geometry';
+import { hookLo, inCab, truckLo } from './art-adds';
+import { TRUCK_LO } from './geometry';
 
 const R = PAL_HD;
 
 /** Sprites: outline A (style decision), AO where parts meet, the thin cool rim. */
 const RENDER: RenderOpts = { outline: 'A', ao: 0.3, rimLight: 2 };
 
-/** The 1× frame i of a strip (the HD frame's geometry). */
-function lo(id: string, i = 0): Frame {
-  return getFrames(id, 1)[i];
-}
-
-// ---------------------------------------------------------------------------------------------
-// Reticle, ticket strip
-// ---------------------------------------------------------------------------------------------
-
-export function reticleHd(locked: boolean, d: number): Frame {
-  const f1 = lo(ID.reticle, locked ? 1 : 0);
-  const g = geomOf(f1);
-  const c = new HdCanvas(g.w, g.h, d);
-  const m = RETICLE_R + 0.5;
-  const core = R.red[6];
-  const edge = R.red[5];
-  const w = 0.42;
-  c.paint(0, 0, g.w, g.h, (x, y) => {
-    const dx = x - m;
-    const dy = y - m;
-    let dist = 9;
-    if (!locked) {
-      for (const sx of [-1, 1]) {
-        for (const sy of [-1, 1]) {
-          const bx = m + sx * 6;
-          const by = m + sy * 6;
-          // An L: along x from the corner inwards 3.4 px, along y the same.
-          const ax = Math.abs(x - bx) < w && (y - by) * sy <= 0.2 && (y - by) * sy >= -3.6 ? Math.abs(x - bx) : 9;
-          const ay = Math.abs(y - by) < w && (x - bx) * sx <= 0.2 && (x - bx) * sx >= -3.6 ? Math.abs(y - by) : 9;
-          dist = Math.min(dist, ax, ay);
-        }
-      }
-      if (Math.hypot(dx, dy) < 0.75) return R.red[6];
-    } else {
-      const q = Math.hypot(dx, dy);
-      dist = Math.abs(q - 6.2);
-      for (const horiz of [true, false]) {
-        const along = Math.abs(horiz ? dx : dy);
-        const across = Math.abs(horiz ? dy : dx);
-        if (across < w && along > 6.6 && along < 9.2) dist = Math.min(dist, across);
-        if (across < w * 0.8 && along < 2.4) return along < 0.9 ? R.gold[6] : R.red[5];
-      }
-    }
-    if (dist > w) return 0;
-    return dist < w * 0.45 ? core : edge;
-  });
-  return { buf: c.render(RENDER), ox: f1.ox, oy: f1.oy, density: d };
-}
-
-export function ticketHd(frame: number, d: number): Frame {
-  const f1 = lo(ID.ticket, frame);
-  const g = geomOf(f1);
-  const c = new HdCanvas(g.w, g.h, d);
-  const paper = c.material({ ramp: R.snow, lo: 2, hi: 6, spec: 0.1, wrap: 0.2 });
-  const m = (TICKET.h - 1) / 2 + 0.5;
-  const lift = frame === 1 ? -1 : frame === 2 ? 1 : 0;
-  // The strip: a thin curled paper band whose tail flaps.
-  c.heightField(0.6, 0, g.w - 1.2, g.h, (x, y) => {
-    const t = Math.max(0, (x - (g.w - 6)) / 5);
-    const mid = m + lift * t * t + Math.sin(x * 0.9) * 0.15;
-    const half = 1.45 - (x < 1.6 ? (1.6 - x) * 0.6 : 0);
-    const v = (y - mid) / half;
-    return Math.abs(v) > 1 ? NaN : Math.sqrt(1 - v * v) * 0.5 + Math.sin(x * 1.3) * 0.15;
-  }, { mat: paper, z: 0, tex: (s) => {
-    // The printed lines and the red total.
-    const t = Math.max(0, (s.x - (g.w - 6)) / 5);
-    const mid = m + lift * t * t;
-    if (s.x > 2.5 && s.x < g.w - 3.5 && Math.abs(s.y - mid) < 0.22 && Math.floor(s.x * 1.6) % 3 !== 0) s.fix = R.steel[3];
-    if (s.x > g.w - 4.4 && s.x < g.w - 2.8 && Math.abs(s.y - mid) < 0.3) s.fix = R.red[5];
-  } });
-  return { buf: c.render(RENDER), ox: f1.ox, oy: f1.oy, density: d };
-}
-
 // ---------------------------------------------------------------------------------------------
 // The tow truck and its hook
 // ---------------------------------------------------------------------------------------------
 
 export function truckHd(damaged: boolean, d: number): Frame {
-  const T = TRUCK;
-  const p = new HdPiece(geomOf(lo(ID.truck, damaged ? 1 : 0)), d);
+  const T = TRUCK_LO;
+  const p = new HdPiece(geomOf(truckLo(damaged)), d);
   const navy = p.material({ ramp: R.denim, lo: 1, hi: 5, spec: 0.6, shine: 34, wrap: 0.05 });
   const white = p.material({ ramp: R.snow, lo: 2, hi: 5, spec: 0.5, shine: 30 });
   const yellow = p.material({ ramp: R.gold, lo: 3, hi: 6, spec: 0.55, shine: 30, wrap: 0.05 });
@@ -208,7 +136,7 @@ export function truckHd(damaged: boolean, d: number): Frame {
 }
 
 export function hookHd(d: number): Frame {
-  const p = new HdPiece(geomOf(lo(ID.hook)), d);
+  const p = new HdPiece(geomOf(hookLo()), d);
   const yellow = p.material({ ramp: R.gold, lo: 3, hi: 6, spec: 0.55, shine: 30 });
   const steel = p.material({ ramp: R.steel, lo: 2, hi: 6, spec: 1, shine: 36, rim: 0.4 });
   const black = p.material({ ramp: R.black, lo: 1, hi: 4, spec: 0.3 });
@@ -227,54 +155,3 @@ export function hookHd(d: number): Frame {
   }, { mat: steel, z: 0.6 });
   return p.frame(RENDER);
 }
-
-// ---------------------------------------------------------------------------------------------
-// The wheel clamp
-// ---------------------------------------------------------------------------------------------
-
-function clampParts(p: HdPiece, frame: number, origin: Pt, flipArms = false): void {
-  const yellow = p.material({ ramp: R.gold, lo: 3, hi: 6, spec: 0.6, shine: 30, wrap: 0.05 });
-  const steel = p.material({ ramp: R.steel, lo: 2, hi: 6, spec: 1, shine: 36, rim: 0.4 });
-  const black = p.material({ ramp: R.black, lo: 0, hi: 3, spec: 0.3 });
-  const [ox, oy] = origin;
-  // The foot plate.
-  p.box(ox - 5.3, oy - 1.1, 11.6, 1.2, { mat: steel, z: 0, r: 0.3, bevel: 0.4 });
-  // The jaw arms, a tooth at each tip.
-  const [r0, e, t] = CLAMP_ARMS[frame];
-  for (const s of [-1, 1]) {
-    const m = (q: Pt): [number, number] => [ox + q[0] * s + 0.5, oy + q[1] + 0.5];
-    const a = m(r0);
-    const b = m(e);
-    const c = m(t);
-    p.stroke([a, b, c], 0.95, 0.85, { mat: yellow, z: 1, tex: p.tex((tx) => {
-      if (tx.d >= 4 && hash2(Math.floor(tx.x * 3), Math.floor(tx.y * 3), 6) > 0.9) tx.tone -= 0.15;
-    }) });
-    if (!flipArms) p.ell(c[0] + (frame === 0 ? 0 : s * 0.7), c[1] + 0.9, 0.55, 0.55, { mat: steel, z: 1.4 });
-  }
-  // The round lock disc with the keyhole.
-  const [dx, dy] = CLAMP_DISC[frame];
-  p.ell(ox + dx + 0.5, oy + dy + 0.5, 3.1, 3.1, { mat: steel, z: 2 });
-  p.ell(ox + dx + 0.5, oy + dy + 0.5, 1.6, 1.6, { mat: steel, z: 2.4, tone: -0.15 });
-  p.box(ox + dx + 0.15, oy + dy + 0.2, 0.7, 1.5, { mat: black, z: 2.8, r: 0.3 });
-}
-
-export function clampHd(frame: number, d: number): Frame {
-  const p = new HdPiece(geomOf(lo(ID.clamp, frame)), d);
-  clampParts(p, frame, [0, 0]);
-  return p.frame(RENDER);
-}
-
-export function clampFootHd(frame: number, d: number): Frame {
-  const p = new HdPiece(geomOf(lo(ID.clampFoot, frame)), d);
-  const yellow = p.material({ ramp: R.gold, lo: 3, hi: 6, spec: 0.6, shine: 30 });
-  const steel = p.material({ ramp: R.steel, lo: 2, hi: 6, spec: 1, shine: 36, rim: 0.4 });
-  const black = p.material({ ramp: R.black, lo: 0, hi: 3, spec: 0.3 });
-  const r = frame === 1 ? 1 : 0;
-  // A yellow C round the toe and the steel lock disc.
-  p.stroke([[-3.5, -0.5 - r], [-3.5, -5.5], [3.5, -6.5 + r]], 0.95, 0.9, { mat: yellow, z: 1 });
-  p.stroke([[-3.5, -0.5 - r], [4.5, -0.5]], 0.95, 0.95, { mat: yellow, z: 1 });
-  p.ell(3.5, -3.5, 2.2, 2.2, { mat: steel, z: 2 });
-  p.box(3.2, -3.8, 0.6, 1.2, { mat: black, z: 2.6, r: 0.2 });
-  return p.frame(RENDER);
-}
-

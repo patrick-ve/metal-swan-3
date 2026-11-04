@@ -10,7 +10,7 @@
  * - the decor's depths: the bollards replaced, the lamp the gull sleeps on in the walk plane, the back
  *   stalls on the square as boxes, the Stopera at its depth with its doors where the boss spawns (for
  *   every camera) and its 2D copy hidden;
- * - ROBO-HALSEMA steps out of the Stopera's doors in the WALK PLANE (§3.7 has no exceptions, §12.1 item 3):
+ * - MECHA HASLEMA steps out of the Stopera's doors in the WALK PLANE (§3.7 has no exceptions, §12.1 item 3):
  *   her hurtboxes stop shots from her first tick (sparks, no damage in the intro), so her art stays with
  *   them at depth 0 in every tick; the floor changes nothing in her run.
  */
@@ -123,7 +123,7 @@ describe('ams d: rows and decor (spec §12.2 d)', () => {
     expect(names.some((n) => n.startsWith('house side') && n.includes('@785 R'))).toBe(true);
   });
 
-  it('the doors of the Stopera stand where ROBO-HALSEMA spawns, at its depth, for every camera', () => {
+  it('the doors of the Stopera stand where MECHA HASLEMA spawns, at its depth, for every camera', () => {
     expect(DOORS_U).toBe(DOORS_X);
     const a: FloorPoint = { x: 0, y: 0 };
     const b: FloorPoint = { x: 0, y: 0 };
@@ -173,7 +173,7 @@ async function bossRun(ticks: number): Promise<{ log: BossLook[] }> {
   return { log };
 }
 
-describe('ams d: ROBO-HALSEMA steps out of the Stopera doors in the walk plane (spec §3.7, §12.1 item 3)', () => {
+describe('ams d: MECHA HASLEMA steps out of the Stopera doors in the walk plane (spec §3.7, §12.1 item 3)', () => {
   it('is drawn in the walk plane in every tick, her intro included (art and hitbox together)', async () => {
     const { log } = await bossRun(320);
     expect(log.length).toBeGreaterThan(250);

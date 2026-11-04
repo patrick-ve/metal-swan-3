@@ -21,6 +21,7 @@ import '../../src/game/content/missions/ams/index';
 import { Seagull, SEAGULL } from '../../src/game/content/locals/index';
 import { AmsPigeons } from '../../src/game/content/missions/ams/entities';
 import { TOUR_BOAT, type AmsTourBoat } from '../../src/game/content/missions/ams/ambient';
+import { WAVER_EMPTY, WAVER_IDLE } from '../../src/game/content/art40/ams-window-waver.gen';
 import { assertNoDuplicateFrames } from '../art/motion';
 import { FLOOR, TestWorld } from './helpers';
 
@@ -32,8 +33,7 @@ const COUNTS: Record<string, number> = {
   'enemy/seagull/turn': 2,
   'npc/ams/ams-pigeons/takeoff': 2,
   'npc/ams/ams-ducks/paddle': 8,
-  'npc/ams/ams-window-waver/cat-swish': 4,
-  'npc/ams/ams-window-waver/lean': 3,
+  // the window waver's lean and the cat's swish: a baked 40 px set (tests/art40/ams-window-waver.test.ts)
   'npc/ams/ams-tour-boat/turn': 2,
 };
 
@@ -148,7 +148,7 @@ describe('ambient motion: ambient life', () => {
     expect(calls.every((c) => c[0] === 'npc/ams/ams-pigeons')).toBe(true);
   });
 
-  it('ducks paddle in 4 steps; the cat swishes in 4', () => {
+  it('ducks paddle in 4 steps; the cat swishes through all 8 frames of its baked strip', () => {
     const tw = new TestWorld({ playerX: 60, god: true });
     const d = tw.spawn('ams-ducks', 300, { count: 2 });
     const c = tw.spawn('ams-window-waver', 360, { look: 'cat' });
@@ -161,10 +161,10 @@ describe('ambient motion: ambient life', () => {
     const duck = new Set(calls.filter((x) => x[0] === 'npc/ams/ams-ducks/paddle').map((x) => x[1]));
     expect(duck).toEqual(new Set([0, 1, 2, 3, 4, 5, 6, 7]));
     const cat = new Set(calls.filter((x) => x[0] === 'npc/ams/ams-window-waver/cat-swish').map((x) => x[1]));
-    expect(cat).toEqual(new Set([0, 1, 2, 3]));
+    expect(cat).toEqual(new Set([0, 1, 2, 3, 4, 5, 6, 7]));
   });
 
-  it('the window waver leans in and out over 3 frames', () => {
+  it('the window waver leans in and out over the 4 baked lean frames (backwards out)', () => {
     const tw = new TestWorld({ playerX: 60, god: true });
     const w = tw.spawn('ams-window-waver', 300, { period: 360 }, FLOOR - 80);
     const { r, calls } = recorder();
@@ -174,9 +174,9 @@ describe('ambient motion: ambient life', () => {
     }
     const seq = calls.map((c) => `${c[0].split('/').at(-1)}:${c[1]}`).filter((s, i, a) => s !== a[i - 1]);
     const i0 = seq.indexOf('lean:0');
-    expect(seq.slice(i0, i0 + 4)).toEqual(['lean:0', 'lean:1', 'lean:2', 'person:1']);
-    const out = seq.findIndex((s, i) => s === 'lean:2' && seq[i + 1] === 'lean:1');
-    expect(seq.slice(out, out + 4)).toEqual(['lean:2', 'lean:1', 'lean:0', 'person:0']);
+    expect(seq.slice(i0, i0 + 5)).toEqual(['lean:0', 'lean:1', 'lean:2', 'lean:3', `person:${WAVER_IDLE}`]);
+    const out = seq.findIndex((s, i) => s === 'lean:3' && seq[i + 1] === 'lean:2');
+    expect(seq.slice(out, out + 5)).toEqual(['lean:3', 'lean:2', 'lean:1', 'lean:0', `person:${WAVER_EMPTY}`]);
   });
 
   it('the tour boat turns at the end of its run over squash frames', () => {

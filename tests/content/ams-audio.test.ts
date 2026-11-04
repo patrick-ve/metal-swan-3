@@ -1,7 +1,7 @@
 /**
  * The sounds and voices wired for mission ams (2026-10-14, with the sampled audio): bubble lines
  * carry their speaker to `HudState.onBubble` (the runner voices them with `AudioOut.say`; never
- * ROBO-HALSEMA, whose bubbles are `voice: false`), the locals' deaths, the ducks,
+ * MECHA HASLEMA, whose bubbles are `voice: false`), the locals' deaths, the ducks,
  * pigeons and tour boat, the Swan's engine loop, the RELOAD! clack and the section ambience with
  * the carillon. Everything is tick-based: no rng is drawn for a sound.
  */
@@ -91,7 +91,7 @@ describe('ams audio: voiced speech bubbles', () => {
     expect(MISSION_CARDS.find((c) => c.id === 'ams')?.briefing.length).toBe(2);
   });
 
-  it('ROBO-HALSEMA speaks only through playVoice (hand-placed clips); her bubbles are voice: false', () => {
+  it('MECHA HASLEMA speaks only through playVoice (hand-placed clips); her bubbles are voice: false', () => {
     const dir = new URL('../../src/game/content/bosses/ams/', import.meta.url);
     for (const f of readdirSync(dir)) {
       const src = readFileSync(new URL(f, dir), 'utf8');

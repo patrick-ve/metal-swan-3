@@ -1,6 +1,6 @@
 /**
  * 2× art of the Amsterdam cast (mission ams, docs/ART_GUIDE.md "2x art (mission ams)"): the riders,
- * the handhaver and the BOETE ticket, the tourist hostage with the chair and sack binds, and the
+ * (the handhaver and the BOETE ticket are baked 40 px sets now: tests/art/art40-gates.test.ts), the tourist hostage with the chair and sack binds, and the
  * friendly NPCs. Every listed id has a 2× generator the registry accepts (no 'id@2x' fallback, no
  * pixels cut outside the 1× frame), with the 1× logical geometry and real 2× detail.
  */
@@ -14,15 +14,14 @@ import { loadContent } from '../../src/game/content/index';
 const PREFIXES = [
   'enemy/fatbike-youth',
   'enemy/delivery-rider',
-  'enemy/handhaver',
-  'enemy/boete-ticket/',
-  'npc/ams/ams-baker/',
-  'npc/ams/ams-hotdog-vendor/',
-  'npc/ams/ams-staff/',
+  // the handhaver and the BOETE ticket: baked 40 px sets, 1x at every tier (docs/design/ams40.md rule 7; tests/art/art40-gates.test.ts)
+  // the Fabel Friet baker: a baked 40 px set, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/ams-baker.test.ts)
+  // the hot-dog vendor: a baked 40 px set, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/ams-hotdog-vendor.test.ts)
+  // the Fabel Friet crew: baked 40 px sets, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/ams-staff.test.ts)
   'npc/ams/ams-cyclist-bg/',
 ];
 
-/** Single ids with 2× art (the tourist's chair / sack flow and its binds, the counter, the window waver). */
+/** Single ids with 2× art (the tourist's chair / sack flow and its binds, the counter). */
 const IDS = [
   'item/hostage/tourist/tied',
   'item/hostage/tourist/sack',
@@ -37,7 +36,7 @@ const IDS = [
   'item/bind/sack-off',
   'item/bind/rope-bit',
   'npc/ams/counter',
-  'npc/ams/ams-window-waver/person',
+  // the window waver: a baked 40 px set, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/ams-window-waver.test.ts)
 ];
 
 describe('Amsterdam cast: 2× art', () => {

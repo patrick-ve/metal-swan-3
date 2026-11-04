@@ -18,6 +18,7 @@
  * over the road, 39 px with the scanner box.
  */
 import type { Rect } from '../../../../engine/math';
+import { SET as TOW_ART } from '../../art40/ams-tow-truck.gen';
 
 export type Pt = readonly [number, number];
 
@@ -271,7 +272,12 @@ export function mirrorX(x: number, facing: number): number {
 // The tow truck (`ams-tow-truck`)
 // -------------------------------------------------------------------------------------------
 
-export const TRUCK = {
+/**
+ * The OLD tow truck's drawing layout (95 px, before the 40 px art). Only the old drawers read it
+ * (art-adds.ts `truckLo` / `inCab`, art-hd-adds.ts `truckHd`): the ring convoy's dormant tow truck
+ * (ring/convoy/art-car.ts) still draws with them. The ams fight draws the baked 40 px truck.
+ */
+export const TRUCK_LO = {
   /** Local box of the truck strip (inclusive). */
   canvas: { x0: -56, y0: -58, x1: 48, y1: 1 },
   /** Cab (behind the bonnet) and bonnet boxes; the bed deck; the crane base. */
@@ -283,10 +289,41 @@ export const TRUCK = {
   beacon: { x: 20, y: -37, w: 11, h: 3 } as Rect,
   craneBase: { x: -32, y: -25, w: 14, h: 8 } as Rect,
   boomFrom: [-25, -25] as Pt,
-  /** The boom tip: the hook's cable hangs from here. */
   tip: [-52, -50] as Pt,
   wheelX: [-32, -18, 30] as const,
   wheelY: -7,
+} as const;
+
+/** The baked truck's art points (the same on every tow frame; tools/art40/chars/ams-tow-truck). */
+const TOW_PTS = TOW_ART.strips.tow.frames[0].pts as Readonly<Record<'tip' | 'lamp0' | 'lamp1' | 'wheel0' | 'wheel1' | 'wheel2', Pt>>;
+
+/**
+ * Draw only: the baked truck is drawn this far forward (local x, toward the cab) so that its art
+ * boom tip sits on the logic tip TRUCK.tip (the old [-52, -50]). The logic (the stop, the hook, the
+ * hurtbox, the clamp toss) keeps its old numbers (decision D7); the art points below are in the
+ * logic frame (art point + TRUCK_ART_DX).
+ */
+export const TRUCK_ART_DX = TRUCK_LO.tip[0] - TOW_PTS.tip[0];
+const artPt = (p: Pt): Pt => [p[0] + TRUCK_ART_DX, p[1]];
+
+export const TRUCK = {
+  /**
+   * The old layout's fields (canvas, cab, bonnet, deck, window, beacon ...): only the ring convoy's
+   * old tow truck art reads them through TRUCK (ring/convoy/art-car.ts); the ams fight reads the
+   * art points below.
+   */
+  ...TRUCK_LO,
+  /**
+   * The boom tip: the hook's cable hangs from here (logic: the stop, the hook swing). The old
+   * [-52, -50] (D7); the 40 px truck (116 px, plan D5: 1.2× the old 95) is drawn TRUCK_ART_DX
+   * forward so that its art point 'tip' lands here.
+   */
+  tip: TRUCK_LO.tip,
+  /** Centres of the code-drawn wheels (x) and their height: art points 'wheel0..2' (dual rear axle, front), in the logic frame. */
+  wheelX: [artPt(TOW_PTS.wheel0)[0], artPt(TOW_PTS.wheel1)[0], artPt(TOW_PTS.wheel2)[0]] as const,
+  wheelY: TOW_PTS.wheel0[1],
+  /** The two beacon lamps the code blinks (art points 'lamp0', 'lamp1'), in the logic frame. */
+  lamps: [artPt(TOW_PTS.lamp0), artPt(TOW_PTS.lamp1)] as const,
   /** Hurtbox (cab, bonnet and bed). */
   box: { x: -48, y: -34, w: 95, h: 33 } as Rect,
   hp: 300,

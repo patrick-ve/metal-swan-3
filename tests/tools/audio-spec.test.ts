@@ -204,12 +204,12 @@ describe('audio spec: voices and lines', () => {
     expect(mayor.length).toBeGreaterThan(0);
     const elsewhere = [...src.entries()].filter(([p]) => p !== MAYOR_FILE).map(([, s]) => s).join('\n');
     for (const l of LINES) {
-      expect(l.speaker, l.text).not.toMatch(/mayor|halsema/i);
+      expect(l.speaker, l.text).not.toMatch(/mayor|halsema|haslema/i);
       // A line that only the mayor's file contains is hers.
       expect(!mayor.includes(asLiteral(l.text)) || elsewhere.includes(asLiteral(l.text)), l.text).toBe(true);
     }
     for (const v of VOICES) {
-      expect(`${v.speaker} ${v.name} ${v.description}`).not.toMatch(/mayor|halsema|burgemeester/i);
+      expect(`${v.speaker} ${v.name} ${v.description}`).not.toMatch(/mayor|halsema|haslema|burgemeester/i);
     }
   });
 

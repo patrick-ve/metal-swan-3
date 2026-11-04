@@ -27,6 +27,7 @@ import type { SectionContext } from '../../../mission/index';
 import type { Mountable, Player } from '../../../player/player';
 import { NO_PARAMS, type SpawnParams } from '../../../registry';
 import { LIGHT_TAG, type LightSource, type LightSpot } from '../kit/light-api';
+import { NECK_REST_FRAME } from '../../vehicles/swan/neck';
 import { SWAN_JET } from './layout';
 
 /** Sprite ids: her own art + the new jet parts. */
@@ -323,7 +324,7 @@ export class SwanJet extends Entity implements Mountable, LightSource {
     if (hasSprite(SWAN_JET_ART.front)) r.sprite(SWAN_JET_ART.front, fi, x, y, opts);
     const bf = hasSprite(SWAN_JET_ART.body) ? getFrame(SWAN_JET_ART.body, fi, 1) : null;
     const nk = bf ? framePoint(bf, 'neck', flip, false, pt) : undefined;
-    if (nk && hasSprite(SWAN_JET_ART.neck)) r.sprite(SWAN_JET_ART.neck, 0, x + nk[0], y + nk[1], opts);
+    if (nk && hasSprite(SWAN_JET_ART.neck)) r.sprite(SWAN_JET_ART.neck, NECK_REST_FRAME, x + nk[0], y + nk[1], opts);
     // The near unit and its flame in front.
     r.sprite(SWAN_JET_ART.unit, k, x + near[0] * d, y + near[1], opts);
     this.drawFlame(r, near, k, t);

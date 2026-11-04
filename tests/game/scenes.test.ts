@@ -346,7 +346,7 @@ describe('2× art preload (docs/ARCHITECTURE.md §3)', () => {
     const ams = getMission('ams');
     const order = missionArtOrder(ams, session);
     expect(order.first.slice(0, 3)).toEqual(['char/pip/', 'char/grace/', 'vehicle/swan']);
-    // ROBO-HALSEMA last (the scan car, the mid-boss of c, is section art of c).
+    // MECHA HASLEMA last (the scan car, the mid-boss of c, is section art of c).
     expect(order.last[0]).toBe('boss/ams-mayor/');
     expect(missionArtOrder(undefined, newSession(app().app, ['recruit']))).toEqual({ first: ['char/recruit/'], last: [] });
     expect(MISSION_ART_BUDGET_MS).toBeGreaterThan(0);

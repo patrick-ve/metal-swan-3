@@ -1,15 +1,16 @@
 /**
- * The squad's portraits (docs/design/squad.md §2.2): `char/<id>/select` (64 × 120, 2×: 128 × 240),
- * `char/<id>/select-grey` (steel / stone grey only) and `char/<id>/portrait` (32 × 32, 2×: 64 × 64)
- * for the five friends: sizes, top-left anchors, palette-only pixels, five distinct faces, the
- * portrait hook winning over the rig's default portrait, and clean high-score head icons.
+ * The squad's portraits (docs/design/squad.md §2.2): the menu portrait `char/<id>/portrait` (32 × 32,
+ * 2×: 64 × 64) and the painted bust `selectPortrait` (64 × 120, 2×: 128 × 240; the FPS faces read
+ * it) for the five friends: sizes, top-left anchors, palette-only pixels, five distinct faces, the
+ * portrait hook winning over the rig's default portrait, and clean high-score head icons. The select
+ * screen's own ids (`char/<id>/select`, `select-grey`, `select-pick`) are baked 40 px sets now, 1×
+ * only: tests/art40/select-portraits.test.ts.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Color } from '../../src/engine/color';
 import { INK, inPalette, PAL } from '../../src/engine/palette';
 import type { PixelBuffer } from '../../src/engine/pixel';
-import { getFrames, spriteErrors } from '../../src/engine/sprites';
-import { GREY } from '../../src/game/art/portrait-kit';
+import { getFrames, hasHiSprite, spriteErrors } from '../../src/engine/sprites';
 import { SQUAD, selectPortrait, smallPortrait } from '../../src/game/content/characters/select.art';
 import { defineCharacter, hasCharacter } from '../../src/game/registry';
 import { headIcon } from '../../src/game/scenes/heads';
@@ -18,15 +19,12 @@ beforeAll(async () => {
   await import('../../src/game/content/characters/index');
   // The heroes' art registers the rig's default portrait first, then the PORTRAITS hook.
   await import('../../src/game/content/characters/art');
+  await import('../../src/game/content/characters/select.art');
   // The head icons need the characters; stand-ins only while the roster lacks one.
   for (const id of SQUAD) if (!hasCharacter(id)) defineCharacter({ id, name: id.toUpperCase(), art: `char/${id}` });
 });
 
-const SIZES: ReadonlyArray<readonly [string, number, number]> = [
-  ['select', 64, 120],
-  ['select-grey', 64, 120],
-  ['portrait', 32, 32],
-];
+const SIZES: ReadonlyArray<readonly [string, number, number]> = [['portrait', 32, 32]];
 
 /** Every pixel of a buffer (as unsigned colours). */
 function colours(b: PixelBuffer): Set<Color> {
@@ -63,15 +61,24 @@ describe('squad portraits', () => {
     }
   });
 
-  it('the grey portrait uses only the ink / steel / stone grey ramp and keeps the drawing', () => {
-    const grey = new Set<Color>(GREY);
-    for (const g of grey) expect([...PAL.ink, ...PAL.steel, ...PAL.stone]).toContain(g);
+  it('the select ids are the baked 1× sets: no 2× / 4× art is left of the old painted busts', () => {
     for (const id of SQUAD) {
-      for (const d of [1, 2]) {
-        const g = getFrames(`char/${id}/select-grey`, d)[0].buf;
-        for (const c of colours(g)) expect(grey.has(c), `char/${id}/select-grey@${d} ${c.toString(16)}`).toBe(true);
-        // Light where the colour bust is light: the same picture, recoloured.
-        expect(colours(g).size, `${id} grey tones`).toBeGreaterThanOrEqual(6);
+      for (const part of ['select', 'select-grey', 'select-pick']) {
+        const sid = `char/${id}/${part}`;
+        expect(hasHiSprite(sid, 2), sid).toBe(false);
+        expect(hasHiSprite(sid, 4), sid).toBe(false);
+        const f = getFrames(sid, 2)[0];
+        expect([f.buf.w, f.buf.h, f.ox, f.oy], sid).toEqual([64, 120, 0, 0]);
+      }
+    }
+  });
+
+  it('the painted bust (the FPS faces) keeps its size at 1× and 2×', () => {
+    for (const id of SQUAD) {
+      for (const d of [1, 2] as const) {
+        const b = selectPortrait(id, d);
+        expect([b.w, b.h], `${id}@${d}`).toEqual([64 * d, 120 * d]);
+        for (const c of colours(b)) expect(inPalette(c), `${id}@${d} colour ${c.toString(16)}`).toBe(true);
       }
     }
   });

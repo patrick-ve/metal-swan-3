@@ -18,6 +18,7 @@ import type { Color } from '../../engine/color';
 import { INK, PAL } from '../../engine/palette';
 import type { DrawOpts, Renderer } from '../../engine/render';
 import { getFrame, hasSprite, setArtDensity } from '../../engine/sprites';
+import { restFrame } from '../content/vehicles/swan/neck';
 import { getCharacter } from '../registry';
 import { screenArt } from './base';
 
@@ -160,7 +161,7 @@ export function drawSwanRig(r: Renderer, x: number, y: number, t: number, o: Swa
   r.sprite(body, fi, x, y, swanOpts);
   if (o.char) drawRider(r, x + seat[0] * dir, y + seat[1], t, o.char, o.pose, o.riderTicks ?? 20, o.flipX === true);
   if (hasSprite(front)) r.sprite(front, fi, x, y, swanOpts);
-  if (hasSprite(neckId)) r.sprite(neckId, 0, x + neck[0] * dir, y + neck[1], swanOpts);
+  if (hasSprite(neckId)) r.sprite(neckId, restFrame(neckId.slice(neckId.lastIndexOf('/') + 1)), x + neck[0] * dir, y + neck[1], swanOpts);
   swanOpts.flipX = false;
   if (o.screen) setArtDensity(prev);
 }

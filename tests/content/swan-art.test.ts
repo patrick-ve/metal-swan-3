@@ -1,9 +1,12 @@
 /**
- * SWAN-3 art (docs/design/swan-mount/look.md §7–§12, GDD §8.2, §15.6): every sprite id of the
- * look.md §9 list exists in its prefixes with its frame count, timing and named points (§8); the
- * rest and check values of §8.1; the neck geometry of §11 (9 aim angles, water = land for the up
- * aims, `-fire` recoil, `muzzle` = `cannon`); the Mute and socks variants; the damage decals, the
- * egg, the tin feather and the beak flash; the shared head drawing for the UI; palette only.
+ * SWAN-3 art from the OLD robot rig (docs/design/swan-mount/look.md §7–§12, GDD §8.2, §15.6): the
+ * strips no baked 40 px set has yet (docs/design/ams40.md wave 7; stage 2: the necks, swim and
+ * flight) and the Swan in socks (m3 only, out of the ams40 scope) exist in their prefixes with
+ * their frame count, timing and named points (§8); the neck geometry of §11 (9 aim angles, water
+ * = land for the up aims, `-fire` recoil, `muzzle` = `cannon`); the Mute neck and the socks; the
+ * tin feather and the beak flash; the shared head drawing for the UI; palette only. The baked
+ * strips (the ground strips, the riderless strips, the egg, the scuffs) are tested in
+ * tests/art40/swan.test.ts.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { inPalette, PAL } from '../../src/engine/palette';
@@ -13,9 +16,13 @@ import { getFrames, hasSprite, listSprites, spriteAnim, spriteErrors } from '../
 import type * as SwanArt from '../../src/game/content/vehicles/swan/art';
 
 let art: typeof SwanArt;
+/** Strip names a baked Swan set draws (the old rig no longer registers them in the colour prefixes). */
+let BAKED = new Set<string>();
+const old = (anim: string): boolean => !BAKED.has(anim);
 
 beforeAll(async () => {
   art = await import('../../src/game/content/vehicles/swan/art');
+  BAKED = new Set(art.SWAN_SETS.flatMap((set) => Object.keys(set.strips)));
 });
 
 const BODY = ['vehicle/swan', 'vehicle/swan-mute', 'vehicle/swan-socks', 'vehicle/swan-mute-socks'] as const;
@@ -130,6 +137,7 @@ describe('swan art: body strips (look.md §9, §10)', () => {
   it('registers every ridden and riderless strip in the four body prefixes with its frames and timing', () => {
     for (const pre of BODY) {
       for (const [anim, spec] of Object.entries({ ...RIDDEN, ...RIDERLESS })) {
+        if (!pre.endsWith('-socks') && !old(anim)) continue;
         const id = `${pre}/${anim}`;
         const fs = frames(id, spec[0]);
         checkTiming(id, spec);
@@ -141,6 +149,7 @@ describe('swan art: body strips (look.md §9, §10)', () => {
   it('gives every ridden strip a -front overlay in the colour prefixes only (socks never show in it)', () => {
     for (const pre of COLOUR) {
       for (const [anim, spec] of Object.entries(RIDDEN)) {
+        if (!old(anim)) continue;
         const body = getFrames(`${pre}/${anim}`);
         const front = frames(`${pre}/${anim}-front`, spec[0]);
         checkTiming(`${pre}/${anim}-front`, spec);
@@ -158,12 +167,12 @@ describe('swan art: body strips (look.md §9, §10)', () => {
     }
   });
 
-  it('`move` is the `run` strip', () => {
-    for (const pre of BODY) expect(getFrames(`${pre}/move`).map((f) => f.buf)).toEqual(getFrames(`${pre}/run`).map((f) => f.buf));
+  it('`move` is the `run` strip (socks)', () => {
+    for (const pre of BODY.filter((p) => p.endsWith('-socks'))) expect(getFrames(`${pre}/move`).map((f) => f.buf)).toEqual(getFrames(`${pre}/run`).map((f) => f.buf));
   });
 
   it('every body frame carries the named points of §8.1; baked strips a head, parked strips a bubble', () => {
-    for (const anim of [...Object.keys(RIDDEN), ...Object.keys(RIDERLESS)]) {
+    for (const anim of [...Object.keys(RIDDEN), ...Object.keys(RIDERLESS)].filter(old)) {
       getFrames(`vehicle/swan/${anim}`).forEach((f) => {
         for (const p of BODY_POINTS) pt(f, p);
         if (SELF_CONTAINED.has(anim)) pt(f, 'head');
@@ -176,42 +185,20 @@ describe('swan art: body strips (look.md §9, §10)', () => {
         }
       });
     }
-    // The parked hull does not jump when the code switches between `empty` and `empty-look`.
-    for (const anim of ['empty', 'empty-look']) for (const f of getFrames(`vehicle/swan/${anim}`)) expect(pt(f, 'seat')).toEqual([-4, -20]);
-    expect(pt(getFrames('vehicle/swan/empty')[0], 'bubble')).toEqual([-4, -29]);
-    const lay = getFrames('vehicle/swan/empty-lay');
-    for (const i of [5, 6, 7]) expect(pt(lay[i], 'egg')).toEqual([-30, 0]);
   });
 
-  it('matches the rest and check values of §8.1', () => {
-    const idle = getFrames('vehicle/swan/idle')[0];
+  it('matches the rest and check values of §8.1 (the old strips: the water sockets; socks)', () => {
+    const idle = getFrames('vehicle/swan-socks/idle')[0];
     expect(pt(idle, 'seat')).toEqual([-4, -48]);
     expect(pt(idle, 'neck')).toEqual([16, -45]);
     expect(pt(idle, 'hull')).toEqual([-3, -38]);
-    expect(pt(idle, 'smoke')).toEqual([-20, -50]);
-    expect(pt(idle, 'perch')).toEqual([-26, -48]);
-    expect(pt(idle, 'wake')).toEqual([-27, -34]);
-    const run1 = getFrames('vehicle/swan/run')[1];
-    expect(pt(run1, 'seat')).toEqual([-3, -46]);
-    expect(pt(run1, 'neck')).toEqual([16, -42]);
-    expect(pt(run1, 'perch')).toEqual([-25, -47]);
-    const skid1 = getFrames('vehicle/swan/skid')[1];
-    expect(pt(skid1, 'seat')).toEqual([-6, -45]);
-    expect(pt(skid1, 'neck')).toEqual([14, -45]);
-    const jump0 = getFrames('vehicle/swan/jump')[0];
-    expect(pt(jump0, 'seat')).toEqual([-5, -50]);
-    expect(pt(jump0, 'neck')).toEqual([15, -48]);
-    // Posture sockets (§11.3) and the crouch seat.
-    const crouch = getFrames('vehicle/swan/crouch')[0];
-    expect(pt(crouch, 'seat')).toEqual([-4, -16]);
-    expect(pt(crouch, 'neck')).toEqual([16, -17]);
-    expect(pt(getFrames('vehicle/swan/swim')[0], 'neck')).toEqual([16, -27]);
-    expect(pt(getFrames('vehicle/swan/water-duck')[0], 'neck')).toEqual([16, -19]);
+    if (old('swim')) expect(pt(getFrames('vehicle/swan/swim')[0], 'neck')).toEqual([16, -27]);
+    if (old('water-duck')) expect(pt(getFrames('vehicle/swan/water-duck')[0], 'neck')).toEqual([16, -19]);
   });
 
-  it('stands on the feet anchor: the paddles reach the ground in the standing strips', () => {
+  it('stands on the feet anchor: the paddles reach the ground in the standing strips (socks)', () => {
     for (const anim of ['idle', 'run', 'crouch', 'empty']) {
-      const f = getFrames(`vehicle/swan/${anim}`)[0];
+      const f = getFrames(`vehicle/swan-socks/${anim}`)[0];
       const b = f.buf.trimBounds()!;
       expect(b.y + b.h - f.oy, anim).toBeGreaterThanOrEqual(-1);
       expect(b.y + b.h - f.oy, anim).toBeLessThanOrEqual(1);
@@ -219,86 +206,15 @@ describe('swan art: body strips (look.md §9, §10)', () => {
   });
 });
 
-describe('swan art: neck strips (look.md §11)', () => {
-  it('registers every posture with its four face variants, the relaxed S and the honk', () => {
-    const ticks: Readonly<Record<string, number>> = { '': 30, '-fire': 2, '-shell': 6, '-blink': 6, '-hurt': 12 };
-    for (const pre of COLOUR) {
-      for (const [name, n] of Object.entries(NECKS)) {
-        for (const face of FACES) {
-          const id = `${pre}/${name}${face}`;
-          for (const f of frames(id, n)) {
-            expect(pt(f, 'muzzle'), `${id} muzzle = cannon`).toEqual(pt(f, 'cannon'));
-            pt(f, 'head');
-          }
-          expect(spriteAnim(id).ticksPerFrame, id).toBe(ticks[face]);
-        }
-      }
-      expect(spriteAnim(`${pre}/neck-fire`).ticksPerFrame).toBe(2);
-      frames(`${pre}/neck-relax`, 2);
-      frames(`${pre}/swim-neck-relax`, 2);
-      expect(spriteAnim(`${pre}/neck-relax`).durations).toEqual([180, 6]);
-      frames(`${pre}/neck-honk`, 3);
-      expect(spriteAnim(`${pre}/neck-honk`).loop).toBe(false);
-    }
-  });
-
-  it('turns the beak along each aim angle θ = +45° − 22.5°·i, 12 px past the head', () => {
-    for (const name of ['neck', 'swim-neck']) {
-      getFrames(`vehicle/swan/${name}`).forEach((f, i) => {
-        const theta = name === 'swim-neck' && i < 2 ? 0 : ((45 - 22.5 * i) * Math.PI) / 180;
-        const h = pt(f, 'head');
-        const m = pt(f, 'muzzle');
-        const dx = m[0] - h[0];
-        const dy = m[1] - h[1];
-        expect(Math.hypot(dx, dy), `${name} ${i} beak length`).toBeGreaterThan(10.5);
-        expect(Math.hypot(dx, dy), `${name} ${i} beak length`).toBeLessThan(13.5);
-        const err = Math.abs(Math.atan2(dy, dx) - theta);
-        expect(Math.min(err, Math.PI * 2 - err), `${name} ${i} beak angle`).toBeLessThan(0.15);
-      });
-    }
-  });
-
-  it('places the beak gun of §11.3 for the up aims, water, crouch and duck', () => {
-    const land = getFrames('vehicle/swan/neck').map((f) => pt(f, 'muzzle'));
-    expect(land.slice(4)).toEqual([[19, -13], [11, -25], [-2, -31], [-16, -36], [-28, -33]]);
-    const water = getFrames('vehicle/swan/swim-neck').map((f) => pt(f, 'muzzle'));
-    expect(water.slice(0, 4)).toEqual([[26, 4], [26, 4], [26, 4], [24, -11]]);
-    // Water frames 4–8 are the land frames: the socket and the rider sink together (§11.2).
-    expect(water.slice(4)).toEqual(land.slice(4));
-    expect(pt(getFrames('vehicle/swan/crouch-neck')[0], 'muzzle')).toEqual([22, 3]);
-    expect(pt(getFrames('vehicle/swan/duck-neck')[0], 'muzzle')).toEqual([24, 1]);
-    // Down-forward aims reach at least the §11.3 distance (the head clears the breast).
-    const spec = [[19, 30], [23, 26], [24, 21], [24, 3]];
-    land.slice(0, 4).forEach((m, i) => {
-      expect(m[0], `land ${i}`).toBeGreaterThanOrEqual(spec[i][0]);
-      expect(m[0] - spec[i][0], `land ${i}`).toBeLessThanOrEqual(4);
-      expect(Math.abs(m[1] - spec[i][1]), `land ${i}`).toBeLessThanOrEqual(1);
-    });
-  });
-
-  it('-fire pulls the head 1 px back; -shell opens the beak and keeps cannon at its tip', () => {
-    const base = getFrames('vehicle/swan/neck');
-    const fire = getFrames('vehicle/swan/neck-fire');
-    const shell = getFrames('vehicle/swan/neck-shell');
-    base.forEach((f, i) => {
-      const b = pt(f, 'muzzle');
-      const r = pt(fire[i], 'muzzle');
-      expect(Math.hypot(r[0] - b[0], r[1] - b[1]), `fire ${i}`).toBeLessThanOrEqual(1.5);
-      expect(shell[i].buf.data).not.toEqual(f.buf.data);
-      expect(pt(shell[i], 'cannon')).toEqual(pt(shell[i], 'muzzle'));
-    });
-  });
-});
+// The neck strips (the baked set swan-neck: aims x phases, the barrel's muzzle): tests/art40/swan-neck.test.ts.
 
 describe('swan art: variants and damage (look.md §12)', () => {
-  it('paints the Mute neck and head black, SWAN-3 ivory; the hull stays ivory in both', () => {
+  it('paints the old Mute neck and head black, SWAN-3 ivory', () => {
+    if (!old('neck')) return;
     const ivory = getFrames('vehicle/swan/neck')[2];
     const mute = getFrames('vehicle/swan-mute/neck')[2];
     expect(countColour(mute, PAL.black)).toBeGreaterThan(countColour(ivory, PAL.black) + 40);
     expect(countColour(ivory, PAL.snow.slice(1))).toBeGreaterThan(countColour(mute, PAL.snow.slice(1)) + 40);
-    const hullIvory = countColour(getFrames('vehicle/swan/idle')[0], PAL.snow.slice(1));
-    const hullMute = countColour(getFrames('vehicle/swan-mute/idle')[0], PAL.snow.slice(1));
-    expect(Math.abs(hullIvory - hullMute)).toBeLessThan(hullIvory * 0.1);
   });
 
   it('puts knitted socks (red stripes) on the paddles of the socks prefixes only', () => {
@@ -308,6 +224,7 @@ describe('swan art: variants and damage (look.md §12)', () => {
   });
 
   it('draws the sooty migration darker than the clean one', () => {
+    if (!old('migrate')) return;
     const lum = (f: Frame): number => {
       let s = 0;
       for (const c of f.buf.data) if ((c & 255) !== 0) s += ((c >>> 24) & 255) + ((c >>> 16) & 255) + ((c >>> 8) & 255);
@@ -316,32 +233,7 @@ describe('swan art: variants and damage (look.md §12)', () => {
     expect(lum(getFrames('vehicle/swan/migrate-soot')[0])).toBeLessThan(lum(getFrames('vehicle/swan/migrate')[0]) * 0.8);
   });
 
-  it('has two scuff decals (≤ 2 cells, ≤ 1 cell) that land on the visible hull', () => {
-    const [s0, s1] = frames('vehicle/swan/scuffs', 2);
-    expect(opaque(s1)).toBeGreaterThan(opaque(s0) * 2);
-    // Composite on idle: the decal must change pixels that the front overlay leaves visible.
-    const body = getFrames('vehicle/swan/idle')[0];
-    const front = getFrames('vehicle/swan/idle-front')[0];
-    const draw = (s?: Frame): PixelBuffer => {
-      const b = new PixelBuffer(120, 90);
-      b.blitFrame(body, 60, 80);
-      if (s) b.blitFrame(s, 60 + pt(body, 'hull')[0], 80 + pt(body, 'hull')[1]);
-      b.blitFrame(front, 60, 80);
-      return b;
-    };
-    const clean = draw();
-    for (const [s, min] of [[s0, 12], [s1, 35]] as const) {
-      const d = draw(s);
-      let n = 0;
-      for (let i = 0; i < d.data.length; i++) if (d.data[i] !== clean.data[i]) n++;
-      expect(n).toBeGreaterThanOrEqual(min);
-    }
-  });
-
-  it('has the egg, the tin feather and the beak flash', () => {
-    frames('vehicle/swan/egg', 4);
-    expect(spriteAnim('vehicle/swan/egg').durations).toEqual([6, 10, 10, 20]);
-    expect(spriteAnim('vehicle/swan/egg').loop).toBe(false);
+  it('has the tin feather and the beak flash', () => {
     for (const f of frames('fx/tin-feather', 4)) {
       expect(opaque(f)).toBeGreaterThan(6);
       expect(countColour(f, PAL.gold)).toBeGreaterThan(0);
@@ -349,7 +241,7 @@ describe('swan art: variants and damage (look.md §12)', () => {
     frames('fx/muzzle-swan-beak-gun', 2);
     expect(spriteAnim('fx/muzzle-swan-beak-gun').loop).toBe(false);
     // The logic draws the Swan-owned copy (immune to a second `fx/muzzle-swan-beak-gun`).
-    frames('vehicle/swan/beak-flash', 2);
+    if (old('beak-flash')) frames('vehicle/swan/beak-flash', 2);
   });
 });
 
@@ -369,10 +261,12 @@ describe('swan art: shared head and the palette', () => {
   });
 
   it('uses palette colours only, generates without errors, and registers nothing outside the list', () => {
+    // The baked 40 px strips have their own palette (docs/design/ams40.md "Rules: colour design").
+    const baked = new Set(art.SWAN_BAKED_IDS);
     const ids = [...listSprites('vehicle/swan'), 'fx/tin-feather', 'fx/muzzle-swan-beak-gun'];
-    for (const id of ids) for (const f of getFrames(id)) expect(offPalette(f), id).toBe(0);
+    for (const id of ids) if (!baked.has(id)) for (const f of getFrames(id)) expect(offPalette(f), id).toBe(0);
     expect(spriteErrors().filter((e) => e.id.startsWith('vehicle/swan') || e.id.startsWith('fx/tin-feather') || e.id.startsWith('fx/muzzle-swan'))).toEqual([]);
-    const known = new Set<string>(['vehicle/swan/scuffs', 'vehicle/swan/egg', 'vehicle/swan/beak-flash']);
+    const known = new Set<string>(['vehicle/swan/scuffs', 'vehicle/swan/egg', 'vehicle/swan/beak-flash', ...art.SWAN_BAKED_IDS]);
     for (const pre of BODY) for (const a of [...Object.keys(RIDDEN), ...Object.keys(RIDERLESS)]) known.add(`${pre}/${a}`);
     for (const pre of COLOUR) {
       for (const a of Object.keys(RIDDEN)) known.add(`${pre}/${a}-front`);
