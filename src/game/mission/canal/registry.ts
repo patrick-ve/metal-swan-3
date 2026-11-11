@@ -29,6 +29,11 @@ export function defineCanalManifest(id: string, man: CanalManifest): void {
   manifests.set(id, man);
 }
 
+/** The manifest registered under `id` (a mission's canal/index.ts registers it), or undefined. */
+export function canalManifest(id: string): CanalManifest | undefined {
+  return manifests.get(id);
+}
+
 /** The manifest and the section of scene `<id>/<section>`, or null (not registered, no such section). */
 export function canalScene(scene: string): { man: CanalManifest; sec: CanalSectionManifest } | null {
   const i = scene.lastIndexOf('/');

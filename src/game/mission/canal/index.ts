@@ -2,6 +2,7 @@
 export type { CanalDef, CanalLayerKind, CanalLayerMeta, CanalManifest, CanalSectionManifest, CanalSpriteMeta, CanalTierLayer, CanalTierManifest } from './types';
 export {
   canalActive,
+  canalManifest,
   canalOn,
   canalPaintedArt,
   canalPaintedNow,

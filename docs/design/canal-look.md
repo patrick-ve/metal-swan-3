@@ -1,6 +1,8 @@
 # The canal look — scenery standard for new levels (2026-11-10)
 
 A style contract and a build guide for one agent (Opus 5.5, effort high) who makes the scenery of a new level.
+For a whole new level (brainstorm, look sample, spec, play, scenery, port) start at `docs/LEVEL_GUIDE.md`; this file
+is then the look sheet of Amsterdam and the worked example of the look method (`docs/design/level-guide/look.md`).
 The user approved this look on four scenes and wants new levels in **this exact design and fidelity**.
 
 **Prompt to hand over** (fill the slots; the long form is in §8):

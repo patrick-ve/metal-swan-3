@@ -1,0 +1,383 @@
+<title>Level 1 Repainted</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* One dark screening room for one long level: a section strip, one screen, the layout of the game under the art. Single dark look by choice. */
+:root{
+  color-scheme: dark;
+  --ground:#0d1017; --panel:#131824; --line:#262d3b;
+  --ink:#e9e6dc; --dim:#9aa3b4;
+  --haze:#9cbcda; --amber:#f6c56a; --cyan:#5fe3f0; --gold:#ffd84a; --water:#4a8cff;
+  --display:'Silkscreen','Courier New',monospace;
+  --body:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+body{background:var(--ground);color:var(--ink);font:16px/1.55 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{margin:0;font-weight:400;text-wrap:balance}
+h1{font:400 clamp(26px,4.6vw,44px)/1.1 var(--display)}
+h2{font:400 clamp(18px,2.6vw,24px)/1.2 var(--display)}
+h3{font:600 13px/1.3 var(--body);letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+p{margin:0;max-width:68ch}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--haze)}
+header{display:flex;flex-direction:column;gap:14px}
+header p{color:var(--dim);font-size:17px}
+header p b{color:var(--ink);font-weight:500}
+/* the section strip: one button per section, its length to scale */
+.strip{display:flex;gap:4px;align-items:stretch;min-width:0}
+.strip button{flex:var(--w) 1 0;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;
+  background:var(--panel);border:1px solid var(--line);color:var(--dim);padding:10px 10px 9px;cursor:pointer;font:500 12px/1.2 var(--body)}
+.strip button b{font:400 12px/1.1 var(--display);color:var(--ink);letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.strip button span{font:400 11px/1.2 var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.strip button[aria-pressed="true"]{border-color:var(--amber);box-shadow:inset 0 -3px 0 var(--amber)}
+.strip button[aria-pressed="true"] span{color:var(--amber)}
+.route{font:400 12px/1.4 var(--mono);color:var(--dim)}
+/* the screen: scenery behind, Vincent on his own 384 x 216 canvas, the front things over him, the layout on top */
+.stage{display:flex;flex-direction:column;gap:14px}
+.screen{position:relative;background:#000;border:1px solid var(--line);aspect-ratio:16/9;max-width:100%;touch-action:pan-y;cursor:ew-resize;overflow:hidden;user-select:none}
+.screen canvas{position:absolute;inset:0;width:100%;height:100%;display:block;max-width:none}
+.screen canvas.px{image-rendering:pixelated;image-rendering:crisp-edges}
+.screen .load{position:absolute;left:10px;top:10px;font:400 11px/1 var(--display);padding:6px 8px;background:rgba(13,16,23,.82);color:var(--amber);pointer-events:none}
+.map{position:relative;height:46px;border:1px solid var(--line);background:var(--panel);cursor:pointer;touch-action:none}
+.map canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.row{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);flex:none}
+.seg button{font:500 13px/1 var(--body);color:var(--dim);background:none;border:0;padding:9px 13px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--amber);color:#1a1408}
+button:focus-visible{outline:2px solid var(--haze);outline-offset:2px}
+.pos{font:400 13px/1 var(--mono);color:var(--dim);font-variant-numeric:tabular-nums}
+.pos b{color:var(--ink);font-weight:500}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font:400 12px/1.3 var(--mono);color:var(--dim)}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:6px}
+.info{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px 40px}
+@media (max-width:760px){.info{grid-template-columns:1fr}.strip button span{display:none}}
+.info p{color:var(--dim);font-size:15.5px}
+.nums{font:400 13px/1.7 var(--mono);color:var(--dim);font-variant-numeric:tabular-nums}
+.nums b{color:var(--ink);font-weight:500}
+.build{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:28px 40px}
+.build section{display:flex;flex-direction:column;gap:10px;min-width:0}
+.build ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--dim);font-size:15px}
+.build li b{color:var(--ink);font-weight:500}
+.build li::marker{color:var(--amber)}
+hr{border:0;border-top:1px solid var(--line);margin:0;width:100%}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">mission 1 · the frying dutchman · scenery redesign</span>
+  <h1>Level 1 Repainted</h1>
+  <p>The six sections of level 1, painted again <b>in the canal look</b> of the four scenes you approved. The layout is the game's own: the same section lengths, the same ground and bridges, the same platforms, the same water, and every decor item at its own x and depth on the street floor. <b>Vincent is unchanged</b>; he walks the game's walk line.</p>
+  <p><b>Scale (v2):</b> buildings, trees, lamps and far boats are now drawn at 13 px per metre times the speed of their plane. A storey on the street is about as tall as Vincent; a far-bank storey is 20 px. Posts, bikes, benches and every gameplay piece keep their size.</p>
+  <p><b>Street (v3):</b> the street is straight from start to finish. Both kerbs are straight lines, the hero walks on the lane or the cobbles, and lamps, trees and benches stand on the pavements. A lane ends at a straight granite threshold. The side canal of section a has a lift bridge: its deck hangs high between two towers and the hero walks under it. Lamps are 72 px tall again, the height where the game's gulls sit.</p>
+  <p>Drag the screen or the strip under it to move the camera. <b>Layout</b> draws the game's terrain over the art: yellow ground, cyan platforms, blue water.</p>
+</header>
+
+<nav class="strip" id="strip" aria-label="Sections of level 1"></nav>
+<span class="route">Route: a → b → c → (c1 the bridge or c2 the cruise) → d. Each button is as wide as its section is long.</span>
+
+<section class="stage" aria-label="The section on screen">
+  <div class="screen" id="screen">
+    <canvas class="back" id="back" width="384" height="216" role="img" aria-label="The current section of level 1, moving, with the hero Vincent"></canvas>
+    <canvas class="hero px" id="hero" width="384" height="216" aria-hidden="true"></canvas>
+    <canvas class="front" id="front" width="384" height="216" aria-hidden="true"></canvas>
+    <canvas class="lay" id="lay" width="768" height="432" aria-hidden="true"></canvas>
+    <span class="load" id="load" hidden></span>
+  </div>
+  <div class="map" id="map" role="slider" tabindex="0" aria-label="Camera position in the section" aria-valuemin="0"><canvas id="mapc"></canvas></div>
+  <div class="row">
+    <div class="seg" role="group" aria-label="Controls">
+      <button type="button" id="b-run" aria-pressed="true">Run</button>
+      <button type="button" id="b-vin" aria-pressed="true">Vincent</button>
+      <button type="button" id="b-lay" aria-pressed="false">Layout</button>
+    </div>
+    <div class="seg tiers" role="group" aria-label="Scenery resolution">
+      <button type="button" data-u="1">1×</button><button type="button" data-u="2">2×</button><button type="button" data-u="4">4×</button>
+    </div>
+    <span class="pos" id="pos"></span>
+  </div>
+  <div class="legend" id="legend" hidden><span><i style="background:var(--gold)"></i>ground</span><span><i style="background:var(--cyan)"></i>platform</span><span><i style="background:var(--water)"></i>water</span><span><i style="background:#ff6060"></i>solid</span></div>
+  <div class="info">
+    <div style="display:flex;flex-direction:column;gap:10px;min-width:0"><h2 id="sname"></h2><span class="eyebrow" id="shour"></span><p id="snote"></p></div>
+    <div class="nums" id="snums"></div>
+  </div>
+</section>
+
+<hr>
+<div class="build">
+  <section>
+    <h3>What stays as it was</h3>
+    <ul>
+      <li><b>The layout:</b> section widths, ground line, bridge humps, platforms, water and the solid ceiling of the passage come from the game's data.</li>
+      <li><b>The floor:</b> the game's camera (horizon 60, walk line 176) and its street plan: kerb lines, bike lane, cobbles, bulbs, canals.</li>
+      <li><b>The decor:</b> every item at its x and depth. Gameplay pieces keep their shape: decks, roofs, awnings, ledges, the passage.</li>
+      <li><b>The hours:</b> a morning, b noon, c golden afternoon, d sunset.</li>
+      <li>Figures, enemies, pickups and effects are not on this page. Vincent is the game's sprite at its own size.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>What is new</h3>
+    <ul>
+      <li>All scenery is painted again with the kit of the four scenes: the same ramps, key light, air and 5-bit colours.</li>
+      <li>Far planes take the colour of the air. The darkest tones are near.</li>
+      <li>The street floor scrolls row by row, as in the game: far rows slower, near rows faster.</li>
+      <li>Water mirrors the far bank, row by row, in three frames.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>Limits</h3>
+    <ul>
+      <li>This page is a design study. Nothing in the game changed.</li>
+      <li>The bridge decks are drawn in the walk plane. The game draws them in depth on its floor.</li>
+      <li>Boats, carts and stalls stand at their start positions. Nothing moves except clouds and water.</li>
+      <li>At 2× and 4× Vincent's pixels are larger than the pixels of the scenery.</li>
+    </ul>
+  </section>
+</div>
+</div>
+
+<script type="application/json" id="pack">/*PACK*/</script>
+<script>
+const PK = JSON.parse(document.getElementById('pack').textContent);
+const VW = 384, VH = 216;
+const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = id => document.getElementById(id);
+const back = $('back'), front = $('front'), heroCv = $('hero'), lay = $('lay'), mapc = $('mapc');
+const bctx = back.getContext('2d'), fctx = front.getContext('2d'), hctx = heroCv.getContext('2d'), lctx = lay.getContext('2d');
+let TIER = (document.body.getBoundingClientRect().width || innerWidth) < 700 ? 2 : 4;
+let SEC = PK.sections[0].id;
+const st = { cx: 0, dir: 1, play: !reduce, hero: true, layout: false, hold: 0, drag: false, moving: false, art: null, loading: '' };
+const metaCache = {};
+let hero = null;
+
+const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+const getMeta = (id, u) => { const k = id + u; if (!metaCache[k]) metaCache[k] = fetch('l1/meta-' + id + '-u' + u + '.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }); return metaCache[k]; };
+
+function pts(g){ return g.map(p => Array.isArray(p) ? p : [p.x, p.y]); }
+function surface(M, x){
+  for (const g of M.terrain.ground){ const p = pts(g); if (x >= p[0][0] && x <= p[p.length - 1][0]) return interp(p, x); }
+  let best = null;
+  for (const g of M.terrain.platforms){ const p = pts(g); if (x >= p[0][0] && x <= p[p.length - 1][0]){ const y = interp(p, x); best = best === null ? y : Math.max(best, y); } }
+  if (best === null && M.heroDeck && x >= M.heroDeck[0] && x <= M.heroDeck[1]) return M.heroDeck[2];
+  return best;
+}
+function interp(p, x){ for (let i = 1; i < p.length; i++) if (x <= p[i][0]){ const a = p[i - 1], b = p[i]; return b[0] === a[0] ? b[1] : a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]); } return p[p.length - 1][1]; }
+
+function shadowSprite(rgb){
+  const c = document.createElement('canvas'); c.width = 25; c.height = 5;
+  const x = c.getContext('2d'); x.fillStyle = 'rgb(' + rgb.join(',') + ')';
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -12; dx <= 12; dx++)
+    if ((dx / 12.5) ** 2 + (dy / 2.6) ** 2 <= 1 && ((dx + dy) % 2 + 2) % 2 === 0) x.fillRect(dx + 12, dy + 2, 1, 1);
+  return c;
+}
+
+// --- loading one section at one tier: its table, then every tile
+async function ensure(){
+  const want = SEC + TIER;
+  if (st.art && st.art.key === want) return;
+  if (st.loading === want) return;
+  st.loading = want;
+  const el = $('load'); el.textContent = 'Loading ' + SEC + ' at ' + TIER + '× …'; el.hidden = false;
+  try {
+    const M = await getMeta(SEC, TIER);
+    let n = 0, all = 0;
+    const srcs = [...new Set(M.layers.flatMap(ly => ly.tiles.filter(t => t[2]).map(t => t[2])))];
+    all = srcs.length;
+    const sheet = {};
+    await Promise.all(srcs.map(async src => { sheet[src] = await loadImg(src); n++; if (st.loading === want) el.textContent = 'Loading ' + SEC + ' at ' + TIER + '× · ' + n + ' / ' + all; }));
+    const layers = await Promise.all(M.layers.map(async ly => {
+      const tiles = ly.tiles.map(t => t[2] ? { x0: t[0], w: t[1], im: sheet[t[2]], ax: t[3] || 0, ay: t[4] || 0 } : { x0: t[0], w: t[1], im: null, ax: 0, ay: 0 });
+      return Object.assign({}, ly, { T: tiles, W: tiles.reduce((a, t) => a + t.w, 0) });
+    }));
+    if (st.loading !== want) return;
+    st.loading = '';
+    st.art = { key: want, u: TIER, M, layers, shadow: shadowSprite(M.shadow) };
+    for (const c of [back, front]){ c.width = VW * TIER; c.height = VH * TIER; }
+    bctx.imageSmoothingEnabled = false; fctx.imageSmoothingEnabled = false;
+    st.cx = Math.min(st.cx, M.cam);
+    fit(); showInfo(); drawMap(); el.hidden = true;
+  } catch (e){
+    if (st.loading === want){ st.loading = ''; el.textContent = 'This section did not load at ' + TIER + '×'; }
+  }
+}
+
+function fit(){                        // large pixels stay crisp, small pixels are smoothed
+  if (!st.art) return;
+  const r = back.getBoundingClientRect();
+  const up = r.width * (devicePixelRatio || 1) >= back.width;
+  back.style.imageRendering = front.style.imageRendering = up ? 'pixelated' : 'auto';
+}
+
+// draw a span [sx, sx + w) of a layer's image row band [sy, sy + h) at (dx, dy); tiles side by side, optional wrap
+function span(ctx, ly, sx, sy, w, h, dx, dy, wrap){
+  if (wrap){ sx = ((sx % ly.W) + ly.W) % ly.W; }
+  let done = 0;
+  while (done < w){
+    let x = sx + done;
+    if (wrap) x %= ly.W;
+    const t = ly.T.find(t => x >= t.x0 && x < t.x0 + t.w);
+    if (!t) break;
+    const a = Math.min(w - done, t.x0 + t.w - x);
+    if (t.im) ctx.drawImage(t.im, t.ax + x - t.x0, t.ay + sy, a, h, dx + done, dy, a, h);
+    done += a;
+  }
+}
+
+function draw(tick, t, running){
+  const A = st.art, u = A.u, W = VW * u, cx = st.cx, wf = Math.floor(tick / 10);
+  bctx.fillStyle = '#000'; bctx.fillRect(0, 0, W, VH * u);
+  fctx.clearRect(0, 0, W, VH * u);
+  for (const ly of A.layers){
+    const ctx = ly.over ? fctx : bctx;
+    const y = Math.round(ly.y * u);
+    if (ly.kind === 'img'){
+      span(ctx, ly, Math.floor(cx * ly.speed * u), 0, W, ly.h, 0, y, false);
+    } else if (ly.kind === 'tile'){
+      span(ctx, ly, Math.floor((cx * ly.speed + t * (ly.drift || 0)) * u), 0, W, ly.h, 0, y, true);
+    } else if (ly.kind === 'frames'){
+      span(ctx, ly, Math.floor(cx * ly.speed * u), (wf % ly.n) * ly.h, W, ly.h, 0, y, false);
+    } else if (ly.kind === 'rows'){
+      const n = ly.h, f0 = (wf % ly.n) * n;
+      for (let j = 0; j < n; j++){
+        const sp = ly.s0 + (ly.s1 - ly.s0) * j / Math.max(n - 1, 1);
+        span(ctx, ly, Math.floor(cx * sp * u), f0 + j, W, 1, 0, y + j, false);
+      }
+    }
+  }
+  // Vincent: his own 384 x 216 canvas, one sprite pixel = one canvas pixel, standing on the game's walk line
+  hctx.clearRect(0, 0, VW, VH);
+  if (st.hero && hero){
+    const hx = 176, yy = surface(A.M, cx + hx);
+    if (yy !== null){
+      const hy = Math.round(yy);
+      hctx.drawImage(A.shadow, hx - 12, hy - 3);
+      const sheet = running ? hero.run : hero.idle;
+      const f = running ? Math.floor(tick / 3) % PK.hero.runN : Math.floor(tick / 9) % PK.hero.idleN;
+      if (st.dir >= 0) hctx.drawImage(sheet, f * 48, 0, 48, 48, hx - PK.hero.ax, hy - PK.hero.ay, 48, 48);
+      else { hctx.save(); hctx.scale(-1, 1); hctx.drawImage(sheet, f * 48, 0, 48, 48, -(hx + PK.hero.ax), hy - PK.hero.ay, 48, 48); hctx.restore(); }
+    }
+  }
+  // the layout of the game
+  lctx.clearRect(0, 0, lay.width, lay.height);
+  if (st.layout){
+    const k = 2, T = A.M.terrain;
+    lctx.lineWidth = 2;
+    const pl = (g, c) => { const p = pts(g); lctx.strokeStyle = c; lctx.beginPath(); p.forEach((q, i) => { const X = (q[0] - cx) * k, Y = q[1] * k; i ? lctx.lineTo(X, Y) : lctx.moveTo(X, Y); }); lctx.stroke(); };
+    for (const hz of T.hazards){ lctx.strokeStyle = '#4a8cff'; lctx.strokeRect((hz.x - cx) * k + 1, hz.y * k + 1, hz.w * k - 2, hz.h * k - 2); }
+    for (const so of T.solids){ lctx.strokeStyle = '#ff6060'; lctx.strokeRect((so.x - cx) * k + 1, so.y * k + 1, so.w * k - 2, so.h * k - 2); }
+    for (const g of T.ground) pl(g, '#ffd84a');
+    for (const g of T.platforms) pl(g, '#5fe3f0');
+  }
+  $('pos').innerHTML = 'Camera <b>' + Math.round(cx) + '</b> / ' + A.M.cam + ' · Vincent at x <b>' + Math.round(cx + 176) + '</b>';
+  drawMapView();
+}
+
+// --- the strip under the screen: the terrain of the whole section and the view window
+let mapBase = null;
+function drawMap(){
+  const A = st.art; if (!A) return;
+  const r = $('map').getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  mapc.width = Math.max(1, Math.round(r.width * dpr)); mapc.height = Math.max(1, Math.round(r.height * dpr));
+  const c = document.createElement('canvas'); c.width = mapc.width; c.height = mapc.height;
+  const x = c.getContext('2d'), M = A.M, sx = c.width / M.width, sy = c.height / VH;
+  x.fillStyle = '#131824'; x.fillRect(0, 0, c.width, c.height);
+  x.fillStyle = 'rgba(74,140,255,.45)';
+  for (const hz of M.terrain.hazards) x.fillRect(hz.x * sx, hz.y * sy, hz.w * sx, c.height - hz.y * sy);
+  x.lineWidth = Math.max(1, dpr);
+  const pl = (g, col) => { const p = pts(g); x.strokeStyle = col; x.beginPath(); p.forEach((q, i) => i ? x.lineTo(q[0] * sx, q[1] * sy) : x.moveTo(q[0] * sx, q[1] * sy)); x.stroke(); };
+  for (const g of M.terrain.ground) pl(g, '#ffd84a');
+  for (const g of M.terrain.platforms) pl(g, '#5fe3f0');
+  mapBase = c;
+  $('map').setAttribute('aria-valuemax', String(M.cam));
+}
+function drawMapView(){
+  if (!mapBase) return;
+  const x = mapc.getContext('2d'), M = st.art.M, sx = mapc.width / M.width;
+  x.drawImage(mapBase, 0, 0);
+  x.strokeStyle = '#f6c56a'; x.lineWidth = Math.max(1, devicePixelRatio || 1) * 1.5;
+  x.strokeRect(st.cx * sx, 1, VW * sx, mapc.height - 2);
+  $('map').setAttribute('aria-valuenow', String(Math.round(st.cx)));
+}
+
+function showInfo(){
+  const A = st.art, M = A.M, s = PK.sections.find(s => s.id === SEC);
+  $('sname').textContent = s.label;
+  $('shour').textContent = s.hour + ' · ' + M.width + ' px';
+  $('snote').textContent = M.note || '';
+  const lay = M.layers.length, mm = M.m;
+  $('snums').innerHTML = 'Colours in a frame <b>' + mm.colors + '</b> · key hue share <b>' + Math.round(mm.share * 100) + ' %</b><br>' +
+    (mm.skyline && mm.far ? 'Light range: skyline <b>' + (mm.skyline.hi - mm.skyline.lo).toFixed(2) + '</b> · far plane <b>' + (mm.far.hi - mm.far.lo).toFixed(2) + '</b><br>' : '') +
+    'Layers <b>' + lay + '</b> · platforms <b>' + M.terrain.platforms.length + '</b> · water areas <b>' + M.terrain.hazards.length + '</b>';
+}
+
+function pick(id){
+  SEC = id;
+  for (const b of document.querySelectorAll('#strip button')) b.setAttribute('aria-pressed', String(b.dataset.id === id));
+  st.cx = 0; st.dir = 1; st.hold = 0.6; st.art = null; mapBase = null;
+  ensure();
+}
+function setTier(u){
+  TIER = u;
+  for (const b of document.querySelectorAll('.tiers button')) b.setAttribute('aria-pressed', String(Number(b.dataset.u) === u));
+  ensure();
+}
+
+async function setup(){
+  hero = { run: await loadImg('l1/vin-run.png'), idle: await loadImg('l1/vin-idle.png') };
+  const strip = $('strip');
+  for (const s of PK.sections){
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.id = s.id; b.style.setProperty('--w', s.width);
+    b.innerHTML = '<b>' + s.id + ' ' + s.label + '</b><span>' + s.hour + '</span>';
+    b.onclick = () => pick(s.id); strip.appendChild(b);
+  }
+  const bp = $('b-run'), bv = $('b-vin'), bl = $('b-lay');
+  bp.setAttribute('aria-pressed', String(st.play));
+  bp.onclick = () => { st.play = !st.play; bp.setAttribute('aria-pressed', String(st.play)); };
+  bv.onclick = () => { st.hero = !st.hero; bv.setAttribute('aria-pressed', String(st.hero)); };
+  bl.onclick = () => { st.layout = !st.layout; bl.setAttribute('aria-pressed', String(st.layout)); $('legend').hidden = !st.layout; };
+  for (const b of document.querySelectorAll('.tiers button')) b.onclick = () => setTier(Number(b.dataset.u));
+  // drag the screen
+  const scr = $('screen'); let lastX = 0;
+  scr.addEventListener('pointerdown', e => { st.drag = true; lastX = e.clientX; scr.setPointerCapture(e.pointerId); });
+  scr.addEventListener('pointermove', e => {
+    if (!st.drag || !st.art) return;
+    const r = scr.getBoundingClientRect(), dx = (e.clientX - lastX) * VW / r.width; lastX = e.clientX;
+    if (dx){ st.dir = dx < 0 ? 1 : -1; st.cx = Math.min(st.art.M.cam, Math.max(0, st.cx - dx)); st.moving = true; }
+  });
+  const end = () => { st.drag = false; st.moving = false; };
+  scr.addEventListener('pointerup', end); scr.addEventListener('pointercancel', end);
+  // the strip: click or drag to place the camera
+  const map = $('map'); let mdrag = false;
+  const toMap = e => { if (!st.art) return; const r = map.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width * st.art.M.width - VW / 2;
+    const nx = Math.min(st.art.M.cam, Math.max(0, x)); st.dir = nx >= st.cx ? 1 : -1; st.cx = nx; };
+  map.addEventListener('pointerdown', e => { mdrag = true; map.setPointerCapture(e.pointerId); toMap(e); st.drag = true; });
+  map.addEventListener('pointermove', e => { if (mdrag) toMap(e); });
+  const mend = () => { mdrag = false; st.drag = false; };
+  map.addEventListener('pointerup', mend); map.addEventListener('pointercancel', mend);
+  map.addEventListener('keydown', e => { if (!st.art) return; const d = e.key === 'ArrowRight' ? 48 : e.key === 'ArrowLeft' ? -48 : 0; if (d){ e.preventDefault(); st.dir = Math.sign(d); st.cx = Math.min(st.art.M.cam, Math.max(0, st.cx + d)); } });
+  addEventListener('resize', () => { fit(); drawMap(); });
+  setTier(TIER); pick(SEC);
+  let last = performance.now(), tick = 0, acc = 0;
+  function frame(now){
+    const dt = Math.min(0.05, (now - last) / 1000); last = now; acc += dt;
+    while (acc >= 1 / 60){ acc -= 1 / 60; tick++; }
+    ensure();
+    if (st.art){
+      let running = st.moving;
+      if (st.play && !st.drag){
+        if (st.hold > 0) st.hold -= dt;
+        else {
+          st.cx += st.dir * 72 * dt; running = true;
+          if (st.cx >= st.art.M.cam){ st.cx = st.art.M.cam; st.dir = -1; st.hold = 1.2; }
+          if (st.cx <= 0){ st.cx = 0; st.dir = 1; st.hold = 1.2; }
+        }
+      }
+      draw(tick, now / 1000, running);
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+setup();
+</script>

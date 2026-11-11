@@ -10,3 +10,6 @@ tmp
 
 # Python bytecode (docs/design/art-styles/lineup tools)
 __pycache__/
+
+# The level kit's outputs (tools/levelkit/README.md): the layout dump, previews, strips, page exports, the bake lock
+tools/levelkit/work/

@@ -37,9 +37,10 @@ multi-part bosses, and 2-player co-op.
   `tools/art/import-face.ts` turns it into a committed palette-index module
   (`src/game/content/fps/art/mecha-face.gen.ts`), so the game still loads no image file.
   Exception (user decision 2026-11-11): the scenery of mission `ams` in the canal look is a Python
-  paint kit's layer stack (`tmp/l1/kit/`), BAKED to lossless PNG files at 1×, 2× and 4×
-  (`public/art/ams/`, by `tmp/l1/kit/bake_game.py`, with a generated manifest
-  `src/game/content/missions/ams/canal/manifest.gen.ts`). A section opts in with
+  paint kit's layer stack (`tools/levelkit/`), BAKED to lossless PNG files at 1×, 2× and 4×
+  (`public/art/ams/`, by `tools/levelkit/lk.py ams bake`, with a generated manifest
+  `src/game/content/missions/ams/canal/manifest.gen.ts`). A new level built by
+  `docs/LEVEL_GUIDE.md` gets its scenery the same way (`public/art/<mission>/`). A section opts in with
   `SectionDef.canal`; the game loads the files per section and art tier ahead of the camera
   (`src/engine/png.ts` decodes them, exact; `src/game/mission/canal/` stores and draws them) and
   draws the stack in place of that section's generated scenery. `?canal=0` (or a missing file)

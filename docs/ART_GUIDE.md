@@ -5,6 +5,10 @@ Owner: art director. This guide explains the house style and the procedural art 
 palette, sprite registry, renderers) is documented in `docs/api/media.md`; the IP rules are in
 `docs/ORIGINALITY.md` (mandatory).
 
+**A new level** (its direction, look, spec, play and scenery) starts at `docs/LEVEL_GUIDE.md`, with the
+project skill `/new-level`. Its scenery is painted by the kit in `tools/levelkit/` in the method of
+`docs/design/level-guide/look.md`, not by the background generators of §7.
+
 **Look at your work.** `npm run sprites -- <prefix> [--marks]` writes contact sheets to
 `tmp/sprites/` (3× zoom; `--marks` shows anchors in cyan and points in magenta). Open the PNG
 with the Read tool and judge it at 1× size too. `npm run sprites -- demo` shows the background
