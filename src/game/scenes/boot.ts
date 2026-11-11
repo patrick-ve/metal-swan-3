@@ -21,7 +21,9 @@ import type { DrawOpts, Renderer } from '../../engine/render';
 import type { Scene } from '../../engine/scene';
 import { preloadSprites } from '../../engine/sprites';
 import { blinkOn, centerText, newCampaign, type GameApp } from '../app';
-import { isLazyContent, isOatContent, loadContent } from '../content/index';
+import { isAms2Content, isLazyContent, isOatContent, loadContent } from '../content/index';
+import { canalPaintedArt } from '../mission/canal/registry';
+import { AMS2_ID } from '../content/missions/ams2/ids';
 import type { LaunchParams } from '../params';
 import type { RingRoute } from '../ring/ids';
 import { getCharacter, getMission, hasCharacter } from '../registry';
@@ -72,6 +74,16 @@ export function bootArt(params: Pick<LaunchParams, 'mission' | 'char' | 'mode'>)
 }
 
 /**
+ * The ids the boot's preload leaves out (docs/api/canal.md §8): the old decor the canal scenes of
+ * the mission played first paint instead (`canalPaintedArt`; empty for every other mission, with
+ * `?canal=0` and without a canal source).
+ */
+export function bootSkip(params: Pick<LaunchParams, 'mission'>): ReadonlySet<string> {
+  if (isRing(params.mission) || isRally(params.mission)) return new Set();
+  return canalPaintedArt(getMission(params.mission ?? firstMission())?.sections);
+}
+
+/**
  * `&route=full|short` of `?mission=ring` (revision R, docs/design/ring.md §R.1; params.ts
  * `LaunchParams.route`); null = by the section (ring-route.ts `ringRouteFor`).
  */
@@ -101,7 +113,8 @@ export class BootScene implements Scene {
       // The lazy fps, rally and oat content stays out of the boot (their scenes load it); a direct
       // `?mission=oat` loads the oat chunk with it (docs/design/oat.md §1: its art and samples next).
       const oat = isOat(this.app.params.mission);
-      this.app.content = await loadContent((id) => !isLazyContent(id) || (oat && isOatContent(id)));
+      const ams2 = this.app.params.mission === AMS2_ID;
+      this.app.content = await loadContent((id) => !isLazyContent(id) || (oat && isOatContent(id)) || (ams2 && isAms2Content(id)));
       this.phase = 'sprites';
       // The sprite cache (art-cache.ts) of an earlier visit first: the preload then skips every
       // id it installed. The 2× pack too, so the ams intro card finds its 2× art made already.
@@ -118,7 +131,7 @@ export class BootScene implements Scene {
           this.done = d;
           this.total = t;
         },
-        { skipDeferred: true },
+        { skipDeferred: true, skip: bootSkip(this.app.params) },
       );
       void cache?.save('boot', art ?? ['']);
       this.phase = 'sounds';

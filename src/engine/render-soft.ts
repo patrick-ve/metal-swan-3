@@ -3,7 +3,7 @@ import { BLACK, WHITE } from './color';
 import { drawText, drawTextPx, glyphDensity, textScale } from './font';
 import type { BlitOpts } from './pixel';
 import { PixelBuffer, traceLine } from './pixel';
-import type { DrawOpts, Frame, ParallaxOpts, Renderer, TextOpts } from './render';
+import type { DrawOpts, Frame, ParallaxOpts, Renderer, RowsDraw, RowsTexture, TextOpts } from './render';
 import { SURFACE_ROAD, SURFACE_SKY, VIEW_H, VIEW_W } from './render';
 import type { LineEnds, Part, Placement, SubpixelMode } from './render-common';
 import {
@@ -15,6 +15,7 @@ import {
   layerCam,
   drawDensity,
   reducedFor,
+  rowShift,
   parallaxOrigin,
   placePart,
   solidColor,
@@ -243,6 +244,61 @@ export class SoftRenderer implements Renderer {
       }
       if (!repeatY) break;
     }
+  }
+
+  /**
+   * The canal scenery (render.ts `rows`): row by row, the reference picture. Destination row Y shows
+   * image row t (k / d backbuffer rows per image row; uneven ratios sample as `blitScaled`), moved by
+   * `rowShift`; every pixel with alpha > 0 is written opaque (the kit's compose), the rest is left.
+   * Buffers only (a `RowsTexture` is a canvas renderer's).
+   */
+  rows(img: PixelBuffer | RowsTexture, d: number, x: number, y: number, o: RowsDraw): void {
+    if (!(img instanceof PixelBuffer) || img.w === 0 || img.h === 0) return;
+    const k = this.res;
+    const t = this.target;
+    const W = img.w;
+    const H = img.h;
+    const left = Math.round(x * k);
+    const top = Math.round(y * k);
+    const dh = Math.floor((H * k) / d);
+    const dw = Math.floor((W * k) / d);
+    const y0 = Math.max(0, top);
+    const y1 = Math.min(t.h, top + dh);
+    const src = img.data;
+    const dst = t.data;
+    const TW = t.w;
+    const whole = k % d === 0;
+    const m = k / d;
+    let last = -1;
+    let xl = 0;
+    for (let Y = y0; Y < y1; Y++) {
+      const r = whole ? Math.floor((Y - top) / m) : Math.min(H - 1, Math.ceil(((2 * (Y - top) + 1) * d) / (2 * k)) - 1);
+      if (r !== last) {
+        last = r;
+        xl = left - rowShift(o, r, k);
+      }
+      const x0 = Math.max(0, xl);
+      const x1 = Math.min(TW, xl + dw);
+      const srow = r * W;
+      const drow = Y * TW;
+      if (m === 1) {
+        for (let X = x0; X < x1; X++) {
+          const p = src[srow + X - xl];
+          if ((p & 255) !== 0) dst[drow + X] = (p | 255) >>> 0;
+        }
+      } else if (whole) {
+        for (let X = x0; X < x1; X++) {
+          const p = src[srow + Math.floor((X - xl) / m)];
+          if ((p & 255) !== 0) dst[drow + X] = (p | 255) >>> 0;
+        }
+      } else {
+        for (let X = x0; X < x1; X++) {
+          const p = src[srow + Math.min(W - 1, Math.ceil(((2 * (X - xl) + 1) * d) / (2 * k)) - 1)];
+          if ((p & 255) !== 0) dst[drow + X] = (p | 255) >>> 0;
+        }
+      }
+    }
+    t.version++;
   }
 
   /**

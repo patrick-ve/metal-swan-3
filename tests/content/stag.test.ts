@@ -7,7 +7,7 @@
  * the art (1× palette; 2× / 4× in PAL_HD with the 1× geometry).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { inPalette, PAL } from '../../src/engine/palette';
+import { inPalette } from '../../src/engine/palette';
 import { inHdPalette } from '../../src/engine/palette-hd';
 import { getFrames, hasHiSprite, listSprites, spriteErrors } from '../../src/engine/sprites';
 import '../../src/game/content/characters/index';
@@ -364,25 +364,28 @@ describe('stag: reactions and deaths', () => {
 });
 
 describe('stag: the costume in the death strips', () => {
+  // The groom is a baked 40 px set (its own palette): his pink tutu is the set's pinks
+  // (tests/art40/stag-groom.test.ts covers the set).
   const has = (id: string, f: number, colors: readonly number[]): boolean => {
     const fr = getFrames(id, 1)[f];
     const set = new Set(colors.map((c) => c >>> 0));
     for (let i = 0; i < fr.buf.data.length; i++) if (set.has(fr.buf.data[i] >>> 0)) return true;
     return false;
   };
-  it("the groom keeps his pink tutu in every frame of every death strip (but the crush's flat ones)", () => {
-    for (const s of ['die', 'die-knife', 'die-blast', 'die-burn', 'die-stool']) {
+  const rgba = (hex: string): number => ((parseInt(hex.slice(1), 16) << 8) | 255) >>> 0;
+  const PINK = ['#ffb2d6', '#f0609a', '#a82e62'].map(rgba);
+  const LIME = ['#c8f04a', '#8cc828', '#4f8a1c'].map(rgba);
+  it("the groom keeps his pink tutu in every frame of every death strip (but the soot statue's)", () => {
+    expect(has('enemy/stag-groom/idle', 0, PINK)).toBe(true);
+    for (const s of ['die', 'die-knife', 'die-blast', 'die-burn', 'die-crush', 'die-stool']) {
       const id = `enemy/stag-groom/${s}`;
-      const n = s === 'die-burn' ? 2 : getFrames(id, 1).length; // then the soot statue
-      for (let f = 0; f < n; f++) expect(has(id, f, PAL.pink), `${id} ${f}`).toBe(true);
+      const n = s === 'die-burn' ? 3 : getFrames(id, 1).length; // then the soot statue
+      for (let f = 0; f < n; f++) expect(has(id, f, PINK), `${id} ${f}`).toBe(true);
     }
-    expect(has('enemy/stag-groom/die-crush', 0, PAL.pink)).toBe(true);
   });
-  it('a blast keeps the party shirt green (it singes one shade, never to steel or ink)', () => {
-    for (const set of ['stag-partier', 'stag-partier-2', 'stag-groom']) {
-      const id = `enemy/${set}/die-blast`;
-      for (let f = 0; f < getFrames(id, 1).length; f++) expect(has(id, f, PAL.green), `${id} ${f}`).toBe(true);
-    }
+  it('a blast keeps the party shirt green', () => {
+    const id = 'enemy/stag-groom/die-blast';
+    for (let f = 0; f < getFrames(id, 1).length; f++) expect(has(id, f, LIME), `${id} ${f}`).toBe(true);
   });
 });
 
@@ -392,18 +395,22 @@ describe('stag: art', () => {
   let ids: string[] = [];
   beforeAll(() => {
     warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    ids = listSprites().filter((id) => PREFIXES.some((p) => id.startsWith(p)));
+    // The bike, its driver and the cork are baked 40 px sets (own palettes, 1× at every tier):
+    // tests/art40/beer-bike.test.ts covers them. So are the partier looks 0 and 2
+    // (tests/art40/stag-partier.test.ts) and the groom (tests/art40/stag-groom.test.ts).
+    const BAKED = ['enemy/cork/', 'vehicle/beer-bike/', 'enemy/stag-beer-bike/', 'enemy/stag-partier/', 'enemy/stag-partier-2/', 'enemy/stag-groom/'];
+    ids = listSprites().filter((id) => PREFIXES.some((p) => id.startsWith(p)) && !BAKED.some((p) => id.startsWith(p)));
   });
   afterAll(() => warn.mockRestore());
 
   it('every 1× strip is palette-only and has frames; the logic’s strips exist for every set', () => {
-    expect(ids.length).toBeGreaterThan(110);
+    expect(ids.length).toBeGreaterThanOrEqual(44); // looks 1 and 3: 22 strips each
     for (const id of ids) {
       const frames = getFrames(id, 1);
       expect(frames.length, id).toBeGreaterThan(0);
       for (const f of frames) for (const c of f.buf.data) if ((c & 255) !== 0 && !inPalette(c)) expect.fail(`${id}: ${c.toString(16)} not in PAL`);
     }
-    const sets = ['stag-partier', 'stag-partier-1', 'stag-partier-2', 'stag-partier-3', 'stag-groom'];
+    const sets = ['stag-partier-1', 'stag-partier-3'];
     const strips = ['idle', 'walk', 'turn', 'alert', 'tell', 'fire', 'gag-toast', 'gag-selfie', 'photo-pose', 'gloat', 'cower', 'die', 'die-knife', 'die-blast', 'die-burn', 'die-crush', 'sit', 'sit-tell', 'sit-fire', 'sit-gloat', 'sit-cower', 'die-stool'];
     for (const s of sets) for (const a of strips) expect(ids, `enemy/${s}/${a}`).toContain(`enemy/${s}/${a}`);
   });

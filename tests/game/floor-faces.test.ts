@@ -12,7 +12,7 @@ import { QuadCanvas } from '../../src/engine/floor/quad';
 import { VIEW_H, VIEW_W } from '../../src/engine/render';
 import { SoftRenderer } from '../../src/engine/render-soft';
 import { Terrain } from '../../src/engine/terrain';
-import { loadContent } from '../../src/game/content/index';
+import { isOatContent, loadContent } from '../../src/game/content/index';
 import { A_BOATS } from '../../src/game/content/missions/ams/terrain';
 import { OZ_A_ROW, OZ_A_ROW_X, OZ_A_SHOPS } from '../../src/game/content/missions/oldenzaal/terrain';
 import { SectionFloor } from '../../src/game/mission/floor/section-floor';
@@ -23,6 +23,8 @@ import { getMission, listMissions } from '../../src/game/registry';
 import { defineFloorTile, floorOf } from '../../src/game/mission/floor/registry';
 
 await loadContent();
+// The lazy oat chunk (decision 49): its floors join like the boot set's.
+await loadContent(isOatContent);
 
 /** Every section of every registered mission that has a floor. */
 function floorSections(): SectionDef[] {

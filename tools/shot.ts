@@ -2,7 +2,7 @@
  * npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6]
  *                 [--seed 1] [--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss]
  *                 [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal]
- *                 [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4] [--floor-debug] [--floor-overlay] [--floor-off]
+ *                 [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4] [--floor-debug] [--floor-overlay] [--floor-off] [--canal 0]
  * npm run shot -- --fps 0 [--pose x,y,deg[;x,y,deg…]] [--ticks n] [--every n --count k] [--hold forward,use]
  *                 [--seed 1] [--difficulty normal] [--god] [--unfold] [--out file.png] [--scale 2] [--cols 3]
  *
@@ -51,6 +51,9 @@
  * section of the mission; --floor-overlay draws the depth grid, the walk line and the row lines;
  * --floor-off draws the sections without their floors (to compare).
  *
+ * The canal scenes (docs/api/canal.md): a section with `canal` draws its baked scene (read from
+ * public/art at once, before the frame); --canal 0 draws the old scenery instead (to compare).
+ *
  * --mission rally (the 3D race, docs/design/rally.md §12.3): node has no WebGL, so this tool cannot
  * show it; it prints the `npm run shot3d` command to use instead (tools/shot3d.ts: Playwright
  * captures of the 3D view) and exits with code 2.
@@ -74,6 +77,8 @@ import { SoftRenderer } from '../src/engine/render-soft';
 import { ensureFpsDenseArt, setFpsArtPool } from '../src/game/content/fps/dense-load';
 import { resolveGfx } from './lib/gfx';
 import { debugFloorDef, setFloorOverlay, setFloorOverride } from '../src/game/mission/floor/index';
+import { setCanal, setCanalSource } from '../src/game/mission/canal/index';
+import { nodeCanalSource } from './lib/canal-source';
 import { savePNG, SHEET } from './lib/image';
 import { stepToCamera } from './lib/camera-step';
 
@@ -117,6 +122,8 @@ interface Args {
   floorDebug: boolean;
   floorOverlay: boolean;
   floorOff: boolean;
+  /** The canal scenes on (default) or off (--canal 0: the old scenery). */
+  canal: boolean;
   /** Step on until the view's left edge reaches this world x (frames by the camera: `ams` c2). */
   camX?: number;
 }
@@ -150,7 +157,7 @@ function parseSpawns(v: string): RingSpawnArg[] {
 
 const USAGE =
   'usage: npm run shot -- --mission m0 [--section a] [--x 1200] [--ticks 60] [--bot] [--every 60 --count 6] [--seed 1] ' +
-  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4] [--floor-debug] [--floor-overlay] [--floor-off] [--cam-x 1800]\n' +
+  '[--out file.png] [--god] [--route lower|upper] [--players 1|2] [--boss] [--hold right,fire] [--scale 2] [--cols 3] [--weapon id] [--difficulty normal] [--import module.ts] [--res 1] [--gfx pixel|smooth|xbr] [--art 1|2|4] [--floor-debug] [--floor-overlay] [--floor-off] [--canal 0] [--cam-x 1800]\n' +
   '       npm run shot -- --mission ring [--seed 1] [--route short|full] [--section <landmark>|zwaan|rf-a|rf-b] [--boss] [--bot] [--god] [--players 1|2] [--ticks 60] [--every 60 --count 6] [--res 8 --art 4] [--spawn "<id>@+<dx>:<lane>[?k=v]"] [--hold up,fire] [--out file.png]';
 
 const BUTTONS: readonly Button[] = ['left', 'right', 'up', 'down', 'fire', 'jump', 'bomb', 'start'];
@@ -179,6 +186,7 @@ function parseArgs(argv: readonly string[]): Args {
     floorDebug: false,
     floorOverlay: false,
     floorOff: false,
+    canal: true,
   };
   for (let i = 0; i < argv.length; i++) {
     const s = argv[i];
@@ -290,6 +298,9 @@ function parseArgs(argv: readonly string[]): Args {
         break;
       case '--floor-off':
         a.floorOff = true;
+        break;
+      case '--canal':
+        a.canal = num() !== 0;
         break;
       case '--cam-x':
         a.camX = num();
@@ -622,6 +633,9 @@ function applyFloorArgs(a: Args): void {
   if (a.floorOff) setFloorOverride(() => null);
   if (a.floorDebug) setFloorOverride((s) => debugFloorDef(s, mission));
   if (a.floorOverlay) setFloorOverlay(true);
+  // The canal scenes: their files from public/ (read at once); --canal 0 draws the old scenery.
+  setCanalSource(nodeCanalSource());
+  setCanal(a.canal);
 }
 
 async function main(): Promise<void> {

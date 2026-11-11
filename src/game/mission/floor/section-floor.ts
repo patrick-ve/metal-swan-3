@@ -844,6 +844,78 @@ export class SectionFloor {
     if (this.quads.some((q) => q.kind === 'opening')) this.sizePool(want, true);
   }
 
+  // ------------------------------------------------------------------------------- canal scenes
+
+  /**
+   * A section with a canal scene (docs/api/canal.md): the scene draws the scenery, the floor is only
+   * the GEOMETRY of the entities (contact shadows, entity faces, `drawAtDepth`, depth steps,
+   * `liftAt`). Section start: the entity kinds' face tiles (1× now, the dense ones queued) and their
+   * canvases — no chunk, no other tile, no row frame, no quad canvas is ever built.
+   */
+  prepareEntities(want = 1): void {
+    const d = Math.min(want, QUAD_MAX_DENSITY);
+    this.entityTiles(d, true);
+    const key = 1000 + d;
+    if (this.poolSized.has(key)) return;
+    this.poolSized.add(key);
+    const need = new Map<number, number>();
+    for (const k of this.entityKinds.values()) {
+      const c = k.wc * 1000 + k.hc;
+      need.set(c, (need.get(c) ?? 0) + k.max);
+    }
+    for (const [c, n] of need) this.pool.ensure(Math.floor(c / 1000), c % 1000, d, n);
+  }
+
+  /**
+   * OPT-IN (the canal scenes, docs/api/canal.md §9): put a render-only depth rule over a kind's own
+   * (`FloorDef.entityDepth`, given to `wrap`, or undefined): SectionView's rules while its canal
+   * scene draws (a gull on a kit lamp). Render only, like every depth step.
+   */
+  wrapEntityDepth(kind: string, wrap: (own: ((e: Entity) => number) | undefined) => (e: Entity) => number): void {
+    this.depthKinds.set(kind, wrap(this.depthKinds.get(kind)));
+  }
+
+  /** The kinds whose faces are left out where their rule holds (`hideEntityFaces`). */
+  private readonly hiddenFaces = new Map<string, (e: Entity) => boolean>();
+
+  /**
+   * OPT-IN (the canal scenes, `CanalDef.hideFaces`, docs/api/canal.md §7): leave kind's entity faces
+   * out for the entities `hidden(e)` holds for (SectionView: while its canal scene draws, which
+   * paints that thing in depth itself). Render only.
+   */
+  hideEntityFaces(kind: string, hidden: (e: Entity) => boolean): void {
+    this.hiddenFaces.set(kind, hidden);
+  }
+
+  /** A canal frame's floor part (in `drawBack`'s place): the frame count and the entity faces' density, their tiles. */
+  canalFrame(d: number): void {
+    this.frameNo++;
+    this.entityD = Math.min(d, QUAD_MAX_DENSITY);
+    this.entityTiles(this.entityD, false);
+  }
+
+  /** A canal frame's front part (in `drawFront`'s place): the entities' faces in front of the walk plane only. */
+  drawFrontEntities(r: Renderer): void {
+    if (this.frontKinds && this.faceWorld) this.entityFacePass(r, this.faceWorld, 1);
+  }
+
+  /** The entity kinds' face tiles at density d (1× on the spot when `now`; denser ones queued). */
+  private entityTiles(d: number, now: boolean): void {
+    for (const k of this.entityKinds.values()) {
+      for (let pass = 0; pass < 2; pass++) {
+        const sets = pass === 0 ? k.sets : k.frontSets;
+        for (let si = 0; si < sets.length; si++) {
+          const set = sets[si];
+          for (let f = 0; f < set.n; f++) {
+            const i = set.tile[f];
+            if (now) this.store.tile(i, 1);
+            if (d > 1) this.store.prefetchTile(i, d);
+          }
+        }
+      }
+    }
+  }
+
   /** Make the pool's canvases for density d (the plan: the most of each size that show at once). */
   private sizePool(d: number, openings: boolean): void {
     const key = openings ? -d : d;
@@ -1851,6 +1923,8 @@ export class SectionFloor {
       if (e.removed) continue;
       const kind = this.entityKinds.get(e.type);
       if (!kind || (pass === 1 && !kind.front)) continue;
+      const hidden = this.hiddenFaces.get(e.type);
+      if (hidden && hidden(e)) continue;
       try {
         e.drawFloorFaces(r);
       } catch (err) {

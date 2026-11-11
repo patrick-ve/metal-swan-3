@@ -3,7 +3,10 @@
  * points of the sprite contract (docs/ARCHITECTURE.md §6.1), sane sizes, palette-only colours.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
+import { bakedSetIds } from '../../src/engine/baked';
 import { inPalette } from '../../src/engine/palette';
+import { SET as BIND_SET } from '../../src/game/content/art40/bind.gen';
+import { SET as TOURIST_SET } from '../../src/game/content/art40/hostage-tourist.gen';
 import type { Frame } from '../../src/engine/render';
 import { getFrames, listSprites, spriteAnim, spriteErrors } from '../../src/engine/sprites';
 import { stackFrames } from '../../src/game/art/humanoid';
@@ -377,7 +380,10 @@ describe('machines and demos', () => {
 
 describe('all art sprites', () => {
   it('generate without errors, fit in 128 px and use palette colours only', () => {
-    const ids = ART_PREFIXES.flatMap((p) => listSprites(p));
+    // The baked 40 px sets have their own per-character palettes (docs/design/ams40.md "Rules:
+    // colour design"; tests/art40/): the tied tourist, the camera flash and the binds.
+    const baked = new Set([...bakedSetIds(TOURIST_SET), ...bakedSetIds(BIND_SET)]);
+    const ids = ART_PREFIXES.flatMap((p) => listSprites(p)).filter((id) => !baked.has(id));
     expect(ids.length).toBeGreaterThan(120);
     for (const id of ids) {
       for (const f of getFrames(id)) {

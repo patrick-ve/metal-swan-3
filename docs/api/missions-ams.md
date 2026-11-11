@@ -19,6 +19,17 @@ cruise, hostages per route, secrets), `tests/content/boss-ams.test.ts`, `tests/c
 | `section-a.ts` … `section-d.ts`, `section-c1.ts`, `section-c2.ts` | each: `life(ctx)` (ambient life + landmark NPCs; a → `{ baker }`, b → `{ vendor }`), `script`, the `SectionDef` |
 | `cruise.ts`, `art-route.ts`, `art-hd-route*.ts`, `art-hd-bg-amstel.ts` | the canal cruise (c2): `ams-cruise-boat`, `ams-low-bridge`, `ams-magere-brug`, `ams-party-boat`, the route signs and the pontoon of c, the `ams-amstel` far bank layer; 1× and 2× / 4× art |
 | `secrets.ts`, `secrets.art.ts` | `ams-secret` and `AMS_SECRETS` (per section), `placeSecrets(ctx, id)`, `secretArt(id)`, `HIDDEN_TOURISTS` |
+| `canal/` | the canal scenes: `index.ts` (`amsCanal`, `gullOnLamp`, `LAMP_GULLS`), the generated `<section>.gen.ts` and `manifest.gen.ts` (`docs/api/canal.md`) |
+
+## Scenery: the canal scenes
+
+Since 2026-11-11 every section (a, b, c, c1, c2, d) draws its scenery as the canal paint kit's baked
+layer stack (`canal: amsCanal('<id>', …)` in each `section-*.ts`; the files in `public/art/ams/`;
+the API in `docs/api/canal.md`). Play is unchanged: terrain, spawns, scripts and sims are the same.
+The old scenery (background layers, the floor's look, decor, terrain art) stays defined in the
+sections and still draws with `?canal=0` (`npm run shot -- … --canal 0`), in headless tests and
+sims without a canal source (`setCanalSource`, default none in node), when a scene file fails to
+load (one `[canal]` warning), and always in `ams2` (it reuses these scripts without a scene).
 
 ## Section scripts
 

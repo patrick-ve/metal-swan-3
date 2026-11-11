@@ -13,9 +13,11 @@
  *
  * Night (oat-d, the proof strip 0–1,280): all wet; the clinkers near-black with the navy sky's sheen
  * on their domes; the lamps' baked light (spec §8.9): every light of `D_LIGHTS` lifts the brick in
- * its own ramp (warm lantern, pink and cyan neon) in a pool round its foot; litter, bottle glass,
- * gum. The streaks (on the water and the wet floor) are LIGHT-WATER's light pass: a streak runs down
- * the SCREEN toward the eye, which a world-space chunk cannot paint (it would converge).
+ * its own ramp (warm lantern, pink and cyan neon) in a pool round its foot, fading to the dark brick
+ * through an ordered-dither rim (2× / 4×); tinted glints on the wet domes in a short lobe toward the
+ * eye; the puddles mirror the light as a broken streak of its tint (the night sky elsewhere); litter,
+ * bottle glass, gum. The long streaks on the water are LIGHT-WATER's light pass: a streak runs down
+ * the SCREEN toward the eye, which a world-space chunk can paint only short (it would converge).
  *
  * Pure in (u, v), the density, the params and the seed (docs/api/floor.md §4): no screen
  * coordinate, no time, no global rng. Per texel: a stretch lookup, a band test, one brick function,
@@ -24,7 +26,7 @@
 import type { Color } from '../../../../../engine/color';
 import { defineFloorPainter, hasFloorPainter, type FloorPaintCtx } from '../../../../mission/floor/registry';
 import { bay, type Dn } from '../art/kit';
-import { sectionShade } from '../light/index';
+import { sectionShade, waterRipple } from '../light/index';
 import { defineWetness, wetnessOf } from './index';
 import {
   A_STRETCHES,
@@ -42,7 +44,7 @@ import {
   stretchAt,
   type Stretch,
 } from './layout';
-import { at, B, blocks, cellHash, dayMats, grainAt, herringbone, nightMats, slabs, stretcher, type Mat } from './mat';
+import { at, B, blocks, cellHash, dayMats, grainAt, herringbone, nightMats, slabs, stretcher, type Mat, type NightMats } from './mat';
 
 /** The painter id (docs/api/oat.md "Floor"). */
 export const OAT_STREET_PAINTER = 'oat-street';
@@ -87,6 +89,22 @@ export const D_LIGHTS: readonly FloorLight[] = [
   { u: 1150, depth: 15.5, h: 72, kind: 'lamp', r: 46, k: 0.9 },
   { u: 1250, depth: 15.5, h: 50, kind: 'pink', r: 26, k: 0.7 }, // the second BAR (pink)
 ];
+
+/** The pool's rim: below this strength the lit share fades through the ordered dither (spec §8.5). */
+const POOL_RIM = 0.12;
+/** Dash rows of a light's reflection per world px of v (rows of 2 px of v ≈ 1 logical px on screen). */
+const STREAK_ROWS = 0.5;
+
+/**
+ * The glint field's reach toward the eye, in pool v radii (short: a world-space lobe leans with the
+ * perspective, so it stays a lobe under the pool, never a long column).
+ */
+const GLINT_REACH = 2.4;
+
+/** The lit ladder of a light kind. */
+function ladOf(nm: NightMats, kind: FloorLight['kind']): readonly Color[] {
+  return kind === 'lamp' ? nm.lamp : kind === 'pink' ? nm.pink : kind === 'cyan' ? nm.cyan : nm.red;
+}
 
 // ------------------------------------------------------------------------------------ wetness (spec §8.10)
 
@@ -246,14 +264,14 @@ export function streetTexels(c: FloorPaintCtx): (u: number, v: number) => Color 
   let last: Stretch = list[0];
 
   /** A day texel of a material: tone t on the material's ladders, lit `lit`, wetness w, at art (X, Y). */
-  const dayTone = (m: Mat, t: number, lit: number, w: number, X: number, Y: number, joint: boolean): Color => {
+  const dayTone = (m: Mat, t: number, lit: number, w: number, X: number, Y: number, joint: boolean, jo = 0): Color => {
     // Ordered dither only in the transitions (the penumbra, the drying edge): spec §8.5.
     const sunny = lit + (bay(X, Y) - 0.5) * 0.4 > 0.5;
     const isWet = w + (bay(X + 3, Y + 5) - 0.5) * 0.3 > 0.5;
     if (joint) {
-      if (isWet && m.flatJoints) return at(m.jointWet, sunny ? 2 : 1);
+      if (isWet && m.flatJoints) return at(m.jointWet, (sunny ? 2 : 1) + jo);
       if (isWet) return at(day.sheen, 0.6 + (sunny ? 1.5 : 0.5) * cellHash(X >> 2, Y >> 2, 31));
-      return at(m.joint, (sunny ? 2.2 : 1) + (t - 6) * 0.15);
+      return at(m.joint, (sunny ? 2.2 : 1) + (t - 6) * 0.15 + jo);
     }
     const list2 = sunny ? (isWet ? m.sunWet : m.sun) : isWet ? m.shadeWet : m.shade;
     return at(list2, t);
@@ -294,9 +312,17 @@ export function streetTexels(c: FloorPaintCtx): (u: number, v: number) => Color 
       joint = B.joint === 1;
       t = (fine ? 1.4 : 1.6) + B.h * (stone === 1 ? 1.2 : 2.2) + B.edge * 0.7 + gr * 0.5;
       if (B.h2 < 0.04 && stone === 0) t -= 1.2; // a sunken brick
-      // The lights: the strongest pool or streak here.
+      // The lights: the strongest pool here; the strongest reflection (the light's streak toward the eye
+      // in the puddles, spec §8.8, §8.10: world-anchored dashes broken by row gaps); and the strongest
+      // glint (the wet domes catching the light in a lobe from its foot toward the eye). A long column
+      // on the brick itself would converge with the perspective (a world chunk cannot paint a screen
+      // vertical), so the brick only glints near the pool and the puddles carry the streak.
       let best = 0;
       let kind: FloorLight['kind'] = 'lamp';
+      let refl = 0;
+      let rkind: FloorLight['kind'] = 'lamp';
+      let glint = 0;
+      let gkind: FloorLight['kind'] = 'lamp';
       const bucket = lightB[Math.max(0, Math.min(nb - 1, Math.floor(u / 64)))];
       for (let i = 0; i < bucket.length; i++) {
         const L = bucket[i];
@@ -309,16 +335,63 @@ export function streetTexels(c: FloorPaintCtx): (u: number, v: number) => Color 
           best = q;
           kind = L.kind;
         }
+        // The glint field: round the pool, drawn out toward the eye (the wet brick's specular lobe).
+        const gv = dv / (v > v0 ? GLINT_REACH : 1.3);
+        const gu = du / 0.8;
+        const gq = 1 - (gu * gu + gv * gv);
+        if (gq * L.k > glint) {
+          glint = gq * L.k;
+          gkind = L.kind;
+        }
+        const f = (v - v0) / (vDCop1 - v0);
+        if (f <= 0.05 || f >= 1) continue;
+        const row = Math.floor(v * STREAK_ROWS);
+        const hr = cellHash(row, L.u, seed + 71);
+        if (hr < 0.26) continue; // a gap in the column
+        const sway = (cellHash(row, L.u, seed + 72) - 0.5) * (0.8 + 2.2 * f);
+        const x = Math.abs(u - L.u - sway) / (1.1 + 3.4 * f);
+        if (x < 1) {
+          const r = L.k * (1 - x * x) * (0.45 + 0.4 * f) * (0.7 + 0.3 * hr);
+          if (r > refl) {
+            refl = r;
+            rkind = L.kind;
+          }
+        }
       }
       const w = wet(u, v);
-      if (best > 0.08) {
-        const lad = kind === 'lamp' ? nm.lamp : kind === 'pink' ? nm.pink : kind === 'cyan' ? nm.cyan : nm.red;
-        if (w >= 0.98 && kind === 'lamp') return at(lad, lad.length - 1 - (1 - best) * 3);
+      // Ordered dither (world-anchored art px) at 2× / 4×; none at 1× (a cut: only tone, spec §8.10).
+      const dz = fine ? bay(X, Y) - 0.5 : 0;
+      if (w >= 0.98) {
+        // A puddle: a flat mirror (spec §8.10). The light's streak in its tint, brightest on its axis and
+        // broken by the ripple's troughs; the pool's glow mirrored round it; elsewhere the night sky (the
+        // wet black in the troughs, the navy on the crests).
+        const rip = fine ? waterRipple(u, v, 0.5) : 0;
+        const pr = best * 0.55 > glint * 0.35 ? best * 0.55 : glint * 0.35;
+        const g = refl * 1.25 > pr ? refl * 1.25 : pr;
+        if (g > 0.05 && rip > -0.45) {
+          const lad = ladOf(nm, refl * 1.25 > pr ? rkind : best * 0.55 > glint * 0.35 ? kind : gkind);
+          const k = g * (lad.length - 1) * (0.85 + 0.25 * rip) + dz * 0.9;
+          if (k >= 0.5) return at(lad, k);
+        }
+        return at(nm.mirror, 3 + rip * 2.2 + dz * 0.9);
+      }
+      // The glints: the sheen side of every other brick takes the light's tint, in the pool and in a lobe
+      // toward the eye; weaker than in the puddles and on the water (2× / 4×; gk 0: no glint here).
+      const gk = fine && !joint && stone !== 1 && glint > 0.04 && B.across > 0.45 && B.h2 > 0.3 ? glint * (0.3 + 0.9 * (B.across - 0.45)) : 0;
+      // The pool: its ramp runs down to the dark brick at its rim through an ordered-dither band (2× / 4×;
+      // the lit share grows from 0 at best 0 to all at POOL_RIM), a cut at half the rim at 1×.
+      if (best > 0 && best / POOL_RIM + dz > 0.5) {
+        const lad = ladOf(nm, kind);
         if (joint) return at(lad, best * 2);
         const k = best * (lad.length - 1) * (0.75 + 0.35 * B.across) + gr * 0.8 + B.edge * 0.4;
-        return at(lad, k);
+        const k2 = gk * (lad.length - 1) + dz * 0.9;
+        return at(lad, k2 > k ? k2 : k);
       }
-      if (w >= 0.98) return at(nm.sheen, 1 + gr + B.across);
+      if (gk > 0) {
+        const lad = ladOf(nm, gkind);
+        const k = gk * (lad.length - 1) + dz * 0.9;
+        if (k >= 1) return at(lad, k);
+      }
       if (joint) return at(nm.joint, B.h2 * 2);
       // Wear at night: litter, gum, bottle glass on the quay (≥ 12 per 256 px).
       if (wear && fine && stone !== 1) {
@@ -446,9 +519,15 @@ export function streetTexels(c: FloorPaintCtx): (u: number, v: number) => Color 
           if (Math.abs(dx) < 1.2 && Math.abs(dy) < 0.8) return day.paper[lit > 0.5 ? (dy < 0 ? 2 : 1) : dy < 0 ? 1 : 0];
           break;
         case OIL: {
+          // A dark warm grey-brown stain (core, body, rim); on wet brick a sheen of 1–2 art px along the
+          // rim's sky side (spec §8.10: real dirt, not a coloured blob).
           const r = 2.2 + h4 * 1.6;
           const q = (dx * dx) / (r * r) + (dy * dy) / (r * r * 0.5);
-          if (q < 1) return q < 0.35 && fine ? day.oil[2] : day.oil[q < 0.7 ? 0 : 1];
+          if (q < 1) {
+            const rr = Math.sqrt(q) * r;
+            if (fine && w > 0.5 && dy < 0 && dx < r * 0.3 && Math.abs(rr - r * 0.62) < 0.75 / d) return day.oil[3];
+            return day.oil[q < 0.3 ? 0 : q < 0.7 ? 1 : 2];
+          }
           break;
         }
         case TYRE:
@@ -466,6 +545,13 @@ export function streetTexels(c: FloorPaintCtx): (u: number, v: number) => Color 
         const bar = Math.floor((u - Math.floor(u / 0.8) * 0.8) * 2.5) === 0;
         return day.iron[bar ? 3 : g > 0.7 ? 0 : 1];
       }
+    }
+    // The tiles' joints: warm, recessed and uneven (spec §8.5): per run of joint a tone of its own, some
+    // runs silted up with grit to almost the tile's tone, some open and dark.
+    if (joint && band === 'tile') {
+      const jh = cellHash(Math.floor(u / 2), Math.floor(v / 2), seed + 57);
+      if (jh > 0.82) return dayTone(m, t - 1.4, lit, w, X, Y, false);
+      return dayTone(m, t, lit, w, X, Y, true, 0.3 + (jh - 0.4) * 1.2 + (B.h - 0.5) * 0.6);
     }
     return dayTone(m, t, lit, w, X, Y, joint);
   };

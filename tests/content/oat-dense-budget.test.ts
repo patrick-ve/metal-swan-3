@@ -80,19 +80,24 @@ describe('oat tier-4 working set', () => {
     expect(over).toEqual([]);
   });
 
-  it('2P: hero pairs in every section fit DENSE_BUDGET_BYTES with the reserve', () => {
+  it('2P: every hero pair in every section fits DENSE_BUDGET_BYTES with the reserve', () => {
     const m = getMission(OAT_ID)!;
     const order = Object.keys(m.sections);
     const over: string[] = [];
+    let pairs = 0;
     for (let i = 0; i < ROSTER.length; i++) {
-      const pair = [ROSTER[i], ROSTER[(i + 1) % ROSTER.length]];
-      for (const s of order) {
-        const set = denseWorkingSet(m, pair.map((h) => `char/${h}/`), s, nextSections(m, order, s, order.indexOf(s)), 2);
-        const b = bytes(set) + OAT_SCENERY_RESERVE;
-        note(2, b, `${pair.join('+')} ${s}`);
-        if (b > DENSE_BUDGET_BYTES - MARGIN) over.push(`${pair.join('+')} ${s} ${MB(b)} MB`);
+      for (let j = i + 1; j < ROSTER.length; j++) {
+        const pair = [ROSTER[i], ROSTER[j]];
+        pairs++;
+        for (const s of order) {
+          const set = denseWorkingSet(m, pair.map((h) => `char/${h}/`), s, nextSections(m, order, s, order.indexOf(s)), 2);
+          const b = bytes(set) + OAT_SCENERY_RESERVE;
+          note(2, b, `${pair.join('+')} ${s}`);
+          if (b > DENSE_BUDGET_BYTES - MARGIN) over.push(`${pair.join('+')} ${s} ${MB(b)} MB`);
+        }
       }
     }
+    expect(pairs).toBe((ROSTER.length * (ROSTER.length - 1)) / 2);
     expect(over).toEqual([]);
   });
 

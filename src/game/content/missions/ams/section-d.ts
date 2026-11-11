@@ -14,6 +14,7 @@ import type { ScriptGen } from '../../../../engine/script';
 import { Boss } from '../../../boss';
 import type { BackgroundDef, DecorDef, SectionContext, SectionDef } from '../../../mission/index';
 import { HOUSE, houseRow } from './art';
+import { amsCanal } from './canal/index';
 import { AmsPerson } from './entities';
 import { at, crate, fromRight, normalUp, prewarm, waitBoss } from './helpers';
 import { placeSecrets, secretArt } from './secrets';
@@ -178,6 +179,10 @@ export const sectionD: SectionDef = {
   decor,
   // The perspective floor (docs/design/floor.md §12; its builder's folder floor/d/; off until its switch is on).
   floor: dFloor(decor),
+  // The canal scene (docs/api/canal.md): the kit's baked stack draws the scenery in place of the
+  // background, the floor's look, the decor and the terrain art above (kept for `?canal=0`). The gull
+  // at 820 sits on the kit's walk-plane lamp (depth 0, as in the game): no depth rule.
+  canal: amsCanal('d', undefined, { hideFaces: ['ams-market-stall', 'ams-bike-rack'] }),   // the kit paints these whole: no old-look floor faces beside them
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.
   art: [...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-bike-rack', 'decor/ams/ams-market-stall', ...secretArt('d')],

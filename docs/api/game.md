@@ -11,6 +11,7 @@ Everything here is pure TypeScript (no DOM) except `src/main.ts`: it runs headle
 - [sound-ui.md](sound-ui.md) — songs (ids, lengths, loops), sound effects for missions and bosses, HUD calls, mission cards and the tally.
 - [arsenal.md](arsenal.md) — weapons, fx ids, items and hostages (details in [items.md](items.md)), the 15 shared props, the 7 creatures.
 - [legion.md](legion.md) — the Fanfare Legion: 8 infantry types, machines, support entities (`rowboat`, `tank-barge`, `subway-train`, `parade-float`, `drum-barricade`) and their projectiles.
+- [ams2.md](ams2.md) — mission `ams2`, level 1 with new scenery: access, the additive hooks (`SectionDef.paintedFloor`, `spriteOverrides`, `DecorDef.moveX`, `animStep`, `MissionDef.standalone`, `seedAs`), the rules its tests hold.
 
 ```
 src/game/

@@ -17,6 +17,7 @@ import type { BackgroundDef, DecorDef, SectionContext, SectionDef } from '../../
 import { PAL } from '../../../../engine/palette';
 import { hasEntity } from '../../../registry';
 import { boatDecor, waterDecor } from './art';
+import { amsCanal, gullOnLamp } from './canal/index';
 import { AmsCruiseBoat, AmsMagereBrug, AmsPartyBoat, CRUISE, cruiseBoatOf, LOW_BRIDGE, MAGERE_BRUG } from './cruise';
 import { carillon, fromRight, hostage, normalUp, prewarm, STAG_LOOKS, stagArt } from './helpers';
 import { placeSecrets, secretArt } from './secrets';
@@ -251,6 +252,15 @@ export const sectionC2: SectionDef = {
   decor,
   // The perspective floor (docs/design/floor.md §12; its builder's folder floor/c2/; off until its switch is on).
   floor: c2Floor(decor),
+  // The canal scene (docs/api/canal.md; the kit's tmp/l1/kit/l1c2.py): the cruise boat and the Magere Brug's bascule
+  // show the kit's paintings; the kit paints the boat's, the low bridges' and the closed bascule's decks in depth (their
+  // faces left out; the closed deck's layers 'mb…' go when the bascule lifts, its faces then draw the leaves); a gull
+  // on a portal's top beam is drawn at the beam's depth (C2_PORTAL_TOP: the near beam's top at y 40, depth 10).
+  canal: amsCanal('c2', undefined, {
+    hideFaces: { 'ams-cruise-boat': true, 'ams-low-bridge': true, 'ams-magere-brug': (e) => (e as AmsMagereBrug).state === 'closed' },
+    show: { mb: (w) => w.byTag('magere-brug').every((e) => (e as AmsMagereBrug).state === 'closed') },
+    depth: { seagull: gullOnLamp(C2_PORTAL_TOP, 10) },
+  }),
   // Tier 4: the decor this section draws and what its script spawns (the boats, the bridges).
   // The stag party on its boat (docs/api/stag.md §5; no beer bike on the water) and the secret.
   art: [...new Set(decor.map((d) => d.sprite)), 'decor/ams/ams-cruise-boat', 'decor/ams/magere-brug', 'decor/ams/ams-boat-platform', ...stagArt(STAG_LOOKS, { groom: true }), ...secretArt('c2')],

@@ -1,7 +1,7 @@
 import type { Color } from './color';
 import { WHITE } from './color';
 import type { PixelBuffer } from './pixel';
-import type { DrawOpts } from './render';
+import type { DrawOpts, RowsDraw } from './render';
 import { upscaleFactor, type UpscaleMode } from './upscale';
 
 /**
@@ -198,6 +198,17 @@ const lowResSource = new WeakMap<PixelBuffer, PixelBuffer>();
 /** The source of `buf` when it is a `lowRes` reduction, else `buf`. */
 export function reductionSource(buf: PixelBuffer): PixelBuffer {
   return lowResSource.get(buf) ?? buf;
+}
+
+/**
+ * `Renderer.rows`: how far row j of the image moves left (backbuffer px) at res k — the kit's maths
+ * in its float order (docs/api/canal.md §3), then the period and the wrap.
+ */
+export function rowShift(o: RowsDraw, j: number, k: number): number {
+  const s = o.s0 + ((o.s1 - o.s0) * (o.j0 + j)) / Math.max(o.rows - 1, 1);
+  let sh = Math.floor((o.cam * s + o.add) * k);
+  if (o.period > 0) sh = ((sh % o.period) + o.period) % o.period;
+  return sh - o.wrap;
 }
 
 /** A coordinate in backbuffer px: whole logical px times k, or snapped to 1/k when `fine`. */

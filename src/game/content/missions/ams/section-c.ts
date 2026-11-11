@@ -20,6 +20,7 @@ import { boatDecor, HOUSE, houseRow, waterDecor } from './art';
 import { C_ARENA, C_BASIN, C_BASIN_Y, C_BOATS, C_CANAL, C_DECK_Y, C_PONTOON_Y, C_RAMP, C_STEPS_X, C_W, DECK_Y, G, ROOF_Y, terrainC } from './terrain';
 import { C_DECK_DEPTH, C_STAIR_FAR, C_TOUR_DEPTH, C_TOUR_X, cFloor, cFloorDecor } from './floor/c/index';
 import { BULB_FRONT_DECOR, FACADE, HOUSE_FRONT_ROW, HOUSE_PAVEMENT, QUAY_PAVEMENT } from './floor/index';
+import { amsCanal, gullOnLamp } from './canal/index';
 
 export const BG_GOLDEN: BackgroundDef = {
   sky: PAL.sky[2],
@@ -212,6 +213,12 @@ export function* script(ctx: SectionContext): ScriptGen {
   openFork(ctx);
 }
 
+/**
+ * The canal scene's gull rule (docs/api/canal.md §9): the gull on the kerbside lamp at 2000 is drawn
+ * at the kit lamp's depth; the lamp at 520 stands on the quay-head square at depth 0 (its gull too).
+ */
+const kerbLampGull = gullOnLamp();
+
 export const sectionC: SectionDef = {
   id: 'c',
   name: 'Amstel',
@@ -224,6 +231,8 @@ export const sectionC: SectionDef = {
   decor,
   // The perspective floor (docs/design/floor.md §12; its builder's folder floor/c/; off until its switch is on).
   floor: cFloor(decor),
+  // The canal scene (docs/api/canal.md; `?canal=0` draws the scenery above).
+  canal: amsCanal('c', undefined, { depth: { seagull: (e) => (e.x > 1200 ? kerbLampGull(e) : 0) } }),
   // Tier 4: the fatbike pairs ride in b and c only (the solo sets are in the mission's preloadFirst).
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.

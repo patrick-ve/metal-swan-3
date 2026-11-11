@@ -84,6 +84,8 @@ interface BudgetWorld {
   readonly courtage: CourtageState;
   wired: boolean;
   seq: number;
+  /** The enemy `claimKill` settled in this tick: its own `killed` event must not claim a second award. */
+  claimed: Entity | null;
 }
 
 const worlds = new WeakMap<World, BudgetWorld>();
@@ -102,6 +104,7 @@ function stateOf(world: World): BudgetWorld {
       courtage: { rate: 0, pile: [0, 0] },
       wired: false,
       seq: 0,
+      claimed: null,
     };
     worlds.set(world, s);
   }
@@ -235,6 +238,8 @@ function newest(world: World, slot: number, points?: number): PendingAward | nul
 
 /** `enemyKilled`: the kill's own award pays its row (×2 for a knife kill of a soft enemy: `CONTANT`). */
 export function claimKill(world: World, enemy: Entity, damage: Damage, points: number, player: number): void {
+  // The world's `killed` for this enemy follows in the same tick: it is this kill, not a prop's.
+  stateOf(world).claimed = enemy;
   const p = newest(world, player, points);
   if (!p) return;
   const knifeSoft = damage.kind === 'knife' && (enemy as Entity & { soft?: boolean }).soft === true;
@@ -257,6 +262,7 @@ export function claimKilled(world: World, target: Entity, damage: Damage): void 
   }
   const owner = damage.owner;
   if (owner !== 0 && owner !== 1) return;
+  if (target === stateOf(world).claimed) return;
   const boss = target.hasTag('boss');
   if (!boss && !hasEuroRow(target.type) && !target.hasTag('prop') && !target.hasTag('crate')) return;
   const p = newest(world, owner);
@@ -292,6 +298,7 @@ export function claimCallout(world: World, text: string): string {
 export function flushAwards(world: World): void {
   const st = worlds.get(world);
   if (!st) return;
+  st.claimed = null;
   for (const p of st.pending) if (p.live) settle(world, p, pointsToCents(p.points), 'other');
 }
 

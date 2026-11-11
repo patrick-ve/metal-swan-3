@@ -2931,7 +2931,7 @@ stay `easy` / `normal` / `hard`.
 > `docs/design/squad.md` §3.4 and built in `scenes/character-select.ts`: a riveted rust-brown
 > steel frame, five panels with shutters, grey portraits that turn to colour when highlighted, P1
 > (red) / P2 (blue) lamps, nameplates, the callsign and bio in the highlighted panel, a sprite
-> preview window on the dropped shutter, `STAND BY` / `READY!` and a 20-second countdown. The
+> preview window on the dropped shutter, `STAND BY` / `READY!` and a 60-second countdown (20 until 2026-11-04). The
 > text below is the original design, kept for reference.
 
 - Title (big, C, y 12): `CHOOSE YOUR CYGNET`. Timer (big, right-aligned at (376, 12)): `20`

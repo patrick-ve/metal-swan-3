@@ -11,6 +11,7 @@
  * wave C.
  */
 import type { ScriptGen } from '../../../../engine/script';
+import { crossFadeLight } from '../../../mission/light/api';
 import type { SectionContext, SectionDef } from '../../../mission/index';
 import { lockedFight, placeBanner, standInWave } from './helpers';
 import { OAT_D_DECOR } from './art/place-d';
@@ -22,8 +23,17 @@ import { G, OAT_D, terrainD } from './terrain';
 
 export const OAT_D_EXIT = 'oat-d-end';
 
-/** De Huisjesmelker's arena (stand-in: a lock with a wave; HUISJESMELKER, wave C). */
+/**
+ * De Huisjesmelker's arena (stand-in: a lock with a wave; HUISJESMELKER, wave C). The 03:00 switch
+ * (spec §6.9) starts once the arena lock holds: then every chunk on screen has its dark bake
+ * (facade/rows.ts `OAT_D_DARK`). The stand-in only cross-fades the bakes; NIGHT (wave C) adds the
+ * lamp groups, the darkness and the tower's floodlight.
+ */
 function* huisjesmelkerArena(ctx: SectionContext): ScriptGen {
+  yield ctx.waitCamera(OAT_D.arena[0] - 8);
+  ctx.lockCamera(OAT_D.arena[0], OAT_D.arena[1]);
+  yield ctx.waitCamera(OAT_D.arena[0] - 0.5);
+  crossFadeLight(ctx.world, 'dark');
   yield* lockedFight(ctx, OAT_D.arena[0], OAT_D.arena[1], 'oat-d-arena', 5, true);
   ctx.enableExit(OAT_D_EXIT);
   ctx.showGo();
@@ -41,7 +51,7 @@ export function* scriptD(ctx: SectionContext): ScriptGen {
   yield* lockedFight(ctx, OAT_D.bridgeLock[0], OAT_D.bridgeLock[1], 'oat-d-bridge', 4);
   yield ctx.waitCamera(OAT_D.voorburgwal[0]);
   yield* standInWave(ctx, 'oat-d-voor', 3);
-  // 03:00 (spec §6.9): the carillon strikes three, the neon goes out (NIGHT, LIGHT-WATER).
+  // 03:00 (spec §6.9): the carillon strikes three; the neon goes out once the arena lock holds.
   yield ctx.waitCamera(OAT_D.threeX - 192);
   ctx.callout('03:00');
   yield* huisjesmelkerArena(ctx);

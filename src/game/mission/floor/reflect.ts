@@ -164,8 +164,14 @@ export class WaterReflections {
         const xb0 = FLOOR_CX + (band.u0 - camX - FLOOR_CX) * s;
         const xb1 = FLOOR_CX + (band.u1 - camX - FLOOR_CX) * s;
         if (sx < xb0 || sx >= xb1) continue;
-        const idx = (((Math.floor(top * 0.5 + tick * speed) % RIPPLE_N) + RIPPLE_N) % RIPPLE_N) | 0;
-        const off = RIPPLE[idx] * amp * (0.25 + 0.75 * t);
+        // The ripple table read between its entries (a slow `speed` would otherwise hold a slice
+        // still for 8–9 ticks and then jump: a 7 fps ripple).
+        const f = top * 0.5 + tick * speed;
+        const fi = Math.floor(f);
+        const idx = ((fi % RIPPLE_N) + RIPPLE_N) % RIPPLE_N;
+        const r0 = RIPPLE[idx];
+        const rip = r0 + (RIPPLE[(idx + 1) % RIPPLE_N] - r0) * (f - fi);
+        const off = rip * amp * (0.25 + 0.75 * t);
         src.y = k < 0 ? 0 : k;
         src.h = k < 0 ? SLICE + k : SLICE;
         o.alpha = a0 + (a1 - a0) * t;

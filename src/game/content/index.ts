@@ -133,6 +133,9 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   // `sfx/oat…`, `samples/oat`): every id `isOatContent` accepts is lazy. Its card is not lazy
   // (content/ui/cards.ts `OAT_CARD`).
   'missions/oat': () => import('./missions/oat/index'),
+  // Mission `ams2` (docs/design/ams2.md): level 1 again in the hero method, LAZY and stand-alone:
+  // only a direct `?mission=ams2` boot, the art workers and the node tools load it (`isAms2Content`).
+  'missions/ams2': () => import('./missions/ams2/index'),
   // Wave A (INTEGRATE-A): the budget pieces (BUDGET: the statiegeld bin, its cans, DE HAVERBAR) and the
   // day-to-night score, the sfx and the sample group 'mission:oat' (AUDIO).
   'oat/budget': () => import('./oat/budget/index'),
@@ -146,7 +149,12 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
  * (`rally`, `rally/…`) and mission `oat` (`isOatContent`).
  */
 export function isLazyContent(id: string): boolean {
-  return isFpsContent(id) || isRallyContent(id) || isOatContent(id);
+  return isFpsContent(id) || isRallyContent(id) || isOatContent(id) || isAms2Content(id);
+}
+
+/** Mission `ams2`'s lazy entry (the boot's direct start, the art workers, the node tools). */
+export function isAms2Content(id: string): boolean {
+  return id === 'missions/ams2' || id.startsWith('missions/ams2/');
 }
 
 /**

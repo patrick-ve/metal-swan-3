@@ -17,6 +17,7 @@ import type { BannerOpts, CalloutOpts, GoDir, HudState } from '../context';
 import type { Player } from '../player/player';
 import type { SpawnParams } from '../registry';
 import type { CampaignRecords, GameSession } from '../session';
+import type { CanalDef } from './canal/types';
 import type { FloorDef } from './floor/types';
 import type { SectionStripsDef } from './strips/types';
 
@@ -53,6 +54,21 @@ export interface DecorDef {
    * it, so the flat view stays as it was before the floor. Art only.
    */
   floorOnly?: boolean;
+  /**
+   * OPT-IN (mission `ams2`, docs/design/ams2-contract.md): `animate` moves this many frames per step
+   * (default 1): a strip of `animStep` tiles per animation frame keeps its tile while it animates.
+   */
+  animStep?: number;
+  /** OPT-IN (mission `ams2`): `animate` counts from tick + this, so that items do not all step in the same tick. */
+  animPhase?: number;
+  /**
+   * OPT-IN (mission `ams2`): a small far mover (a far cyclist, a tour boat, birds) with no entity and
+   * no effect on any sim: the item slides `moveX` px per tick along x, wrapping over `moveSpan` px,
+   * from `moveFrom` (default 0) on top of its `x`. Art only.
+   */
+  moveX?: number;
+  moveSpan?: number;
+  moveFrom?: number;
 }
 
 export type TransitionKind = 'fade' | 'cut';
@@ -157,6 +173,27 @@ export interface SectionDef {
    * sims never read it). Without it the section draws exactly as before.
    */
   strips?: SectionStripsDef;
+  /**
+   * OPT-IN (mission `ams`, docs/api/canal.md): the section's scenery is a baked canal scene (the kit's
+   * layer stack, loaded from image files per art tier): it draws in place of the background layers,
+   * the floor's surface / faces / tops / overhangs / rows, the decor and the terrain art; the entities
+   * and the floor's entity passes draw as before. `?canal=0` (or a missing file) draws the old scenery.
+   * Art only (the sims never read it). Without it the section draws exactly as before.
+   */
+  canal?: CanalDef;
+  /**
+   * OPT-IN (mission `ams2`, docs/design/ams2-contract.md): the section paints its own floor as sprites
+   * (no `floor`, no mesh). `true`: the terrain painter draws no ground cells and no pit shafts,
+   * platforms and solids still draw. `'all'`: it draws nothing at all (every platform and solid has
+   * its own sprite). Art only (the sims never read it). Without it the section draws as before.
+   */
+  paintedFloor?: boolean | 'all';
+  /**
+   * OPT-IN (mission `ams2`, docs/design/ams2-contract.md): while this section DRAWS, these sprite ids
+   * show another id's frames (engine/sprites.ts `setSpriteOverrides`), so shared entities draw a twin
+   * in this section's light without a copy of their code. Game logic never sees it. Default: none.
+   */
+  spriteOverrides?: ReadonlyMap<string, string>;
 }
 
 export type SectionScript = (ctx: SectionContext) => ScriptGen;
@@ -252,6 +289,17 @@ export interface MissionDef {
    * (scenes/receipt-tally.ts); default (undefined) = the newspaper (MissionCompleteScene), as before.
    */
   tally?: 'receipt';
+  /**
+   * OPT-IN (mission `ams2`, docs/design/ams2.md §0 #9): a mission that stands alone. It is never an
+   * implicit next mission, it has no next mission itself, and after its tally the game returns to the
+   * title. Default off.
+   */
+  standalone?: boolean;
+  /**
+   * OPT-IN (mission `ams2`): section seeds are made from this mission id instead of `id`, so a twin
+   * of a mission plays exactly as its original at the same seed. Default: `id`.
+   */
+  seedAs?: string;
 }
 
 export interface SpawnGroupOpts {

@@ -124,6 +124,41 @@ export interface ParallaxOpts {
 }
 
 /**
+ * A texture a caller owns (the canal scenery, docs/api/canal.md): made once from a buffer
+ * (`canvasTexture`, render-canvas.browser.ts), outside every renderer cache; the caller drops it.
+ * Only the renderer that made it can draw it (`Renderer.rows`); the software renderer draws buffers.
+ */
+export interface RowsTexture {
+  readonly w: number;
+  readonly h: number;
+  readonly tex: unknown;
+}
+
+/**
+ * How `Renderer.rows` places the rows of an image (the canal scenery's layer kinds, docs/api/canal.md
+ * §3). Row j of the image is layer row `j0 + j` of a layer of `rows` rows (rows at the image's
+ * density d). It moves left by
+ *   sh_j = floor((cam · s_j + add) · res),  s_j = s0 + ((s1 − s0) · (j0 + j)) / max(rows − 1, 1)
+ * backbuffer px (then `sh_j mod period` when `period` > 0), and right by `wrap` backbuffer px. The
+ * float order is the kit's (`compose_level`): at an integer camera and res = d the picture is the
+ * kit's frame exactly. s0 = s1: one speed (no shear).
+ */
+export interface RowsDraw {
+  rows: number;
+  j0: number;
+  s0: number;
+  s1: number;
+  /** The camera x (logical px): the renderer's `camX`. */
+  cam: number;
+  /** Logical px added before the snap (a drifting layer's drift · seconds), else 0. */
+  add: number;
+  /** Backbuffer px period of the shift (a wrapping layer's width at this res), else 0. */
+  period: number;
+  /** Whole backbuffer px added to x (a wrapping layer's second copy: `period`), else 0. */
+  wrap: number;
+}
+
+/**
  * Every renderer draws the logical 384 × 216 view (all coordinates below are logical pixels) into
  * a backbuffer `res` times larger (docs/ARCHITECTURE.md §3). At res 1 this is the classic
  * pixel-exact image. At res k:
@@ -192,6 +227,21 @@ export interface Renderer {
    * renderer always draws the placeholder. Renderers without it simply skip the 3D view.
    */
   surface?(src: unknown, x: number, y: number, w: number, h: number): void;
+  /**
+   * The canal scenery (docs/api/canal.md; additive, optional): an image of density d (buffer px per
+   * logical px), SCREEN space, its top-left at logical (x, y) before the shift, every row moved by
+   * `o` (`RowsDraw`), nearest-neighbour, opaque pixels only (alpha 0 / 255). A sheared image is ONE
+   * draw: the canvas renderer uses a transform with an x shear (via a scratch strip at res ≠ d, so
+   * every image row stays one rigid row); the software renderer copies row by row (the reference).
+   * `img` is a buffer, or a `RowsTexture` of this renderer. Renderers without it skip the scenery.
+   */
+  rows?(img: PixelBuffer | RowsTexture, d: number, x: number, y: number, o: RowsDraw): void;
+  /**
+   * The end of a group of `rows` calls (one canal layer): a renderer that batches sheared rows (the
+   * canvas renderer's scratch strip at res ≠ d) draws them now. Call it after each layer; `end()`
+   * draws what is pending too. Optional (the software renderer draws every call at once).
+   */
+  rowsEnd?(): void;
 }
 
 /** The placeholder colours of `Renderer.surface` (sky above, road below the middle). */

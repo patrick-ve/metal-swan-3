@@ -8,8 +8,8 @@
  * Every HD frame keeps the 1× geometry (size × d, anchor, points; no px cut outside the 1× box),
  * uses PAL_HD only, is new art (not the 1× or 2× frame scaled up), and consecutive frames of the
  * ams strips never repeat at 4×. The tourist's and Mrs. Dollop's blush is warm (not their teal
- * accent), the pigeons' wings fan out in flight. (The hot-dog vendor is a baked 40 px set now:
- * tests/art40/ams-hotdog-vendor.test.ts.)
+ * accent). (The hot-dog vendor, the pigeons and the ducks are baked 40 px sets now:
+ * tests/art40/ams-hotdog-vendor.test.ts, ams-pigeons.test.ts, ams-ducks.test.ts.)
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PAL_HD, inHdPalette } from '../../src/engine/palette-hd';
@@ -20,14 +20,11 @@ import '../../src/game/content/weapons/index';
 import '../../src/game/content/items/index';
 import '../../src/game/content/items/art';
 import '../../src/game/content/props/index';
-import { HD4_KINDS } from '../../src/game/content/items/hostage.art';
 import { duplicateFrames } from '../art/motion';
 
 /** Ids with 2× and 4× art (what the ams flow shows). */
 const AMS = (id: string): boolean =>
-  id.startsWith('npc/ams/') ||
-  HD4_KINDS.some((k) => id.startsWith(`item/hostage/${k}/`)) ||
-  ['item/hostage/flash', 'item/bind/chair-break', 'item/bind/sack-off', 'item/bind/rope-bit'].includes(id);
+  id.startsWith('npc/ams/');
 
 let warn: { mock: { calls: unknown[][] }; mockRestore: () => void };
 let ids: string[] = [];
@@ -44,6 +41,11 @@ beforeAll(async () => {
   ids = ids.filter((id) => !id.startsWith('npc/ams/ams-hotdog-vendor/'));
   // the window waver and the cat: a baked 40 px set, 1x at every tier (tests/art40/ams-window-waver.test.ts)
   ids = ids.filter((id) => !id.startsWith('npc/ams/ams-window-waver/'));
+  // the pigeons and the ducks: baked 40 px sets, 1x at every tier (tests/art40/ams-pigeons.test.ts, ams-ducks.test.ts)
+  ids = ids.filter((id) => !/^npc\/ams\/ams-(pigeons|ducks)(\/|$)/.test(id));
+  // the tied tourist, the camera flash and every bind: baked 40 px sets, 1x at every tier
+  // (tests/art40/hostage-tourist.test.ts, bind.test.ts)
+  ids = ids.filter((id) => !id.startsWith('item/hostage/tourist/') && id !== 'item/hostage/flash' && !id.startsWith('item/bind/'));
 });
 afterAll(() => warn.mockRestore());
 
@@ -51,7 +53,7 @@ const same = (a: PixelBuffer, b: PixelBuffer): boolean => a.w === b.w && a.h ===
 
 describe('people: UHD art', () => {
   it('every id has HD art (2× and 4× for the ams flow, 2× for the rest) with the 1× geometry, PAL_HD only, nothing cut', () => {
-    expect(ids.length).toBeGreaterThan(100); // was 150: the baked 40 px people (crew, ...) left the list
+    expect(ids.length).toBeGreaterThan(70); // was 150: the baked 40 px people (crew, ..., the tourist and the binds: 84 left) left the list
     let four = 0;
     for (const id of ids) {
       expect(hasHiSprite(id, 2), `${id}@2x`).toBe(true);
@@ -70,7 +72,7 @@ describe('people: UHD art', () => {
         }
       }
     }
-    expect(four).toBeGreaterThan(20); // was 70: the baked 40 px people (crew, baker, vendor, window waver) draw 1x at every tier
+    expect(four).toBeGreaterThan(3); // was 70: the baked 40 px people (crew, baker, vendor, window waver, the tourist, the binds) draw 1x at every tier
     const mine = (e: string): boolean => ids.some((id) => e === `${id}@2x` || e === `${id}@4x`);
     expect(spriteErrors().filter((e) => mine(e.id))).toEqual([]);
     const cut = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('outside the 1× frame') && ids.some((id) => m.includes(`"${id}"`)));
@@ -94,13 +96,13 @@ describe('people: UHD art', () => {
   });
 
   it('the ams strips never repeat a frame at 4× (motion gate)', () => {
-    // The duck paddle holds two 4-frame cycles; `cheer` loops the shared P.VICTORY keys, whose last pose is its first.
-    const skip = (x: string): boolean => x === 'npc/ams/ams-ducks/paddle' || x.endsWith('/cheer');
+    // `cheer` loops the shared P.VICTORY keys, whose last pose is its first.
+    const skip = (x: string): boolean => x.endsWith('/cheer');
     for (const id of ids.filter((x) => AMS(x) && !skip(x) && getFrames(x, 1).length > 1)) expect(duplicateFrames(id, 4), `${id}@4x`).toEqual([]);
   });
 
-  it('the tourist and Mrs. Dollop blush warm at 2× and 4× (no teal accent on the face; Dollop keeps her teal collar)', () => {
-    for (const id of ['item/hostage/tourist/gag', 'item/hostage/tourist/walk', 'item/hostage/dollop/walk', 'item/hostage/dollop/gag']) {
+  it('Mrs. Dollop blushes warm at 2× (no teal accent on the face; she keeps her teal collar; the tourist is a baked 40 px set)', () => {
+    for (const id of ['item/hostage/dollop/walk', 'item/hostage/dollop/gag']) {
       for (const d of AMS(id) ? [2, 4] : [2]) {
         for (const f of getFrames(id, d)) {
           const head = f.pts?.head;
@@ -135,11 +137,5 @@ describe('people: UHD art', () => {
     expect(count('item/hostage/tea-lady/walk', 2, PAL_HD.navy)).toBeGreaterThan(0);
   });
 
-  it('a pigeon in flight fans its wing above the body (wings-up frame reaches higher than the standing bird)', () => {
-    for (const d of [2, 4]) {
-      const [stand, , , up] = getFrames('npc/ams/ams-pigeons', d);
-      const top = (b: PixelBuffer): number => b.trimBounds()?.y ?? b.h;
-      expect(top(up.buf), `@${d}`).toBeLessThan(top(stand.buf));
-    }
-  });
+  // the pigeon's raised wing in flight: a baked 40 px set now (tests/art40/ams-pigeons.test.ts)
 });

@@ -39,6 +39,7 @@ import {
   stripChunkOfU,
   stripDrawX,
   stripXOfU,
+  TickSpeed,
   uOfStripX,
   STRIP_BUDGET_BYTES,
   STRIP_CHUNK,
@@ -184,6 +185,41 @@ describe('the strip space (types.ts "THE STRIP SPACE", space.ts)', () => {
         expect(stripDrawX(p, S_A, camX)).toBeCloseTo(shiftX(cam, u, 16, camX), 9);
       }
     }
+  });
+});
+
+describe('the prefetch speed is per tick, not per drawn frame (the smooth review: a 120 Hz display)', () => {
+  it('TickSpeed gives the same speed at 1, 2 and 3 drawn frames per tick, and 0 at a stop', () => {
+    for (const v of [1.5, 3, 4.5, -2]) {
+      for (const fpt of [1, 2, 3]) {
+        const m = new TickSpeed();
+        let got = 0;
+        for (let tick = 0; tick < 40; tick++) for (let f = 0; f < fpt; f++) got = m.step(100 + tick * v, tick);
+        expect(got, `${v} px/tick at ${fpt} frames per tick`).toBeCloseTo(v, 9);
+      }
+    }
+    const m = new TickSpeed();
+    m.step(100, 0);
+    m.step(103, 1);
+    expect(m.step(103, 2)).toBe(0);
+    // A tick that goes back (a new run of the view) starts over.
+    expect(m.step(500, 0)).toBe(0);
+  });
+
+  it('the store asks for the same lead at 60 and 120 Hz', () => {
+    const ahead: number[] = [];
+    for (const fpt of [1, 2]) {
+      const store = createStripStore(stripsDef(8192), { id: `tick-${fpt}`, width: 8192, seed: 1, scale: S_A }, { jobKey: `tick-${fpt}/` });
+      const m = new TickSpeed();
+      for (let tick = 0; tick < 120; tick++) for (let f = 0; f < fpt; f++) {
+        const x = 200 + tick * 4.5;
+        store.prepare(x, m.step(x, tick), 4);
+      }
+      ahead.push((store as unknown as { winAhead: number }).winAhead);
+      store.dispose();
+    }
+    expect(ahead[1]).toBe(ahead[0]);
+    expect(ahead[0]).toBeGreaterThan(1);
   });
 });
 

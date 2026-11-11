@@ -8,13 +8,18 @@
  * 4 bytes each), so no 4× art is built here. Measured 2026-10-20 against a real 4× build: the
  * estimate is at most 0.5 MB under the real bytes, so the test keeps a 2 MB margin. Worst case then:
  * bob 1P in section a, 251.6 MB real.
+ *
+ * Both ways the browser plays it: with the canal scenes on (a source set: the decor sprites the
+ * scenes paint leave the set, docs/api/canal.md §8) and off (`?canal=0`: the old scenery's sprites).
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { getFrames } from '../../src/engine/sprites';
 import { loadContent } from '../../src/game/content/index';
+import { setCanalSource } from '../../src/game/mission/canal/index';
 import { getMission } from '../../src/game/registry';
 import { ROSTER } from '../../src/game/scenes/flow-data';
 import { DENSE_BUDGET_BYTES, denseWorkingSet, nextSections } from '../../src/game/scenes/gameplay';
+import { nodeCanalSource } from '../../tools/lib/canal-source';
 
 beforeAll(async () => {
   await loadContent();
@@ -36,7 +41,13 @@ function bytes(ids: readonly string[]): number {
   return b;
 }
 
-describe('ams tier-4 working set', () => {
+describe.each([
+  ['canal scenes on', true],
+  ['canal scenes off', false],
+])('ams tier-4 working set (%s)', (_name, canal) => {
+  beforeEach(() => void setCanalSource(canal ? nodeCanalSource() : null));
+  afterEach(() => void setCanalSource(null));
+
   it('1P: every squad hero in every section fits DENSE_BUDGET_BYTES', () => {
     const ams = getMission('ams')!;
     const order = Object.keys(ams.sections ?? {});

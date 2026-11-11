@@ -28,7 +28,7 @@ import type { Renderer } from '../../engine/render';
 import { hashString } from '../../engine/rng';
 import type { ScriptGen, ScriptHandle, Wait } from '../../engine/script';
 import { Terrain, terrain as terrainBuilder } from '../../engine/terrain';
-import { artTier, toArtDensity, withArtDensity, type ArtDensity } from '../../engine/sprites';
+import { artTier, setFrameOverlay, setSpriteOverrides, toArtDensity, withArtDensity, type ArtDensity } from '../../engine/sprites';
 import { World } from '../../engine/world';
 import { Boss } from '../boss';
 import { attachGame, HudState, type BannerOpts, type CalloutOpts, type GameContext, type GoDir } from '../context';
@@ -57,6 +57,7 @@ import type {
   TransitionKind,
 } from './types';
 import { SectionView } from './view';
+import { canalPaintedArt, setCanalPaintedNow } from './canal/registry';
 import { MissionLight, REDUCED_FLASH } from './light/pass';
 import type { FloorGpu } from '../../engine/floor/gpu';
 import { activeFloorGpu } from './floor/registry';
@@ -189,9 +190,15 @@ export class MissionRunner {
   /** Auto-scroll speed (px/tick; 0 = off) and the scrolled window position. */
   private autoSpeed = 0;
   private autoPos = 0;
-  /** The MATCHA-MOMENT's slow world: ticks left, and the entities held this tick (reused). */
+  /**
+   * The MATCHA-MOMENT's slow world: ticks left; the entities held this tick with their counters
+   * before it (invuln, flash), and the scripts held this tick (all reused).
+   */
   private slowLeft = 0;
   private readonly slowHeld: Entity[] = [];
+  private readonly slowInv: number[] = [];
+  private readonly slowFlash: number[] = [];
+  private readonly slowScripts: ScriptHandle[] = [];
   /** OPT-IN (revision R): `RunnerOptions.continueMission`. */
   private readonly continueMission: boolean;
 
@@ -266,13 +273,15 @@ export class MissionRunner {
   /** Build a section's world and start its script. `entry` overrides the player start. */
   loadSection(id: string, entry?: { x: number; y: number }): void {
     const def = this.mission.sections[id] ?? placeholderSection(id, `section ${id} not found`);
+    // A section switch ends the MATCHA-MOMENT (the new world starts at full speed).
+    this.slowLeft = 0;
     if (this.world) {
       this.carryVehicles(def);
       flushAwards(this.world);
       this.world.scripts.cancelAll();
       this.world.events.clear();
     }
-    const seed = (this.seed ^ hashString(`${this.mission.id}/${def.id}`)) >>> 0;
+    const seed = (this.seed ^ hashString(`${this.mission.seedAs ?? this.mission.id}/${def.id}`)) >>> 0;
     const terrain = new Terrain(def.terrain);
     const world = new World({ terrain, seed, factory: gameEntityFactory, audio: this.audio });
     this.game = attachGame(world, this.session, this.hud, this.settings);
@@ -295,6 +304,8 @@ export class MissionRunner {
     // The old view's queued 2× scenery jobs are of no use any more.
     this.view?.dispose();
     this.view = new SectionView(def, terrain, seed, this.density);
+    // The old decor the mission's canal scenes paint: the section script's `prewarm` skips it (docs/api/canal.md §8).
+    setCanalPaintedNow(canalPaintedArt(this.mission.sections));
     // Opt-in: a vertical section with dense art also releases its dense chunks by row.
     if (this.density > 1 && (def.scroll === 'up' || def.scroll === 'down')) this.view.evictRows = true;
     // Opt-in: the perspective floor (art only): the GPU, entities drawn at a depth, the light's hook.
@@ -541,7 +552,9 @@ export class MissionRunner {
 
   /**
    * One world tick, then the euro budget's pending awards (budget/pay.ts `flushAwards`). In a slow
-   * world an odd tick holds every non-player entity (their `update` is a no-op for that tick).
+   * world an odd tick holds every non-player entity (their `update` is a no-op for that tick, and
+   * their age, invuln and flash counters keep their values) and every script not owned by a player
+   * (the section's spawns, the boss patterns: `paused` for that tick, a wait keeps its ticks).
    */
   private stepWorld(): void {
     const world = this.world;
@@ -552,19 +565,39 @@ export class MissionRunner {
     }
     this.slowLeft--;
     const held = this.slowHeld;
+    const heldScripts = this.slowScripts;
     if ((world.tick & 1) === 1) {
       for (const e of world.entities) {
         if (e.removed || e.team === 'player' || e.hasTag('player') || Object.hasOwn(e, 'update')) continue;
+        this.slowInv[held.length] = e.invulnTicks;
+        this.slowFlash[held.length] = e.flashTicks;
         held.push(e);
         (e as unknown as { update: () => void }).update = holdTick;
+      }
+      // The engine's runner keeps its list private (src/engine/script.ts; no slow-motion hook there).
+      for (const co of (world.scripts as unknown as { list: ScriptHandle[] }).list) {
+        if (co.done || co.paused) continue;
+        const o = (co as ScriptHandle & { owner?: Entity | null }).owner;
+        if (o && (o.team === 'player' || o.hasTag?.('player'))) continue;
+        co.paused = true;
+        heldScripts.push(co);
       }
     }
     try {
       world.update();
     } finally {
-      // Restore the class method (an own property was never set on these entities before).
-      for (const e of held) delete (e as unknown as { update?: () => void }).update;
+      // Restore the class method (an own property was never set on these entities before) and the
+      // counters the world ticked (a hit in this tick's shot pass set them higher: kept).
+      for (let i = 0; i < held.length; i++) {
+        const e = held[i];
+        delete (e as unknown as { update?: () => void }).update;
+        e.age--;
+        if (e.invulnTicks === this.slowInv[i] - 1) e.invulnTicks = this.slowInv[i];
+        if (e.flashTicks === this.slowFlash[i] - 1) e.flashTicks = this.slowFlash[i];
+      }
       held.length = 0;
+      for (const co of heldScripts) co.paused = false;
+      heldScripts.length = 0;
     }
     flushAwards(world);
   }
@@ -629,6 +662,32 @@ export class MissionRunner {
    * mission's art density (restored afterwards: nothing outside the drawing sees it).
    */
   draw(r: Renderer): void {
+    // OPT-IN: the section's twins of shared sprites, while it draws (`SectionDef.spriteOverrides`).
+    const over = this.section.spriteOverrides;
+    if (over) {
+      const was = setSpriteOverrides(over);
+      try {
+        this.drawScene(r);
+      } finally {
+        setSpriteOverrides(was);
+      }
+    } else this.drawScene(r);
+  }
+
+  private drawScene(r: Renderer): void {
+    // The canal scene's sprites (kit paintings of entity frames) while it draws (docs/api/canal.md §7).
+    const canalSprites = this.view.canalLive?.sprites ?? null;
+    if (canalSprites) {
+      const was = setFrameOverlay(canalSprites);
+      try {
+        this.drawWorld(r);
+      } finally {
+        setFrameOverlay(was);
+      }
+    } else this.drawWorld(r);
+  }
+
+  private drawWorld(r: Renderer): void {
     withArtDensity(this.artDensity, () => {
       const cam = this.world.camera;
       r.setCamera(cam.viewX, cam.viewY);
@@ -850,7 +909,8 @@ export class MissionRunner {
   /** The mission that follows this one (null = the game is finished). */
   nextMission(): string | null {
     if (this.mission.next) return this.mission.next;
-    const ids = listMissions().filter((id) => id !== 'm0');
+    if (this.mission.standalone) return null;
+    const ids = listMissions().filter((id) => id !== 'm0' && !getMission(id)?.standalone);
     const i = ids.indexOf(this.mission.id);
     return i >= 0 && i + 1 < ids.length ? ids[i + 1] : null;
   }

@@ -12,9 +12,9 @@
  *   The peck is contact damage ONLY while diving; the rest of the time the gull is harmless.
  * - `flock: n` (2–5): the spawn is a flock of n gulls that share one hover area (spread round
  *   the player) and take turns diving (pattern: kazoo-drone `KazooFormation`).
- * - Motion (draw-only, docs/ART_GUIDE.md "Motion"): a 3-frame take-off off the perch, a 2-frame
- *   pull-up out of the dive, and a 2-frame squash turn (Turner hysteresis) instead of an instant
- *   mid-air flip. A tell or a dive cancels them on the same tick; the tell timing is unchanged.
+ * - Motion (draw-only, docs/ART_GUIDE.md "Motion"): the take-off off the perch (TAKEOFF_TIMING, 10
+ *   ticks), the pull-up out of the dive (PULLUP_TIMING, 6 ticks), and the banking turn (TURN_FRAMES
+ *   widths, Turner hysteresis) instead of an instant mid-air flip. A tell or a dive cancels them on the same tick; the tell timing is unchanged.
  * - Death: a feather puff; it falls (into the canal over water: a splash, gone).
  * - The gloat (every player out, docs/design/ams-extras.md §1): off its perch if it sat on one,
  *   it flies to a place beside the spot (flock members a little apart, inside the view), lands
@@ -34,7 +34,7 @@ import { doubleTakeTicks, type ReactionKind } from '../../enemy';
 import { FxEntity, splash } from '../../fx';
 import { defineEntity, paramBool, paramFacing, paramNum, paramStr, type SpawnParams } from '../../registry';
 import { Creature, Turner, contactHit, entryParam } from '../creatures/common';
-import { PULLUP_TIMING, TAKEOFF_TIMING, TURN_TICKS } from './seagull.art';
+import { GLOAT_PECK, PULLUP_TIMING, TAKEOFF_TIMING, TURN_FRAMES, TURN_TICKS } from './seagull.art';
 import { waterSurfaceAt } from '../../water';
 
 /** Seagull numbers (NORMAL). */
@@ -120,7 +120,7 @@ export class Seagull extends Creature {
   private takeoffT = 0;
   private pullupT = 0;
   /** Mid-air turns: squash frames, the facing flips half-way (hysteresis 12 px / 8 ticks). */
-  private readonly turner = new Turner(1, 2, TURN_TICKS);
+  private readonly turner = new Turner(1, TURN_FRAMES, TURN_TICKS);
   /** The gloat: 'fly' to the landing place, 'peck' there, or 'hover' over it (no dry floor). */
   private gloatMode: 'fly' | 'peck' | 'hover' = 'fly';
   /** The landing place (x, the floor y) or the hover point (x, body centre y). */
@@ -129,6 +129,12 @@ export class Seagull extends Creature {
   /** Landed by the gloat (it takes off again when the gloat ends); ticks without progress. */
   private gloatLanded = false;
   private gloatStuck = 0;
+  /**
+   * Render only (a canal scene's lamp perch, docs/api/canal.md §9): the feet y of the perch it was
+   * spawned on (NaN: it was not), and whether it is still on it or taking off from it.
+   */
+  readonly spawnPerchY: number;
+  private onSpawnPerch: boolean;
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
     super(world, x, y, p, { art: A, hp: SEAGULL.hp, w: 20, h: 13, body: false });
@@ -151,10 +157,14 @@ export class Seagull extends Creature {
     const perch = paramBool(p, 'perch', false) || gag === 'fries' || gag === 'sleep';
     if (perch && !entry && p.awake !== true) {
       this.perched = true;
+      this.spawnPerchY = this.y;
+      this.onSpawnPerch = true;
       this.setBox(SEAGULL.perchBox);
       this.startGag(gag === 'fries' ? 'fries' : '');
     } else {
       this.perched = false;
+      this.spawnPerchY = NaN;
+      this.onSpawnPerch = false;
       this.alerted = true;
       this.setBox(SEAGULL.box);
       if (entry === 'left') this.facing = 1;
@@ -169,6 +179,16 @@ export class Seagull extends Creature {
     this.prevY = this.y;
     this.bx = this.x;
     this.by = this.y;
+  }
+
+  /**
+   * Render only (docs/api/canal.md §9): 1 while it sits on the perch it was spawned on (alive or
+   * dead), falling to 0 over the take-off strip off it, else 0. The simulation never reads it.
+   */
+  get spawnPerch(): number {
+    if (!this.onSpawnPerch) return 0;
+    if (this.perched) return 1;
+    return this.takeoffT / TAKEOFF_TICKS;
   }
 
   private setBox(r: { x: number; y: number; w: number; h: number }): void {
@@ -238,7 +258,7 @@ export class Seagull extends Creature {
     if (this.perched) {
       this.perched = false;
       // Same body position: the anchor moves from the feet to the body centre (11 px up); the
-      // take-off strip lifts the drawn bird off the perch over 3 frames.
+      // take-off strip (TAKEOFF_TIMING) lifts the drawn bird off the perch.
       this.y -= 11;
       this.takeoffT = TAKEOFF_TICKS;
       this.world.audio.sfx('ams/gull', { vol: 0.6 });
@@ -461,7 +481,7 @@ export class Seagull extends Creature {
     this.vy = 0;
     if (this.gloatMode === 'peck') {
       this.play('gloat');
-      if (this.anim.changed && this.anim.index === 1 && this.onScreen(0)) this.world.audio.sfx('ams/gloat-peck', { vol: 0.6 });
+      if (this.anim.changed && this.anim.index === GLOAT_PECK && this.onScreen(0)) this.world.audio.sfx('ams/gloat-peck', { vol: 0.6 });
       return;
     }
     const gy = this.gloatMode === 'fly' ? this.gloatY - PERCH_LIFT : this.gloatY;
@@ -488,6 +508,7 @@ export class Seagull extends Creature {
   /** Touch down on the landing place: the feet anchor, the perched box, the pecking strip. */
   private land(spot: Entity | null): void {
     this.perched = true;
+    this.onSpawnPerch = false;
     this.gloatLanded = true;
     this.gloatMode = 'peck';
     this.x = this.gloatX;

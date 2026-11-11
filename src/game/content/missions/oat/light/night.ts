@@ -21,6 +21,7 @@ import { PAL_HD_OAT } from '../../../../../engine/palette-hd';
 import { defineFloorLight } from '../../../../mission/light/floor';
 import { defineSectionLight, type LampGroupDef, type SectionLight, type StaticLight } from '../../../../mission/light/api';
 import type { ReflectConfig } from '../../../../mission/floor/reflect';
+import { D_COPING_NEAR, OAT_CAMERA, WATER_LEVEL } from '../floor/layout';
 import { OAT_SECTION } from '../ids';
 
 /** The walk line (spec §2: G = 176). */
@@ -153,11 +154,18 @@ export const OAT_D_LIGHTS: readonly OatLamp[] = [
   { u: 4200, depth: 12.8, h: 84, kind: 'lamp', r: 56, k: 1, group: D.lanterns },
 ];
 
-/** The canal in front of the d quays (STREET-A's layout: the coping's outer edge at depth −16.5 → y 192.5). */
+/**
+ * The d water line (screen y; STREET-A's layout): the coping's outer edge (depth −16.5 → y 192.5) plus
+ * the brick quay face down to the water (WATER_LEVEL at that depth's scale, 6.9 px) → 199.4, so the
+ * first whole water row is 200. The streaks and the reflections start there, never on the wall.
+ */
+export const D_WATER_Y = Math.ceil(G - D_COPING_NEAR - WATER_LEVEL * (1 - D_COPING_NEAR / (G - OAT_CAMERA.yh)));
+
+/** The canal in front of the d quays (from the water line to the screen bottom). */
 export const OAT_D_WATER: ReflectConfig = {
   bands: [
-    { u0: 0, u1: 1664, y0: 193, y1: 216 },
-    { u0: 2432, u1: 3584, y0: 193, y1: 216 },
+    { u0: 0, u1: 1664, y0: D_WATER_Y, y1: 216 },
+    { u0: 2432, u1: 3584, y0: D_WATER_Y, y1: 216 },
   ],
   alpha: [0.45, 0.3],
   ripple: 2,
@@ -170,9 +178,10 @@ function dConfig(lamps: StaticLight[]): SectionLight {
     tint: PAL_HD_OAT.nightSky[0],
     lamps,
     glow: 'smooth',
-    streaks: { y0: 193, y1: 216, length: 26, strength: 0.9, ripple: 0.5, level: 6 },
+    streaks: { y0: D_WATER_Y, y1: 216, length: 26, strength: 0.9, ripple: 0.5, level: 6 },
     groups: Object.values(D).map((name): LampGroupDef => (name === D.bossHouse ? { name, state: 'off' } : { name, flicker: [20, 40] })),
-    bakes: { x0: 3968, x1: 4480, fadeTicks: 60 },
+    // The strips' dark range (facade/rows.ts `OAT_D_DARK`: a lot border left of the arena-lock view).
+    bakes: { x0: 3877, x1: 4480, fadeTicks: 60 },
     water: OAT_D_WATER,
   };
 }

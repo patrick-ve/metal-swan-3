@@ -1,0 +1,218 @@
+[
+ {
+  "cx": 0,
+  "file": "c2-u1-c0.png",
+  "section": "c2",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 124,
+  "file": "c2-u1-c124.png",
+  "section": "c2",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 520,
+  "file": "c2-u1-c520.png",
+  "section": "c2",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 900,
+  "file": "c2-u1-c900.png",
+  "section": "c2",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 1164,
+  "file": "c2-u1-c1164.png",
+  "section": "c2",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 1500,
+  "file": "c2-u1-c1500.png",
+  "section": "c2",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 1742,
+  "file": "c2-u1-c1742.png",
+  "section": "c2",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 1960,
+  "file": "c2-u1-c1960.png",
+  "section": "c2",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 2248,
+  "file": "c2-u1-c2248.png",
+  "section": "c2",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 0,
+  "file": "c2-u2-c0.png",
+  "section": "c2",
+  "tier": 2,
+  "w": 192,
+  "x0": 0
+ },
+ {
+  "cx": 124,
+  "file": "c2-u2-c124.png",
+  "section": "c2",
+  "tier": 2,
+  "w": 192,
+  "x0": 96
+ },
+ {
+  "cx": 520,
+  "file": "c2-u2-c520.png",
+  "section": "c2",
+  "tier": 2,
+  "w": 192,
+  "x0": 84
+ },
+ {
+  "cx": 900,
+  "file": "c2-u2-c900.png",
+  "section": "c2",
+  "tier": 2,
+  "w": 192,
+  "x0": 162
+ },
+ {
+  "cx": 1164,
+  "file": "c2-u2-c1164.png",
+  "section": "c2",
+  "tier": 2,
+  "w": 192,
+  "x0": 96
+ },
+ {
+  "cx": 1500,
+  "file": "c2-u2-c1500.png",
+  "section": "c2",
+  "tier": 2,
+  "w": 192,
+  "x0": 64
+ },
+ {
+  "cx": 1742,
+  "file": "c2-u2-c1742.png",
+  "section": "c2",
+  "tier": 2,
+  "w": 192,
+  "x0": 192
+ },
+ {
+  "cx": 1960,
+  "file": "c2-u2-c1960.png",
+  "section": "c2",
+  "tier": 2,
+  "w": 192,
+  "x0": 4
+ },
+ {
+  "cx": 2248,
+  "file": "c2-u2-c2248.png",
+  "section": "c2",
+  "tier": 2,
+  "w": 192,
+  "x0": 184
+ },
+ {
+  "cx": 0,
+  "file": "c2-u4-c0.png",
+  "section": "c2",
+  "tier": 4,
+  "w": 96,
+  "x0": 12
+ },
+ {
+  "cx": 124,
+  "file": "c2-u4-c124.png",
+  "section": "c2",
+  "tier": 4,
+  "w": 96,
+  "x0": 144
+ },
+ {
+  "cx": 520,
+  "file": "c2-u4-c520.png",
+  "section": "c2",
+  "tier": 4,
+  "w": 96,
+  "x0": 132
+ },
+ {
+  "cx": 900,
+  "file": "c2-u4-c900.png",
+  "section": "c2",
+  "tier": 4,
+  "w": 96,
+  "x0": 210
+ },
+ {
+  "cx": 1164,
+  "file": "c2-u4-c1164.png",
+  "section": "c2",
+  "tier": 4,
+  "w": 96,
+  "x0": 144
+ },
+ {
+  "cx": 1500,
+  "file": "c2-u4-c1500.png",
+  "section": "c2",
+  "tier": 4,
+  "w": 96,
+  "x0": 112
+ },
+ {
+  "cx": 1742,
+  "file": "c2-u4-c1742.png",
+  "section": "c2",
+  "tier": 4,
+  "w": 96,
+  "x0": 270
+ },
+ {
+  "cx": 1960,
+  "file": "c2-u4-c1960.png",
+  "section": "c2",
+  "tier": 4,
+  "w": 96,
+  "x0": 52
+ },
+ {
+  "cx": 2248,
+  "file": "c2-u4-c2248.png",
+  "section": "c2",
+  "tier": 4,
+  "w": 96,
+  "x0": 232
+ }
+]

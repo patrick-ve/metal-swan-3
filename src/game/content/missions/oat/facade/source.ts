@@ -82,7 +82,11 @@ export function grammarPlan(def: SectionStripsDef, info: StripSectionInfo): Stri
       const H = height * d;
       stripBandRows(b, bandsOf(d), H, band);
       art.begin(cx, d, s, STRIP_CHUNK * d, H, H - band.r1, H - band.r0);
+      // The dark set darkens the lots inside `dark` only (the range starts on a lot border): a lot
+      // outside it keeps its lit look in a dark chunk, so no chunk border ever cuts a façade.
       const dark = set === 'dark' && !!darkRange;
+      const dk0 = darkRange ? darkRange[0] : 0;
+      const dk1 = darkRange ? darkRange[1] : 0;
       // Day sections read LIGHT-WATER's shade model (built lazily: it reads our opposite row).
       const shade = night || !sun ? null : sectionShade(info.id);
       const geom = shade?.geom ?? null;
@@ -96,7 +100,7 @@ export function grammarPlan(def: SectionStripsDef, info: StripSectionInfo): Stri
           l,
           row,
           night: row.night,
-          dark,
+          dark: dark && l.u0 >= dk0 && l.u0 < dk1,
           geom: row.night ? null : geom,
           X0: art.X(l.u0),
           X1: art.X(l.u0 + l.w),
@@ -116,7 +120,7 @@ export function grammarPlan(def: SectionStripsDef, info: StripSectionInfo): Stri
         drawDetails(c);
         drawWear(c);
       }
-      resolveBand(art, { lots, shade, sun: sunColour, night, dark, lights, lut: lutOf(d) }, out);
+      resolveBand(art, { lots, shade, sun: sunColour, night, dark, darkU0: dk0, darkU1: dk1, lights, lut: lutOf(d) }, out);
     },
     lots() {
       return lots.map((l) => ({ u0: l.u0, u1: l.u0 + l.w, kind: l.gable }));

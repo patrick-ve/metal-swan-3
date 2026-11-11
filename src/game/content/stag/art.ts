@@ -8,6 +8,15 @@
  * with a small tiara and an L-plate on the chest. The driver: a sober guide in a red polo and cap.
  *
  * Sets `enemy/<set>/…`: `stag-partier` (look 0), `stag-partier-1` … `-3`, `stag-groom`.
+ * Looks 0 and 2 (the ones ams spawns) are baked 40 px sets (docs/design/ams40.md wave 3,
+ * tools/art40/chars/stag-partier/: idle 4, walk 12, turn 2, alert 1, tell 6, fire 10 with the pop
+ * on FIRE_POP, gag-toast 8 with the clink on TOAST_CLINK, gag-selfie 8, photo-pose 6, gloat 6,
+ * cower 4, die 10, die-knife 10, die-blast 10, die-burn 8, die-crush 6, sit 8 (one crank turn),
+ * sit-tell 6, sit-fire 10, sit-gloat 6, sit-cower 4, die-stool 10, and the flash 3; the same total
+ * ticks as before for every strip the code times). The groom is a baked 40 px set too
+ * (tools/art40/chars/stag-groom/: the same strips with his parts - the L-plate, the tutu, the veil
+ * with the tiara - and the veil's and the tutu's own secondary motion; plus `veil`, 4 frames, the
+ * veil flying off his head). The list below is the rig art of looks 1 and 3.
  * Strips (standing): idle (4), walk (8), turn (2), alert (1), tell (3: shakes the bottle, foam
  * round the cork), fire (3: aim, POP with a foam jet, recover), gag-toast (4: raise, clink, a swig),
  * gag-selfie (2), photo-pose (1), gloat (2: the group selfie, phone up), cower (2: the T-shirt over
@@ -16,8 +25,10 @@
  * sit (4: pedalling), sit-tell (3), sit-fire (3), sit-gloat (2), sit-cower (2), die-stool (5: tips
  * off the stool backwards). Rare strips are deferred.
  * Extras: `enemy/stag-beer-bike/driver` (2: pedalling, hands on the bar), `…/driver-flee` (4),
- * `enemy/cork/fly` (4: tumbling), `enemy/stag-partier/flash` (3), `enemy/stag-groom/veil` (4).
+ * `enemy/cork/fly` (4: tumbling), `enemy/stag-partier/flash` (3), `enemy/stag-groom/veil` (4) are
+ * baked sets.
  */
+import { defineBakedSet } from '../../../engine/baked';
 import { INK, stepShade } from '../../../engine/palette';
 import { hdHome } from '../../../engine/palette-hd';
 import type { PixelBuffer } from '../../../engine/pixel';
@@ -26,31 +37,29 @@ import { defineSprite, getFrames, type SpriteOpts } from '../../../engine/sprite
 import { crushStripHi } from '../../art/hi-strips';
 import { crumble, crumbleDense, scorch, sootify, withFlames, withFlamesDense, type Piece } from '../../art/human-fx';
 import { withSwing } from '../../art/human-sprites';
-import { renderHuman, type ArmPose, type HumanStyle, type LegPose, type Pose } from '../../art/humanoid';
+import { type ArmPose, type HumanStyle, type LegPose, type Pose } from '../../art/humanoid';
 import * as P from '../../art/poses';
 import { CRUSH_TIMING, crushStrip, turnSquash } from '../creatures/draw';
+import { SET as PARTIER_0 } from '../art40/stag-partier.gen';
+import { SET as PARTIER_2 } from '../art40/stag-partier-2.gen';
+import { SET as GROOM } from '../art40/stag-groom.gen';
 import { onBoxes } from '../locals/rider.hd';
 import {
   addPieces,
   bottlePiece,
-  corkFrames,
-  flashFrames,
-  lplateBuf,
   moveAnchor,
   partyFigure,
   phoneBuf,
   piece,
   printBuf,
   shirtBundleBuf,
-  tiaraBuf,
-  tutuBuf,
-  tutuWaistBuf,
-  veilBuf,
-  veilFrames,
   type BottleState,
   type Dn,
   type PartyLook,
 } from './kit.art';
+
+/** The frame roles of the baked partier strips the logic reads (tools/art40/chars/stag-partier/strips.py). */
+export { FIRE_POP, FIRE_POP_TICK, SIT_CRANK_FRAMES, TOAST_CLINK } from '../art40/stag-partier.gen';
 
 /** The matching party T-shirt colour of the whole group. */
 export const TEE = 'green';
@@ -68,9 +77,6 @@ export const PARTY_LOOKS: readonly PartyLook[] = [
   look({ skin: 'skinB', hair: 'hairA', hairStyle: 'curly', headgear: 'none', boots: 'black', belt: 'black', build: 'stocky', face: ['beard'] }, 'sky'),
   look({ skin: 'skinC', hair: 'hairA', hairStyle: 'short', headgear: 'none', boots: 'snow', belt: 'black', build: 'lanky', face: ['shades'] }, 'red'),
 ];
-
-/** The groom: tutu, veil, tiara and L-plate are pieces (groomPieces). */
-export const GROOM_LOOK: PartyLook = look({ skin: 'skinA', hair: 'hairB', hairStyle: 'parted', headgear: 'none', boots: 'snow', belt: 'brown', build: 'normal', face: ['blush'] }, 'navy');
 
 /** The sober guide who steers the beer bike. */
 export const DRIVER_STYLE: HumanStyle = {
@@ -125,10 +131,8 @@ interface Key {
   phone?: boolean;
   /** Bare torso + the T-shirt bundle over the head (cower). */
   bundle?: number;
-  /** Draw the chest print / L-plate. */
+  /** Draw the chest print. */
   chest?: boolean;
-  /** The groom's veil on the head (false: it flew off — every death strip). */
-  veil?: boolean;
 }
 
 const IDLE: Key[] = P.BREATH4.map((b) => ({ pose: { ...P.STAND, ...b, armN: TO(5, 5), armF: RELAX }, hold: CARRY, chest: true }));
@@ -170,15 +174,15 @@ const COWER: Key[] = [0, 1].map((k) => ({
 /** Death: staggers, the knees go, he sits down hard; the bottle in his lap foams over. */
 const SIT_DOWN: Pose = { legN: L(88, 8, 20), legF: L(78, 26), armN: TO(6, 6), armF: A(-30, 20, 'open'), lean: -6, expr: 'dazed' };
 const DIE: Key[] = [
-  { pose: { ...P.STAND, armN: A(60, 60, 'open'), armF: A(80, 40, 'open'), lean: -12, expr: 'hurt' }, hold: null, chest: true, veil: false },
-  { pose: { legN: L(50, 70), legF: L(20, 80), armN: A(80, 40), armF: A(60, 40, 'open'), lean: -10, expr: 'hurt' }, hold: H(-70), chest: true, veil: false },
-  { pose: SIT_DOWN, hold: H(-80, 'spurt'), chest: true, veil: false },
-  { pose: { ...SIT_DOWN, head: { dy: 1 } }, hold: H(-95, 'spurt'), chest: true, veil: false },
-  { pose: { ...SIT_DOWN, head: { dy: 1 } }, hold: H(-90, 'open'), chest: true, veil: false },
-  { pose: { ...SIT_DOWN, lean: -14, expr: 'blink' }, hold: H(-85, 'open'), chest: true, veil: false },
+  { pose: { ...P.STAND, armN: A(60, 60, 'open'), armF: A(80, 40, 'open'), lean: -12, expr: 'hurt' }, hold: null, chest: true },
+  { pose: { legN: L(50, 70), legF: L(20, 80), armN: A(80, 40), armF: A(60, 40, 'open'), lean: -10, expr: 'hurt' }, hold: H(-70), chest: true },
+  { pose: SIT_DOWN, hold: H(-80, 'spurt'), chest: true },
+  { pose: { ...SIT_DOWN, head: { dy: 1 } }, hold: H(-95, 'spurt'), chest: true },
+  { pose: { ...SIT_DOWN, head: { dy: 1 } }, hold: H(-90, 'open'), chest: true },
+  { pose: { ...SIT_DOWN, lean: -14, expr: 'blink' }, hold: H(-85, 'open'), chest: true },
 ];
-/** A death strip's frame: the costume stays (tutu, L-plate or print, tiara); the veil flew off. */
-const DEAD = (pose: Pose): Key => ({ pose, chest: true, veil: false });
+/** A death strip's frame: the costume stays (the print). */
+const DEAD = (pose: Pose): Key => ({ pose, chest: true });
 export const DIE_TIMING: readonly number[] = [5, 6, 8, 10, 10, 30];
 
 /** Seated upper bodies (the legs pedal: `pedal(a)`). */
@@ -193,52 +197,34 @@ function turnedPiece(buf: PixelBuffer, cx: number, cy: number, rot: number, d: D
   return piece(b, cx - b.w / d / 2, cy - b.h / d / 2, d);
 }
 
-/** Pieces of a frame (bottle, phone, print / L-plate, groom extras) at density d. */
-function dress(f: Frame, k: Key, lookD: { look: PartyLook; groom: boolean }, d: Dn): Frame {
+/** Pieces of a frame (bottle, phone, print) at density d. */
+function dress(f: Frame, k: Key, d: Dn): Frame {
   const hip = f.pts?.hip ?? [0, -15];
   const head = f.pts?.head ?? [0, -27];
   const lean = k.pose.lean ?? 0;
   const front = [];
-  const behind = [];
-  // A tumbling or lying figure (rot): the costume pieces turn with it.
+  // A tumbling or lying figure (rot): the print turns with it.
   const rot = k.pose.rot ?? 0;
-  if (lookD.groom && k.bundle === undefined && k.veil !== false) {
-    behind.push(piece(veilBuf(d), head[0] - 13, head[1] - 5.5, d, true));
-  }
   if (k.chest) {
     // The chest: 40 % of the way from the hip to the head centre.
     const cx = hip[0] + (head[0] - hip[0]) * 0.4 + lean * 0.05;
     const cy = hip[1] + (head[1] - hip[1]) * 0.4;
-    if (rot !== 0) front.push(turnedPiece(lookD.groom ? lplateBuf(d) : printBuf(d), cx, cy, rot, d));
-    else if (lookD.groom) front.push(piece(lplateBuf(d), cx - 3, cy - 3, d));
+    if (rot !== 0) front.push(turnedPiece(printBuf(d), cx, cy, rot, d));
     else front.push(piece(printBuf(d), cx - 2.5, cy - 2.5, d));
-  }
-  if (lookD.groom) {
-    if (rot !== 0) front.push(turnedPiece(tutuWaistBuf(d), hip[0], hip[1], rot, d));
-    else front.push(piece(tutuBuf(d), hip[0] - 9, hip[1] - 2, d));
-  }
-  if (lookD.groom && k.bundle === undefined) {
-    if (rot !== 0) {
-      // The tiara's centre sits (−0.5, −6) from the head centre, turned with the head.
-      const a = (rot * Math.PI) / 180;
-      const tx = -0.5 * Math.cos(a) + 6 * Math.sin(a);
-      const ty = -0.5 * Math.sin(a) - 6 * Math.cos(a);
-      front.push(turnedPiece(tiaraBuf(d), head[0] + tx, head[1] + ty, rot, d));
-    } else front.push(piece(tiaraBuf(d), head[0] - 3.5, head[1] - 7.5, d));
   }
   if (k.bundle !== undefined) front.push(piece(shirtBundleBuf(TEE, d, k.bundle), head[0] - 6, head[1] - 6, d));
   if (k.hold) front.push(bottlePiece(f, k.hold.deg, k.hold.state, k.hold.grip, d));
   if (k.phone && f.pts?.hand) front.push(piece(phoneBuf(d), f.pts.hand[0] - 2, f.pts.hand[1] - 5, d));
-  return addPieces(f, [...behind, ...front]);
+  return addPieces(f, front);
 }
 
-function standing(lk: PartyLook, groom: boolean, k: Key, d: Dn): Frame {
-  return dress(partyFigure(lk, k.pose, d, k.bundle !== undefined), k, { look: lk, groom }, d);
+function standing(lk: PartyLook, k: Key, d: Dn): Frame {
+  return dress(partyFigure(lk, k.pose, d, k.bundle !== undefined), k, d);
 }
 
-function sitting(lk: PartyLook, groom: boolean, k: Key, d: Dn, hipY = SEAT_HIP): Frame {
+function sitting(lk: PartyLook, k: Key, d: Dn, hipY = SEAT_HIP): Frame {
   const f = moveAnchor(partyFigure(lk, k.pose, d, k.bundle !== undefined), hipY);
-  return dress(f, k, { look: lk, groom }, d);
+  return dress(f, k, d);
 }
 
 /** Register a strip at 1× and its 2× / 4× art (cut to the 1× boxes: geometry is law). */
@@ -247,14 +233,14 @@ function defHi(id: string, gen: (d: Dn) => Frame[], o: SpriteOpts): void {
 }
 
 /** Register one partier set. */
-function defineParty(set: string, lk: PartyLook, groom: boolean): void {
+function defineParty(set: string, lk: PartyLook): void {
   const pre = `enemy/${set}/`;
   const o: SpriteOpts = { trim: true };
-  const st = (keys: readonly Key[]) => (d: Dn): Frame[] => keys.map((k) => standing(lk, groom, k, d));
-  const sit = (keys: readonly Key[], crank = 0) => (d: Dn): Frame[] => keys.map((k, i) => sitting(lk, groom, seated(k, crank + i * 0.25), d));
+  const st = (keys: readonly Key[]) => (d: Dn): Frame[] => keys.map((k) => standing(lk, k, d));
+  const sit = (keys: readonly Key[], crank = 0) => (d: Dn): Frame[] => keys.map((k, i) => sitting(lk, seated(k, crank + i * 0.25), d));
   defHi(pre + 'idle', st(IDLE), { ...o, ticksPerFrame: 12 });
   defHi(pre + 'walk', st(WALK), { ...o, ticksPerFrame: 7 });
-  defHi(pre + 'turn', (d) => turnSquash(standing(lk, groom, IDLE[0], d)), { ...o, ticksPerFrame: 2 });
+  defHi(pre + 'turn', (d) => turnSquash(standing(lk, IDLE[0], d)), { ...o, ticksPerFrame: 2 });
   defHi(pre + 'alert', st(ALERT), { ...o, ticksPerFrame: 30 });
   defHi(pre + 'tell', st(TELL), { ...o, ticksPerFrame: 4 });
   defHi(pre + 'fire', st(FIRE), { ...o, durations: [3, 8, 10], loop: false });
@@ -266,10 +252,10 @@ function defineParty(set: string, lk: PartyLook, groom: boolean): void {
   defHi(pre + 'die', st(DIE), { ...o, durations: DIE_TIMING, loop: false });
   // Every death strip keeps the costume (dress); a blast singes one shade within each colour's
   // own ramp (the party shirt stays green, as the handhaver's vest stays in his).
-  const dead = (p: Pose, d: Dn): Frame => standing(lk, groom, DEAD(p), d);
+  const dead = (p: Pose, d: Dn): Frame => standing(lk, DEAD(p), d);
   defHi(pre + 'die-knife', (d) => P.DIE_KNIFE.map((p) => dead(p, d)), { ...o, durations: [8, 6, 6, 6, 30], loop: false, defer: true });
   defHi(pre + 'die-blast', (d) => P.DIE_BLAST.map((p) => singe(dead(p, d))), { ...o, durations: [5, 5, 5, 5, 30], loop: false, defer: true });
-  defHi(pre + 'die-burn', (d) => partyBurn(lk, groom, d), { ...o, ticksPerFrame: 6, loop: false, defer: true });
+  defHi(pre + 'die-burn', (d) => partyBurn(lk, d), { ...o, ticksPerFrame: 6, loop: false, defer: true });
   const stand = (d: Dn): Frame => dead(P.STAND, d);
   defineSprite(pre + 'die-crush', () => crushStrip(stand(1)), {
     durations: CRUSH_TIMING,
@@ -279,26 +265,26 @@ function defineParty(set: string, lk: PartyLook, groom: boolean): void {
   });
   // Seated on a beer-bike stool.
   defHi(pre + 'sit', sit(SIT_UP), { ...o, ticksPerFrame: 7 });
-  defHi(pre + 'sit-tell', (d) => TELL.map((k) => sitting(lk, groom, seated({ ...k, pose: { ...k.pose, legN: undefined, legF: undefined } }), d)), { ...o, ticksPerFrame: 4 });
-  defHi(pre + 'sit-fire', (d) => FIRE.map((k) => sitting(lk, groom, seated({ ...k, pose: { ...k.pose, legN: undefined, legF: undefined } }), d)), { ...o, durations: [3, 8, 10], loop: false });
-  defHi(pre + 'sit-gloat', (d) => GLOAT.map((k) => sitting(lk, groom, seated({ ...k, pose: { ...k.pose, legN: undefined, legF: undefined } }), d)), { ...o, ticksPerFrame: 14, defer: true });
-  defHi(pre + 'sit-cower', (d) => COWER.map((k) => sitting(lk, groom, seated({ ...k, pose: { ...k.pose, legN: undefined, legF: undefined } }), d)), { ...o, ticksPerFrame: 3, defer: true });
-  defHi(pre + 'die-stool', (d) => dieStool(lk, groom, d), { ...o, durations: [5, 5, 6, 8, 30], loop: false });
+  defHi(pre + 'sit-tell', (d) => TELL.map((k) => sitting(lk, seated({ ...k, pose: { ...k.pose, legN: undefined, legF: undefined } }), d)), { ...o, ticksPerFrame: 4 });
+  defHi(pre + 'sit-fire', (d) => FIRE.map((k) => sitting(lk, seated({ ...k, pose: { ...k.pose, legN: undefined, legF: undefined } }), d)), { ...o, durations: [3, 8, 10], loop: false });
+  defHi(pre + 'sit-gloat', (d) => GLOAT.map((k) => sitting(lk, seated({ ...k, pose: { ...k.pose, legN: undefined, legF: undefined } }), d)), { ...o, ticksPerFrame: 14, defer: true });
+  defHi(pre + 'sit-cower', (d) => COWER.map((k) => sitting(lk, seated({ ...k, pose: { ...k.pose, legN: undefined, legF: undefined } }), d)), { ...o, ticksPerFrame: 3, defer: true });
+  defHi(pre + 'die-stool', (d) => dieStool(lk, d), { ...o, durations: [5, 5, 6, 8, 30], loop: false });
 }
 
 /** Tips off the stool backwards: hit, tipping, falling, then flat on the floor behind it. */
-function dieStool(lk: PartyLook, groom: boolean, d: Dn): Frame[] {
+function dieStool(lk: PartyLook, d: Dn): Frame[] {
   const up: Pose = { ...pedal(0), armN: A(120, 40, 'open'), armF: A(140, 30, 'open'), lean: -14, grounded: false, expr: 'hurt' };
-  const f0 = sitting(lk, groom, { ...DEAD(up), hold: null }, d);
-  const f1 = sitting(lk, groom, { ...DEAD({ ...up, rot: -30, legN: L(100, 40), legF: L(80, 60) }), hold: null }, d, SEAT_HIP - 2);
-  const f2 = sitting(lk, groom, { ...DEAD({ ...up, rot: -65, legN: L(110, 30), legF: L(90, 40), expr: 'panic' }), hold: null }, d, SEAT_HIP - 8);
-  const lie = (p: Pose): Frame => dress(partyFigure(lk, { ...p, dx: -4 }, d), DEAD(p), { look: lk, groom }, d);
+  const f0 = sitting(lk, { ...DEAD(up), hold: null }, d);
+  const f1 = sitting(lk, { ...DEAD({ ...up, rot: -30, legN: L(100, 40), legF: L(80, 60) }), hold: null }, d, SEAT_HIP - 2);
+  const f2 = sitting(lk, { ...DEAD({ ...up, rot: -65, legN: L(110, 30), legF: L(90, 40), expr: 'panic' }), hold: null }, d, SEAT_HIP - 8);
+  const lie = (p: Pose): Frame => dress(partyFigure(lk, { ...p, dx: -4 }, d), DEAD(p), d);
   return [f0, f1, f2, lie(P.DIE[4]), lie(P.DIE[5])];
 }
 
 /**
  * One shade darker within each colour's own ramp (a blast's singe; never steel or ink, unlike
- * `scorch`, so the lime party shirt and the pink tutu keep their colours).
+ * `scorch`, so the lime party shirt keeps its colour).
  */
 function singe(f: Frame): Frame {
   const b = f.buf.clone();
@@ -322,9 +308,9 @@ function singe(f: Frame): Frame {
  * Burnt (human-sprites `burnFrames` on the dressed figure): hopping in flames, scorched one shade,
  * then the soot statue and its crumble.
  */
-function partyBurn(lk: PartyLook, groom: boolean, d: Dn): Frame[] {
+function partyBurn(lk: PartyLook, d: Dn): Frame[] {
   const seed = 9;
-  const fig = (p: Pose, dd: Dn): Frame => standing(lk, groom, DEAD(p), dd);
+  const fig = (p: Pose, dd: Dn): Frame => standing(lk, DEAD(p), dd);
   const statuePose: Pose = { ...P.STAND, armN: A(30, 60, 'open'), armF: A(-20, 50, 'open'), expr: 'soot' };
   const out: Frame[] = [];
   if (d === 1) {
@@ -342,25 +328,17 @@ function partyBurn(lk: PartyLook, groom: boolean, d: Dn): Frame[] {
   return out;
 }
 
-PARTY_LOOKS.forEach((lk, i) => defineParty(partySet(i, false), lk, false));
-defineParty('stag-groom', GROOM_LOOK, true);
+// Looks 0 and 2 (the ones ams spawns, STAG_LOOKS) and the groom are baked 40 px sets
+// (docs/design/ams40.md wave 3; drawn offline by tools/art40/chars/stag-partier/, stag-partier-2/
+// and stag-groom/): 1× pixels at every art tier, `enemy/stag-partier/flash` and
+// `enemy/stag-groom/veil` (the veil flying off his head on his death) included. Looks 1 and 3 keep
+// the rig drawers (out of scope: the code can still spawn them).
+defineBakedSet(PARTIER_0);
+defineBakedSet(PARTIER_2);
+defineBakedSet(GROOM);
+PARTY_LOOKS.forEach((lk, i) => {
+  if (i === 1 || i === 3) defineParty(partySet(i, false), lk);
+});
 
-// ------------------------------------------------------------------------------------ the driver
-
-const BAR: readonly [number, number] = [9, -1];
-function driverFrame(crank: number, d: Dn): Frame {
-  const f = renderHuman(DRIVER_STYLE, { weapon: 'none', ...pedal(crank), grounded: false, lean: 8, armN: { to: BAR, hand: 'grip' }, armF: { to: [BAR[0] - 1, BAR[1]], hand: 'grip' } }, 'full', d);
-  return moveAnchor(f, SEAT_HIP);
-}
-defHi('enemy/stag-beer-bike/driver', (d) => [driverFrame(0, d), driverFrame(0.5, d)], { trim: true, ticksPerFrame: 8 });
-defHi(
-  'enemy/stag-beer-bike/driver-flee',
-  (d) => [0, 2, 4, 6].map((i) => renderHuman(DRIVER_STYLE, { weapon: 'none', ...P.RUN[i], armN: A(150 - i * 4, 30, 'open'), armF: A(170, 20, 'open'), head: { tilt: -8 }, expr: 'panic' }, 'full', d)),
-  { trim: true, ticksPerFrame: 5, defer: true },
-);
-
-// ------------------------------------------------------------------------------------ small parts
-
-defineSprite('enemy/cork/fly', () => corkFrames(1), { ticksPerFrame: 3, hd: (d) => corkFrames(d) });
-defineSprite('enemy/stag-partier/flash', () => flashFrames(1), { durations: [2, 3, 4], loop: false, defer: true, hd: (d) => flashFrames(d) });
-defineSprite('enemy/stag-groom/veil', () => veilFrames(1), { ticksPerFrame: 6, defer: true, hd: (d) => veilFrames(d) });
+// The driver (`enemy/stag-beer-bike/…`) and the cork (`enemy/cork/fly`) are baked 40 px sets
+// registered by vehicles/beer-bike/art.ts (docs/design/ams40.md wave 3).

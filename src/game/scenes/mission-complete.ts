@@ -45,7 +45,7 @@ import { missionDone, recordMissionClear } from './flow';
  */
 export interface TallyRunner {
   readonly session: GameSession;
-  readonly mission: { readonly id: string; readonly hostages?: Readonly<Record<string, number>> };
+  readonly mission: { readonly id: string; readonly hostages?: Readonly<Record<string, number>>; readonly standalone?: boolean };
   /**
    * Optional info lines after the bonus lines (shown, never paid: no `points`, a `note`; the
    * ring's FINES). MissionRunner has none: its page is unchanged.
@@ -284,11 +284,16 @@ export class MissionCompleteScene implements Scene {
         const rows: TallyLine[] = [...tally.lines, ...notes, { label: 'DIFFICULTY', points: null, note: `X${this.mul.toFixed(1)}` }, { label: 'TOTAL', points: total }];
         // The quote wraps to the column (2 players) or the right half of the page (1 player).
         const quote = wrapText(CRITIC_QUOTES[tally.stars - 1], QUOTE_CHARS, 3);
-        // The euros: the lines' cents, × the difficulty factor at the total.
-        let cents = 0;
-        for (const l of tally.lines) cents += lineCents(l) ?? 0;
+        // The euros: the bonus lines × the difficulty factor (spec §7.2); a line with its own euros
+        // (the rally's prize money, spec §7.8: PLACE … FINES − € 120 each) is paid as it stands.
+        let bonus = 0;
+        let fixed = 0;
+        for (const l of tally.lines) {
+          if (l.cents !== undefined) fixed += l.cents ?? 0;
+          else bonus += lineCents(l) ?? 0;
+        }
         const own = tally.lines.some((l) => l.cents !== undefined);
-        return { slot, tally, rows, total, paid: 0, totalCents: withDifficulty(cents, this.mul), paidCents: 0, category: (own ? 'prize' : 'bonus') as BudgetCategory, quote };
+        return { slot, tally, rows, total, paid: 0, totalCents: fixed + withDifficulty(bonus, this.mul), paidCents: 0, category: (own ? 'prize' : 'bonus') as BudgetCategory, quote };
       });
     this.euro = this.cols.some((c) => euroTally(session, c.tally.lines));
     // The race (no MissionRunner) makes this game a euro run too (the `budgets` table at its end).

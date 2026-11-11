@@ -163,7 +163,7 @@ kick hit, turn frames, damage stages), and the tests that pin the id. The gates 
 - **Tools:** `npm run art40-check` (coverage, colour, outline, orphan pixels, palette consistency,
   points, event ticks, foot slide, smoothness), contact sheets per character, and a review page
   (old next to new, playback at the real timing, 1× and zoom, line-up next to VINCENT).
-- **Size budget:** at most 1200 KB gzip for all baked data (lead decision after wave 6, 2026-11-04: the whole cast with the 64-colour mayor and the select portraits measures about 1 MB; was 500, before that 400); the build ships the data once (not in the main and the worker chunk); decode at most 50 ms per mission start.
+- **Size budget:** at most 1300 KB gzip for all baked data (owner decision 2026-11-11: the street and riders sets of waves 3 and 4 taken in as they stand, 1258 KB measured; was 1200 after wave 6, 2026-11-04, before that 500 and 400); the build ships the data once (not in the main and the worker chunk); decode at most 50 ms per mission start.
 
 ## Gates (every wave)
 

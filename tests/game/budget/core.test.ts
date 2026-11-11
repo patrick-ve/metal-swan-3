@@ -86,8 +86,8 @@ describe('budget: the ledger (spec §7.1)', () => {
     expect(new Ledger([1000, 3000]).book(5000, 'boss')).toBe(2);
   });
 
-  it('extends at € 5.000 and € 15.000 of gross income (tuned: docs/api/budget.md)', () => {
-    expect(EXTEND_CENTS).toEqual([500_000, 1_500_000]);
+  it('extends at € 5.000 and € 5.500 of gross income (tuned: docs/api/budget.md)', () => {
+    expect(EXTEND_CENTS).toEqual([500_000, 550_000]);
   });
 
   it('a new mission starts the tallies at zero and carries the balance', () => {

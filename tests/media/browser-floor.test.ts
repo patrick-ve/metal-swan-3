@@ -17,7 +17,8 @@
  *   backbuffer px on every kit's own floor (one test each);
  * - THE CRACK TEST: the GL band of every kit's own floor has no crack pixel (a hole between two
  *   opaque neighbours) over a fine pan at the lines the mesh weld split (the T-junctions a GPU's
- *   vertex snap opened: region ends such as b's passage mouths and pool ends), at R 5 and 8;
+ *   vertex snap opened: region ends such as b's passage mouths and pool ends), at R 5 and 8; a notch
+ *   of the band's outline (a clear pixel that opens into a wide clear area) is no hole;
  * - THE GPU BUDGET (spec §3.2, §8 gate 7): the chunk layers and the tile atlas of every kit's own
  *   floor stay ≤ 16 MiB at tier 4 over a walk, and no tile falls back to a lower density (the atlas
  *   is bounded by what the layers leave of the budget: a tile over it is drawn at 2×);
@@ -34,7 +35,7 @@ import { chromium } from 'playwright';
 import { build } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Terrain } from '../../src/engine/terrain';
-import { loadContent } from '../../src/game/content/index';
+import { isOatContent, loadContent } from '../../src/game/content/index';
 import { debugFloorDef, floorOf } from '../../src/game/mission/floor/index';
 import { SectionFloor } from '../../src/game/mission/floor/section-floor';
 import type { FloorDef } from '../../src/game/mission/floor/types';
@@ -46,6 +47,8 @@ import { captureFrame, compareBands, cpuAt, type BandDiff, type Captured } from 
 
 // The sections with a floor are known at collection time (one test per section).
 await loadContent();
+// The lazy oat chunk (decision 49): its floors join like the boot set's.
+await loadContent(isOatContent);
 
 let browser: Browser | null = null;
 let page: Page | null = null;

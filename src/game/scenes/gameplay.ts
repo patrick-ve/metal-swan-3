@@ -44,6 +44,8 @@ import { drawHud } from '../hud';
 import type { MissionDef } from '../mission/index';
 import { MissionRunner } from '../mission/runner';
 import { warmFloorGpu } from '../mission/floor/registry';
+import { canalPaintedArt, drawnArt } from '../mission/canal/registry';
+import { canalSections } from '../mission/canal/sections';
 import { getMission, getWeapon, hasMission, listMissions, listWeapons } from '../registry';
 import { GameSession, type Difficulty } from '../session';
 import { creditsOf, type GameSettings } from '../settings';
@@ -93,7 +95,8 @@ export function missionArtOrder(
   section: string | undefined = mission?.start,
 ): { first: string[]; last: string[] } {
   const chars = (session?.slots ?? []).filter((s) => s.joined).map((s) => `char/${s.character}/`);
-  const own = section ? (mission?.sections?.[section]?.art ?? []) : [];
+  // A section that draws a canal scene leaves out the decor sprites the scene paints (docs/api/canal.md).
+  const own = section ? drawnArt(mission?.sections?.[section]) : [];
   return { first: [...new Set([...chars, ...(mission?.preloadFirst ?? []), ...own])], last: [...(mission?.preloadLast ?? [])] };
 }
 
@@ -170,7 +173,8 @@ let dense: DenseRun | null = null;
 /** Sprite id prefixes a section declares (`art` on its SectionDef, when present). */
 function sectionArt(mission: MissionArtDef, section: string | undefined): readonly string[] {
   if (!section) return [];
-  return mission.sections?.[section]?.art ?? [];
+  // A section that draws a canal scene leaves out the decor sprites the scene paints (docs/api/canal.md).
+  return drawnArt(mission.sections?.[section]);
 }
 
 /**
@@ -515,6 +519,8 @@ export function preloadMissionArt(
 ): boolean {
   // The perspective floor's GL context and program, at any tier (the browser only).
   if (app.preloadArt) warmFloorGpu(mission?.sections);
+  // The canal scenes (docs/api/canal.md): the start section's first packs, at any tier (the browser only).
+  if (app.preloadArt) canalSections(mission?.sections, undefined, [section ?? mission?.start ?? '']);
   // The density checks: the mission's highest density, capped by the art tier (tier 1: nothing).
   const tier = Math.min(toArtDensity(density), artTier());
   if (tier < 2 || !app.preloadArt) return hiPreload !== null;
@@ -522,8 +528,9 @@ export function preloadMissionArt(
   setDeferHiArt(true);
   if (!hiPreload) {
     const { first, last } = missionArtOrder(mission, session, section ?? mission?.start);
-    // Ids the boot installed from pack 'hi' are not built again.
-    const ids = preloadOrder(listHiSprites(2).filter((id) => !hasFramesAt(id, 2)), first, last);
+    // Ids the boot installed from pack 'hi' are not built again, nor the old decor the canal scenes paint.
+    const painted = canalPaintedArt(mission?.sections);
+    const ids = preloadOrder(listHiSprites(2).filter((id) => !hasFramesAt(id, 2) && !painted.has(id)), first, last);
     const head = ids.filter((id) => first.some((p) => id.startsWith(p)));
     const headSet = new Set(head);
     const p = missionPool();
@@ -738,6 +745,12 @@ export class GameplayScene implements Scene, PauseHost, PlayHost {
     runner.events.on('sectionLoaded', ({ id }) => {
       // Tier 4: the 4× working set moves on with the sections (preloadMissionArt).
       if (!this.demo) missionArtSection(id);
+      // The canal scenes: the next sections' first packs load now; the scenes behind go (docs/api/canal.md).
+      if (app.preloadArt && !this.demo) {
+        const m = runner.mission;
+        const order = Object.keys(m.sections);
+        canalSections(m.sections, id, nextSections(m, order, id, Math.max(0, order.indexOf(id))));
+      }
       this.rumble?.attach(runner.world, runner);
       runner.world.events.on('timeOut', () => {
         if (!this.demo) app.audio.voice('TIME UP!');

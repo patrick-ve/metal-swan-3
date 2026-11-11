@@ -296,8 +296,8 @@ function drawnId(id: string, d: DenseDensity): string {
   if (!a) return id;
   const end = aliasEnd(id, d);
   if (end === undefined) return id;
-  const own = getFrames(id, 1);
-  const base = getFrames(end, 1);
+  const own = registryFrames(id, 1);
+  const base = registryFrames(end, 1);
   if (a.checked !== end || a.own !== own || a.base !== base) {
     a.checked = end;
     a.own = own;
@@ -662,12 +662,59 @@ export function spriteIdOf(buf: PixelBuffer): string | undefined {
   return bufferIds.get(buf);
 }
 
+/** The sprite ids that show another id's frames right now (`setSpriteOverrides`); null = none. */
+let spriteOverrides: ReadonlyMap<string, string> | null = null;
+
+/**
+ * OPT-IN (mission `ams2`, docs/design/ams2-contract.md): while set, getFrames shows the frames of the
+ * mapped id. The mission runner sets it around its drawing only, so game logic and every other
+ * scene and mission see the original ids. Returns the map that was set before.
+ */
+export function setSpriteOverrides(map: ReadonlyMap<string, string> | null): ReadonlyMap<string, string> | null {
+  const was = spriteOverrides;
+  spriteOverrides = map;
+  return was;
+}
+
+/**
+ * Replacement frames drawn in place of some registered ones (`setFrameOverlay`): given the frames
+ * the registry has for `id` at density `d` (`base`), the frames to draw — `base` itself when the
+ * overlay replaces nothing of `id`. A replaced frame must have its base frame's logical geometry.
+ */
+export interface FrameOverlay {
+  frames(id: string, d: number, base: readonly Frame[]): readonly Frame[];
+}
+
+/** The frame overlay while set (`setFrameOverlay`); null = none. */
+let frameOverlay: FrameOverlay | null = null;
+
+/**
+ * OPT-IN (the canal scenes of mission `ams`, docs/api/canal.md §7): while set, getFrames / getFrame
+ * return the overlay's frames (a section's kit paintings in place of some frames of an entity's
+ * sprite). The mission runner sets it around its drawing only. Overlay frames are never cached,
+ * counted (`denseBytes`), listed (`generatedSprites`, `readyFrames`: the sprite packs) or seen by a
+ * generator (generators and the dense re-framing read the registry's own frames). Returns the
+ * overlay that was set before.
+ */
+export function setFrameOverlay(o: FrameOverlay | null): FrameOverlay | null {
+  const was = frameOverlay;
+  frameOverlay = o;
+  return was;
+}
+
 /**
  * Frames of a sprite (generated on first use, then cached). Missing → placeholder + warn once.
  * `d` (default: the art density, `setArtDensity`): 2 gives the 2× frames when the id has a 2×
  * generator, else the 1× frames; 1 always gives the 1× frames.
  */
 export function getFrames(id: string, d: number = density): readonly Frame[] {
+  const f = registryFrames(id, d);
+  return frameOverlay === null ? f : frameOverlay.frames(id, d, f);
+}
+
+/** getFrames without the frame overlay: the registry's own frames (generators, re-framing, alias checks). */
+function registryFrames(id: string, d: number): readonly Frame[] {
+  if (spriteOverrides !== null) id = spriteOverrides.get(id) ?? id;
   if (d >= HI_DENSITY && hiArt) {
     for (const dd of DENSE_DENSITIES) {
       if (dd > d) continue;
@@ -781,6 +828,8 @@ export interface PreloadOpts {
   last?: readonly string[];
   /** Leave out the deferred ids (SpriteOpts.defer) — for the boot preload. */
   skipDeferred?: boolean;
+  /** Ids to leave out (the old decor a canal scene paints instead, docs/api/canal.md §8). */
+  skip?: ReadonlySet<string>;
   /**
    * 1 (default): the 1× frames of every matching id. 2: the 2× frames of the matching ids that
    * have a 2× generator (and nothing else) — for a 2× mission's start, not for boot. 4: the ids
@@ -835,7 +884,7 @@ export async function preloadSprites(
   const keys: Iterable<string> = !hi ? registry.keys() : pd === 4 ? new Set([...listHiSprites(4), ...listHiSprites(2)]) : listHiSprites(2);
   const ids = preloadOrder(
     [...keys].filter(
-      (id) => list.some((p) => id.startsWith(p)) && !(opts?.skipDeferred && isDeferredSprite(id)),
+      (id) => list.some((p) => id.startsWith(p)) && !(opts?.skipDeferred && isDeferredSprite(id)) && !opts?.skip?.has(id),
     ),
     opts?.first ?? [],
     opts?.last ?? [],
@@ -906,6 +955,9 @@ export async function preloadSprites(
 function runGen(gen: SpriteGen): readonly (Frame | PixelBuffer)[] {
   const prev = density;
   density = 1;
+  // A generator builds from the registry's own frames, never from a frame overlay's (setFrameOverlay).
+  const overlay = frameOverlay;
+  frameOverlay = null;
   try {
     const result = gen();
     const items: readonly (Frame | PixelBuffer)[] = Array.isArray(result)
@@ -915,6 +967,7 @@ function runGen(gen: SpriteGen): readonly (Frame | PixelBuffer)[] {
     return items;
   } finally {
     density = prev;
+    frameOverlay = overlay;
   }
 }
 
@@ -938,7 +991,7 @@ function generate(e: Entry): void {
  * beyond losing the extra detail.
  */
 function generateHi(id: string, h: HiEntry, d: DenseDensity): void {
-  const base = getFrames(id, 1);
+  const base = registryFrames(id, 1);
   const e = registry.get(id);
   // A failing 4× generator falls back to the 2× frames (when the id has them), else 1×.
   const lower = (): readonly Frame[] => {

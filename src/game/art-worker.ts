@@ -7,7 +7,8 @@
  * copied.
  */
 import { createArtWorkerHandler, type ArtBuildReply, type ArtBuildRequest, type NodeWorkerThreads } from '../engine/art-pool';
-import { isFpsContent, isLazyContent, isOatContent, loadContent } from './content/index';
+import { isAms2Content, isFpsContent, isLazyContent, isOatContent, loadContent } from './content/index';
+import { isAms2SpriteId } from './content/missions/ams2/ids';
 import { isOatSpriteId } from './content/missions/oat/ids';
 
 const base = createArtWorkerHandler(
@@ -22,7 +23,16 @@ const base = createArtWorkerHandler(
 /** The oat chunk, loaded once when a request first names an oat sprite (`isOatSpriteId`). */
 let oat: Promise<void> | null = null;
 
+/** The ams2 chunk, loaded once when a request first names an ams2 sprite (`isAms2SpriteId`). */
+let ams2: Promise<void> | null = null;
+
 async function handle(req: ArtBuildRequest): ReturnType<typeof base> {
+  if (req.ids.some(isAms2SpriteId)) {
+    ams2 ??= loadContent(isAms2Content).then((report) => {
+      if (report.failed.length) console.warn(`[art-worker] ams2 content failed: ${report.failed.map((f) => f.id).join(', ')}`);
+    });
+    await ams2;
+  }
   if (req.ids.some(isOatSpriteId)) {
     oat ??= loadContent(isOatContent).then((report) => {
       if (report.failed.length) console.warn(`[art-worker] oat content failed: ${report.failed.map((f) => f.id).join(', ')}`);

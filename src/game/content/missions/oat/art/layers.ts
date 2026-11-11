@@ -309,6 +309,42 @@ function slopeRoof(p: Pen, x0: number, x1: number, ridge: number, eave: number, 
   );
 }
 
+/**
+ * A front below its eaves, from logical y `from` down to the layer's bottom (the bridge vistas and the
+ * canal openings show it): the brick grain lit from the left, sinking a little toward the street, and
+ * window rows every 9 px from `eave` + 3 in `bays` bays (lit windows at night by `lit`).
+ */
+function wallDown(p: Pen, u0: number, w: number, from: number, eave: number, wall: readonly Color[], t: RoofTones, o: { bays: number; lot: number; seed: number; night: boolean; lit: number }): void {
+  const d = p.d;
+  const wn = wall.length - 1;
+  const X0 = Math.round(u0 * d);
+  const X1 = Math.round((u0 + w) * d);
+  const Y0 = Math.max(0, Math.round(from * d));
+  const e = Math.max(1, d >> 1);
+  for (let X = X0; X < X1; X++) {
+    const edge = X - X0 < e ? 1 : X1 - X <= e ? -1.4 : 0;
+    for (let Y = Y0; Y < p.H; Y++) {
+      // The fronts sink a little toward the street (the street's shade, the far rows' haze), capped.
+      let v = wn * 0.62 + edge - Math.min(1.5, Math.max(0, (Y + 0.5) / d - eave) * 0.035);
+      if (d >= 2) v += (h2(cell(X, d), cell(Y, d), o.seed + 7) - 0.5) * 0.7;
+      p.dot(X, Y, wall[Math.max(0, Math.min(wn, dq(v, X, Y, 0.5)))]);
+    }
+  }
+  const bw = w / o.bays;
+  const ww = Math.max(1.5, bw * 0.34);
+  for (let row = 0; eave + 3 + row * 9 < p.h; row++) {
+    const wy = eave + 3 + row * 9;
+    if (wy + 4 <= from) continue;
+    for (let b = 0; b < o.bays; b++) {
+      const wx = u0 + b * bw + (bw - ww) / 2;
+      const on = o.night && h2(o.lot * 31 + row, b, o.seed + 77) < o.lit;
+      if (d >= 2) p.rect(wx - 0.5, wy - 0.5, ww + 1, 5, pick(t.frame, o.night ? 0 : 1));
+      p.rect(wx, wy, ww, 4, on ? pick(t.lit, 1 + h2(o.lot, row * 3 + b, o.seed) * 2.5) : pick(t.glass, 1 + (b === 0 ? 1 : 0)));
+      if (d >= 4 && !on) p.rect(wx, wy + 1.75, ww, 0.5, pick(t.frame, 0));
+    }
+  }
+}
+
 /** One roofscape: a back row of slopes, a front row of gables and slopes with chimneys and windows. */
 function roofs(p: Pen, params: Params, seed: number): void {
   const d = p.d;
@@ -333,8 +369,12 @@ function roofs(p: Pen, params: Params, seed: number): void {
       const ridge = y0 - 8 + h2(i, 2, s + 5) * (y1 - y0) * 0.6;
       const kind = h2(i, 3, s + 5);
       const list = kind < 0.6 ? tb.tile : kind < 0.85 ? tb.slate : tb.zinc;
-      slopeRoof(p, x, x + w, ridge, ridge + 12 + h2(i, 4, s + 5) * 6, list, { tiles: kind < 0.6, night, seed: s + i, rim: tb.rim });
-      p.rect(x + 1, ridge + 12, w - 2, p.h - ridge, pick(tb.brick[1], 1));
+      const eave = ridge + 12 + h2(i, 4, s + 5) * 6;
+      slopeRoof(p, x, x + w, ridge, eave, list, { tiles: kind < 0.6, night, seed: s + i, rim: tb.rim });
+      // The walls under the slopes (more hazed than the front row), with their window rows.
+      const wk = h2(i, 5, s + 5);
+      const wall = tb.brick[wk < 0.45 ? 1 : wk < 0.7 ? 0 : wk < 0.85 ? 3 : 2];
+      wallDown(p, x + 1, w - 2, eave, eave, wall, tb, { bays: w > 52 ? 4 : 3, lot: 500 + i, seed: s + 5, night, lit: litShare });
       x += w - 6;
       i++;
     }
@@ -379,7 +419,7 @@ function roofs(p: Pen, params: Params, seed: number): void {
         p.rect(tx0, tip - 1.5, w * 0.45, 0.5, pick(tf.frame, 0));
         for (let q = 0; q < 3; q++) p.disc(tx0 + 2 + q * (w * 0.14), tip - 1.5, 1.4, 1.2, pick(tf.plant, 1 + q));
       }
-      p.rect(u0, eave, w, p.h - eave, pick(wall, wn * 0.35));
+      wallDown(p, u0, w, eave, eave, wall, tf, { bays: w > 24 ? 3 : 2, lot: i, seed: s, night, lit: litShare });
     } else {
       const gh = g === 'lijst' ? 0 : w * (0.55 + r(5) * 0.35);
       const eave = tip + gh;
@@ -397,35 +437,19 @@ function roofs(p: Pen, params: Params, seed: number): void {
         const Yt = Math.round(top * d);
         // Lit from the left: the left two art px lighter, the right edge darker (the sun's side).
         const edge = X - X0 < Math.max(1, d >> 1) ? 1 : X1 - X <= Math.max(1, d >> 1) ? -1.4 : 0;
-        // Detail down to a little under the eaves (the rest is always behind our row): a flat fill.
-        const Yd = Math.min(p.H, Math.round((eave + 46) * d));
-        if (Yd < p.H) p.span(X, X + 1, Yd, wall[Math.max(0, Math.round(wn * 0.45))]);
-        for (let Y = Yd + 1; Y < p.H; Y++) p.dot(X, Y, wall[Math.max(0, Math.round(wn * 0.45))]);
+        // The gable down to the eaves; the storeys below are `wallDown`'s (the vistas show them).
+        const Yd = Math.min(p.H, Math.round(eave * d));
         for (let Y = Math.max(0, Yt); Y < Yd; Y++) {
-          // The fronts sink a little toward the street (the street's shade, the far rows' haze).
-          let v = wn * 0.62 + edge - Math.max(0, (Y + 0.5) / d - eave) * 0.035;
+          let v = wn * 0.62 + edge;
           if (d >= 2) v += (h2(cell(X, d), cell(Y, d), s + 7) - 0.5) * 0.7;
           if (Y - Yt < Math.max(1, d >> 1)) v = g === 'tuit' || g === 'trap' ? wn * 0.3 : -100;
           p.dot(X, Y, v === -100 ? pick(tf.stone, 2) : wall[Math.max(0, Math.min(wn, dq(v, X, Y, 0.5)))]);
         }
         if (night && Yt - 1 >= 0) p.dot(X, Yt - 1, pick(tf.rim, 0));
       }
+      // The storeys under the gable: brick and windows every 9 px, 2–3 bays, down to the layer's bottom.
+      wallDown(p, u0, w, eave, eave, wall, tf, { bays: w > 24 ? 3 : 2, lot: i, seed: s, night, lit: litShare });
       if (g === 'lijst') p.rect(u0 - 0.5, tip - 1.2, w + 1, 1.4, pick(tf.stone, 2));
-      // Windows: storeys every 9 px under the gable, 2–3 bays (a hoist window in the gable).
-      const bays = w > 24 ? 3 : 2;
-      const bw = w / bays;
-      const ww = Math.max(1.5, bw * 0.34);
-      for (let row = 0; row < 5; row++) {
-        const wy = eave + 3 + row * 9;
-        if (wy > eave + 42) break;
-        for (let b = 0; b < bays; b++) {
-          const wx = u0 + b * bw + (bw - ww) / 2;
-          const on = night && h2(i * 31 + row, b, s + 77) < litShare;
-          if (d >= 2) p.rect(wx - 0.5, wy - 0.5, ww + 1, 5, pick(tf.frame, night ? 0 : 1));
-          p.rect(wx, wy, ww, 4, on ? pick(tf.lit, 1 + h2(i, row * 3 + b, s) * 2.5) : pick(tf.glass, 1 + (b === 0 ? 1 : 0)));
-          if (d >= 4 && !on) p.rect(wx, wy + 1.75, ww, 0.5, pick(tf.frame, 0));
-        }
-      }
       if (gh > 6) {
         const on = night && r(11) < litShare;
         p.rect(u0 + w / 2 - 1.5, eave - gh * 0.55, 3, 4.5, on ? pick(tf.lit, 2) : pick(tf.glass, 1));

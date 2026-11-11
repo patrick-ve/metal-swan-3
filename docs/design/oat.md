@@ -437,11 +437,16 @@ scale (§8.2).
   toward the camera (a cosmetic depth walk; not hittable), the wall opens.
 
 ### 6.9 03:00: the neon goes out (d)
-- At x 3,700 the Oude Kerk carillon strikes three (three bell strikes; the music stops). The neon
-  and red tubes go out **group by group** over about 2 s (each group flickers 20–40 ticks, then
-  off: lamp groups in the light API); the arena's façade and floor chunks cross-fade from the lit
-  bake to the dark bake over 60 ticks; the darkness rises 0.35 → 0.6; the tower's floodlight
-  goes off. Then the boss's house lights up window by window and the fight starts.
+- At x 3,700 the Oude Kerk carillon strikes three (three bell strikes; the music stops). The
+  lights switch **only once the arena lock holds** (camera x 3,968; lead decision, FIX-A): then
+  every façade chunk on screen has its dark bake. The neon and red tubes go out **group by group**
+  over about 2 s (each group flickers 20–40 ticks, then off: lamp groups in the light API, at most
+  3 dims per second per group); the arena's façade and floor chunks cross-fade from the lit bake
+  to the dark bake over 60 ticks; the darkness rises 0.35 → 0.6; the tower's floodlight goes off.
+  Then the boss's house lights up window by window and the fight starts.
+- The dark set's range starts on a **lot border** at or left of the façade plane's left screen
+  edge at the lock (world x 3,877, `OAT_D_DARK`): the dark bake darkens only the lots inside the
+  range, so no chunk border cuts a façade; it stays three chunks (tests/content/oat-dark.test.ts).
 - A game liberty: since 2024 the real windows may stay lit until 06:00 (the bars close at 02:00 and
   the crowd thins). In the game every neon and red tube goes out at 03:00; the curtains stay
   closed. No figure is ever shown in a window.
@@ -476,7 +481,11 @@ scale (§8.2).
   (≤ 32 per slot per mission, no per-tick allocation) for the kassabon.
 - Opt-in: `MissionDef.economy?: 'euro'` (default points) for `ams`, `oat`, `oldenzaal`; the rally
   and the fps floors pay euros in their own score code.
-- Extends (`ONE MORE TRY!`) at **€ 1.000 and € 3.000 of gross income** (never reduced by costs).
+- Extends (`ONE MORE TRY!`) at **€ 5.000 and € 5.500 of gross income** (never reduced by costs).
+  The start values € 1.000 / € 3.000 fired in the identity sims (kills pay points ÷ 50: one `ams`
+  god run earns € 2.066 gross); BUDGET moved them to € 5.000 / € 15.000, and FIX-A measured a strong
+  run (about € 4.140 by the fps floors in wave A, about € 5.600 once oat is full) and set the
+  second to € 5.500, so a strong run reaches both by the fps floors (docs/api/budget.md §4).
 
 ### 7.2 Euro values
 
@@ -567,8 +576,9 @@ scale (§8.2).
   gain `budget`; every other field stays SAME (ticks, kills, deaths, continues, `score`); `m0-god`,
   `m2-god` and `ring-god-1` stay fully SAME; a route field (ams's next mission) may change. The
   report names every DIFF.
-- The € 1.000 / € 3.000 extends must not fire in these sims (they never reached 500,000 points); if
-  one does, the lead stops the wave (a lives change is gameplay). New baselines after wave C:
+- The € 5.000 / € 5.500 extends must not fire in these sims (each runs one mission: ams god earns
+  € 2.066 gross, oldenzaal € 1.073); if one does, the lead stops the wave (a lives change is
+  gameplay). New baselines after wave C:
   `oat-god-1p`, `oat-god-2p`, `oat-normal-1`.
 
 ## 8. Scenery and realism (the core of the user's demand)

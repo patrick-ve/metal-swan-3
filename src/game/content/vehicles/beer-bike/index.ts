@@ -5,5 +5,5 @@
  */
 import './bike';
 
-export { BeerBike, BIKE, RollingKeg } from './bike';
+export { BeerBike, BIKE, kegStep, RollingKeg } from './bike';
 export { BEER_BIKE, TURRET_STEPS, turretAngle, turretMuzzle } from './geometry';

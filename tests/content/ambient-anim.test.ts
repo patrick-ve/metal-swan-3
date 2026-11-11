@@ -2,8 +2,9 @@
  * Motion of the ams flyers and ambient life (animation wave, plan Phase 3 FLYERS + AMBIENT):
  * frame counts, the smoothness gate (no identical consecutive frames, 1× and 2×), 2× and 4× art
  * keeps the 1× geometry, and the draw-only transitions: the gull's take-off, pull-up and squash turn
- * (a tell cancels them; the tell timing is unchanged), the pigeons' take-off, the ducks' 4-step
- * paddle, the window waver's lean, the cat's swish and the tour boat's end-of-run turn.
+ * (a tell cancels them; the tell timing is unchanged), the pigeons' take-off (6 baked frames in the
+ * 6 logic ticks), the ducks' paddle (2 baked blocks of 12), the window waver's lean, the cat's swish
+ * and the tour boat's end-of-run turn.
  */
 import { describe, expect, it } from 'vitest';
 import type { Renderer } from '../../src/engine/render';
@@ -19,20 +20,16 @@ import '../../src/game/content/locals/index';
 import '../../src/game/content/locals/art';
 import '../../src/game/content/missions/ams/index';
 import { Seagull, SEAGULL } from '../../src/game/content/locals/index';
+import { TAKEOFF_TIMING } from '../../src/game/content/locals/seagull.art';
 import { AmsPigeons } from '../../src/game/content/missions/ams/entities';
-import { TOUR_BOAT, type AmsTourBoat } from '../../src/game/content/missions/ams/ambient';
+import { PIGEON_TAKEOFF_TICKS, TOUR_BOAT, type AmsTourBoat } from '../../src/game/content/missions/ams/ambient';
 import { WAVER_EMPTY, WAVER_IDLE } from '../../src/game/content/art40/ams-window-waver.gen';
 import { assertNoDuplicateFrames } from '../art/motion';
 import { FLOOR, TestWorld } from './helpers';
 
 const COUNTS: Record<string, number> = {
-  'enemy/seagull/walk': 6,
-  'enemy/seagull/idle': 6,
-  'enemy/seagull/takeoff': 3,
-  'enemy/seagull/pull-up': 2,
-  'enemy/seagull/turn': 2,
-  'npc/ams/ams-pigeons/takeoff': 2,
-  'npc/ams/ams-ducks/paddle': 8,
+  // the gull's flap, hover, take-off, pull-up and turn: a baked 40 px set (tests/art40/seagull.test.ts)
+  // the pigeons' take-off and the duck paddle: baked 40 px sets (tests/art40/ams-pigeons.test.ts, ams-ducks.test.ts)
   // the window waver's lean and the cat's swish: a baked 40 px set (tests/art40/ams-window-waver.test.ts)
   'npc/ams/ams-tour-boat/turn': 2,
 };
@@ -61,24 +58,24 @@ describe('ambient motion: strips', () => {
           expect([hi[i].ox, hi[i].oy]).toEqual([lo[i].ox, lo[i].oy]);
         }
       }
-      // The duck paddle holds two looping 4-frame cycles (drake, hen): check each.
-      if (id !== 'npc/ams/ams-ducks/paddle') assertNoDuplicateFrames(id);
+      assertNoDuplicateFrames(id);
     });
   }
 
   it('the take-off draws the perched gull at the flying anchor (no pop, no drop at the hand-off)', () => {
     const t = getFrames('enemy/seagull/takeoff', 1);
-    const fly = getFrames('enemy/seagull/walk', 1)[0];
     const perch = getFrames('enemy/seagull/perch', 1)[0];
-    // Every frame = the perch body (feet anchor − 11): the rising anchor carries the lift, so the
-    // body is where the flap strip draws it when the take-off ends.
-    for (const f of t) expect(f.oy).toBe(perch.oy - 11);
-    expect(t[0].buf.h).toBe(fly.buf.h);
+    // The perch stands on its feet anchor; the take-off's first frame (the crouch on the perch) is
+    // anchored at the body centre with the feet PERCH_LIFT (11 px) under it: the rising anchor
+    // carries the lift (baked 40 px art, tests/art40/seagull.test.ts).
+    expect(perch.buf.h).toBe(perch.oy);
+    expect(t[0].buf.h - t[0].oy).toBe(11);
+    expect(t[1].buf.h - t[1].oy).toBe(11);
   });
 });
 
 describe('ambient motion: the gull', () => {
-  it('wakes into the 3-frame take-off, then flaps', () => {
+  it('wakes into the take-off (every frame of TAKEOFF_TIMING), then flaps', () => {
     const tw = new TestWorld({ playerX: 100, god: true, seed: 6 });
     const g = tw.spawn('seagull', 300, { perch: true }, FLOOR - 50) as Seagull;
     tw.hold('right');
@@ -90,7 +87,7 @@ describe('ambient motion: the gull', () => {
     }
     const ids = calls.map((c) => c[0]);
     expect(ids[0]).toBe('enemy/seagull/takeoff');
-    expect(new Set(calls.filter((c) => c[0] === 'enemy/seagull/takeoff').map((c) => c[1]))).toEqual(new Set([0, 1, 2]));
+    expect(new Set(calls.filter((c) => c[0] === 'enemy/seagull/takeoff').map((c) => c[1]))).toEqual(new Set(TAKEOFF_TIMING.map((_, i) => i)));
     expect(ids.at(-1)).not.toBe('enemy/seagull/takeoff');
   });
 
@@ -131,24 +128,26 @@ describe('ambient motion: the gull', () => {
 });
 
 describe('ambient motion: ambient life', () => {
-  it('pigeons crouch and push off (2 frames) before they flap', () => {
+  it('pigeons startle and take off (6 frames in the 6 logic ticks) before they flap', () => {
     const tw = new TestWorld({ playerX: 60, god: true });
     const f = tw.spawn('ams-pigeons', 220, { count: 3 }) as AmsPigeons;
     f.scare(200);
     const { r, calls } = recorder();
-    f.draw(r);
-    expect(calls[0]).toEqual(['npc/ams/ams-pigeons/takeoff', 0]);
-    tw.run(4);
-    calls.length = 0;
-    f.draw(r);
-    expect(calls[0]).toEqual(['npc/ams/ams-pigeons/takeoff', 1]);
+    const seen: [string, number][] = [];
+    for (let k = 0; k < PIGEON_TAKEOFF_TICKS; k++) {
+      calls.length = 0;
+      f.draw(r);
+      seen.push(calls[0]);
+      tw.run(1);
+    }
+    expect(seen).toEqual([0, 1, 2, 3, 4, 5].map((i) => ['npc/ams/ams-pigeons/takeoff', i]));
     tw.run(8);
     calls.length = 0;
     f.draw(r);
-    expect(calls.every((c) => c[0] === 'npc/ams/ams-pigeons')).toBe(true);
+    expect(calls.every((c) => c[0] === 'npc/ams/ams-pigeons/fly')).toBe(true);
   });
 
-  it('ducks paddle in 4 steps; the cat swishes through all 8 frames of its baked strip', () => {
+  it('ducks paddle through both baked blocks (drake 0-11, hen 12-23); the cat swishes through all 8 frames of its baked strip', () => {
     const tw = new TestWorld({ playerX: 60, god: true });
     const d = tw.spawn('ams-ducks', 300, { count: 2 });
     const c = tw.spawn('ams-window-waver', 360, { look: 'cat' });
@@ -159,7 +158,7 @@ describe('ambient motion: ambient life', () => {
       tw.run(1);
     }
     const duck = new Set(calls.filter((x) => x[0] === 'npc/ams/ams-ducks/paddle').map((x) => x[1]));
-    expect(duck).toEqual(new Set([0, 1, 2, 3, 4, 5, 6, 7]));
+    expect(duck).toEqual(new Set(Array.from({ length: 24 }, (_, i) => i)));
     const cat = new Set(calls.filter((x) => x[0] === 'npc/ams/ams-window-waver/cat-swish').map((x) => x[1]));
     expect(cat).toEqual(new Set([0, 1, 2, 3, 4, 5, 6, 7]));
   });

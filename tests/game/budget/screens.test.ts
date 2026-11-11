@@ -167,6 +167,28 @@ describe('budget: the rally\'s prize money (spec §7.8)', () => {
     expect(cents.FINES).toBe(-36000);
     expect(lines.find((l) => l.label.startsWith('FINES'))?.label).toBe('FINES 3');
   });
+
+  it('the prize money is paid as it stands at every difficulty (FINES a flat − € 120 each; only bonus lines scale)', () => {
+    for (const difficulty of ['easy', 'normal', 'hard'] as const) {
+      const { app, step, tap } = harness();
+      const session = new GameSession({ characters: ['vincent'], seed: 1, difficulty });
+      app.session = session;
+      const runner: NextRunner = {
+        session,
+        mission: { id: 'rally' },
+        nextMission: () => null,
+        tallyLines: () => [
+          { label: 'PLACE 8/8', points: 0, cents: PRIZE.place[7] },
+          { label: 'FINES 3', points: -3, cents: 3 * PRIZE.fine },
+        ],
+      };
+      app.scenes.reset(new MissionCompleteScene(app, runner));
+      step(25);
+      tap('fire');
+      step(200);
+      expect(session.slots[0].cents, difficulty).toBe(10000 + PRIZE.place[7] + 3 * PRIZE.fine);
+    }
+  });
 });
 
 describe('budget: the budgets table on the screens (spec §7.7)', () => {

@@ -1,0 +1,460 @@
+<title>Four Canal Scenes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* One dark screening room: four moving screens, the reading of the reference above them. Single dark look by choice. */
+:root{
+  color-scheme: dark;
+  --ground:#0d1017; --panel:#131824; --line:#262d3b;
+  --ink:#e9e6dc; --dim:#9aa3b4;
+  --haze:#9cbcda; --amber:#f6c56a;
+  --display:'Silkscreen','Courier New',monospace;
+  --body:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+body{background:var(--ground);color:var(--ink);font:16px/1.55 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{margin:0;font-weight:400;text-wrap:balance}
+h1{font:400 clamp(26px,4.6vw,44px)/1.1 var(--display)}
+h2{font:400 clamp(18px,2.6vw,24px)/1.2 var(--display)}
+h3{font:600 13px/1.3 var(--body);letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+p{margin:0;max-width:66ch}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--haze)}
+header{display:flex;flex-direction:column;gap:14px}
+header p{color:var(--dim);font-size:17px}
+header p b{color:var(--ink);font-weight:500}
+section.block{display:flex;flex-direction:column;gap:18px}
+.lede{color:var(--dim)}
+.tierbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+.tierbar .lab{font:500 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.tiernote{font:400 13px/1.5 var(--mono);color:var(--dim)}
+/* the reading: a list of findings, the number first */
+.read{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 40px;border-top:1px solid var(--line)}
+.find{display:grid;grid-template-columns:92px 1fr;grid-template-rows:auto 1fr;gap:4px 16px;padding:16px 0;border-bottom:1px solid var(--line);min-width:0}
+.find .num{font:400 20px/1.1 var(--display);color:var(--amber);font-variant-numeric:tabular-nums;grid-row:1 / span 2}
+.find .num small{display:block;font:400 11px/1.3 var(--mono);color:var(--dim);margin-top:5px;letter-spacing:.02em}
+.find h4{margin:0;font:600 15px/1.35 var(--body);align-self:start}
+.find p{font-size:14.5px;color:var(--dim);grid-column:2;align-self:start}
+.find p b{color:var(--ink);font-weight:500}
+.ramp{display:flex;height:22px;border:1px solid var(--line);max-width:100%}
+.ramp i{flex:1;display:block}
+.rampnote{font:400 12px/1.4 var(--mono);color:var(--dim)}
+.tw{overflow-x:auto;max-width:100%}
+table{border-collapse:collapse;font:400 13px/1.4 var(--mono);font-variant-numeric:tabular-nums;min-width:560px;width:100%}
+th,td{padding:7px 12px 7px 0;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--dim);font-weight:500}
+td b{color:var(--amber);font-weight:500}
+tr.own td{color:var(--ink)} tr.ref td{color:var(--dim)}
+/* the screens: scenery behind, Vincent on his own 384 x 216 canvas, the front things over him */
+#stages{display:flex;flex-direction:column;gap:56px}
+.stage{display:flex;flex-direction:column;gap:14px}
+.shead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px}
+.shead .eyebrow{color:var(--dim)}
+.screen{position:relative;background:#000;border:1px solid var(--line);aspect-ratio:16/9;max-width:100%;touch-action:pan-y;cursor:ew-resize;overflow:hidden;user-select:none}
+.screen canvas{position:absolute;inset:0;width:100%;height:100%;display:block;max-width:none}
+.screen canvas.hero{image-rendering:pixelated;image-rendering:crisp-edges}
+.screen .load{position:absolute;left:10px;top:10px;font:400 11px/1 var(--display);padding:6px 8px;background:rgba(13,16,23,.82);color:var(--amber);pointer-events:none}
+.row{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:flex-start}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;flex:none}
+.seg{display:inline-flex;border:1px solid var(--line);flex:none}
+.seg button{font:500 13px/1 var(--body);color:var(--dim);background:none;border:0;padding:9px 14px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--amber);color:#1a1408}
+button:focus-visible{outline:2px solid var(--haze);outline-offset:2px}
+.row p{color:var(--dim);font-size:15px;flex:1 1 320px;min-width:0}
+.nums{font:400 13px/1.6 var(--mono);color:var(--dim);flex:1 1 260px;min-width:0;font-variant-numeric:tabular-nums}
+.nums b{color:var(--ink);font-weight:500}
+.build{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:28px 40px}
+.build section{display:flex;flex-direction:column;gap:10px;min-width:0}
+.build ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--dim);font-size:15px}
+.build li b{color:var(--ink);font-weight:500}
+.build li::marker{color:var(--amber)}
+hr{border:0;border-top:1px solid var(--line);margin:0;width:100%}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">scenery study · 4 scenes · 3 resolutions · hero 40 px</span>
+  <h1>Four Canal Scenes</h1>
+  <p>I measured the backgrounds of the arcade reference in the screenshots you gave. Then I painted <b>four places in Amsterdam</b> by the rules that came out: two canals, the river, and the pond of the museum square. All scenery here is new. It uses no art of the game and no art of the reference.</p>
+  <p><b>New in this version:</b> the second scene is now <b>Museumplein</b> in autumn, with the same sky, light and air as before. The fourth scene is now <b>De Wallen</b>, the Red Light district, by night. The scenery has three resolutions. <b>Vincent is unchanged.</b></p>
+  <div class="tierbar"><span class="lab">Scenery resolution</span>
+    <div class="seg tiers" role="group" aria-label="Scenery resolution"><button type="button" data-u="1">1× · 384 × 216</button><button type="button" data-u="2">2× · 768 × 432</button><button type="button" data-u="4">4× · 1536 × 864</button></div>
+  </div>
+  <span class="tiernote">The switch changes all four screens. Each tier is painted for its grid: nothing is scaled up.</span>
+</header>
+
+<div id="stages"></div>
+
+<section class="block">
+  <h2>What the higher tiers add</h2>
+  <div class="read">
+    <div class="find"><div class="num">1 px<small>real pixel steps</small></div><h4>Curves and slopes</h4>
+      <p>Gables, arches, hulls, wheels, roofs and tree crowns step by one real pixel. At 1× they step by one large pixel.</p></div>
+    <div class="find"><div class="num">½<small>cell size</small></div><h4>Texture and dither</h4>
+      <p>Bricks, roof tiles, leaf clusters, grit and the dither checker use cells of half the size. At 4× the brick joints show. The noise of clouds, leaves, bark and water gets one or two finer layers.</p></div>
+    <div class="find"><div class="num">½<small>stroke width</small></div><h4>Thin parts</h4>
+      <p>Glazing bars, rails, spokes, rigging, twigs and stone joints are half as wide. So a window has finer bars, not thicker ones.</p></div>
+    <div class="find"><div class="num">=<small>same palette</small></div><h4>What does not change</h4>
+      <p>The ramps, the key light, the air per plane and the layout are the same at each tier. The number of colours in a frame stays almost the same.</p></div>
+  </div>
+</section>
+
+<section class="block">
+  <h2>What the reference does</h2>
+  <p class="lede">Each number below comes from the screenshots. Each line ends with the rule that I applied in the canal scenes.</p>
+  <div class="read">
+    <div class="find"><div class="num">122<small>colours in a frame</small></div><h4>A small palette, used hard</h4>
+      <p>The one lossless screenshot has 122 colours in the full frame at its own grid (304 px wide). Each colour sits on a grid of 5 bits per channel. <b>Rule:</b> every colour in the scenes is snapped to that grid, and every surface takes its tones from one short ramp.</p></div>
+    <div class="find"><div class="num">10<small>tones in the sky</small></div><h4>The sky is a ramp of the smallest steps</h4>
+      <p>Ten tones cover 90 % of that sky. Neighbour tones differ by one step of the colour grid. <b>Rule:</b> skies of 12 to 18 tones, never a smooth gradient.</p></div>
+    <div class="find"><div class="num">34 %<small>of sky pixels</small></div><h4>Dither only where air is</h4>
+      <p>A third of the sky pixels lie in a 1-pixel checker between two tones. The band borders are torn and follow the cloud streaks. Objects have no dither: they have clean clusters. <b>Rule:</b> checker dither on sky, cloud bases, light halos and smoke only.</p></div>
+    <div class="find"><div class="num">59–96 %<small>one hue family</small></div><h4>One key hue for each stage</h4>
+      <p>I took the pixels with colour and counted those within 25° of the strongest hue: beach 59 %, dunes 71 %, dusk sky 87 %, orange stage 95 %, factory 96 %, night 96 %. <b>Rule:</b> each scene gets one key light that pulls sky, water, stone and brick together.</p></div>
+    <div class="find"><div class="num">181°<small>far hue = sky hue</small></div><h4>Far things take the colour of the air</h4>
+      <p>On the beach, the far wreck has the same hue as the sky at the horizon (181°). Its saturation is 0.34. The near wreck has hue 33° and saturation 0.59. <b>Rule:</b> each plane is mixed toward the air colour of its hour, more with distance.</p></div>
+    <div class="find"><div class="num">0.11 → 0.62<small>light range, far → near</small></div><h4>Contrast grows toward the viewer</h4>
+      <p>In the dunes, the far ridge spans 0.11 of the light range, the walk dune 0.23, the front dune 0.62. The darkest tone of the far wreck is 0.33, of the near wreck 0.09. <b>Rule:</b> the deepest darks are in the front plane only.</p></div>
+    <div class="find"><div class="num">4–6<small>tones in a cloud</small></div><h4>Clouds are solid bodies</h4>
+      <p>A lit top, a shaded flat base, and a base that goes into the sky through dither. The shade side takes the sky hue. <b>Rule:</b> clouds are built from spheres on a flat base, lit from one side, cut to 5 or 6 tones.</p></div>
+    <div class="find"><div class="num">1 px<small>rim and edge</small></div><h4>Edges are tones, not black lines</h4>
+      <p>The dark edge of a thing is the dark tone of its own colour, on the shade side. The sun side gets a thin light rim. Every surface has wear: stains, moss, cracks, rivets. <b>Rule:</b> the same on bricks, stone, hulls and leaves.</p></div>
+    <div class="find"><div class="num">3 + 1<small>planes and a frame</small></div><h4>Depth is built from planes</h4>
+      <p>A sky, a far plane, the walk plane, and dark things at the lower edge that pass faster than the hero. The ground is a plane: its detail gets larger toward the viewer. <b>Rule:</b> seven to nine layers per scene, the water scrolls row by row.</p></div>
+    <div class="find"><div class="num">96 % / 0<small>scene / hero</small></div><h4>Figures keep their own colours</h4>
+      <p>In the night stage the scenery is one blue. The figures stay warm, so the eye finds them at once. <b>Rule:</b> Vincent is never graded with the scene.</p></div>
+  </div>
+  <div class="ramp" id="ramp" role="img" aria-label="The ten sky tones measured in the lossless screenshot"></div>
+  <span class="rampnote">The ten sky tones of the lossless screenshot, dark to light. Each step is 8 of 255 in one or more channels.</span>
+</section>
+
+<section class="block">
+  <h2>The same measurements on the four scenes</h2>
+  <p class="lede">I measured the finished scenes with the same script, at the tier that the switch shows. The grey rows are the reference.</p>
+  <div class="tw"><table id="mt">
+    <thead><tr><th>Scene</th><th>Colours in a frame</th><th>Key hue share</th><th>Far plane: light range · saturation</th><th>Walk plane: light range · saturation</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+</section>
+
+<hr>
+<div class="build">
+  <section>
+    <h3>How the scenes are made</h3>
+    <ul>
+      <li>A paint kit draws each scene in the 384 × 216 layout. The tier says how many real pixels one layout pixel has.</li>
+      <li>Parts: canal houses with five gable types, shutters and stoops; a museum front; elms; boats; quay walls; bridges; street furniture; neon signs; swans and ducks.</li>
+      <li>Each scene paints in daylight colours first. Then one colour table per plane gives the hour and the air.</li>
+      <li>The water mirrors the far bank, squeezes it, and breaks it with ripples. It has three frames.</li>
+      <li>At night, light falls on what is there. The wall around a red room steps toward red in two tones, and the detail of the wall stays.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>What moves</h3>
+    <ul>
+      <li><b>Parallax:</b> sky 0, clouds 0.02–0.03, skyline 0.10–0.18, far bank 0.3–0.5, walk plane 1, front things 1.35.</li>
+      <li><b>Water:</b> each row has its own speed, from the far bank speed to 0.9.</li>
+      <li><b>Pond:</b> the mirror image is one piece that moves with the museum. The ripples and the leaves are a second layer. That layer scrolls row by row over the image.</li>
+      <li><b>Side canal</b> (three scenes): the page draws it for each frame, column by column, from two long strips of house fronts. A thing at depth z moves at 1/z of the speed of the far bank, and all lines meet at the centre of the screen.</li>
+      <li><b>Loops:</b> water 3 frames, clouds drift, the sun glitter in the sunset scene.</li>
+      <li>Drag a screen to move the camera.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>Limits</h3>
+    <ul>
+      <li>Vincent has one size in the game. At 2× and 4× his pixels are larger than the pixels of the scenery.</li>
+      <li>The parts come from generators. A hand-made stage of the reference has more one-off objects.</li>
+      <li>Cars, boats, birds and leaves do not move yet. The street posts stand on the kerbstones only.</li>
+      <li>The museum is an own impression. It is not a survey of the real building.</li>
+      <li>Nothing in the game changed. This page is a study.</li>
+    </ul>
+  </section>
+</div>
+</div>
+
+<script type="application/json" id="pack">/*PACK*/</script>
+<script>
+const D = JSON.parse(document.getElementById('pack').textContent);
+const VW = D.view[0], VH = D.view[1], CAM = D.cam;
+const NOTE = {
+  a: 'Key hue: sky blue. The brick fronts carry the warm accent. On the far bank a brick arch bridge spans a side canal. That canal runs away from you, in true perspective. When Vincent runs past, the view into that canal turns: first you see one row of fronts, then both, then the other row.',
+  b: 'Key hue: the same olive sepia as before, for the cloud deck, the water and the stone. The museum stands at the head of the square: two towers with spires, a stepped gable, the passage arches. The pond shows its mirror image. That image stays under the museum when you move. Only the ripples and the leaves on the water slide past. The light is flat, so nothing casts a hard shadow. The slabs are wet and the puddles take the sky.',
+  c: 'Key hue: orange, with wine-red shade. The sky fills half the frame. The far bank is low and small. A tower, a dome, a mill and a sailing barge stand as shapes against the sun. The glitter stays under the sun. The shadows fall toward you.',
+  d: 'Key hue: one night blue for the full stage, in violet air. The lights are red: the rooms behind glass at street level, the lanterns on the bridge, the neon signs, and their long streaks in the water. Red light is at street level only. The rooms above are dark or warm. Swans float on the canal. The side canal behind the bridge has the same red rooms, in true perspective. Vincent keeps his own colours, as the figures of the reference do.',
+};
+const REF = [
+  ['Reference: beach', '', '59 %', '0.35 · 0.34', '0.41 · 0.59'],
+  ['Reference: dunes', '', '71 %', '0.11 · 0.18', '0.62 · 0.55'],
+  ['Reference: night', '', '96 %', '0.09 · 0.91', '0.34 · 0.68'],
+  ['Reference: dusk sky (lossless)', '122', '87 %', '', ''],
+];
+const SKY = ['#383841','#414149','#494951','#515151','#595959','#696159','#796959','#8a7159','#9a7959','#aa8259'];
+const rampEl = document.getElementById('ramp');
+for (const c of SKY){ const i = document.createElement('i'); i.style.background = c; rampEl.appendChild(i); }
+
+const load = (b, type) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = 'data:image/' + (type || 'webp') + ';base64,' + b; });
+const pct = v => Math.round(v * 100) + ' %';
+const f2 = v => v.toFixed(2);
+const root = document.getElementById('stages');
+const states = [];
+const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let TIER = (root.getBoundingClientRect().width || window.innerWidth) < 700 ? 2 : 4;
+let hero = null;
+
+function shadowSprite(rgb){
+  const c = document.createElement('canvas'); c.width = 25; c.height = 5;
+  const x = c.getContext('2d'); x.fillStyle = 'rgb(' + rgb.join(',') + ')';
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -12; dx <= 12; dx++)
+    if ((dx / 12.5) ** 2 + (dy / 2.6) ** 2 <= 1 && ((dx + dy) % 2 + 2) % 2 === 0) x.fillRect(dx + 12, dy + 2, 1, 1);
+  return c;
+}
+
+function numsHTML(m){
+  return 'Colours in a frame <b>' + m.colors + '</b> · key hue share <b>' + pct(m.share) + '</b><br>' +
+    'Light range: skyline <b>' + f2(m.skyline.hi - m.skyline.lo) + '</b> · far bank <b>' + f2(m.far.hi - m.far.lo) + '</b> · walk plane <b>' + f2(m.near.hi - m.near.lo) + '</b><br>' +
+    'Darkest tone: skyline <b>' + f2(m.skyline.lo) + '</b> · far bank <b>' + f2(m.far.lo) + '</b> · walk plane <b>' + f2(m.near.lo) + '</b>';
+}
+
+function showTier(){
+  for (const b of document.querySelectorAll('.tiers button')) b.setAttribute('aria-pressed', String(Number(b.dataset.u) === TIER));
+  const sc = D.tiers[TIER].scenes;
+  for (const st of states) st.nums.innerHTML = numsHTML(sc[st.i].m);
+  const tb = document.querySelector('#mt tbody'); tb.textContent = '';
+  for (const s of sc){
+    const tr = document.createElement('tr'); tr.className = 'own';
+    tr.innerHTML = '<td>' + s.name + ' · ' + s.hour + '</td><td><b>' + s.m.colors + '</b></td><td><b>' + pct(s.m.share) + '</b></td><td>' +
+      f2(s.m.far.hi - s.m.far.lo) + ' · ' + f2(s.m.far.sat) + '</td><td>' + f2(s.m.near.hi - s.m.near.lo) + ' · ' + f2(s.m.near.sat) + '</td>';
+    tb.appendChild(tr);
+  }
+  for (const r of REF){
+    const tr = document.createElement('tr'); tr.className = 'ref';
+    tr.innerHTML = r.map(v => '<td>' + (v || '–') + '</td>').join('');
+    tb.appendChild(tr);
+  }
+}
+function setTier(u){ TIER = u; showTier(); }
+
+function fit(st){                       // large pixels stay crisp, small pixels are smoothed
+  const r = st.back.getBoundingClientRect();
+  const up = r.width * (window.devicePixelRatio || 1) >= st.back.width;
+  st.back.style.imageRendering = st.front.style.imageRendering = up ? 'pixelated' : 'auto';
+}
+
+function evict(){                       // hold the large images of at most one screen that is out of view
+  const held = states.filter(s => s.art && s.art.u > 1 && !s.vis).sort((a, b) => a.seen - b.seen);
+  while (held.length > 1) held.shift().art = null;
+}
+
+function shrink(src, w, h){
+  const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h);
+  const x = c.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  x.drawImage(src, 0, 0, c.width, c.height); return c;
+}
+function ripmaps(im, nH, nV){             // reduced copies: widths halve with i, heights halve with j
+  const g = [];
+  for (let i = 0; i < nH; i++){
+    g[i] = [];
+    for (let j = 0; j < nV; j++){
+      if (!i && !j) g[i][j] = im;
+      else if (j) g[i][j] = shrink(g[i][j - 1], g[i][j - 1].width, g[i][j - 1].height >> 1);
+      else g[i][j] = shrink(g[i - 1][0], g[i - 1][0].width >> 1, g[i - 1][0].height);
+    }
+  }
+  return g;
+}
+function mips(im, n){ const a = [im]; for (let k = 1; k < n; k++) a.push(shrink(a[k - 1], a[k - 1].width >> 1, a[k - 1].height >> 1)); return a; }
+async function loadVista(ly){
+  const im = {};
+  for (const k in ly.v.imgs) im[k] = await load(ly.v.imgs[k]);
+  const v = Object.assign({}, ly.v, { wall: [ripmaps(im.wallL, 6, 3), ripmaps(im.wallR, 6, 3)], water: ripmaps(im.water, 1, 6)[0], tree: mips(im.trees, 4), end: im.end });
+  return Object.assign({}, ly, { v });
+}
+
+// The side canal, in true perspective. Depth z = 1 is the plane of the far bank. A point of that plane at
+// position uu, moved to depth z, is at x = centre + (uu - scroll - centre) / z and y = horizon + (y - horizon) / z.
+// So deep things move less than the far bank and all lines along the canal meet at the centre of the screen.
+function drawVista(ctx, ly, cx, u){
+  const v = ly.v, c0 = VW / 2, off = cx * v.speed, yh = v.yh, zm = v.zmax;
+  const gx0 = v.u0 - off, gx1 = v.u1 - off;
+  if (gx1 < 0 || gx0 > VW) return;
+  const X = (uu, z) => c0 + (uu - off - c0) / z, Y = (y1, z) => yh + (y1 - yh) / z;
+  const cl0 = Math.max(0, Math.floor(gx0 * u)), cl1 = Math.min(VW * u, Math.ceil(gx1 * u));
+  const N = v.street.length, lut = z => Math.min(N - 1, Math.max(0, Math.floor((z - 1) / (zm - 1) * N)));
+  ctx.save(); ctx.beginPath(); ctx.rect(cl0, 0, cl1 - cl0, Math.ceil(v.yw * u)); ctx.clip();
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  // the far end: a cross street
+  ctx.drawImage(v.end, Math.round(X(v.u0, zm) * u), Math.round(Y(v.ys, zm) * u) - v.end.height);
+  // the water: one strip row for each screen row
+  const WL = v.u0 + v.qw, WR = v.u1 - v.qw, dyw = v.yw - yh, dys = v.ys - yh;
+  for (let p = Math.max(0, Math.floor(Y(v.yw, zm) * u)), p1 = Math.ceil(v.yw * u); p < p1; p++){
+    const z = dyw / ((p + 0.5) / u - yh);
+    if (z < 1 || z > zm) continue;
+    const xl = X(WL, z) * u, xr = X(WR, z) * u;
+    if (xr <= xl || xr < cl0 || xl > cl1) continue;
+    const k = Math.min(v.water.length - 1, Math.max(0, Math.floor(Math.log2(Math.max(1, v.kw * z * z / dyw)))));
+    const src = v.water[k];
+    ctx.drawImage(src, 0, Math.min(src.height - 1, Math.floor((z - 1) * v.kw * u / (1 << k))), src.width, 1, xl, p, xr - xl, 1);
+  }
+  // the quay walls and the fronts: only the side that faces the viewer shows
+  for (const side of [0, 1]){
+    const A = (side ? WR : WL) - off - c0;
+    if (side ? A <= 0 : A >= 0) continue;
+    const xa = (c0 + A) * u, xb = (c0 + A / zm) * u;
+    for (let p = Math.max(cl0, Math.floor(Math.min(xa, xb))), p1 = Math.min(cl1, Math.ceil(Math.max(xa, xb))); p < p1; p++){
+      const d = (p + 0.5) / u - c0; if (!d) continue;
+      const z = A / d; if (z < 1 || z > zm) continue;
+      const yt = Y(v.ys, z) * u, i = lut(z);
+      ctx.fillStyle = v.quay[i]; ctx.fillRect(p, yt, 1, Y(v.yw, z) * u - yt);
+      ctx.fillStyle = v.cope[i]; ctx.fillRect(p, yt, 1, Math.max(1, 1.2 * u / z));
+    }
+  }
+  for (let p = Math.max(0, Math.floor(Y(v.ys, zm) * u)), p1 = Math.ceil(v.ys * u); p < p1; p++){
+    const z = dys / ((p + 0.5) / u - yh); if (z < 1 || z > zm) continue;
+    ctx.fillStyle = v.street[lut(z)];
+    const a = X(v.u0, z) * u, b = X(WL, z) * u, c = X(WR, z) * u, d = X(v.u1, z) * u;
+    ctx.fillRect(a, p, b - a, 1); ctx.fillRect(c, p, d - c, 1);
+  }
+  for (const side of [0, 1]){
+    const A = (side ? v.u1 : v.u0) - off - c0;
+    if (side ? A <= 0 : A >= 0) continue;
+    const rip = v.wall[side], xa = (c0 + A) * u, xb = (c0 + A / zm) * u, aA = Math.abs(A);
+    for (let p = Math.max(cl0, Math.floor(Math.min(xa, xb))), p1 = Math.min(cl1, Math.ceil(Math.max(xa, xb))); p < p1; p++){
+      const d = (p + 0.5) / u - c0; if (!d) continue;
+      const z = A / d; if (z < 1 || z > zm) continue;
+      const i = Math.min(rip.length - 1, Math.max(0, Math.floor(Math.log2(Math.max(1, v.K * z * z / aA * v.hr / u)))));
+      const src = rip[i][Math.min(rip[0].length - 1, Math.floor(Math.log2(z)))];
+      ctx.drawImage(src, Math.min(src.width - 1, Math.floor((z - 1) * v.K * v.hr / (1 << i))), 0, 1, src.height, p, Y(v.ys - v.wallH, z) * u, 1, v.wallH / z * u);
+    }
+  }
+  // the trees on the quays, the far ones first
+  for (const t of v.trees){
+    const z = t.z, k = Math.min(v.tree.length - 1, Math.floor(Math.log2(z))), f = u / (1 << k);
+    const dw = t.sw / z * u, dh = t.sh / z * u, dx = X(t.u, z) * u - dw / 2;
+    if (dx > cl1 || dx + dw < cl0) continue;
+    ctx.drawImage(v.tree[k], t.sx * f, 0, t.sw * f, t.sh * f, dx, Y(v.ys, z) * u - dh, dw, dh);
+  }
+  ctx.restore(); ctx.imageSmoothingEnabled = false;
+}
+
+function ensure(st){
+  if (st.art && st.art.u === TIER) return;
+  if (st.loading === TIER) return;
+  const u = TIER; st.loading = u;
+  st.loadEl.textContent = 'Loading ' + u + '× …'; st.loadEl.hidden = false;
+  const sc = D.tiers[u].scenes[st.i];
+  Promise.all(sc.layers.map(ly => ly.v ? loadVista(ly) : load(ly.src).then(im => Object.assign({}, ly, { im })))).then(layers => {
+    st.loading = 0;
+    if (u !== TIER) return;
+    st.art = { u, layers };
+    for (const c of [st.back, st.front]){ c.width = VW * u; c.height = VH * u; }
+    st.bctx.imageSmoothingEnabled = false; st.fctx.imageSmoothingEnabled = false;
+    fit(st); st.loadEl.hidden = true; evict();
+  }).catch(() => { st.loading = 0; st.loadEl.textContent = 'This tier did not load'; });
+}
+
+async function setup(){
+  hero = { run: await load(D.hero.run, 'png'), idle: await load(D.hero.idle, 'png') };
+  D.names.forEach((sc, i) => {
+    const el = document.createElement('section'); el.className = 'stage';
+    const id = sc.key;
+    el.innerHTML =
+      '<div class="shead"><h2>' + sc.name + '</h2><span class="eyebrow">' + sc.hour + '</span></div>' +
+      '<div class="screen" id="screen-' + id + '">' +
+        '<canvas class="back" width="' + VW + '" height="' + VH + '" role="img" aria-label="' + sc.name + ', ' + sc.hour + ': a moving scene of Amsterdam with the hero Vincent"></canvas>' +
+        '<canvas class="hero" width="' + VW + '" height="' + VH + '" aria-hidden="true"></canvas>' +
+        '<canvas class="front" width="' + VW + '" height="' + VH + '" aria-hidden="true"></canvas>' +
+        '<span class="load" hidden></span></div>' +
+      '<div class="row"><div class="ctl">' +
+        '<div class="seg" role="group" aria-label="Controls"><button type="button" id="play-' + id + '" aria-pressed="true">Run</button><button type="button" id="hero-' + id + '" aria-pressed="true">Vincent</button></div>' +
+        '<div class="seg tiers" role="group" aria-label="Scenery resolution"><button type="button" data-u="1">1×</button><button type="button" data-u="2">2×</button><button type="button" data-u="4">4×</button></div></div>' +
+      '<p>' + NOTE[id] + '</p><div class="nums" id="nums-' + id + '"></div></div>';
+    root.appendChild(el);
+    const q = s => el.querySelector(s);
+    const st = { i, sc, back: q('canvas.back'), front: q('canvas.front'), heroCv: q('canvas.hero'), loadEl: q('.load'), nums: q('.nums'),
+      cx: 0, dir: 1, play: !reduce, hero: true, hold: 0, vis: i === 0, seen: 0, drag: false, moving: false, art: null, loading: 0, shadow: shadowSprite(sc.shadow) };
+    st.bctx = st.back.getContext('2d'); st.fctx = st.front.getContext('2d'); st.hctx = st.heroCv.getContext('2d');
+    st.hctx.imageSmoothingEnabled = false;
+    states.push(st);
+    const bp = q('#play-' + id), bh = q('#hero-' + id);
+    bp.setAttribute('aria-pressed', String(st.play));
+    bp.onclick = () => { st.play = !st.play; bp.setAttribute('aria-pressed', String(st.play)); };
+    bh.onclick = () => { st.hero = !st.hero; bh.setAttribute('aria-pressed', String(st.hero)); };
+    const scr = q('.screen'); let lastX = 0;
+    scr.addEventListener('pointerdown', e => { st.drag = true; lastX = e.clientX; scr.setPointerCapture(e.pointerId); });
+    scr.addEventListener('pointermove', e => {
+      if (!st.drag) return;
+      const r = scr.getBoundingClientRect(); const dx = (e.clientX - lastX) * VW / r.width; lastX = e.clientX;
+      if (dx !== 0){ st.dir = dx < 0 ? 1 : -1; st.cx = Math.min(CAM, Math.max(0, st.cx - dx)); st.moving = true; }
+    });
+    const end = () => { st.drag = false; st.moving = false; };
+    scr.addEventListener('pointerup', end); scr.addEventListener('pointercancel', end);
+    if ('IntersectionObserver' in window) new IntersectionObserver(es => { for (const e of es) st.vis = e.isIntersecting; }, { rootMargin: '160px' }).observe(scr);
+    else st.vis = true;
+  });
+  for (const b of document.querySelectorAll('.tiers button')) b.onclick = () => setTier(Number(b.dataset.u));
+  window.addEventListener('resize', () => { for (const st of states) if (st.art) fit(st); });
+  showTier();
+  let last = performance.now(), tick = 0, acc = 0;
+  function frame(now){
+    const dt = Math.min(0.05, (now - last) / 1000); last = now; acc += dt;
+    while (acc >= 1 / 60){ acc -= 1 / 60; tick++; }
+    for (const st of states){
+      if (!st.vis) continue;
+      st.seen = now; ensure(st);
+      if (!st.art) continue;
+      let running = st.moving;
+      if (st.play && !st.drag){
+        if (st.hold > 0) st.hold -= dt;
+        else {
+          st.cx += st.dir * 54 * dt; running = true;
+          if (st.cx >= CAM){ st.cx = CAM; st.dir = -1; st.hold = 0.9; }
+          if (st.cx <= 0){ st.cx = 0; st.dir = 1; st.hold = 0.9; }
+        }
+      }
+      draw(st, tick, now / 1000, running);
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+function draw(st, tick, t, running){
+  const u = st.art.u, W = VW * u, cx = st.cx, wf = Math.floor(tick / 10);
+  st.fctx.clearRect(0, 0, W, VH * u);
+  for (const ly of st.art.layers){
+    const ctx = ly.id === 'fg' ? st.fctx : st.bctx;
+    const y = ly.y * u;
+    if (ly.kind === 'vista'){
+      drawVista(ctx, ly, cx, u);
+    } else if (ly.kind === 'img'){
+      ctx.drawImage(ly.im, Math.floor(cx * ly.speed * u), 0, W, ly.h, 0, y, W, ly.h);
+    } else if (ly.kind === 'tile'){
+      const ox = Math.floor((cx * ly.speed + t * (ly.drift || 0)) * u) % ly.w; const a = Math.min(W, ly.w - ox);
+      ctx.drawImage(ly.im, ox, 0, a, ly.h, 0, y, a, ly.h);
+      if (a < W) ctx.drawImage(ly.im, 0, 0, W - a, ly.h, a, y, W - a, ly.h);
+    } else if (ly.kind === 'frames'){
+      ctx.drawImage(ly.im, Math.floor(cx * ly.speed * u), (wf % ly.n) * ly.h, W, ly.h, 0, y, W, ly.h);
+    } else if (ly.kind === 'rows'){
+      const n = ly.h, f0 = (wf % ly.n) * n;
+      for (let j = 0; j < n; j++){
+        const sp = ly.s0 + (ly.s1 - ly.s0) * j / Math.max(n - 1, 1);
+        ctx.drawImage(ly.im, Math.floor(cx * sp * u), f0 + j, W, 1, 0, y + j, W, 1);
+      }
+    }
+  }
+  // Vincent: his own 384 x 216 canvas, one sprite pixel = one canvas pixel
+  const h = st.hctx; h.clearRect(0, 0, VW, VH);
+  if (st.hero){
+    const hx = 176, hy = st.sc.walk;
+    h.drawImage(st.shadow, hx - 12, hy - 3);
+    const sheet = running ? hero.run : hero.idle;
+    const f = running ? Math.floor(tick / 3) % D.hero.runN : Math.floor(tick / 9) % D.hero.idleN;
+    if (st.dir >= 0) h.drawImage(sheet, f * 48, 0, 48, 48, hx - D.hero.ax, hy - D.hero.ay, 48, 48);
+    else { h.save(); h.scale(-1, 1); h.drawImage(sheet, f * 48, 0, 48, 48, -(hx + D.hero.ax), hy - D.hero.ay, 48, 48); h.restore(); }
+  }
+}
+setup();
+</script>

@@ -13,7 +13,7 @@
  * - the BOAT-CARRIED CAMERA (c2): replayed on a floor, every flat row moves s(y)·Δ within 1/res along
  *   the cruise boat's real camera path (1/8-px speed steps, accelerating, braking, stopping).
  */
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FLOOR_CX, FLOOR_YW, makeFloorCam, sOfY, vOfY } from '../../src/engine/floor/cam';
 import { heightAt, profileAt } from '../../src/engine/floor/mesh';
 import { QuadCanvas } from '../../src/engine/floor/quad';
@@ -44,6 +44,7 @@ import { cFloorDef } from '../../src/game/content/missions/ams/floor/c/index';
 import { c1FloorDef } from '../../src/game/content/missions/ams/floor/c1/index';
 import { c2FloorDef } from '../../src/game/content/missions/ams/floor/c2/index';
 import { dFloorDef } from '../../src/game/content/missions/ams/floor/d/index';
+import { resetCanalStore, setCanalSource } from '../../src/game/mission/canal/index';
 import { bindWorldFloor, checkFloor, factorViolations, floorOf, frontRowViolations, walkLineErrors } from '../../src/game/mission/floor/index';
 import { getFloorPainter, hasFloorTile, type FloorPaintCtx } from '../../src/game/mission/floor/registry';
 import { SectionFloor } from '../../src/game/mission/floor/section-floor';
@@ -51,6 +52,7 @@ import type { FloorDef } from '../../src/game/mission/floor/types';
 import type { DecorDef, SectionDef } from '../../src/game/mission/types';
 import { gameEntityFactory, getMission } from '../../src/game/registry';
 import { createHeadlessGame } from '../../src/sim/index';
+import { nodeCanalSource } from '../../tools/lib/canal-source';
 
 await loadContent();
 const ams = getMission('ams');
@@ -529,6 +531,14 @@ function threat(e: Entity, w: World): string {
 }
 
 describe('§3.7 has no exceptions (§12.1 item 3): a bot run through every floor section, drawn every tick', () => {
+  // The canal scenes on, as the game draws them (docs/api/canal.md): their render-only depth rules run too.
+  beforeAll(() => {
+    setCanalSource(nodeCanalSource());
+  });
+  afterAll(() => {
+    setCanalSource(null);
+    resetCanalStore();
+  });
   const runs: Array<[string, string, boolean]> = [];
   for (const m of ['ams', 'oldenzaal']) for (const sec of Object.values(getMission(m)?.sections ?? {})) if (floorOf(sec)) runs.push([m, sec.id, false]);
   // The boss's intro (MECHA HASLEMA walks out of the Stopera's doors): from the boss rush's start.
@@ -551,6 +561,11 @@ describe('§3.7 has no exceptions (§12.1 item 3): a bot run through every floor
           ticks++;
           for (const e of run.world.entities) {
             if (e.removed || e.drawDepth === 0) continue;
+            // The ONE exception (the user's decision 2026-11-11, docs/api/canal.md §9): on a canal scene a gull
+            // sitting on (or taking off from) the kit lamp it was spawned on is drawn at the lamp's depth, so it
+            // stays on its lamp. Its hitbox stays in the walk plane: a shot aimed at the drawn bird can miss by
+            // the lamp's depth (7.5 px), accepted for a bird that sleeps on a lamp. Only with the scene's rule on.
+            if (e.type === 'seagull' && run.view.canalLive && run.section.canal?.depth?.seagull && ((e as Entity & { spawnPerch?: number }).spawnPerch ?? 0) > 0) continue;
             const why = threat(e, run.world);
             if (why && !bad.has(e.type)) bad.set(e.type, `${why} at depth ${e.drawDepth.toFixed(1)} (tick ${t})`);
           }

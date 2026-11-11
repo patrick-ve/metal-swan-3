@@ -631,4 +631,7 @@ export const BAKED: readonly string[] = [
   'scan-car', 'mayor',
   'swan',
   'baker', 'hotdog-vendor', 'staff', 'window-waver',
+  // waves 3 and 4 (street, riders), taken in as they stand by the owner (2026-11-11): their reviewers and
+  // verifier did not run
+  'stag-partier', 'beer-bike', 'hostage-tourist', 'delivery-rider', 'fatbike-youth', 'seagull', 'pigeons', 'ducks',
 ];

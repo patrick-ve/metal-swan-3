@@ -13,12 +13,14 @@
  * - `decor/oat/d/lantern-wall` (a Ritter lantern on a classic wall bracket), `decor/oat/d/lantern`
  *   (the oxblood classic mast with a Kroon lantern), both lit warm (PAL_HD_OAT.lantern).
  * - `decor/oat/d/bin-broken`, `decor/oat/d/bike-1`, `bike-2`, `decor/oat/d/paal`.
- * - `decor/oat/d/elm-front`: a quay elm in the FRONT row (between the camera and the heroes): its
- *   trunk lit from below, the crown only as dark masses in the top 40 px (the action band stays clear).
+ * - `decor/oat/d/elm`: a quay elm on our pavement BEHIND the heroes (gate 5: a front-row trunk hid
+ *   the hero): its true-scale trunk lit from below, the crown as dark clumps over the upper storeys,
+ *   lit warm at their lower edges.
  * - `decor/oat/d/plate-oudezijds-achterburgwal`: the navy street-name plate (`OAT_D_PLATE`).
  */
 import type { Color } from '../../../../../engine/color';
 import { PAL_HD } from '../../../../../engine/palette-hd';
+import { noise2 } from '../../../../art/paint';
 import { h2, mx, Pen, reg, T, text, textW, type Dn } from './kit';
 import { drawBike } from './people';
 
@@ -328,48 +330,64 @@ for (const k of [1, 2]) {
   });
 }
 
-// ------------------------------------------------------------------------------------ the front elm
+// ------------------------------------------------------------------------------------ the quay elm
 
-reg('decor/oat/d/elm-front', [{ w: 64, h: 216, ox: 32, oy: 216 }], (p) => {
+reg('decor/oat/d/elm', [{ w: 84, h: 200, ox: 42, oy: 200 }], (p) => {
   const d = p.d;
-  const cx = 32;
-  // The trunk: 10 px wide, bark ridges, lit warm from below (the lanterns and the neon on the quay).
-  p.fill(cx - 5, 36, 10, 180, (X, Y) => {
+  const cx = 42;
+  // The trunk: true scale (10 px wide) up to the band top, bark ridges, lit warm from below (the
+  // lanterns and the neon on the quay), the right side in its own shade.
+  p.fill(cx - 5, 124, 10, 76, (X, Y) => {
     const x = (X + 0.5) / d - (cx - 5);
     const y = (Y + 0.5) / d;
-    const lit = Math.max(0, (y - 120) / 96);
+    const lit = Math.max(0, (y - 150) / 50);
     const ridge = d >= 2 ? h2(Math.floor(x * 1.4), Math.floor(y / 3.2), 61) : 0.5;
     const side = x < 3 ? 0.6 : x > 7.5 ? -0.8 : 0;
     const k = lit * 2.2 + side + (ridge - 0.5) * 0.9;
     return k > 2 ? T('oat.lantern', 0, d) : k > 1.2 ? T('brown', 2, d) : k > 0.4 ? T('oat.brick', 1, d) : k > -0.4 ? T('oat.nightWater', 1, d) : T('oat.nightWater', 0, d);
   });
-  // The root flare at the foot.
+  // The root flare and the tree grate in the pavement.
   p.poly(
     [
-      [cx - 5, 206],
-      [cx - 8, 216],
-      [cx + 8, 216],
-      [cx + 5, 206],
+      [cx - 5, 192],
+      [cx - 8, 200],
+      [cx + 8, 200],
+      [cx + 5, 192],
     ],
     T('oat.brick', 1, d),
   );
-  // Limbs into the crown, the crown as dark masses in the top 40 px, lit warm at their lower edges.
-  p.line(cx - 2, 44, cx - 16, 24, T('oat.nightWater', 0, d), Math.max(1, Math.round(d * 3)));
-  p.line(cx + 2, 44, cx + 14, 20, T('oat.nightWater', 0, d), Math.max(1, Math.round(d * 2.6)));
+  // Limbs into the crown.
+  p.line(cx - 2, 128, cx - 20, 92, T('oat.nightWater', 0, d), Math.max(1, Math.round(d * 3)));
+  p.line(cx + 2, 128, cx + 18, 86, T('oat.nightWater', 0, d), Math.max(1, Math.round(d * 2.6)));
+  p.line(cx, 126, cx + 2, 80, T('oat.nightWater', 0, d), Math.max(1, Math.round(d * 2.2)));
+  // The crown (spec §8.2 "the crown at 0.4 above"; §8.7 d 5 "dark masses lit from below"): leaf
+  // clumps, gaps only between clumps (a smooth 3.5 px noise at the rim, never single holes), the
+  // clumps' lower edges lit warm by the quay lights, a few early-yellow leaves in 2 × 2 clusters.
   const blobs: readonly [number, number, number, number][] = [
-    [cx - 22, 18, 14, 10],
-    [cx - 4, 10, 16, 11],
-    [cx + 16, 16, 14, 10],
-    [cx - 12, 30, 12, 7],
-    [cx + 10, 30, 13, 7],
-    [cx, 26, 10, 8],
+    [cx - 24, 62, 17, 15],
+    [cx + 22, 58, 18, 16],
+    [cx - 2, 40, 22, 18],
+    [cx - 30, 88, 12, 10],
+    [cx + 28, 86, 13, 10],
+    [cx - 8, 96, 16, 11],
+    [cx + 10, 100, 14, 9],
+    [cx - 14, 22, 14, 11],
+    [cx + 14, 22, 15, 12],
   ];
   for (const [bx, by, rx, ry] of blobs) {
     p.disc(bx, by, rx, ry, (X, Y, u, v) => {
-      const leaf = d >= 2 ? h2(X >> 1, Y >> 1, 63) : 0.5;
-      if (u * u + v * v > 0.8 && leaf < 0.35) return 0;
-      if (v > 0.55 && leaf > 0.45) return v > 0.8 ? T('oat.lantern', 0, d) : T('olive', 1, d);
-      return leaf > 0.7 ? T('olive', 0, d) : T('navy', 0, d);
+      const lx = (X + 0.5) / d;
+      const ly = (Y + 0.5) / d;
+      const clump = noise2(lx, ly, 3.5, 67);
+      const r2 = u * u + v * v;
+      if (r2 > 0.62 && clump < 0.3 + (r2 - 0.62) * 1.6) return 0;
+      // The light from below: strong at a clump's lower edge, the crown's underside warmest.
+      const under = v * 0.8 + Math.max(0, (ly - 60) / 50) * 0.7 + (clump - 0.5) * 0.5;
+      if (under > 1.35) return T('oat.lantern', 0, d);
+      if (under > 1.08) return T('brown', 1, d);
+      if (under > 0.78) return T('olive', 1, d);
+      if (d >= 2 && under > 0.5 && h2(Math.floor(lx / 2), Math.floor(ly / 2), 71) > 0.94) return T('brown', 2, d);
+      return clump > 0.45 ? T('olive', 0, d) : T('oat.nightWater', 0, d);
     });
   }
 });

@@ -22,7 +22,8 @@
  * Static decor, no outline. Transparent sky (the background layers show). Pure: hashes only.
  */
 import type { Color } from '../../../../../engine/color';
-import { HAZE_MORNING, h2, ladder, mx, reg, T, type Dn, type Pen, type Rn } from './kit';
+import { waterRipple } from '../light/water';
+import { bay, dq, HAZE_MORNING, h2, ladder, mx, rampOf, reg, T, type Dn, type Pen, type Rn } from './kit';
 import { drawBike, drawElm, SKY_CAST, SUN, type BikeKind } from './street';
 
 // ------------------------------------------------------------------------------------ materials
@@ -246,6 +247,9 @@ function camOf(v: Vista): { F: number; E: number } {
   return { F, E };
 }
 
+/** The vistas' ripple scale on the water plane (spec §8.8 "one ripple language"). */
+const VISTA_RIPPLE = 1.5;
+
 function airOf(z: number): number {
   return Math.max(0, Math.min(MAX_AIR, (z - 12) / 150));
 }
@@ -341,19 +345,26 @@ function drawVista(p: Pen, v: Vista): void {
         if (h < 0.5 && d >= 2) return at(moss, air, 0.5);
         return at(side, air, 0.4 + (d >= 2 && F / zwall > 3 ? (h2(Math.floor(h * 6), Math.floor(zwall), 133) - 0.5) * 0.25 : 0));
       }
-      // The water: the scene mirrored, broken by ripple rows; the body darker near the viewer.
+      // The water: the scene mirrored, broken by `waterRipple` on the water plane (world px, 20 per
+      // m: the same pattern as the near tile, shrinking with the distance); the ripple fades where it
+      // would be finer than an art px (far off the water is a still mirror in the mist).
       const air = airOf(zw) + Math.max(0, Math.min(0.15, (zw - 30) / 300));
-      const band = Math.floor(zw * 1.6);
-      const rip = d >= 2 ? (h2(band, Math.floor(x / 16), v.seed + 141) - 0.5) * Math.min(3, (F / zw) * 0.5) : 0;
+      const fine = (20 * zw) / dy / VISTA_RIPPLE;
+      const calm = Math.max(0, Math.min(1, (12 - fine) / 8));
+      const r = calm > 0 ? waterRipple(xw * 20 + v.seed * 40, zw * 20, VISTA_RIPPLE) * calm : 0;
+      const rip = d >= 2 ? r * Math.min(3, (F / zw) * 0.5) : 0;
       const mirror = scene(x + rip, y, X, Y, true);
       const fres = Math.min(1, 0.25 + zw / 60);
+      // A crest catches the sky (the near tile's crest tone).
+      if (r > 0.78 && d >= 2) return at(canal, air, 0.6 + (r - 0.78) * 0.6);
+      // The gradients below are ordered-dithered at their band borders (2× / 4×).
+      const q = d >= 2 ? (bay(X, Y) - 0.5) * 0.07 : 0;
       if (mirror !== 0) {
         // Darker and greener than the thing mirrored: the canal tone by the mirrored brightness.
-        const tl = 0.06 + luma(mirror) * (0.3 + 0.35 * fres) + (h2(band, 3, v.seed + 143) - 0.5) * (d >= 2 ? 0.08 : 0);
-        return at(canal, air, tl);
+        return at(canal, air, 0.06 + luma(mirror) * (0.3 + 0.35 * fres) + r * 0.06 + q);
       }
       // The sky in the water: the grey-blue sheen, stronger toward the far end.
-      return at(canal, air, 0.22 + fres * 0.55 + (d >= 2 ? (h2(band, Math.floor(x / 14), v.seed + 145) - 0.5) * 0.08 : 0));
+      return at(canal, air, 0.22 + fres * 0.55 + r * 0.06 + q);
     }
     return scene(x, y, X, Y, false);
   });
@@ -547,7 +558,6 @@ function drawBank(p: Pen, b: Bank): void {
   const paving = table('stone', 2, 6, true, d);
   const coping = table('oat.mortar', 0, 3, true, d);
   const wall = table('oat.brick', 0, 4, true, d);
-  const canal = table('oat.canal', 0, 5, true, d);
   const moss = table('moss', 1, 4, true, d);
   // The row of houses (front elevation), the quay, the wall.
   p.fill(0, 0, b.w, water, (X, Y) => {
@@ -555,7 +565,11 @@ function drawBank(p: Pen, b: Bank): void {
     const y = (Y + 0.5) / d;
     if (y >= wallTop) {
       if (y < wallTop + 0.8) return at(coping, air, 0.85);
-      if (y > water - 1.1) return at(moss, air, 0.25);
+      // The coping's thin shadow on the wall under it (the sun is up-left).
+      if (y < wallTop + 0.8 + Math.max(0.5, 1 / d)) return at(wall, air, 0.08);
+      // The wet band at the waterline: dark wet brick, a thin line of algae at the water.
+      if (y > water - 0.5) return at(moss, air, 0.08);
+      if (y > water - 1.3) return at(wall, air, 0.02);
       return at(wall, air, 0.42 + (d >= 2 ? (h2(Math.floor(x / 1.4) + (Math.floor(y / 0.7) & 1), Math.floor(y / 0.7), b.seed + 3) - 0.5) * 0.2 : 0));
     }
     if (y >= base) return at(paving, air, 0.45 + (y - base) * 0.05);
@@ -610,20 +624,48 @@ function drawBank(p: Pen, b: Bank): void {
       p.rect(c0 + cw * 0.15, hb - 23, cw * 0.3, 5, at(cab, air, 0.7));
     }
   }
-  // The water: the bank mirrored (read back from the pen), darker and greener, broken by ripples.
+  // The water (spec §8.8): the olive-brown body of the near canal (`oat.canal`), the bank mirrored
+  // weakly into it (read back from the pen), broken by `waterRipple` at the far rows' scale; nearer
+  // than the fronts, so less haze on it than on the houses; darker toward the viewer.
+  const body = bankWater(Math.min(air, air * 0.45), d);
+  const bn = body.length - 1;
   for (let Y = Math.round(water * d); Y < BH * d; Y++) {
     const yy = (Y + 0.5) / d;
     const off = yy - water;
     for (let X = 0; X < b.w * d; X++) {
-      const rip = d >= 2 ? Math.round((h2(Math.floor(yy * 1.5), Math.floor(X / (6 * d)), b.seed + 211) - 0.5) * d * 1.2) : 0;
-      const sy = Math.round((water - off) * d) - 1;
-      const src = p.at(X + rip, sy);
-      const band = 0.18 + off * 0.02 + (d >= 2 ? (h2(Math.floor(yy * 1.5), Math.floor(X / (9 * d)), b.seed + 213) - 0.5) * 0.12 : 0);
-      if (p.at(X, Y) !== 0 && Y < (BH - 1.6) * d) continue;
       if (p.at(X, Y) !== 0) continue;
-      p.dot(X, Y, src === 0 ? at(canal, air, 0.8 - off * 0.03) : (Y + X * 3) % 11 === 0 && d >= 2 ? src : at(canal, air, band + (luma(src) - 0.35) * 0.6));
+      const r = waterRipple((X + 0.5) / d, off, BANK_RIPPLE);
+      const rip = d >= 2 ? Math.round(r * d * 0.9) : 0;
+      const src = p.at(X + rip, Math.round((water - off) * d) - 1);
+      // The mirror at 0.35 strength over the body; the crests catch the sky (as the near tile's).
+      const m = src === 0 ? 3.6 : luma(src) * bn;
+      let t = 1.75 * 0.65 + m * 0.35 + r * 0.45 - off * 0.05;
+      if (r > 0.74 && d >= 2) t = 3.3 + (r - 0.74) * 2.4;
+      p.dot(X, Y, body[Math.max(0, Math.min(bn, dq(t, X, Y, 0.5)))]);
     }
   }
+  // The houseboats' waterlines: the hull's dark shadow on the water under and along it.
+  for (const [x, len, ark] of b.boats) {
+    const hb = BH - 1.6;
+    if (d >= 2) p.rect(x - 1, hb + 0.4, len + (ark ? 2 : 4.5), BH - hb - 0.4, body[1]);
+    p.rect(x - 0.5, hb - 0.6, len + (ark ? 1 : 3.5), BH - hb + 0.6, body[0]);
+  }
+}
+
+/** The far rows' ripple scale (spec §8.8 "one ripple language"): the near pattern at 0.4. */
+const BANK_RIPPLE = 0.4;
+
+const waterCache = new Map<number, readonly Color[]>();
+
+/** The day canal ramp (`oat.canal`, 6 tones) through `air` of the morning haze, at density d. */
+function bankWater(air: number, d: Dn): readonly Color[] {
+  const key = Math.round(air * 1000) * 8 + d;
+  let t = waterCache.get(key);
+  if (!t) {
+    t = rampOf('oat.canal').map((c) => mx(c >>> 0, HAZE_MORNING, air, d));
+    waterCache.set(key, t);
+  }
+  return t;
 }
 
 /** A rough luma 0 … 1 of a packed colour (for the mirror's tone). */

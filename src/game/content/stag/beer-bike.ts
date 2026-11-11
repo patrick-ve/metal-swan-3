@@ -31,6 +31,7 @@ import { Enemy, type ReactionKind } from '../../enemy';
 import { explosion, FxEntity, hitSpark, tumble } from '../../fx';
 import { defineEntity, paramNum, paramStr, type SpawnParams } from '../../registry';
 import { entryParam } from '../creatures/common';
+import { BODY_DAMAGED, BODY_INTACT, pedalFrame, wheelStep } from '../vehicles/beer-bike/art';
 import { BEER_BIKE as G } from '../vehicles/beer-bike/geometry';
 import { StagPartier, type PartyBike } from './partier';
 
@@ -91,6 +92,8 @@ export class StagBeerBike extends Enemy implements PartyBike {
   private nextFire = 0;
   /** Distance rolled (the wheels turn with it). */
   roll = 0;
+  /** Distance pedalled, either way (the guide's crank turns with it; art only). */
+  pedalled = 0;
   private converted = false;
 
   constructor(world: World, x: number, y: number, p: SpawnParams) {
@@ -171,6 +174,7 @@ export class StagBeerBike extends Enemy implements PartyBike {
     super.update();
     if (!this.dead) {
       this.roll += this.vx;
+      this.pedalled += Math.abs(this.vx);
       for (const r of this.riders) if (r && r.seat === this) r.syncSeat();
     }
   }
@@ -314,6 +318,11 @@ export class StagBeerBike extends Enemy implements PartyBike {
 
   // ------------------------------------------------------------------------------- drawing
 
+  /** The guide's `driver` frame: one crank turn per PEDAL_FRAMES × PEDAL_PX px pedalled. */
+  driverFrame(): number {
+    return pedalFrame(this.pedalled);
+  }
+
   override draw(r: Renderer): void {
     const x = this.x;
     const y = this.y;
@@ -322,7 +331,7 @@ export class StagBeerBike extends Enemy implements PartyBike {
     const t = this.world.tick;
     opts.flipX = flip;
     plain.flipX = flip;
-    const phase = ((Math.floor((this.roll * f) / 3) % 4) + 4) % 4;
+    const phase = wheelStep(this.roll * f);
     if (this.dead) {
       if (this.corpseTicks - this.deathTicks < 20 && this.deathTicks % 4 < 2) return;
       opts.flash = false;
@@ -334,7 +343,7 @@ export class StagBeerBike extends Enemy implements PartyBike {
     opts.flash = this.flashTicks > 0 && t % 2 === 0;
     plain.flash = false;
     for (const w of G.farWheels) r.sprite(ID.far, phase, x + w[0] * f, y + w[1], plain);
-    r.sprite(ID.body, this.hp <= this.maxHp / 3 ? 1 : 0, x, y, opts);
+    r.sprite(ID.body, this.hp <= this.maxHp / 3 ? BODY_DAMAGED : BODY_INTACT, x, y, opts);
     r.sprite(ID.turret, 0, x, y, opts);
     // Riders back to front (along the facing), then the driver.
     const order = f > 0 ? ORDER_RIGHT : ORDER_LEFT;
@@ -342,7 +351,8 @@ export class StagBeerBike extends Enemy implements PartyBike {
       const rd = this.riders[i];
       if (rd && rd.seat === this && !rd.dead) rd.drawSeated(r);
     }
-    if (this.driverOn) r.sprite(ID.driver, Math.abs(this.vx) > 0.1 ? (t >> 3) & 1 : 0, x + G.driver[0] * f, y, plain);
+    // The guide pedals with the bike: one frame per PEDAL_PX px rolled (a stopped bike keeps it).
+    if (this.driverOn) r.sprite(ID.driver, this.driverFrame(), x + G.driver[0] * f, y, plain);
     r.sprite(ID.posts, 0, x, y, opts);
     for (const w of G.nearWheels) r.sprite(ID.wheel, phase, x + w[0] * f, y + w[1], opts);
   }

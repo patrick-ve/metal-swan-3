@@ -15,8 +15,10 @@
  * - `npc/ams/counter`                   a small Fabel Friet counter drawn in front of an NPC
  *
  * Ambient life: `npc/ams/ams-tour-boat` (2, wake), `npc/ams/ams-cyclist-bg/<look>` (4, pedalling;
- * look 0–3), `npc/ams/ams-pigeons` (5: stand, peck, step, wings up, wings down),
- * `npc/ams/ams-ducks` (4: drake bob up / down, hen bob up / down),
+ * look 0–3), the pigeons `npc/ams/ams-pigeons/<strip>` (idle, peck, walk, takeoff, fly) and the
+ * mallards `npc/ams/ams-ducks/<strip>` (paddle, drake-/hen-hurry, drake-/hen-dabble): baked 40 px
+ * sets (below), with the bare ids `npc/ams/ams-pigeons` (5 roles: stand, peck, step, wings up, wings
+ * down) and `npc/ams/ams-ducks` (4: drake bob up / down, hen bob up / down) composed from them,
  * `npc/ams/ams-window-waver/<strip>` (person, lean, cat-swish, cat): the baked 40 px set (below).
  * Decor: `decor/ams/ams-boat-platform` (2, wake), breakables `decor/ams/<id>` (0 intact,
  * 1 broken) for ams-herring-cart, ams-tulip-stall, ams-market-stall, ams-bike-rack.
@@ -25,8 +27,8 @@
  * (their dense art lives with the city decor) has ONE density-generic generator for 2× and 4×
  * (`hd: (d) => …`), except the baked 40 px people (1× at every tier): the rig at d (renderHuman),
  * the counter and omafiets painted natively with the UHD kit (HdCanvas, PAL_HD, outline
- * A, rim light; `…Hd` below), each fitted into its 1× footprint. The ambient pigeons, ducks and tour boat have their
- * HD art in npc-hi.art.ts.
+ * A, rim light; `…Hd` below), each fitted into its 1× footprint. The tour boat has its HD art in
+ * npc-hi.art.ts.
  */
 import { defineBakedSet } from '../../../../engine/baked';
 import type { Color } from '../../../../engine/color';
@@ -35,13 +37,15 @@ import { INK, PAL } from '../../../../engine/palette';
 import { PAL_HD, hdHome } from '../../../../engine/palette-hd';
 import { PixelBuffer, type Ramp } from '../../../../engine/pixel';
 import type { Frame } from '../../../../engine/render';
-import { defineSprite } from '../../../../engine/sprites';
+import { defineSprite, getFrames } from '../../../../engine/sprites';
 import { BLACK_ONE_HUE, HdCanvas, type DrawOpts, type HdMaterial, type RenderOpts, type Texture } from '../../../art/hd';
 import { spanOf } from '../../../art/hd/body';
 import { renderHuman, stackFrames, type Density, type HumanStyle, type LegPose, type Pose } from '../../../art/humanoid';
 import { SET as VENDOR } from '../../art40/ams-hotdog-vendor.gen';
 import { SET as BAKER } from '../../art40/ams-baker.gen';
 import { SET as WINDOW } from '../../art40/ams-window-waver.gen';
+import { SET as PIGEONS, PIGEON_FLAP_A, PIGEON_FLAP_B, PIGEON_PECK, PIGEON_STAND, PIGEON_STEP } from '../../art40/ams-pigeons.gen';
+import { SET as DUCKS, DUCK_DOWN, DUCK_DRAKE, DUCK_HEN, DUCK_UP } from '../../art40/ams-ducks.gen';
 
 const L = (hip: number, knee: number, foot?: number): LegPose => (foot === undefined ? { hip, knee } : { hip, knee, foot });
 
@@ -477,60 +481,30 @@ CYCLISTS.forEach((c, look) => {
   });
 });
 
-// ------------------------------------------------------------------------------------ pigeons
+// ------------------------------------------------------------------------------------ pigeons, ducks
 
-/** One city pigeon (12×10, feet anchor): stand, peck, step, wings up, wings down. */
-function pigeon(f: number): Frame {
-  const b = new PixelBuffer(14, 12);
-  const fly = f >= 3;
-  const peck = f === 1;
-  // Tail and body.
-  b.poly([[1, 6], [4, 5], [4, 8]], PAL.steel[1]);
-  b.ellipse(3, 4, 7, 5, PAL.steel[2]);
-  b.hline(4, 8, 5, PAL.steel[3]);
-  b.hline(5, 8, 8, PAL.steel[1]);
-  // Head and neck.
-  const hx = peck ? 10 : 9;
-  const hy = peck ? 7 : 3;
-  b.rect(hx - 1, hy + 1, 2, 2, PAL.teal[2]);
-  b.set(hx - 1, hy + 2, PAL.purple[2]);
-  b.circle(hx, hy, 1, PAL.steel[2]);
-  b.set(hx + 2, hy, PAL.stone[1]);
-  b.set(hx, hy - 1, PAL.steel[3]);
-  // Wing.
-  if (f === 3) b.poly([[4, 5], [8, 5], [5, 0], [3, 1]], PAL.steel[3]);
-  else if (f === 4) b.poly([[4, 6], [8, 6], [6, 10], [3, 10]], PAL.steel[1]);
-  else b.hline(4, 7, 6, PAL.steel[1]);
-  b.outline(INK);
-  b.set(hx, hy, INK);
-  if (!fly) {
-    b.set(6, 9, PAL.pink[1]);
-    b.set(f === 2 ? 8 : 7, 9, PAL.pink[1]);
-  }
-  return { buf: b, ox: 6, oy: 10 };
-}
-defineSprite('npc/ams/ams-pigeons', () => [0, 1, 2, 3, 4].map(pigeon), { ticksPerFrame: 8 });
+// The pigeon flock and the mallards: baked 40 px sets (docs/design/ams40.md wave 4;
+// tools/art40/chars/ams-pigeons/, ams-ducks/): npc/ams/ams-pigeons/{idle,peck,walk,takeoff,fly} and
+// npc/ams/ams-ducks/{paddle,drake-hurry,hen-hurry,drake-dabble,hen-dabble}, 1× at every tier.
+defineBakedSet(PIGEONS);
+defineBakedSet(DUCKS);
 
-// ------------------------------------------------------------------------------------ ducks
-
-/** A mallard on the canal (10×7, waterline anchor): paddle bob up, down. Drake: green head. */
-function duck(f: number, drake: boolean): Frame {
-  const b = new PixelBuffer(12, 9);
-  const dy = f === 1 ? 1 : 0;
-  b.ellipse(1, 3 + dy, 8, 4, drake ? PAL.stone[2] : PAL.brown[2]);
-  b.hline(2, 7, 3 + dy, drake ? PAL.stone[3] : PAL.brown[3]);
-  b.set(1, 4 + dy, drake ? PAL.ink[1] : PAL.brown[1]);
-  b.rect(4, 5 + dy, 3, 1, drake ? PAL.sky[1] : PAL.brown[1]);
-  b.circle(8, 2 + dy, 1, drake ? PAL.green[1] : PAL.brown[2]);
-  b.rect(7, 1 + dy, 2, 2, drake ? PAL.green[2] : PAL.brown[2]);
-  b.outline(INK);
-  b.set(9, 1 + dy, INK);
-  b.rect(10, 2 + dy, 2, 1, PAL.gold[2]);
-  // Ripple at the waterline.
-  b.hline(0, 9, 7, PAL.snow[2]);
-  return { buf: b, ox: 5, oy: 7 };
-}
-defineSprite('npc/ams/ams-ducks', () => [duck(0, true), duck(1, true), duck(0, false), duck(1, false)], { ticksPerFrame: 12 });
+/**
+ * The bare ids keep the old frame roles (a baked set registers only `<prefix>/<strip>`): the pigeon
+ * stand, peck, step, wings up, wings down (5, 8 ticks each) and the duck bob up / down for the drake,
+ * then the hen (4, 12 ticks each), composed from the baked frames the PIGEON_* / DUCK_* events name.
+ */
+defineSprite('npc/ams/ams-pigeons', () => [
+  getFrames('npc/ams/ams-pigeons/idle', 1)[PIGEON_STAND],
+  getFrames('npc/ams/ams-pigeons/peck', 1)[PIGEON_PECK],
+  getFrames('npc/ams/ams-pigeons/walk', 1)[PIGEON_STEP],
+  getFrames('npc/ams/ams-pigeons/fly', 1)[PIGEON_FLAP_A],
+  getFrames('npc/ams/ams-pigeons/fly', 1)[PIGEON_FLAP_B],
+], { ticksPerFrame: 8 });
+defineSprite('npc/ams/ams-ducks', () => {
+  const paddle = getFrames('npc/ams/ams-ducks/paddle', 1);
+  return [DUCK_DRAKE, DUCK_HEN].flatMap((block) => [paddle[block + DUCK_UP], paddle[block + DUCK_DOWN]]);
+}, { ticksPerFrame: 12 });
 
 // ------------------------------------------------------------------------------------ window waver
 

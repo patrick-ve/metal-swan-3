@@ -5,7 +5,6 @@
  * dodges the ticket, a gull only hurts while diving, a rider from behind tells on screen first.
  */
 import { describe, expect, it } from 'vitest';
-import { inPalette } from '../../src/engine/palette';
 import { getFrames, hasSprite, listSprites } from '../../src/engine/sprites';
 import { FxEntity } from '../../src/game/fx';
 import '../../src/game/content/characters/index';
@@ -16,7 +15,6 @@ import '../../src/game/content/items/index';
 import '../../src/game/content/locals/index';
 import '../../src/game/content/locals/art';
 import { DeliveryRider, FatbikeYouth, Handhaver, Rider, Seagull } from '../../src/game/content/locals/index';
-import { cubePack } from '../../src/game/content/locals/rider.art';
 import { getEntityMeta } from '../../src/game/registry';
 import type { Difficulty } from '../../src/game/session';
 import { FLOOR, TestWorld, watchFairness, type FairnessOpts, type ModeEntity } from './helpers';
@@ -109,20 +107,19 @@ describe('locals: registration', () => {
     expect(tw.ofType('seagull').length).toBe(4);
   });
 
-  it('every sprite is palette-only and has frames', () => {
+  it('every sprite has frames (all baked 40 px sets with their own palettes)', () => {
     // The handhaver and the BOETE ticket are baked 40 px sets with their own palettes (docs/design/ams40.md
     // "colour design"): the art40 gates check them (tests/art/art40-gates.test.ts); here only frames.
     for (const id of [...listSprites('enemy/handhaver'), ...listSprites('enemy/boete-ticket/')]) expect(getFrames(id).length, id).toBeGreaterThan(0);
-    const ids = [...listSprites('enemy/fatbike-youth'), ...listSprites('enemy/delivery-rider'), ...listSprites('enemy/seagull/')];
-    expect(ids.length).toBeGreaterThan(100);
-    for (const id of ids) {
-      const frames = getFrames(id);
-      expect(frames.length, id).toBeGreaterThan(0);
-      for (const f of frames) {
-        const d = f.buf.data;
-        for (let i = 0; i < d.length; i++) if ((d[i] & 255) !== 0 && !inPalette(d[i])) throw new Error(`${id}: colour ${d[i].toString(16)} not in the palette`);
-      }
-    }
+    // The fatbike youths (look 0, looks 1-3, the pairs: 469 ids) are baked 40 px sets too
+    // (tests/art40/fatbike-youth.test.ts, tests/art40/fatbike-youth-looks.test.ts).
+    const youth = listSprites('enemy/fatbike-youth');
+    expect(youth.length).toBe(469);
+    for (const id of youth) expect(getFrames(id).length, id).toBeGreaterThan(0);
+    // The delivery rider (skins a, b, c) is a baked 40 px set too (tests/art40/delivery-rider.test.ts).
+    for (const id of listSprites('enemy/delivery-rider')) expect(getFrames(id).length, id).toBeGreaterThan(0);
+    // The herring gull is a baked 40 px set too (tests/art40/seagull.test.ts).
+    for (const id of listSprites('enemy/seagull/')) expect(getFrames(id).length, id).toBeGreaterThan(0);
   });
 });
 
@@ -329,17 +326,5 @@ describe('locals: tickets and gulls', () => {
     tw.run(20);
     expect(fx[0].x).toBeGreaterThan(x0 + 20);
     expect(tw.world.errors).toEqual([]);
-  });
-});
-
-describe('delivery-rider backpack logo', () => {
-  it('is mirror-symmetric, so it never reads backwards when the rider faces left', () => {
-    for (const open of [false, true]) {
-      const b = cubePack(open);
-      const y = open ? 8 : 7;
-      for (let row = y; row < y + 4; row++) {
-        for (let x = 2; x <= 12; x++) expect(b.get(x, row), `open ${open} (${x}, ${row})`).toBe(b.get(14 - x, row));
-      }
-    }
   });
 });

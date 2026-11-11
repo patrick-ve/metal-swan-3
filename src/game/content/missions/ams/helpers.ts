@@ -6,6 +6,7 @@ import type { Entity } from '../../../../engine/entity';
 import { getFrames, listSprites } from '../../../../engine/sprites';
 import type { ScriptGen } from '../../../../engine/script';
 import { Boss } from '../../../boss';
+import { canalPaintedNow } from '../../../mission/canal/registry';
 import type { SectionContext } from '../../../mission/index';
 import type { SpawnParams } from '../../../registry';
 
@@ -35,7 +36,9 @@ export function stagArt(looks: readonly number[], o: { groom?: boolean; bike?: b
 export const STAG_LOOKS: readonly number[] = [0, 2];
 
 export function prewarm(...prefixes: string[]): void {
-  for (const pre of prefixes) for (const id of listSprites(pre)) getFrames(id);
+  // The old decor a canal scene paints instead is never built (docs/api/canal.md §8; empty in ams2).
+  const painted = canalPaintedNow();
+  for (const pre of prefixes) for (const id of listSprites(pre)) if (!painted.has(id)) getFrames(id);
 }
 
 /** `[N]`: NORMAL and HARD only. */

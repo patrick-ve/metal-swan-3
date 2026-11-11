@@ -36,6 +36,15 @@ multi-part bosses, and 2-player co-op.
   decision 2026-10-16): the first-person boss suit's face comes from user art in `art-src/user/`;
   `tools/art/import-face.ts` turns it into a committed palette-index module
   (`src/game/content/fps/art/mecha-face.gen.ts`), so the game still loads no image file.
+  Exception (user decision 2026-11-11): the scenery of mission `ams` in the canal look is a Python
+  paint kit's layer stack (`tmp/l1/kit/`), BAKED to lossless PNG files at 1×, 2× and 4×
+  (`public/art/ams/`, by `tmp/l1/kit/bake_game.py`, with a generated manifest
+  `src/game/content/missions/ams/canal/manifest.gen.ts`). A section opts in with
+  `SectionDef.canal`; the game loads the files per section and art tier ahead of the camera
+  (`src/engine/png.ts` decodes them, exact; `src/game/mission/canal/` stores and draws them) and
+  draws the stack in place of that section's generated scenery. `?canal=0` (or a missing file)
+  draws the generated scenery. Figures, enemies, pickups and effects stay generated. See
+  `docs/api/canal.md`.
 - All sound effects and music are **synthesized** with Web Audio (no audio files). Exception
   (user decision 2026-10-14): the start screens (with the REPORT FOR DUTY drill callouts), mission
   `ams` and the first-person mode (the `mode:fps` group, user approval 2026-10-16) also ship

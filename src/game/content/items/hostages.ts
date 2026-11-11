@@ -15,7 +15,7 @@
  */
 import type { Entity } from '../../../engine/entity';
 import type { DrawOpts, Renderer } from '../../../engine/render';
-import { hasSprite } from '../../../engine/sprites';
+import { hasSprite, spriteAnim } from '../../../engine/sprites';
 import type { World } from '../../../engine/world';
 import { hudOf } from '../../context';
 import { Enemy } from '../../enemy';
@@ -23,6 +23,7 @@ import { FxEntity } from '../../fx';
 import { Hostage, type HostageBind, type HostageKind } from '../../hostage';
 import { defineEntity, hasEntity, paramNum, paramStr, type SpawnParams } from '../../registry';
 import { makeBind } from './binds';
+import { GAG_FLASH_TICK, TIED_BLINK, TIED_BREATH, TIED_LOOK, TIED_REST, TIED_SLUMP, TIED_STRAIN, TIED_STRUGGLE, TIED_STRUGGLE_B } from './hostage.art';
 import { contentsSpecs, KIND_TABLES } from './drops';
 import { HOSTAGE_KINDS, type HostageKindId } from './ids';
 
@@ -103,19 +104,67 @@ const TEA_LADY: HostageKind = {
   },
 };
 
+/** The frame of a strip with these durations that shows at tick t (clamped to the last frame). */
+export function frameAtTick(durations: readonly number[] | undefined, t: number): number {
+  if (!durations || durations.length === 0) return 0;
+  let acc = 0;
+  for (let i = 0; i < durations.length; i++) {
+    acc += durations[i];
+    if (t < acc) return i;
+  }
+  return durations.length - 1;
+}
+
+/** The tied tourist's wriggle (Hostage: a bubble and a 4-tick shake when stateT % 120 === 60). */
+const WRIGGLE_AT = 60;
+const WRIGGLE_EVERY = 120;
+/** After the shake: the last pull (strain), then he gives up with a sigh (slump). */
+export const TIED_STRAIN_TICKS = 10;
+export const TIED_SLUMP_TICKS = 20;
+/** Breathing: rest and breath alternate every half of this; a look over the shades now and then. */
+export const TIED_BREATH_TICKS = 90;
+export const TIED_LOOK_EVERY = 300;
+export const TIED_LOOK_AT = 200;
+export const TIED_LOOK_TICKS = 36;
+/** The blink (the old rule: 7 of every 150 ticks). */
+export const TIED_BLINK_EVERY = 150;
+export const TIED_BLINK_TICKS = 7;
+
+/**
+ * The tied tourist's frame at tied tick t (the chair, the cage and the mast strips share the frame
+ * roles of the baked set: hostage.art.ts TIED_*): the struggle while the wriggle shakes him, then the
+ * strain and the slump; else the blink, a look over the shades, and breathing.
+ */
+export function touristTiedFrame(t: number, shaking: boolean): number {
+  if (shaking) return (t >> 1) & 1 ? TIED_STRUGGLE_B : TIED_STRUGGLE;
+  if (t >= WRIGGLE_AT) {
+    const since = (t - WRIGGLE_AT) % WRIGGLE_EVERY;
+    if (since < 4 + TIED_STRAIN_TICKS && since >= 1) return TIED_STRAIN;
+    if (since >= 4 + TIED_STRAIN_TICKS && since < 4 + TIED_STRAIN_TICKS + TIED_SLUMP_TICKS) return TIED_SLUMP;
+  }
+  if (t % TIED_BLINK_EVERY < TIED_BLINK_TICKS) return TIED_BLINK;
+  const look = t % TIED_LOOK_EVERY;
+  if (look >= TIED_LOOK_AT && look < TIED_LOOK_AT + TIED_LOOK_TICKS) return TIED_LOOK;
+  return t % TIED_BREATH_TICKS < TIED_BREATH_TICKS / 2 ? TIED_REST : TIED_BREATH;
+}
+
 /**
  * The tourist: SAY CHEESE! — the camera flashes and every non-boss enemy on screen freezes in
- * the photo pose for 45 ticks (GDD §7.2).
+ * the photo pose for 45 ticks (GDD §7.2). The baked gag strip's own durations time the frames
+ * (40 ticks); the flash fires on GAG_FLASH_TICK (24), the frame GAG_FLASH (the click).
  */
 const TOURIST: HostageKind = {
   id: 'tourist',
   gagTicks: 40,
   gag(h, t) {
     if (t === 0) hudOf(h.world).bubble(h, 'SAY CHEESE!', { ticks: 36, kind: 'gag', speaker: 'tourist' });
-    if (t === 24) sayCheese(h);
+    if (t === GAG_FLASH_TICK) sayCheese(h);
   },
-  gagFrame(_h, t) {
-    return t < 12 ? 0 : t < 24 ? 1 : t < 30 ? 2 : 3;
+  gagFrame(h, t) {
+    return frameAtTick(spriteAnim(h.anim.id).durations, t);
+  },
+  tiedFrame(_h, t, shaking) {
+    return touristTiedFrame(t, shaking);
   },
 };
 
@@ -213,7 +262,7 @@ function defaultDrop(kind: HostageKindId, p: SpawnParams): unknown {
 // ---------------------------------------------------------------------------------------------
 
 const turnDraw: DrawOpts = {};
-/** Ticks per turn frame (= the `turn` strips' ticksPerFrame in hostage.art.ts). */
+/** Ticks per turn frame (= the baked `turn` / `sack-turn` strips' durations, 2 + 2). */
 const HOSTAGE_TURN_TICKS = 2;
 
 /**

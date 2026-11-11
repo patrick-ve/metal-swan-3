@@ -20,6 +20,7 @@ import { placeSecrets, secretArt } from './secrets';
 import { B_HOTDOG_X, B_PASSAGE, B_W, G, terrainB } from './terrain';
 import { STAND_DY } from '../../art40/ams-hotdog-vendor.gen';
 import { B_CABINET_DEPTH, bFloor, bFloorDecor } from './floor/b/index';
+import { amsCanal, LAMP_GULLS } from './canal/index';
 import { HOUSE_PAVEMENT } from './floor/depth';
 import { BULB_FRONT_DECOR, FACADE, HOUSE_FRONT_ROW } from './floor/layout';
 
@@ -274,6 +275,11 @@ export const sectionB: SectionDef = {
   decor,
   // The perspective floor (docs/design/floor.md §4.4 b, §12.2 b; floor/b/: the passage, the plein, the canal road).
   floor: bFloor(decor),
+  // The canal scene (docs/api/canal.md): the kit's baked stack draws the scenery in place of the background,
+  // the floor's look, the decor and the terrain art (kept for `?canal=0`); the gulls on the kerbside lamps
+  // (110, 2300, 2620) are drawn at the kit lamps' depth (§9); the stall and the herring cart show the kit's
+  // painting (canal sprites, §7) without the old-look floor faces beside them.
+  canal: amsCanal('b', undefined, { depth: LAMP_GULLS, hideFaces: ['ams-tulip-stall', 'ams-herring-cart'] }),
   // Tier 4: the fatbike pairs ride in b and c only (the solo sets are in the mission's preloadFirst).
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.

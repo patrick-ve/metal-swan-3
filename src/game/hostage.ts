@@ -103,6 +103,11 @@ export interface HostageKind {
   gag?(h: Hostage, t: number): void;
   /** Frame of the 'gag' strip to show at gag tick t (default: the strip just loops). */
   gagFrame?(h: Hostage, t: number): number;
+  /**
+   * Frame of the tied strip (a struggle bind: chair, cage, mast) at tied tick t; `shaking` = the
+   * wriggle's shake is on (default: rest 0 / blink 1 / struggle 2, see frameToDraw).
+   */
+  tiedFrame?(h: Hostage, t: number, shaking: boolean): number;
   /** Strip names per state (default: the state name), e.g. the roadie walks with 'carry'. */
   readonly anims?: Partial<Record<HostageState, string>>;
   /** Where the gift appears instead of the hand (Mrs. Dollop's shed); null = the hand. */
@@ -549,11 +554,12 @@ export class Hostage extends Entity {
   // ------------------------------------------------------------------------------- drawing
 
   /**
-   * Frame index to draw: the tied strip shows rest / blink / struggle (bind `struggle`); the
-   * kind may pick the gag frames itself.
+   * Frame index to draw: the tied strip shows rest / blink / struggle (bind `struggle`), or the
+   * kind's own pick (`tiedFrame`); the kind may pick the gag frames itself.
    */
   frameToDraw(): number {
     if (this.state === 'tied' && this.bind.struggle && frameCount(this.anim.id) >= 3) {
+      if (this.kind?.tiedFrame) return Math.min(frameCount(this.anim.id) - 1, Math.max(0, this.kind.tiedFrame(this, this.stateT, this.shakeT > 0)));
       if (this.shakeT > 0) return 2;
       return this.stateT % 150 < 7 ? 1 : 0;
     }

@@ -22,7 +22,10 @@ import { CHUNK } from '../../src/game/mission/view';
 import { getMission } from '../../src/game/registry';
 
 // the window cat npc/ams/ams-window-waver/cat: a baked 40 px set, 1x at every tier (tests/art40/ams-window-waver.test.ts)
-const AMBIENT = ['npc/ams/ams-pigeons', 'npc/ams/ams-ducks', 'npc/ams/ams-tour-boat'];
+// the pigeons and the ducks (npc/ams/ams-pigeons*, npc/ams/ams-ducks*): baked 40 px sets, 1x at every
+// tier (tests/art40/ams-pigeons.test.ts, tests/art40/ams-ducks.test.ts)
+const AMBIENT = ['npc/ams/ams-tour-boat'];
+const BIRDS = /^npc\/ams\/ams-(pigeons|ducks)(\/|$)/;
 const WINDOW_SET = 'npc/ams/ams-window-waver/';
 
 function paletteSet(): Set<number> {
@@ -52,7 +55,8 @@ describe('mission ams: 2× ambient life', () => {
       // the Fabel Friet crew: baked 40 px sets, 1x at every tier (tests/art40/ams-staff.test.ts)
       .filter((id) => !id.startsWith('npc/ams/ams-staff/'))
       // the Fabel Friet baker: a baked 40 px set, 1x at every tier (tests/art40/ams-baker.test.ts)
-      .filter((id) => !id.startsWith('npc/ams/ams-baker/'));
+      .filter((id) => !id.startsWith('npc/ams/ams-baker/'))
+      .filter((id) => !BIRDS.test(id));
     for (const id of AMBIENT) expect(ids, id).toContain(id);
     for (const id of ids) {
       expect(hasHiSprite(id), id).toBe(true);

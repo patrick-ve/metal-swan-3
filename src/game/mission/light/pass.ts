@@ -103,6 +103,9 @@ const BACK_FLASH = 0.45;
 const VIEW_FLASH = 0.2;
 /** The settings' reduced flashes: the flash drawn at this share (context.ts screenFlash: 30 %). */
 export const REDUCED_FLASH = 0.3;
+/** A flickering lamp group's step (ticks: ≤ 3 dims per second, spec §14 risk 6) and its dim factor. */
+export const FLICKER_STEP = 10;
+const FLICKER_DIM = 0.6;
 const FLASH_COLOR: Color = 0xdfeaffff;
 /** Hero light: no colour, this strength. Pickups: a faint pool. */
 const HERO_LIGHT = 0.8;
@@ -390,8 +393,10 @@ export class MissionLight implements LightControl {
   }
 
   /**
-   * A group's light factor at tick t (1 on, 0 off; flickering: uneven 3–6 tick steps between 1 and
-   * 0.35 that thin out toward the end — a smooth fade with the reduced flashes).
+   * A group's light factor at tick t (1 on, 0 off; flickering: 10-tick steps between 1 and 0.6, more
+   * of them dim toward the end — a smooth fade with the reduced flashes). At most 3 dims per second
+   * per group (spec §14 risk 6), and each group's step grid is offset by 3 ticks per group index, so
+   * no two groups dim on the same tick.
    */
   private groupK(g: number, tick: number): number {
     const s = this.groupState[g];
@@ -402,9 +407,12 @@ export class MissionLight implements LightControl {
     if (tick >= t1) return 0;
     const p = (tick - t0) / Math.max(1, t1 - t0);
     if (this.flashScale < 1) return 1 - p;
-    // Steps of 3–6 ticks (by hash), each on or dim; more of them dim as the tube dies.
-    const step = Math.floor((tick - t0) / (3 + Math.floor(hash2(g, Math.floor((tick - t0) / 6), 0x6e0) * 4)));
-    return hash2(step, g, 0x7f3) < 0.75 - 0.6 * p ? 1 : 0.35;
+    // Steps of FLICKER_STEP ticks on the world's tick grid (staggered per group), each on or dim by
+    // the tube's age at the step's start (so a step never changes inside).
+    const off = (g * 3) % FLICKER_STEP;
+    const step = Math.floor((tick + off) / FLICKER_STEP);
+    const age = Math.max(0, (step * FLICKER_STEP - off - t0) / Math.max(1, t1 - t0));
+    return hash2(step, g, 0x7f3) < 0.75 - 0.6 * age ? 1 : FLICKER_DIM;
   }
 
   /** OAT (spec §8.9): cross-fade to the lit or the dark bake over `fadeTicks` (default the bake's, 60). */

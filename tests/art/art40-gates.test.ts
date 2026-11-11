@@ -6,7 +6,7 @@
  * placeholder, its baked 1× frames at every art density (no 2× / 4× generator, no dense alias),
  * the baked durations and loop flag; every baked set is registered; every contract id of a
  * replaced prefix exists.
- * Budgets (plan "Pipeline": at most 1200 KB gzip for all baked data): the gzip size of every
+ * Budgets (plan "Pipeline": at most 1300 KB gzip for all baked data): the gzip size of every
  * generated file together.
  * With zero sets (before wave 1) everything passes trivially.
  */
@@ -14,9 +14,10 @@
 /**
  * Plan "Pipeline" size budget for all baked data (gzip, bytes). Lead decision after wave 6
  * (2026-11-04): 500 -> 1200 KB, because the whole ams cast at 40 px with the high-fidelity mayor
- * and the select portraits measures about 1 MB gzip.
+ * and the select portraits measures about 1 MB gzip. Owner decision (2026-11-11): 1200 -> 1300 KB,
+ * to take in the street and riders sets of waves 3 and 4 as they stand (1258 KB measured).
  */
-const BAKED_GZIP_BUDGET = 1200 * 1024;
+const BAKED_GZIP_BUDGET = 1300 * 1024;
 import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -47,7 +48,7 @@ describe('art40 gates', () => {
     expect(run.reports.length).toBe(files.length);
   });
 
-  it('all baked data together stays inside the size budget (500 KB gzip)', () => {
+  it('all baked data together stays inside the size budget (1300 KB gzip)', () => {
     const gz = files.reduce((n, f) => n + gzipSync(readFileSync(f), { level: 9 }).length, 0);
     expect(gz, `${files.length} sets: ${Math.round(gz / 1024)} KB gzip`).toBeLessThanOrEqual(BAKED_GZIP_BUDGET);
   });

@@ -1,0 +1,175 @@
+# BIERFIETS: the drawing kit of the beer bike, its driver and the cork (a production copy of the cast
+# spike's rider kit, docs/design/cast40/chars/delivery-rider_kit.py, trimmed to what these sets use;
+# the frozen spike stays untouched). Everything is drawn facing right on a big rig.Canvas in body
+# space: (0, 0) is the floor point under the bike's (or the figure's) middle, y grows down.
+import math
+
+import castkit as K
+
+rig, pose, P = K.rig, K.pose, K.P
+X1 = pose.Ctx(1)
+L2 = (0.55, -0.83)          # 2D light: up and to the front
+
+
+class Body:
+    """A canvas with a body-space origin: c.px(x, y, ...) takes body coordinates."""
+
+    def __init__(self, w, h, ox, oy):
+        self.cv = K.Canvas(w, h)
+        self.ox, self.oy = ox, oy
+
+    def at(self, x, y):
+        return (self.ox + x, self.oy + y)
+
+    def px(self, x, y, ch, z, part):
+        self.cv.px(int(math.floor(self.ox + x)), int(math.floor(self.oy + y)), ch, z, part)
+
+    def root(self):
+        return (self.ox, self.oy)
+
+
+def lit(nx, ny):
+    """Light term of a 2D normal (upper front)."""
+    return nx * L2[0] + ny * L2[1]
+
+
+def disc(b, c, r, ramp, z, part, cut=(0.45, 0.05, -0.45), r_in=0.0, tone=None):
+    """A flat-shaded disc or ring (r_in < d <= r) in body space, centre c: lit on the upper front
+    rim, dark on the lower back. ramp = 4 letters (hi, base, shade, deep). tone(x, y, d, a, ch) may
+    repaint a pixel (return '' to leave it out)."""
+    cx, cy = c
+    R = int(math.ceil(r)) + 1
+    for y in range(int(math.floor(cy)) - R, int(math.floor(cy)) + R + 1):
+        for x in range(int(math.floor(cx)) - R, int(math.floor(cx)) + R + 1):
+            dx, dy = x + 0.5 - cx, y + 0.5 - cy
+            d = math.hypot(dx, dy)
+            if r_in < d <= r:
+                l = lit(dx / (d or 1), dy / (d or 1)) * min(1.0, d / max(r, 1e-6) * 1.6) if d > 0 else 0
+                k = 0 if l > cut[0] else 1 if l > cut[1] else 2 if l > cut[2] else 3
+                ch = ramp[k]
+                if tone:
+                    ch = tone(x, y, d, math.atan2(dy, dx), ch)
+                if ch:
+                    b.px(x, y, ch, z, part)
+
+
+def rod(b, a, c, r, ramp, z, part, cut=(0.62, 0.2, -0.2)):
+    """A tube (frame, post, bar) from a to c in body space: rig.Canvas.tube with a 4-tone ramp."""
+    b.cv.tube(b.at(*a), b.at(*c), r, r, ramp, z, part, cut=cut)
+
+
+def line(b, a, c, ch, z, part):
+    """A 1 px line in body space."""
+    n = int(max(abs(c[0] - a[0]), abs(c[1] - a[1]))) + 1
+    for i in range(n + 1):
+        t = i / max(n, 1)
+        b.px(round(a[0] + (c[0] - a[0]) * t), round(a[1] + (c[1] - a[1]) * t), ch, z, part)
+
+
+def grid(b, x, y, rows, z, part):
+    """A hand-drawn part (castkit.grid text or rows) with its top-left at body (x, y)."""
+    if isinstance(rows, str):
+        rows = K.grid(rows)
+    for j, r in enumerate(rows):
+        for i, ch in enumerate(r):
+            if ch not in '. ':
+                b.px(x + i, y + j, ch, z, part)
+
+
+def rect(b, x0, y0, x1, y1, fn, z, part):
+    """Fill the pixels x0 <= x < x1, y0 <= y < y1; fn(x, y) gives the letter ('' = leave out)."""
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            ch = fn(x, y)
+            if ch:
+                b.px(x, y, ch, z, part)
+
+
+def poly(b, pts, fn, z, part):
+    """Fill a polygon (pixel centres inside); fn(x, y) gives the letter."""
+    ys = [p[1] for p in pts]
+    for y in range(int(math.floor(min(ys))), int(math.ceil(max(ys))) + 1):
+        xs = []
+        n = len(pts)
+        yc = y + 0.5
+        for i in range(n):
+            (x0, y0), (x1, y1) = pts[i], pts[(i + 1) % n]
+            if (y0 <= yc < y1) or (y1 <= yc < y0):
+                xs.append(x0 + (yc - y0) * (x1 - x0) / (y1 - y0))
+        xs.sort()
+        for i in range(0, len(xs) - 1, 2):
+            for x in range(int(math.ceil(xs[i] - 0.5)), int(math.floor(xs[i + 1] - 0.5)) + 1):
+                ch = fn(x, y)
+                if ch:
+                    b.px(x, y, ch, z, part)
+
+
+def hole(b, c, r, z, part):
+    """Mark the open inside of a wheel: '~' so no outline is drawn there; finish() turns it back
+    into '.' (the background shows between the spokes)."""
+    disc(b, c, r, '~~~~', z, part)
+
+
+def finish(b, fx=()):
+    """selout + outline, then the open insides back to '.', then the glowing effects (no outline).
+    fx = [(x, y, letter)] in body space. Returns (rows, root)."""
+    rig.PAL.setdefault('~', '#000000')
+    rows = [list(r) for r in b.cv.finish()]
+    for r in rows:
+        for x, ch in enumerate(r):
+            if ch == '~':
+                r[x] = '.'
+    for x, y, ch in fx:
+        X, Y = int(math.floor(b.ox + x)), int(math.floor(b.oy + y))
+        if 0 <= Y < len(rows) and 0 <= X < len(rows[0]):
+            rows[Y][X] = ch
+    return [''.join(r) for r in rows], b.root()
+
+
+# ------------------------------------------------------------------ a seated rider on the rig's limbs
+def foot_on(pedal):
+    """Ankle target that puts the ball of the shoe on a pedal point."""
+    return (pedal[0] - 2.5, pedal[1] - 4.0)
+
+
+def to_grip(target, part=('hand', 'grip')):
+    """Wrist target that puts a hand part's 'grip' point on the target."""
+    lib = {'hand': P.HANDS, 'fist': P.FISTS, 'gun': P.GUNS}[part[0]]
+    an = lib[part[1]][1]
+    gx, gy = an.get('grip', an['wrist'])
+    wx, wy = an['wrist']
+    return (target[0] - (gx - wx), target[1] - (gy - wy))
+
+
+def rider(cv, pel, torso, head, legs, arms, hd=(0, 0), z=0.0, tor=(0, 0)):
+    """A seated (or standing) rider on a rig canvas (canvas px). pel = pelvis. legs = {'legF':
+    (ankle, shoe, bend), 'legN': ...} with absolute ankle targets. arms = {'armF': (grip target,
+    end, bend), 'armN': ...}. Returns the joints: 'pel', 'legN' / 'legF' (knee, ankle), 'torso' and
+    'head' anchors, 'armN' / 'armF' (elbow, wrist)."""
+    out = {'pel': pel}
+    for key, zz, ramp, hx in (('legF', 2, 'legF', -1), ('legN', 4, 'leg', 1)):
+        if key in legs:
+            ank, shoe, bend = legs[key]
+            knee, end = pose.leg(cv, X1, (pel[0] + hx, pel[1]), ank, bend, ramp, z + zz, key, shoe)
+            out[key] = {'hip': (pel[0] + hx, pel[1]), 'knee': knee, 'ankle': end}
+    an = pose.place(cv, X1, P.TORSOS[torso], 'pelvis', (pel[0] + tor[0], pel[1] + tor[1]), z + 5, 'torso')
+    out['torso'] = an
+    out['head'] = pose.place(cv, X1, P.HEADS[head], 'neck', (an['neck'][0] + hd[0], an['neck'][1] + hd[1]), z + 6, 'head')
+    for key, zz, ramp, sh in (('armF', 3.2, 'armF', an['shF']), ('armN', 7, 'arm', an['shN'])):
+        if key in arms:
+            tgt, end, bend = arms[key]
+            out[key] = pose.arm(cv, X1, sh, to_grip(tgt, end) if end else tgt, bend, ramp, z + zz, key, end)
+    return out
+
+
+def joints(out):
+    """Flatten rider() joints to {'name': (x, y)} (canvas px) for the smoothness gate."""
+    j = {'pel': out['pel']}
+    for k in ('legN', 'legF', 'armN', 'armF'):
+        for n, v in (out.get(k) or {}).items():
+            if isinstance(v, tuple) and len(v) == 2 and all(isinstance(t, (int, float)) for t in v):
+                j[f'{k}.{n}'] = v
+    for k in ('torso', 'head'):
+        for n, v in (out.get(k) or {}).items():
+            j[f'{k}.{n}'] = v
+    return j

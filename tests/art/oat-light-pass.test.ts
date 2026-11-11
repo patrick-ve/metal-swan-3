@@ -49,7 +49,7 @@ describe('the oat light configs (spec §8.3, §8.9)', () => {
       expect(c.groups?.length).toBeGreaterThan(0);
       expect(c.day).toBeFalsy();
     }
-    expect(d.bakes).toEqual({ x0: 3968, x1: 4480, fadeTicks: 60 });
+    expect(d.bakes).toEqual({ x0: 3877, x1: 4480, fadeTicks: 60 }); // facade/rows.ts OAT_D_DARK (FIX-A)
     expect(d.groups?.find((g) => g.name === OAT_D_GROUPS.bossHouse)?.state).toBe('off');
     // Every lamp's group is a declared group; the proof strip's lights sit where STREET-A bakes them.
     const names = new Set(d.groups?.map((g) => g.name));
@@ -202,28 +202,63 @@ describe('streaks, groups and bakes (spec §6.9, §8.8, §8.9)', () => {
     pass.dispose();
   });
 
+  it('a flicker dims at most 3 times a second per group, and no two groups dim on the same tick (spec §14 risk 6)', () => {
+    const names = ['g0', 'g1', 'g2', 'g3', 'g4', 'g5'];
+    const cfg: SectionLight = { darkness: 0.4, tint: NIGHT, glow: 'smooth', groups: names.map((name) => ({ name, ticks: [20, 40] as [number, number] })), lamps: [] };
+    for (const seed of [1, 2, 3]) {
+      const world = new World({ seed });
+      const pass = new MissionLight(cfg, world, seed, 1);
+      const k = pass as unknown as { groupK(g: number, t: number): number };
+      pass.update(0);
+      for (const n of names) lampGroup(world, n, 'flicker');
+      const dimTicks = new Map<number, number>();
+      for (let g = 0; g < names.length; g++) {
+        const dims: number[] = [];
+        let last = 1;
+        for (let t = 0; t <= 60; t++) {
+          const v = k.groupK(g, t);
+          // A dim: the light drops while the tube still glows (the final off is not a flash).
+          if (v < last && v > 0) dims.push(t);
+          last = v;
+        }
+        for (const t of dims) {
+          expect(dims.filter((u) => u > t - 60 && u <= t).length, `${names[g]} dims ${dims.join(',')}`).toBeLessThanOrEqual(3);
+          expect(dimTicks.has(t), `${names[g]} and ${names[dimTicks.get(t) ?? 0]} dim on tick ${t}`).toBe(false);
+          dimTicks.set(t, g);
+        }
+      }
+      pass.dispose();
+    }
+  });
+
   it('the reduced flashes fade a flicker smoothly (no on / off steps)', () => {
     const cfg: SectionLight = { darkness: 0.4, tint: NIGHT, glow: 'smooth', groups: [{ name: 'g' }], lamps: [{ x: 100, y: 100, r: 30, color: 0xff3fa0ff, group: 'g' }] };
     for (const scale of [1, 0.3]) {
-      const world = new World({ seed: 1 });
-      const pass = new MissionLight(cfg, world, 7, scale);
-      const r = nullRenderer(2);
-      pass.update(0);
-      lampGroup(world, 'g', 'flicker');
-      let last = Infinity;
-      let rises = 0;
-      for (let t = 0; t <= 45; t++) {
-        pass.update(t);
-        pass.draw(r, t, 2);
-        const v = pass.map.lightAt(100, 100);
-        if (v > last + 1e-6) rises++;
-        last = v;
+      // Flickers started on several ticks (the steps lie on the world's tick grid).
+      let total = 0;
+      for (const t0 of [0, 7, 13, 21, 34, 55]) {
+        const world = new World({ seed: 1 });
+        const pass = new MissionLight(cfg, world, 7, scale);
+        const r = nullRenderer(2);
+        pass.update(t0);
+        lampGroup(world, 'g', 'flicker');
+        let last = Infinity;
+        let rises = 0;
+        for (let t = t0; t <= t0 + 45; t++) {
+          pass.update(t);
+          pass.draw(r, t, 2);
+          const v = pass.map.lightAt(100, 100);
+          if (v > last + 1e-6) rises++;
+          last = v;
+        }
+        // The reduced flashes only fade.
+        if (scale < 1) expect(rises).toBe(0);
+        total += rises;
+        expect(last).toBe(0);
+        pass.dispose();
       }
-      // The dying tube steps up again now and then; the reduced flashes only fade.
-      if (scale < 1) expect(rises).toBe(0);
-      else expect(rises).toBeGreaterThan(0);
-      expect(last).toBe(0);
-      pass.dispose();
+      // The dying tube steps up again now and then.
+      if (scale === 1) expect(total).toBeGreaterThan(0);
     }
   });
 
@@ -301,6 +336,34 @@ describe('the ground overlays (spec §8.4 "Actors", §8.8 "Dynamic reflections")
     for (const y of rows) expect(y).toBe(200);
   });
 
+  it('reflections: the ripple moves a slice a little every tick (interpolated: no hold-then-jump)', () => {
+    const world = new World({ seed: 1 });
+    const a = world.add(new Actor(world, 100, 200));
+    world.flush();
+    a.addTag(REFLECT_TAG);
+    const xs: number[] = [];
+    let first = true;
+    const r = { ...nullRenderer(4), sprite(_id: string, _f: number, x: number) {
+      if (first) xs.push(x);
+      first = false;
+    } } as unknown as Renderer;
+    const refl = new WaterReflections({ bands: [{ u0: 0, u1: 300, y0: 193, y1: 216 }], ripple: 2 });
+    for (let t = 0; t < 60; t++) {
+      first = true;
+      refl.draw(r, world, t, null);
+    }
+    let held = 0;
+    let worst = 0;
+    for (let i = 1; i < xs.length; i++) {
+      const dx = Math.abs(xs[i] - xs[i - 1]);
+      if (dx < 1e-9) held++;
+      worst = Math.max(worst, dx);
+    }
+    // The old table read held a slice for 8–9 ticks, then jumped (up to 0.163 × amp).
+    expect(held).toBeLessThan(5);
+    expect(worst).toBeLessThan(0.05 * 2);
+  });
+
   it('sun tails: one per actor on the ground in sun, none in shade, longer for a taller caster', () => {
     const world = new World({ seed: 1, terrain: terrainA() });
     const a = world.add(new Actor(world, 100, 176));
@@ -320,6 +383,39 @@ describe('the ground overlays (spec §8.4 "Actors", §8.8 "Dynamic reflections")
     all.draw(r, world, 4);
     expect(all.drawn).toBe(2);
     expect(sizes[0]).toBeGreaterThan(sizes[1]);
+  });
+
+  it('sun tails lie only on the sunlit floor along their length: walking into shade shrinks a tail, no pop', () => {
+    const world = new World({ seed: 1, terrain: terrainA() });
+    const a = world.add(new Actor(world, 100, 176));
+    world.flush();
+    a.addTag('player');
+    a.hitbox = { x: -9, y: -36, w: 18, h: 36 };
+    let w = 0;
+    let srcSeen = false;
+    const r = { ...nullRenderer(4), frame(f: { buf: { w: number }; density?: number }, _x: number, _y: number, o: { src?: { w: number } }) {
+      srcSeen ||= o.src !== undefined;
+      w = o.src ? o.src.w : f.buf.w / (f.density ?? 1);
+    } } as unknown as Renderer;
+    // Sun left of x 150, shade right of it.
+    const tails = new SunShadows({ ...sunTail('oat-a'), lit: (x) => (x < 150 ? 1 : 0) });
+    const widths: number[] = [];
+    for (let x = 60; x <= 160; x += 0.5) {
+      a.x = x;
+      w = 0;
+      tails.draw(r, world, 4);
+      widths.push(tails.drawn ? w : 0);
+    }
+    expect(srcSeen).toBe(true);
+    // The drawn length never jumps by more than a step's walk plus the bisection's grain and the
+    // frame's clear 2 px pad past the tip (the old tail: the whole ~50 px at once).
+    for (let i = 1; i < widths.length; i++) expect(Math.abs(widths[i] - widths[i - 1]), `at x ${60 + i * 0.5}`).toBeLessThan(3);
+    // Feet in shade, the tip in sun: the lit end of the tail is drawn.
+    const back = new SunShadows({ ...sunTail('oat-a'), lit: (x) => (x > 120 ? 1 : 0) });
+    a.x = 110;
+    back.draw(r, world, 4);
+    expect(back.drawn).toBe(1);
+    expect(w).toBeGreaterThan(0);
   });
 });
 

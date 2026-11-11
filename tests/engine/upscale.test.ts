@@ -29,7 +29,7 @@ const REAL: ReadonlyArray<readonly [string, number]> = [
   ['char/recruit/ride-cheer', 1],
   ['enemy/fatbike-youth-0b/idle', 0],
   ['enemy/fatbike-youth-0b/bike', 2],
-  ['enemy/fatbike-youth-0b/die-crush', 5],
+  ['enemy/fatbike-youth-0b/die-crush', 4], // baked 40 px: 5 frames (docs/design/ams40.md wave 4)
   ['enemy/seagull/idle', 1],
   ['enemy/seagull/feather', 0],
   ['enemy/seagull/gag-fries', 2],

@@ -21,6 +21,7 @@ import { AmsBaker } from './entities';
 import { at, carillon, crate, fromLeft, fromRight, hardOnly, hostage, normalUp, prewarm, STAG_LOOKS, stagArt } from './helpers';
 import { placeSecrets, secretArt } from './secrets';
 import { awningSprite, balustradeSprite, boatDecor, bridgeDecor, HOUSE, houseRow, rowWidth, waterDecor } from './art';
+import { amsCanal, gullOnLamp } from './canal/index';
 import { A_ARENA, A_AWNINGS, A_BIKE_LOCK, A_BOATS, A_BRIDGES, A_CANAL, A_FABEL_X, A_LEDGES, A_W, DECK_Y, G, ROOF_Y, terrainA, WATER_Y } from './terrain';
 import {
   A_BRIDGE_1,
@@ -473,6 +474,11 @@ export function* script(ctx: SectionContext): ScriptGen {
   yield ctx.exitTo('b');
 }
 
+/** The canal scene's gull rule (docs/api/canal.md §9): kerbside lamps, and bridge 2's lantern at depth 5. */
+const LAMP_GULL = gullOnLamp();
+const BRIDGE_GULL = gullOnLamp(G - 14 - 70, 5);
+const A_GULLS = (e: Entity): number => LAMP_GULL(e) || BRIDGE_GULL(e);
+
 export const sectionA: SectionDef = {
   id: 'a',
   name: 'Grachtengordel',
@@ -485,6 +491,11 @@ export const sectionA: SectionDef = {
   decor,
   // The perspective floor (docs/design/floor.md §4.4; the kit in ./floor; fail soft: without it if the kit throws).
   floor: kitFloor('ams/a', () => aFloor(decor)),
+  // The canal scene (docs/api/canal.md): the kit's baked stack draws the scenery in place of the
+  // background, the floor's look, the decor and the terrain art above (kept for `?canal=0`).
+  // Gulls drawn on their kit lamps (render only, §9): the kerbside lamps (depth 7.5) and the
+  // lantern on bridge 2's far parapet (depth 5) under the gull at 2730.
+  canal: amsCanal('a', undefined, { depth: { seagull: A_GULLS } }),
   // Tier 4 (UHD verifier): the decor this section draws — its decor list and the breakables / boats
   // its script spawns — joins the 4× working set only here and in the section before it.
   // The stag party and the beer bike (enemy and rideable; docs/api/stag.md §5).

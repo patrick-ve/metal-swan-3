@@ -12,8 +12,8 @@ import { loadContent } from '../../src/game/content/index';
 
 /** Id prefixes whose every sprite must have 2× art. */
 const PREFIXES = [
-  'enemy/fatbike-youth',
-  'enemy/delivery-rider',
+  // the fatbike youths (look 0, looks 1-3, the pairs): baked 40 px sets, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/fatbike-youth.test.ts, fatbike-youth-looks.test.ts)
+  // the delivery rider (skins a, b, c): a baked 40 px set, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/delivery-rider.test.ts)
   // the handhaver and the BOETE ticket: baked 40 px sets, 1x at every tier (docs/design/ams40.md rule 7; tests/art/art40-gates.test.ts)
   // the Fabel Friet baker: a baked 40 px set, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/ams-baker.test.ts)
   // the hot-dog vendor: a baked 40 px set, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/ams-hotdog-vendor.test.ts)
@@ -21,20 +21,9 @@ const PREFIXES = [
   'npc/ams/ams-cyclist-bg/',
 ];
 
-/** Single ids with 2× art (the tourist's chair / sack flow and its binds, the counter). */
+/** Single ids with 2× art (the counter). The tied tourist, the camera flash and the binds are baked 40 px
+ * sets, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/hostage-tourist.test.ts, bind.test.ts). */
 const IDS = [
-  'item/hostage/tourist/tied',
-  'item/hostage/tourist/sack',
-  'item/hostage/tourist/freed',
-  'item/hostage/tourist/walk',
-  'item/hostage/tourist/gag',
-  'item/hostage/tourist/give',
-  'item/hostage/tourist/bow',
-  'item/hostage/tourist/run',
-  'item/hostage/flash',
-  'item/bind/chair-break',
-  'item/bind/sack-off',
-  'item/bind/rope-bit',
   'npc/ams/counter',
   // the window waver: a baked 40 px set, 1x at every tier (docs/design/ams40.md rule 7; tests/art40/ams-window-waver.test.ts)
 ];
@@ -49,7 +38,7 @@ describe('Amsterdam cast: 2× art', () => {
   it('every cast id has a 2× generator that the registry accepts, with the 1× geometry', async () => {
     await loadContent();
     const ids = [...listSprites().filter((id) => PREFIXES.some((p) => id.startsWith(p))), ...IDS];
-    expect(ids.length).toBeGreaterThan(450);
+    expect(ids.length).toBeGreaterThanOrEqual(5); // the background cyclists and the counter: every rider is a baked 40 px set (wave 4)
     for (const id of IDS) expect(listSprites().includes(id), id).toBe(true);
     let detailed = 0;
     for (const id of ids) {

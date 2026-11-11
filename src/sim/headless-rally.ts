@@ -18,7 +18,6 @@ import { MemoryStore } from '../engine/storage';
 import { NullView3d, type View3d } from '../engine/view3d';
 import { createApp, newCampaign, type GameApp } from '../game/app';
 import { DEFAULT_PARAMS } from '../game/params';
-import { withDifficulty } from '../game/budget/euro-table';
 import type { RallyReport } from '../game/rally/api';
 import { linesCents } from '../game/rally/score';
 import type { RallyCam } from '../game/rally/ids';
@@ -163,7 +162,8 @@ export class HeadlessRally {
     const base: RallyReport = r
       ? r.report()
       : { seed: (this.o.seed ?? 1) >>> 0, ticks: 0, complete: false, players: this.o.players ?? 1, difficulty: this.o.difficulty ?? 'normal', laps: 0, places: [], lapTicks: [], finishTicks: [], fines: [], score: [], stateHash: 0 };
-    const budget = r ? r.session.slots.filter((s) => s.joined).map((s) => s.cents + withDifficulty(linesCents(r.raceLines(s.index)), r.session.mods.tallyScore)) : [];
+    // The prize money is paid as it stands at every difficulty (spec §7.8: FINES − € 120 each).
+    const budget = r ? r.session.slots.filter((s) => s.joined).map((s) => s.cents + linesCents(r.raceLines(s.index))) : [];
     return {
       ...base,
       budget,

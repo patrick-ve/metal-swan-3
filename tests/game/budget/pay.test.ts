@@ -16,7 +16,11 @@ import { EXTEND_CENTS } from '../../../src/game/budget/types';
 import { awardScore } from '../../../src/game/events';
 import { MissionRunner, type MissionDef } from '../../../src/game/mission/index';
 import { GameSession } from '../../../src/game/session';
-import { FLOOR, Rig } from '../helpers';
+import { defineEntity, hasEntity } from '../../../src/game/registry';
+import { Dummy, FLOOR, Rig } from '../helpers';
+
+// A soft enemy under a euro-row id (the ams handhaver pays € 6,00), unless the content registered it.
+if (!hasEntity('handhaver')) defineEntity('handhaver', (w, x, y, p) => new Dummy(w, x, y, p), { category: 'enemy', score: 100 });
 
 /** A rig in a euro play (the runner normally sets the economy and wires the world). */
 function euroRig(players: 1 | 2 = 1): Rig {
@@ -69,6 +73,20 @@ describe('budget: the pay path', () => {
     flushAwards(rig.world);
     expect(rig.session.slots[0].cents).toBe(12000);
     expect(rig.session.slots[0].ledger.tally('other').cents).toBe(2000);
+  });
+
+  it('a priced kill and another award in the same tick each pay once (the kill never claims the other award)', () => {
+    const rig = euroRig();
+    // An award nobody claims (1.000 points: € 20,00 OVERIG) and a kill with a euro row (handhaver € 6,00).
+    awardScore(rig.world, 0, 1000, 100, 100);
+    const h = rig.world.spawn('handhaver', 120, FLOOR, {});
+    rig.world.flush();
+    kill(rig, h);
+    const s = rig.session.slots[0];
+    expect(s.cents).toBe(10000 + 600 + 2000);
+    expect(s.ledger.tally('enemy')).toEqual({ count: 1, cents: 600 });
+    expect(s.ledger.tally('other')).toEqual({ count: 1, cents: 2000 });
+    expect(s.ledger.tally('prop').count).toBe(0);
   });
 
   it('merges the pop-ups of one player within 30 ticks (+€0,45) and splits signs and players', () => {
@@ -254,5 +272,53 @@ describe('budget: the runner hooks', () => {
     } finally {
       proto.update = base;
     }
+  });
+
+  it('the MATCHA-MOMENT also slows the scripts (spawns, boss patterns) and the age, invuln and flash counters; a section switch ends it', () => {
+    const r = runner(mission('budget-slow2', 'euro'));
+    for (let i = 0; i < 40; i++) r.update();
+    const e = r.world.spawn('test-dummy', 400, FLOOR);
+    r.world.flush();
+    let owned = 0;
+    let free = 0;
+    let mine = 0;
+    r.world.scripts.run(function* () {
+      for (;;) {
+        owned++;
+        yield 1;
+      }
+    }, { owner: e, name: 'boss-pattern' });
+    r.world.scripts.run(function* () {
+      for (;;) {
+        free++;
+        yield 1;
+      }
+    }, { name: 'spawns' });
+    r.world.scripts.run(function* () {
+      for (;;) {
+        mine++;
+        yield 1;
+      }
+    }, { owner: r.players[0], name: 'player-fx' });
+    e.invulnTicks = 100;
+    e.flashTicks = 100;
+    const age0 = e.age;
+    owned = free = mine = 0;
+    slowWorld(r.world, 20);
+    for (let i = 0; i < 20; i++) r.update();
+    expect(owned).toBe(10);
+    expect(free).toBe(10);
+    expect(mine).toBe(20);
+    expect(e.age - age0).toBe(10);
+    expect(e.invulnTicks).toBe(90);
+    expect(e.flashTicks).toBe(90);
+    // Full speed again.
+    owned = 0;
+    for (let i = 0; i < 10; i++) r.update();
+    expect(owned).toBe(10);
+    // A section switch ends it.
+    slowWorld(r.world, 300);
+    r.loadSection('a');
+    expect(slowWorldLeft(r.world)).toBe(0);
   });
 });

@@ -66,6 +66,11 @@ export function startCampaign(app: GameApp, o: CampaignOpts): void {
  * campaign ending).
  */
 export function missionDone(app: GameApp, runner: NextRunner): void {
+  // A stand-alone mission (`MissionDef.standalone`, mission `ams2`) goes back to the title.
+  if (runner.mission.standalone) {
+    app.scenes.reset(new TitleScene(app), { fade: 60 });
+    return;
+  }
   if (runner.mission.id === OLDENZAAL_ID) {
     app.scenes.replace(new ToBeContinuedScene(app), { fade: 40 });
     return;

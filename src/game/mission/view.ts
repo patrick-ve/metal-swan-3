@@ -34,6 +34,17 @@
  *   pits and cuts are in its mesh); `drawShadows` (contact shadows, the runner calls it before
  *   world.draw); `drawFront`: front decor and front rows far → near, the front layers. Without a
  *   floor none of this runs: every call below draws exactly as before.
+ * - THE CANAL SCENE (`SectionDef.canal`, mission `ams`, docs/api/canal.md, ./canal/): while the scene
+ *   draws (`canalActive`: the opt-in, the switch on, a source; not failed), `drawBack` draws the
+ *   stack's non-`over` layers in place of the background layers, the floor's band / openings / back
+ *   decor and rows / canopies and tops, the decor and the terrain (none of them is built: `prepare`
+ *   loads only the scene and the floor's entity face tiles), then `backHook` and `floorHook`;
+ *   `drawShadows` is unchanged (contact shadows, entity faces); `drawFront` draws the floor's front
+ *   entity faces and the `over` layers. A scene that fails to load falls back to all of the above
+ *   (built lazily). Without the opt-in none of this runs.
+ * - THE PAINTED FLOOR (`SectionDef.paintedFloor`, mission `ams2`, docs/design/ams2-contract.md): the
+ *   section's decor draws the ground, so the terrain chunks have no ground cells (`'all'`: no cells at
+ *   all) and there are no pit shafts. Without it none of this runs.
  * - THE FAÇADE STRIPS (`SectionDef.strips`, mission `oat`; docs/design/oat.md §8.6, ./strips/): the
  *   view makes the section's strip store on first use (the section start in the browser, else the
  *   first frame drawn: the sims never make one) and draws its chunks 1:1 at the façade depth with that
@@ -75,12 +86,16 @@ import {
   type TerrainSampler,
 } from '../art/art-registry';
 import type { World } from '../../engine/world';
+import type { Entity } from '../../engine/entity';
+import type { CanalDef } from './canal/types';
 import type { FloorGpu } from '../../engine/floor/gpu';
+import { canalActive } from './canal/registry';
+import { CanalView } from './canal/view';
 import { floorOf, floorOverlay } from './floor/registry';
 import { FramePlacer } from './floor/place';
 import { SectionFloor } from './floor/section-floor';
 import { bindLiveStripStore, unbindLiveStripStore } from './strips/live';
-import { stripBaseY, stripScale } from './strips/space';
+import { stripBaseY, stripScale, TickSpeed } from './strips/space';
 import { createStripStore, type StripStore } from './strips/store';
 import { STRIP_CHUNK, type StripDensity } from './strips/types';
 import type { DecorDef, SectionDef } from './types';
@@ -205,10 +220,12 @@ export class SectionView {
   /** The strip's top at lift 0 (world y: the façade base minus the strip height) and each chunk's lift (by chunk − c0). */
   private stripTop = 0;
   private stripLift = new Float64Array(0);
-  /** The camera x of the last strip frame (the scroll speed). */
-  private stripLastX = NaN;
+  /** The camera's speed per tick for the strips' prefetch (not per drawn frame: a 120 Hz display). */
+  private readonly stripSpeed = new TickSpeed();
   private readonly stripPlacer = new FramePlacer();
   private readonly stripOpts: DrawOpts = { alpha: 1 };
+  /** The canal scene (`SectionDef.canal`; null without one, with the switch off or without a source). */
+  readonly canal: CanalView | null;
 
   constructor(section: SectionDef, terrain: Terrain, seed: number, density = 1) {
     this.section = section;
@@ -217,14 +234,27 @@ export class SectionView {
     this.layers = (section.background?.layers ?? []).map((def) => ({ def, buf: null, hi: { 2: undefined, 4: undefined } }));
     this.jobKey = `scenery/${++viewSerial}/`;
     this.floor = makeFloor(section, terrain, seed, this.jobKey);
+    this.canal = section.canal && canalActive(section) ? CanalView.make(section.canal) : null;
+    // The scene's render-only depth rules (a gull on a kit lamp), only while the scene draws.
+    const rules = this.canal ? section.canal?.depth : undefined;
+    if (rules && this.floor) {
+      for (const [kind, fn] of Object.entries(rules)) this.floor.wrapEntityDepth(kind, (own) => (e) => (this.canalLive ? fn(e) : own ? own(e) : 0));
+    }
+    // The kinds whose floor faces the scene paints itself (`CanalDef.hideFaces`), only while the scene draws.
+    const hide = this.canal ? section.canal?.hideFaces : undefined;
+    if (hide && this.floor) {
+      const rules: [string, true | ((e: Entity) => boolean)][] = isKindList(hide) ? hide.map((k) => [k, true]) : Object.entries(hide);
+      for (const [kind, rule] of rules) this.floor.hideEntityFaces(kind, (e) => this.canalLive !== null && (rule === true || rule(e)));
+    }
     // Without a floor (none, `--floor-off`, a failed build) the floor-only decor stays out.
     const all = section.decor ?? [];
     const decor = this.floor ? all : all.filter((d) => !d.floorOnly);
     this.back = decor.filter((d) => !d.front);
     this.front = decor.filter((d) => d.front);
     // With a floor the ground cells are empty (the floor draws the ground); platforms and solids stay.
-    this.sample = this.floor ? (x, y) => groundless(terrain.cellAt(x, y)) : (x, y) => terrain.cellAt(x, y);
-    this.pits = this.floor ? [] : pitSpans(terrain);
+    this.sample =
+      section.paintedFloor === 'all' ? () => 0 : this.floor || section.paintedFloor ? (x, y) => groundless(terrain.cellAt(x, y)) : (x, y) => terrain.cellAt(x, y);
+    this.pits = this.floor || section.paintedFloor ? [] : pitSpans(terrain);
   }
 
   /** Background colour behind every layer. */
@@ -238,6 +268,16 @@ export class SectionView {
    * headless runs that never draw never build it).
    */
   prepare(camX: number, camY: number): void {
+    // The canal scene: the scene's packs at the view's density and the floor's entity face tiles only.
+    const canal = this.canalLive;
+    if (canal) {
+      canal.prepare(camX, this.drawDensity());
+      if (this.floor) {
+        this.floor.gpu = this.floorGpu;
+        this.floor.prepareEntities(this.hiOn && hiArtDeferred() ? this.drawDensity() : 1);
+      }
+      return;
+    }
     const want = this.hiOn && hiArtDeferred() ? this.drawDensity() : 1;
     const td = want > 1 ? this.terrainDensity(want) : 1;
     for (let i = 0; i < this.layers.length; i++) {
@@ -333,9 +373,16 @@ export class SectionView {
     return want >= 2 && k >= 2 ? 2 : 1;
   }
 
+  /** The canal scene while it draws (not failed), else null. */
+  get canalLive(): CanalView | null {
+    const c = this.canal;
+    return c !== null && !c.failed ? c : null;
+  }
+
   /** Drop this view's queued 2× jobs (the runner replaces the view). */
   dispose(): void {
     cancelArtJobs(this.jobKey);
+    this.canal?.dispose();
     this.floor?.dispose();
     const st = this.stripStore;
     if (st) {
@@ -351,6 +398,11 @@ export class SectionView {
 
   /** Background layers, the dark behind pits, terrain and back decor. */
   drawBack(r: Renderer, tick: number): void {
+    const canal = this.canalLive;
+    if (canal) {
+      this.drawBackCanal(r, tick, canal);
+      return;
+    }
     if (this.floor) {
       this.drawBackFloor(r, tick, this.floor);
       return;
@@ -359,7 +411,7 @@ export class SectionView {
       if (!this.layers[i].def.front) this.drawLayer(r, i, tick);
     }
     if (this.backHook) this.backHook(r, tick);
-    if (this.section.strips) this.drawStrips(r, SectionView.atRes(this.drawDensity(), r.res));
+    if (this.section.strips) this.drawStrips(r, SectionView.atRes(this.drawDensity(), r.res), tick);
     this.drawPits(r);
     this.drawDecor(r, this.back, tick);
     this.drawTerrain(r);
@@ -370,12 +422,11 @@ export class SectionView {
    * the chunks on screen drawn 1:1 at the plane's speed s — strip x p at the renderer's world x
    * p + camX · (1 − s) — the lit bake, and over it the dark one at `darkMix` (spec §8.9). No allocation.
    */
-  private drawStrips(r: Renderer, dd: number): void {
+  private drawStrips(r: Renderer, dd: number, tick: number): void {
     const st = this.stripStore === undefined ? this.strips : this.stripStore;
     if (!st || !st.plan) return;
     const camX = r.camX;
-    const step = Number.isNaN(this.stripLastX) ? 0 : camX - this.stripLastX;
-    this.stripLastX = camX;
+    const step = this.stripSpeed.step(camX, tick);
     const d: StripDensity = dd >= 4 ? 4 : dd >= 2 ? 2 : 1;
     lastStripDensity = d;
     st.prepare(camX, step, d);
@@ -439,8 +490,32 @@ export class SectionView {
     if (this.density > 1 && hiArtDeferred() && !artPreloadActive()) runArtJobs(HI_ART_FRAME_BUDGET_MS);
   }
 
+  /**
+   * The canal scene's back pass: the stack's non-`over` layers, `backHook`, the floor's frame (its
+   * entity faces' density and tiles), the art jobs, `floorHook`.
+   */
+  private drawBackCanal(r: Renderer, tick: number, canal: CanalView): void {
+    const dd = SectionView.atRes(this.drawDensity(), r.res);
+    canal.draw(r, tick, false, dd);
+    if (this.backHook) this.backHook(r, tick);
+    if (this.floor) {
+      this.floor.gpu = this.floorGpu;
+      this.floor.canalFrame(dd);
+    }
+    // Without a running preload, this view runs its own queued dense jobs within the frame budget.
+    if (this.density > 1 && hiArtDeferred() && !artPreloadActive()) runArtJobs(HI_ART_FRAME_BUDGET_MS);
+    if (this.floor && this.floorHook) this.floorHook(r, tick);
+  }
+
   /** Front decor and foreground layers. */
   drawFront(r: Renderer, tick: number): void {
+    const canal = this.canalLive;
+    if (canal) {
+      this.floor?.drawFrontEntities(r);
+      canal.draw(r, tick, true, SectionView.atRes(this.drawDensity(), r.res));
+      if (this.floor && floorOverlay()) this.floor.drawOverlay(r);
+      return;
+    }
     const floor = this.floor;
     if (floor) floor.drawFront(r, tick, SectionView.atRes(this.drawDensity(), r.res));
     else this.drawDecor(r, this.front, tick);
@@ -464,7 +539,7 @@ export class SectionView {
     floor.gpu = this.floorGpu;
     floor.drawBand(r, tick, dd);
     floor.drawOpenings(r, dd);
-    if (this.section.strips) this.drawStrips(r, dd);
+    if (this.section.strips) this.drawStrips(r, dd, tick);
     floor.drawBack(r, tick, dd);
     this.drawTerrain(r);
     floor.maintain(r.camX, dd);
@@ -473,6 +548,8 @@ export class SectionView {
 
   /** Contact shadows on the floor (a floor only; the runner calls it between drawBack and world.draw). */
   drawShadows(r: Renderer, world: World): void {
+    // The canal scene's layer rules (`CanalDef.show`) read this world from the next frame on.
+    if (this.canal) this.canal.world = world;
     if (this.floor) this.floor.drawShadows(r, world, SectionView.atRes(this.drawDensity(), r.res));
   }
 
@@ -730,13 +807,18 @@ export class SectionView {
       const d = list[i];
       const p = d.parallax ?? 1;
       // Parallax decor: screen x = d.x − camX·p, i.e. world x = d.x + camX·(1 − p).
-      const x = d.x + camX * (1 - p);
+      let x = d.x + camX * (1 - p);
       const y = d.y + camY * (1 - p);
+      // OPT-IN: a far mover (`moveX`, mission ams2); every other decor has none.
+      if (d.moveX !== undefined) {
+        const span = d.moveSpan ?? 1024;
+        x += (((d.moveFrom ?? 0) + tick * d.moveX) % span + span) % span;
+      }
       if (x < camX - 256 || x > camX + VIEW_W + 256 || y < camY - 256 || y > camY + VIEW_H + 256) continue;
       let frame = d.frame ?? 0;
       if (d.animate) {
         const tpf = typeof d.animate === 'number' ? d.animate : spriteAnim(d.sprite).ticksPerFrame;
-        frame += Math.floor(tick / Math.max(1, tpf));
+        frame += Math.floor((tick + (d.animPhase ?? 0)) / Math.max(1, tpf)) * (d.animStep ?? 1);
       }
       decorOpts.flipX = d.flipX ?? false;
       decorOpts.alpha = d.alpha ?? 1;
@@ -747,6 +829,11 @@ export class SectionView {
 }
 
 /** The floor of a section (null: none, or its def failed to build: warned, the section draws flat). */
+/** `CanalDef.hideFaces` as a plain list of kinds (always hidden)? */
+function isKindList(h: NonNullable<CanalDef['hideFaces']>): h is readonly string[] {
+  return Array.isArray(h);
+}
+
 function makeFloor(section: SectionDef, terrain: Terrain, seed: number, jobKey: string): SectionFloor | null {
   const def = floorOf(section);
   if (!def) return null;

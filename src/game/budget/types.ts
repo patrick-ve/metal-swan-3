@@ -30,10 +30,12 @@ export const DISPLAY_MAX_CENTS: Cents = 9_999_999;
  * The extends (`ONE MORE TRY!`) at a GROSS income of the whole run (never reduced by costs; spec
  * §7.1). The spec's start values were € 1.000 and € 3.000; spec §7.10 says they must not fire in the
  * identity sims, but one `ams` god run alone earns € 2.158 gross (kills pay points ÷ 50, not ÷ 500),
- * and at € 1.000 the extend changed `ams-normal-1`. BUDGET tuned them to € 5.000 and € 15.000
- * (about where the old 500,000 / 1,500,000 points fell in a run: docs/api/budget.md "Extends").
+ * and at € 1.000 the extend changed `ams-normal-1`. BUDGET tuned them to € 5.000 and € 15.000;
+ * FIX-A measured a strong run (god sims + the flawless tallies + a won race) and set the second to
+ * € 5.500, so a strong run reaches it by the fps floors once oat is full (€ 15.000 was never
+ * reached; docs/api/budget.md "Extends", spec §7.1). No extend fires inside one `ams` run (€ 2.066).
  */
-export const EXTEND_CENTS: readonly Cents[] = [500_000, 1_500_000];
+export const EXTEND_CENTS: readonly Cents[] = [500_000, 550_000];
 
 /**
  * The kassabon's categories (spec §7.6): a fixed list (≤ 32), so a slot counts into fixed slots

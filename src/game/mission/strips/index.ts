@@ -8,6 +8,6 @@
 export * from './types';
 export { defineStripSource, getStripSource, hasStripSource } from './source';
 export { createStripStore, stripChunkWorld, StripStore, type StripStats, type StripStoreOpts } from './store';
-export { chunkWorldRange, chunksOfRange, stripBandRows, stripBaseY, stripChunkOfU, stripDrawX, stripScale, stripXOfU, uOfStripX } from './space';
+export { chunkWorldRange, chunksOfRange, stripBandRows, stripBaseY, stripChunkOfU, stripDrawX, stripScale, stripXOfU, TickSpeed, uOfStripX } from './space';
 export { liveStripStore, setStripDarkMix } from './live';
 export { definePlaceholderStrips, PLACEHOLDER_STRIP_SOURCE } from './placeholder';

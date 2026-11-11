@@ -215,6 +215,12 @@ describe('REPORT FOR DUTY: sequence', () => {
     expect(app.session?.slots.map((s) => s.character)).toEqual([scene.roster[0], scene.roster[2]]);
   });
 
+  it('gives 60 seconds to choose (the user asked for more time)', () => {
+    expect(SELECT_SECONDS).toBe(60);
+    const { scene } = select();
+    expect(scene.secondsLeft).toBe(60);
+  });
+
   it('the timer ticks a warning each second from 5 and picks the highlighted soldier at 0', () => {
     const { scene, step, tap, log } = select();
     tap('right');

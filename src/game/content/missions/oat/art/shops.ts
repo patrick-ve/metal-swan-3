@@ -120,7 +120,8 @@ function warm(t: number, d: Dn): Color {
 
 function drawHaverbar(p: Pen): void {
   const d = p.d;
-  const white = paint('gable', 3, 6, d);
+  // White paint in the opposite row's shade: the strips' shaded white (gable 2–4, cool), not lit white.
+  const white = paint('gable', 2, 4, d);
   const green = paint('oat.green', 0, 3, d);
   const cream = mx(T('sand', 6, 2), SKY_CAST, 0.08, d);
   const doorX = 41.5;
@@ -165,7 +166,7 @@ function drawHaverbar(p: Pen): void {
   p.rect(10, 52, 2.6, 3, T('snow', 5, d));
   p.rect(10, 52, 2.6, 0.6, T('brown', 2, d));
   // The menu on the glass (top right of the window): a white card with lines.
-  p.rect(30, 18, 7, 11, mx(T('snow', 5, 2), SKY_CAST, 0.15, d));
+  p.rect(30, 18, 7, 11, mx(T('gable', 4, 2), SKY_CAST, 0.15, d));
   if (d >= 2) {
     text(p, 'MENU', 30.9, 18.8, T('oat.green', 1, d), 0.5);
     for (let r = 0; r < 4; r++) p.rect(31, 22.2 + r * 1.6, 3.4 + h2(r, 2, 11) * 1.4, 0.5, T('ink', 1, d));
@@ -189,7 +190,8 @@ function drawHaverbar(p: Pen): void {
 
 function drawConceptstore(p: Pen): void {
   const d = p.d;
-  const white = paint('gable', 4, 6, d);
+  // The white front lies in the shade like its neighbours' (gable 2–4); only the lit room stays bright.
+  const white = paint('gable', 2, 4, d);
   const doorX = 40;
   const room = ladder([mx(T('gable', 3, 2), SKY_CAST, 0.1, 2), T('gable', 4, 2), T('gable', 5, 2), T('gable', 6, 2), T('snow', 6, 2)], 2, d);
   const grey = mx(T('stone', 3, 2), SKY_CAST, 0.1, d);

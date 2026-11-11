@@ -1,73 +1,21 @@
 /**
- * Hostage bind art (`item/bind/…`) and the pieces hostage.art.ts stacks onto the figures: the
- * folding chair, the hanging cage (back and front bars), the burlap sack, the parachute canopy.
+ * The pieces hostage.art.ts stacks onto the code-drawn hostage kinds (critic, roadie, tea lady,
+ * composer, Mrs. Dollop): the folding chair, the hanging cage (back and front bars), the burlap sack,
+ * the parachute canopy, at 1× and as density-generic UHD drawers (`…Hd`: HdCanvas, PAL_HD, outline A,
+ * rim light; oiled wood with grain, woven burlap, lit steel) fitted into the 1× footprint.
+ * `HD_RENDER`, `hdOf`, `fitHd` and `hdCached` are shared with hostage.art.ts.
  *
- * Sprites: `rope` (8 frames = 1…8 px rope segments, drawn stacked by binds.ts `drawRope`),
- * `rope-bit` (a cut rope end tumbling), `rope-band` (float ropes across the chest / knees),
- * `chair-break`, `cage-break`, `sack-off` (the free animations), `mast` (the parade-float pole),
- * `balloon` (the weather balloon). All palette ramps, 1-px INK outlines, light from the top-left.
- *
- * UHD art (docs/ART_GUIDE.md "UHD art"): every bind and piece has one density-generic drawer for
- * 2× and 4× (`…Hd`: HdCanvas, PAL_HD, outline A, rim light; twisted rope, oiled wood with grain,
- * woven burlap, lit steel), fitted into its 1× footprint. `HD_RENDER`, `hdOf`, `fitHd` and
- * `hdCached` are shared with hostage.art.ts.
+ * The bind props (`item/bind/…`: `rope`, `rope-bit`, `rope-band`, `chair-break`, `cage-break`,
+ * `sack-off`, `mast`, `balloon`) are the baked 40 px set `bind` (src/game/content/art40/bind.gen.ts,
+ * drawn by tools/art40/chars/bind/ from the tied tourist's props; docs/design/ams40.md wave 3).
  */
 import { PixelBuffer } from '../../../engine/pixel';
 import { INK, PAL } from '../../../engine/palette';
 import { PAL_HD } from '../../../engine/palette-hd';
-import type { Frame } from '../../../engine/render';
-import { defineHdSprite, defineSprite, type SpriteOpts } from '../../../engine/sprites';
+import { defineBakedSet } from '../../../engine/baked';
+import { SET as BIND_SET } from '../art40/bind.gen';
 import { HdCanvas, wood, type RenderOpts, type Texture } from '../../art/hd';
 import { hash2, shadeLayer } from '../../art/paint';
-
-// ------------------------------------------------------------------------------------ rope
-
-/** A rope segment `len` px long (4 px wide: ink, light strand, dark strand, ink), top anchor. */
-function ropeSegment(len: number): Frame {
-  const b = new PixelBuffer(4, len);
-  for (let y = 0; y < len; y++) {
-    b.set(0, y, INK);
-    b.set(3, y, INK);
-    // Twisted strands: the light strand crosses over every 3 px.
-    const twist = y % 3 === 0;
-    b.set(1, y, twist ? PAL.sand[2] : PAL.sand[3]);
-    b.set(2, y, twist ? PAL.sand[3] : PAL.sand[1]);
-  }
-  return { buf: b, ox: 2, oy: 0 };
-}
-
-/** A cut end of rope, 7 px, tumbling in 4 frames (centre anchor). */
-function ropeBitFrames(): Frame[] {
-  const out: Frame[] = [];
-  for (let i = 0; i < 4; i++) {
-    const b = new PixelBuffer(11, 11);
-    const a = (i * Math.PI) / 4;
-    const dx = Math.round(Math.cos(a) * 3);
-    const dy = Math.round(Math.sin(a) * 3);
-    b.thickLine(5 - dx, 5 - dy, 5 + dx, 5 + dy, 2, PAL.sand[2]);
-    b.set(5 - dx, 5 - dy, PAL.sand[3]);
-    b.set(5 + dx, 5 + dy, PAL.sand[1]);
-    b.outline(INK);
-    out.push({ buf: b, ox: 5, oy: 5 });
-  }
-  return out;
-}
-
-/** Rope bands of the float bind: frame 0 across the chest (16 px), 1 across the knees (12 px). */
-function ropeBandFrames(): Frame[] {
-  return [16, 12].map((w) => {
-    const b = new PixelBuffer(w + 2, 5);
-    for (let x = 1; x <= w; x++) {
-      b.set(x, 2, (x & 1) === 0 ? PAL.sand[3] : PAL.sand[2]);
-      b.set(x, 3, PAL.sand[1]);
-    }
-    // A knot on the front.
-    b.rect(w - 4, 1, 3, 3, PAL.sand[2]);
-    b.set(w - 4, 1, PAL.sand[3]);
-    b.outline(INK);
-    return { buf: b, ox: (w + 2) >> 1, oy: 3 };
-  });
-}
 
 // ------------------------------------------------------------------------------------ chair
 
@@ -96,37 +44,7 @@ export function chairPiece(broken = 0): PixelBuffer {
   return b.padded(1).outline(INK);
 }
 
-/** A loose plank / chair stick for the break frames. */
-function stick(len: number, angle: number): PixelBuffer {
-  const s = len + 4;
-  const b = new PixelBuffer(s, s);
-  const c = s / 2;
-  const dx = Math.cos(angle) * (len / 2);
-  const dy = Math.sin(angle) * (len / 2);
-  b.thickLine(Math.round(c - dx), Math.round(c - dy), Math.round(c + dx), Math.round(c + dy), 2, PAL.brown[2]);
-  b.set(Math.round(c - dx), Math.round(c - dy), PAL.brown[3]);
-  return b.outline(INK);
-}
 
-/** The chair falls apart behind the freed hostage: it collapses, sticks fly, they settle. */
-function chairBreakFrames(draw: (len: number, angle: number) => PixelBuffer = stick, d = 1): Frame[] {
-  const out: Frame[] = [];
-  const W = 40;
-  const H = 30;
-  const layouts: Array<Array<[number, number, number, number]>> = [
-    // [x, y (top-left from the anchor), length, angle]
-    [[-10, -24, 12, 1.5], [-8, -12, 12, 0.1], [-9, -9, 9, 1.2], [1, -9, 9, 1.9]],
-    [[-14, -26, 12, 1.1], [-9, -16, 12, -0.3], [-14, -10, 9, 0.6], [4, -12, 9, 2.4]],
-    [[-17, -16, 12, 0.6], [-8, -14, 12, 0.5], [-17, -6, 9, 0.2], [7, -7, 9, 2.9]],
-    [[-17, -6, 12, 0.05], [-6, -6, 12, 3.1], [-14, -5, 9, 0], [6, -5, 9, 0.1]],
-  ];
-  for (const lay of layouts) {
-    const b = new PixelBuffer(W * d, H * d);
-    for (const [x, y, len, a] of lay) b.blit(draw(len, a), (W / 2 + x) * d, (H + y) * d);
-    out.push(d === 1 ? { buf: b, ox: W / 2, oy: H } : { buf: b, ox: W / 2, oy: H, density: d });
-  }
-  return out;
-}
 
 // ------------------------------------------------------------------------------------ cage
 
@@ -186,49 +104,7 @@ export function cageFront(): PixelBuffer {
   return b;
 }
 
-/** The cage break layout: per frame the dome's and each bar's top-left (from the anchor), bar length and angle. */
-const CAGE_BREAK: ReadonlyArray<{ dome: readonly [number, number]; bars: ReadonlyArray<readonly [number, number, number, number]> }> = [
-  { dome: [-11, -34], bars: [[-14, -28, 22, 1.45], [-4, -30, 22, 1.6], [6, -28, 22, 1.7]] },
-  { dome: [-12, -38], bars: [[-20, -28, 20, 1.1], [-5, -33, 20, 1.5], [9, -27, 20, 2.0]] },
-  { dome: [-13, -26], bars: [[-24, -18, 18, 0.7], [-4, -30, 18, 1.3], [13, -18, 18, 2.4]] },
-  { dome: [-24, -11], bars: [[-23, -6, 18, 0.05], [-6, -6, 18, 3.1], [9, -6, 18, 0.1]] },
-];
 
-/** The cage bursts open where it lands: front bars spring off, the frame falls apart. */
-function cageBreakFrames(): Frame[] {
-  const out: Frame[] = [];
-  const W = 48;
-  const H = 40;
-  const bar = (len: number, a: number): PixelBuffer => {
-    const s = len + 4;
-    const p = new PixelBuffer(s, s);
-    const c = s / 2;
-    const dx = Math.cos(a) * (len / 2);
-    const dy = Math.sin(a) * (len / 2);
-    p.line(Math.round(c - dx), Math.round(c - dy), Math.round(c + dx), Math.round(c + dy), PAL.steel[3]);
-    return p.outline(INK);
-  };
-  const dome = (): PixelBuffer => {
-    const p = new PixelBuffer(CAGE.w + 2, 10);
-    p.ellipse(1, 1, CAGE.w, 8, PAL.steel[2]);
-    p.ellipse(3, 2, CAGE.w - 4, 5, PAL.steel[3]);
-    return p.outline(INK);
-  };
-  const floor = (): PixelBuffer => {
-    const p = new PixelBuffer(CAGE.w + 2, 5);
-    p.rect(1, 1, CAGE.w, 3, PAL.steel[2]);
-    p.hline(1, CAGE.w, 1, PAL.steel[3]);
-    return p.outline(INK);
-  };
-  for (const st of CAGE_BREAK) {
-    const b = new PixelBuffer(W, H);
-    b.blit(floor(), W / 2 - 11, H - 5);
-    for (const [x, y, len, a] of st.bars) b.blit(bar(len, a), W / 2 + x, H + y);
-    b.blit(dome(), W / 2 + st.dome[0], H + st.dome[1]);
-    out.push({ buf: b, ox: W / 2, oy: H });
-  }
-  return out;
-}
 
 // ------------------------------------------------------------------------------------ sack
 
@@ -276,18 +152,6 @@ export function sackPiece(w: number, h: number, tilt = 0): PixelBuffer {
   return b.outline(INK);
 }
 
-/** The empty sack slumps to the ground once the hostage is out (`d` 2 / 4: the HD sack). */
-function sackOffFrames(d = 1): Frame[] {
-  return [
-    [16, 18, 0],
-    [18, 10, 1],
-    [20, 5, 1],
-  ].map(([w, h, t]) => {
-    if (d !== 1) return { buf: sackPieceHd(w, h, t, hdOf(d)), ox: (w + 6) >> 1, oy: h + 3, density: d };
-    const p = sackPiece(w, h, t);
-    return { buf: p, ox: p.w >> 1, oy: h + 3 };
-  });
-}
 
 // ------------------------------------------------------------------------------------ parachute
 
@@ -313,67 +177,6 @@ export function canopyPiece(phase = 0): PixelBuffer {
     }
   }
   return b.outline(INK);
-}
-
-// ------------------------------------------------------------------------------------ mast
-
-/**
- * The parade-float pole the `float` hostage is tied to: a striped crimson-and-ivory pole with a
- * gold finial and a small pennant, 44 px tall (feet anchor).
- */
-function mastFrames(): Frame[] {
-  const H = 46;
-  const b = new PixelBuffer(16, H);
-  const x = 2;
-  for (let y = 6; y < H - 1; y++) {
-    const band = Math.floor((y + 1) / 4) % 2 === 0;
-    b.set(x, y, band ? PAL.red[2] : PAL.snow[2]);
-    b.set(x + 1, y, band ? PAL.red[1] : PAL.snow[1]);
-  }
-  // Base block and finial.
-  b.rect(x - 1, H - 4, 4, 3, PAL.brown[2]);
-  b.hline(x - 1, x + 2, H - 4, PAL.brown[3]);
-  b.rect(x - 1, 3, 4, 3, PAL.gold[2]);
-  b.set(x, 3, PAL.gold[3]);
-  b.set(x, 2, PAL.gold[2]);
-  b.set(x + 1, 2, PAL.gold[1]);
-  // Pennant (gold with a crimson stripe) fluttering forward.
-  b.poly([[x + 2, 7], [x + 12, 9], [x + 2, 12]], PAL.gold[2]);
-  b.hline(x + 3, x + 8, 9, PAL.red[2]);
-  b.set(x + 3, 7, PAL.gold[3]);
-  b.outline(INK);
-  return [{ buf: b, ox: x + 1, oy: H }];
-}
-
-// ------------------------------------------------------------------------------------ balloon
-
-/**
- * A weather balloon (pale latex, a crimson Legion band) with the knot at the bottom (anchor):
- * 2 frames, the second slightly stretched (bobbing).
- */
-function balloonFrames(): Frame[] {
-  return [0, 1].map((i) => {
-    const W = 22;
-    const H = 27 + i;
-    const b = new PixelBuffer(W + 2, H + 2);
-    b.ellipse(1, 1, W, H - 4, PAL.snow[1]);
-    b.sphere(W / 2 + 1, (H - 4) / 2 + 1, W / 2 - 1, PAL.snow, { light: 'tl', dither: false });
-    // Band and knot.
-    for (let x = 1; x <= W; x++) {
-      const y = Math.round((H - 4) * 0.62 + 1);
-      if ((b.get(x, y) & 255) !== 0) {
-        b.set(x, y, PAL.red[2]);
-        if ((b.get(x, y + 1) & 255) !== 0) b.set(x, y + 1, PAL.red[1]);
-      }
-    }
-    b.rect(W / 2, H - 4, 3, 2, PAL.snow[1]);
-    b.set(W / 2 + 1, H - 2, PAL.snow[0]);
-    b.set(W / 2 + 1, H - 1, PAL.snow[0]);
-    // A shine spot.
-    b.rect(6, 5 + i, 2, 3, PAL.snow[3]);
-    b.outline(INK);
-    return { buf: b, ox: W / 2 + 1, oy: H + 1 };
-  });
 }
 
 // ------------------------------------------------------------------------------------ UHD
@@ -415,9 +218,6 @@ export function hdCached(key: string, make: () => PixelBuffer): PixelBuffer {
   return b;
 }
 
-/** Rope material: sand-coloured hemp. */
-const ropeMat = (c: HdCanvas): number => c.material({ ramp: PAL_HD.sand, lo: 1, hi: 6, wrap: 0.1, spec: 0.15, shine: 8 });
-
 /**
  * Twisted rope along a direction (ux, uy): strands as diagonal ridges with dark grooves between
  * them (the normal rolls across each strand), `phase` shifts the twist along the rope.
@@ -434,55 +234,9 @@ function twist(ux: number, uy: number, x0: number, y0: number, pitch = 1.1, phas
   };
 }
 
-/** A rope segment `len` px long at density d (4 logical wide, top anchor): a twisted vertical rope, no outline at its cut ends (segments stack). */
-function ropeSegmentHd(len: number, d: HdD): Frame {
-  const c = new HdCanvas(4, len, d);
-  c.cylinder(1, -1, 2, len + 2, { mat: ropeMat(c), z: 0, tex: twist(0, 1, 0, 0, 1.2) });
-  return { buf: c.render(HD_RENDER), ox: 2, oy: 0, density: d };
-}
 
-/** The cut rope end at density d (the 11 × 11 `ropeBitFrames` box, centre anchor): a twisted rope tumbling, a frayed end and a clean cut. */
-function ropeBitFramesHd(d: HdD): Frame[] {
-  const out: Frame[] = [];
-  for (let i = 0; i < 4; i++) {
-    const a = (i * Math.PI) / 4;
-    const dx = Math.round(Math.cos(a) * 3);
-    const dy = Math.round(Math.sin(a) * 3);
-    const c = new HdCanvas(11, 11, d);
-    const m = ropeMat(c);
-    const x0 = 5.5 - dx;
-    const y0 = 5.5 - dy;
-    const x1 = 5.5 + dx;
-    const y1 = 5.5 + dy;
-    const l = Math.hypot(x1 - x0, y1 - y0) || 1;
-    c.capsule(x0, y0, x1, y1, 0.95, 0.95, { mat: m, z: 0, tex: twist((x1 - x0) / l, (y1 - y0) / l, x0, y0, 1.1) });
-    // The frayed end: loose fibres fanning out; the cut end shows the darker core.
-    for (const k of [-1, 0, 1]) {
-      const ang = Math.atan2(y0 - y1, x0 - x1) + k * 0.45;
-      c.capsule(x0, y0, x0 + Math.cos(ang) * 1.4, y0 + Math.sin(ang) * 1.4, 0.32, 0.22, { mat: m, z: 0.3, tone: 0.15 });
-    }
-    c.ellipsoid(x1, y1, 0.7, 0.7, { mat: m, z: 0.6, tone: -0.35, round: 0.3 });
-    fitHd(c, ropeBitLo(i));
-    out.push({ buf: c.render(HD_RENDER), ox: 5, oy: 5, density: d });
-  }
-  return out;
-}
 
-/** The 1× buffer of rope-bit frame i (its footprint for the HD fit). */
-function ropeBitLo(i: number): PixelBuffer {
-  return ropeBitFrames()[i].buf;
-}
 
-/** The float's rope bands at density d (chest 16, knees 12): a twisted rope across with a knot on the front. */
-function ropeBandFramesHd(d: HdD): Frame[] {
-  return [16, 12].map((w) => {
-    const c = new HdCanvas(w + 2, 5, d);
-    const m = ropeMat(c);
-    c.cylinder(1, 2, w, 2, { mat: m, z: 0, axis: 'h', tex: twist(1, 0, 0, 0, 1.2) });
-    c.ellipsoid(w - 2.5, 2.5, 1.5, 1.4, { mat: m, z: 1, tex: twist(0.7, 0.7, w - 2.5, 2.5, 0.9) });
-    return { buf: c.render(HD_RENDER), ox: (w + 2) >> 1, oy: 3, density: d };
-  });
-}
 
 /** Wood (the chair, planks): the 1× brown family, oiled, with grain. */
 const woodMat = (c: HdCanvas): number => c.material({ ramp: PAL_HD.brown, lo: 2, hi: 7, spec: 0.3, shine: 14, wrap: 0.05 });
@@ -519,36 +273,6 @@ export function chairPieceHd(broken: number, d: HdD): PixelBuffer {
   });
 }
 
-/** A loose chair plank at density d (the `stick` box): a bevelled slat with grain, a splintered end. */
-function stickHd(len: number, angle: number, d: HdD): PixelBuffer {
-  return hdCached(`stick:${len}:${angle}@${d}`, () => {
-    const s = len + 4;
-    const c = new HdCanvas(s, s, d);
-    const w = woodMat(c);
-    const k = s / 2;
-    const dx = Math.cos(angle) * (len / 2);
-    const dy = Math.sin(angle) * (len / 2);
-    const ax = Math.round(k - dx);
-    const ay = Math.round(k - dy);
-    const bx = Math.round(k + dx);
-    const by = Math.round(k + dy);
-    const l = Math.hypot(bx - ax, by - ay) || 1;
-    c.capsule(ax, ay, bx, by, 1, 1, {
-      mat: w,
-      z: 0,
-      round: 0.7,
-      tex: (sm) => {
-        const along = ((sm.x - ax) * (bx - ax) + (sm.y - ay) * (by - ay)) / l;
-        const across = (-(sm.x - ax) * (by - ay) + (sm.y - ay) * (bx - ax)) / l;
-        if (Math.abs(across - 0.3 * Math.sin(along * 0.9)) < 0.5 / sm.d) sm.tone -= 0.22;
-        // The splintered end: ragged.
-        if (along > l - 0.2 && (Math.floor(across * 2.5) & 1) === 0) sm.cut = true;
-      },
-    });
-    fitHd(c, stick(len, angle));
-    return c.render(HD_RENDER);
-  });
-}
 
 /** Steel of the cage. */
 const cageSteel = (c: HdCanvas): number => c.material({ ramp: PAL_HD.steel, lo: 1, hi: 6, spec: 1, shine: 26 });
@@ -594,49 +318,6 @@ export function cageFrontHd(d: HdD): PixelBuffer {
   });
 }
 
-/** The cage bursting open at density d (the `cageBreakFrames` layout): springing bars, the dome, the floor plate. */
-function cageBreakFramesHd(d: HdD): Frame[] {
-  const W = 48;
-  const H = 40;
-  const lo = cageBreakFrames();
-  const bar = (len: number, a: number): PixelBuffer =>
-    hdCached(`cage-bar:${len}:${a}@${d}`, () => {
-      const s = len + 4;
-      const c = new HdCanvas(s, s, d);
-      const k = s / 2;
-      const dx = Math.cos(a) * (len / 2);
-      const dy = Math.sin(a) * (len / 2);
-      c.capsule(Math.round(k - dx) + 0.5, Math.round(k - dy) + 0.5, Math.round(k + dx) + 0.5, Math.round(k + dy) + 0.5, 0.5, 0.5, { mat: cageSteel(c), z: 0 });
-      return c.render(HD_RENDER);
-    });
-  const dome = hdCached(`cage-dome@${d}`, () => {
-    const c = new HdCanvas(CAGE.w + 2, 10, d);
-    c.plane(1, 1, CAGE.w, 8, {
-      mat: cageSteel(c),
-      z: 0,
-      mask: (x, y) => ((x - 11) / 10) ** 2 + ((y - 5) / 4) ** 2 < 1,
-      normal: (x, y, out) => {
-        out[0] = ((x - 11) / 10) * 0.9;
-        out[1] = ((y - 5) / 4) * 0.9;
-        out[2] = 0.6;
-      },
-    });
-    return c.render(HD_RENDER);
-  });
-  const floor = hdCached(`cage-floor@${d}`, () => {
-    const c = new HdCanvas(CAGE.w + 2, 5, d);
-    c.box(1, 1, CAGE.w, 3, { mat: cageSteel(c), z: 0, bevel: 0.5 });
-    return c.render(HD_RENDER);
-  });
-  const steps = CAGE_BREAK;
-  return steps.map((st, i) => {
-    const b = new PixelBuffer(W * d, H * d);
-    b.blit(floor, (W / 2 - 11) * d, (H - 5) * d);
-    for (const [x, y, len, a] of st.bars) b.blit(bar(len, a), (W / 2 + x) * d, (H + y) * d);
-    b.blit(dome, (W / 2 + st.dome[0]) * d, (H + st.dome[1]) * d);
-    return { buf: b, ox: lo[i].ox, oy: lo[i].oy, density: d };
-  });
-}
 
 /**
  * The HD burlap sack with a figure inside (the `sackPiece` box): coarse woven burlap (a fine weave
@@ -729,83 +410,13 @@ export function canopyPieceHd(phase: number, d: HdD): PixelBuffer {
   });
 }
 
-/** The HD float mast (the `mastFrames` box): a lacquered pole in crimson and ivory bands, a wooden base, a gold finial, a gold pennant with a crimson stripe. */
-function mastFramesHd(d: HdD): Frame[] {
-  const H = 46;
-  const c = new HdCanvas(16, H, d);
-  const x = 2;
-  const red = c.material({ ramp: PAL_HD.red, lo: 2, hi: 6, spec: 0.8, shine: 22 });
-  const ivory = c.material({ ramp: PAL_HD.snow, lo: 1, hi: 5, spec: 0.8, shine: 22 });
-  const gold = c.material({ ramp: PAL_HD.gold, lo: 2, hi: 6, spec: 1, shine: 24 });
-  c.cylinder(x, 6, 2, H - 7, {
-    mat: ivory,
-    z: 0,
-    tex: (s) => {
-      if (Math.floor((s.y + 1) / 4) % 2 === 0) s.mat = red;
-    },
-  });
-  c.box(x - 1, H - 4, 4, 3, { mat: woodMat(c), z: 1, bevel: 0.5, tex: wood({ seed: 5 }) });
-  c.box(x - 1, 3, 4, 3, { mat: gold, z: 1, bevel: 0.6, r: 0.4 });
-  c.ellipsoid(x + 1, 2.6, 1, 1, { mat: gold, z: 1.2 });
-  c.blob([[x + 2, 7], [x + 12.6, 9.5], [x + 2, 12.8]], 0.4, {
-    mat: gold,
-    z: 0.5,
-    bulge: 0.1,
-    tex: (s) => {
-      if (Math.abs(s.y - 9.6) < 0.5 && s.x < x + 9) s.mat = red;
-      s.ny += Math.sin(s.x * 1.4) * 0.3;
-    },
-  });
-  fitHd(c, mastFrames()[0].buf);
-  return [{ buf: c.render(HD_RENDER), ox: x + 1, oy: H, density: d }];
-}
 
-/** The HD weather balloon (the `balloonFrames` boxes): glossy pale latex with a soft shine, a crimson band, the knot. */
-function balloonFramesHd(d: HdD): Frame[] {
-  const lo = balloonFrames();
-  return [0, 1].map((i) => {
-    const W = 22;
-    const H = 27 + i;
-    const c = new HdCanvas(W + 2, H + 2, d);
-    const latex = c.material({ ramp: PAL_HD.snow, lo: 0, hi: 5, spec: 0.9, shine: 18, wrap: 0.1 });
-    const red = c.material({ ramp: PAL_HD.red, lo: 2, hi: 6, spec: 0.6 });
-    const by = Math.round((H - 4) * 0.62 + 1) + 0.5;
-    c.ellipsoid(W / 2 + 1, (H - 4) / 2 + 1, W / 2, (H - 4) / 2, {
-      mat: latex,
-      z: 0,
-      tex: (s) => {
-        if (Math.abs(s.y - by - 0.4) < 0.95) s.mat = red;
-      },
-    });
-    c.capsule(W / 2 + 1.5, H - 4, W / 2 + 1.5, H - 0.6, 1.1, 0.5, { mat: latex, z: 1, tone: -0.2 });
-    fitHd(c, lo[i].buf);
-    return { buf: c.render(HD_RENDER), ox: W / 2 + 1, oy: H + 1, density: d };
-  });
-}
 
 // ------------------------------------------------------------------------------------ register
 
-/**
- * Binds mission ams uses (the chair and the sack: chair-break, sack-off, the cut rope end) have HD
- * art at 2× and 4×; the others (cage, float, balloon: no mission at tier 4 shows them) the same HD
- * drawers at 2× only, so the tier-4 working set does not build them (the 4 → 2 fallback is automatic).
- */
-const AMS_BINDS: ReadonlySet<string> = new Set(['rope-bit', 'chair-break', 'sack-off']);
 
-/** Register a bind with its 1× generator and its HD generator (2× and 4× for `AMS_BINDS`, else 2×). */
-function defineBind(name: string, gen: () => Frame[], hd: (d: number) => Frame[], opts: SpriteOpts): void {
-  const id = `item/bind/${name}`;
-  defineSprite(id, gen, opts);
-  defineHdSprite(id, hd, AMS_BINDS.has(name) ? [4, 2] : [2]);
-}
 
 export function defineBindSprites(): void {
-  defineBind('rope', () => [1, 2, 3, 4, 5, 6, 7, 8].map(ropeSegment), (d) => [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ropeSegmentHd(n, hdOf(d))), { ticksPerFrame: 60 });
-  defineBind('rope-bit', ropeBitFrames, (d) => ropeBitFramesHd(hdOf(d)), { ticksPerFrame: 4 });
-  defineBind('rope-band', ropeBandFrames, (d) => ropeBandFramesHd(hdOf(d)), { ticksPerFrame: 60 });
-  defineBind('chair-break', () => chairBreakFrames(), (d) => chairBreakFrames((len, a) => stickHd(len, a, hdOf(d)), d), { durations: [4, 5, 6, 30], loop: false });
-  defineBind('cage-break', cageBreakFrames, (d) => cageBreakFramesHd(hdOf(d)), { durations: [3, 4, 6, 40], loop: false });
-  defineBind('sack-off', () => sackOffFrames(), (d) => sackOffFrames(d), { durations: [5, 6, 40], loop: false });
-  defineBind('mast', mastFrames, (d) => mastFramesHd(hdOf(d)), { ticksPerFrame: 60 });
-  defineBind('balloon', balloonFrames, (d) => balloonFramesHd(hdOf(d)), { ticksPerFrame: 16 });
+  // Every bind prop (item/bind/*): the baked 40 px set `bind` (1× at every tier, plan rule 7).
+  defineBakedSet(BIND_SET);
 }

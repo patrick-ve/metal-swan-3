@@ -5,7 +5,6 @@
  * - `critic`   tweed suit, grey parted hair, round glasses, red bow tie, a notepad and a star card;
  * - `roadie`   heavy build, black tank top and cap, beard, cargo trousers, a black flight case;
  * - `tea-lady` white curly hair in pink curlers, pink dress, a white floral apron, a teapot;
- * - `tourist`  orange palm-print shirt, sun hat, shades, a camera bag and a flash camera;
  * - `composer` wild white hair, black tail coat, white bow tie, a conductor's baton (the 1UP);
  * - `dollop`   Mrs. Dollop: pink uniform, white paper hat, blond bob, a mint-striped apron.
  *
@@ -16,18 +15,17 @@
  * are the critic's strips. Small effects: `item/hostage/star`, `flash`, `note`, `steam`,
  * `case-open`. All feet-anchored unless noted.
  *
- * UHD art (docs/ART_GUIDE.md "UHD art"): every hostage id has ONE density-generic generator for
- * 2× and 4×: the rig at d (renderHuman), the props, aprons, raised fists, baton, dropped rope and
- * small effects painted natively with the UHD kit (HdCanvas, PAL_HD, outline A; `…Hd` below, each
- * in its 1× box), the palm print, curlers and rope coils laid onto the HD figure, and a warm blush
- * where the rig would paint the teal accent. ams frees only tourists, so the tourist's strips and
- * the camera flash are registered at 2× and 4×, the rest at 2× (`HD4_KINDS`).
+ * The tied tourist (`item/hostage/tourist/…`, the only kind mission ams frees) and the camera flash
+ * (`item/hostage/flash`) are the baked 40 px set `hostage-tourist` (src/game/content/art40/
+ * hostage-tourist.gen.ts, drawn by tools/art40/chars/hostage-tourist/; docs/design/ams40.md wave 3):
+ * 1× pixels at every art tier (plan rule 7). Its frame roles (TIED_*, GAG_*, GIVE_*) are re-exported
+ * here for the game code.
  *
- * Motion (tourist only, docs/ART_GUIDE.md "Motion"; the timings stay inside the Hostage state
- * ticks): `bow` 5 (open arms, two eased in-betweens, the deep bow, a rise; 12 ticks), `freed` 7
- * (a crouch, the hop, an in-between, the landing with arms up, the stretch, an in-between, relax;
- * 20 ticks), `turn` (2: turnSquash of the standing frame, turn-to-run) and `sack-turn` (2: the
- * sack squeezed). hostages.ts plays the turn strips on a facing change (draw only).
+ * UHD art (docs/ART_GUIDE.md "UHD art"): every other kind's id has ONE density-generic generator for
+ * 2×: the rig at d (renderHuman), the props, aprons, raised fists, baton, dropped rope and small
+ * effects painted natively with the UHD kit (HdCanvas, PAL_HD, outline A; `…Hd` below, each in its 1×
+ * box), the curlers and rope coils laid onto the HD figure, and a warm blush where the rig would paint
+ * the teal accent. No mission at tier 4 shows those kinds (the 4 → 2 fallback is automatic).
  */
 import { ascii } from '../../../engine/ascii';
 import type { Color } from '../../../engine/color';
@@ -35,15 +33,15 @@ import { PixelBuffer } from '../../../engine/pixel';
 import { INK, PAL } from '../../../engine/palette';
 import type { Frame } from '../../../engine/render';
 import { PAL_HD } from '../../../engine/palette-hd';
+import { defineBakedSet } from '../../../engine/baked';
 import { defineHdSprite, defineSprite, getFrames, type SpriteOpts } from '../../../engine/sprites';
+import { SET as TOURIST_SET } from '../art40/hostage-tourist.gen';
 import { BLACK_ONE_HUE, HdCanvas, folds, type TexSample, type Texture } from '../../art/hd';
 import { spanOf } from '../../art/hd/body';
 import { withPieces, type Piece } from '../../art/human-fx';
 import { withSwing } from '../../art/human-sprites';
 import { renderHuman, stackFrames, type ArmPose, type Density, type HumanStyle, type Pose } from '../../art/humanoid';
 import * as P from '../../art/poses';
-import { turnSquash } from '../creatures/draw';
-import { tween } from '../../art/tween';
 import {
   HD_RENDER,
   cageBack,
@@ -63,13 +61,35 @@ import {
 } from './binds.art';
 import { DANGLE_HANDS, HOSTAGE_KINDS, type HostageKindId } from './ids';
 
+export {
+  GAG_AFTER,
+  GAG_CARD,
+  GAG_FLASH,
+  GAG_FLASH_TICK,
+  GAG_RAISE,
+  GIVE_HAND_FRAME,
+  GIVE_HANDOVER,
+  TIED_BLINK,
+  TIED_BREATH,
+  TIED_LOOK,
+  TIED_REST,
+  TIED_SLUMP,
+  TIED_STRAIN,
+  TIED_STRUGGLE,
+  TIED_STRUGGLE_B,
+} from '../art40/hostage-tourist.gen';
+
+/** The kinds this module still draws in code (the tourist is the baked set). */
+export type CodeKind = Exclude<HostageKindId, 'tourist'>;
+export const CODE_KINDS: readonly CodeKind[] = HOSTAGE_KINDS.filter((k): k is CodeKind => k !== 'tourist');
+
 type V2 = readonly [number, number];
 type Pts = Record<string, readonly [number, number]>;
 
 // ------------------------------------------------------------------------------------ styles
 
 /** Rig styles (GDD §7.2 table; `ink` boots and tops use the `black` ramp so they stay lighter than the outline). */
-export const HOSTAGE_STYLES: Readonly<Record<HostageKindId, HumanStyle>> = {
+export const HOSTAGE_STYLES: Readonly<Record<CodeKind, HumanStyle>> = {
   critic: {
     skin: 'skinC',
     hair: 'stone',
@@ -117,23 +137,6 @@ export const HOSTAGE_STYLES: Readonly<Record<HostageKindId, HumanStyle>> = {
     gloves: null,
     build: 'normal',
     face: ['blush'],
-  },
-  tourist: {
-    skin: 'skinA',
-    hair: 'hairC',
-    hairStyle: 'short',
-    headgear: 'rainhat',
-    gear: 'sand',
-    accent: 'teal',
-    top: 'orange',
-    topType: 'shirt',
-    pants: 'sand',
-    boots: 'brown',
-    belt: 'brown',
-    gloves: null,
-    build: 'normal',
-    accessories: ['satchel'],
-    face: ['shades', 'blush'],
   },
   composer: {
     skin: 'skinA',
@@ -225,8 +228,6 @@ const PROPS = {
     ),
   /** Teacup on a saucer. */
   cup: (): PixelBuffer => art(['wWw.', 'wwwh', 'sss.'], { w: W[2], W: W[3], h: W[1], s: PAL.navy[1] }),
-  /** The tourist's flash camera (lens forward, flash cube on top). */
-  camera: (): PixelBuffer => art(['.ff....', 'kkkkkk.', 'kKKKllk', 'kkkkllk', '.kkkkk.'], { f: W[3], k: PAL.black[1], K: PAL.black[3], l: PAL.sky[2] }),
 };
 type PropName = keyof typeof PROPS;
 
@@ -331,25 +332,6 @@ const PROPS_HD: Readonly<Record<PropName, (c: HdCanvas) => void>> = {
     c.cylinder(1, 1, 3, 2.8, { mat: p, z: 0.5, cap: 0.7 });
     c.stroke([[3.9, 1.6], [4.6, 2], [4, 2.7]], 0.3, 0.3, { mat: p, z: 0.3, tone: -0.1 });
   },
-  // The flash camera: leatherette body, a chrome top plate, the lens barrel with a lit glass front, the flash cube.
-  camera: (c) => {
-    const k = blackMat(c);
-    const st = steelMat(c);
-    const glass = c.material({ ramp: PAL_HD.sky, lo: 0, hi: 5, spec: 1, shine: 30 });
-    c.box(1, 2, 6, 4, {
-      mat: k,
-      z: 0,
-      bevel: 0.5,
-      r: 0.3,
-      tex: (s) => {
-        if (s.d >= 4) s.tone += ((Math.floor(s.x * 4) + Math.floor(s.y * 4)) & 1) * 0.08;
-      },
-    });
-    c.box(1, 2, 6, 0.8, { mat: st, z: 0.6, bevel: 0.3 });
-    c.cylinder(5.2, 2.9, 2.4, 2.4, { mat: k, z: 1, axis: 'h', tone: 0.05 });
-    c.ellipsoid(7.2, 4.1, 0.55, 1.05, { mat: glass, z: 1.6 });
-    c.box(2, 1, 2, 1.2, { mat: c.material({ ramp: PAL_HD.snow, lo: 3, hi: 6, spec: 0.6 }), z: 1, bevel: 0.3 });
-  },
 };
 
 /** A prop as a piece at density `d`: the 1× drawing at d 1, else its UHD drawing (the same logical box). */
@@ -440,7 +422,7 @@ function reach(a: ArmPose | undefined): V2 {
 }
 
 /** An apron hanging from the belt (tea lady: white with pink flowers; Mrs. Dollop: mint stripes). */
-function apron(kind: HostageKindId): PixelBuffer {
+function apron(kind: CodeKind): PixelBuffer {
   const b = new PixelBuffer(7, 10);
   b.rect(0, 0, 7, 10, PAL.cloth[2]);
   b.hline(0, 6, 0, PAL.cloth[3]);
@@ -463,7 +445,7 @@ function apron(kind: HostageKindId): PixelBuffer {
  * The HD apron (the `apron` box, 9 × 12): white cotton in soft folds with a coloured hem; Mrs.
  * Dollop's mint stripes, or the tea lady's two pink flowers with gold hearts.
  */
-function apronHd(kind: HostageKindId, d: HdD): PixelBuffer {
+function apronHd(kind: CodeKind, d: HdD): PixelBuffer {
   return hdCached(`hostage-apron:${kind}@${d}`, () => {
     const c = new HdCanvas(9, 12, d);
     const cloth = c.material({ ramp: PAL_HD.cloth, lo: 2, hi: 5, wrap: 0.1, spec: 0.1, amb: 0.2 });
@@ -541,67 +523,10 @@ function curlersHd(f: Frame): Frame {
   return { ...f, buf: b };
 }
 
-/** Green palm leaves printed on the tourist's orange shirt (2-px clusters on a loose lattice). */
-function palmPrint(f: Frame): Frame {
-  const b = f.buf.clone();
-  const shirt = new Set<number>([PAL.orange[1], PAL.orange[2]]);
-  for (let y = 0; y < b.h; y++) {
-    for (let x = 0; x < b.w - 1; x++) {
-      const wx = x - f.ox;
-      const wy = y - f.oy;
-      if ((((wx + 64) * 3 + (wy + 64) * 5) % 11 + 11) % 11 !== 0) continue;
-      if (!shirt.has(b.get(x, y)) || !shirt.has(b.get(x + 1, y))) continue;
-      b.set(x, y, PAL.green[3]);
-      b.set(x + 1, y, PAL.green[2]);
-    }
-  }
-  return { buf: b, ox: f.ox, oy: f.oy, pts: f.pts };
-}
-
-/**
- * The palm print on an HD frame: the 1× lattice (whole logical px), each print a slanted leaf of
- * art px (a lighter midrib over the blade) whose green follows the shirt's light under it (a leaf
- * in the shirt's shade is a darker green), printed only on the orange shirt.
- */
-function palmPrintHd(f: Frame): Frame {
-  const d = f.density ?? 1;
-  const b = f.buf.clone();
-  const O = PAL_HD.orange;
-  const G = PAL_HD.green;
-  const lw = b.w / d;
-  const lh = b.h / d;
-  for (let y = 0; y < lh; y++) {
-    for (let x = 0; x < lw - 1; x++) {
-      const wx = x - f.ox;
-      const wy = y - f.oy;
-      if ((((wx + 64) * 3 + (wy + 64) * 5) % 11 + 11) % 11 !== 0) continue;
-      if (O.indexOf(f.buf.get(x * d, y * d + (d >> 1))) < 0 || O.indexOf(f.buf.get(x * d + d + (d >> 1), y * d + (d >> 1))) < 0) continue;
-      // A leaf about 1.7 × 0.8 logical px tilted up to the right, across the lattice's own
-      // down-right rows (so the prints never join into stripes): an ellipse round the point.
-      const cx = x + 1;
-      const cy = y + 0.5;
-      for (let Y = y * d - d; Y < (y + 2) * d; Y++) {
-        for (let X = x * d; X < (x + 2) * d; X++) {
-          const px = (X + 0.5) / d - cx;
-          const py = (Y + 0.5) / d - cy;
-          const u = px * 0.8 - py * 0.6;
-          const v = px * 0.6 + py * 0.8;
-          if ((u / 0.88) ** 2 + (v / 0.4) ** 2 > 1) continue;
-          const o = O.indexOf(f.buf.get(X, Y));
-          if (o < 0) continue;
-          const rib = d >= 4 && Math.abs(v) < 0.5 / d;
-          b.set(X, Y, G[Math.min(G.length - 1, Math.max(1, o + (rib ? 2 : 1)))]);
-        }
-      }
-    }
-  }
-  return { ...f, buf: b };
-}
-
 const APRONS: Readonly<Partial<Record<HostageKindId, true>>> = { 'tea-lady': true, dollop: true };
 
 /** The kind's figure in a pose: the rig, plus its apron, curlers or shirt print (`d` 2 / 4: the rig at d with the UHD pieces). */
-function figure(kind: HostageKindId, pose: Pose, d: Density = 1): Frame {
+function figure(kind: CodeKind, pose: Pose, d: Density = 1): Frame {
   const style = HOSTAGE_STYLES[kind];
   let f: Frame;
   if (APRONS[kind] && !pose.rot) {
@@ -615,11 +540,9 @@ function figure(kind: HostageKindId, pose: Pose, d: Density = 1): Frame {
     f = stackFrames(legs, upper);
   } else f = renderHuman(style, pose, 'full', d);
   if (d === 1) {
-    if (kind === 'tourist') f = palmPrint(f);
     if (kind === 'tea-lady') f = curlers(f);
     return f;
   }
-  if (kind === 'tourist') f = palmPrintHd(f);
   if (kind === 'tea-lady') f = curlersHd(f);
   return f;
 }
@@ -720,19 +643,8 @@ const BOW_CRITIC: readonly Pose[] = [
   { ...P.STAND, lean: 36, armN: { sh: 70, el: 10, hand: 'grip' }, armF: { sh: -45, el: 10, hand: 'open' }, head: { tilt: 10 }, expr: 'blink' },
 ];
 
-/** Tourist bow (5): open arms → two eased in-betweens → deep bow → rise back toward the stance. */
-const BOW_RISE: Pose = { ...P.STAND, lean: 14, armN: { to: [4, 4], hand: 'open' }, armF: { sh: -20, el: 14, hand: 'open' }, expr: 'happy' };
-const BOW_OPEN: Pose = { ...BOW[0], armF: { sh: 80, el: 14, hand: 'open' } };
-const BOW_DEEP: Pose = { ...BOW[1], armF: { sh: -24, el: 14, hand: 'open' } };
-export const BOW5 = (k: HostageKindId): Pose[] => tween(HOSTAGE_STYLES[k], [BOW_OPEN, BOW_DEEP, BOW_RISE], { perKey: [2, 0], ease: 'linear' });
-export const TOURIST_BOW_TIMING: readonly number[] = [3, 3, 3, 2, 1];
 
-/** Tourist freed (7): a crouch (anticipation), the hop, in-between, land arms up, in-between, stretch, relax. */
-const FREED_CROUCH: Pose = { legN: P.LAND.legN, legF: P.LAND.legF, armN: { sh: 30, el: 60, hand: 'open' }, armF: { sh: 20, el: 60, hand: 'open' }, expr: 'panic' };
-/** The tourist relaxes with the hands at the belly (the arms come halfway down: a smaller drop). */
-const FREED_RELAX: Pose = { ...P.STAND, armN: { to: [5, 0], hand: 'fist' }, armF: { to: [7, 0], hand: 'fist' }, expr: 'happy' };
-export const FREED7 = (k: HostageKindId): Pose[] => tween(HOSTAGE_STYLES[k], [FREED_CROUCH, FREED[0], FREED[1], FREED[2], FREED_RELAX], { perKey: [0, 1, 0, 1], ease: ['out', 'in', 'inOut', 'inOut'] });
-export const TOURIST_FREED_TIMING: readonly number[] = [3, 3, 2, 3, 3, 4, 2];
+
 
 const WALK = withSwing(P.WALK, 0.9, 30).map((p) => ({ ...p, expr: 'happy' as const }));
 const RUN = withSwing(P.RUN, 1.1, 80).map((p) => ({ ...p, lean: 10, expr: 'happy' as const }));
@@ -862,7 +774,7 @@ function pieceAt(lo: () => PixelBuffer, hd: (d: HdD) => PixelBuffer, d: Density)
 }
 
 /** Tied to the chair (rest, blink, struggle: lean back and kick). */
-function tiedFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function tiedFrames(kind: CodeKind, d: Density = 1): Frame[] {
   return tiedTriple(SIT, { lean: -8, legN: L(70, 50) }).map((p) => {
     const f = figure(kind, p, d);
     const [hx, hy] = hipOf(f);
@@ -872,7 +784,7 @@ function tiedFrames(kind: HostageKindId, d: Density = 1): Frame[] {
 }
 
 /** Kneeling in the hanging cage, gripping the bars (rest, blink, struggle: shake the bars). */
-function cagedFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function cagedFrames(kind: CodeKind, d: Density = 1): Frame[] {
   const back = pieceAt(cageBack, cageBackHd, d);
   const front = pieceAt(cageFront, cageFrontHd, d);
   return tiedTriple(KNEEL, { lean: 12, armN: { to: [8, -4], hand: 'grip' } }).map((p) => {
@@ -885,12 +797,12 @@ function cagedFrames(kind: HostageKindId, d: Density = 1): Frame[] {
 }
 
 /** Tied to the float mast, ropes drawn by the bind (rest, blink, struggle). */
-function mastFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function mastFrames(kind: CodeKind, d: Density = 1): Frame[] {
   return tiedTriple(POLE, { lean: -4, legN: L(14, 20) }).map((p) => figure(kind, p, d));
 }
 
 /** Hopping blindly in a sack: only the shoes show (squash, push off, airborne, land). */
-function sackFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function sackFrames(kind: CodeKind, d: Density = 1): Frame[] {
   const style = HOSTAGE_STYLES[kind];
   const steps: Array<{ legs: Pose; w: number; h: number; dy: number; tilt: number }> = [
     { legs: { legN: L(30, 50), legF: L(10, 50) }, w: 18, h: 27, dy: 0, tilt: 0 },
@@ -912,7 +824,7 @@ function sackFrames(kind: HostageKindId, d: Density = 1): Frame[] {
 }
 
 /** Hanging from the balloon rope by the wrists, legs kicking (the rope is drawn by the bind). */
-function dangleFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function dangleFrames(kind: CodeKind, d: Density = 1): Frame[] {
   return [
     { ...HANG, expr: 'panic' as const },
     { ...HANG, legN: L(-4, 30), legF: L(14, 20), expr: 'shout' as const },
@@ -929,7 +841,7 @@ function dangleFrames(kind: HostageKindId, d: Density = 1): Frame[] {
 }
 
 /** Raised forearms (sleeves) with both fists on top: the hanging hostage's grip on the rope. */
-function raisedFists(kind: HostageKindId): PixelBuffer {
+function raisedFists(kind: CodeKind): PixelBuffer {
   const st = HOSTAGE_STYLES[kind];
   const skin = PAL[st.skin as keyof typeof PAL];
   const top = PAL[st.top as keyof typeof PAL];
@@ -944,7 +856,7 @@ function raisedFists(kind: HostageKindId): PixelBuffer {
 }
 
 /** The raised fists at density d (the 7 × 6 box): two sleeves of the top's cloth, both fists round the rope (knuckles at 4×). */
-function raisedFistsHd(kind: HostageKindId, d: HdD): PixelBuffer {
+function raisedFistsHd(kind: CodeKind, d: HdD): PixelBuffer {
   return hdCached(`fists:${kind}@${d}`, () => {
     const st = HOSTAGE_STYLES[kind];
     const skin = spanOf(PAL[st.skin as keyof typeof PAL]);
@@ -967,7 +879,7 @@ function raisedFistsHd(kind: HostageKindId, d: HdD): PixelBuffer {
 }
 
 /** Parachuting: both hands on the risers, the canopy above. */
-function chuteFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function chuteFrames(kind: CodeKind, d: Density = 1): Frame[] {
   return [0, 1].map((i) => {
     const f = fitHands(figure(kind, { ...HANG, armN: { sh: 150, el: 26, hand: 'fist' }, armF: { sh: 160, el: 24, hand: 'fist' }, legN: L(i ? 20 : 8, 24), legF: L(i ? -2 : 6, 30), expr: 'happy' }, d));
     const hand = f.pts?.hand ?? [4, DANGLE_HANDS];
@@ -1014,20 +926,11 @@ function fitHands(f: Frame): Frame {
 }
 
 /** Freed: the ropes drop to the ground while they hop up, stretch and relax. */
-function freedFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function freedFrames(kind: CodeKind, d: Density = 1): Frame[] {
   const rope = d === 1 ? droppedRope() : droppedRopeHd(hdOf(d));
-  // The tourist's tweened hop (the rope lies at the feet until the stretch).
-  const seven = kind === 'tourist';
-  const poses = seven ? FREED7(kind) : FREED;
-  const ropeUntil = seven ? 5 : 3;
-  return poses.map((p, i) => {
+  return FREED.map((p, i) => {
     const f = figure(kind, p, d);
-    if (i >= ropeUntil) return f;
-    if (seven) {
-      const piece: Piece = { buf: rope, x: -8 + Math.min(2, Math.floor(i / 2)), y: -4, behind: i > 1 };
-      if (d !== 1) piece.density = d;
-      return withPieces(f, [piece]);
-    }
+    if (i >= 3) return f;
     const piece: Piece = { buf: rope, x: -8 + i, y: -4, behind: i > 0 };
     if (d !== 1) piece.density = d;
     return withPieces(f, [piece]);
@@ -1037,7 +940,7 @@ function freedFrames(kind: HostageKindId, d: Density = 1): Frame[] {
 // ---- per-kind dressing --------------------------------------------------------------------
 
 /** Near-arm override and prop for the kind's walk (critic: notepad; tea lady: teapot; composer: baton). */
-function walkFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function walkFrames(kind: CodeKind, d: Density = 1): Frame[] {
   return WALK.map((p) => {
     if (kind === 'critic') {
       const pose: Pose = { ...p, armN: { to: [5, 3], hand: 'grip' } };
@@ -1059,7 +962,7 @@ function walkFrames(kind: HostageKindId, d: Density = 1): Frame[] {
 }
 
 /** The roadie walks with the heavy case held in front with both hands, leaning back. */
-function carryFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function carryFrames(kind: CodeKind, d: Density = 1): Frame[] {
   return WALK.map((p) => {
     const pose: Pose = { ...p, armN: { to: [7, 6], hand: 'grip' }, armF: { to: [7, 6], hand: 'grip' }, lean: -6, expr: 'normal' };
     const f = figure(kind, pose, d);
@@ -1069,7 +972,7 @@ function carryFrames(kind: HostageKindId, d: Density = 1): Frame[] {
 }
 
 /** The kind's 4-frame comedy beat (frames picked by the kind's `gagFrame`). */
-function gagFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function gagFrames(kind: CodeKind, d: Density = 1): Frame[] {
   switch (kind) {
     case 'critic': {
       // Scribbling on the notepad (the hand moves), then the star card held up high.
@@ -1115,21 +1018,6 @@ function gagFrames(kind: HostageKindId, d: Density = 1): Frame[] {
         return dress(f, pieces, { cup: [far[0], far[1] - 2] });
       });
     }
-    case 'tourist': {
-      const cam = propAt('camera', d);
-      const poses: Pose[] = [
-        { ...P.STAND, armN: { to: [6, -2], hand: 'grip' }, armF: { to: [7, -1], hand: 'grip' }, expr: 'happy' },
-        { ...P.STAND, armN: { to: [7, -5], hand: 'grip' }, armF: { to: [8, -4], hand: 'grip' }, lean: 4, expr: 'blink' },
-        { ...P.STAND, armN: { to: [7, -5], hand: 'grip' }, armF: { to: [8, -4], hand: 'grip' }, lean: 4, expr: 'happy' },
-        { ...P.STAND, armN: { to: [5, 3], hand: 'grip' }, armF: { to: [6, 3], hand: 'grip' }, expr: 'happy' },
-      ];
-      return poses.map((p) => {
-        const f = figure(kind, p, d);
-        const hand = f.pts?.hand ?? [6, -26];
-        const camAt: V2 = [hand[0] + 1, hand[1] - 2];
-        return dress(f, [at(cam.buf, camAt, 2, 3, false, cam.density)], { flash: [camAt[0], camAt[1] - 3] });
-      });
-    }
     case 'composer': {
       // A 4/4 pattern with the eyes closed: down, in, out, up.
       const beats: Array<{ to: V2; angle: number }> = [
@@ -1161,7 +1049,7 @@ function gagFrames(kind: HostageKindId, d: Density = 1): Frame[] {
 }
 
 /** Give: generic gift box; the roadie opens his case instead; Mrs. Dollop gestures to the shed. */
-function giveFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function giveFrames(kind: CodeKind, d: Density = 1): Frame[] {
   if (kind === 'roadie') {
     const caseAt: V2 = [10, -1];
     const poses: Pose[] = [
@@ -1195,8 +1083,7 @@ function giveFrames(kind: HostageKindId, d: Density = 1): Frame[] {
   });
 }
 
-function bowFrames(kind: HostageKindId, d: Density = 1): Frame[] {
-  if (kind === 'tourist') return BOW5(kind).map((p) => figure(kind, p, d));
+function bowFrames(kind: CodeKind, d: Density = 1): Frame[] {
   const poses = kind === 'critic' ? BOW_CRITIC : kind === 'composer' ? BOW.map((p, i) => (i === 1 ? { ...p, lean: 46 } : { ...p, armN: { sh: 150, el: 10, hand: 'grip' as const } })) : BOW;
   return poses.map((p, i) => {
     const f = figure(kind, p, d);
@@ -1208,7 +1095,7 @@ function bowFrames(kind: HostageKindId, d: Density = 1): Frame[] {
   });
 }
 
-function runFrames(kind: HostageKindId, d: Density = 1): Frame[] {
+function runFrames(kind: CodeKind, d: Density = 1): Frame[] {
   return RUN.map((p) => figure(kind, p, d));
 }
 
@@ -1227,62 +1114,6 @@ function starFramesHd(d: HdD): Frame[] {
   c.poly([[1.5, 0], [1.95, 1.05], [3, 1.5], [1.95, 1.95], [1.5, 3], [1.05, 1.95], [0, 1.5], [1.05, 1.05]], { mat: gold, z: 0 });
   c.ellipsoid(1.5, 1.5, 0.55, 0.55, { mat: gold, z: 1, tone: 0.4 });
   return [{ buf: c.render({ outline: 'none', ao: 0, rimLight: 0 }), ox: 1, oy: 1, density: d }];
-}
-
-/** The camera flash: a white burst shrinking to a twinkle (centre anchor). */
-function flashFrames(): Frame[] {
-  return [9, 6, 3].map((r) => {
-    const s = r * 2 + 3;
-    const b = new PixelBuffer(s, s);
-    const c = s >> 1;
-    b.circle(c, c, Math.max(1, r >> 1), W[3]);
-    b.line(c - r, c, c + r, c, W[3]);
-    b.line(c, c - r, c, c + r, W[3]);
-    if (r > 3) {
-      b.line(c - (r >> 1), c - (r >> 1), c + (r >> 1), c + (r >> 1), PAL.gold[3]);
-      b.line(c - (r >> 1), c + (r >> 1), c + (r >> 1), c - (r >> 1), PAL.gold[3]);
-    }
-    return { buf: b, ox: c, oy: c };
-  });
-}
-
-/**
- * The camera flash at density d (the same boxes): a white-hot core with a warm glow ring (an
- * ordered dither at its rim), long rays tapering to one art px, short gold diagonals (emissive,
- * no outline).
- */
-function flashFramesHd(d: HdD): Frame[] {
-  return [9, 6, 3].map((r) => {
-    const s = r * 2 + 3;
-    const k = s >> 1;
-    const C = k + 0.5;
-    const c = new HdCanvas(s, s, d);
-    const glow = c.material({ ramp: PAL_HD.gold, lo: 4, hi: 7, flat: true, dither: 0.35 });
-    const white = c.material({ ramp: PAL_HD.snow, lo: 4, hi: 6, flat: true });
-    const core = Math.max(1, r >> 1) + 0.5;
-    c.plane(C - core - 1, C - core - 1, (core + 1) * 2, (core + 1) * 2, {
-      mat: glow,
-      z: 0,
-      mask: (x, y) => Math.hypot(x - C, y - C) < core + 0.9,
-      tex: (sm) => {
-        const q = Math.hypot(sm.x - C, sm.y - C) / (core + 0.9);
-        if (q < 0.6) sm.mat = white;
-        sm.tone = 0.5 - q * 0.9;
-      },
-    });
-    const ray = (x0: number, y0: number, x1: number, y1: number, w0: number): void => {
-      c.capsule(x0, y0, x1, y1, w0, 0.5 / d, { mat: white, z: 1, tone: 0.3 });
-    };
-    ray(C, C, C - r, C, 0.6);
-    ray(C, C, C + r, C, 0.6);
-    ray(C, C, C, C - r, 0.6);
-    ray(C, C, C, C + r, 0.6);
-    if (r > 3) {
-      const q = r >> 1;
-      for (const [sx, sy] of [[-1, -1], [1, 1], [-1, 1], [1, -1]] as const) c.capsule(C, C, C + sx * q, C + sy * q, 0.4, 0.5 / d, { mat: glow, z: 0.5, tone: 0.3 });
-    }
-    return { buf: c.render({ outline: 'none', ao: 0, rimLight: 0, clean: false, sep: false }), ox: k, oy: k, density: d };
-  });
 }
 
 /** A floating music note (the composer's phrase), 2 frames (centre anchor). */
@@ -1359,7 +1190,7 @@ function caseOpenFramesHd(d: HdD): Frame[] {
 // ------------------------------------------------------------------------------------ register
 
 /** Strip builders (density 1, 2 or 4) and timings (ticks). */
-const STRIPS: ReadonlyArray<readonly [string, (k: HostageKindId, d?: Density) => Frame[], SpriteOpts]> = [
+const STRIPS: ReadonlyArray<readonly [string, (k: CodeKind, d?: Density) => Frame[], SpriteOpts]> = [
   ['tied', tiedFrames, { ticksPerFrame: 30 }],
   ['caged', cagedFrames, { ticksPerFrame: 30 }],
   ['mast', mastFrames, { ticksPerFrame: 30 }],
@@ -1374,25 +1205,8 @@ const STRIPS: ReadonlyArray<readonly [string, (k: HostageKindId, d?: Density) =>
   ['run', runFrames, { ticksPerFrame: 4 }],
 ];
 
-/**
- * Hostage kinds mission ams frees (its only kind is the tourist): their strips have HD art at 2×
- * AND 4×. Every other kind (and the kind-less critic strips, the cage, mast and balloon binds and
- * the critic / composer / tea-lady effects) has the same HD drawers registered at 2× only: no
- * mission at tier 4 shows them, so the tier-4 working set (`item/` is in ams's preload) does not
- * build them (the 4 → 2 fallback is automatic). Add a kind here to give it 4× art.
- */
-export const HD4_KINDS: readonly HostageKindId[] = ['tourist'];
+/** The HD densities of the code-drawn kinds (no mission at tier 4 shows them). */
 const D2: readonly (2 | 4)[] = [2];
-const D24: readonly (2 | 4)[] = [4, 2];
-
-/** Tourist timing overrides (its bow and freed strips have more frames, same total ticks). */
-const TOURIST_OPTS: Readonly<Record<string, SpriteOpts>> = {
-  bow: { durations: TOURIST_BOW_TIMING, loop: false },
-  freed: { durations: TOURIST_FREED_TIMING, loop: false },
-};
-
-/** Ticks per turn frame (hostages.ts plays narrowing, flip, widening). */
-export const HOSTAGE_TURN_TICKS = 2;
 
 /** Register an id with its 1× generator and one HD generator at `densities`. */
 function defineWithHd(id: string, gen: () => Frame[], hd: (d: Density) => Frame[], opts: SpriteOpts, densities: readonly (2 | 4)[]): void {
@@ -1401,24 +1215,15 @@ function defineWithHd(id: string, gen: () => Frame[], hd: (d: Density) => Frame[
 }
 
 export function defineHostageSprites(): void {
-  for (const kind of HOSTAGE_KINDS) {
-    const dens = HD4_KINDS.includes(kind) ? D24 : D2;
-    for (const [name, gen, base] of STRIPS) {
-      const opts = (kind === 'tourist' && TOURIST_OPTS[name]) || base;
-      defineWithHd(`item/hostage/${kind}/${name}`, () => gen(kind), (d) => gen(kind, d), opts, dens);
-    }
+  // The tied tourist and the camera flash: the baked 40 px set (1× at every tier, plan rule 7).
+  defineBakedSet(TOURIST_SET);
+  for (const kind of CODE_KINDS) {
+    for (const [name, gen, opts] of STRIPS) defineWithHd(`item/hostage/${kind}/${name}`, () => gen(kind), (d) => gen(kind, d), opts, D2);
   }
-  // Tourist turn strips (turn-to-run, the blind sack turn); the HD turns squeeze their own frames
-  // (a deferred 4× registry read would hand back the 2× frame).
-  const T = 'item/hostage/tourist/';
-  const stand = (d: Density): Frame => figure('tourist', { ...P.STAND, armN: { sh: 10, el: 30, hand: 'fist' }, armF: { sh: -6, el: 30 }, expr: 'happy' }, d);
-  defineWithHd(T + 'turn', () => turnSquash(stand(1)), (d) => turnSquash(stand(d)), { ticksPerFrame: HOSTAGE_TURN_TICKS }, D24);
-  defineWithHd(T + 'sack-turn', () => turnSquash(getFrames(T + 'sack', 1)[0]), (d) => turnSquash(sackFrames('tourist', d)[0]), { ticksPerFrame: HOSTAGE_TURN_TICKS }, D24);
   defineWithHd('item/hostage/roadie/carry', () => carryFrames('roadie'), (d) => carryFrames('roadie', d), { ticksPerFrame: 7 }, D2);
   // The kind-less strips are the critic's (the default kind).
   for (const [name, gen, opts] of STRIPS) defineWithHd(`item/hostage/${name}`, () => [...getFrames(`item/hostage/critic/${name}`)], (d) => gen('critic', d), opts, D2);
   defineWithHd('item/hostage/star', starFrames, (d) => starFramesHd(hdOf(d)), { anchor: 'center' }, D2);
-  defineWithHd('item/hostage/flash', flashFrames, (d) => flashFramesHd(hdOf(d)), { durations: [2, 3, 3], loop: false }, D24);
   defineWithHd('item/hostage/note', noteFrames, (d) => noteFramesHd(hdOf(d)), { ticksPerFrame: 10 }, D2);
   defineWithHd('item/hostage/steam', steamFrames, (d) => steamFramesHd(hdOf(d)), { ticksPerFrame: 8 }, D2);
   defineWithHd('item/hostage/case-open', caseOpenFrames, (d) => caseOpenFramesHd(hdOf(d)), { ticksPerFrame: 60 }, D2);

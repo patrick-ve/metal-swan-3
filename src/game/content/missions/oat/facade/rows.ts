@@ -35,6 +35,13 @@ export const FACADE_DEPTH = 16;
  */
 export const FACADE_HEIGHT = 168;
 
+/**
+ * oat-d: where the 03:00 dark set starts (world x): the border of the lots 3,816–3,877 | 3,877–3,945,
+ * left of the façade plane's left screen edge at the arena-lock camera (x 3,968 → u 3,937), inside
+ * strip chunk 13 (from u 3,830), so the dark set keeps its three chunks (tests/content/oat-dark.test.ts).
+ */
+export const OAT_D_DARK = 3877;
+
 function row(u0: number, u1: number, sheet: StreetSheetId, params?: FacadeRowParams): StripRowDef {
   return params ? { u0, u1, sheet, params: params as Readonly<Record<string, unknown>> } : { u0, u1, sheet };
 }
@@ -65,7 +72,9 @@ export const OAT_STRIPS: Readonly<Record<string, SectionStripsDef>> = {
   // oat-d: the proof strip's row 0–1,280 (STREET-A: the Achterburgwal, lit by its lanterns), then the
   // start rows of the rest (the bridge head, the Trompettersteeg, the Voorburgwal, the square; NIGHT
   // tunes them in wave C), and the 03:00 dark set over the arena view (spec §8.9: the same range as
-  // the light pass's bake, from the checkpoint at 3,500).
+  // the light pass's bake, from the checkpoint at 3,500). The fade starts only once the arena lock
+  // holds (spec §6.9), so the range starts on the lot border at or left of the screen's left edge at
+  // the lock (`OAT_D_DARK`): every on-screen lot is dark, and the edge never cuts a façade.
   [OAT_SECTION.d]: {
     source: OAT_STRIP_SOURCE,
     depth: FACADE_DEPTH,
@@ -77,7 +86,7 @@ export const OAT_STRIPS: Readonly<Record<string, SectionStripsDef>> = {
       row(OAT_D.voorburgwal[0], OAT_D.voorburgwal[1], 'oudezijds', { name: 'voor', night: true, wet: 1 }),
       row(OAT_D.square[0], OAT_D.w, 'oudekerksplein', { name: 'plein', night: true, wet: 1 }),
     ],
-    dark: [OAT_D.arena[0], OAT_D.arena[1] + 128],
+    dark: [OAT_D_DARK, OAT_D.arena[1] + 128],
     darkFrom: OAT_D.checkpoints[2],
   },
 };

@@ -74,13 +74,21 @@ startCourtage(world); endCourtage(world, true, x, y); // De Makelaar (wave B): 1
 ## 4. Extends
 
 `ONE MORE TRY!` at a **gross** income of the whole run (costs never reduce it): **€ 5.000 and
-€ 15.000** (`EXTEND_CENTS`). The spec's start values were € 1.000 / € 3.000, but they fired in the
+€ 5.500** (`EXTEND_CENTS`; FIX-A set the second, see below). The spec's start values were € 1.000 / € 3.000, but they fired in the
 identity sims (one `ams` god run earns € 2.158 gross: the kills pay points ÷ 50, not ÷ 500), and in
 `ams-normal-1` the extra life changed the play (DIFF). Measured end budgets of the sims
 (cents, without the tallies; gross ≈ budget − 10.000 + costs): ams god 215.900 / 225.800, ams 2P
 100.200 / 132.700, ams normal 121.692, oz full 117.300 (2P 72.600 / 55.200), oz normal 49.800,
 fps-1 24.200, fps-2 43.100, rally −121.600 (2nd place, 14 fines × € 120). The old points extends (500,000 / 1,500,000) are off in a euro
 play (`PlayerSlot.euro`).
+
+FIX-A (2026-11-02) measured the gross of a strong run along the route (ams → oat → rally → fps-1 →
+fps-2 → oldenzaal): ams god € 2.066 (+ about € 276 of flawless tally bonuses), oat god € 553 in
+wave A (the stub; + about € 196), a won race about € 574, fps-1 € 142, fps-2 € 331, oldenzaal god
+€ 1.073. By the fps floors that is about € 4.140 today and about € 5.600 once oat is as full as
+ams (waves B/C). So the first extend stays € 5.000 (late in the rally / the fps floors) and the
+second is € 5.500 (by the fps floors); € 15.000 was never reached. One `ams` run never reaches an
+extend (the identity sims stay SAME+BUDGET). Re-measure with the oat-god baselines after wave C.
 
 ## 5. The HUD and the screens
 

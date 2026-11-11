@@ -187,6 +187,29 @@ function shotOf(g: GlFloor, fr: FloorFrame): FloorShot {
   return { w: band?.w ?? 0, h: band?.h ?? 0, rgba: band ? base64(band.rgba) : '', stats: { ...g.stats() }, none: out === null, threw };
 }
 
+/**
+ * Is clear pixel (x, y) a notch of the band's outline (not a hole)? One of its four neighbours is
+ * clear and opens on into a clear area at least 2 px wide across it (a crack is 1 px wide: its
+ * pixels lead only into each other).
+ */
+function notch(rgba: Uint8Array, w: number, x: number, y: number): boolean {
+  const clear = (cx: number, cy: number): boolean => rgba[(cy * w + cx) * 4 + 3] !== 255;
+  const h = rgba.length / 4 / w;
+  for (const [dx, dy] of [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ] as const) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 1 || ny < 1 || nx >= w - 1 || ny >= h - 1 || !clear(nx, ny)) continue;
+    // Across the step: a vertical step looks left and right, a horizontal one up and down.
+    if (dy !== 0 ? clear(nx - 1, ny) || clear(nx + 1, ny) : clear(nx, ny - 1) || clear(nx, ny + 1)) return true;
+  }
+  return false;
+}
+
 const FloorTest = {
   info(): { ok: boolean; reason: string } {
     return { ok: gl.ok, reason: gl.reason };
@@ -248,7 +271,10 @@ const FloorTest = {
   /**
    * Render frame `id` at res `r` (drawn again while stand-ins are resident) and count its CRACK
    * pixels in the page: a pixel with alpha < 255 whose two neighbours left and right, or above and
-   * below, are opaque (a hole inside the floor's coverage). `first`: up to 8 of them (x, y).
+   * below, are opaque (a hole inside the floor's coverage). `first`: up to 8 of them (x, y). A notch
+   * in the band's outline is no hole: a pixel whose neighbour opens into a wide clear area (oat-a's
+   * back edge where the raised pavement meets a bridge deck 2 px lower: the corner pixel between the
+   * two edges) is skipped; a seam crack's pixels open only into each other.
    */
   cracks(id: number, r = 0): { w: number; h: number; cracks: number; first: number[]; standIns: number; none: boolean } {
     res = r;
@@ -263,6 +289,7 @@ const FloorTest = {
       for (let x = 1; x < w - 1; x++) {
         const p = (y * w + x) * 4 + 3;
         if (rgba[p] === 255) continue;
+        if (notch(rgba, w, x, y)) continue;
         if ((rgba[p - 4] === 255 && rgba[p + 4] === 255) || (rgba[p - w * 4] === 255 && rgba[p + w * 4] === 255)) {
           cracks++;
           if (first.length < 16) first.push(x, y);

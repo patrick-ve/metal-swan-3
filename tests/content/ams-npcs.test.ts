@@ -52,8 +52,8 @@ describe('ams npcs: registration', () => {
       'npc/ams/counter',
       'npc/ams/ams-tour-boat',
       'npc/ams/ams-cyclist-bg/0',
-      'npc/ams/ams-pigeons',
-      'npc/ams/ams-ducks',
+      // the pigeons npc/ams/ams-pigeons and the ducks npc/ams/ams-ducks: baked 40 px sets with their own palettes
+      // (tests/art40/ams-pigeons.test.ts, tests/art40/ams-ducks.test.ts)
       // the window waver and the cat npc/ams/ams-window-waver: a baked 40 px set with its own palette (tests/art40/ams-window-waver.test.ts)
       'decor/ams/ams-boat-platform',
       ...Object.keys(AMS_BREAKABLES).map((id) => `decor/ams/${id}`),

@@ -77,21 +77,28 @@ function buildFrom(base: readonly Color[], d: Dn, o: { warm?: number; coolT?: nu
 }
 
 /**
- * The light grey 30 × 30 concrete tiles (research §4 #a9a7a1): warm mortar greys in the sun, the cool
- * neutral greys of the sky-lit shade (the gable ramp), one tone apart (spec §8.4: shade ≤ 1.5 tones).
+ * The light grey 30 × 30 concrete tiles (research §4 #a9a7a1): warm mortar greys in the sun; the shade
+ * is the clinker's cool-tint build (`cool`, the sky's cast: spec §8.3, §8.4) about one tone lower,
+ * never a cool gable mix. The cast is 0.06 (at the clinker's 0.14 the dark stop snaps to a mauve
+ * #7d6d80, lighter than the next stop) and the shade ladder has no in-between steps (the mix of
+ * #635857 and #7b746a snaps to the green-grey #58615c, which checkers against the warm tiles). At 1×
+ * one PAL step down, no cast (as the clinker). The joints are warm and recessed (spec §8.5: never the
+ * even cool grid of `ams`): the stone / mortar greys one to two steps below the tile (the painter
+ * varies them per joint run), the wet joints sunk toward the wet black, still warm.
  */
 function tileMat(d: Dn): Mat {
-  const sun = ladder([T('stone', 2, d), T('oat.mortar', 0, d), T('oat.mortar', 1, d), T('oat.mortar', 2, d), T('stone', 5, d), T('cloth', 4, d)], 2, d);
-  const shadeL = ladder([mx(T('gable', 1, d), T('stone', 2, d), 0.4, d), mx(T('gable', 1, d), T('oat.mortar', 0, d), 0.5, d), mx(T('gable', 2, d), T('oat.mortar', 0, d), 0.4, d), mx(T('gable', 2, d), T('oat.mortar', 1, d), 0.5, d), mx(T('gable', 3, d), T('oat.mortar', 2, d), 0.5, d)], 2, d);
-  const shade = sun.map((_, i) => shadeL[Math.max(0, Math.min(shadeL.length - 1, Math.round((i * (shadeL.length - 1)) / (sun.length - 1)) - 1))]);
-  const joint = [mx(T('gable', 0, d), T('gable', 1, d), 0.6, d), T('gable', 1, d), mx(T('gable', 1, d), T('oat.mortar', 0, d), 0.5, d)];
+  const base = [T('stone', 2, d), T('oat.mortar', 0, d), T('oat.mortar', 1, d), T('oat.mortar', 2, d), T('stone', 5, d), T('cloth', 4, d)];
+  const sun = ladder(base, 2, d);
+  const shadeL = ladder(cool(base, d === 1 ? 0 : 0.06, d), 1, d);
+  const shade = sun.map((_, i) => shadeL[Math.max(0, Math.min(shadeL.length - 1, Math.floor((i * (shadeL.length - 1)) / (sun.length - 1)) - 1))]);
+  const joint = [T('stone', 1, d), mx(T('stone', 1, d), T('stone', 2, d), 0.5, d), T('stone', 2, d), T('oat.mortar', 0, d), T('oat.mortar', 1, d)];
   return {
     sun,
     shade,
     sunWet: darker(sun, 1),
     shadeWet: darker(shade, 1),
-    joint: ladder(joint, 2, d),
-    jointWet: ladder(joint.map((c) => mx(c, T('oat.nightWater', 1, d), 0.35, d)), 2, d),
+    joint: ladder(joint, 1, d),
+    jointWet: ladder(joint.map((c) => mx(c, T('oat.nightWater', 1, d), 0.35, d)), 1, d),
     flatJoints: true,
   };
 }
@@ -107,7 +114,10 @@ export interface DayMats {
   readonly sheen: readonly Color[];
   /** A puddle: the sky mirrored (pale), its dark rim. */
   readonly puddle: readonly Color[];
-  /** Wear: moss, gum, ash, paper, leaves (yellow-green elm leaves of late September), iron, oil. */
+  /**
+   * Wear: moss, gum, ash, paper, leaves (yellow-green elm leaves of late September), iron, oil (a dark
+   * warm grey-brown stain: core, body, rim, and the thin sheen it shows on wet brick only).
+   */
   readonly moss: readonly Color[];
   readonly gum: readonly Color[];
   readonly butt: readonly Color[];
@@ -141,7 +151,7 @@ export function dayMats(d: Dn): DayMats {
     paper: [T('stone', 4, d), T('stone', 5, d), T('cloth', 4, d)],
     leaf: [T('gold', 3, d), T('gold', 4, d), T('olive', 5, d), T('olive', 6, d), T('gold', 5, d)],
     iron: [T('ink', 1, d), T('black', 2, d), T('black', 3, d), T('steel', 2, d)],
-    oil: [T('oat.nightWater', 1, d), T('slate', 1, d), T('purple', 1, d)],
+    oil: [T('oat.nightWater', 1, d), mx(T('oat.nightWater', 1, d), T('stone', 1, d), 0.5, d), T('stone', 1, d), mx(T('oat.canal', 3, d), T('purple', 2, d), 0.25, d)],
   };
   dayCache.set(d, m);
   return m;
@@ -166,6 +176,8 @@ export interface NightMats {
   readonly iron: readonly Color[];
   /** The wet sheen of the dark sky (navy) on brick domes far from lamps. */
   readonly sheen: readonly Color[];
+  /** A puddle's dark mirror: the wet black in the ripple's troughs → the navy sky on its crests. */
+  readonly mirror: readonly Color[];
 }
 
 const nightCache = new Map<Dn, NightMats>();
@@ -177,7 +189,8 @@ export function nightMats(d: Dn): NightMats {
   const wet = T('oat.nightWater', 1, d);
   m = {
     clinker: ladder([black, wet, mx(T('oat.brick', 1, d), wet, 0.3, d), T('oat.brick', 1, d), T('oat.brick', 2, d)], 2, d),
-    lamp: ladder([T('oat.brick', 2, d), T('oat.brick', 3, d), mx(T('oat.brick', 5, d), T('oat.lantern', 1, d), 0.35, d), T('oat.nightWater', 3, d), mx(T('oat.lantern', 1, d), T('oat.lantern', 2, d), 0.5, d), T('oat.lantern', 2, d)], 2, d),
+    // Dark → bright with no dip (the lamp-lit wet #948267 before the warm brick), so the pool's fall-off reads as one ramp.
+    lamp: ladder([T('oat.brick', 2, d), T('oat.brick', 3, d), T('oat.nightWater', 3, d), mx(T('oat.brick', 5, d), T('oat.lantern', 1, d), 0.35, d), mx(T('oat.lantern', 1, d), T('oat.lantern', 2, d), 0.5, d), T('oat.lantern', 2, d)], 2, d),
     pink: ladder([mx(T('oat.brick', 1, d), T('oat.neonPink', 0, d), 0.25, d), mx(T('oat.brick', 2, d), T('oat.neonPink', 0, d), 0.45, d), T('oat.neonPink', 0, d), T('oat.neonPink', 1, d)], 2, d),
     cyan: ladder([mx(T('oat.nightWater', 1, d), T('oat.neonCyan', 0, d), 0.25, d), mx(T('oat.nightWater', 2, d), T('oat.neonCyan', 0, d), 0.5, d), T('oat.neonCyan', 0, d), T('oat.neonCyan', 1, d)], 2, d),
     red: ladder([mx(T('oat.brick', 1, d), T('oat.redLight', 0, d), 0.3, d), T('oat.redLight', 0, d), mx(T('oat.redLight', 0, d), T('oat.redLight', 1, d), 0.5, d), T('oat.redLight', 1, d), T('oat.redLight', 2, d)], 2, d),
@@ -190,6 +203,7 @@ export function nightMats(d: Dn): NightMats {
     gum: [black, T('slate', 1, d)],
     iron: [black, T('ink', 1, d), T('slate', 2, d)],
     sheen: ladder([T('oat.nightSky', 1, d), T('navy', 3, d), T('navy', 4, d)], 2, d),
+    mirror: ladder([black, wet, T('oat.nightSky', 1, d), T('navy', 3, d), T('navy', 4, d)], 2, d),
   };
   nightCache.set(d, m);
   return m;

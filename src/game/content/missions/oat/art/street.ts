@@ -15,6 +15,7 @@
  * `euro`) are shared by bridges.ts, vistas.ts and shops.ts.
  */
 import type { Color } from '../../../../../engine/color';
+import { noise2 } from '../../../../art/paint';
 import { bay, F, h2, ladder, mx, pick, reg, T, text, textW, type Dn, type Pen, type Rn } from './kit';
 
 // ------------------------------------------------------------------------------------ light
@@ -475,15 +476,34 @@ function drawHangingSign(p: Pen, v: number): void {
     ['oat.green', 2, 'gable', 5],
     ['gable', 5, 'navy', 2],
     ['oat.oxblood', 1, 'sand', 6],
+    ['brown', 2, 'sand', 6],
+    ['stone', 5, 'ink', 1],
+    ['ink', 1, 'ink', 0],
   ];
-  const [bn, bk, tn, tk] = boards[(v - 1) % 4];
+  const [bn, bk, tn, tk] = boards[(v - 1) % boards.length];
   const lad = shadeLad(bn, d, Math.max(0, bk - 2), bk + 1, 0.12);
+  const ink = mx(T(tn, tk, 2), SKY_CAST, 0.1, d);
+  if (v === 7) {
+    // A record as the sign (a shaped board): the black disc with its grooves, a label, a light rim.
+    const cx = 13.25;
+    const cy = 12.6;
+    // The chains run on down to the disc's shoulders.
+    p.rect(7, 5.2, 0.5, 3.6, ic);
+    p.rect(19, 5.2, 0.5, 3.6, ic);
+    p.disc(cx, cy, 7.4, 7.4, (_X, _Y, u, vv) => {
+      const r = Math.hypot(u, vv);
+      if (r < 0.32) return r < 0.07 ? lf(lad, 0) : r > 0.26 && d >= 2 ? T('sand', 4, d) : mx(T('sand', 6, 2), SKY_CAST, 0.12, d);
+      if (r > 0.93) return lf(lad, u + vv < -0.3 ? 0.9 : 0.35);
+      const groove = d >= 2 && Math.floor(r * 7.4 * d * 0.7) % 2 === 0;
+      return lf(lad, (groove ? 0.45 : 0.25) + (u < -0.2 && vv < -0.2 ? 0.3 : 0));
+    });
+    return;
+  }
   p.fill(bx, by, bw, bh, (X) => lf(lad, 0.85 - (X / d - bx) / bw * 0.5));
   // A painted edge (shadow side right and below).
   p.rect(bx, by + bh - 0.7, bw, 0.7, lf(lad, 0.15));
   p.rect(bx + bw - 0.7, by, 0.7, bh, lf(lad, 0.2));
   if (d >= 2) p.rect(bx, by, bw, 1 / d, lf(lad, 1));
-  const ink = mx(T(tn, tk, 2), SKY_CAST, 0.1, d);
   if (v === 1) {
     // KAAS with a wedge of cheese.
     text(p, 'KAAS', bx + 1, by + 1.4, ink);
@@ -512,6 +532,34 @@ function drawHangingSign(p: Pen, v: number): void {
       [bx + 12.5, by + 10.8, 1.1],
     ] as const)
       p.disc(cx, cy, r, r, (_X, _Y, u, vv) => (u * u + vv * vv > 0.5 ? b2 : u < -0.2 && vv < -0.2 && d >= 2 ? T('snow', 6, d) : 0));
+  } else if (v === 5) {
+    // THEE with a teapot: the round body, the spout, the handle ring, the lid's knob.
+    text(p, 'THEE', bx + 1.2, by + 1.4, ink);
+    const pot = mx(T('sand', 6, 2), SKY_CAST, 0.12, d);
+    p.disc(bx + 8.2, by + 9.8, 3.2, 2.4, pot);
+    p.line(bx + 10.8, by + 9.4, bx + 13.4, by + 7.4, pot, Math.max(1, d >> 1));
+    p.disc(bx + 4.6, by + 9.6, 1.5, 1.5, (_X, _Y, u, vv) => (u * u + vv * vv > 0.4 && u < 0.2 ? pot : 0));
+    p.rect(bx + 7.6, by + 6.8, 1.2, 0.8, pot);
+    if (d >= 2) p.rect(bx + 6, by + 9.2, 1, 1.4, lf(lad, 0.95));
+  } else if (v === 6) {
+    // DROP with liquorice lozenges (black diamonds, a lit edge up-left).
+    text(p, 'DROP', bx + 1.2, by + 1.4, ink);
+    for (const [cx, cy] of [
+      [bx + 4.4, by + 9.8],
+      [bx + 8.4, by + 10.4],
+      [bx + 12.4, by + 9.6],
+    ] as const) {
+      p.poly(
+        [
+          [cx, cy - 2],
+          [cx + 1.8, cy],
+          [cx, cy + 2],
+          [cx - 1.8, cy],
+        ],
+        ink,
+      );
+      if (d >= 2) p.rect(cx - 0.6, cy - 1, 0.6, 0.6, T('slate', 3, d));
+    }
   } else {
     // A hatter's sign: a hat cut-out and OUD (our own).
     text(p, 'OUD', bx + 3.5, by + 1.4, ink);
@@ -727,20 +775,22 @@ export function drawElm(p: Pen, cx: number, yb: number, seed: number, o: { scale
       }
     }
     if (bi < 0) return 0;
-    // Gaps: leaf-cluster cells (2 logical px; 1 at 4×) where the light comes through near the rims.
-    const cell = d >= 4 ? 1 : 2;
-    const g = h2(Math.floor(x / cell), Math.floor(y / cell), seed + 87);
-    if (best < 0.28 && g < 0.55) return 0;
-    if (d >= 2 && g < 0.06) return 0;
+    // Gaps only between and at the rims of the clumps (where `best` is low), shaped by a smooth noise
+    // at 3–4 px, so the light comes through in clustered openings (no holes inside a clump).
+    const gap = noise2(x, y, 3.5 * Math.max(0.6, s), seed + 87);
+    if (best < 0.4 && gap < 0.66 - best * 1.7) return 0;
+    // A few clustered openings where clumps meet inside the crown (the sky and the roofs show through).
+    if (best < 0.75 && noise2(x, y, 4 * Math.max(0.6, s), seed + 90) < 0.36 - best * 0.3) return 0;
     const dx = (x - cl[bi]) / cl[bi + 2];
     const dy = (y - cl[bi + 1]) / cl[bi + 2];
     // Light from the upper left on each clump, the whole crown darker below and right.
     const lit = -dx * 0.55 - dy * 0.75;
     const whole = -((x - cx) / (50 * s)) * 0.25 - ((y - cyc) / (40 * s)) * 0.3;
     let t = 0.48 + lit * 0.32 + whole + best * 0.15 - shadeK;
-    if (d >= 2) t += (g - 0.5) * (d >= 4 ? 0.3 : 0.18);
-    if (d >= 2 && t > 0.55 && h2(Math.floor(x), Math.floor(y), seed + 89) < 0.05) return yellow[Math.min(2, Math.floor(t * 2.4))];
-    if (d === 1 && t > 0.7 && h2(Math.floor(x / 3), Math.floor(y / 3), seed + 89) < 0.08) return yellow[1];
+    // Leaf clusters: a smooth grain (no per-px noise).
+    if (d >= 2) t += (noise2(x, y, 1.6 * Math.max(0.6, s), seed + 86) - 0.5) * (d >= 4 ? 0.3 : 0.2);
+    // The first yellow leaves: 2 × 2 clusters on the lit tops of the clumps, ragged at 2× / 4×.
+    if (lit > 0.3 && t > 0.58 && h2(Math.floor(x / 2), Math.floor(y / 2), seed + 89) < 0.09 && (d === 1 || noise2(x, y, 0.8, seed + 88) > 0.38)) return yellow[Math.min(2, Math.floor(t * 2.2))];
     return lf(leaves, Math.min(0.86, t));
   });
 }
@@ -854,7 +904,7 @@ for (const [slug, name] of PLATES) {
   const g = OAT_A_PLATES[slug];
   reg(g.id, [G(g.w, g.h, 0, g.h)], (p) => drawPlate(p, name));
 }
-for (let v = 1; v <= 4; v++) reg(`decor/oat/a/hanging-sign-${v}`, [G(24, 22, 0, 0)], (p) => drawHangingSign(p, v));
+for (let v = 1; v <= 7; v++) reg(`decor/oat/a/hanging-sign-${v}`, [G(24, 22, 0, 0)], (p) => drawHangingSign(p, v));
 reg('decor/oat/a/chalkboard', [G(12, 18, 6, 18)], (p) => drawChalkboard(p));
 reg('decor/oat/a/plant-1', [G(10, 16, 5, 16)], (p) => drawPlant(p, 1));
 reg('decor/oat/a/plant-2', [G(10, 16, 5, 16)], (p) => drawPlant(p, 2));

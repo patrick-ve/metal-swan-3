@@ -15,6 +15,8 @@ import { defineEntity, paramNum, type SpawnParams } from '../../../registry';
 import { sfxNear } from '../../props/common';
 import { isSwan } from '../../vehicles/swan/swan';
 import { SET as WINDOW_SET, WAVER_EMPTY, WAVER_IDLE, WAVER_RAISE, WAVER_RAISE_N, WAVER_WAVE_A, WAVER_WAVE_N } from '../../art40/ams-window-waver.gen';
+import { SET as PIGEON_SET } from '../../art40/ams-pigeons.gen';
+import { SET as DUCK_SET, DUCK_DRAKE, DUCK_HEN, DUCK_PADDLE_N } from '../../art40/ams-ducks.gen';
 import { CYCLIST_LOOKS } from './npc.art';
 
 const drawOpts: DrawOpts = {};
@@ -211,6 +213,11 @@ export class AmsCyclistBg extends Entity {
 }
 
 export const PIGEONS = { max: 8, scare: 56, flap: 'swan/flap', takeOff: 'ams/pigeon' } as const;
+/** Logic time of a peck act (ticks): the baked `peck` strip lasts exactly this long. */
+export const PIGEON_PECK_TICKS = 16;
+/** Logic time of the take-off before the flap (ticks): the baked `takeoff` strip lasts exactly this long. */
+export const PIGEON_TAKEOFF_TICKS = 6;
+const PIG = PIGEON_SET.strips;
 
 export class AmsPigeons extends Entity {
   readonly count: number;
@@ -288,7 +295,7 @@ export class AmsPigeons extends Entity {
         else {
           const r = rng.next();
           this.act[i] = r < 0.45 ? 1 : r < 0.75 ? 2 : 0;
-          this.timer[i] = this.act[i] === 1 ? 16 : rng.int(20, 60);
+          this.timer[i] = this.act[i] === 1 ? PIGEON_PECK_TICKS : rng.int(20, 60);
           if (this.act[i] === 2 && rng.chance(0.3)) this.dir[i] = -this.dir[i] as -1 | 1;
         }
         if (this.act[i] === 2 && (this.t & 3) === 0) this.px[i] += this.dir[i] * 0.5;
@@ -306,19 +313,24 @@ export class AmsPigeons extends Entity {
     if (inView === 0) this.remove();
   }
 
+  /** The strip and frame bird `i` shows this tick (presentation only; exported for the tests). */
+  pick(i: number): readonly [string, number] {
+    if (this.fled) {
+      // The startle and take-off (staggered by bird), then the wingbeat.
+      const k = this.t - this.fledAt - (i % 3);
+      if (k < PIGEON_TAKEOFF_TICKS) return ['npc/ams/ams-pigeons/takeoff', frameInRun(PIG.takeoff.durations, 0, PIG.takeoff.durations.length, k, false)];
+      return ['npc/ams/ams-pigeons/fly', frameInRun(PIG.fly.durations, 0, PIG.fly.durations.length, this.t + i * 3, true)];
+    }
+    // The peck plays once over the act (its timer counts PIGEON_PECK_TICKS down); walk and idle loop.
+    if (this.act[i] === 1) return ['npc/ams/ams-pigeons/peck', frameInRun(PIG.peck.durations, 0, PIG.peck.durations.length, PIGEON_PECK_TICKS - this.timer[i], false)];
+    if (this.act[i] === 2) return ['npc/ams/ams-pigeons/walk', frameInRun(PIG.walk.durations, 0, PIG.walk.durations.length, this.t + i * 5, true)];
+    return ['npc/ams/ams-pigeons/idle', frameInRun(PIG.idle.durations, 0, PIG.idle.durations.length, this.t + i * 13, true)];
+  }
+
   override draw(r: Renderer): void {
     drawOpts.flash = false;
     for (let i = 0; i < this.count; i++) {
-      let f: number;
-      let id = 'npc/ams/ams-pigeons';
-      if (this.fled) {
-        // Take-off: crouch, push off (3 ticks each, staggered by bird), then the flap.
-        const k = this.t - this.fledAt - (i % 3);
-        if (k < 6) {
-          id = 'npc/ams/ams-pigeons/takeoff';
-          f = k < 3 ? 0 : 1;
-        } else f = ((this.t + i * 3) >> 2) & 1 ? 3 : 4;
-      } else f = this.act[i] === 1 ? ((this.t >> 3) & 1 ? 1 : 0) : this.act[i] === 2 ? ((this.t >> 3) & 1 ? 2 : 0) : 0;
+      const [id, f] = this.pick(i);
       drawOpts.flipX = this.dir[i] < 0;
       r.sprite(id, f, this.px[i], this.py[i], drawOpts);
     }
@@ -328,6 +340,21 @@ export class AmsPigeons extends Entity {
 
 /** `quack`: ticks between two idle quacks while the ducks are in view (a startled one is extra). */
 export const DUCKS = { max: 4, speed: 0.12, shy: 40, quack: 420, sfx: 'ams/duck' } as const;
+/**
+ * Presentation only: a calm duck tips up to dabble (the baked `<bird>-dabble` strip) once every
+ * `every` ticks, the first time `first` ticks after the spawn, duck i `stagger` ticks after duck
+ * i - 1. Startled ducks hurry (`<bird>-hurry`).
+ */
+export const DUCK_DABBLE = { first: 150, every: 360, stagger: 137 } as const;
+const DUCK_STRIPS = DUCK_SET.strips;
+const DUCK_PADDLE_T = DUCK_STRIPS.paddle.durations;
+const DUCK_DABBLE_T = DUCK_STRIPS['drake-dabble'].durations;
+const DUCK_HURRY_T = DUCK_STRIPS['drake-hurry'].durations;
+const DUCK_DABBLE_TICKS = DUCK_DABBLE_T.reduce((a, b) => a + b, 0);
+const DUCK_IDS = {
+  drake: { hurry: 'npc/ams/ams-ducks/drake-hurry', dabble: 'npc/ams/ams-ducks/drake-dabble' },
+  hen: { hurry: 'npc/ams/ams-ducks/hen-hurry', dabble: 'npc/ams/ams-ducks/hen-dabble' },
+} as const;
 
 /**
  * `ams-ducks`: 1–4 mallards paddling on the canal at the waterline (x, y = the water surface),
@@ -378,13 +405,22 @@ export class AmsDucks extends Entity {
     }
   }
 
+  /** The strip and frame duck `i` shows this tick (presentation only; exported for the tests). */
+  pick(i: number): readonly [string, number] {
+    const ids = DUCK_IDS[i % 2 ? 'hen' : 'drake'];
+    if (this.startled) return [ids.hurry, frameInRun(DUCK_HURRY_T, 0, DUCK_HURRY_T.length, this.t + i * 5, true)];
+    const k = this.t - DUCK_DABBLE.first - i * DUCK_DABBLE.stagger;
+    if (k >= 0 && k % DUCK_DABBLE.every < DUCK_DABBLE_TICKS) return [ids.dabble, frameInRun(DUCK_DABBLE_T, 0, DUCK_DABBLE_T.length, k % DUCK_DABBLE.every, false)];
+    // The paddle (the old 32-tick cycle, each duck 16 ticks after the one before); drakes, then hens.
+    return ['npc/ams/ams-ducks/paddle', frameInRun(DUCK_PADDLE_T, i % 2 ? DUCK_HEN : DUCK_DRAKE, DUCK_PADDLE_N, this.t + i * 16, true)];
+  }
+
   override draw(r: Renderer): void {
     drawOpts.flash = false;
     for (let i = 0; i < this.count; i++) {
-      // 4-step paddle (8 ticks a step, the same 32-tick cycle as before); drakes 0–3, hens 4–7.
-      const f = (i % 2 ? 4 : 0) + (((this.t >> 3) + i * 2) & 3);
+      const [id, f] = this.pick(i);
       drawOpts.flipX = this.dir[i] < 0;
-      r.sprite('npc/ams/ams-ducks/paddle', f, this.px[i], this.y, drawOpts);
+      r.sprite(id, f, this.px[i], this.y, drawOpts);
     }
     drawOpts.flipX = false;
   }

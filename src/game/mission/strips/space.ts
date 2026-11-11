@@ -78,3 +78,34 @@ export function stripBaseY(cam: Pick<FloorCam, 'yw'> | null, depth: number): num
 export function stripDrawX(p: number, s: number, camX: number): number {
   return p + camX * (1 - s);
 }
+
+/**
+ * The camera's speed in world px per TICK for the store's prefetch (`StripStore.prepare`): a display
+ * draws more frames than ticks (120 Hz: every other frame has no tick), so the step between drawn
+ * frames would halve it. The speed changes only when the tick does; a frame without a tick keeps it.
+ */
+export class TickSpeed {
+  private lastX = NaN;
+  private lastTick = NaN;
+  private v = 0;
+
+  /** The speed at camera x on tick `tick` (0 on the first call; after `reset`). */
+  step(camX: number, tick: number): number {
+    if (Number.isNaN(this.lastX) || tick < this.lastTick) {
+      this.lastX = camX;
+      this.lastTick = tick;
+      this.v = 0;
+    } else if (tick !== this.lastTick) {
+      this.v = (camX - this.lastX) / (tick - this.lastTick);
+      this.lastX = camX;
+      this.lastTick = tick;
+    }
+    return this.v;
+  }
+
+  reset(): void {
+    this.lastX = NaN;
+    this.lastTick = NaN;
+    this.v = 0;
+  }
+}

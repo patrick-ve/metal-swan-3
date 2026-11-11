@@ -27,7 +27,7 @@ export const D_DEPTH = {
   mast: 12.8,
   sign: 12.6,
   bin: 12.4,
-  elm: -15,
+  elm: 13.4,
 } as const;
 
 /** The strip's x range (spec §2.5: 0–1,280). */
@@ -79,9 +79,10 @@ export function oatDDecor(): DecorDef[] {
   // A few passers-by before 02:00 (no outline, dark, at their depth).
   out.push(it('decor/oat/d/person-1', 640, D_DEPTH.person));
   out.push(it('decor/oat/d/person-2', 1180, D_DEPTH.person, { flipX: true }));
-  // The elms on the canal side, in front: dark masses lit from below (spec §8.7 d 5).
-  out.push(it('decor/oat/d/elm-front', 262, D_DEPTH.elm, { front: true }));
-  out.push(it('decor/oat/d/elm-front', 1124, D_DEPTH.elm, { front: true, flipX: true }));
+  // The elms on our quay: dark masses lit from below (spec §8.7 d 5). They stand on our pavement
+  // behind the heroes (a front-row trunk hid the hero: floor gate 5), clear of the neon and the lamps.
+  out.push(it('decor/oat/d/elm', 262, D_DEPTH.elm));
+  out.push(it('decor/oat/d/elm', 750, D_DEPTH.elm, { flipX: true }));
   return out;
 }
 

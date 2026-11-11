@@ -34,7 +34,7 @@ import { defineEntity, defineWeapon, type SpawnParams } from '../../../registry'
 import { aimAngle, aimDirOf } from '../../../weapons';
 import { waterSurfaceAt } from '../../../water';
 import { drawDriver, GroundVehicle, isSquashable } from '../fleet/common';
-import { ART } from './art';
+import { ART, CORK_TPF, KEG_STEP_PX, KEG_STEPS, wheelStep } from './art';
 import { BEER_BIKE as G, TURRET_STEPS, turretAngle, turretMuzzle } from './geometry';
 
 /** Beer-bike numbers (NORMAL). */
@@ -78,6 +78,15 @@ const foamRect: Rect = { x: 0, y: 0, w: 0, h: 0 };
 // ---------------------------------------------------------------------------------------------
 // The rolling keg (bomb)
 // ---------------------------------------------------------------------------------------------
+
+/** Draw order of the bike: driven (the vehicle default) and parked empty (behind the people, z 27). */
+export const DRIVEN_Z = 35;
+export const PARKED_Z = 26.5;
+
+/** The rolled keg's frame: one step per KEG_STEP_PX px rolled (its r 5.5 chime turns 45° a step). */
+export function kegStep(rolled: number): number {
+  return Math.floor(Math.abs(rolled) / KEG_STEP_PX) % KEG_STEPS;
+}
 
 /** A keg rolling along the floor (see the header): explodes on an enemy, a wall or its timer. */
 export class RollingKeg extends Entity {
@@ -138,7 +147,7 @@ export class RollingKeg extends Entity {
   override draw(r: Renderer): void {
     plain.flipX = this.facing < 0;
     plain.flash = false;
-    r.sprite(ID.keg, Math.floor(this.rolled / 4) % 4, this.x, this.y - 6, plain);
+    r.sprite(ID.keg, kegStep(this.rolled), this.x, this.y - 6, plain);
   }
 }
 
@@ -171,7 +180,7 @@ defineWeapon({
       h: BIKE.cannon.h,
       sprite: ID.cork,
       look: 'anim',
-      ticksPerFrame: 3,
+      ticksPerFrame: CORK_TPF,
       type: 'beer-cork',
       weapon: 'beer-cork-cannon',
     });
@@ -249,6 +258,10 @@ export class BeerBike extends GroundVehicle {
 
   override update(): void {
     super.update();
+    // Layering (art only): an empty parked bike draws behind the street's people (AmsPerson z 27),
+    // so the baker tossing at his stand stays in front of its rear post and barrel when a rider
+    // left it there (section a, `GEEN BIERFIETSEN!`); a driven bike draws at the vehicle's z.
+    this.z = this.driver ? DRIVEN_Z : PARKED_Z;
     if (this.foamCool > 0) this.foamCool--;
     if (this.foamT > 0) {
       this.foamT--;
@@ -404,7 +417,7 @@ export class BeerBike extends GroundVehicle {
     plain.flipX = flip;
     tint.flipX = flip;
     const t = this.world.tick;
-    const phase = ((Math.floor((this.roll * f) / 3) % 4) + 4) % 4;
+    const phase = wheelStep(this.roll * f);
     if (this.state === 'wreck') {
       opts.flash = t % 4 < 2;
       for (const w of G.farWheels) r.sprite(ID.far, 0, x + w[0] * f, y + w[1], plain);

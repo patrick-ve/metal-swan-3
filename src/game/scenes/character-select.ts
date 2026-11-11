@@ -70,8 +70,8 @@ import { startCampaign } from './flow';
 import { ModeSelectScene } from './mode-select';
 import { screenArt } from './base';
 
-/** 20 seconds to choose (GDD §13.5). */
-export const SELECT_SECONDS = 20;
+/** 60 seconds to choose (the user, 2026-11-04: more time to pick a soldier; GDD §13.5 had 20). */
+export const SELECT_SECONDS = 60;
 /** The shutters stay closed this long after the screen opens, then rise one by one. */
 export const SHUTTER_DELAY = 20;
 export const SHUTTER_STAGGER = 8;

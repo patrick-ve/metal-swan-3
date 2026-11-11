@@ -90,6 +90,9 @@ export interface ResolveCtx {
   readonly sun: Color;
   readonly night: boolean;
   readonly dark: boolean;
+  /** The dark set's world range: only the lights inside it go out (or dim). */
+  readonly darkU0: number;
+  readonly darkU1: number;
   readonly lights: readonly WorldLight[];
   readonly lut: Uint32Array;
 }
@@ -153,7 +156,8 @@ function resolveNight(a: Art, c: ResolveCtx, out: PixelBuffer): void {
     lt.fill(0, r * W, (r + 1) * W);
   }
   for (const L of c.lights) {
-    if (c.dark && L.neon) continue;
+    const off = c.dark && L.u >= c.darkU0 && L.u < c.darkU1;
+    if (off && L.neon) continue;
     const lx = a.X(L.u);
     const ly = a.Y(L.h);
     const rr = Math.max(2, L.r * sd);
@@ -162,7 +166,7 @@ function resolveNight(a: Art, c: ResolveCtx, out: PixelBuffer): void {
     const y0 = Math.max(a.yLo, Math.floor(ly - rr));
     const y1 = Math.min(a.yHi, Math.ceil(ly + rr));
     if (x0 >= x1 || y0 >= y1) continue;
-    const k = c.dark && L.tint === 'warm' && !L.neon ? L.k * 0.85 : L.k;
+    const k = off && L.tint === 'warm' && !L.neon ? L.k * 0.85 : L.k;
     const inv = 1 / rr;
     for (let y = y0; y < y1; y++) {
       const dy = (y - ly) * inv;

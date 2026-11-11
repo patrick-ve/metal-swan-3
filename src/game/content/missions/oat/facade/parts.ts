@@ -762,6 +762,113 @@ export function drawGround(c: LotCtx): void {
   }
 }
 
+/** The interior recipes of the shop glass, keyed by the shop's word (spec §8.13 Variety, §8.6 goods by trade). */
+type Recipe = 'shelves' | 'stands' | 'lamps' | 'bins' | 'walls';
+const RECIPE: Readonly<Record<string, Recipe>> = {
+  HOEDEN: 'stands',
+  TASSEN: 'stands',
+  LAMPEN: 'lamps',
+  PLATEN: 'bins',
+  VINTAGE: 'bins',
+  GALERIE: 'walls',
+  PAPIER: 'walls',
+  ANTIEK: 'walls',
+  BRILLEN: 'walls',
+  SIERADEN: 'walls',
+  KAPPER: 'walls',
+};
+
+/**
+ * One art px of a shop interior seen through the glass (2× / 4×): (px, py) from the window's lower
+ * left in art px, h its height, u art px per logical px, `lit` the lamps on inside. Returns a set
+ * index, or −1 for the plain back wall. Recipes: `stands` (hats or bags on stands over a table),
+ * `lamps` (lamps hanging on cords, their bulbs lit), `bins` (record crates with sleeves and covers on
+ * the wall, or a clothes rail), `walls` (frames on a light wall: pictures, mirrors, small cards). The
+ * `shelves` recipe (jars and bottles) stays in `drawShop`.
+ */
+function shopInterior(k: Recipe, word: string, px: number, py: number, h: number, u: number, seed: number, lit: boolean): number {
+  const x = px / u;
+  const y = py / u;
+  const H = h / u;
+  const lift = lit ? 2 : 0;
+  // A display table at the foot (stands, walls), its lit top edge.
+  const table = k === 'stands' || k === 'walls' ? H * 0.14 : 0;
+  if (y < table) return tone(INTERIOR, (y > table - 0.75 ? 4 : 2) + lift * 0.5);
+  if (k === 'stands') {
+    const i = Math.floor((x - 1.5) / 8);
+    const cx = 1.5 + i * 8 + 4;
+    const top = H * (0.36 + 0.16 * hash2(i, 41, seed));
+    const dx = x - cx;
+    const c = GOODS[Math.floor(hash2(i, 43, seed) * GOODS.length)];
+    if (word === 'TASSEN') {
+      // A bag on a stand: the body, a handle arc above it.
+      if (Math.abs(dx) < 2.6 && y > top - 1.2 && y < top + 3.4) return dx < -1.6 ? tone(INTERIOR, 4) : c;
+      const r = Math.hypot(dx, (y - top - 3.4) * 1.2);
+      if (y > top + 3.4 && r > 1.3 && r < 2) return tone(INTERIOR, 4);
+    } else {
+      // A hat on a head stand: the crown (rounded) and the brim, lit from the left.
+      if (Math.abs(dx) < 2.1 - Math.max(0, y - top - 2) * 0.6 && y > top + 0.4 && y < top + 2.9) return dx < -0.9 ? tone(INTERIOR, 5) : c;
+      if (Math.abs(dx) < 3.6 && y > top && y < top + 0.6) return c;
+      if (Math.abs(dx) < 1.4 && y > top - 2.2 && y <= top) return tone(INTERIOR, 3 + lift * 0.5);
+    }
+    if (Math.abs(dx) < Math.max(0.5, 1 / u) && y < top) return tone(INTERIOR, 4);
+    // Hat boxes on a high shelf.
+    if (y > H * 0.64 && y < H * 0.64 + 3 && hash2(Math.floor(x / 5), 47, seed) < 0.6 && x % 5 < 4) return GOODS[Math.floor(hash2(Math.floor(x / 5), 49, seed) * GOODS.length)];
+    return -1;
+  }
+  if (k === 'lamps') {
+    const i = Math.floor(x / 7);
+    const cx = i * 7 + 3.5;
+    const hang = H * (0.42 + 0.3 * hash2(i, 51, seed));
+    const dx = x - cx;
+    // The shade (wider at its foot), the bulb under it, the glow on the back wall, the cord.
+    if (y > hang - 3 && y <= hang && Math.abs(dx) < 1.1 + (hang - y) * 0.8) return dx < -0.6 ? tone(INTERIOR, 5) : GOODS[Math.floor(hash2(i, 53, seed) * GOODS.length)];
+    if (y > hang - 4 && y <= hang - 3 && Math.abs(dx) < 1) return tone(LANTERN, 3);
+    if (Math.abs(dx) < Math.max(0.25, 1 / u) && y > hang && y < H * 0.8) return tone(INTERIOR, 0);
+    const g = Math.hypot(dx, (y - hang + 4) * 1.3);
+    if (g < 5) return tone(INTERIOR, g < 2.5 ? 5 : 4);
+    return -1;
+  }
+  if (k === 'bins') {
+    if (word === 'VINTAGE') {
+      // A clothes rail: the bar, garments hanging from it in muted colours.
+      const rail = H * 0.66;
+      if (y > rail && y < rail + 0.6) return tone(IRON, 3);
+      const i = Math.floor(x / 2.6);
+      const len = 9 + 5 * hash2(i, 55, seed);
+      const fx = x - i * 2.6;
+      if (y < rail && y > rail - len && fx > 0.2 && fx < 2.4 - (y > rail - 1 ? 0.6 : 0)) return fx < 0.7 ? tone(INTERIOR, 4) : GOODS[Math.floor(hash2(i, 57, seed) * GOODS.length)];
+      return -1;
+    }
+    // Record crates at the foot, sleeves standing in them; covers on the back wall.
+    const crate = H * 0.26;
+    if (y < crate) return tone(INTERIOR, (y > crate - 0.75 ? 4 : 2) + lift * 0.5);
+    const j = Math.floor(x / 1.2);
+    if (y < crate + 2.4 + 1.2 * hash2(j, 59, seed) && x % 1.2 < 0.9) return hash2(j, 61, seed) < 0.5 ? GOODS[Math.floor(hash2(j, 63, seed) * GOODS.length)] : tone(INTERIOR, 1 + (j & 1) * 2);
+    const ci = Math.floor(x / 7);
+    const cx = x - ci * 7;
+    if (y > H * 0.48 && y < H * 0.48 + 5.5 && cx > 0.8 && cx < 6.3) return y < H * 0.48 + 1.8 ? ACCENT[Math.floor(hash2(ci, 65, seed) * ACCENT.length)] : GOODS[Math.floor(hash2(ci, 67, seed) * GOODS.length)];
+    return -1;
+  }
+  // walls: a light wall with frames: two big pictures in a gallery, small frames (mirrors, cards,
+  // spectacles, jewellery boards) elsewhere.
+  const big = word === 'GALERIE';
+  const sw = big ? 14 : 6;
+  const shh = big ? 12 : 6;
+  const i = Math.floor(x / sw);
+  const fx = x - i * sw;
+  const y0 = big ? H * 0.32 : H * 0.24 + Math.floor((y - H * 0.24) / (shh + 2)) * (shh + 2);
+  const fy = y - y0;
+  if (y > H * 0.24 && y < H * 0.76 && fx > 1 && fx < sw - 1 && fy > 0 && fy < shh) {
+    if (fx < 1.8 || fx > sw - 1.8 || fy < 0.8 || fy > shh - 0.8) return tone(word === 'KAPPER' || word === 'BRILLEN' ? IRON : INTERIOR, word === 'KAPPER' || word === 'BRILLEN' ? 3 : 5);
+    if (word === 'KAPPER') return tone(GLASS, fy > shh * 0.6 ? 4 : 3);
+    // A muted picture: a sky or a light ground over a darker field (an accent on the small cards).
+    if (fy > shh * (0.45 + 0.2 * hash2(i, 71, seed))) return big || hash2(i, 73, seed) < 0.6 ? (hash2(i, 77, seed) < 0.5 ? tone(WHITE, 3 + lift * 0.5) : GOODS[0]) : ACCENT[Math.floor(hash2(i, 73, seed) * ACCENT.length)];
+    return GOODS[1 + Math.floor(hash2(i, 75, seed) * (GOODS.length - 1))];
+  }
+  return tone(WHITE, 2 + lift);
+}
+
 /**
  * The shop front (spec §8.6): a white-painted wooden pui with thin columns, the glass from 0.4 to 3.0
  * m (52 px) with the interior behind (shelves and goods; warm and lit at night in a bar), the
@@ -788,22 +895,30 @@ function drawShop(c: LotCtx): void {
     const word = slot ? '' : bar && c.night ? '' : l.shopWord;
     letters(c, word, (c.X0 + c.X1) >> 1, (fy0 + top) >> 1, bar ? LANTERN : GOLD, bar ? 1 : 3, M_LIT);
   }
-  // Glass with the interior.
+  // Glass with the interior: the recipe by the shop's word; about a third of the interiors lit by day.
   const glow = bar && c.night && !c.dark;
+  const recipe: Recipe = bar ? 'shelves' : (RECIPE[l.shopWord] ?? 'shelves');
   for (let i = 0; i < l.groundWindows.length; i++) {
     const o = l.groundWindows[i];
     const x0 = a.X(o.u) + by(a, 1, 1, 2);
     const x1 = a.X(o.u + o.w) - by(a, 1, 1, 2);
     const y0 = a.Y(o.h);
     const y1 = a.Y(o.h + o.hh);
+    const lit = !c.night && !slot && (recipe === 'lamps' || hash2(i, 31, l.seed) < 0.34);
     for (let y = y0; y < y1; y++) {
       const fy = (y - y0) / (y1 - y0);
       for (let x = x0; x < x1; x++) {
         const fx = (x - x0) / Math.max(1, x1 - x0);
         let v: number;
-        let m = M_LIT;
+        let m = lit ? M_EMIT : M_LIT;
         if (slot) v = tone(GLASS, fy > 0.7 ? 2 : 1);
-        else {
+        else if (recipe !== 'shelves' && !glow && !c.night && fy <= 0.8) {
+          if (a.d === 1) v = tone(INTERIOR, (fy < 0.12 ? 2 : 1) + (lit ? 2 : 0));
+          else {
+            const r = shopInterior(recipe, l.shopWord, x - x0, y - y0, y1 - y0, a.d, l.seed, lit);
+            v = r >= 0 ? r : tone(INTERIOR, (fy < 0.12 ? 2 : 1) + (lit ? 2 : 0));
+          }
+        } else {
           // The interior (4× / 2×): a dark back wall, three shelves with goods standing on them in
           // small clusters, a display table at the foot; the upper glass mirrors the sky.
           const gx = a.gx0 + x;
@@ -822,13 +937,17 @@ function drawShop(c: LotCtx): void {
             const k = hash2(cell, Math.round(shelf * 100) + 3, l.seed);
             gv = k < 0.3 ? GOODS[Math.floor(k * 3.3 * GOODS.length) % GOODS.length] : tone(INTERIOR, 3 + (k > 0.7 ? 1 : 0) + (gx - cell * cw === 0 ? 1 : 0));
           }
+          // Jars and bottles: a lighter lid or neck row on top of each.
+          if (good && a.d > 1 && fy >= shelf + 0.04 + hash2(cell, 7, l.seed) * 0.08 - 1.5 / Math.max(1, y1 - y0)) gv = tone(INTERIOR, 5);
           if (glow) {
             v = tone(INTERIOR, onShelf ? 3 : good ? 5 : 4 + (fy > 0.6 ? 1 : 0));
             m = M_EMIT;
-          } else if (fy > 0.8) v = tone(GLASS, fy > 0.92 ? 3 : 2);
-          else if (onShelf) v = tone(INTERIOR, 3);
+          } else if (fy > 0.8) {
+            v = tone(GLASS, fy > 0.92 ? 3 : 2);
+            m = M_LIT;
+          } else if (onShelf) v = tone(INTERIOR, 3 + (lit ? 1 : 0));
           else if (good) v = gv;
-          else v = tone(INTERIOR, fy < 0.12 ? 2 : 1);
+          else v = tone(INTERIOR, (fy < 0.12 ? 2 : 1) + (lit ? 2 : 0));
           if (c.night && !glow) v = tone(GLASS, 0);
         }
         // The glass's sheen: a diagonal band of sky.

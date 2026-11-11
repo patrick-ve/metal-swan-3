@@ -35,7 +35,7 @@ import { defineEntity, paramBool, paramNum, paramStr, type SpawnParams } from '.
 import type { ReactionKind } from '../../enemy';
 import { Creature, contactHit, entryParam, gagParam, Turner } from '../creatures/common';
 import { gagBubble } from '../locals/rider';
-import { partySet } from './art';
+import { partySet, TOAST_CLINK } from './art';
 
 /** Stag-partier numbers (NORMAL). */
 export const STAG = {
@@ -51,7 +51,7 @@ export const STAG = {
   range: 230,
   seatedRange: 260,
   tele: 24,
-  /** The fire strip (aim 3, pop 8, recover 10); the cork leaves on the pop frame. */
+  /** The fire strip (21 ticks: aim, the thumb push, POP at tick popAt = FIRE_POP_TICK of the baked strip, recoil, settle). */
   fireTicks: 21,
   popAt: 3,
   recover: 50,
@@ -245,9 +245,9 @@ export class StagPartier extends Creature {
   private thinkGag(): void {
     this.vx = 0;
     if (this.gagAnim === 'gag-toast') {
-      // Clink: the bottle meets its neighbour's on frame 1.
+      // Clink: the bottle meets its neighbour's on frame TOAST_CLINK (the baked 40 px toast).
       const f = this.anim.index;
-      if (f === 1 && this.lastToastFrame !== 1 && this.onScreen(0)) this.world.audio.sfx('ams/clink', { vol: 0.45 });
+      if (f === TOAST_CLINK && this.lastToastFrame !== TOAST_CLINK && this.onScreen(0)) this.world.audio.sfx('ams/clink', { vol: 0.45 });
       this.lastToastFrame = f;
     }
     if (this.heardShout()) this.startNotice(14, 0);

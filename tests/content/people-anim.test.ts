@@ -16,12 +16,11 @@ import '../../src/game/content/props/index';
 import '../../src/game/content/locals/index';
 import '../../src/game/content/locals/art';
 import { AmsStaff, type AmsBaker } from '../../src/game/content/missions/ams/entities';
-import { BOW5, FREED7, HOSTAGE_STYLES, TOURIST_BOW_TIMING, TOURIST_FREED_TIMING } from '../../src/game/content/items/hostage.art';
 import { TurningHostage } from '../../src/game/content/items/hostages';
 import type { Handhaver } from '../../src/game/content/locals/index';
 import { HANDHAVER } from '../../src/game/content/locals/handhaver';
 import * as P from '../../src/game/art/poses';
-import { assertNoDuplicateFrames, assertSmooth } from '../art/motion';
+import { assertNoDuplicateFrames } from '../art/motion';
 import { TestWorld } from './helpers';
 
 beforeAll(async () => {
@@ -58,17 +57,14 @@ describe('people strips: motion gate', () => {
     for (const a of ['idle', 'turn', 'wave', 'in-wave', 'clap', 'in-clap', 'in-cheer', 'cheer', 'talk', 'walk', 'toss']) assertNoDuplicateFrames(`${s}/${a}`);
   });
 
-  it('tourist: bow 5 in 12 ticks, freed 7 in 20 ticks, turn 2, sack-turn 2', () => {
+  it('tourist: the baked 40 px set keeps the state times (bow 12, freed 20) with more frames (tests/art40/hostage-tourist.test.ts)', () => {
     const T = 'item/hostage/tourist/';
-    expect(frameCount(T + 'bow')).toBe(5);
-    expect(frameCount(T + 'freed')).toBe(7);
-    expect(TOURIST_BOW_TIMING.reduce((a, b) => a + b, 0)).toBe(12);
-    expect(TOURIST_FREED_TIMING.reduce((a, b) => a + b, 0)).toBe(20);
+    const total = (id: string): number => (spriteAnim(id).durations ?? []).reduce((a, b) => a + b, 0);
+    expect(frameCount(T + 'bow')).toBe(6);
+    expect(frameCount(T + 'freed')).toBe(8);
+    expect(total(T + 'bow')).toBe(12);
+    expect(total(T + 'freed')).toBe(20);
     for (const a of ['bow', 'freed', 'turn', 'sack-turn']) assertNoDuplicateFrames(T + a);
-    const style = HOSTAGE_STYLES.tourist;
-    assertSmooth({ style, poses: BOW5('tourist'), durations: TOURIST_BOW_TIMING });
-    // The hop (crouch → airborne) is the one smear step.
-    assertSmooth({ style, poses: FREED7('tourist'), durations: TOURIST_FREED_TIMING, smear: [0] });
     expect(frameCount('item/hostage/critic/bow')).toBe(2);
     void P;
   });

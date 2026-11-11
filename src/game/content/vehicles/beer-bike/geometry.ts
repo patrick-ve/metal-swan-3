@@ -25,10 +25,14 @@ export const BEER_BIKE = {
   /** The bar counter: its top is the one-way platform of the partner (2P). */
   counter: { x0: -44, x1: 14, top: -27 },
   roof: { x0: -50, x1: 42, top: -64, bottom: -58 },
-  /** Wheels: radius and centres (near pair, far pair). */
+  /**
+   * Wheels: radius and centres (near pair, far pair): art positions only (the code draws the wheel
+   * strips there). At 40 px (docs/design/ams40.md wave 3) the rear pair sits under the barrel deck
+   * and the front pair ahead of the guide's pedals, so no wheel hides a rider's feet.
+   */
   wheelR: 7,
-  nearWheels: [[-32, -7], [30, -7]] as ReadonlyArray<readonly [number, number]>,
-  farWheels: [[-27, -8], [35, -8]] as ReadonlyArray<readonly [number, number]>,
+  nearWheels: [[-44, -7], [37, -7]] as ReadonlyArray<readonly [number, number]>,
+  farWheels: [[-39, -8], [42, -8]] as ReadonlyArray<readonly [number, number]>,
   /**
    * The cork cannon: a brass tap on the front crate at chest height, fed by the keg on the roof
    * through a hose down the front post (from the roof a forward cork flew 69 px over the street

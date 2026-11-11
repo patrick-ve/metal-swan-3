@@ -46,10 +46,10 @@ beforeAll(async () => {
   await loadContent((id) => !isLazyContent(id));
   const take = (prefix: string, n: number): string[] => listHiSprites(prefix).slice(0, n);
   sample = [
-    ...take('char/recruit/', 6),
+    ...take('char/recruit/', 9),
     ...take('char/patrick/', 1),
-    ...take('enemy/fatbike-youth-pair-1b', 3),
-    ...take('enemy/delivery-rider/', 2),
+    // (the riders are baked 40 px sets: no dense art; the background cyclists keep theirs)
+    ...take('npc/ams/ams-cyclist-bg/', 2),
     ...take('boss/ams-mayor/', 3),
     ...take('fx/explosion', 2),
     ...take('decor/ams/house', 2),

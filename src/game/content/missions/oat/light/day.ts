@@ -15,6 +15,7 @@ import { dvdy } from '../../../../../engine/floor/cam';
 import { defineSectionLight, type SectionLight, type SunShadowConfig } from '../../../../mission/light/api';
 import type { ReflectConfig } from '../../../../mission/floor/reflect';
 import { OAT_SECTION } from '../ids';
+import { DECK_NEAR, OAT_CAMERA, WATER_LEVEL } from '../floor/layout';
 import { OAT_STREETS, sectionShade, shadeCamera, shadeSpan } from './section-shade';
 import { OPEN_DEPTH_M, PX_PER_M, sunGeom } from './shadow';
 import { OAT_SUN } from './sun';
@@ -50,12 +51,19 @@ export function sunTail(sectionId: keyof typeof OAT_SUN, strength = SUN_TAIL_STR
   };
 }
 
-/** oat-a's water in front of the bridge decks (STREET-A's layout: the decks' near railing at depth −13.6 → y 190). */
+/**
+ * oat-a's first whole water row in front of the bridge decks: the decks' near railing (depth
+ * `DECK_NEAR` −13.6, y 189.6) plus the arch / quay face down to the water (`WATER_LEVEL` 6 px at
+ * that depth's scale) = 196.3 → 197. The reflections start there, never on the face (FIX-A).
+ */
+export const A_WATER_Y = Math.ceil(G - DECK_NEAR - WATER_LEVEL * (1 - DECK_NEAR / (G - OAT_CAMERA.yh)));
+
+/** oat-a's water in front of the bridge decks (STREET-A's layout). */
 export const OAT_A_WATER: ReflectConfig = {
   bands: [
-    { u0: 340, u1: 524, y0: 190, y1: 216 },
-    { u0: 1586, u1: 1774, y0: 190, y1: 216 },
-    { u0: 2838, u1: 3018, y0: 190, y1: 216 },
+    { u0: 340, u1: 524, y0: A_WATER_Y, y1: 216 },
+    { u0: 1586, u1: 1774, y0: A_WATER_Y, y1: 216 },
+    { u0: 2838, u1: 3018, y0: A_WATER_Y, y1: 216 },
   ],
   alpha: [0.5, 0.35],
   ripple: 1.5,

@@ -111,17 +111,18 @@ export function oatADecor(): DecorDef[] {
     ['singel', 4040],
   ];
   for (const [slug, x] of plates) out.push({ sprite: `decor/oat/a/plate-${slug}`, x, y: PLATE_Y, depth: F });
-  // Hanging signs on wrought-iron brackets and short flags (anchored at the wall).
+  // Hanging signs on wrought-iron brackets and short flags (anchored at the wall): seven kinds over
+  // the ten places, none more than twice and never twice in one screen (spec §8.13 Variety).
   const signs: readonly (readonly [number, number])[] = [
     [620, 1],
     [930, 2],
     [1330, 3],
     [1470, 4],
-    [2030, 2],
-    [2510, 1],
-    [2706, 3],
-    [3156, 4],
-    [3610, 1],
+    [2030, 5],
+    [2510, 6],
+    [2706, 7],
+    [3156, 1],
+    [3610, 6],
     [3896, 2],
   ];
   for (const [x, k] of signs) out.push({ sprite: `decor/oat/a/hanging-sign-${k}`, x, y: SIGN_Y, depth: F });

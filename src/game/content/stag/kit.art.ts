@@ -9,9 +9,10 @@
  *   band, gold foil, the cork), along `deg` (0 = neck forward, −90 = neck up), held at the body
  *   (`grip` 'body') or by the neck ('neck'); states `corked`, `leak` (foam round the cork while it
  *   is shaken), `spurt` (the cork is out: a foam jet), `open` (a little foam at the mouth).
- * - `phoneBuf(d)`, `flashFrames(d)` (the selfie flash), `corkFrames(d)` (a tumbling cork),
- *   `veilBuf` / `veilFrames` (the groom's veil, flying off), `tiaraBuf`, `tutuBuf`, `lplateBuf`,
+ * - `phoneBuf(d)`, `corkFrames(d)` (a tumbling cork),
  *   `printBuf` (the party T-shirt print), `shirtBundleBuf` (the T-shirt pulled over the head).
+ *   The groom's veil, tiara, tutu and L-plate are drawn into his baked 40 px set
+ *   (tools/art40/chars/stag-groom/, docs/design/ams40.md wave 3).
  * - `partyFigure(look, pose, d)`: the rig with SHORTS: the figure is rendered twice (trousers in
  *   the shorts colour, then in the skin colour) and every px farther than `SHORTS_R` from the hip
  *   comes from the bare-leg render (same pose, same geometry: only the trouser colour differs).
@@ -161,26 +162,6 @@ export function phoneBuf(d: Dn): PixelBuffer {
   return finishA(c, 0.2);
 }
 
-/** The selfie flash: a white star that blooms and fades (3 frames, centre anchor). */
-export function flashFrames(d: Dn): Frame[] {
-  return [0, 1, 2].map((i) => {
-    const c = new HdCanvas(11, 11, d);
-    const r = [2.2, 4.4, 3.2][i];
-    const core = i === 2 ? top('gold', d, 1) : top('snow', d);
-    const ray = i === 2 ? top('gold', d, 2) : top('gold', d, 0);
-    c.paint(0, 0, 11, 11, (x, y) => {
-      const dx = Math.abs(x - 5.5);
-      const dy = Math.abs(y - 5.5);
-      if (dx * dx + dy * dy < r * r * 0.18) return core;
-      if ((dx < 0.6 && dy < r) || (dy < 0.6 && dx < r)) return ray;
-      if (i === 1 && Math.abs(dx - dy) < 0.5 && dx < r * 0.62) return ray;
-      return 0;
-    });
-    const buf = c.render({ outline: 'none', ink: INK, ao: 0, clean: false, sep: false });
-    return d === 1 ? { buf, ox: 5, oy: 5 } : { buf, ox: 5, oy: 5, density: d };
-  });
-}
-
 /** A champagne cork tumbling end over end (4 frames, centre anchor, mirror-safe). */
 export function corkFrames(d: Dn): Frame[] {
   return [0, 1, 2, 3].map((i) => {
@@ -197,93 +178,6 @@ export function corkFrames(d: Dn): Frame[] {
     const buf = finishA(c, 0.2);
     return d === 1 ? { buf, ox: 4, oy: 4 } : { buf, ox: 4, oy: 4, density: d };
   });
-}
-
-// ------------------------------------------------------------------------------------ groom pieces
-
-/** The veil: white tulle from the crown down the back (a 14 × 18 box, drawn behind the figure). */
-export function veilBuf(d: Dn, flutter = 0): PixelBuffer {
-  const c = new HdCanvas(14, 18, d);
-  const tulle = mat(c, 'snow', { spec: 0.15, lo1: 1, hi1: 3, lo: 3, hi: 6, wrap: 0.35 });
-  const sway = flutter * 0.8;
-  c.blob([[9.5, 1.5], [12.5, 2.5], [11, 6.5], [8.5 - sway, 11], [6 - sway, 16.2], [1.5 - sway, 16.5], [2, 10], [5, 4]], 0.9, {
-    mat: tulle,
-    z: 0,
-    bulge: 0.25,
-    tex: (t) => {
-      // Soft vertical folds in the tulle.
-      t.tone += Math.sin((t.x + t.y * 0.25) * 2.4) * 0.12;
-    },
-  });
-  return finishA(c, 0.15);
-}
-
-/** The flying veil (off on the groom's death): 4 frames, a crumpled sheet turning over. */
-export function veilFrames(d: Dn): Frame[] {
-  return [0, 1, 2, 3].map((i) => {
-    const c = new HdCanvas(14, 12, d);
-    const tulle = mat(c, 'snow', { spec: 0.15, lo1: 1, hi1: 3, lo: 3, hi: 6, wrap: 0.35 });
-    const a = i * 0.8;
-    const pts: Array<[number, number]> = [];
-    for (let k = 0; k < 7; k++) {
-      const ang = (k / 7) * Math.PI * 2 + a;
-      const r = (k % 2 === 0 ? 5.4 : 3.6) * (i % 2 === 0 ? 1 : 0.85);
-      pts.push([7 + Math.cos(ang) * r, 6 + Math.sin(ang) * r * 0.7]);
-    }
-    c.blob(pts, 0.8, { mat: tulle, z: 0, bulge: 0.3 });
-    const buf = finishA(c, 0.15);
-    return d === 1 ? { buf, ox: 7, oy: 6 } : { buf, ox: 7, oy: 6, density: d };
-  });
-}
-
-/** A small sparkly tiara band on the crown (6 × 3 box). */
-export function tiaraBuf(d: Dn): PixelBuffer {
-  const c = new HdCanvas(6, 3, d);
-  const silver = mat(c, 'steel', { spec: 1.2, shine: 40, lo1: 2, hi1: 4 });
-  c.capsule(1, 2, 5, 2, 0.5, 0.5, { mat: silver, z: 1 });
-  c.ellipsoid(3, 1.3, 0.75, 0.75, { mat: silver, z: 1.2 });
-  if (d > 1) c.dot(2.8, 1.0, top('pink', d, 0));
-  return finishA(c, 0.1);
-}
-
-/** The pink tutu: three scalloped tiers flaring from the waist (18 × 9 box; the waist at (9, 2)). */
-export function tutuBuf(d: Dn, k = 0): PixelBuffer {
-  return tutuOn(new HdCanvas(18, 9, d), 0, k);
-}
-
-/**
- * The tutu in an 18 × 14 box with the waist at its centre (9, 7): rotate it about the waist with
- * `PixelBuffer.rotated` for a tumbling or lying figure.
- */
-export function tutuWaistBuf(d: Dn, k = 0): PixelBuffer {
-  return tutuOn(new HdCanvas(18, 14, d), 5, k);
-}
-
-function tutuOn(c: HdCanvas, oy: number, k: number): PixelBuffer {
-  const tulle = mat(c, 'pink', { spec: 0.3, shine: 12, lo1: 0, hi1: 2, lo: 2, hi: 6, wrap: 0.2 });
-  for (let tier = 0; tier < 2; tier++) {
-    const y0 = oy + 1.4 + tier * 1.6;
-    const half = 4.4 + tier * 1.9 + k * 0.3;
-    const pts: Array<[number, number]> = [[9 - half * 0.72, y0], [9 + half * 0.72, y0]];
-    // Scalloped hem: points dip between the frills.
-    const n = 4 + tier;
-    for (let i = n; i >= 0; i--) {
-      const x = 9 - half + (2 * half * i) / n;
-      pts.push([x, y0 + 2.0 + (i % 2 === 0 ? 0.6 : 0)]);
-    }
-    c.blob(pts, 0.6, { mat: tulle, z: 3 - tier, bulge: 0.35, tone: -tier * 0.1 });
-  }
-  return finishA(c, 0.25);
-}
-
-/** The L-plate on the chest: a white square with a red L (6 × 6 box). */
-export function lplateBuf(d: Dn): PixelBuffer {
-  const c = new HdCanvas(6, 6, d);
-  const card = mat(c, 'snow', { spec: 0.2, lo1: 2, hi1: 3, lo: 4, hi: 6 });
-  c.box(1, 1, 4, 4, { mat: card, z: 0, r: 0.3, bevel: 0.25 });
-  const red = top('red', d, d === 1 ? 1 : 2);
-  c.paint(1.5, 1.5, 3, 3, (x, y) => ((x < 2.6 && y < 4.3) || (y > 3.4 && y < 4.3 && x < 4.2) ? red : 0));
-  return finishA(c, 0.1);
 }
 
 /** The party T-shirt print: a small white star on the chest (5 × 5 box, no outline). */

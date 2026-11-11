@@ -52,7 +52,7 @@ import { registerOfflineCache, removeOfflineCache } from './engine/offline.brows
 import { PointerLockSource } from './engine/pointer.browser';
 import { createGl3d, type Gl3dView } from './engine/gl3d.browser';
 import { createGlFloor, type GlFloor } from './engine/gl-floor.browser';
-import { CanvasRenderer } from './engine/render-canvas.browser';
+import { canvasTexture, CanvasRenderer } from './engine/render-canvas.browser';
 import { FrameGovernor } from './engine/render-common';
 import { Governor3d } from './engine/r3/ps1';
 import { artTier, setArtTier, setDeferDense } from './engine/sprites';
@@ -62,6 +62,9 @@ import { createApp, graphicsMode, type GameApp } from './game/app';
 import { ArtCache } from './game/art-cache';
 import { parseLaunchParams } from './game/params';
 import { setFloorOverlay } from './game/mission/floor/registry';
+import { fetchCanalSource, setCanal, setCanalSource, setCanalTextures } from './game/mission/canal/registry';
+import { canalBytes, canalSceneBytes } from './game/mission/canal/store';
+import { canalDrawStats, resetCanalDrawStats, type CanalDrawStats } from './game/mission/canal/view';
 import { artDetailTier } from './game/settings';
 import { BootScene } from './game/scenes/index';
 import { rallyProbe, type RallyProbe } from './game/scenes/rally-route';
@@ -88,6 +91,13 @@ declare global {
       gl3d?: Gl3dView;
       /** The WebGL2 floor (docs/api/floor.md §7): `stats()` (CPU ms, res, uploads, GPU bytes), `ok`, `reason`. */
       floorGl?: GlFloor;
+      /** The canal scenes (docs/api/canal.md): the draw time, the resident bytes (all, by scene), the stats' reset. */
+      canal?: {
+        stats: () => CanalDrawStats;
+        bytes: () => { cpu: number; tex: number };
+        scenes: () => Record<string, { cpu: number; tex: number }>;
+        reset: () => void;
+      };
     };
   }
 }
@@ -171,6 +181,11 @@ function main(): void {
   const query = new URLSearchParams(window.location.search);
   const floorGl = createGlFloor({ enabled: query.get('floorgl') !== '0', res: () => renderer.res });
   if (query.get('debug') === 'floor') setFloorOverlay(true);
+  // The canal scenes (docs/api/canal.md): the baked scenery files under the site's base, each tile a
+  // texture of its own; `?canal=0` draws the old scenery (to compare).
+  setCanalSource(fetchCanalSource(import.meta.env.BASE_URL));
+  setCanalTextures(canvasTexture);
+  if (query.get('canal') === '0') setCanal(false);
   const app = createApp({ input, audio, store, params, debug, gesture: false, preloadArt: true, artCache, view3d, floorGpu: floorGl });
   // `?art=` wins over ART DETAIL until the option is changed.
   const artAtStart = app.settings.artDetail;
@@ -187,6 +202,7 @@ function main(): void {
     tier: artTier,
     gl3d: view3d,
     floorGl,
+    canal: { stats: canalDrawStats, bytes: canalBytes, scenes: canalSceneBytes, reset: resetCanalDrawStats },
     get rally(): RallyProbe {
       return rallyProbe(app);
     },

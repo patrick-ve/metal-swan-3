@@ -1,0 +1,285 @@
+<title>Amsterdam in Depth</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a screening room. One dark ground, the four stages as full-width screens, notes in a narrow column beside a plane table. */
+:root{
+  color-scheme: dark;
+  --ground:#0d1017; --panel:#151a24; --line:#262d3b;
+  --ink:#e9e6dc; --dim:#9aa3b4;
+  --haze:#9cbcda;      /* the morning haze tone itself */
+  --amber:#f6c56a;     /* marks the proposal */
+  --display:'Silkscreen','Courier New',monospace;
+  --body:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+body{background:var(--ground);color:var(--ink);font:16px/1.55 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{margin:0;font-weight:400;text-wrap:balance}
+h1{font:400 clamp(26px,4.6vw,44px)/1.1 var(--display);letter-spacing:.01em}
+h2{font:400 clamp(18px,2.6vw,24px)/1.2 var(--display)}
+h3{font:600 13px/1.3 var(--body);letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+p{margin:0;max-width:66ch}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--haze)}
+header{display:flex;flex-direction:column;gap:14px}
+header p{color:var(--dim);font-size:17px}
+header p b{color:var(--ink);font-weight:500}
+
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+.rules div{background:var(--ground);padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.rules b{font:400 13px/1.2 var(--display);color:var(--amber)}
+.rules span{font-size:14px;color:var(--dim)}
+
+.stage{display:flex;flex-direction:column;gap:16px}
+.shead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px}
+.shead .eyebrow{color:var(--dim)}
+.screen{position:relative;background:#000;border:1px solid var(--line);aspect-ratio:16/9;max-width:100%;touch-action:pan-y;cursor:ew-resize;overflow:hidden}
+.screen canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+.tag{position:absolute;top:10px;font:400 11px/1 var(--display);padding:6px 8px;background:rgba(13,16,23,.82);pointer-events:none}
+.tag.now{left:10px;color:var(--ink)}
+.tag.new{right:10px;color:var(--amber)}
+.bar{position:absolute;top:0;bottom:0;width:2px;background:var(--amber);pointer-events:none;transform:translateX(-1px)}
+.bar::after{content:"";position:absolute;top:50%;left:50%;width:14px;height:34px;transform:translate(-50%,-50%);background:var(--amber);border:2px solid var(--ground)}
+.loading{position:absolute;inset:0;display:grid;place-items:center;font:400 12px var(--display);color:var(--dim)}
+.ctl{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line)}
+.seg button{font:500 13px/1 var(--body);color:var(--dim);background:none;border:0;padding:9px 14px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--amber);color:#1a1408}
+.ctl label{display:inline-flex;gap:7px;align-items:center;font-size:14px;color:var(--dim);cursor:pointer}
+.ctl input{accent-color:var(--amber)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--haze);outline-offset:2px}
+.below{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:28px}
+@media (max-width:820px){.below{grid-template-columns:minmax(0,1fr)}}
+.notes{display:flex;flex-direction:column;gap:10px;min-width:0}
+.notes ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--dim);font-size:15px}
+.notes li::marker{color:var(--amber)}
+.planes{min-width:0;display:flex;flex-direction:column;gap:10px}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th{font:500 11px/1.2 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);text-align:left;padding:0 10px 8px 0;white-space:nowrap}
+td{padding:6px 10px 6px 0;border-top:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+td.n{white-space:normal;min-width:130px}
+td.new{color:var(--amber)}
+.sw{display:inline-flex;height:18px;border:1px solid var(--line)}
+.sw i{display:block;width:18px;height:100%}
+.cap{font-size:13px;color:var(--dim)}
+
+.build{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:28px 40px}
+.build section{display:flex;flex-direction:column;gap:10px;min-width:0}
+.build ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--dim);font-size:15px}
+.build li b{color:var(--ink);font-weight:500}
+hr{border:0;border-top:1px solid var(--line);margin:0;width:100%}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">ams2 · scenery proposal · 4 stages</span>
+  <h1>Amsterdam in Depth</h1>
+  <p>Today every plane of <b>ams2</b> has the same contrast and the same colour strength. A house across the canal looks as near as a bench on the quay. This proposal adds <b>atmospheric perspective</b>: the farther a plane is, the more it fades into the air of that hour. Drag across a screen to compare. Left is the level now. Right is the proposal.</p>
+</header>
+
+<div class="rules" aria-label="The five rules of the proposal">
+  <div><b>Darks lift first</b><span>Far shadows take the cool tone of the air. The outline becomes a coloured line.</span></div>
+  <div><b>Lights turn warm</b><span>Far highlights lean to the low warm tone of the sun. Contrast gets small.</span></div>
+  <div><b>Colour fades</b><span>Each plane loses colour strength in step with its distance.</span></div>
+  <div><b>Detail drops</b><span>The two farthest planes use flat tones only. A mist band hides their feet.</span></div>
+  <div><b>Near stays strong</b><span>The walk plane does not change. The nearest strip gets deeper darks.</span></div>
+</div>
+
+<div id="stages" style="display:flex;flex-direction:column;gap:64px"></div>
+
+<hr>
+<div class="build">
+  <section>
+    <h3>How it goes into the game</h3>
+    <ul>
+      <li><b>The haze is a colour table per plane.</b> The art generator applies it when it paints a layer. There is no alpha, no shader and no cost per frame.</li>
+      <li><b>New layers per section:</b> one far skyline, two cloud sheets and one or two mist bands. Each is a tileable generator layer, as the others are.</li>
+      <li><b>The sky</b> becomes one ramp of 23 tones with an ordered dither at the band borders. The clouds use 5 tones and a lit rim.</li>
+      <li><b>Ground planes fade with distance.</b> The canal, the river and the lawn go from the haze tone at the far edge to full colour at the near edge.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>What does not change</h3>
+    <ul>
+      <li>Figures, enemies, props, hitboxes, terrain and scripts.</li>
+      <li>The painted floor in three bands, and the walk band.</li>
+      <li>The post rule: Amsterdammertjes stand on kerbstones only.</li>
+      <li>The hero method for the middle and near planes: outline, selout, hard clusters.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>Decisions for you</h3>
+    <ul>
+      <li><b>Dither.</b> The style contract says no dither and no gradient. The sky, the mist and the ground fade break that rule on purpose. Is that correct?</li>
+      <li><b>Smaller far banks.</b> Stage a is 15 % lower and stage c is 20 % smaller, so the sky and the skyline show. The collision does not change.</li>
+      <li><b>Haze strength.</b> The numbers in the tables are a first setting. One factor per stage can raise or lower them.</li>
+    </ul>
+    <p class="cap">These frames come from the Python art spike of ams2 at the 4× tier, not from the game. The speed in the game is not measured yet.</p>
+  </section>
+</div>
+</div>
+
+<script type="application/json" id="pack">/*PACK*/</script>
+<script>
+const M = JSON.parse(document.getElementById('pack').textContent);
+const U = M.U, VW = 384, VH = 216, G = 176;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const LIGHT = {
+  a:{dark:'#9cbcda', light:'#fbf2dc'}, b:{dark:'#a2c6ea', light:'#f7f8ee'},
+  c:{dark:'#b79a94', light:'#ffe4a8'}, d:{dark:'#6c3c80', light:'#ffb070'},
+};
+const STAGES = [
+  {p:'a', name:'Grachtengordel', hour:'Morning · cool blue air',
+   notes:['The far row is 15 % lower. The sky gets room, and two skyline planes show behind the houses: a church tower, a dome, a mill.',
+          'The houses across the canal fade 30 % into the morning air. The trees on the quay keep full colour, so they stand in front.',
+          'The canal water goes from pale sky tone at the far bank to full teal at the quay wall.'],
+   planes:[['Sky','new','23-tone ramp, dithered',null],['Clouds, two sheets','new','5 tones, lit rim',null],['Far skyline 1','new','0.09',.80],['Far skyline 2','','0.18',.60],
+           ['Far bank, bridge, boats','','0.42',.30],['Canal water','','0.42','40 → 3'],['Quay props, trees','','0.88',0],['Walk band','','1.00',0],['Kerb, lane, front posts','','1.16','deeper']]},
+  {p:'b', name:'Museumplein', hour:'Noon · pale bright air',
+   notes:['The museum sits back in the noon haze at 34 %. Its brick goes pale and its slate roofs go blue-grey.',
+          'The lawn and the pools fade with distance. The trees on the lawn sit between the museum and the street.',
+          'The hot-dog stand, the lamp and the posts keep full colour. They read as the near plane at once.'],
+   planes:[['Sky','new','23-tone ramp, dithered',null],['Clouds, two sheets','new','5 tones, lit rim',null],['Far skyline 1','new','0.09',.80],['Far skyline 2','','0.18',.62],
+           ['Museum, hedges','','0.42',.34],['Lawn, pools','','0.66','30 → 3'],['Lawn trees','','0.66',.16],['Street props','','0.88',0],['Walk band','','1.00',0],['Kerb, front posts','','1.16','deeper']]},
+  {p:'c', name:'Amstel', hour:'Golden hour · warm dusty air',
+   notes:['The far bank is 20 % smaller and fades 44 % into gold. The river reads as wide now.',
+          'The low sun glows from the left edge of the sky. The clouds are lit gold on top and mauve below.',
+          'The river goes from gold-grey at the far bank to deep teal at the jetty. The houseboats keep full colour.'],
+   planes:[['Sky with sun glow','new','23-tone ramp, dithered',null],['Clouds, two sheets','new','5 tones, lit rim',null],['Far skyline 1','new','0.09',.80],['Far skyline 2','','0.18',.66],
+           ['Far bank, trees, tour boat','','0.42',.44],['River, far part','','0.42','60 → 14'],['River, middle','','0.88','16 → 2'],['Houseboats','','0.88',.05],['Jetty','','1.00',0],['River, near','','1.16','deeper']]},
+  {p:'d', name:'Stopera', hour:'Sunset · violet shade, amber light',
+   notes:['The sun bends the bands of the sky around it. The skyline is a violet silhouette on the amber horizon.',
+          'The theatre and the city hall fade 17 %. They are near, so the effect is small.',
+          'The market and the floor take the key light of the sunset: violet in the shade, amber in the lights.'],
+   planes:[['Sky with sun','new','23-tone ramp, dithered',null],['Clouds, two sheets','new','5 tones, lit rim',null],['Far skyline 1','new','0.09',.80],['Far skyline 2','','0.18',.52],
+           ['Theatre, city hall','','0.62',.17],['Market, props','','0.88','sunset key'],['Walk band','','1.00','sunset key'],['Kerb, front posts','','1.16','deeper']]},
+];
+const hex = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16)/255);
+const lum = c => .3*c[0]+.59*c[1]+.11*c[2];
+function grade(c, L, m){
+  const d = hex(L.dark), l = hex(L.light), v = Math.pow(lum(c), .8);
+  let o = c.map((x,i) => x+((d[i]+(l[i]-d[i])*v)-x)*m);
+  const l2 = lum(o); o = o.map(x => l2+(x-l2)*(1-.4*m));
+  return o;
+}
+const css = c => 'rgb('+c.map(x => Math.round(Math.min(1,Math.max(0,x))*255)).join(',')+')';
+const BRICK = ['#e08a5c','#bd4f34','#83292a','#4b1522','#2c1a26'].map(hex);
+const span0 = lum(BRICK[0])-lum(BRICK[4]);
+
+const imgCache = {};
+function img(k){
+  if (!imgCache[k]){ const i = new Image(); i.src = 'data:image/webp;base64,'+M.img[k]; imgCache[k] = i; }
+  return imgCache[k];
+}
+function prep(items){
+  return items.map(it => { const o = {...it}; if (it.f) o.img = img(it.f); if (it.fr) o.imgs = it.fr.map(img); return o; });
+}
+function drawSet(g, items, cam, T, on, figs){
+  for (const it of items){
+    if (it.t === 'actors'){
+      if (figs){
+        g.drawImage(img(M.fig.v), 0, 0, 60, 60, (150-30)*U, (G-58)*U, 60*U, 60*U);
+        g.drawImage(img(M.fig.h), 0, 0, 60, 60, (250-30)*U, (G-58)*U, 60*U, 60*U);
+      }
+      continue;
+    }
+    const off = Math.round(cam*it.s*U), X = Math.round(it.x*U)-off, Y = Math.round(it.y*U);
+    if (it.t === 'img'){ if (it.img.complete) g.drawImage(it.img, X, Y+it.dy); }
+    else if (it.t === 'drift'){
+      if (!it.img.complete) continue;
+      const w = it.wrap, dx = on ? (T*60*it.v*U) % w : 0, xx = Math.round(-dx)-off;
+      g.drawImage(it.img, xx, it.dy); g.drawImage(it.img, xx+w, it.dy);
+    } else if (it.t === 'frames'){
+      const i = on ? Math.floor(T*it.fps) % it.imgs.length : 0, im = it.imgs[i];
+      if (im.complete) g.drawImage(im, X, Y+it.dy[i]);
+    } else if (it.t === 'bob'){
+      if (it.img.complete) g.drawImage(it.img, X, Y+(on ? Math.round(Math.sin(T*.95+it.ph)*it.amp*U) : 0));
+    } else if (it.t === 'mover'){
+      const span = it.span, x = (((it.x+(on ? it.v*T*60 : 0)) % span)+span) % span-40;
+      const i = on ? Math.floor(T*it.fps) % it.imgs.length : 0, im = it.imgs[i];
+      if (!im.complete) continue;
+      const px = Math.round(x*U)-off, py = Y+it.dy[i];
+      if (it.v < 0){ g.save(); g.scale(-1,1); g.drawImage(im, -(px+im.width), py); g.restore(); }
+      else g.drawImage(im, px, py);
+    } else if (it.t === 'blink'){
+      if (it.img.complete && on && ((T+it.ph) % it.period) < it.period*.45) g.drawImage(it.img, X, Y);
+    }
+  }
+}
+const root = document.getElementById('stages');
+const live = [];
+for (const S of STAGES){
+  const L = LIGHT[S.p], m = M.parts[S.p];
+  const el = document.createElement('section'); el.className = 'stage'; el.id = 'stage-'+S.p;
+  const rows = S.planes.map(([n, isNew, sp, hz]) => {
+    let sw = '', hv = '', ct = '';
+    if (typeof hz === 'number'){
+      const cs = BRICK.map(c => grade(c, L, hz));
+      sw = '<span class="sw">'+cs.map(c => '<i style="background:'+css(c)+'"></i>').join('')+'</span>';
+      hv = Math.round(hz*100)+' %'; ct = Math.round((lum(cs[0])-lum(cs[4]))/span0*100)+' %';
+    } else if (hz){ hv = hz.includes('→') ? hz+' %' : hz; }
+    return '<tr><td class="n'+(isNew ? ' new' : '')+'">'+n+(isNew ? ' · new' : '')+'</td><td>'+sp+'</td><td>'+hv+'</td><td>'+sw+'</td><td>'+ct+'</td></tr>';
+  }).join('');
+  el.innerHTML =
+    '<div class="shead"><h2>'+S.p.toUpperCase()+' · '+S.name+'</h2><span class="eyebrow">'+S.hour+'</span></div>'+
+    '<div class="screen" id="screen-'+S.p+'"><canvas width="'+VW*U+'" height="'+VH*U+'" aria-label="Stage '+S.p+', now and proposed"></canvas>'+
+      '<span class="tag now">NOW</span><span class="tag new">PROPOSED</span><div class="bar"></div><div class="loading">LOADING</div></div>'+
+    '<div class="ctl"><div class="seg" role="group" aria-label="View">'+
+      '<button type="button" id="v-now-'+S.p+'" aria-pressed="false">Now</button><button type="button" id="v-split-'+S.p+'" aria-pressed="true">Split</button><button type="button" id="v-new-'+S.p+'" aria-pressed="false">Proposed</button></div>'+
+      '<label><input type="checkbox" id="pan-'+S.p+'"'+(reduce ? '' : ' checked')+'> Scroll and motion</label>'+
+      '<label><input type="checkbox" id="fig-'+S.p+'" checked> Two figures for scale</label></div>'+
+    '<div class="below"><div class="notes"><h3>What changes</h3><ul>'+S.notes.map(n => '<li>'+n+'</li>').join('')+'</ul>'+
+      '<p class="cap">Colours in the scenery of this stage: '+m.cnow+' now, '+m.cnew+' proposed.</p></div>'+
+    '<div class="planes"><h3>Planes, far to near</h3><div class="tw"><table><thead><tr><th>Plane</th><th>Scroll speed</th><th>Haze</th><th>Red brick ramp after haze</th><th>Contrast left</th></tr></thead><tbody>'+rows+'</tbody></table></div></div></div>';
+  root.appendChild(el);
+  const st = {S, el, cv: el.querySelector('canvas'), split:.5, vis:false, sets:null, t0:0, cam:60, ready:false};
+  st.g = st.cv.getContext('2d'); st.g.imageSmoothingEnabled = false;
+  const scr = el.querySelector('.screen'), bar = el.querySelector('.bar');
+  const tn = el.querySelector('.tag.now'), tw = el.querySelector('.tag.new');
+  const btn = {now: el.querySelector('#v-now-'+S.p), split: el.querySelector('#v-split-'+S.p), new: el.querySelector('#v-new-'+S.p)};
+  st.setSplit = (f, mode) => {
+    st.split = Math.min(1, Math.max(0, f)); bar.style.left = (st.split*100)+'%';
+    bar.hidden = st.split <= 0 || st.split >= 1; tn.hidden = st.split < .12; tw.hidden = st.split > .88;
+    for (const k in btn) btn[k].setAttribute('aria-pressed', String(k === mode));
+    st.dirty = true;
+  };
+  btn.now.onclick = () => st.setSplit(1, 'now'); btn.split.onclick = () => st.setSplit(.5, 'split'); btn.new.onclick = () => st.setSplit(0, 'new');
+  let drag = false;
+  const at = e => { const r = scr.getBoundingClientRect(); st.setSplit((e.clientX-r.left)/r.width, 'split'); };
+  scr.addEventListener('pointerdown', e => { drag = true; scr.setPointerCapture(e.pointerId); at(e); });
+  scr.addEventListener('pointermove', e => { if (drag) at(e); });
+  scr.addEventListener('pointerup', () => drag = false); scr.addEventListener('pointercancel', () => drag = false);
+  st.pan = el.querySelector('#pan-'+S.p); st.fig = el.querySelector('#fig-'+S.p);
+  st.pan.onchange = st.fig.onchange = () => st.dirty = true;
+  st.setSplit(.5, 'split');
+  live.push(st);
+}
+function ensure(st){
+  if (st.sets) return;
+  const m = M.parts[st.S.p];
+  st.sets = {now: prep(m.now), new: prep(m.new)};
+  const all = new Set(); for (const k of ['now','new']) for (const it of st.sets[k]){ if (it.img) all.add(it.img); if (it.imgs) it.imgs.forEach(i => all.add(i)); }
+  Promise.all([...all].map(i => i.decode ? i.decode().catch(() => 0) : 0)).then(() => { st.ready = true; st.dirty = true; st.el.querySelector('.loading').hidden = true; });
+}
+const io = new IntersectionObserver(es => { for (const e of es){ const st = live.find(s => s.el === e.target); st.vis = e.isIntersecting; if (st.vis) ensure(st); } }, {rootMargin:'300px'});
+live.forEach(st => io.observe(st.el));
+let T = 0, last = performance.now();
+function frame(now){
+  const dt = Math.min(.1, (now-last)/1000); last = now;
+  for (const st of live){
+    if (!st.vis || !st.ready) continue;
+    const on = st.pan.checked;
+    if (!on && !st.dirty) continue;
+    if (on){ st.t0 += dt; st.cam = 210-210*Math.cos(st.t0*.16); }
+    const g = st.g, W = VW*U, H = VH*U, sx = Math.round(st.split*W);
+    if (sx > 0){ g.save(); g.beginPath(); g.rect(0, 0, sx, H); g.clip(); drawSet(g, st.sets.now, st.cam, st.t0, on, st.fig.checked); g.restore(); }
+    if (sx < W){ g.save(); g.beginPath(); g.rect(sx, 0, W-sx, H); g.clip(); drawSet(g, st.sets.new, st.cam, st.t0, on, st.fig.checked); g.restore(); }
+    st.dirty = false;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>

@@ -13,6 +13,7 @@ import { bridgeFaceSprite, waterDecor } from './art';
 import { BG_GOLDEN } from './section-c';
 import { C_AMSTEL, C_BLAUWBRUG, C_BRIDGE_END, C_BRIDGE_Y, C1_W, G, terrainC1, WATER_Y } from './terrain';
 import { c1Floor, c1FloorDecor } from './floor/c1/index';
+import { amsCanal, LAMP_GULLS } from './canal/index';
 
 const SPAN = 128;
 const [BB_X, BB_LEN, BB_H] = C_BLAUWBRUG;
@@ -100,6 +101,8 @@ export const sectionC1: SectionDef = {
   decor,
   // The perspective floor (docs/design/floor.md §12; its builder's folder floor/c1/; off until its switch is on).
   floor: c1Floor(decor),
+  // The canal scene (docs/api/canal.md; `?canal=0` draws the scenery above): the gull on the kerbside lamp (920).
+  canal: amsCanal('c1', undefined, { depth: LAMP_GULLS }),
   // Tier 4: the decor this section draws and the fatbike pairs of its last squad.
   art: ['enemy/fatbike-youth-pair', ...new Set(decor.map((d) => d.sprite)), ...secretArt('c1')],
   playerStart: { x: 100, y: C_BRIDGE_Y },

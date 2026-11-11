@@ -2,9 +2,8 @@ import type { Color } from './color';
 import { BLACK, toCss, WHITE } from './color';
 import type { BitmapFont, Glyph, GlyphDensity, HdTextPass } from './font';
 import { GLYPH_ATLAS_COLS, getFont, glyphAtlas, glyphDensity, hdAtlasCell, hdTextPasses, layoutText, textPasses, textScale } from './font';
-import type { PixelBuffer } from './pixel';
-import { traceLine } from './pixel';
-import type { DrawOpts, Frame, ParallaxOpts, Renderer, TextOpts } from './render';
+import { PixelBuffer, traceLine } from './pixel';
+import type { DrawOpts, Frame, ParallaxOpts, Renderer, RowsDraw, RowsTexture, TextOpts } from './render';
 import { SURFACE_ROAD, SURFACE_SKY, VIEW_H, VIEW_W } from './render';
 import type { LineEnds, Part, Placement, SubpixelMode } from './render-common';
 import {
@@ -18,6 +17,7 @@ import {
   lowRes,
   reducedFor,
   reductionSource,
+  rowShift,
   parallaxOrigin,
   placePart,
   solidColor,
@@ -211,6 +211,22 @@ function upload(buf: PixelBuffer, flipX: boolean, flipY: boolean, tint: Color | 
   ctx.putImageData(img, 0, 0, 0, 0, w, h);
   return c;
 }
+
+/**
+ * A texture the caller owns (render.ts `RowsTexture`; the canal scenery, docs/api/canal.md): the
+ * buffer uploaded once into its own canvas, outside every renderer's cache and budget. The caller
+ * may drop the buffer and keeps the texture as long as it draws it.
+ */
+export function canvasTexture(buf: PixelBuffer): RowsTexture {
+  return { w: buf.w, h: buf.h, tex: upload(buf, false, false, null) };
+}
+
+/**
+ * The canal scenery's shear, as a canvas transform: a sub-pixel bias so the nearest sample of row j
+ * (at its centre) lands on floor(shift) as the software renderer's row copy does (a GPU may round
+ * its last bits either way; this keeps the tie away from the pixel edge).
+ */
+const SHEAR_BIAS = 1 / 64;
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -415,6 +431,7 @@ export class CanvasRenderer implements Renderer {
   }
 
   end(): void {
+    this.rowsEnd();
     this.setAlpha(1);
     this.setAdd(false);
     // Spend what is left of the scaling budget on sprites that were drawn from 1×.
@@ -595,6 +612,91 @@ export class CanvasRenderer implements Renderer {
       }
       if (!repeatY) break;
     }
+  }
+
+  /** The scratch strip of the sheared `rows` draws at res ≠ d (one strip row per image row of the screen; grown when needed). */
+  private shearStrip: AnyCanvas | null = null;
+  private shearCtx: AnyContext | null = null;
+  /** The strip's pending rows [stripR0, stripR1) (image rows of the screen) and their k / d (0: nothing pending). */
+  private stripR0 = 0;
+  private stripR1 = 0;
+  private stripM = 0;
+
+  /**
+   * The canal scenery (render.ts `rows`). One speed: one `drawImage` at whole backbuffer px. A
+   * shear at res = d: ONE `drawImage` under a transform with an x shear (image row j's centre moves
+   * by the shift of row j). A shear at res ≠ d: ONE sheared `drawImage` into a scratch strip (one
+   * strip row per image row, k / d backbuffer px per image px across); the strip is drawn k / d rows
+   * tall at `rowsEnd` (one draw per layer), so every image row stays one rigid row as in the
+   * software renderer.
+   */
+  rows(img: PixelBuffer | RowsTexture, d: number, x: number, y: number, o: RowsDraw): void {
+    const W = img.w;
+    const H = img.h;
+    if (W === 0 || H === 0) return;
+    const k = this.k;
+    const m = k / d;
+    const left = Math.round(x * k);
+    const top = Math.round(y * k);
+    const cw = this.canvas.width;
+    const a0 = left - rowShift(o, 0, k);
+    const a1 = left - rowShift(o, H - 1, k);
+    if ((a0 >= cw && a1 >= cw) || (a0 + W * m <= 0 && a1 + W * m <= 0)) return;
+    const src: CanvasImageSource = (img instanceof PixelBuffer ? this.variant(img, false, false, null, 'pixel') : img.tex) as CanvasImageSource;
+    if (o.s0 === o.s1 || m === 1) this.rowsEnd();
+    this.setAlpha(1);
+    this.setAdd(false);
+    const ctx = this.ctx;
+    if (o.s0 === o.s1) {
+      ctx.drawImage(src, a0, top, W * m, H * m);
+      return;
+    }
+    // Row j's shift is A + B·j (before the floor): A at the image's first row.
+    const n = Math.max(o.rows - 1, 1);
+    const B = (o.cam * k * (o.s1 - o.s0)) / n;
+    const A = (o.cam * (o.s0 + ((o.s1 - o.s0) * o.j0) / n) + o.add) * k;
+    // Device x = m·u − B·v + E: at row centre v = j + ½ the sample u lands on (X − left + A + B·j − wrap + bias) / m.
+    const E = B / 2 + 0.5 + left - A + o.wrap - SHEAR_BIAS;
+    if (m === 1) {
+      ctx.setTransform(1, 0, -B, 1, E, top);
+      ctx.drawImage(src, 0, 0);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      return;
+    }
+    if (this.stripM !== 0 && this.stripM !== m) this.rowsEnd();
+    const r0 = Math.round(top / m);
+    const sh = Math.ceil(this.canvas.height / m) + 1;
+    if (!this.shearStrip || this.shearStrip.width < cw || this.shearStrip.height < sh) {
+      this.shearStrip = makeCanvas(Math.max(cw, this.shearStrip?.width ?? 0), Math.max(sh, this.shearStrip?.height ?? 0));
+      this.shearCtx = context(this.shearStrip);
+    }
+    const sc = this.shearCtx as AnyContext;
+    sc.setTransform(m, 0, -B, 1, E, r0);
+    sc.drawImage(src, 0, 0);
+    sc.setTransform(1, 0, 0, 1, 0, 0);
+    if (this.stripM === 0) {
+      this.stripM = m;
+      this.stripR0 = r0;
+      this.stripR1 = r0 + H;
+    } else {
+      this.stripR0 = Math.min(this.stripR0, r0);
+      this.stripR1 = Math.max(this.stripR1, r0 + H);
+    }
+  }
+
+  /** The end of a canal layer (render.ts `rowsEnd`): the strip's pending rows go to the backbuffer, k / d rows each. */
+  rowsEnd(): void {
+    const m = this.stripM;
+    if (m === 0 || !this.shearStrip) return;
+    this.stripM = 0;
+    const cw = this.canvas.width;
+    const r0 = Math.max(0, this.stripR0);
+    const r1 = Math.min(this.shearStrip.height, this.stripR1);
+    if (r1 <= r0) return;
+    this.setAlpha(1);
+    this.setAdd(false);
+    this.ctx.drawImage(this.shearStrip, 0, r0, cw, r1 - r0, 0, r0 * m, cw, (r1 - r0) * m);
+    (this.shearCtx as AnyContext).clearRect(0, r0, cw, r1 - r0);
   }
 
   fade(c: Color, alpha: number): void {
