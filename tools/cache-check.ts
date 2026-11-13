@@ -63,7 +63,7 @@ async function bootState(page: Page): Promise<BootState | null> {
 async function visit(ctx: BrowserContext, url: string, timeout: number, errors: string[], label: string): Promise<{ page: Page; ms: number }> {
   const page = await ctx.newPage();
   // The password gate in index.html.
-  page.on('dialog', (d) => void d.accept('SW4N'));
+  page.on('dialog', (d) => void d.accept('6767'));
   page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
   const t0 = Date.now();
   await page.goto(url);

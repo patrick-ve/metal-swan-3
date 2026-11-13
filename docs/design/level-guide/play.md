@@ -49,7 +49,7 @@ A mission in the campaign also needs: `CAMPAIGN_MISSIONS`, `FPS_ROUTE` and `miss
 | A frame at a player x | `npm run shot -- --mission <id> --section <k> --x <x> --ticks 40 --god --char vincent --res 4 --art 4 --out <file>` (also `--res 2`, `--res 1 --art 1`, `--canal 0` for the scenery without the canal scene) |
 | A contact sheet of a play-through | add `--bot --every 240 --count 12` |
 | The browser smoke test | `npm run smoke -- --url http://127.0.0.1:4173/ --query "mission=<id>&god=1"` |
-| Dev server; production preview | `npm run dev`; `npm run build && npm run preview -- --port 4173 --host 127.0.0.1 --strictPort` (the page asks for the password `SW4N`) |
+| Dev server; production preview | `npm run dev`; `npm run build && npm run preview -- --port 4173 --host 127.0.0.1 --strictPort` (the page asks for the password `6767`) |
 | What CI runs on a push to `main` | `.github/workflows/pages.yml`: `npm test`, `npm run build`, smoke, `npm run cache-check`, deploy |
 
 ## Rules that bind a level builder

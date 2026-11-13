@@ -14,7 +14,7 @@
  * It opens headless Chromium (Playwright; without `--gpu` WebGL2 runs on SwiftShader, which
  * Playwright enables by itself; `--gpu` adds the flags of tools/perf.ts for the real GPU), loads the
  * game with `--query` (default `mission=rally`; `art=`, `players=`, `lap=`, `cam=`, `seed=` work as
- * in the game), answers the SW4N password dialog, clicks the canvas (the gesture), waits for the
+ * in the game), answers the 6767 password dialog, clicks the canvas (the gesture), waits for the
  * RallyScene, FAILS when `window.__ms3.rally.gl.ok` is false (the reason is printed), holds
  * `--keys` (e.g. `KeyZ` = FIRE = gas), waits until `--ticks` race ticks after GO have passed, and
  * screenshots `#game` into `--out`. With `--url` it uses a running server; else it starts a Vite dev
@@ -359,7 +359,7 @@ async function main(): Promise<void> {
     browser = await chromium.launch({ headless: !args.headed, args: args.gpu ? GPU_ARGS : [] });
     const page = await browser.newPage({ viewport: args.size, deviceScaleFactor: args.dpr });
     gamePage = page;
-    page.on('dialog', (d) => void d.accept('SW4N'));
+    page.on('dialog', (d) => void d.accept('6767'));
     page.on('pageerror', (e) => summary.pageErrors.push(e.message));
     page.on('console', (m) => {
       if (m.type() === 'error') summary.consoleErrors.push(m.text().slice(0, 300));

@@ -261,7 +261,7 @@ async function main(): Promise<void> {
     browser = await chromium.launch({ headless: !args.headed });
     const page = await browser.newPage({ viewport: args.viewport, deviceScaleFactor: args.dpr });
     // The password gate in index.html.
-    page.on('dialog', (d) => void d.accept('SW4N'));
+    page.on('dialog', (d) => void d.accept('6767'));
     page.setDefaultTimeout(args.timeout);
     const seen = new Set<string>();
     page.on('console', (m) => {
