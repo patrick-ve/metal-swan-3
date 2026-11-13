@@ -1,16 +1,16 @@
 /**
  * Content manifest smoke tests: every module loads, and every registered entity id spawns and
  * runs 300 ticks on a flat test terrain (next to an invulnerable player) without errors. The boot's
- * set and the lazy mission `oat` (docs/design/oat.md §11: its entities count too, so it loads first).
+ * set and the lazy mission `sewers` (docs/design/sewers.md §1: its entities count too, so it loads first).
  */
 import { describe, expect, it } from 'vitest';
-import { isLazyContent, isOatContent, loadContent } from '../../src/game/content/index';
+import { isLazyContent, isSewersContent, loadContent } from '../../src/game/content/index';
 import { getEntityMeta, hasMission, listEntities } from '../../src/game/registry';
 import { FLOOR, TestWorld } from './helpers';
 
-const oat = await loadContent(isOatContent);
+const sewers = await loadContent(isSewersContent);
 const base = await loadContent((id) => !isLazyContent(id));
-const report = { loaded: [...oat.loaded, ...base.loaded], failed: [...oat.failed, ...base.failed] };
+const report = { loaded: [...sewers.loaded, ...base.loaded], failed: [...sewers.failed, ...base.failed] };
 const ids = listEntities();
 
 describe('content modules', () => {
@@ -24,8 +24,8 @@ describe('content modules', () => {
       expect(ids, id).toContain(id);
     }
     expect(hasMission('m0')).toBe(true);
-    expect(hasMission('oat')).toBe(true);
-    expect(oat.loaded).toContain('missions/oat');
+    expect(hasMission('sewers')).toBe(true);
+    expect(sewers.loaded).toContain('missions/sewers');
   });
 });
 

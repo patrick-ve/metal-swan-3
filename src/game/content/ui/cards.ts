@@ -4,14 +4,14 @@
  * newspaper headline of the tally. m0–m5 share one line map of Lowmere and Crescendia; each card
  * puts its blinking dot on its own region; ams has its own map of the Amsterdam canal ring; the
  * ring (MISSION 2, docs/design/ring.md §1; dormant) a map of the A10 ring road with its dot on the
- * on-ramp at A10 Oost; oat (MISSION 2, docs/design/oat.md §1.1; missions/oat/card.ts: here because
- * the oat chunk is lazy) its own map of the old city; the rally (MISSION 3); oldenzaal (MISSION 5,
+ * on-ramp at A10 Oost; sewers (MISSION 2, docs/design/sewers.md §1; missions/sewers/card.ts: here
+ * because the sewers chunk is lazy) its line of five stops; the rally (MISSION 3); oldenzaal (MISSION 5,
  * docs/design/oldenzaal.md §1) a map of the flight east to Twente with its dot on the town.
  *
  * Mission modules may replace a card with their own `defineMissionCard` (the last one wins).
  */
 import { defineMissionCard, type MapLine, type MissionCard } from '../../scenes/flow-data';
-import { OAT_CARD } from '../missions/oat/card';
+import { SEWERS_CARD } from '../missions/sewers/card';
 
 // ---------------------------------------------------------------------------------------------
 // The line map (screen px; the intro card draws it in teal, segment by segment)
@@ -218,15 +218,15 @@ export const MISSION_CARDS: readonly MissionCard[] = [
     startSub: 'START!',
     map: { lines: RING_LINES, dot: [258, 92], labels: RING_LABELS },
   },
-  // Level 2 since 2026-10-31 (docs/design/oat.md §1.1): the day out in the old city (lazy mission).
-  OAT_CARD,
+  // Level 2 since 2026-11-12 (docs/design/sewers.md §1): De Wallen by night and the sewer (lazy mission).
+  SEWERS_CARD,
   {
-    // Level 3 since 2026-10-31 (docs/design/oat.md §1; level 2 from 2026-10-22, docs/design/rally.md
-    // §1.1): the 3D race on the A10, after the oat taxi ride. English like every card. The headline is
+    // Level 3 since 2026-10-31 (level 2 from 2026-10-22, docs/design/rally.md §1.1; docs/design/sewers.md
+    // §1): the 3D race on the A10, after the sewers taxi at dawn. English like every card. The headline is
     // the 1st-place one (wave B picks it by the best player's place). Gusto voices both lines (group
     // 'boot'; the card waits for him: mission-intro.ts RALLY_VOICE_HOLD); the announcer's line plays
     // as the card's frame freezes, before it breaks into 3D (rally-glitch.ts). The first line and
-    // the announce changed with the oat wave (spec §0 #61): new takes in wave C. The ring's card
+    // the announce changed when the race became level 3 (2026-10-31): new takes pending. The ring's card
     // above stays for its URL start (`?mission=ring`).
     id: 'rally',
     label: 'MISSION 3',
@@ -241,7 +241,7 @@ export const MISSION_CARDS: readonly MissionCard[] = [
     map: { lines: RALLY_LINES, dot: [198, 113], labels: RING_LABELS },
   },
   {
-    // Level 5 since 2026-10-31 (docs/design/oat.md §1; docs/design/oldenzaal.md §1): after the
+    // Level 5 since 2026-10-31 (docs/design/oldenzaal.md §1): after the
     // first-person floors and the story card.
     id: 'oldenzaal',
     label: 'MISSION 5',

@@ -1,5 +1,5 @@
 /**
- * Mission `rally`, level 3 (since the oat wave, docs/design/oat.md §1): BINNEN DE RING, a 3D race on the A10 (docs/design/rally.md;
+ * Mission `rally`, level 3 (since the oat wave, docs/design/oat.md (deleted; git show eb3316a) §1): BINNEN DE RING, a 3D race on the A10 (docs/design/rally.md;
  * docs/api/rally.md). Ids and constants shared by the sim, the scenes, the content and the tools.
  *
  * `rally` is NOT a registered MissionDef (spec §12.3: the sorted ids would pull it into

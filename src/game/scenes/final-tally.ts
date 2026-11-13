@@ -11,7 +11,7 @@
  * ticks; the credits song plays on. Then name entry (if the score qualifies), the high scores and the
  * title. The lake is the ending's (lake.ts, at the screen density); its 4× frames go on exit.
  *
- * A euro run (docs/design/oat.md §7.2, §7.6, §7.7; `session.euroRun`) shows euros: LIVES LEFT
+ * A euro run (docs/design/budget.md §7.2, §7.6, §7.7; `session.euroRun`) shows euros: LIVES LEFT
  * € 100,00 each, ALL GOLDEN RECORDS € 200,00, ONE-TAKE WONDER € 1.000,00, × the difficulty factor
  * at the total, booked into the budget (`BONUS`); then FINAL BUDGET and the stamp
  * `JAARREKENING: OVERSCHOT` (the budget at least the € 100,00 every player started with) or
@@ -97,7 +97,7 @@ export class FinalTallyScene implements Scene {
   private t = 0;
   private doneAt = -1;
   private leaving = false;
-  /** A euro run (docs/design/oat.md §7.6): euros, the FINAL BUDGET and the JAARREKENING stamp. */
+  /** A euro run (docs/design/budget.md §7.6): euros, the FINAL BUDGET and the JAARREKENING stamp. */
   private euro = false;
 
   constructor(app: GameApp) {

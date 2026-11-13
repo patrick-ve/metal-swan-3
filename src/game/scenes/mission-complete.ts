@@ -16,7 +16,7 @@
  * 4. `PRESS START` (C, y 206); it moves on by itself 600 ticks after the page opened. The next
  *    mission's intro card follows, or the ending after the last mission (flow.ts `missionDone`).
  *
- * The euro budget (docs/design/oat.md §7.2, §7.6; decision 47): in a euro play (ams, oldenzaal, the
+ * The euro budget (docs/design/budget.md §7.2, §7.6; decision 47): in a euro play (ams, oldenzaal, the
  * rally) the same page shows EURO lines: each bonus at legacy points ÷ 500 (the rally's prize
  * money as its lines give it: `TallyLine.cents`), × the difficulty factor at the TOTAL, which is
  * booked into the budget (`BONUS` / `PRIJZENGELD`); the points still count into the score as
@@ -82,7 +82,7 @@ export interface TallyLine {
   points: number | null;
   note?: string;
   /**
-   * The line's euros in cents (docs/design/oat.md §7.8: the rally's prize money; signed). Absent:
+   * The line's euros in cents (docs/design/budget.md §7.8: the rally's prize money; signed). Absent:
    * a euro page pays the bonus at `points` ÷ 500 (`bonusCents`); null = missed.
    */
   cents?: number | null;
@@ -174,7 +174,7 @@ export function tallyLines(runner: TallyRunner, session: GameSession, slot: Play
   // its hostage star is free (below): a mission's star ceiling never depends on having hostages.
   const none = noHostages(runner);
   if (!none) {
-    // A euro play names the euros per hostage (docs/design/oat.md §7.2: points ÷ 500).
+    // A euro play names the euros per hostage (docs/design/budget.md §7.2: points ÷ 500).
     const each = session.economy === 'euro' ? euroText(bonusCents(S.hostageBonus), { compact: true }) : String(S.hostageBonus);
     lines.push({ label: `HOSTAGES ${slot.rescued} X ${each}`, points: slot.rescued * S.hostageBonus });
     // STANDING OVATION: 1P every hostage of the route; 2P the two tallies together, 25,000 each.
@@ -243,7 +243,7 @@ export class MissionCompleteScene implements Scene {
   private t = 0;
   private leaving = false;
   private mul = 1;
-  /** The page shows euros (docs/design/oat.md §7.2). */
+  /** The page shows euros (docs/design/budget.md §7.2). */
   private euro = false;
   /** Tick at which the page finished (every line, the totals and the stars shown). */
   private doneAt = -1;

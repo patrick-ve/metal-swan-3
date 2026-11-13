@@ -1,8 +1,8 @@
 /**
- * A PLACEHOLDER strip source (docs/design/oat.md §8.6; STRIPS, wave A): coloured canal houses with
+ * A PLACEHOLDER strip source (docs/design/oat.md (deleted; git show eb3316a) §8.6; STRIPS, wave A): coloured canal houses with
  * gables (step, neck, bell, spout, cornice), windows, doors and shop fronts, lit from the left, with a
- * dark set (03:00: black brick, a few warm windows, red tubes). It is not the façade grammar (GRAMMAR's
- * `oat-facade` source replaces it): it exists so the store, the view and the tools can be tested and
+ * dark set (03:00: black brick, a few warm windows, red tubes). It is not a façade grammar (a real
+ * source replaces it): it exists so the store, the view and the tools can be tested and
  * looked at before the grammar lands, and as a stand-in source for any section (`source:
  * PLACEHOLDER_STRIP_SOURCE`). It paints in the strip space (space.ts) exactly as a real source must:
  * lots planned in world x, mapped with the plane's scale; heights in world px × s.

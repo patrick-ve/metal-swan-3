@@ -37,7 +37,7 @@ export const OLDENZAAL: MissionDef = {
   bossMusic: OZ_SONG.boss,
   start: OZ_SECTION.a,
   bossSection: OZ_SECTION.c,
-  // Level 5 since the oat wave (docs/design/oat.md §0 #61; a new take in wave C).
+  // Level 5 since the oat wave (docs/design/oat.md (deleted; git show eb3316a) §0 #61; a new take in wave C).
   announce: 'MISSIE VIJF. BLIJF BIJ ELKAAR, ZWAANTJES!',
   sections: {
     [OZ_SECTION.a]: sectionOzA,
@@ -81,7 +81,7 @@ export const OLDENZAAL: MissionDef = {
   art: ['item/', 'weapon/', 'fx/', 'ui/', ...OZ_ART_PREFIXES],
   // Sampled music, sfx and voices (ElevenLabs, wave B); until then the synth plays everything.
   audioGroup: OZ_AUDIO_GROUP,
-  // The game-wide budget (docs/design/oat.md §7.1; BUDGET reads it).
+  // The game-wide budget (docs/design/budget.md §7.1; BUDGET reads it).
   economy: 'euro',
 };
 

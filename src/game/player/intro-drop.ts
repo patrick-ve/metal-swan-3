@@ -34,6 +34,24 @@ export function drawChute(r: Renderer, id: string, frame: number, x: number, y: 
   r.sprite(id, frame, x - (h ? h[0] : 0), y - CHUTE_HANG_Y - (h ? h[1] : 0), chuteOpts);
 }
 
+/**
+ * The plain FALL of a section's own intro drop (`SectionDef.introDrop` with `chute: false`;
+ * docs/design/sewers.md §5.2, the drop down the burst shaft into sewers-c): the same rules as the
+ * chute drop, but no canopy and no forced pistol (the hero keeps his weapon); the Player shows the
+ * fall pose. Same status id, so everything that asks for the intro drop sees this one too.
+ */
+export const INTRO_FALL: StatusEffectDef = {
+  id: INTRO_DROP_ID,
+  ticks: Infinity,
+  speed: 0,
+  gravity: 0,
+  noJump: true,
+  noBomb: true,
+  noCrouch: true,
+  noMount: true,
+  onHit: () => true,
+};
+
 export const INTRO_DROP: StatusEffectDef = {
   id: INTRO_DROP_ID,
   ticks: Infinity,

@@ -243,7 +243,7 @@ const BUDGET_PLUS: Color = PAL.green[3];
 const BUDGET_GREY: Color = PAL.stone[3];
 
 /**
- * The budget line of a euro play (docs/design/oat.md §7.5, the bank-app look): after the tag,
+ * The budget line of a euro play (docs/design/budget.md §7.5, the bank-app look): after the tag,
  * `BUDGET` (small, grey), the amount (green at ≥ € 0, red below) rolling to its new value over 20
  * ticks (budget/display.ts), and a small `+€0,15` / `-€95` pop beside it. P2 mirrored: from x 380
  * leftward the tag, the amount, `BUDGET`, the pop.
@@ -282,7 +282,7 @@ function drawPanel(r: Renderer, h: HudInput, s: PlayerSlot): void {
     return;
   }
   // Score (always shown, also on the CONTINUE? and GAME OVER screens): the tag, then 7 digits at x 16.
-  // A euro play (docs/design/oat.md §7.5) shows the budget line instead.
+  // A euro play (docs/design/budget.md §7.5) shows the budget line instead.
   txt(r, tag, edge, 3, col, align);
   if (h.session.economy === 'euro') drawBudget(r, s, left, tag, h.ticks);
   else {
@@ -650,7 +650,7 @@ function drawPopups(r: Renderer, hud: HudState): void {
   for (let i = 0; i < list.length; i++) {
     const p = list[i];
     const rise = Math.round(((40 - p.ticks) * 12) / 40);
-    // A cost of the euro budget (`-€95`, docs/design/oat.md §7.5) rises in red.
+    // A cost of the euro budget (`-€95`, docs/design/budget.md §7.5) rises in red.
     worldText.color = p.text.charCodeAt(0) === 45 ? RED : GOLD;
     r.text(p.text, Math.round(p.x), Math.round(p.y) - rise, worldText);
   }

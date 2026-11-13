@@ -27,10 +27,10 @@
  *   public/audio/rally/): FILE FM (the DJ's Dutch lines, the jingles, the three songs). Lazy; the
  *   card's preload and RallyScene load it, the race's end releases it. The game registers it with
  *   its long songs STREAMED (`SampleSong.stream`, content/samples/rally.ts `rallySampleGroup`).
- * - `'mission:oat'`: mission oat, level 2 since 2026-10-31 (docs/design/oat.md §9.3; public/audio/
- *   oat/): its Dutch voices, songs and sfx. Lazy like the rally (the oat chunk loads with the
+ * - `'mission:sewers'`: mission sewers, level 2 since 2026-11-12 (docs/design/sewers.md §7; public/audio/
+ *   sewers/): its Dutch voices, songs and sfx. Lazy like the rally (the sewers chunk loads with the
  *   MISSION 2 card); the game registers it MERGED with the ams group's sfx and voices (content/
- *   samples/oat.ts `oatSampleGroup`: the reused handhaver, rider and youth takes play in oat).
+ *   samples/sewers.ts `sewersSampleGroup`: the returning rider and youth takes play in sewers).
  *
  * File paths are relative to `public/audio/` (e.g. `'ams/sfx/ams-bell-1.mp3'`). The data is
  * written by the audio tool into `src/game/content/samples/manifest.ts`.
@@ -95,7 +95,7 @@ export interface SampleGroup {
  * The sample groups of the game (the audio tool's group names, tools/audio/spec-types.ts, come
  * from this list). New groups are appended: the manifest keeps this order.
  */
-export const SAMPLE_GROUPS = ['boot', 'mission:ams', 'mode:fps', 'mission:oldenzaal', 'mission:ring', 'mission:rally', 'mission:oat'] as const;
+export const SAMPLE_GROUPS = ['boot', 'mission:ams', 'mode:fps', 'mission:oldenzaal', 'mission:ring', 'mission:rally', 'mission:sewers'] as const;
 
 /** One of `SAMPLE_GROUPS`. */
 export type SampleGroupId = (typeof SAMPLE_GROUPS)[number];

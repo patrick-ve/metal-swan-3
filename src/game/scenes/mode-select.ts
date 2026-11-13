@@ -132,7 +132,7 @@ export class ModeSelectScene implements Scene {
     const clock = titleClock() + this.t;
     drawBase(r, clock);
     veil(r, 0.6);
-    // The best budget of the `budgets` table (docs/design/oat.md §7.7).
+    // The best budget of the `budgets` table (docs/design/budget.md §7.7).
     centerText(r, `HI ${euroText(this.app.budgets.top)}`, 4, UI_WHITE);
     drawStencilTitle(r, 'SELECT OPERATION', 36);
     // The select screen comes next: its HD furniture builds while this menu shows.

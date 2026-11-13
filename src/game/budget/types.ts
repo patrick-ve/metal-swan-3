@@ -1,6 +1,6 @@
 /**
- * THE BUDGET CONTRACT (the game-wide euro budget; docs/design/oat.md §7; docs/api/oat.md "Budget",
- * docs/api/budget.md). CORE wrote it (oat wave A); BUDGET implements the folder behind it
+ * THE BUDGET CONTRACT (the game-wide euro budget; docs/design/budget.md §7; docs/api/budget.md).
+ * CORE wrote it; BUDGET implements the folder behind it
  * (ledger.ts, pay.ts, euro-table.ts, tax.ts, scores.ts, the receipt) and the hooks in the shared
  * files (session.ts `PlayerSlot.cents`, events.ts, runner.ts, hud.ts, the screens). Types only.
  *
@@ -13,7 +13,7 @@
  *   negatives, emits a `pay` event, raises HUD pop-ups (never entities: entity ids stay as they
  *   were) and counts into a fixed set of categories (≤ 32 per slot per mission, no allocation per
  *   tick) for the kassabon.
- * - A mission opts in with `MissionDef.economy: 'euro'` (ams, oat, oldenzaal); without it nothing
+ * - A mission opts in with `MissionDef.economy: 'euro'` (ams, sewers, oldenzaal); without it nothing
  *   changes (the dormant ring, m0–m5). No `world.rng` call is added on a shared path.
  */
 
@@ -32,7 +32,7 @@ export const DISPLAY_MAX_CENTS: Cents = 9_999_999;
  * identity sims, but one `ams` god run alone earns € 2.158 gross (kills pay points ÷ 50, not ÷ 500),
  * and at € 1.000 the extend changed `ams-normal-1`. BUDGET tuned them to € 5.000 and € 15.000;
  * FIX-A measured a strong run (god sims + the flawless tallies + a won race) and set the second to
- * € 5.500, so a strong run reaches it by the fps floors once oat is full (€ 15.000 was never
+ * € 5.500, so a strong run reaches it by the fps floors once level 2 is full (€ 15.000 was never
  * reached; docs/api/budget.md "Extends", spec §7.1). No extend fires inside one `ams` run (€ 2.066).
  */
 export const EXTEND_CENTS: readonly Cents[] = [500_000, 550_000];

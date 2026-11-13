@@ -222,7 +222,7 @@ export class MissionRunner {
       if (kind === 'gag') this.audio.say?.(text, speaker);
       else this.audio.say?.(text, speaker, { important: true });
     };
-    // The euro budget (docs/design/oat.md §7.2): in a euro play a callout that names its points
+    // The euro budget (docs/design/budget.md §7.2): in a euro play a callout that names its points
     // (`CAUGHT NAPPING +100`) pays its award in euros and names the euros instead (HUD text only).
     const callout = this.hud.callout.bind(this.hud);
     this.hud.callout = (text, o) => callout(this.session.economy === 'euro' && this.world ? claimCallout(this.world, text) : text, o);
@@ -231,7 +231,7 @@ export class MissionRunner {
   /** Load the first section and show the mission banner. */
   start(): void {
     const m = this.mission;
-    // The play's economy (docs/design/oat.md §7.1): `MissionDef.economy` 'euro' (ams, oat,
+    // The play's economy (docs/design/budget.md §7.1): `MissionDef.economy` 'euro' (ams, sewers,
     // oldenzaal) pays the budget; every other mission keeps its points only.
     this.session.setEconomy(m.economy === 'euro' ? 'euro' : 'points');
     if (this.continueMission) this.session.missionId = m.id;
@@ -318,6 +318,8 @@ export class MissionRunner {
     // Opt-in: the light pass of a section with a light config (none for every other section).
     this.light?.dispose();
     this.light = MissionLight.forSection(def, world, seed, this.settings.reduceFlashes ? REDUCED_FLASH : 1);
+    // The canal scene's lit stack and entity-only darkness ask this pass (docs/api/canal.md "A lit section").
+    if (this.view.canal) this.view.canal.light = this.light;
     if (this.light) {
       const light = this.light;
       this.view.backHook = (r, tick) => light.drawBack(r, tick, this.artDensity);
@@ -335,7 +337,10 @@ export class MissionRunner {
     for (const slot of this.session.slots) if (slot.joined) slot.mission.route.push(def.id);
     this.players = [];
     this.ctx = new SectionCtx(this, def);
-    const start = entry ?? (this.bossRush && def.bossStart ? def.bossStart : def.playerStart);
+    let start = entry ?? (this.bossRush && def.bossStart ? def.bossStart : def.playerStart);
+    // OPT-IN (SectionDef.introDrop, docs/design/sewers.md §5.2): the section's own drop lands at its x.
+    const sectionDrop = def.introDrop && !this.bossRush && !this.continueMission && !def.startVehicle ? def.introDrop : null;
+    if (sectionDrop) start = { x: sectionDrop.x, y: start.y };
     this.checkpoint = { x: start.x, y: start.y };
     for (const slot of this.session.slots) if (slot.active) this.spawnPlayer(slot, start.x, start.y);
     world.flush();
@@ -346,6 +351,10 @@ export class MissionRunner {
     if (this.introDropPending) {
       this.introDropPending = false;
       if (!def.startVehicle) for (const p of this.players) p.introDrop();
+    } else if (sectionDrop) {
+      // The section's own drop (entered from the last section or by a direct start; never a
+      // respawn or a continue: those do not load the section). A carried vehicle keeps its pilot.
+      for (const p of this.players) p.introDrop({ fromY: sectionDrop.fromY, chute: sectionDrop.chute });
     }
     this.view.prepare(cam.x, cam.y);
     this.wire(world);
@@ -537,7 +546,7 @@ export class MissionRunner {
   // ------------------------------------------------------------------------------- tick
 
   /**
-   * The MATCHA-MOMENT (docs/design/oat.md §6.2; budget/slow.ts): for `ticks` every non-player
+   * The MATCHA-MOMENT (docs/design/oat.md (deleted; git show eb3316a) §6.2; budget/slow.ts): for `ticks` every non-player
    * entity and enemy shot steps on even ticks only (a fixed pattern: deterministic). A second call
    * keeps the longer time. Off (0) in every play that never calls it.
    */
@@ -1156,7 +1165,7 @@ export class MissionRunner {
     const s = this.session.slots[slot];
     if (p ? p.state !== 'out' : !(s.joined && s.gameOver)) return false;
     if (!this.session.continueSlot(slot)) return false;
-    // The toeristenbelasting of a euro play (docs/design/oat.md §7.3): 12,5 % → 20 % of the budget.
+    // The toeristenbelasting of a euro play (docs/design/budget.md §7.3): 12,5 % → 20 % of the budget.
     chargeTouristTax(this.session, s, this.world);
     this.continueTicks[slot] = -1;
     if (!p) p = this.addPlayer(slot, s);

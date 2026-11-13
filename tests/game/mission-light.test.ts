@@ -38,20 +38,21 @@ beforeAll(async () => {
 });
 
 describe('opt-in: off by default', () => {
-  it('only oldenzaal and oat sections register a light config (oat: night passes d, e; day passes a–c1)', async () => {
-    const { loadOatContent } = await import('../../src/game/scenes/oat-route');
-    await loadOatContent();
+  it('only oldenzaal and sewers sections register a light config (sewers: every section, docs/design/sewers.md §2)', async () => {
+    const { loadSewersContent } = await import('../../src/game/scenes/sewers-route');
+    await loadSewersContent();
     for (const mid of listMissions()) {
       const m = getMission(mid);
       if (!m) continue;
       for (const sid of Object.keys(m.sections)) {
-        if (mid === 'oldenzaal' || mid === 'oat') expect(sectionLight(sid), `${mid}/${sid}`).toBeDefined();
+        if (mid === 'oldenzaal' || mid === 'sewers') expect(sectionLight(sid), `${mid}/${sid}`).toBeDefined();
         else expect(sectionLight(sid), `${mid}/${sid}`).toBeUndefined();
-        // Only oat-d and oat-e darken; the oat day sections draw no darkness (spec §8.9).
-        if (mid === 'oat') expect(sectionLight(sid)?.day === true, sid).toBe(sid !== 'oat-d' && sid !== 'oat-e');
+        // The sewer (c, d, e) is dark (spec §5.1, Phase 4: darkness 0.6, the hero glow r 28).
+        if (mid === 'sewers' && /^sewers-[cde]$/.test(sid)) expect(sectionLight(sid)?.darkness, sid).toBe(0.6);
+        if (mid === 'sewers' && /^sewers-[cde]$/.test(sid)) expect(sectionLight(sid)?.heroLight, sid).toBe(28);
       }
     }
-    expect(listMissions()).toContain('oat');
+    expect(listMissions()).toContain('sewers');
   });
 
   it('an ams runner has no pass, no back hook and no row eviction; nothing is bound', async () => {

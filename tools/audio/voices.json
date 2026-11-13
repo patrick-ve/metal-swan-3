@@ -48,6 +48,13 @@
     "preview": 3,
     "savedAt": "2026-10-23T06:19:59.201Z"
   },
+  "gerrit": {
+    "voice_id": "fqpDyObyHFypMTwNEyJD",
+    "name": "MS3 Gouden Gerrit",
+    "generated_voice_id": "fqpDyObyHFypMTwNEyJD",
+    "preview": 3,
+    "savedAt": "2026-11-12T14:29:42.465Z"
+  },
   "gramps": {
     "voice_id": "qPQAwWgeGD5YK7OeYYkb",
     "name": "MS3 Gramps",
@@ -118,6 +125,27 @@
     "preview": 1,
     "savedAt": "2026-10-14T10:39:07.744Z"
   },
+  "sewer-worker": {
+    "voice_id": "YRofCmNrmO0klUMTXmRd",
+    "name": "MS3 Sewer Worker",
+    "generated_voice_id": "YRofCmNrmO0klUMTXmRd",
+    "preview": 2,
+    "savedAt": "2026-11-12T14:29:44.427Z"
+  },
+  "sewers-dealer": {
+    "voice_id": "cApaRBiJwEjqWmIq6GpX",
+    "name": "MS3 Street Hustler",
+    "generated_voice_id": "cApaRBiJwEjqWmIq6GpX",
+    "preview": 1,
+    "savedAt": "2026-11-12T14:29:36.839Z"
+  },
+  "sewers-pimp": {
+    "voice_id": "cxFN0RoXcVKxQigUHs49",
+    "name": "MS3 Flashy Street Boss",
+    "generated_voice_id": "cxFN0RoXcVKxQigUHs49",
+    "preview": 3,
+    "savedAt": "2026-11-12T14:29:39.718Z"
+  },
   "ss": {
     "voice_id": "69LTTc6x75a5tGt2cLSR",
     "name": "MS3 Elite Guard",
@@ -138,6 +166,20 @@
     "generated_voice_id": "9KvJFnMdGGqSbICwSHVN",
     "preview": 1,
     "savedAt": "2026-10-14T10:39:11.482Z"
+  },
+  "stag-tourist": {
+    "voice_id": "02uYy7b6IHfzmQgvDgUo",
+    "name": "MS3 Stag Night Tourist",
+    "generated_voice_id": "02uYy7b6IHfzmQgvDgUo",
+    "preview": 3,
+    "savedAt": "2026-11-12T14:29:48.295Z"
+  },
+  "taxi-driver": {
+    "voice_id": "78UaDAuzWRPUBuqdstg7",
+    "name": "MS3 Night Taxi Driver",
+    "generated_voice_id": "78UaDAuzWRPUBuqdstg7",
+    "preview": 3,
+    "savedAt": "2026-11-12T14:29:46.415Z"
   },
   "tourist": {
     "voice_id": "QoE0qKkPIuI9ZABg45I2",

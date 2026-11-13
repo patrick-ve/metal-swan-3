@@ -16,6 +16,9 @@
 import type { Color } from '../../../engine/color';
 import { PixelBuffer } from '../../../engine/pixel';
 
+/** The 4 × 4 ordered dither (Bayer) of the lit mask: a px is lit where its light · 16 − ½ exceeds its entry. */
+const BAYER4 = new Uint8Array([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]);
+
 export class LightMap {
   readonly w: number;
   readonly h: number;
@@ -196,6 +199,166 @@ export class LightMap {
     }
   }
 
+  /**
+   * Add a CONE of light (a flashlight; docs/design/sewers.md §5.1): apex at world (x, y), axis
+   * `angle` (radians, y down), radius `len`, half-angle `half` (< 90°). Inside the cone the light is
+   * `intensity`; the rim has two dithered bands of `band` radians each (the outer one lights 1 cell
+   * in 4, the inner one 1 in 2, on a world-anchored pattern, so it does not crawl with the camera);
+   * the last `fade` share of the length fades out smoothly. `glow` of `color` is added on top. Each
+   * row is scanned only between the cone's two edges (no per-cell trigonometry).
+   */
+  addCone(x: number, y: number, angle: number, len: number, half: number, intensity: number, color: Color, glow: number, band = 0, fade = 0): void {
+    if (len <= 0.5 || intensity <= 0 || half <= 0) return;
+    const cx = x - this.ox;
+    const cy = y - this.oy;
+    const x0 = Math.max(0, Math.floor(cx - len));
+    const x1 = Math.min(this.w - 1, Math.ceil(cx + len));
+    const y0 = Math.max(0, Math.floor(cy - len));
+    const y1 = Math.min(this.h - 1, Math.ceil(cy + len));
+    if (x1 < x0 || y1 < y0) return;
+    this.count++;
+    const ca = Math.cos(angle);
+    const sa = Math.sin(angle);
+    // Inward normals of the two edges: n1·d ≥ 0 and n2·d ≥ 0 inside.
+    const n1x = Math.sin(angle + half);
+    const n1y = -Math.cos(angle + half);
+    const n2x = -Math.sin(angle - half);
+    const n2y = Math.cos(angle - half);
+    const tOut = Math.tan(half);
+    const tMid = band > 0 ? Math.tan(Math.max(0, half - band)) : tOut;
+    const tIn = band > 0 ? Math.tan(Math.max(0, half - 2 * band)) : tOut;
+    const len2 = len * len;
+    const fadeFrom = fade > 0 ? 1 - fade : 1;
+    const invFade = fade > 0 ? 1 / fade : 0;
+    const invLen = 1 / len;
+    // Cells nearer than the fade's start (squared) skip the square root.
+    const fade2 = fadeFrom * fadeFrom * len2;
+    const g = glow > 0 ? glow * intensity : 0;
+    const cr = (((color >>> 24) & 255) / 255) * g;
+    const cg = (((color >>> 16) & 255) / 255) * g;
+    const cb = (((color >>> 8) & 255) / 255) * g;
+    const L = this.L;
+    const R = this.R;
+    const G = this.G;
+    const B = this.B;
+    const w = this.w;
+    const ox = this.ox;
+    const oy = this.oy;
+    for (let py = y0; py <= y1; py++) {
+      const dy = py + 0.5 - cy;
+      const dy2 = dy * dy;
+      if (dy2 > len2) continue;
+      // The disk's span of this row, then each edge's half-plane.
+      const r = Math.sqrt(len2 - dy2);
+      let lo = -r;
+      let hi = r;
+      if (n1x > 1e-9) lo = Math.max(lo, (-n1y * dy) / n1x);
+      else if (n1x < -1e-9) hi = Math.min(hi, (-n1y * dy) / n1x);
+      else if (n1y * dy < 0) continue;
+      if (n2x > 1e-9) lo = Math.max(lo, (-n2y * dy) / n2x);
+      else if (n2x < -1e-9) hi = Math.min(hi, (-n2y * dy) / n2x);
+      else if (n2y * dy < 0) continue;
+      const a = Math.max(x0, Math.ceil(cx + lo - 0.5));
+      const b = Math.min(x1, Math.floor(cx + hi - 0.5));
+      if (b < a) continue;
+      const row = py * w;
+      const wy = py + oy;
+      for (let px = a; px <= b; px++) {
+        const dx = px + 0.5 - cx;
+        const along = dx * ca + dy * sa;
+        if (along <= 0) continue;
+        const perp = Math.abs(dy * ca - dx * sa);
+        let f = 1;
+        if (perp > along * tIn) {
+          // The rim: the inner band lights every other cell, the outer band one cell in four.
+          const wx = px + ox;
+          if (perp > along * tMid) {
+            if (perp > along * tOut || ((wx | wy) & 1) !== 0) continue;
+          } else if (((wx + wy) & 1) !== 0) continue;
+        }
+        const d2 = dx * dx + dy2;
+        if (invFade > 0 && d2 > fade2) {
+          const k = (1 - Math.sqrt(d2) * invLen) * invFade;
+          if (k <= 0) continue;
+          f = k * k * (3 - 2 * k);
+        }
+        const i = row + px;
+        L[i] += f * intensity;
+        if (g > 0) {
+          R[i] += f * cr;
+          G[i] += f * cg;
+          B[i] += f * cb;
+        }
+      }
+      if (g > 0) {
+        if (a < this.gx0) this.gx0 = a;
+        if (b > this.gx1) this.gx1 = b;
+        if (py < this.gy0) this.gy0 = py;
+        if (py > this.gy1) this.gy1 = py;
+      }
+    }
+  }
+
+  /**
+   * SEWERS (docs/api/canal.md "A lit section"): the LIT MASK of the light summed so far, at density
+   * d (mask px per cell; `out` is (w·d) × (h·d)), in the cell box [x0, x1) × [y0, y1) only: a mask
+   * px is opaque white where its cell's light L ≥ 1, or where L passes the 4 × 4 ordered dither of
+   * its world px (world-anchored: the pattern does not crawl with the camera), else left as it is
+   * (the caller clears). Returns the number of cells with any light.
+   */
+  maskInto(out: PixelBuffer, d: number, x0: number, y0: number, x1: number, y1: number): number {
+    const L = this.L;
+    const w = this.w;
+    const ow = out.w;
+    const o = out.data;
+    // Opaque white as a small integer (stored as 0xffffffff): a double takes the slow store path.
+    // Each px of a cell is written by that cell only, branch-free (the dither is a coin toss per px).
+    let lit = 0;
+    const cx0 = Math.max(0, x0);
+    const cx1 = Math.min(w, x1);
+    const ox = this.ox;
+    for (let cy = Math.max(0, y0), ey = Math.min(this.h, y1); cy < ey; cy++) {
+      const row = cy * w;
+      const wy = (this.oy + cy) * d;
+      const top = cy * d * ow;
+      if (d === 2) {
+        // The common case (the lit layers' tier): four px a cell, no loops.
+        const b0 = (wy & 3) << 2;
+        const b1 = ((wy + 1) & 3) << 2;
+        for (let cx = cx0; cx < cx1; cx++) {
+          const l = L[row + cx];
+          if (l <= 0) continue;
+          lit++;
+          const r0 = top + cx * 2;
+          const r1 = r0 + ow;
+          const t = l >= 1 ? 16 : l * 16 - 0.5;
+          const wx = (ox + cx) * 2;
+          const i0 = wx & 3;
+          const i1 = (wx + 1) & 3;
+          o[r0] = 0 - +(BAYER4[b0 | i0] < t);
+          o[r0 + 1] = 0 - +(BAYER4[b0 | i1] < t);
+          o[r1] = 0 - +(BAYER4[b1 | i0] < t);
+          o[r1 + 1] = 0 - +(BAYER4[b1 | i1] < t);
+        }
+        continue;
+      }
+      for (let cx = cx0; cx < cx1; cx++) {
+        const l = L[row + cx];
+        if (l <= 0) continue;
+        lit++;
+        const t = l >= 1 ? 16 : l * 16 - 0.5;
+        const wx = (ox + cx) * d;
+        const X = top + cx * d;
+        for (let sy = 0; sy < d; sy++) {
+          const r = X + sy * ow;
+          const b = ((wy + sy) & 3) << 2;
+          for (let sx = 0; sx < d; sx++) o[r + sx] = 0 - +(BAYER4[b | ((wx + sx) & 3)] < t);
+        }
+      }
+    }
+    return lit;
+  }
+
   /** Summed light of the cell at world (x, y) (tests; 0 off the map). */
   lightAt(x: number, y: number): number {
     const px = Math.floor(x - this.ox);
@@ -216,8 +379,14 @@ export class LightMap {
     const out = this.dark.data;
     const rgb = (tint & 0xffffff00) >>> 0;
     const a255 = Math.max(0, Math.min(1, darkness)) * 255;
+    // An unlit cell (most of them) is the full darkness: the same value as the formula gives at L = 0.
+    const none = (rgb | Math.round(a255)) >>> 0;
     for (let i = 0; i < n; i++) {
       const l = L[i];
+      if (l === 0) {
+        out[i] = none;
+        continue;
+      }
       const a = l >= 1 ? 0 : Math.round(a255 * (1 - l));
       out[i] = (rgb | a) >>> 0;
     }

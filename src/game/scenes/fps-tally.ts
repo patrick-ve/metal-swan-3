@@ -16,7 +16,7 @@
  * 100 % ratio. PRESS START: the first press shows the page and pays out; it moves on by itself
  * 600 ticks after it opened. `enter` records the floor (campaign, golden record, completed).
  *
- * A euro run (docs/design/oat.md §7.2, §7.9: `slot.euro`) shows each bonus in euros (legacy points
+ * A euro run (docs/design/budget.md §7.2, §7.9: `slot.euro`) shows each bonus in euros (legacy points
  * ÷ 500: a 100 % line € 20,00, € 1,00 per second under par), × the difficulty factor at TOTAL,
  * booked into the budget (`BONUS`); the points still count into the score.
  */

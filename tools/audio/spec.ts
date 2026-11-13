@@ -2,8 +2,8 @@
 // `oldenzaal` (audio plan step 2; oldenzaal: docs/design/oldenzaal.md §11, wave A plan) and mission
 // `ring` (docs/design/ring.md §R.8, revision R wave B) and mission `rally` (docs/design/rally.md §8,
 // wave C: FILE FM, the car radio; the lines come from src/game/content/rally/radio/lines.ts) and
-// mission `oat` (docs/design/oat.md §9, wave A plan: the lines come from content/samples/oat.ts, the
-// take forms of the songs from content/music/oat.ts `OAT_TAKES`).
+// mission `sewers` (docs/design/sewers.md §7: P0 placed every sfx id and song; the audio wave P3
+// wrote the prompts, the voices and the lines after the user's OK on the credits, 2026-11-12).
 // Tools only: src/ never imports this file. The inventory behind it is
 // tmp/audio/overview/critic.md (B1 sfx, B2 music, B3 dialogue) and sfx.md (PART 2).
 //
@@ -17,8 +17,7 @@
 //   voiceKey(text) finds the clip; `say` is what the voice actor reads.
 import type { LineSpec, MusicSpec, SfxSpec, VoiceSpec } from './spec-types';
 import { DJ_SPEAKER, GUSTO_SPEAKER, RADIO_LINES, RALLY_ANNOUNCE, RALLY_CARD_LINES, type RadioLine } from '../../src/game/content/rally/radio/lines';
-import { OAT_TAKES, takeBeats, takeLoopBeat, takeSlotBeats } from '../../src/game/content/music/oat';
-import { oatLineSeconds, oatVoiceLines } from '../../src/game/content/samples/oat';
+import { SEWERS_VOICE, sewersLineSeconds, sewersVoiceLines } from '../../src/game/content/samples/sewers';
 
 type Group = SfxSpec['group'];
 const BOOT: Group = 'boot';
@@ -27,7 +26,7 @@ const FPS: Group = 'mode:fps';
 const OZ: Group = 'mission:oldenzaal';
 const RING: Group = 'mission:ring';
 const RALLY: Group = 'mission:rally';
-const OAT: Group = 'mission:oat';
+const SEWERS: Group = 'mission:sewers';
 
 // ---------------------------------------------------------------------------------------------
 // SFX
@@ -71,12 +70,6 @@ function loop(id: string, group: Group, seconds: number, prompt: string, isNew =
   if (isNew) spec.isNew = true;
   return spec;
 }
-
-/**
- * Mission oat's sfx that stay synth (no take is requested; the reasons are at their place in `SFX`).
- * tests/content/oat-audio-spec.test.ts: every other registered 'oat/' recipe is in the spec.
- */
-export const OAT_SYNTH_ONLY: readonly string[] = ['oat/neon/buzz', 'oat/receipt/print', 'oat/scooter/buzz', 'oat/brammobiel/motor', 'oat/env/chase', 'oat/swan/wake', 'oat/organ/waltz'];
 
 /** Telegraph sounds warn of an attack: the player must read them at once. */
 const TELL = 'attack telegraph: a clear, sharp onset in the first 0.1 s';
@@ -482,88 +475,48 @@ export const SFX: SfxSpec[] = [
   one('ring/boot/settle', RING, 1, 0.62, `A wooden boat sagging down onto its road trailer: a heavy wooden groan, a metal creak and a tyre hissing flat, close, ${ONE}`),
   one('ring/boot/slide', RING, 1, 0.58, `A person sliding down the side of a painted wooden boat: a squeaky rubbing slide that ends in a soft bump, cartoon, close, ${ONE}`),
 
-  // --- Mission oat, level 2 OAT OF CONTROL (docs/design/oat.md §9.1; group 'mission:oat'; ids:
-  //     content/sfx/oat.ts `OAT_SFX`, `OAT_SFX_IDS`). A tourist day in the old canal city, from a
-  //     morning street to 03:00 in the red-lit alleys: comic, bloodless, real everyday sounds. The
-  //     synth fallbacks live in the lazy oat content (content/sfx/oat*.ts), so every id is marked new.
-  //     No gulls (the user's rule since ams). No prompt names a brand, a shop, a game or a person.
-  //     Stay synth (tools/audio/spec.ts `OAT_SYNTH_ONLY`): the pure electrical and motor tones
-  //     (`oat/neon/buzz`, `oat/receipt/print`, `oat/scooter/buzz`, `oat/brammobiel/motor`), the loops
-  //     the chase music covers (`oat/env/chase`, `oat/swan/wake`) and the draaiorgel waltz (our own
-  //     tune, spec §9.1: a generated organ would play the model's tune). The credit plan:
-  //     tmp/oat/audio-estimate.md.
-  // The ambience loops (ids.ts OAT_AMBIENCE; the runner plays them under the music).
-  loop('oat/env/morning', OAT, 10, 'A quiet old-city street on a sunny morning: a soft far city hum, a few sparrows chirping, a far bicycle bell, light footsteps on brick pavers, no seagulls, outdoors', true),
-  loop('oat/env/noon', OAT, 10, 'A busy old-city shopping street at noon: a lively crowd murmur with no clear words, footsteps on brick pavers, far traffic, a far tram bell, no seagulls, outdoors', true),
-  loop('oat/env/quay', OAT, 8, 'An old canal quay in the late afternoon: water lapping softly against a stone quay wall, a light breeze, a far building site with an occasional metal clank, no seagulls, outdoors', true),
-  loop('oat/env/night', OAT, 10, 'A narrow old-city canal street at night: the muffled bass of dance music from a bar behind a wall, a far crowd murmuring with no clear words, a faint electric hum of neon signs, a few footsteps, no seagulls, outdoors', true),
-  loop('oat/env/taxi', OAT, 8, 'Inside a taxi driving fast through a city at night: the low rumble of the road under the cabin, a steady engine at cruise, tyre hiss, no radio', true),
-  // The stings (03:00, the kassabon).
-  one('oat/env/carillon', OAT, 1, 4.2, `A big old church tower bell striking the hour three times, slow, deep and solemn, ringing out over a sleeping city at night, outdoors, ${ONE}`, { timing: 'strikes at 0.00 s, 1.25 s and 2.50 s', isNew: true }),
-  one('oat/neon/off', OAT, 1, 1.17, `A whole street of neon signs switching off at once: a heavy electrical relay clunk, the buzzing hum dropping away, small ticks of cooling glass tubes, ${ONE}`, { isNew: true }),
-  one('oat/receipt/stamp', OAT, 1, 0.18, `A rubber stamp slammed down hard on a paper receipt on a wooden counter: one short, dull thump, close, dry, ${ONE}`, { isNew: true }),
-  // Statiegeld bins (PIECES).
-  one('oat/bin/hit', OAT, 2, 0.12, `A bullet hitting a big plastic wheelie bin: a hollow plastic thunk, close, dry, ${ONE}`, { isNew: true }),
-  one('oat/bin/burst', OAT, 1, 0.54, `A big plastic recycling bin bursting open: a plastic crack, the lid slapping open, and a dozen empty drink cans and plastic bottles clattering out onto brick pavers, ${ONE}`, { isNew: true }),
-  one('oat/bin/can', OAT, 2, 0.17, `One empty aluminium drink can bouncing twice on brick pavers: a bright tinny clink, close, dry, ${ONE}`, { isNew: true }),
-  one('oat/bin/bottle', OAT, 2, 0.21, `One empty plastic drink bottle bouncing on brick pavers: a hollow, light plastic bonk, close, dry, ${ONE}`, { isNew: true }),
-  one('oat/bin/deposit', OAT, 1, 0.29, `A cheerful two-note electronic bleep of a bottle return machine and one small coin clink, close, ${ONE}`, { isNew: true }),
-  // DE HAVERBAR and de conceptstore (PIECES).
-  one('oat/shop/pay', OAT, 1, 0.35, `A card payment terminal accepting a payment: two short rising electronic beeps and a soft click, close, ${ONE}`, { isNew: true }),
-  one('oat/shop/refuse', OAT, 1, 0.4, `A card payment terminal refusing a card: two low, short, buzzing error beeps, close, ${ONE}`, { isNew: true }),
-  one('oat/shop/steam', OAT, 1, 0.79, `A coffee machine's steam wand frothing milk: a short, loud, gurgling hiss, close, ${ONE}`, { isNew: true }),
-  one('oat/shop/inflation', OAT, 1, 0.55, `A price labelling gun ratcheting: four quick rising mechanical clicks and a small bright ting, close, ${ONE}`, { isNew: true }),
-  one('oat/shop/bell', OAT, 1, 0.77, `A small brass shop-door bell on a spring jingling as a door opens, close, ${ONE}`, { isNew: true }),
-  one('oat/conceptstore/glass', OAT, 1, 0.64, `A glass display case shattering: a sharp crack and glass shards tinkling down onto a hard floor, ${ONE}`, { isNew: true }),
-  // The enemies (CAST-DAY, CAST-NIGHT).
-  one('oat/brammobiel/horn', OAT, 1, 0.33, `A tiny microcar's thin, squeaky horn: two short toots, beep-beep, close, ${ONE}`, { isNew: true }),
-  one('oat/influencer/ring-light', OAT, 1, 0.27, `A big photo flash going off: a click and a bright rising electronic whine, close, ${ONE}`, { isNew: true }),
-  one('oat/bakfiets/bell', OAT, 1, 0.69, `A bicycle bell rung twice, bright and impatient: ring-ring, outdoors, ${ONE}`, { isNew: true }),
-  one('oat/bakfiets/lakschade', OAT, 1, 0.49, `A metal edge scraping along a painted car door: a short, harsh screeching scrape, close, ${ONE}`, { isNew: true }),
-  one('oat/bakfiets/thump', OAT, 2, 0.12, `A bullet hitting a wooden cargo-bike box: a short hollow wooden knock, close, dry, ${ONE}`, { isNew: true }),
-  one('oat/taxi/meter', OAT, 1, 0.07, `One click of an old taxi meter: a short mechanical tick-tick, close, dry, ${ONE}`, { isNew: true }),
-  one('oat/taxi/horn', OAT, 1, 0.57, `A car horn: one long, angry, blaring honk, outdoors, ${ONE}`, { isNew: true }),
-  one('oat/taxi/door', OAT, 1, 0.34, `A car door flung open hard: a latch click, a quick swinging whoosh and a dull thud as it stops, close, ${ONE}`, { timing: TELL, isNew: true }),
-  one('oat/taxi/rev', OAT, 1, 0.84, `A taxi's engine revving hard while standing still: a rising, aggressive roar, close, ${ONE}`, { timing: TELL, isNew: true }),
-  one('oat/taxi/skid', OAT, 1, 0.69, `Car tyres screeching on asphalt in a hard turn: a short, high squeal, outdoors, ${ONE}`, { isNew: true }),
-  one('oat/dealer/swipe', OAT, 1, 0.29, `A quick hand snatching a wallet from a coat pocket: a fast cloth swish and a small jingle of coins, close, ${ONE}`, { isNew: true }),
-  // The set pieces (PIECES, QUEUE-B).
-  one('oat/envelope/rip', OAT, 1, 0.26, `A paper envelope torn open quickly: one sharp paper rip, close, dry, ${ONE}`, { isNew: true }),
-  one('oat/envelope/refund', OAT, 1, 0.65, `A cash register drawer popping open with a cheerful bell ring, then a short happy rising four-note chime, ${STING}`, { isNew: true }),
-  one('oat/envelope/aanslag', OAT, 1, 0.79, `A rubber stamp thump, then a sad, descending, muted trumpet wah-wah, comic, ${STING}`, { isNew: true }),
-  one('oat/hoist/rope', OAT, 1, 0.52, `A taut rope creaking under a heavy load, then snapping with a sharp crack, close, ${ONE}`, { isNew: true }),
-  one('oat/hoist/piano', OAT, 1, 1.32, `An upright piano dropped from a height onto a street: a big wooden crash and all the strings ringing in a jangling, out-of-tune chord that fades, ${ONE}`, { isNew: true }),
-  one('oat/hoist/sofa', OAT, 1, 0.3, `A heavy old sofa landing on a street: a soft, heavy thump and the springs inside boinging, ${ONE}`, { isNew: true }),
-  one('oat/organ/stop', OAT, 1, 0.76, `A mechanical street organ running out of air: the chord sags down in pitch and wheezes to silence, ${ONE}`, { isNew: true }),
-  one('oat/queue/step', OAT, 1, 0.33, `A long queue of people shuffling one step forward on a pavement: many soft shoe scuffs at once, no voices, ${ONE}`, { isNew: true }),
-  one('oat/queue/number', OAT, 1, 0.68, `A take-a-number display in a shop calling the next number: a soft two-tone electronic ding-dong, ${ONE}`, { isNew: true }),
-  one('oat/queue/push', OAT, 1, 0.27, `Someone shoved aside in a crowd: a soft body bump and a few shoe scuffs, no voice, close, ${ONE}`, { isNew: true }),
-  // The crumbling quay and the chase (KADE).
-  one('oat/kade/crack', OAT, 1, 0.35, `Old brick paving cracking apart under strain: a quick series of sharp stony cracks over a low rumble, ${ONE}`, { timing: TELL, isNew: true }),
-  one('oat/kade/rumble', OAT, 1, 1.55, `An old canal quay wall collapsing: a deep rolling rumble of falling bricks and stones, ${ONE}`, { isNew: true }),
-  one('oat/kade/splash', OAT, 2, 0.39, `A few bricks dropping into canal water: a deep splash and small droplets, ${ONE}`, { isNew: true }),
-  one('oat/kade/sinkhole', OAT, 1, 1.79, `A street caving in and a small car sliding into a canal: a crunch of collapsing paving, a groan of metal, a big splash and gurgling bubbles, ${ONE}`, { isNew: true }),
-  one('oat/crane/beep', OAT, 1, 0.51, `A work crane's warning alarm: three loud, short, high electronic beeps, outdoors, ${ONE}`, { timing: TELL, isNew: true }),
-  one('oat/crane/swing', OAT, 1, 0.65, `A steel chain clanking as a crane swings a long steel pipe through the air with a heavy whoosh, ${ONE}`, { isNew: true }),
-  // The night (NIGHT).
-  one('oat/neon/flicker', OAT, 1, 0.31, `A faulty neon sign flickering: three quick buzzy electrical stutters with clicks, close, ${ONE}`, { isNew: true }),
-  one('oat/shutter/down', OAT, 1, 1.1, `A metal roller shutter of a shop rattling down fast and landing with a clang at the bottom, outdoors, ${ONE}`, { isNew: true }),
-  // De Makelaar (MAKELAAR).
-  one('oat/makelaar/paddle', OAT, 1, 0.2, `A wooden bidding paddle swung fast and slapped down: a quick whoosh and a flat wooden slap, close, ${ONE}`, { isNew: true }),
-  one('oat/makelaar/sign', OAT, 2, 0.12, `A bullet hitting a plastic estate agent's sign board: a hollow plastic knock, close, dry, ${ONE}`, { isNew: true }),
-  one('oat/makelaar/doorbell', OAT, 1, 1.05, `An old house doorbell: one clear, friendly ding-dong, ${ONE}`, { isNew: true }),
-  one('oat/makelaar/rush', OAT, 1, 1.25, `A crowd of about twenty people rushing out of a front door at once: a stampede of footsteps on stone steps and an excited murmur with no clear words, ${ONE}`, { isNew: true }),
-  one('oat/makelaar/courtage', OAT, 1, 0.23, `A small coin sliding away: a tiny bright clink and a short falling bleep, close, ${ONE}`, { isNew: true }),
-  // De Huisjesmelker (HUISJESMELKER): the two key-ring rattles stay clearly apart, low and high.
-  one('oat/huisjesmelker/keys-tell', OAT, 1, 0.39, `A big ring of old metal keys shaken up in a fist: a loud jangling rattle, close, ${ONE}`, { timing: TELL, isNew: true }),
-  one('oat/huisjesmelker/keys-low', OAT, 1, 0.45, `A heavy ring of big old iron keys swung low like a flail: a deep whoosh and a dull, heavy, low jangle, close, ${ONE}`, { isNew: true }),
-  one('oat/huisjesmelker/keys-high', OAT, 1, 0.31, `A light ring of small keys flicked high: a quick thin whistle and a bright, high, tinkling jingle, close, ${ONE}`, { isNew: true }),
-  one('oat/huisjesmelker/mould', OAT, 1, 0.87, `An aerosol spray can sprayed in one long burst: a valve click and a wet hiss, close, ${ONE}`, { isNew: true }),
-  one('oat/huisjesmelker/rent-board', OAT, 1, 0.87, `A split-flap display board clattering to a new number, then a cash register bell ring, ${ONE}`, { isNew: true }),
-  one('oat/huisjesmelker/microwave', OAT, 1, 1.3, `A small microwave oven humming for a moment, a click, then its bright ding, close, ${ONE}`, { isNew: true }),
-  // The taxi ride (TAXIRIT).
-  one('oat/taxi/tunnel', OAT, 1, 1.5, `A car driving fast into a road tunnel: a rising whoosh as the sound closes in and echoes, ${ONE}`, { isNew: true }),
-  one('oat/scooter/ticket', OAT, 2, 0.14, `A paper ticket flicked fast through the air: a short papery flap, close, dry, ${ONE}`, { isNew: true }),
+  // --- Mission sewers, level 2 RATTENJONG MET DE RATTENITEMS (docs/design/sewers.md §7; group
+  //     'mission:sewers'; ids: content/sfx/sewers.ts `SEWERS_SFX`, `SEWERS_SFX_IDS`). De Wallen by
+  //     night and the sewer under it: comic, bloodless (green slime; rats squeak and flop), real
+  //     everyday sounds. The synth fallbacks live in the lazy sewers content (content/sfx/sewers.ts),
+  //     so every id is marked new. `len` is the synth length (the timing the game expects); a tell
+  //     must sound at once. Prompts by the audio wave P3 (2026-11-12). No prompt names a brand, a
+  //     shop, a game or a person.
+  loop('sewers/rain-bed', SEWERS, 10, 'Steady light night rain on cobblestones and on canal water in an old city street, soft drips from gutters and a gentle patter on a metal awning, even and calm, no thunder, no cars, no voices, outdoors', true),
+  loop('sewers/drip-bed', SEWERS, 10, 'Inside an old brick sewer tunnel: slow single water drips echoing in a damp vault, a far trickle of running water, a low hollow air hum, calm and even, no voices', true),
+  one('sewers/neon-buzz', SEWERS, 1, 0.8, `A neon tube sign humming with a low electric buzz, flickering with two quick crackles, then going quiet, close, ${ONE}`, { isNew: true }),
+  one('sewers/whistle', SEWERS, 1, 0.55, `A loud, sharp two-finger whistle calling someone over: one note that jumps up and then slides down, outdoors at night, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/gold-pistol', SEWERS, 3, 0.2, `A short punchy cartoon pistol shot, a bright crack with a tiny metallic ring after it, close, dry, no echo, ${ONE}`, { isNew: true }),
+  one('sewers/shotgun-pump', SEWERS, 1, 0.35, `A pump-action shotgun racked once: a loud metal slide back and forward, click-clack, close, dry, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/shotgun', SEWERS, 2, 0.4, `A wide, booming cartoon shotgun blast with a short outdoor tail between old houses, ${ONE}`, { isNew: true }),
+  one('sewers/limo-horn', SEWERS, 1, 0.7, `A big old luxury car's loud two-tone horn: one long, brassy, blaring honk, outdoors, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/limo-wreck', SEWERS, 1, 1.4, `A big car falling apart in a cartoon wreck: crunching metal, breaking glass, a door clanging onto cobblestones and a small fire whoosh at the end, outdoors, ${ONE}`, { isNew: true }),
+  one('sewers/knife-jab', SEWERS, 2, 0.12, `A quick jab of a small blade through the air: one short, sharp swish, close, dry, ${ONE}`, { isNew: true }),
+  one('sewers/knuckles', SEWERS, 1, 0.3, `A big man cracking his knuckles: four quick dry cracks in a row, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/grate-rattle', SEWERS, 1, 1, `A heavy cast-iron street drain grate rattling and shaking hard in its frame, pushed from below, with small animal squeaks under it, outdoors, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/grate-burst', SEWERS, 1, 0.6, `A heavy cast-iron drain grate bursting up out of its frame and clanging down on paving stones with a ringing metal clang, outdoors, ${ONE}`, { isNew: true }),
+  one('sewers/rat-squeak', SEWERS, 3, 0.15, `A big cartoon rat squeaking twice, high and shrill, close, dry, ${ONE}`, { isNew: true }),
+  one('sewers/rat-hiss', SEWERS, 2, 0.45, `A big angry cartoon rat hissing at someone: one short, sharp, breathy hiss, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/rat-bite', SEWERS, 3, 0.1, `A quick snapping bite of small rodent teeth: two fast dry clicks, cartoon, close, ${ONE}`, { isNew: true }),
+  one('sewers/rat-flip', SEWERS, 3, 0.35, `A cartoon rat knocked out: a squeak that falls in pitch, then a soft flop as it lands on its back, comic, close, ${ONE}`, { isNew: true }),
+  one('sewers/spit-gurgle', SEWERS, 1, 0.4, `A cartoon creature gurgling with puffed-up cheeks before it spits: a wet, bubbling gargle, comic, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/spit-splat', SEWERS, 3, 0.18, `A blob of thick green slime splatting onto stone: one short wet splat, cartoon, close, ${ONE}`, { isNew: true }),
+  one('sewers/brute-snort', SEWERS, 1, 0.55, `A huge cartoon rat snorting twice through its nose like an angry bull, heavy and steamy, close, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/brute-stomp', SEWERS, 2, 0.4, `A loud, heavy, close stomp of a huge foot on a wet brick floor: a punchy thud and a sharp wet slap of shallow water, ${ONE}`, { isNew: true }),
+  one('sewers/flash-click', SEWERS, 1, 0.06, `A flashlight switched on: one small plastic click, close, dry, ${ONE}`, { isNew: true }),
+  one('sewers/battery', SEWERS, 1, 0.2, `A battery pickup in an arcade game: a short bright two-note rising electronic blip, close, dry, ${ONE}`, { isNew: true }),
+  one('sewers/fatberg-squelch', SEWERS, 3, 0.15, `A bullet sinking into a huge soft lump of grease: one short, thick, wet squelch, cartoon, close, ${ONE}`, { isNew: true }),
+  one('sewers/fatberg-slump', SEWERS, 1, 1.3, `A huge greasy lump collapsing into a sewer channel: a long, heavy, wet slump with sloshing water and big bubbles, cartoon, ${ONE}`, { isNew: true }),
+  one('sewers/throw-bike', SEWERS, 1, 0.6, `An old bicycle thrown through the air and crashing down on stone: a quick whoosh, a metal clatter and one bicycle bell ding, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/throw-cart', SEWERS, 1, 0.5, `A shopping cart thrown and landing hard on a stone floor: a loud rattling metal crash, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/throw-scooter', SEWERS, 1, 0.6, `A kick scooter thrown flat and bouncing twice on a stone floor: two quick metal clatters, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/cart-roll', SEWERS, 2, 0.8, `A shopping cart rolling fast over a wet brick floor: rattling wheels and a shaking wire basket, ${ONE}`, { isNew: true }),
+  one('sewers/king-screech', SEWERS, 1, 0.6, `A giant cartoon rat king screeching in rage: a loud, shrill animal screech with a deep growl under it, no words, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/king-squeak', SEWERS, 1, 0.45, `A giant cartoon rat calling its pack: a fast run of five loud squeaks, echoing in a brick tunnel, no words, ${ONE}`, { timing: TELL, isNew: true }),
+  one('sewers/hall-crack', SEWERS, 1, 1.2, `An old brick vault cracking apart under water pressure: loud, sharp, close stone cracks and crumbling bricks, then a short low rumble, ${ONE}`, { isNew: true }),
+  one('sewers/flood', SEWERS, 1, 2.2, `A canal bursting through a brick vault: a huge rushing flood of water pouring into a big hall, roaring and splashing, ${ONE}`, { isNew: true }),
+  one('sewers/manhole-lid', SEWERS, 1, 0.8, `A heavy cast-iron manhole lid pushed up, slid aside and dropped onto a street with a ringing metal clang, outdoors, ${ONE}`, { isNew: true }),
+  one('sewers/taxi', SEWERS, 1, 1.5, `A car pulling up at the kerb at dawn: an engine slowing down, brakes squeaking softly, then the engine idling, outdoors, quiet street, ${ONE}`, { isNew: true }),
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -589,31 +542,8 @@ const JINGLE_STYLE = 'Original composition. A short radio station jingle for a c
 export const TITLE_V1_PROMPT = `${MUSIC_STYLE} Heroic-comic title theme, 112 BPM, D major, 4/4. Bars 1-8: a gentle intro of bell arpeggios over a warm pad. Then a 32-bar loop: a calm, graceful legato lead (soft square-wave synth doubled by flute) that leaps up a sixth and walks down in a dotted rhythm, over a frantic running 16th-note filtered-saw bass like legs paddling under water; full drums with kick, snare and hats; a light counter-melody in the middle 8 bars. Dignified on top, furious underneath, a little funny. ${LOOP_TAIL}`;
 export const SELECT_V1_PROMPT = `${MUSIC_STYLE} Bouncy, eager menu music, 128 BPM, A major, 4/4, one 16-bar loop with no intro. A staccato 8th-note synth lead hopping up, a walking bass with chromatic steps, off-beat pulse chords, hi-hats only (no kick). In bars 9-12 a graceful 4-bar hook while the bass breaks into fast 16ths. Excited rookie energy. ${LOOP_TAIL}`;
 
-/** Mission oat's songs (docs/design/oat.md §9.1): the day-to-night score, a tourist day in the old canal city. */
-const OAT_STYLE = 'Instrumental only, no vocals, no lyrics, original composition. Comic arcade run-and-gun game score for a tourist day out in an old canal city, punchy clean stereo mix.';
-
-/**
- * A song of mission oat from its take form (content/music/oat.ts `OAT_TAKES`): the length (the
- * whole form + 2 s to cut), the loop's meter, the bars before the loop and the beat of every synth
- * slot (`slotBeats` → the manifest's `marks`, so `ctx.music(id, fade, { from })` enters the same part
- * in a take). 2 takes each (the credit plan: tmp/oat/audio-estimate.md).
- */
-function oatSong(id: string, prompt: string): MusicSpec {
-  const form = OAT_TAKES[id];
-  const meter = form.parts.find((p) => p.name === form.loopFrom)?.beatsPerBar ?? 4;
-  return {
-    id,
-    group: OAT,
-    seconds: Math.ceil((takeBeats(id) * 60) / form.bpm + 2),
-    bpm: form.bpm,
-    beatsPerBar: meter,
-    introBars: takeLoopBeat(id) / meter,
-    loop: true,
-    takes: 2,
-    slotBeats: takeSlotBeats(id),
-    prompt,
-  };
-}
+/** Mission sewers' songs (docs/design/sewers.md §7): De Wallen by night and the sewer under it. */
+const SEWERS_STYLE = 'Instrumental only, no vocals, no lyrics, original composition. Comic arcade run-and-gun game score for a night in a red-lit old canal city street and the sewer under it, punchy clean stereo mix.';
 
 export const MUSIC: MusicSpec[] = [
   {
@@ -928,31 +858,73 @@ export const MUSIC: MusicSpec[] = [
     prompt: `${JINGLE_STYLE} Instrumental only, no vocals. About 3 seconds, 128 BPM, C major. A quick, bright synth-brass fanfare of four rising notes over a tight drum fill, ending on one punchy full-band chord hit with a short shimmer that decays to silence. After the hit has decayed, the rest is silence. No fade-in.`,
   },
 
-  // --- Mission oat (docs/design/oat.md §9.1, group 'mission:oat'): bright a, tense b, the quay and
-  //     the chase c (also the taxi ride), the neon night d, the two bosses. Tempo, key and form match
-  //     the synth fallbacks in src/game/content/music/oat.ts; a take is the compact form of
-  //     `OAT_TAKES` (repeats played once). Never a named song, artist, game or composer.
-  oatSong(
-    'oat-a',
-    `${OAT_STYLE} Bright, sunny morning theme, 116 BPM, G major, 4/4. A 2-bar intro: a marimba pickup over plucked strings and hand claps. Then a 24-bar loop. Bars 1-8: a cheerful marimba melody over pizzicato strings playing bouncy eighth-note chords, a plucky bass, a light kick, hand claps on 2 and 4 and a shaker. Bars 9-16: the hook, the marimba doubled by a glockenspiel, hi-hats. Bars 17-24: a break with only the plucked strings and the claps, then the marimba calls back in bars 21-24 into the top. Fresh, light and carefree. All melodies are new. ${LOOP_TAIL}`,
-  ),
-  oatSong(
-    'oat-b',
-    `${OAT_STYLE} Tense, comic noon theme, 108 BPM, D minor, 4/4. A 2-bar intro: a ticking clock alone, two wooden ticks, tick-tock. Then a 32-bar loop. Bars 1-8: a nervous pizzicato string ostinato in eighth notes over the ticking pulse and a light kick. Bars 9-16: a sneaky clarinet-like reed melody joins. Bars 17-24: waiting in a long queue at a bakery: the music turns to F major, pizzicato on the beats only, a mock-patient reed tune, a small shop-door bell rings a three-note motif at bars 17 and 21. Bars 25-32: the same tune on a glockenspiel, then a snare build back into the top. Impatient and a little silly. All melodies are new. ${LOOP_TAIL}`,
-  ),
-  oatSong(
-    'oat-c',
-    `${OAT_STYLE} Two-part track, 144 BPM, 4/4. Part one, an 18-bar golden afternoon intro in G major that plays once: 2 bars of clean electric guitar picking, then 16 bars of a lazy whistled melody over guitar arpeggios, a soft warm pad and relaxed half-time drums. Then part two, a 24-bar loop: an urgent chase in E minor with driving full-time drums, a running eighth-note bass, punchy brass stabs and a heroic brass melody; bars 17-24 of the loop are a build of brass stabs and a snare roll back into its top. Only part two loops. All melodies are new. ${LOOP_TAIL}`,
-  ),
-  oatSong(
-    'oat-d',
-    `${OAT_STYLE} Night-time neon synth theme for a red-lit canal street, 104 BPM, C minor, 4/4. A 2-bar intro: a warm synth pad and a pulsing bass. Then a 32-bar loop. Bars 1-8: a pulsing octave synth bass in eighth notes, slow synth arpeggios, a wide warm pad, a gated snare on 2 and 4 and a lonely saw-synth melody. Bars 9-16: the melody climbs higher, longing. Bars 17-32: a sparse late-night part: no melody, only the pad, the arpeggio, quiet hi-hats, a soft kick and a glockenspiel note every two bars. Moody, glowing, a little melancholy. All melodies are new. ${LOOP_TAIL}`,
-  ),
-  oatSong(
-    'oat-boss',
-    `${OAT_STYLE} Two-part boss track, 132 BPM. Part one plays once: a 2-bar intro and 16 bars of a cocky funk strut in A minor, 4/4: an octave-popping bass, choppy clavinet chords, a wah-wah lead with a swaggering show-off tune, hand claps and jingling coins; bars 11-18 are a break with brass hits. Then 2 bars in 3/4: a cash register ka-ching and a timpani roll. Part two, a 32-bar loop in 3/4: a heavy, menacing waltz in G minor, oom-pah-pah with a tuba on beat one and accordion chords on two and three, a dark organ-like melody, cash register bells and coins as percussion; bars 17-32 repeat the melody an octave higher. Only part two loops. Greedy, pompous and funny. All melodies are new. ${LOOP_TAIL}`,
-  ),
+  // --- Mission sewers (docs/design/sewers.md §7, group 'mission:sewers'): the street (a, b), the
+  //     mini-boss, the sewer (c, d), the boss (e; sewers-end keeps it and fades it out: the synth song
+  //     has no outro part, so the take has none either). Tempo, key and form match the synth fallbacks
+  //     in src/game/content/music/sewers.ts. Prompts by the audio wave P3 (2026-11-12). Never a named
+  //     song, artist, game or composer.
+  {
+    id: 'sewers-street',
+    group: SEWERS,
+    // intro 1 bar + loop 16 bars at 90 BPM (45.3 s) + 2 s
+    seconds: 48,
+    bpm: 90,
+    beatsPerBar: 4,
+    introBars: 1,
+    loop: true,
+    takes: 2,
+    prompt: `${SEWERS_STYLE} Slow, sleazy synth-funk for a neon-lit street at night in the rain, 90 BPM, C minor, 4/4. A 1-bar intro on the bass alone, then a 16-bar loop. Bars 1-8: a plucky, bouncing funk bass, off-beat muted chord stabs, a dry laid-back funk beat with a rimshot, a lazy, slightly nasal saw-synth lead with a slow vibrato. Bars 9-16: the lead an octave higher over A-flat and F minor chords, a little wah guitar. Shady, cool and a little silly, never dark. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'sewers-gerrit',
+    group: SEWERS,
+    // loop 16 bars at 118 BPM (32.5 s) + 2 s
+    seconds: 35,
+    bpm: 118,
+    beatsPerBar: 4,
+    loop: true,
+    takes: 2,
+    prompt: `${SEWERS_STYLE} A short, cocky funk boss loop for a flashy show-off gangster in gold chains and his big car, 118 BPM, E minor, 4/4, no intro, a 16-bar loop: a slapping, popping bass, tight brass stabs, a swaggering, boastful synth lead, a busy funk beat with claps and a cowbell. Bars 9-16: the same groove with the lead an octave higher. Brash, funny and full of attitude. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'sewers-sewer',
+    group: SEWERS,
+    // loop 8 bars at 70 BPM (27.4 s) + 2 s
+    seconds: 30,
+    bpm: 70,
+    beatsPerBar: 4,
+    loop: true,
+    takes: 2,
+    prompt: `${SEWERS_STYLE} Dark, damp ambient track for a flashlight walk through an old brick sewer tunnel, 70 BPM, C minor, 4/4, no intro, an 8-bar loop: low, slowly breathing synth drones, a deep sub pulse on beats 1 and 3, a far soft kick on beat 1, an echoing, drip-like bell note now and then, a faint plucked bass. Tense and creepy but a little comic, never horror, no screams, no sudden hits. All melodies are new. ${LOOP_TAIL}`,
+  },
+  {
+    id: 'sewers-boss',
+    group: SEWERS,
+    // Take 1 ends in a fade (a silent bar at its seam), take 2 builds for 2 more bars after its intro (a
+    // 4.5 dB dip at every seam): takes 3-4 ask for the full loop from bar 3.
+    // intro 2 bars + loop 16 bars at 140 BPM (30.9 s) + 2 s
+    seconds: 33,
+    bpm: 140,
+    beatsPerBar: 4,
+    introBars: 2,
+    loop: true,
+    takes: 2,
+    prompt: `${SEWERS_STYLE} Heavy, grimy boss battle against a giant cartoon rat king on a mountain of trash, 140 BPM, C minor, 4/4. Exactly 2 bars of intro: the bass alone, with a short snare roll in the second bar. From bar 3 the 16-bar loop starts at full power and stays at full power to its last bar: a driving 16th-note distorted synth bass ostinato, stabbing distorted power chords, a pounding rock beat with a big crash on every 4th bar; bars 9-16 move to A-flat and add a squealing synth lead. Gross, loud, fast and funny, never horror. All melodies are new. ${LOOP_TAIL}`,
+  },
 ];
+
+/**
+ * Mission sewers' speakers (content/samples/sewers.ts `SPEAKER_OF`, one per `SEWERS_VOICE` group; the
+ * audio-spec test checks that both agree). `hero` has no voice: its bubble stays text-only.
+ */
+export const SEWERS_SPEAKER = {
+  dealer: 'sewers-dealer',
+  pimp: 'sewers-pimp',
+  gerrit: 'gerrit',
+  tourist: 'stag-tourist',
+  worker: 'sewer-worker',
+  hero: 'hero',
+} as const;
 
 // ---------------------------------------------------------------------------------------------
 // VOICES (Voice Design: original voices only; never a real person, never a clone)
@@ -1190,96 +1162,53 @@ export const VOICES: VoiceSpec[] = [
       'Goedemiddag, goedemiddag! Wat een middag, mensen! De zon schijnt, de koffie is heet, en de Ring staat natuurlijk weer helemaal vast. Maar niet getreurd, want wij draaien de lekkerste plaatjes, en om vier uur hoor je het verkeer. Blijf hangen, zet hem harder, en toeter maar mee!',
     radio: true,
   },
-  // --- Mission oat (docs/design/oat.md §9.2): eleven designed voices, everybody speaks short Dutch
-  //     lines. Plain, standard Dutch; no accent as a joke; the descriptions never name a real person.
-  //     The handhaver, Gusto and the announcer are reused (their designs above).
+  // --- Mission sewers (docs/design/sewers.md §7, §8; content/samples/sewers.ts `SEWERS_VOICE`,
+  //     `SEWERS_SPEAKER`): designed voices only, never a clone, never a real person. Each voice is
+  //     described by character, age and manner only, never by origin or a regional accent
+  //     ("behaviours, not groups"). The heroes' lines stay text-only bubbles: the five heroes are
+  //     never voiced or imitated. (The night taxi driver's voice stays in voices.json; the taxi left
+  //     the ending on 2026-11-13, spec §0 row 56: the squad's white wagon, a hero at the wheel.)
   {
-    speaker: 'makelaar',
-    name: 'MS3 Makelaar',
+    speaker: SEWERS_SPEAKER.dealer,
+    name: 'MS3 Street Hustler',
     description:
-      'Slick, overconfident estate agent, a man in his thirties: a bright, fast, smiling salesman voice that sells every sentence, smug and a little oily, always upbeat, theatrical when he shouts a bid. A comic character, never mean. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+      'Young man in his twenties, a shady street hustler who whispers offers from a dark doorway at night: a hushed, quick, secretive whisper, breathy and a little nervous, always glancing around, comic rather than menacing. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
     previewText:
-      'Welkom, welkom! Kijk eens wat een licht. Originele balken, een prachtige tuin op het noorden, en dat allemaal voor een vraagprijs die eigenlijk veel te laag is. Overbieden mag, hoor. Dat doet iedereen.',
+      'Psst. Vriend. Ja, jij. Kom eens hier, in het portiek. Wil je iets? Ik heb pepermuntjes, heel sterke. Niet zo hard praten, man. Rustig. Niemand hoeft het te weten. Snel, snel, voordat iemand kijkt.',
   },
   {
-    speaker: 'huisjesmelker',
-    name: 'MS3 Huisjesmelker',
+    speaker: SEWERS_SPEAKER.pimp,
+    name: 'MS3 Flashy Street Boss',
     description:
-      'Greedy, pompous landlord, a heavy man in his sixties: a deep, fat, self-satisfied voice, slow and condescending, with a dry little chuckle, never in a hurry, sure he is always right. A comic villain. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+      'Loud, flashy, bossy man in his forties, a show-off in a loud suit and gold chains who acts as if he owns the street: a big, brash, commanding voice, shouting orders and calling his bodyguards, vain and full of himself, comic rather than menacing. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
     previewText:
-      'Goedenavond. De huur, graag. Ja, die is weer wat omhoog gegaan. Dat is de markt, hè. Die vochtplek? Dat is geen schimmel, dat is karakter. Ventileren, dan gaat het vanzelf weg. Volgende maand weer.',
+      'Hé! Dit is mijn straat! Wie heeft jou gezegd dat je hier mag lopen? Kijk naar dit pak, kijk naar deze ketting, dit is allemaal goud. Jongens! Kom eens hier, er is iemand die niet luistert!',
   },
   {
-    speaker: 'taxi',
-    name: 'MS3 Taxichauffeur',
+    speaker: SEWERS_SPEAKER.gerrit,
+    name: 'MS3 Gouden Gerrit',
     description:
-      'Gruff, impatient taxi driver, a man in his fifties: a rough, gravelly, loud voice, fast and blunt, always in a hurry and always sure of himself, a dry sense of humour. A comic character. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+      'Cocky, vain, comic gangster boss in his fifties who wears gold from head to toe: a big, booming, theatrical voice with a laugh always in it, smug and boastful, and comically outraged when anyone touches his car. A cartoon villain, never menacing. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
     previewText:
-      'Instappen, instappen, de meter loopt al! Gordel? Ach, dat hoeft niet. Rood licht is meer een advies, hè. Hou je vast. Nachttarief, dat begrijp je. Contant graag, dat pinapparaat doet het weer niet.',
+      'Goud is goud! Kijk naar mij, van top tot teen in het goud. Mijn ringen, mijn tanden, mijn auto, alles glimt. Wie raakt mijn limo aan? Mijn limo! Nee, nee, nee. Dit is niet voorbij, hoor je me? Dit is niet voorbij!',
   },
   {
-    speaker: 'barista',
-    name: 'MS3 Barista',
+    speaker: SEWERS_SPEAKER.worker,
+    name: 'MS3 Sewer Worker',
     description:
-      'Cheerful barista, a young woman in her twenties working in a trendy coffee bar: a bright, friendly, upbeat voice, a little too perky, quick and sing-song, apologetic when the prices go up. A comic character. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
+      'Gruff, warm man in his fifties, a city sewer worker who was stuck in the dark for hours: a rough, friendly, down-to-earth voice, relieved and grateful, practical and plain-spoken, kind underneath. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
     previewText:
-      'Goedemorgen! Wat mag het zijn? We hebben haver, en haver, en vandaag ook haver. Een flat white? Komt eraan! Oh, de prijs is wel weer iets omhoog, sorry. Betaald! Fijne dag nog, hè!',
+      'Eindelijk licht! Man, ik zit hier al uren in het donker. Hier, een batterij, die heb jij harder nodig dan ik. Pas op voor de ratten, en pak die proppen aan, met vuur, anders kom je er nooit door.',
   },
   {
-    speaker: 'influencer',
-    name: 'MS3 Influencer',
+    // The freed banana tourist (DANK JE, MAN!): a stag-night guest, his own voice (the ams `tourist`
+    // is a woman). He says a learned Dutch phrase in his own natural accent: no caricature.
+    speaker: SEWERS_SPEAKER.tourist,
+    name: 'MS3 Stag Night Tourist',
     description:
-      'Young man in his twenties who films himself all day: a loud, excited, breathless voice, every sentence a big announcement, everything is amazing, talks to his phone like it is a crowd. A comic character, never mean. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person or of any real online creator. Studio quality, close microphone, no reverb.',
+      'Cheerful, tipsy young man in his twenties from Britain, on a stag night out in a banana costume: friendly, loud and very happy, a little slurred, laughing easily. A native English speaker who says a few learned Dutch words in his own natural English accent. An original character voice, never an imitation of a real person and never a caricature. Studio quality, close microphone, no reverb.',
     previewText:
-      'Hoi lieve volgers! We zijn live! Kijk dan, kijk dan, dit is echt zo hyped! Vergeet niet te liken en gebruik mijn code voor tien procent korting. Wacht nou, wacht nou, mijn content! Oké, nog een keer.',
-  },
-  {
-    speaker: 'bakfiets',
-    name: 'MS3 Bakfiets-ouder',
-    description:
-      'Stressed, entitled parent, a woman in her late thirties on a cargo bike full of children: a sharp, fast, indignant voice, always in a rush and always in the right, a little shrill when she is offended. A comic character. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
-    previewText:
-      'Aan de kant, aan de kant! Ik heb haast, hoor. Er zitten kinderen in! Kijk nou wat je doet, dat is lakschade. Nee, nee, ik bel de crèche, en daarna bel ik iedereen. Ongelooflijk, echt ongelooflijk.',
-  },
-  {
-    speaker: 'dealer',
-    name: 'MS3 Dealer',
-    description:
-      'Shifty street hustler, a man in his thirties: a low, hushed, quick voice, half a whisper, sly and nervous, quickly backing down when caught. A comic character. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
-    previewText:
-      'Psst. Vriend. Hier, even kijken. Nee, nee, rustig maar, het zijn gewoon pepermuntjes. Echt waar. Dankjewel, vriend. Oké, oké, terug, je krijgt alles terug. Ik was hier nooit, begrepen?',
-  },
-  {
-    speaker: 'rij-staf',
-    name: 'MS3 Bakkerij',
-    description:
-      'Friendly, busy bakery worker, a woman in her forties calling out numbers over a crowded little shop: a clear, loud, warm voice, efficient and kind, a bit tired of the endless queue. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
-    previewText:
-      'Nummer negenendertig! Nummer veertig! Komt u maar, wat mag het zijn? Twee croissants, prima. Nummer zevenenveertig, komt u maar. Sorry, de brioches zijn uitverkocht. Morgen weer, vanaf zeven uur.',
-  },
-  {
-    speaker: 'rij',
-    name: 'MS3 Rij',
-    description:
-      'Grumpy, impatient man in his fifties who has waited far too long in a queue: an indignant, nasal, complaining voice, loud when someone cuts in. A comic character. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
-    previewText:
-      'Hé! Achteraan aansluiten, jij! Ik sta hier al sinds zes uur vanochtend. Zes uur! En nu zijn er nog maar drie brioches. Drie! Ongelooflijk. Vroeger was dat wel anders, dat kan ik je vertellen.',
-  },
-  {
-    speaker: 'gids',
-    name: 'MS3 Gids',
-    description:
-      'Enthusiastic city tour guide, a woman in her forties speaking to a big group: a clear, bright, theatrical voice, a little too cheerful, every fact a small wonder, quickly disappointed. A comic character. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
-    previewText:
-      'Allemaal even blijven staan, alstublieft! En hier ziet u de oudste brug van de stad. Prachtig, nietwaar? Niet fotograferen bij de ramen, alstublieft. Maar het uitzicht! Kijk toch eens naar het uitzicht.',
-  },
-  {
-    speaker: 'huurder',
-    name: 'MS3 Huurder',
-    description:
-      'Tired, exasperated young tenant, a woman in her twenties: a frank, worn-out voice with a bitter, funny edge, disbelief in every word. A comic character. A native speaker from the Netherlands who speaks plain, standard Dutch with a neutral accent. An original character voice, never an imitation of a real person. Studio quality, close microphone, no reverb.',
-    previewText:
-      'Weet je wat ik betaal? Negentienhonderd euro per maand. Per maand! En geen keuken. Een magnetron op een plank, dat is mijn keuken. De douche staat naast het bed. Maar ja, het is wel in het centrum.',
+      'Oh mate, this city is brilliant! Best night ever, honestly. Look at me, I am a banana! Cheers, cheers. Wait, how do you say thank you here? Dank je, man! Dank je wel! Did I say that right? Brilliant!',
   },
 ];
 
@@ -1374,87 +1303,45 @@ function rallyLines(): LineSpec[] {
 }
 
 /**
- * How each line of mission oat is spoken (content/samples/oat.ts `OAT_VOICE`; the bubble text is the
- * key). Dutch, plain; `€` is spoken "euro"; the dealer whispers. A queue number call is built by
- * `oatLines` ("Nummer negenendertig!").
+ * What each sewers speaker reads (content/samples/sewers.ts `SEWERS_VOICE`, by bubble text). The
+ * `text` stays the bubble text verbatim (its take's voice key); the `say` adds eleven_v3 audio tags
+ * for the manner. The heroes' lines (`SEWERS_VOICE.hero`: `STAP IN, ZWAAN!`, `IK RUIK NAAR RIOOL.`) have no
+ * `say`: they stay text-only bubbles.
  */
-export const OAT_SAY: Readonly<Record<string, string>> = {
-  'GOEDEMORGEN! HAVER\nOF HAVER?': '[bright, cheerful] Goedemorgen! [sing-song] Haver... of haver?',
-  'BETAALD! FIJNE DAG!': '[perky] Betaald! Fijne dag!',
-  'INFLATIE, SORRY!': '[apologetic, quick] Inflatie, sorry!',
-  'GEWEIGERD. HEEFT U\nEEN ANDERE PAS?': '[polite, awkward] Geweigerd. Heeft u een andere pas?',
-  'WELKOM BIJ DE\nBEZICHTIGING!': '[slick, smiling, theatrical] Welkom bij de bezichtiging!',
-  'VRAAGPRIJS? DAT IS\nMAAR EEN BEGIN.': '[smug] Vraagprijs? [knowing] Dat is maar een begin.',
-  'OVERBIEDEN!': '[shouting a bid, triumphant] Overbieden!',
-  '+10%!': '[shouting a bid] Plus tien procent!',
-  'DE BEZICHTIGING IS\nGEOPEND!': '[announcing, grand] De bezichtiging is geopend!',
-  'VERKOCHT, O.V.!': '[triumphant] Verkocht! [quick aside] Onder voorbehoud!',
-  'ONDER VOORBEHOUD\nVAN FINANCIERING...': '[defeated, fading] Onder voorbehoud... van financiering...',
-  'LIVE!': '[excited] Live!',
-  'HOI LIEVE VOLGERS!': '[loud, excited] Hoi lieve volgers!',
-  'DIT IS ZO HYPED!': '[breathless, thrilled] Dit is zo hyped!',
-  'GEBRUIK MIJN CODE!': '[salesy, quick] Gebruik mijn code!',
-  'WACHT NOU!': '[whining] Wacht nou!',
-  'MIJN CONTENT!': '[wailing, dismayed] Mijn content!',
-  'AAN DE KANT!': '[sharp, in a rush] Aan de kant!',
-  'ER ZITTEN KINDEREN\nIN, HOOR!': '[indignant] Er zitten kinderen in, hoor!',
-  'LAKSCHADE!': '[shrill, offended] Lakschade!',
-  'IK BEL DE CRECHE!': '[furious, fast] Ik bel de crèche!',
-  'NUMMER 47! KOMT U\nMAAR.': '[clear, friendly, loud] Nummer zevenenveertig! Komt u maar.',
-  'SORRY, UITVERKOCHT!\nMORGEN WEER!': '[apologetic, loud] Sorry, uitverkocht! Morgen weer!',
-  'HE! ACHTERAAN\nAANSLUITEN!': '[indignant, loud] Hé! Achteraan aansluiten!',
-  'IK STA HIER AL\nSINDS ZES UUR.': '[grumbling] Ik sta hier al sinds zes uur.',
-  'NOG MAAR DRIE\nBRIOCHES!': '[alarmed, nasal] Nog maar drie brioches!',
-  'TE KORT!': '[gruff, shouting] Te kort!',
-  'DE METER LOOPT, HOOR!': '[gruff, impatient] De meter loopt, hoor!',
-  'INSTAPPEN! DE METER\nLOOPT AL!': '[shouting, in a hurry] Instappen! De meter loopt al!',
-  'ROOD? DAT IS MEER\nEEN ADVIES.': '[dry, unbothered] Rood? Dat is meer een advies.',
-  'NACHTTARIEF, HE.': '[dry, matter-of-fact] Nachttarief, hè.',
-  '€87,50. CONTANT,\nALSJEBLIEFT.': '[gruff, flat] Zevenentachtig euro vijftig. Contant, alsjeblieft.',
-  'COKE? XTC?': '[whispering, sly] Coke? Iks-tee-see?',
-  'PSST. VRIEND.': '[whispering] Psst. Vriend.',
-  'DANKJEWEL, VRIEND!': '[sly, quick] Dankjewel, vriend!',
-  'OKE, OKE, TERUG!': '[nervous, backing down] Oké, oké, terug!',
-  'EN HIER ZIET U\nDE OUDSTE BRUG...': '[bright, theatrical] En hier ziet u... de oudste brug...',
-  'NIET FOTOGRAFEREN\nBIJ DE RAMEN!': '[firm, a little shrill] Niet fotograferen bij de ramen!',
-  'MAAR... HET\nUITZICHT!': '[disappointed, pleading] Maar... het uitzicht!',
-  'STILSTAAN OP DE BRUG?\n€190 BOETE.': '[flat, bored, bureaucratic] Stilstaan op de brug? Honderdnegentig euro boete.',
-  'BLOWVERBOD. BOETE!': '[flat, officious] Blowverbod. Boete!',
-  'DE HUUR, GRAAG.': '[deep, smug, slow] De huur, graag.',
-  'HUURVERHOGING!': '[booming, delighted] Huurverhoging!',
-  '€1.900. EXCLUSIEF.': '[smug, slow] Negentienhonderd euro. Exclusief.',
-  '€2.400. PLUS\nSERVICEKOSTEN.': '[smug, chuckling] Vierentwintighonderd euro. Plus servicekosten.',
-  '€3.100. DAT IS\nDE MARKT, HE.': '[condescending] Eenendertighonderd euro. Dat is de markt, hè.',
-  'WIE MOET ER\nEEN SLEUTEL?': '[mocking, jangling] Wie moet er een sleutel?',
-  'DAT IS GEEN SCHIMMEL,\nDAT IS KARAKTER!': '[dismissive, smug] Dat is geen schimmel, dat is karakter!',
-  'VENTILEREN, HE!': '[patronising] Ventileren, hè!',
-  'MIJN... MIJN\nBELEGGING...': '[groaning, defeated, slow] Mijn... mijn... belegging...',
-  '€1.900 PER MAAND\nEN GEEN KEUKEN!': '[exasperated, bitter] Negentienhonderd euro per maand... en geen keuken!',
+export const SEWERS_SAY: Readonly<Record<string, string>> = {
+  [SEWERS_VOICE.dealer.psst]: '[whispers, secretive] Psst. [whispers] Vriend.',
+  // Takes 1-2 of the whisper were heard as other words (Scribe): takes 4-6 ask for clear words.
+  [SEWERS_VOICE.dealer.offer]: '[whispers, clearly pronounced] Wil je iets?',
+  [SEWERS_VOICE.pimp.street]: '[shouts, bossy] Hé! [angry, loud] Mijn straat!',
+  [SEWERS_VOICE.pimp.boys]: '[shouts, calling out] Jongens!',
+  [SEWERS_VOICE.gerrit.gold]: '[smug, cocky] Goud is goud!',
+  [SEWERS_VOICE.gerrit.limo]: '[outraged, wailing] Mijn limo!',
+  [SEWERS_VOICE.gerrit.notOver]: '[furious, shouting] Dit is niet voorbij!',
+  [SEWERS_VOICE.tourist.thanks]: '[cheerful, tipsy, happy shout] Dank je... man!',
+  [SEWERS_VOICE.worker.light]: '[relieved, warm, quick] Eindelijk licht!',
+  [SEWERS_VOICE.worker.battery]: '[warm, helpful] Hier, een batterij!',
+  [SEWERS_VOICE.worker.plugs]: '[gruff, very fast, urgent] Pak die proppen aan!',
+  [SEWERS_VOICE.worker.fire]: '[gruff, emphatic] Met vuur!',
 };
 
-/** The Dutch number words of the queue's calls (39–60). */
-const NL_NUMBER: Readonly<Record<number, string>> = {
-  39: 'negenendertig', 40: 'veertig', 41: 'eenenveertig', 42: 'tweeënveertig', 43: 'drieënveertig', 44: 'vierenveertig',
-  45: 'vijfenveertig', 46: 'zesenveertig', 48: 'achtenveertig', 49: 'negenenveertig', 50: 'vijftig', 51: 'eenenvijftig',
-  52: 'tweeënvijftig', 53: 'drieënvijftig', 54: 'vierenvijftig', 55: 'vijfenvijftig', 56: 'zesenvijftig', 57: 'zevenenvijftig',
-  58: 'achtenvijftig', 59: 'negenenvijftig', 60: 'zestig',
-};
-
-/** Speakers whose lines repeat (an enemy's reactions, the shop's replies, the queue): barks, 3 takes. */
-const OAT_BARK_SPEAKERS: ReadonlySet<string> = new Set(['influencer', 'bakfiets', 'dealer', 'rij', 'barista']);
+// The worker's second line follows his first after 70 ticks (sewers/street/hostages.ts WORKER_GAG.second)
+// and cuts it off: his first lines ('quick') must be over by then.
+/** The bubble lines the game repeats (every dealer and pimp says them): barks, 3 takes. */
+const SEWERS_BARKS: ReadonlySet<string> = new Set([SEWERS_SPEAKER.dealer, SEWERS_SPEAKER.pimp]);
 
 /**
- * Every voiced line of mission oat (content/samples/oat.ts `oatVoiceLines()`, group 'mission:oat',
- * Dutch). `maxSeconds` is the line's budget (`oatLineSeconds`: the bubble life `oatSayTicks` holds the
- * take plus a pause; tests/content/oat-voice-fit.test.ts). The queue's number calls are plain lines.
+ * The sewers lines: every voiced `SEWERS_VOICE` text but the hero's, Dutch, group 'mission:sewers',
+ * `maxSeconds` = `sewersLineSeconds(text)` (the bubble lasts the take plus a pause).
  */
-function oatLines(): LineSpec[] {
-  return oatVoiceLines().map(({ speaker, text }) => {
-    const n = /^NUMMER (\d+)!$/.exec(text);
-    const say = n ? `[clear, friendly, loud] Nummer ${NL_NUMBER[Number(n[1])]}!` : OAT_SAY[text];
-    if (!say) throw new Error(`audio spec: no OAT_SAY for "${text}"`);
-    return (OAT_BARK_SPEAKERS.has(speaker) || text === 'TE KORT!' || text === 'BLOWVERBOD. BOETE!' ? bark : line)(speaker, text, say, 'nl', OAT, oatLineSeconds(text));
-  });
+function sewersLines(): LineSpec[] {
+  return sewersVoiceLines()
+    .filter((l) => l.speaker !== SEWERS_SPEAKER.hero)
+    .map((l) => {
+      const say = SEWERS_SAY[l.text];
+      if (!say) throw new Error(`tools/audio/spec.ts: no SEWERS_SAY for ${l.text}`);
+      const make = SEWERS_BARKS.has(l.speaker) ? bark : line;
+      return make(l.speaker, l.text, say, 'nl', SEWERS, sewersLineSeconds(l.text));
+    });
 }
 
 export const LINES: LineSpec[] = [
@@ -1571,8 +1458,8 @@ export const LINES: LineSpec[] = [
   //     the ams briefing's bubble life (150 ticks) for Wu's scene. Revision 3 (the user,
   //     2026-10-21): every line of this mission is Dutch ('nl'). Meneer Wu speaks plain, correct
   //     Dutch (no accent play, no broken language).
-  // Level 5 since the oat wave (docs/design/oat.md §0 #61): the new text; its take is made in wave C
-  // (the old take 'MISSIE VIER…' stays in the manifest until then).
+  // Level 5 since the route switch of 2026-10-31: the new text; its take is pending (the old take
+  // 'MISSIE VIER…' stays in the manifest until then).
   line(A, 'MISSIE VIJF. BLIJF BIJ ELKAAR, ZWAANTJES!', '[booming, theatrical] Missie vijf. [ominous, lower] Blijf bij elkaar, zwaantjes!', 'nl', OZ, 3.5),
   // The pickup callout of the meal (lines.ts SNACK_POWER_CALLOUT): the announcer says it like a weapon
   // name when the meal is caught (`audio.voice(SNACK_POWER_CALLOUT)`, requested from WUGHOST / INTEGRATE).
@@ -1628,26 +1515,26 @@ export const LINES: LineSpec[] = [
   // --- Mission rally, wave C (docs/design/rally.md §8): FILE FM's DJ (RADIO_LINES, 2 takes each,
   //     Scribe-checked by tmp/rally-audio/stt.ts + pick.ts), Gusto's MISSION 3 card lines and the
   //     announcer's start line (group 'boot': the card plays before the mission's group loads). The
-  //     rally is level 3 since the oat wave (docs/design/oat.md §0 #61): the first card line and the
-  //     announce have new texts; their takes are made in wave C (the old takes stay until then).
+  //     rally is level 3 since the route switch of 2026-10-31: the first card line and the announce have
+  //     new texts; their takes are pending (the old takes stay until then).
   ...rallyLines(),
   // Both card lines together should fit the card's 360 + 90 ticks (mission-intro.ts): brisk.
   line(GUSTO_SPEAKER, RALLY_CARD_LINES[0], '[brisk, quick, upbeat] Taxi paid. Now the squad races De Ringrally: three laps of the A-ten.', 'en', BOOT, 4.0),
   line(GUSTO_SPEAKER, RALLY_CARD_LINES[1], '[brisk, quick, cheerful] First prize: a parking permit binnen de Ring. [amused] The waiting list is twelve years!', 'en', BOOT, 4.4),
   line(A, RALLY_ANNOUNCE, '[booming, theatrical] Mission three. [shouts] Vol gas!', 'nl', BOOT, 2.6),
 
-  // --- Mission oat (docs/design/oat.md §9.2): everybody speaks, short Dutch lines in designed
-  //     voices (group 'mission:oat'); the card (Gusto) and the start line (the announcer) play
+  // --- Mission sewers (docs/design/sewers.md §1, §7): the mission's own lines (`sewersLines()`, group
+  //     'mission:sewers') and the MISSION 2 card (Gusto) and the start line (the announcer), which play
   //     before the mission's group loads: group 'boot', like the rally's.
-  ...oatLines(),
+  ...sewersLines(),
   // Both card lines together should fit the card's 360 + 90 ticks (mission-intro.ts): brisk.
-  line('gusto', 'SHORE LEAVE, DAY TWO: A DAY OUT IN THE OLD CITY.', '[brisk, quick, upbeat] Shore leave, day two: a day out in the old city.', 'en', BOOT, 3.2),
-  line('gusto', 'EVERY CYGNET GETS 100 EURO. AMSTERDAM IS NOT CHEAP. GO!', '[brisk, quick, amused] Every cygnet gets a hundred euro. [dry] Amsterdam is not cheap. [shouts] Go!', 'en', BOOT, 4.2),
-  line(A, 'MISSIE TWEE. HOU JE PORTEMONNEE VAST!', '[booming, theatrical] Missie twee. [shouts, grinning] Hou je portemonnee vast!', 'nl', BOOT, 3.2),
+  line('gusto', 'SHORE LEAVE, NIGHT TWO: DE WALLEN IS FULL OF CROOKS.', '[brisk, quick, upbeat] Shore leave, night two: De Wallen is full of crooks.', 'en', BOOT, 3.4),
+  line('gusto', 'CLEAR THE STREETS. MIND THE DRAINS. GO!', '[brisk, quick, commanding] Clear the streets. [dry] Mind the drains. [shouts] Go!', 'en', BOOT, 3.2),
+  line(A, 'MISSIE TWEE. HOU JE NEUS DICHT!', '[booming, quick] Missie twee. [shouts, disgusted] Hou je neus dicht!', 'nl', BOOT, 3.0),
 ];
 
 /**
- * Texts that changed with the oat route switch (docs/design/oat.md §0 #61, wave A): each new `text`
+ * Texts that changed with the route switch of 2026-10-31 (the rally became level 3): each new `text`
  * is a line above; its take is made in wave C (no generation before the user's OK on the credits).
  * Until then the old take stays in the manifest under the OLD text's key (the game plays no take for
  * the new text: the card types it silently, the announcer is silent), and the manifest tests accept

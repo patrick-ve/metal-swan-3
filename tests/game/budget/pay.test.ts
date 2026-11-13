@@ -1,5 +1,5 @@
 /**
- * The euro budget's pay path in a world (docs/design/oat.md §7.1–§7.5, §6.2): the legacy sources
+ * The euro budget's pay path in a world (docs/design/budget.md §7.1–§7.5): the legacy sources
  * converted at their events, the pop-ups (HUD records, never entities), the BOETE fine, the
  * toeristenbelasting, the courtage, the extends, the HUD line, and the runner's hooks (the
  * economy per mission, the continue's tax, the MATCHA-MOMENT's slow world).
@@ -103,10 +103,10 @@ describe('budget: the pay path', () => {
     expect(rig.world.entities.filter((e) => !e.hasTag('player')).length).toBe(0);
   });
 
-  it('a death by a BOETE ticket costs € 95,00 (BOETE) and in oat-d € 100,00 (BLOWVERBOD)', () => {
+  it('a death by a BOETE ticket costs € 95,00 (BOETE) in every section', () => {
     for (const [section, cents, cat] of [
       ['a', 9500, 'boete'],
-      ['oat-d', 10000, 'blowverbod'],
+      ['sewers-a', 9500, 'boete'],
     ] as const) {
       const rig = euroRig();
       rig.session.sectionId = section;

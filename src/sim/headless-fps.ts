@@ -74,7 +74,7 @@ export interface FpsReport {
   goldenRecord: boolean;
   /** The fps slot's score. */
   score: number;
-  /** The fps slot's euro budget in cents (docs/design/oat.md §7.9, §7.10). */
+  /** The fps slot's euro budget in cents (docs/design/budget.md §7.9, §7.10). */
   budget: number[];
   /** Floor clock ticks (stops at the elevator / the boss's 0 HP). */
   clock: number;

@@ -16,8 +16,8 @@
  * `--query "mode=bridge"` expects GlitchBridgeScene, skips the story card and goes on into
  * FpsScene. `--route` (on by default for `mission=ams` with `boss=1&debug=1`) plays the normal
  * script, then presses F4 (the boss dies), expects the ams tally (the newspaper), the MISSION 2
- * card OAT OF CONTROL (docs/design/oat.md §1; the card loads the lazy oat chunk) and mission `oat`
- * (F4 skips its sections, `followOat`), its tally (the kassabon once BUDGET adds it), then the
+ * card RATTENJONG MET DE RATTENITEMS (docs/design/sewers.md §1; the card loads the lazy sewers chunk)
+ * and mission `sewers` (F4 skips its sections, `followSewers`), its tally (the newspaper), then the
  * MISSION 3 card BINNEN DE RING, the glitch into 3D and the RallyScene (docs/design/rally.md §1;
  * the GL flag must be OK), drives a little, ends the race with F4, expects the rally's own MISSION
  * COMPLETE page (a shot of the rally tally, then Enter), expects the bridge and follows it into
@@ -37,12 +37,12 @@
  * errors, so a broken WebGL2 context or shader must fail here), waits for GO, drives (gas, steer),
  * pauses and resumes, checks the player cars (2P: both estates; 1P: player 2 joins with the key 2),
  * and with `debug=1` presses F4 (the race ends at once) and expects the rally's MISSION COMPLETE
- * page. The CI route (`--route`) now runs ams → its tally → the MISSION 2 card → oat (F4) → its
+ * page. The CI route (`--route`) now runs ams → its tally → the MISSION 2 card → sewers (F4) → its
  * tally → the MISSION 3 card BINNEN DE RING → the glitch into 3D → the race (F4) → the rally's
  * tally → the bridge → the fps floors → oldenzaal → the name entry.
  *
- * Mission oat (`--query "mission=oat&god=1"`, docs/design/oat.md §1): the direct start loads the lazy
- * chunk at boot; the side-scrolling script runs in oat-a. `--query "mission=rally&gl=0"` expects the no-WebGL2 path: the card THIS DEVICE
+ * Mission sewers (`--query "mission=sewers&god=1"`, docs/design/sewers.md §1): the direct start loads
+ * the lazy chunk at boot; the side-scrolling script runs in sewers-a. `--query "mission=rally&gl=0"` expects the no-WebGL2 path: the card THIS DEVICE
  * CANNOT SHOW 3D (the GL flag must be down), the rally's tally with no race lines, the bridge.
  */
 import { mkdirSync } from 'node:fs';
@@ -185,8 +185,8 @@ async function gameState(page: Page): Promise<GameState> {
 
 /** The scenes that host a play (the side-scrolling missions, the dormant ring and the 3D race). */
 const PLAY_SCENES: readonly string[] = ['GameplayScene', 'RingScene', 'RallyScene'];
-/** Mission oat's tally (docs/design/oat.md §7.6): the newspaper until BUDGET's kassabon scene lands. */
-const OAT_TALLY_SCENES: readonly string[] = ['MissionCompleteScene', 'ReceiptTallyScene'];
+/** Mission sewers' tally (docs/design/sewers.md §1): the newspaper (the receipt tally too, should a mission opt in). */
+const SEWERS_TALLY_SCENES: readonly string[] = ['MissionCompleteScene', 'ReceiptTallyScene'];
 
 /** The rally's probe (`window.__ms3.rally`: main.ts / rally-route.ts `rallyProbe`). */
 interface RallyProbe {
@@ -421,43 +421,43 @@ async function main(): Promise<void> {
       await shot('rally-tally-full');
     };
     /**
-     * --route after the ams boss (docs/design/oat.md §1): its tally (the newspaper) → the MISSION 2
-     * card OAT OF CONTROL (it loads the lazy oat chunk) → mission oat (F4 skips its sections, as
-     * oldenzaal's) → its tally (the newspaper in wave A; the kassabon once BUDGET adds it).
+     * --route after the ams boss (docs/design/sewers.md §1): its tally (the newspaper) → the MISSION 2
+     * card RATTENJONG MET DE RATTENITEMS (it loads the lazy sewers chunk) → mission sewers (F4 skips
+     * its sections, as oldenzaal's) → its tally (the newspaper).
      */
-    const followOat = async (): Promise<void> => {
+    const followSewers = async (): Promise<void> => {
       if (!(await waitForScene(page, ['MissionCompleteScene'], args.timeout))) throw new Error('the ams boss did not reach its tally');
       await wait(2500);
       await shot('ams-tally');
-      if (!(await pressUntil(['MissionIntroScene'], 30000, 1500))) throw new Error('the ams tally did not move on to the oat card');
+      if (!(await pressUntil(['MissionIntroScene'], 30000, 1500))) throw new Error('the ams tally did not move on to the sewers card');
       await wait(1200);
-      await shot('oat-card');
-      if (!(await pressUntil(['GameplayScene'], 30000))) throw new Error('the oat card did not move on to mission oat');
-      const oatId = await page.evaluate(() => {
+      await shot('sewers-card');
+      if (!(await pressUntil(['GameplayScene'], 30000))) throw new Error('the sewers card did not move on to mission sewers');
+      const sewersId = await page.evaluate(() => {
         const app = (window as unknown as { __ms3?: { app: { scenes: { top: { runner?: { mission?: { id: string } } } | null } } } }).__ms3?.app;
         return app?.scenes.top?.runner?.mission?.id ?? null;
       });
-      if (oatId !== 'oat') throw new Error(`the mission after the oat card is not oat (mission ${oatId})`);
+      if (sewersId !== 'sewers') throw new Error(`the mission after the sewers card is not sewers (mission ${sewersId})`);
       await wait(2500);
-      await shot('oat-start');
+      await shot('sewers-start');
       await holdAndTap(['ArrowRight'], 1200, 'KeyZ');
-      await shot('oat-play');
-      let oatDone = false;
-      for (let i = 0; i < 30 && !oatDone; i++) {
-        oatDone = await waitForScene(page, OAT_TALLY_SCENES, 2000);
-        if (!oatDone) await page.keyboard.press('F4', { delay: 40 });
+      await shot('sewers-play');
+      let sewersDone = false;
+      for (let i = 0; i < 30 && !sewersDone; i++) {
+        sewersDone = await waitForScene(page, SEWERS_TALLY_SCENES, 2000);
+        if (!sewersDone) await page.keyboard.press('F4', { delay: 40 });
       }
-      if (!oatDone) throw new Error('oat did not reach its tally');
+      if (!sewersDone) throw new Error('sewers did not reach its tally');
       await wait(2500);
-      await shot('oat-tally');
+      await shot('sewers-tally');
     };
     /**
-     * --route after oat: its tally → the MISSION 3 card BINNEN DE RING → the glitch into 3D → the race
+     * --route after sewers: its tally → the MISSION 3 card BINNEN DE RING → the glitch into 3D → the race
      * (gas, steer, pause; F4 ends it) → the rally's MISSION COMPLETE page → Enter → the bridge.
      */
     const followRally = async (): Promise<void> => {
-      if (!(await waitForScene(page, OAT_TALLY_SCENES, args.timeout))) throw new Error('oat did not reach its tally');
-      if (!(await pressUntil(['MissionIntroScene'], 30000, 1500))) throw new Error('the oat tally did not move on to the rally card');
+      if (!(await waitForScene(page, SEWERS_TALLY_SCENES, args.timeout))) throw new Error('sewers did not reach its tally');
+      if (!(await pressUntil(['MissionIntroScene'], 30000, 1500))) throw new Error('the sewers tally did not move on to the rally card');
       await wait(1200);
       await shot('rally-card');
       if (!(await pressUntil(['RallyGlitchScene', 'RallyScene'], 15000))) throw new Error('the rally card did not move on to the glitch into 3D');
@@ -539,7 +539,7 @@ async function main(): Promise<void> {
         await page.keyboard.press('F4', { delay: 40 });
         await wait(500);
         await shot('boss-skip');
-        await followOat();
+        await followSewers();
         await followRally();
         await followBridge();
         await playFps();
@@ -608,7 +608,7 @@ async function main(): Promise<void> {
       await page.keyboard.press('Enter', { delay: 40 }); // the first press shows the whole page
       await wait(500);
       await shot('tally-2-full');
-      // Level 5 (docs/design/oat.md §1, docs/design/oldenzaal.md §1): the story card, the MISSION 5
+      // Level 5 (docs/design/oat.md (deleted; git show eb3316a) §1, docs/design/oldenzaal.md §1): the story card, the MISSION 5
       // card, the mission (F4 skips each section), its tally, the TO BE CONTINUED card, then the ending.
       if (!(await pressUntil(['StoryCardScene'], 15000))) throw new Error('the floor-2 tally did not move on to the story card');
       await wait(1500);

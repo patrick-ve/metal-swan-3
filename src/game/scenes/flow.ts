@@ -7,20 +7,20 @@
  * qualifies) → `HighScores` → `Title`. Every player out of continues: `GameOver` → `NameEntry`
  * → `HighScores` → `Title`.
  *
- * The normal route (docs/design/oat.md §1, docs/design/rally.md §1, docs/design/oldenzaal.md §1):
- * `ams` (MISSION 1) → its tally → the oat card (MISSION 2 OAT OF CONTROL, the toeristenfolder; the
- * card loads the lazy oat chunk, oat-route.ts) → `oat` → its tally (the kassabon) → the rally's
+ * The normal route (docs/design/sewers.md §1, docs/design/rally.md §1, docs/design/oldenzaal.md §1):
+ * `ams` (MISSION 1) → its tally → the sewers card (MISSION 2 RATTENJONG MET DE RATTENITEMS; the card
+ * loads the lazy sewers chunk, sewers-route.ts) → `sewers` → its tally (the newspaper) → the rally's
  * intro card (MISSION 3 BINNEN DE RING; the glitch into 3D, `RallyScene`, rally-route.ts) → the
  * rally's tally → the glitch bridge → the first-person floors (MISSION 4) → the story card
  * (fps-route.ts) → `oldenzaal` (MISSION 5) → its tally → the TO BE CONTINUED card → the ending (fps
  * variant). `rally` (and the dormant 2D `ring`, `?mission=ring`) are not registered missions and
- * `oat` is lazy (not registered when ams ends): `missionDone` sends their ids to the intro card,
+ * `sewers` is lazy (not registered when ams ends): `missionDone` sends their ids to the intro card,
  * which starts their scene (or loads the chunk).
  *
  * Scenes call these helpers instead of building each other directly where a step is shared.
  */
 import { newCampaign, type GameApp } from '../app';
-import { OAT_ID } from '../content/missions/oat/ids';
+import { SEWERS_ID } from '../content/missions/sewers/ids';
 import { OLDENZAAL_ID } from '../content/missions/oldenzaal/ids';
 import { hasMission } from '../registry';
 import { RALLY_ID } from '../rally/ids';
@@ -55,15 +55,15 @@ export function startCampaign(app: GameApp, o: CampaignOpts): void {
 
 /**
  * After a mission's tally: the next mission's intro card (the rally's and the ring's too: they are
- * not registered missions, their cards start their scenes; oat's too: it is lazy, its card loads
+ * not registered missions, their cards start their scenes; sewers' too: it is lazy, its card loads
  * it), or the ending after the last one. After `oldenzaal`: the TO BE CONTINUED card, then the
  * ending (its first-person variant).
  *
- * The route guard (the m5 trap, docs/design/oldenzaal.md §1, docs/design/oat.md §1): `listMissions`
- * sorts ids (`ams, m0…m5, oat, oldenzaal`), so `MissionRunner.nextMission()` of m5 names `oat` once
- * it is loaded (and of oat, without its `next`, `oldenzaal`). A mission on FPS_ROUTE is opened only
- * from its route predecessor or by an explicit `next`; m0–m5 keep their old route (m5 → the
- * campaign ending).
+ * The route guard (the m5 trap, docs/design/oldenzaal.md §1, docs/design/sewers.md §1): `listMissions`
+ * sorts ids (`ams, m0…m5, oldenzaal, sewers`), so `MissionRunner.nextMission()` of m5 names
+ * `oldenzaal` (and of oldenzaal, `sewers` once it is loaded; sewers names `rally` by its `next`).
+ * A mission on FPS_ROUTE is opened only from its route predecessor or by an explicit `next`; m0–m5
+ * keep their old route (m5 → the campaign ending).
  */
 export function missionDone(app: GameApp, runner: NextRunner): void {
   // A stand-alone mission (`MissionDef.standalone`, mission `ams2`) goes back to the title.
@@ -77,7 +77,7 @@ export function missionDone(app: GameApp, runner: NextRunner): void {
   }
   let next = runner.nextMission();
   if (next && !routeAllows(runner.mission, next)) next = null;
-  if (next && (hasMission(next) || next === RING_ID || next === RALLY_ID || next === OAT_ID)) app.scenes.replace(new MissionIntroScene(app, next), { fade: 40 });
+  if (next && (hasMission(next) || next === RING_ID || next === RALLY_ID || next === SEWERS_ID)) app.scenes.replace(new MissionIntroScene(app, next), { fade: 40 });
   else app.scenes.reset(new EndingScene(app), { fade: 60 });
 }
 

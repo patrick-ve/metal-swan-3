@@ -1,5 +1,6 @@
 /**
- * De kassabon — oat's mission tally (docs/design/oat.md §7.6; decision 27 and 47). Chosen by
+ * De kassabon — a receipt-style mission tally (docs/design/budget.md §7.6; made for the former level 2,
+ * no mission uses it since 2026-11-12: a generic piece). Chosen by
  * `MissionDef.tally: 'receipt'` (gameplay.ts); the newspaper (mission-complete.ts) stays for every
  * other mission.
  *

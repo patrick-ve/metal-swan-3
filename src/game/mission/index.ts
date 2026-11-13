@@ -22,6 +22,7 @@ export type {
   ScrollDir,
   SectionContext,
   SectionDef,
+  SectionIntroDrop,
   SectionScript,
   SpawnGroupOpts,
   TerrainDef,

@@ -483,6 +483,8 @@ def canonical_out(slug):
     the game's sets in src/game/content/art40/."""
     if slug.startswith('_'):
         return os.path.join(ROOT, 'tests', 'fixtures', 'art40')
+    if slug.startswith('sewers-'):           # mission sewers: its own lazy folder and budget (tests/art/sewers-art40.test.ts)
+        return os.path.join(ROOT, 'src', 'game', 'content', 'sewers', 'art40')
     return os.path.join(ROOT, 'src', 'game', 'content', 'art40')
 
 
@@ -508,10 +510,14 @@ def _js(v):
     return json.dumps(v, ensure_ascii=True, separators=(', ', ': '))
 
 
-def to_ts(baked):
-    """The generated TypeScript text of a baked set (byte-stable)."""
+def to_ts(baked, out=None):
+    """The generated TypeScript text of a baked set (byte-stable). out: the folder the file goes to
+    (`--out`), so the engine import is relative to it."""
     slug = baked['slug']
-    rel = os.path.relpath(os.path.join(ROOT, 'src', 'engine', 'baked'), canonical_out(slug)).replace(os.sep, '/')
+    # An --out folder inside the repo (a mission's own art40 folder) imports the engine relative to itself; a scratch
+    # folder outside the repo (the bake test's temp dir) keeps the canonical text, so its bytes equal the fixture.
+    inside = out is not None and os.path.abspath(out).startswith(os.path.abspath(ROOT) + os.sep)
+    rel = os.path.relpath(os.path.join(ROOT, 'src', 'engine', 'baked'), out if inside else canonical_out(slug)).replace(os.sep, '/')
     if not rel.startswith('.'):
         rel = './' + rel
     L = [f'// GENERATED - do not edit. Made by `npm run art40 -- {slug}` from tools/art40/chars/{slug}/',

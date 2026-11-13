@@ -14,11 +14,11 @@ file points to; here is only what those docs do not tell you in one place.
 | Scripts (a generator that yields ticks or conditions; `ctx.spawn`, `waitCamera`, `lockCamera`, `bossIntro`, `hud.bubble` …) | `src/engine/script.ts`, `docs/api/game.md` §10 |
 | The perspective floor (`SectionDef.floor`: art only, the sims never read it) | `src/game/mission/floor/`, `docs/api/floor.md`, `docs/design/floor.md` |
 | Shared content to reuse: items, props, locals, vehicles, bosses | `src/game/content/{items,props,locals,vehicles,bosses}`, docs `docs/api/{items,legion,locals,heroes,characters}.md` |
-| A mission's own content: breakables, NPCs, secrets, helpers, lines | `src/game/content/missions/<id>/` (compare `ams`, `oat`, `ams2`) |
+| A mission's own content: breakables, NPCs, secrets, helpers, lines | `src/game/content/missions/<id>/` (compare `ams`, `sewers`, `ams2`) |
 | New figures at 40 px (enemies, people, bosses): Python sets baked to `src/game/content/art40/<slug>.gen.ts` | `tools/art40/README.md`, `docs/design/ams40.md` "Pipeline" |
 | Songs, sfx, sample groups | `src/game/content/{music,sfx,samples}/<id>.ts`, `docs/api/media.md`, `docs/api/sound-ui.md` |
 | The scenery of a section in the game (baked canal scenes, the `canal:` opt-in) | `docs/api/canal.md` |
-| A full spec of a mission, for the level of detail | `docs/design/oat.md` |
+| A full spec of a mission, for the level of detail | `docs/design/sewers.md` |
 | How a mission wave was briefed to builder agents before | `.claude/workflows/mission-wave.mjs` (the `PRE` text and the mission task) |
 
 ## The shortest mission that boots (stand-alone and lazy, as `ams2` is)
@@ -82,3 +82,5 @@ A mission in the campaign also needs: `CAMPAIGN_MISSIONS`, `FPS_ROUTE` and `miss
 5. Checkpoints are camera-centre x values in ascending order.
 6. `DecorDef` has `depth`, not `floorDepth` or `box`: those two exist only in the kit's layout dump.
 7. Some mission docs still state older numbers (budgets, section naming): the tests hold the current ones.
+8. A direct link without `char=` starts the old test hero `recruit`, not a squad hero. Every link you give the
+   user carries `&char=vincent` (or `thom`, `dirk`, `bob`, `patrick`), and every shot `--char vincent`.

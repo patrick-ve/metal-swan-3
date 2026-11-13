@@ -2,6 +2,7 @@
 export type { CanalDef, CanalLayerKind, CanalLayerMeta, CanalManifest, CanalSectionManifest, CanalSpriteMeta, CanalTierLayer, CanalTierManifest } from './types';
 export {
   canalActive,
+  canalLitOf,
   canalManifest,
   canalOn,
   canalPaintedArt,
@@ -17,7 +18,7 @@ export {
   setCanalTextures,
   type CanalSource,
 } from './registry';
-export { canalBusy, canalBytes, canalIdle, canalState, releaseCanal, resetCanalStore, wantCanal, type CanalTile } from './store';
+export { canalBusy, canalBytes, canalIdle, canalLitState, canalState, LIT_LAYER_TIER, releaseCanal, resetCanalStore, wantCanal, type CanalTile } from './store';
 export { CANAL_FRAME_TICKS, CanalView, canalDrawDensity, canalDrawStats, resetCanalDrawStats, type CanalDrawStats } from './view';
 export { canalSections } from './sections';
 export { CanalSprites } from './sprites';

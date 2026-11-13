@@ -1,5 +1,5 @@
 /**
- * The euro notation (docs/design/oat.md §7.5): `€ 1.234,56` — a dot for thousands, a comma for the
+ * The euro notation (docs/design/budget.md §7.5): `€ 1.234,56` — a dot for thousands, a comma for the
  * cents, a space after `€`, the hyphen as minus (`-€ 12,34`); the pop-ups are compact (`+€0,15`,
  * `-€95`). Owner: BUDGET (CORE wrote this first version with the contract; integer maths only).
  * The `€` is one glyph in each 1× font (engine/font.ts; the HD glyphs follow).

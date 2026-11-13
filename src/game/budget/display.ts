@@ -1,5 +1,5 @@
 /**
- * The HUD's budget line (docs/design/oat.md §7.5, the bank-app look): the amount rolls to a new
+ * The HUD's budget line (docs/design/budget.md §7.5, the bank-app look): the amount rolls to a new
  * balance over 20 ticks, and a small `+€0,15` / `-€95` pop shows beside it (changes within 30 ticks
  * of the same sign add up). Display state only (per slot, kept here, never in the game state): the
  * HUD calls `budgetLine(slot, tick)` while it draws. No allocation once a slot was seen.

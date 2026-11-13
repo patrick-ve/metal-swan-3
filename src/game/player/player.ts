@@ -52,7 +52,7 @@ import {
   type WeaponPose,
 } from '../weapons';
 import { MOUNT_HIP_DROP } from './hero-art';
-import { CHUTE_COLLAPSE_SPRITE, drawChute, INTRO_DROP, INTRO_DROP_ID } from './intro-drop';
+import { CHUTE_COLLAPSE_SPRITE, drawChute, INTRO_DROP, INTRO_DROP_ID, INTRO_FALL } from './intro-drop';
 import { StatusEffects, type StatusBomb } from './status';
 
 export type PlayerState = 'play' | 'spawn' | 'dead' | 'out' | 'mounted' | 'victory';
@@ -304,6 +304,8 @@ export class Player extends Entity {
   /** Intro parachute drop: the floor to land on (Infinity = no drop) and the fall speed. */
   private dropFloor = Infinity;
   private dropVy = 0;
+  /** The running intro drop hangs under a chute (false: a section's plain fall, `SectionDef.introDrop`). */
+  private dropChute = true;
   /** Where and when the intro chute collapsed (draw-only). */
   private collapseTick = -1;
   private collapseX = 0;
@@ -1392,12 +1394,17 @@ export class Player extends Entity {
    * lift the player above the view over his current floor spot and let him float down onto it in
    * `TUNING.life.introDropTicks`. Collisions are off until he lands (nothing above the start
    * catches him). Only from 'play' on foot.
+   *
+   * OPT-IN `o` (a section's own drop, `SectionDef.introDrop`; docs/design/sewers.md §5.2): `fromY`
+   * the feet's world y at the start (default just above the view); `chute: false` a plain fall: no
+   * canopy, the weapon kept, the fall pose, no collapse on landing. Without `o` the chute drop as before.
    */
-  introDrop(): void {
+  introDrop(o?: { fromY?: number; chute?: boolean }): void {
     if (this.state !== 'play' || this.vehicle) return;
     const floor = this.y;
-    const top = this.world.camera.top - 2;
+    const top = o?.fromY ?? this.world.camera.top - 2;
     if (top >= floor) return;
+    this.dropChute = o?.chute !== false;
     this.dropFloor = floor;
     this.dropVy = (floor - top) / Math.max(1, TUNING.life.introDropTicks);
     this.prevX = this.x;
@@ -1408,12 +1415,12 @@ export class Player extends Entity {
     this.body.collide = false;
     this.body.onGround = false;
     this.jumped = true;
-    this.status.add(INTRO_DROP);
+    this.status.add(this.dropChute ? INTRO_DROP : INTRO_FALL);
     this.legs.play(this.alt(this.legIds[this.dangleLegs()]));
   }
 
   private dangleLegs(): LegsAnim {
-    return hasSprite(this.legIds.dangle) ? 'dangle' : 'fall';
+    return this.dropChute && hasSprite(this.legIds.dangle) ? 'dangle' : 'fall';
   }
 
   /** The drop reached its floor: collisions back on, the chute collapses, the status ends. */
@@ -1425,7 +1432,7 @@ export class Player extends Entity {
     settle(this, this.world.terrain, this.world);
     this.status.remove(INTRO_DROP_ID);
     this.invulnTicks = Math.max(this.invulnTicks, TUNING.life.respawnInvulnTicks / 2);
-    if (hasSprite(CHUTE_COLLAPSE_SPRITE)) {
+    if (this.dropChute && hasSprite(CHUTE_COLLAPSE_SPRITE)) {
       this.collapseTick = this.world.tick;
       this.collapseX = this.x;
       this.collapseY = this.y;

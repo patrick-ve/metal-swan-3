@@ -128,7 +128,7 @@ describe('FILE FM: the lines table', () => {
     for (const l of RADIO_LINES) expect(/[^\x20-\x7e]/.test(tickerText(l.text)), l.id).toBe(false);
   });
 
-  it("Gusto's card lines are the rally card's briefing; the announcer line is the MISSION 3 one (after oat)", () => {
+  it("Gusto's card lines are the rally card's briefing; the announcer line is the MISSION 3 one (after sewers)", () => {
     const card = MISSION_CARDS.find((c) => c.id === 'rally');
     expect(card?.briefing).toEqual(RALLY_CARD_LINES);
     expect(card?.announce).toBe(RALLY_ANNOUNCE);

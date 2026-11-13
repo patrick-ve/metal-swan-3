@@ -228,7 +228,7 @@ export function tickerText(text: string): string {
 
 /**
  * Gusto's two briefing lines: the rally card's `briefing` (content/ui/cards.ts uses this list).
- * Level 3 since the oat wave (docs/design/oat.md §0 #61): the first line follows the taxi ride
+ * Level 3 since the oat wave (docs/design/oat.md (deleted; git show eb3316a) §0 #61): the first line follows the taxi ride
  * (`TAXI PAID.`; a new take in wave C, until then the card types it silently).
  */
 export const RALLY_CARD_LINES: readonly string[] = [

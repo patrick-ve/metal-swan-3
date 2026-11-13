@@ -1,5 +1,5 @@
 /**
- * The MATCHA-MOMENT's slow world (docs/design/oat.md §6.2): for a while every non-player entity and
+ * The MATCHA-MOMENT's slow world (docs/design/oat.md (deleted; git show eb3316a) §6.2): for a while every non-player entity and
  * enemy shot steps on even ticks only (a fixed pattern, so it stays deterministic). The mission
  * runner implements it (`MissionRunner.slowWorld`, an additive opt-in); content asks through this
  * helper, which does nothing in a world without a runner (unit tests, the fps floors).

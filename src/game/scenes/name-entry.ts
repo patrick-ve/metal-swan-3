@@ -6,7 +6,7 @@
  * `high-score`; the announcer says "NEW HIGH SCORE! YOU'RE GREAT!" when the screen opens. Co-op: one
  * entry per qualifying player, one after the other, each on their own controls.
  *
- * The euro budget (docs/design/oat.md §7.7): a euro run (`session.euroRun`: the route) enters the
+ * The euro budget (docs/design/budget.md §7.7): a euro run (`session.euroRun`: the route) enters the
  * `budgets` table with the signed budget (it must beat the 10th row: a red run never enters); a
  * point run (the dormant ring, m0–m5 by URL) the old `highscores` table as before. `finishRun`
  * picks the table at the end of a game (game over, the final tally).

@@ -1,5 +1,5 @@
 /**
- * The façade strips (an additive opt-in; docs/design/oat.md §8.6, docs/api/oat.md "Strips"): the
+ * The façade strips (an additive opt-in; docs/design/oat.md (deleted; git show eb3316a) §8.6, docs/api/oat.md (deleted; git show eb3316a) "Strips"): the
  * contract (types.ts), the strip space (space.ts: strip x ↔ world x on the façade plane), the source
  * registry (source.ts), the store (store.ts: jobs, prefetch, eviction, light sets, the budgets), the
  * live-store lookup (live.ts: the light pass's cross-fade) and a placeholder source (placeholder.ts:

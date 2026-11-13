@@ -123,7 +123,7 @@ export interface RenderOpts {
    */
   rimLight?: number;
   /**
-   * OPT-IN (mission `oat`, docs/design/oat.md §8.3): the section's sun (light.ts `sunFrom`) for the
+   * OPT-IN (mission `oat`, docs/design/oat.md (deleted; git show eb3316a) §8.3): the section's sun (light.ts `sunFrom`) for the
    * key, the bounce, the specular and the cast shadows. Default `DEFAULT_SUN` (today's `KEY`): every
    * existing caller renders byte for byte as before.
    */

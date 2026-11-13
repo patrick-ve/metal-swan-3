@@ -1,5 +1,5 @@
 /**
- * The `budgets` high-score table (docs/design/oat.md §7.7): signed rows `{ name, cents, mission,
+ * The `budgets` high-score table (docs/design/budget.md §7.7): signed rows `{ name, cents, mission,
  * character, continues, difficulty }` sorted by cents, ten kept, stored as JSON under the key
  * `budgets` (`metal-swan-3:budgets` in the browser's prefixed store). A run qualifies only by
  * beating the 10th row (the defaults are positive, so a red run does not enter). The old
@@ -7,7 +7,7 @@
  *
  * ```ts
  * const t = BudgetTable.load(store);       // the defaults when nothing was saved
- * if (t.qualifies(slot.cents)) t.submit({ name: 'VIN', cents: slot.cents, mission: 'oat', character: 'vincent', continues: 0 });
+ * if (t.qualifies(slot.cents)) t.submit({ name: 'VIN', cents: slot.cents, mission: 'sewers', character: 'vincent', continues: 0 });
  * t.save(store);
  * ```
  */
@@ -39,8 +39,8 @@ export const DEFAULT_BUDGETS: readonly Readonly<BudgetEntry>[] = [
   { name: 'BOB', cents: 125_000, mission: 'oldenzaal', character: 'bob', continues: 2, difficulty: 'normal' },
   { name: 'PAT', cents: 100_000, mission: 'rally', character: 'patrick', continues: 1, difficulty: 'normal' },
   { name: 'HIS', cents: 80_000, mission: 'rally', character: '', continues: 0, difficulty: 'normal' },
-  { name: 'BLR', cents: 60_000, mission: 'oat', character: '', continues: 1, difficulty: 'normal' },
-  { name: 'RIM', cents: 40_000, mission: 'oat', character: '', continues: 0, difficulty: 'easy' },
+  { name: 'BLR', cents: 60_000, mission: 'sewers', character: '', continues: 1, difficulty: 'normal' },
+  { name: 'RIM', cents: 40_000, mission: 'sewers', character: '', continues: 0, difficulty: 'easy' },
   { name: 'PUF', cents: 25_000, mission: 'ams', character: '', continues: 3, difficulty: 'normal' },
   { name: 'PIZ', cents: 15_000, mission: 'ams', character: '', continues: 0, difficulty: 'normal' },
 ];

@@ -1,6 +1,6 @@
 /**
- * SUN-STRETCHED CAST SHADOWS of the actors (docs/design/oat.md §8.4 "Actors", decision 37; docs/api/
- * oat.md "LIGHT-WATER"). Owner: LIGHT-WATER. An OPT-IN of a day section's light config
+ * SUN-STRETCHED CAST SHADOWS of the actors (docs/design/oat.md (deleted; git show eb3316a) §8.4
+ * "Actors"). An OPT-IN of a day section's light config
  * (`SectionLight.sunShadows`), drawn by the light pass's ground hook on a floor (after the floor band
  * and the water overlays, before the floor's contact ovals and the entities). The floor's ovals stay
  * the ambient contact under the feet; this adds the cast shadow: a tail from the feet along the sun's
@@ -22,7 +22,7 @@ import type { SunShadowConfig } from './api';
 
 /** The shadow colour (the floor's oval ink). */
 const INK = 0x100b14;
-/** Default core alpha (about a tone and a half on the oat floors, spec §8.4). */
+/** Default core alpha (about a tone and a half on a street floor). */
 const STRENGTH = 0.4;
 /** Length buckets (px) and the longest tail drawn. */
 const LEN_STEP = 4;

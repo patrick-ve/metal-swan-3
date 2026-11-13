@@ -4,7 +4,7 @@
  * the lines type in one after another, centred, over a dark dusk sky (a few cold stars, a red band
  * low on the horizon); `PRESS START` once they are typed. A press after CARD_PRESS_FROM finishes
  * the typing; the next press (or CARD_HOLD ticks after the last line) moves on to the `MISSION 5`
- * intro card (MissionIntroScene; level 5 since the oat wave, docs/design/oat.md §1). The lines: missions/oldenzaal/lines.ts `STORY_CARD_LINES`.
+ * intro card (MissionIntroScene; level 5 since the oat wave, docs/design/oat.md (deleted; git show eb3316a) §1). The lines: missions/oldenzaal/lines.ts `STORY_CARD_LINES`.
  *
  * On enter the first-person mode's dense art is dropped (the route never goes back to it): the
  * mission's tier-4 working set gets the DENSE_BUDGET_BYTES. Cosmetic only; no randomness.

@@ -1,5 +1,5 @@
 /**
- * The budget's screens (docs/design/oat.md §7.5–§7.8): the kassabon (oat's tally), the newspaper's
+ * The budget's screens (docs/design/budget.md §7.5–§7.8): the kassabon (the receipt tally, kept generic), the newspaper's
  * euro lines, the rally's prize money, the `budgets` table on name entry and the high scores, the
  * final tally's JAARREKENING, and the HUD line.
  */
@@ -53,13 +53,13 @@ function harness(store = new MemoryStore()): { app: GameApp; step: (n: number) =
 function euroSession(players = 1): GameSession {
   const s = new GameSession({ characters: players === 2 ? ['vincent', 'thom'] : ['vincent'], seed: 1 });
   s.setEconomy('euro');
-  s.startMission('oat');
+  s.startMission('sewers');
   return s;
 }
 
-/** A finished oat play for the tally pages (no runner needed: the page reads these). */
-function oatRunner(session: GameSession): NextRunner {
-  return { session, mission: { id: 'oat', hostages: {} }, nextMission: () => null };
+/** A finished euro play for the tally pages (no runner needed: the page reads these). */
+function euroRunner(session: GameSession): NextRunner {
+  return { session, mission: { id: 'sewers', hostages: {} }, nextMission: () => null };
 }
 
 describe('budget: the kassabon (spec §7.6)', () => {
@@ -71,7 +71,7 @@ describe('budget: the kassabon (spec §7.6)', () => {
     s.ledger.book(-9500, 'boete');
     s.ledger.book(-8750, 'fare');
     s.mission.deaths = 0;
-    const rc = buildReceipt(oatRunner(session), s, 1);
+    const rc = buildReceipt(euroRunner(session), s, 1);
     const labels = rc.rows.map((r) => r.label);
     expect(labels.slice(0, 2)).toEqual(['KASSABON', 'DAGJE UIT - DE BINNENSTAD']);
     expect(labels).toContain('STATIEGELD 37X');
@@ -97,7 +97,7 @@ describe('budget: the kassabon (spec §7.6)', () => {
     const [a, b] = session.slots;
     a.ledger.book(-20000, 'assessment');
     b.ledger.book(1500, 'deposit');
-    const page = new ReceiptTallyScene(app, oatRunner(session));
+    const page = new ReceiptTallyScene(app, euroRunner(session));
     app.scenes.reset(page);
     step(1);
     expect(page.page.map((x) => x.net >= 0)).toEqual([-20000 + FLAWLESS() >= 0, true]);

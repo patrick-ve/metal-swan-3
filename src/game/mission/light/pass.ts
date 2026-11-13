@@ -1,11 +1,11 @@
 /**
  * THE MISSION LIGHT PASS (docs/design/oldenzaal.md §10.1, §10.2; docs/api/oldenzaal.md §3).
  * Owner: LIGHT. An ADDITIVE OPT-IN: the runner makes a pass only for a section that registered a
- * light config (`defineSectionLight`, ./api.ts since the oat wave A; content/oldenzaal/kit/
+ * light config (`defineSectionLight`, ./api.ts; content/oldenzaal/kit/
  * light-api.ts re-exports it). Every other section (ams, the ring, m0–m5, the first-person floors)
  * has no pass: it simulates and draws exactly as before (the pass never touches game state,
- * `world.rng` or `world.fxRng`). The oat flags of the contract (`glow`, `streaks`, `groups`,
- * `bakes`; docs/design/oat.md §8.9) default to today's behaviour: LIGHT-WATER implements them.
+ * `world.rng` or `world.fxRng`). The opt-in flags of the contract (`glow`, `streaks`, `groups`,
+ * `bakes`; docs/design/oat.md (deleted; git show eb3316a) §8.9) default to today's behaviour.
  *
  * Drawing order (MissionRunner.draw):
  *   background layers → `drawBack` (the far fog bands; the backdrop's lightning flash)
@@ -34,7 +34,7 @@
  * view, may strike twice (`double`), and the thunder sfx `oz/env/thunder` follows (when it is
  * defined) after a delay.
  *
- * THE OAT FLAGS (docs/design/oat.md §8.4, §8.8, §8.9; LIGHT-WATER), each off unless the config sets it,
+ * THE OAT FLAGS (docs/design/oat.md (deleted; git show eb3316a) §8.4, §8.8, §8.9; LIGHT-WATER), each off unless the config sets it,
  * so oldenzaal takes every old path cell for cell:
  * - `glow: 'smooth'`: at res ≥ 2 the lights still cut the 1× darkness map, but their COLOUR is drawn
  *   as dense additive glow frames at the art density (./glow.ts): round glows, pools and streak
@@ -84,6 +84,9 @@ import { SunShadows } from './contact';
 import { GlowFrames } from './glow';
 import { DEFAULT_MIST, floorLightOf, mistAlpha, type FloorLightConfig, type MistConfig } from './floor';
 import { LightMap } from './lightmap';
+import { LitMask } from './litmask';
+import { FLASHLIGHT, heroCone, heroShines, type HeroCone } from './cone';
+import type { Player } from '../../player/player';
 import type { LampGroupState, LightSetId, StreakConfig } from './api';
 
 /** Generator ids (content/oldenzaal/weather; ids.ts OZ_LIGHT.fogLayer / rainLayer). */
@@ -114,6 +117,14 @@ const ITEM_LIGHT = 0.6;
 const MUZZLE_COLOR: Color = 0xf8c055ff; // PAL_HD_OZ.candle[5]
 const BLAST_COLOR: Color = 0xe19529ff; // PAL_HD_OZ.candle[4]
 const NEUTRAL: Color = 0xffffffff;
+/**
+ * SEWERS (docs/design/sewers.md §5.1): the flashlight cone's strength and its warm colour (the lit
+ * stack's key). No colour by default (`ConeConfig.glow` opts in): the grey pass only cuts the dark;
+ * the warm look is the lit stack's (P6), and a coloured cone would double the cost of the glow scan.
+ */
+const CONE_LIGHT = 1;
+const CONE_COLOR: Color = 0xfff0d6ff;
+const CONE_GLOW = 0;
 
 /** The walk line (the water plane's reference without a floor). */
 const G_WALK = 176;
@@ -223,6 +234,32 @@ export class MissionLight implements LightControl {
   private readonly rainOpts: ParallaxOpts = { repeatX: true, repeatY: true, alpha: 1 };
   /** Was the glow layer drawn last frame (tests / debug)? */
   glowDrawn = false;
+  /** SEWERS: the heroes' flashlight cones are on (a section with `cones`), and a reused cone record. */
+  private conesOn = false;
+  private readonly cone: HeroCone = { x: 0, y: 0, angle: 0, len: 0, half: 0 };
+  /** Cones added last frame (tests / debug). */
+  conesDrawn = 0;
+  /**
+   * SEWERS, the entity-only mode (`scope: 'entities'`, api.ts): the lit masks by density (made on
+   * first use), the map already holds this frame's hero lights (`litMask`), the entity layer is open
+   * (`entitiesBegin`), and this frame's darkness went on the entities (`entitiesEnd`: `draw` skips it).
+   */
+  private readonly masks: (LitMask | null)[] = [null, null, null, null, null];
+  private heroesIn = false;
+  private layerOpen = false;
+  /** Between `entitiesBegin` and `entitiesEnd` (the layer may be flushed and reopened in between). */
+  private entityPhase = false;
+  private entityDark = 0;
+  private entityGlow = false;
+  private entitiesDone = false;
+  /** The cell box of the heroes' lights (x0, y0, x1, y1), filled by `gatherHeroes`. */
+  private readonly heroBox = new Float64Array(4);
+  /** The numbers of this frame's heroes' lights (`gatherHeroes`), and each mask's at its last build. */
+  private readonly heroSig = new Float64Array(64);
+  private heroSigN = 0;
+  private readonly maskSigs: (Float64Array | null)[] = [null, null, null, null, null];
+  /** Entity-only frames drawn (tests / debug): the darkness went on the entities only. */
+  entityFrames = 0;
   /** The section's perspective floor (null: none — every path below draws as before). */
   readonly floor: SectionFloor | null;
   private readonly floorCfg: FloorLightConfig | null;
@@ -318,7 +355,7 @@ export class MissionLight implements LightControl {
     const lampDepth = this.floorCfg?.lampDepth;
     const lamps = cfg.lamps;
     this.lampDepths = floor && lamps && lampDepth ? Float64Array.from(lamps, (l, i) => lampDepth(l, i)) : null;
-    // The oat opt-ins (none of them set: every field below is inert).
+    // The opt-ins (none of them set: every field below is inert).
     this.sectionId = sectionId;
     const st = cfg.streaks;
     this.streak = st ? (st === true ? {} : st) : null;
@@ -337,6 +374,7 @@ export class MissionLight implements LightControl {
     this.reflections = floor && cfg.water ? new WaterReflections(cfg.water) : null;
     this.sunShadows = floor && cfg.sunShadows ? new SunShadows(cfg.sunShadows) : null;
     this.glows = cfg.glow === 'smooth' ? new GlowFrames() : null;
+    this.conesOn = cfg.cones ? !(typeof cfg.cones === 'object' && cfg.cones.off === true) : false;
     bindLightControl(world, this);
   }
 
@@ -365,6 +403,16 @@ export class MissionLight implements LightControl {
     this.dTo = Math.max(0, Math.min(MAX_DARKNESS, d));
     this.f0 = this.now;
     this.flen = Math.max(0, fadeTicks);
+  }
+
+  /** SEWERS: switch the flashlight cones (a section with `cones` only). */
+  flashlights(on: boolean): void {
+    if (this.cfg.cones) this.conesOn = on;
+  }
+
+  /** SEWERS: are the flashlight cones on now? */
+  flashlightsOn(): boolean {
+    return this.conesOn;
   }
 
   flash(strength = 1): void {
@@ -579,7 +627,14 @@ export class MissionLight implements LightControl {
     }
     // 2. Darkness with the lights cut in, then their colour (a day section: none).
     const f = this.flashAt(tick) * this.flashScale;
-    if (!cfg.day) {
+    // SEWERS, the entity-only mode: a layer still open (the scene's front pass did not close it) closes here.
+    if (this.entityPhase) this.entitiesEnd(r, tick, density);
+    if (this.entitiesDone) {
+      // The darkness went on the entities only (before the scene's `over` layers): the emitters now.
+      this.entitiesDone = false;
+      if (cfg.emissive) cfg.emissive(this.world, r);
+      this.drawEmitters(r);
+    } else if (!cfg.day) {
       const dark = this.darkness * (1 - FLASH_LIFT * f);
       const glows = this.glows;
       const smooth = glows !== null && r.res >= 2;
@@ -587,6 +642,7 @@ export class MissionLight implements LightControl {
       const map = this.map;
       map.begin(Math.floor(r.camX), Math.floor(r.camY));
       if (glows) glows.begin();
+      this.heroesIn = false;
       this.gatherLights(map, tick, r.camX);
       const glow = map.resolve(cfg.tint, dark);
       if (smooth && glows) {
@@ -599,6 +655,8 @@ export class MissionLight implements LightControl {
         this.glowDrawn = glow;
         if (glow) r.image(map.glow, map.ox, map.oy, this.glowOpts);
       }
+      // SEWERS: the emitters that skip the darkness (the rat eyes).
+      if (cfg.emissive) cfg.emissive(this.world, r);
     }
     // 3. Rain: a far, slow sheet and a near, fast one (both wrap; the wind pushes them).
     const rain = cfg.rain;
@@ -613,6 +671,158 @@ export class MissionLight implements LightControl {
     if (f > 0.01) {
       this.flashOpts.alpha = f * VIEW_FLASH;
       r.rect(0, 0, VIEW_W, VIEW_H, FLASH_COLOR, this.flashOpts);
+    }
+  }
+
+  // ------------------------------------------------------------------ SEWERS: the entity-only mode
+
+  /** Is this the entity-only mode (`scope: 'entities'`, not a day section)? */
+  private get entityScope(): boolean {
+    return this.cfg.scope === 'entities' && !this.cfg.day;
+  }
+
+  /**
+   * The lit mask of this frame at density d (api.ts `litMask`): the map starts this frame with the
+   * heroes' lights (the cones, the spill, the glow), and the mask is made from them in their box.
+   * Null when nothing is lit or the mode is not 'entities'.
+   */
+  litMask(r: Renderer, d: number): LitMask | null {
+    if (!this.entityScope) return null;
+    const map = this.map;
+    const glows = this.glows;
+    const smooth = glows !== null && r.res >= 2;
+    this.glowD = smooth ? atRes(d, r.res) : 0;
+    map.begin(Math.floor(r.camX), Math.floor(r.camY));
+    if (glows) glows.begin();
+    this.gatherHeroes(map);
+    this.heroesIn = true;
+    const k = d >= 4 ? 4 : d >= 2 ? 2 : 1;
+    let m = this.masks[k];
+    if (!m) this.masks[k] = m = new LitMask(map.w, map.h, k);
+    // The same heroes' lights at the same map origin as this mask's last build: the same mask.
+    const sig = this.heroSig;
+    const n = this.heroSigN;
+    const last = this.maskSigs[k];
+    let same = last !== null && last[0] === n + 3 && last[1] === map.ox && last[2] === map.oy;
+    for (let i = 0; same && i < n; i++) if ((last as Float64Array)[i + 3] !== sig[i]) same = false;
+    if (same) return m.reuse(r.camX, r.camY) ? m : null;
+    let ls = last;
+    if (!ls || ls.length < n + 3) this.maskSigs[k] = ls = new Float64Array(Math.max(64, n + 3));
+    ls[0] = n + 3;
+    ls[1] = map.ox;
+    ls[2] = map.oy;
+    for (let i = 0; i < n; i++) ls[i + 3] = sig[i];
+    const b = this.heroBox;
+    const x0 = Math.floor(b[0] - map.ox) - 1;
+    const y0 = Math.floor(b[1] - map.oy) - 1;
+    const x1 = Math.ceil(b[2] - map.ox) + 1;
+    const y1 = Math.ceil(b[3] - map.oy) + 1;
+    return m.build(map, x0, y0, x1, y1, r.camX, r.camY) ? m : null;
+  }
+
+  /** Note one number of the heroes' lights this frame (`litMask` reuses its mask when none changed). */
+  private sigPush(v: number): void {
+    if (this.heroSigN < this.heroSig.length) this.heroSig[this.heroSigN++] = v;
+    else this.heroSigN = this.heroSig.length + 1;
+  }
+
+  /**
+   * The entities draw into the renderer's layer from now on (api.ts `entitiesBegin`). This frame's
+   * light map is finished here (the heroes' lights of `litMask`, then every other light), so the
+   * darkness is ready for every flush of the layer (`entitiesFlush`) and for `entitiesEnd`.
+   */
+  entitiesBegin(r: Renderer, tick = 0, density = 1): boolean {
+    if (!this.entityScope || !r.layerBegin || !r.layerShade || !r.layerEnd) return false;
+    if (this.layerOpen) r.layerEnd();
+    const cfg = this.cfg;
+    const f = this.flashAt(tick) * this.flashScale;
+    const dark = this.darkness * (1 - FLASH_LIFT * f);
+    const glows = this.glows;
+    const smooth = glows !== null && r.res >= 2;
+    const map = this.map;
+    if (!this.heroesIn) {
+      this.glowD = smooth ? atRes(density, r.res) : 0;
+      map.begin(Math.floor(r.camX), Math.floor(r.camY));
+      if (glows) glows.begin();
+      this.gatherHeroes(map);
+    }
+    this.heroesIn = false;
+    this.gatherStatic(map, tick, r.camX);
+    this.gatherRest(map);
+    this.entityGlow = map.resolve(cfg.tint, dark);
+    this.entityDark = dark;
+    r.layerBegin();
+    this.layerOpen = true;
+    this.entityPhase = true;
+    return true;
+  }
+
+  /**
+   * Close the entity layer now (api.ts `entitiesFlush`): the darkness on its own pixels, the layer
+   * over what is drawn. The next draws go to the backbuffer until `entitiesReopen`.
+   */
+  entitiesFlush(r: Renderer): void {
+    if (!this.layerOpen) return;
+    this.layerOpen = false;
+    const map = this.map;
+    if (this.entityDark > 0.004) r.layerShade?.(map.dark, map.ox, map.oy);
+    r.layerEnd?.();
+  }
+
+  /** Open the entity layer again after a flush (api.ts `entitiesReopen`). */
+  entitiesReopen(r: Renderer): void {
+    if (!this.entityPhase || this.layerOpen || !r.layerBegin) return;
+    r.layerBegin();
+    this.layerOpen = true;
+  }
+
+  /**
+   * Before the scene's `over` layers (api.ts `entitiesEnd`): the last flush of the entity layer, then
+   * the lights' colour (additive).
+   */
+  entitiesEnd(r: Renderer, _tick = 0, _density = 1): void {
+    if (!this.entityPhase) return;
+    this.entityPhase = false;
+    this.entitiesFlush(r);
+    const glows = this.glows;
+    const map = this.map;
+    if (glows !== null && r.res >= 2) {
+      this.glowDrawn = glows.queued > 0;
+      glows.flush(r);
+    } else {
+      this.glowDrawn = this.entityGlow;
+      if (this.entityGlow) r.image(map.glow, map.ox, map.oy, this.glowOpts);
+    }
+    this.entitiesDone = true;
+    this.entityFrames++;
+  }
+
+  /** The emitters of `emitSprites` / `emitTags`, drawn again after the darkness (full colour). */
+  private drawEmitters(r: Renderer): void {
+    const cfg = this.cfg;
+    const pre = cfg.emitSprites;
+    const world = this.world;
+    if (pre && pre.length > 0) {
+      const ents = world.entities;
+      for (let i = 0; i < ents.length; i++) {
+        const e = ents[i];
+        if (e.removed) continue;
+        const id = (e as { sprite?: unknown }).sprite;
+        if (typeof id !== 'string' || id.length === 0) continue;
+        for (let j = 0; j < pre.length; j++) {
+          if (id.startsWith(pre[j])) {
+            e.draw(r);
+            break;
+          }
+        }
+      }
+    }
+    const tags = cfg.emitTags;
+    if (tags) {
+      for (let t = 0; t < tags.length; t++) {
+        const list = world.byTag(tags[t]);
+        for (let i = 0; i < list.length; i++) if (!list[i].removed) list[i].draw(r);
+      }
     }
   }
 
@@ -707,6 +917,13 @@ export class MissionLight implements LightControl {
 
   /** Every light of this frame into the map (culled to the view by the map). `camX`: the renderer's camera (the floor's shifts). */
   private gatherLights(map: LightMap, tick: number, camX: number): void {
+    this.gatherStatic(map, tick, camX);
+    this.gatherHeroes(map);
+    this.gatherRest(map);
+  }
+
+  /** The static lamps and the light-giving entities. */
+  private gatherStatic(map: LightMap, tick: number, camX: number): void {
     const cfg = this.cfg;
     const x0 = map.ox;
     const y0 = map.oy;
@@ -721,16 +938,19 @@ export class MissionLight implements LightControl {
     else if (lamps) {
       for (let i = 0; i < lamps.length; i++) {
         const l = lamps[i];
-        if (l.x + l.r < x0 || l.x - l.r > x1 || l.y + l.r < y0 || l.y - l.r > y1) {
-          if (!(streak && l.streak && l.x + l.r >= x0 && l.x - l.r <= x1)) continue;
+        // A lamp on a parallax plane (`speed`, a painted lamp of a canal scene) sits where its plane shows it now.
+        const sp = l.speed;
+        const lx = sp === undefined || sp === 1 ? l.x : camX + 192 + (l.x - 192 - camX) * sp;
+        if (lx + l.r < x0 || lx - l.r > x1 || l.y + l.r < y0 || l.y - l.r > y1) {
+          if (!(streak && l.streak && lx + l.r >= x0 && lx - l.r <= x1)) continue;
         }
         let k = flickerAt(l.flicker ?? 0, tick, i * 7 + 3);
         if (gix && gix[i] >= 0) {
           k *= this.groupK(gix[i], tick);
           if (k <= 0) continue;
         }
-        this.addLight(map, l.x, l.y, l.r, (l.intensity ?? 1) * k, l.color, l.glow ?? LAMP_GLOW);
-        if (streak && l.streak) this.addStreak(map, streak, l.x, l.y, -1, (l.intensity ?? 1) * k, l.color, tick, i * 13 + 5);
+        this.addLight(map, lx, l.y, l.r, (l.intensity ?? 1) * k, l.color, l.glow ?? LAMP_GLOW);
+        if (streak && l.streak) this.addStreak(map, streak, lx, l.y, -1, (l.intensity ?? 1) * k, l.color, tick, i * 13 + 5);
       }
     }
     const world = this.world;
@@ -755,6 +975,21 @@ export class MissionLight implements LightControl {
       this.addLight(map, spot.x, spot.y, spot.r, spot.intensity * flickerAt(spot.flicker, tick, e.id), spot.color, LAMP_GLOW);
       if (streak && spot.streak) this.addStreak(map, streak, spot.x, spot.y, floorY, spot.intensity, spot.color, tick, e.id);
     }
+  }
+
+  /**
+   * The heroes' lights: the glow (`heroLight`) and the flashlight cones with their spill (`cones`).
+   * Their box (world px, then map cells) goes to `heroBox` for the lit mask.
+   */
+  private gatherHeroes(map: LightMap): void {
+    const cfg = this.cfg;
+    const world = this.world;
+    const box = this.heroBox;
+    box[0] = Infinity;
+    box[1] = Infinity;
+    box[2] = -Infinity;
+    box[3] = -Infinity;
+    this.heroSigN = 0;
     const hero = cfg.heroLight ?? 0;
     if (hero > 0) {
       const ps = world.players;
@@ -762,8 +997,64 @@ export class MissionLight implements LightControl {
         const p = ps[i];
         if (p.removed) continue;
         map.add(p.x, p.y - 14, hero, HERO_LIGHT, NEUTRAL, 0);
+        this.boxAdd(p.x, p.y - 14, hero);
+        this.sigPush(p.x);
+        this.sigPush(p.y);
       }
     }
+    this.sigPush(-1);
+    this.conesDrawn = 0;
+    if (this.conesOn) {
+      const ps = world.players as readonly Player[];
+      const c = this.cone;
+      const glow = this.glowD === 0 ? (typeof cfg.cones === 'object' ? (cfg.cones.glow ?? CONE_GLOW) : CONE_GLOW) : 0;
+      for (let i = 0; i < ps.length; i++) {
+        const p = ps[i];
+        if (!heroShines(p)) continue;
+        heroCone(p, c);
+        map.addCone(c.x, c.y, c.angle, c.len, c.half, CONE_LIGHT, CONE_COLOR, glow, FLASHLIGHT.band, FLASHLIGHT.fade);
+        map.add(c.x, c.y, FLASHLIGHT.spill, FLASHLIGHT.spillLight, CONE_COLOR, 0);
+        this.boxAdd(c.x, c.y, FLASHLIGHT.spill);
+        this.coneBox(c);
+        this.sigPush(c.x);
+        this.sigPush(c.y);
+        this.sigPush(c.angle);
+        this.sigPush(c.len);
+        this.sigPush(c.half);
+        this.conesDrawn++;
+      }
+    }
+  }
+
+  /**
+   * Grow `heroBox` by a cone's sector: its apex, the two rim ends and every axis extreme of its arc
+   * that lies between them (the box of a cone pointing right is about len × len·sin(half) · 2, not
+   * the whole disc).
+   */
+  private coneBox(c: HeroCone): void {
+    const a0 = c.angle - c.half;
+    const a1 = c.angle + c.half;
+    this.boxAdd(c.x, c.y, 0);
+    this.boxAdd(c.x + Math.cos(a0) * c.len, c.y + Math.sin(a0) * c.len, 0);
+    this.boxAdd(c.x + Math.cos(a1) * c.len, c.y + Math.sin(a1) * c.len, 0);
+    for (let q = Math.ceil(a0 / (Math.PI / 2)); q * (Math.PI / 2) <= a1; q++) {
+      const a = q * (Math.PI / 2);
+      this.boxAdd(c.x + Math.cos(a) * c.len, c.y + Math.sin(a) * c.len, 0);
+    }
+  }
+
+  /** Grow `heroBox` by a light at world (x, y) of radius r. */
+  private boxAdd(x: number, y: number, r: number): void {
+    const b = this.heroBox;
+    if (x - r < b[0]) b[0] = x - r;
+    if (y - r < b[1]) b[1] = y - r;
+    if (x + r > b[2]) b[2] = x + r;
+    if (y + r > b[3]) b[3] = y + r;
+  }
+
+  /** The pickups' faint pools, the muzzle flashes and blasts. */
+  private gatherRest(map: LightMap): void {
+    const world = this.world;
     const items = world.byTag('item');
     for (let i = 0; i < items.length; i++) {
       const e = items[i];

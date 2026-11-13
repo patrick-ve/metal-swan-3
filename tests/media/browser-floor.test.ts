@@ -35,7 +35,7 @@ import { chromium } from 'playwright';
 import { build } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Terrain } from '../../src/engine/terrain';
-import { isOatContent, loadContent } from '../../src/game/content/index';
+import { isSewersContent, loadContent } from '../../src/game/content/index';
 import { debugFloorDef, floorOf } from '../../src/game/mission/floor/index';
 import { SectionFloor } from '../../src/game/mission/floor/section-floor';
 import type { FloorDef } from '../../src/game/mission/floor/types';
@@ -47,8 +47,8 @@ import { captureFrame, compareBands, cpuAt, type BandDiff, type Captured } from 
 
 // The sections with a floor are known at collection time (one test per section).
 await loadContent();
-// The lazy oat chunk (decision 49): its floors join like the boot set's.
-await loadContent(isOatContent);
+// The lazy sewers chunk (docs/design/sewers.md §1): its floors join like the boot set's.
+await loadContent(isSewersContent);
 
 let browser: Browser | null = null;
 let page: Page | null = null;

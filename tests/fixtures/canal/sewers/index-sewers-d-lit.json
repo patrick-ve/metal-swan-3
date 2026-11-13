@@ -1,0 +1,194 @@
+[
+ {
+  "cx": 0,
+  "file": "sewers-d-lit-u1-c0.png",
+  "section": "sewers-d-lit",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 330,
+  "file": "sewers-d-lit-u1-c330.png",
+  "section": "sewers-d-lit",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 700,
+  "file": "sewers-d-lit-u1-c700.png",
+  "section": "sewers-d-lit",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 1008,
+  "file": "sewers-d-lit-u1-c1008.png",
+  "section": "sewers-d-lit",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 1500,
+  "file": "sewers-d-lit-u1-c1500.png",
+  "section": "sewers-d-lit",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 1810,
+  "file": "sewers-d-lit-u1-c1810.png",
+  "section": "sewers-d-lit",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 2150,
+  "file": "sewers-d-lit-u1-c2150.png",
+  "section": "sewers-d-lit",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 2432,
+  "file": "sewers-d-lit-u1-c2432.png",
+  "section": "sewers-d-lit",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 0,
+  "file": "sewers-d-lit-u2-c0.png",
+  "section": "sewers-d-lit",
+  "tier": 2,
+  "w": 192,
+  "x0": 80
+ },
+ {
+  "cx": 330,
+  "file": "sewers-d-lit-u2-c330.png",
+  "section": "sewers-d-lit",
+  "tier": 2,
+  "w": 192,
+  "x0": 96
+ },
+ {
+  "cx": 700,
+  "file": "sewers-d-lit-u2-c700.png",
+  "section": "sewers-d-lit",
+  "tier": 2,
+  "w": 192,
+  "x0": 96
+ },
+ {
+  "cx": 1008,
+  "file": "sewers-d-lit-u2-c1008.png",
+  "section": "sewers-d-lit",
+  "tier": 2,
+  "w": 192,
+  "x0": 96
+ },
+ {
+  "cx": 1500,
+  "file": "sewers-d-lit-u2-c1500.png",
+  "section": "sewers-d-lit",
+  "tier": 2,
+  "w": 192,
+  "x0": 104
+ },
+ {
+  "cx": 1810,
+  "file": "sewers-d-lit-u2-c1810.png",
+  "section": "sewers-d-lit",
+  "tier": 2,
+  "w": 192,
+  "x0": 96
+ },
+ {
+  "cx": 2150,
+  "file": "sewers-d-lit-u2-c2150.png",
+  "section": "sewers-d-lit",
+  "tier": 2,
+  "w": 192,
+  "x0": 96
+ },
+ {
+  "cx": 2432,
+  "file": "sewers-d-lit-u2-c2432.png",
+  "section": "sewers-d-lit",
+  "tier": 2,
+  "w": 192,
+  "x0": 172
+ },
+ {
+  "cx": 0,
+  "file": "sewers-d-lit-u4-c0.png",
+  "section": "sewers-d-lit",
+  "tier": 4,
+  "w": 96,
+  "x0": 128
+ },
+ {
+  "cx": 330,
+  "file": "sewers-d-lit-u4-c330.png",
+  "section": "sewers-d-lit",
+  "tier": 4,
+  "w": 96,
+  "x0": 144
+ },
+ {
+  "cx": 700,
+  "file": "sewers-d-lit-u4-c700.png",
+  "section": "sewers-d-lit",
+  "tier": 4,
+  "w": 96,
+  "x0": 144
+ },
+ {
+  "cx": 1008,
+  "file": "sewers-d-lit-u4-c1008.png",
+  "section": "sewers-d-lit",
+  "tier": 4,
+  "w": 96,
+  "x0": 144
+ },
+ {
+  "cx": 1500,
+  "file": "sewers-d-lit-u4-c1500.png",
+  "section": "sewers-d-lit",
+  "tier": 4,
+  "w": 96,
+  "x0": 152
+ },
+ {
+  "cx": 1810,
+  "file": "sewers-d-lit-u4-c1810.png",
+  "section": "sewers-d-lit",
+  "tier": 4,
+  "w": 96,
+  "x0": 144
+ },
+ {
+  "cx": 2150,
+  "file": "sewers-d-lit-u4-c2150.png",
+  "section": "sewers-d-lit",
+  "tier": 4,
+  "w": 96,
+  "x0": 144
+ },
+ {
+  "cx": 2432,
+  "file": "sewers-d-lit-u4-c2432.png",
+  "section": "sewers-d-lit",
+  "tier": 4,
+  "w": 96,
+  "x0": 220
+ }
+]

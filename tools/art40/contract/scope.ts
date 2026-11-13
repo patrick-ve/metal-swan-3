@@ -138,7 +138,7 @@ export const SCOPE: readonly CharacterScope[] = [
       { prefix: 'enemy/handhaver-c/', variant: 'skin c: a third HumanStyle (skinC, hairA, hairStyle curly: a PART change, not only palette)' },
       { prefix: 'enemy/boete-ticket/', variant: 'the thrown ticket (prop, centre anchor)' },
     ],
-    readers: [HH, HHA, SCC, SCG, MY, 'src/game/content/missions/ams/section-d.ts', 'src/game/content/missions/oat/index.ts', 'src/game/content/ring/crew/art-people.ts', 'src/game/budget/pay.ts'],
+    readers: [HH, HHA, SCC, SCG, MY, 'src/game/content/missions/ams/section-d.ts', 'src/game/content/ring/crew/art-people.ts', 'src/game/budget/pay.ts'],
     testWords: ['handhaver', 'boete-ticket'],
     rules: [
       ...ENEMY_BASE,
@@ -153,8 +153,8 @@ export const SCOPE: readonly CharacterScope[] = [
       { kind: 'point', strips: ['gloat'], text: 'The torn page drops from x + facing × 9, y − 32 (code numbers): the raised hand of the drop frame should be there.', at: { file: HH, find: 'this.world.add(new GloatPage(this.world, this.x + this.facing * 9, this.y - 32, tx));' } },
       { kind: 'frame', strips: ['cower'], text: 'Cower loops at HANDHAVER_COWER_TPF 3 (deferred strip).', at: { file: HHA, find: 'export const HANDHAVER_COWER_TPF = 3;' } },
       { kind: 'shared', strips: ['walk'], text: 'The scan car boss draws its fleeing driver with enemy/handhaver/walk: frame = floor(tick / 3) % frameCount (driverFrames read once from getFrames(ID.driverRun).length). A new count works; a slower look needs the 3-tick step changed.', at: { file: SCG, find: "driverRun: 'enemy/handhaver/walk'," } },
-      { kind: 'shared', strips: ['*'], text: 'Spawned by the mayor boss (adds every 420 ticks) and by mission oat (sections a–e) and the ring crew (dormant) reuses HANDHAVER_STYLE: shared ids change everywhere (intended, plan "Scope").', at: { file: MY, find: "w.spawn('handhaver', x, this.floorY, { enter, tags: [ADD_TAG, OFFICER_TAG] });" } },
-      { kind: 'shared', strips: ['fly'], text: 'enemy/boete-ticket/fly: the thrown ticket (8 × 5 box, ticksPerFrame 4, look anim) and the death tumble (3 tickets); also the oat budget fines (src/game/budget/pay.ts).', at: { file: HH, find: "o.sprite = 'enemy/boete-ticket/fly';" } },
+      { kind: 'shared', strips: ['*'], text: 'Spawned by the mayor boss (adds every 420 ticks); the ring crew (dormant) reuses HANDHAVER_STYLE: shared ids change everywhere (intended, plan "Scope").', at: { file: MY, find: "w.spawn('handhaver', x, this.floorY, { enter, tags: [ADD_TAG, OFFICER_TAG] });" } },
+      { kind: 'shared', strips: ['fly'], text: 'enemy/boete-ticket/fly: the thrown ticket (8 × 5 box, ticksPerFrame 4, look anim) and the death tumble (3 tickets); also the budget fines (src/game/budget/pay.ts).', at: { file: HH, find: "o.sprite = 'enemy/boete-ticket/fly';" } },
       { kind: 'fit', strips: ['*'], text: 'ams-d: prewarmed with the mayor arena (section-d.ts prewarm).', at: { file: 'src/game/content/missions/ams/section-d.ts', find: "prewarm('boss/ams-mayor/', 'enemy/handhaver/', 'enemy/boete-ticket/');" } },
     ],
     keep: [
@@ -202,7 +202,7 @@ export const SCOPE: readonly CharacterScope[] = [
       { kind: 'point', strips: ['timeout-sleep'], text: 'The snore fx sits at the full frame’s `head` point.', at: { file: PL, find: "const head = framePoint(getFrame(this.full.id, this.full.index), 'head', drawOpts.flipX, false, headPt);" } },
       { kind: 'variant', strips: ['helium-*', 'helium-wob-*'], text: 'Status art: `<art>/helium-<strip>` replaces the strip while Helium Head is on (when registered). Today the helium shoot strips have 2 frames, knife 6, throw 6, idle 4 (same roles as the base strips).', at: { file: 'src/game/player/status.ts', find: '`char/grace/helium-legs-run`) wherever such a strip is registered, else the normal one.' } },
       { kind: 'hitbox', strips: ['*'], text: 'Hitbox 14 × 30 standing, 16 × 20 crouching (TUNING.player bodyW/H, crouchBodyW/H): unchanged (D7).', at: { file: PL, find: 'this.hitbox = { x: -TUNING.player.bodyW / 2, y: -TUNING.player.bodyH, w: TUNING.player.bodyW, h: TUNING.player.bodyH };' } },
-      { kind: 'shared', strips: ['*'], text: 'The heroes play in every mission (oldenzaal, oat, ring, rally select): shared ids change everywhere.', at: { file: PL, find: 'const FULL = [' } },
+      { kind: 'shared', strips: ['*'], text: 'The heroes play in every mission (oldenzaal, sewers, ring, rally select): shared ids change everywhere.', at: { file: PL, find: 'const FULL = [' } },
     ],
     keep: [
       'all 121 ids per hero (portrait / select / select-grey stay as they are: UI)',
@@ -337,7 +337,7 @@ export const SCOPE: readonly CharacterScope[] = [
       { prefix: 'enemy/delivery-rider-a/', variant: 'skin a: a separate rendered style (palette)' },
       { prefix: 'enemy/delivery-rider-c/', variant: 'skin c: a separate rendered style (palette)' },
     ],
-    readers: [RI, RIA, DR, 'src/game/content/missions/oat/index.ts', 'src/game/content/bosses/ams/mayor.ts'],
+    readers: [RI, RIA, DR, 'src/game/content/bosses/ams/mayor.ts'],
     testWords: ['delivery-rider'],
     rules: [
       ...ENEMY_BASE,
@@ -348,7 +348,7 @@ export const SCOPE: readonly CharacterScope[] = [
       { kind: 'hitbox', strips: ['*'], text: 'RIDER_BOX 24 × 34 (bike + rider); hp 10, score 200.', at: { file: RI, find: 'export const RIDER_BOX = { w: 24, h: 34 } as const;' } },
       { kind: 'frame', strips: ['bike'], text: 'The riderless bike: a 6-frame FX (skids, fades) spawned at death (wreckBike).', at: { file: RI, find: 'sprite: `${this.art}/bike`,' } },
       { kind: 'fit', strips: ['ride', 'idle', 'tell', 'kick', 'gag', 'gloat'], text: 'RIDERS ON THE ROAD: the bike wheels sit on the feet anchor (BIKE_OX / BIKE_OY in rider.art.ts); the tell / gloat wheelies rotate around the rear wheel.', at: { file: RIA, find: 'export function defineRiderSet(set: string, o: RiderSetOpts): void {' } },
-      { kind: 'shared', strips: ['*'], text: 'Also spawned in mission oat (sections a–e) and by the mayor boss (riders tag).', at: { file: MY, find: 'const RIDER_TAG = ' } },
+      { kind: 'shared', strips: ['*'], text: 'Also spawned in mission sewers (sections a, b and the stand-ins) and by the mayor boss (riders tag).', at: { file: MY, find: 'const RIDER_TAG = ' } },
     ],
     keep: [
       'turn = 3 frames (RIDER_TURN), kick hit within 6 ticks',
@@ -368,7 +368,7 @@ export const SCOPE: readonly CharacterScope[] = [
       { prefix: 'enemy/fatbike-youth-<look><skin>/', variant: 'solo sets 0b, 0c, 1a–3c: youthStyle(look, skin) rendered separately (looks = parts, skins = palette)' },
       { prefix: 'enemy/fatbike-youth-pair-<look><skin>/', variant: 'pair sets 0a–3c: + a passenger; rider-only strips are DENSE ALIASES of the solo twin (1× own)' },
     ],
-    readers: [RI, RIA, FB, 'src/game/scenes/gameplay.ts', 'src/engine/art-pool.ts', 'src/game/content/missions/oat/index.ts'],
+    readers: [RI, RIA, FB, 'src/game/scenes/gameplay.ts', 'src/engine/art-pool.ts'],
     testWords: ['fatbike-youth'],
     rules: [
       ...ENEMY_BASE,
@@ -599,7 +599,7 @@ export const SCOPE: readonly CharacterScope[] = [
       { kind: 'hitbox', strips: ['*'], text: 'Hurtboxes per pose (HURT stand / crouch / swim / duck), SEAT_ZONE, PERCH: unchanged (D7).', at: { file: SWC, find: 'export const HURT = deepFreeze({' } },
       { kind: 'fit', strips: ['swim', 'water-duck', 'swim-neck', 'paddle-up', 'honk-swim'], text: 'THE WATER LINE: her feet ride the float line = surface + swimDepth 16 (the hull on the surface); bob 1 px every 48 ticks; duck sinks 8.', at: { file: SWC, find: 'swimDepth: 16,' } },
       { kind: 'variant', strips: ['*'], text: 'P2 = vehicle/swan-mute (variant mute); bodyId falls back to vehicle/swan/<name> when the mute strip is missing (egg, beak-flash, scuffs exist only for P1).', at: { file: SW, find: 'const cands = [`${this.bodyPrefix}/${name}`' } },
-      { kind: 'shared', strips: ['*'], text: 'Also used by oldenzaal (the tower swan jet) and oat (section c1), the lake scene and the screens art.', at: { file: 'src/game/content/oldenzaal/tower/swan-jet.ts', find: 'vehicle/swan' } },
+      { kind: 'shared', strips: ['*'], text: 'Also used by oldenzaal (the tower swan jet), the lake scene and the screens art.', at: { file: 'src/game/content/oldenzaal/tower/swan-jet.ts', find: 'vehicle/swan' } },
     ],
     keep: [
       'all 89 + 86 ids (rule 1)',
@@ -612,9 +612,9 @@ export const SCOPE: readonly CharacterScope[] = [
   },
 ];
 
-/** The paused oat work and other places the contract must not be confused by (documentation only). */
+/** Places the contract must not be confused by (documentation only). */
 export const NOTES: readonly string[] = [
-  'The heroes, the Swan, the handhaver and the delivery rider also appear in oldenzaal and oat: shared ids change everywhere (plan "Scope"; intended).',
+  'The heroes, the Swan, the handhaver and the delivery rider also appear in oldenzaal and sewers (the heroes, the rider): shared ids change everywhere (plan "Scope"; intended).',
   'Animator rule: a strip’s `durations` override any ticksPerFrame the code passes (Animator.play). The hero run strip has none today (the code plays it at 3 ticks per frame); a baked strip always has durations (src/engine/baked.ts), so the baked run keeps 36 ticks per cycle (logicTicks) and the TUNING knob no longer changes it. The hero knife / throw strips have durations, which win over the computed speed.',
   'Turn strips are drawn by code (Turner, RIDER_TURN, PERSON_TURN_TICKS, HOSTAGE_TURN_TICKS): their counts are code numbers.',
 ];

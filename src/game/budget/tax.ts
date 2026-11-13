@@ -1,7 +1,7 @@
 /**
- * The costs of the budget (docs/design/oat.md §7.3, §7.4, §6.2, §3): pure integer rules.
+ * The costs of the budget (docs/design/budget.md §7.3, §7.4): pure integer rules.
  *
- * - The `BOETE` fine on a death by a ticket: − € 95,00; in `oat-d` − € 100,00 `BLOWVERBOD`.
+ * - The `BOETE` fine on a death by a ticket: − € 95,00.
  * - The toeristenbelasting on a continue: 12,5 % → 15 → 17,5 → 20 % of a positive budget (at least
  *   € 5,00); a flat € 12,50 at ≤ € 0.
  * - INFLATIE (the Haverbar): +10 % per buy, rounded to € 0,05; GEWEIGERD when the price is above
@@ -13,14 +13,12 @@ import type { BudgetCategory, Cents } from './types';
 
 /** The `BOETE` fine (§7.3). */
 export const BOETE_CENTS: Cents = 9500;
-/** The `BLOWVERBOD` fine in De Wallen (§7.3: section `oat-d`). */
-export const BLOWVERBOD_CENTS: Cents = 10_000;
-/** The section where a ticket death is a BLOWVERBOD. */
-export const BLOWVERBOD_SECTION = 'oat-d';
-
-/** The fine of a ticket death in `sectionId`: the cents (positive: the cost) and the category. */
-export function fineFor(sectionId: string): { cents: Cents; category: BudgetCategory } {
-  return sectionId === BLOWVERBOD_SECTION ? { cents: BLOWVERBOD_CENTS, category: 'blowverbod' } : { cents: BOETE_CENTS, category: 'boete' };
+/**
+ * The fine of a ticket death in `sectionId`: the cents (positive: the cost) and the category. Every
+ * section fines the same `BOETE` (the section rule of the former level 2 went with it on 2026-11-12).
+ */
+export function fineFor(_sectionId: string): { cents: Cents; category: BudgetCategory } {
+  return { cents: BOETE_CENTS, category: 'boete' };
 }
 
 /** The toeristenbelasting rates in ‰ by continue (the 1st, 2nd, 3rd, 4th and later). */

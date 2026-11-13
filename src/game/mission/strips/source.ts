@@ -1,6 +1,6 @@
 /**
- * The strip source registry (docs/design/oat.md §8.6; the contract: ./types.ts). A source registers
- * at import time (`defineStripSource('oat-facade', grammarSource)`, GRAMMAR); the store looks it up
+ * The strip source registry (docs/design/oat.md (deleted; git show eb3316a) §8.6; the contract: ./types.ts). A source registers
+ * at import time (`defineStripSource('xyz-facade', grammarSource)`); the store looks it up
  * by `SectionStripsDef.source` when a section loads. Unknown ids fail soft: no strips (warned once).
  */
 import type { StripSource } from './types';

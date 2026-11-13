@@ -127,29 +127,33 @@ export const CONTENT_MODULES: Readonly<Record<string, () => Promise<unknown>>> =
   // Mission `rally`, level 3 (docs/design/rally.md §12.1; docs/api/rally.md): LAZY too — the boot
   // skips it; the MISSION 3 card / the glitch into 3D load it (rally-route.ts `loadRallyContent`).
   rally: () => import('./rally/index'),
-  // Mission `oat`, level 2 (docs/design/oat.md §11; docs/api/oat.md): LAZY — the boot skips it; the
-  // MISSION 2 card (oat-route.ts `loadOatContent`), a direct `?mission=oat` boot and the art workers
-  // load it. One entry per owner folder as the waves add them (`oat/…`, `bosses/oat-…`, `music/oat`,
-  // `sfx/oat…`, `samples/oat`): every id `isOatContent` accepts is lazy. Its card is not lazy
-  // (content/ui/cards.ts `OAT_CARD`).
-  'missions/oat': () => import('./missions/oat/index'),
+  // Mission `sewers`, level 2 (docs/design/sewers.md §1, §9): LAZY — the boot skips it; the MISSION 2
+  // card (sewers-route.ts `loadSewersContent`), a direct `?mission=sewers` boot and the art workers
+  // load it. One entry per owner folder as the waves add them (`sewers/…`, `bosses/sewers-…`,
+  // `music/sewers`, `sfx/sewers`, `samples/sewers`): every id `isSewersContent` accepts is lazy. Its
+  // card is not lazy (content/ui/cards.ts `SEWERS_CARD`).
+  'missions/sewers': () => import('./missions/sewers/index'),
+  'music/sewers': () => import('./music/sewers'),
+  'sfx/sewers': () => import('./sfx/sewers'),
+  'samples/sewers': () => import('./samples/sewers'),
+  'sewers/rats': () => import('./sewers/rats/index'),
+  'sewers/street': () => import('./sewers/street/index'),
+  'bosses/sewers-gerrit': () => import('./bosses/sewers-gerrit/index'),
+  'sewers/items/battery': () => import('./sewers/items/battery'),
+  'sewers/set-pieces/grate': () => import('./sewers/set-pieces/grate'),
+  'sewers/set-pieces/fatberg': () => import('./sewers/set-pieces/fatberg'),
+  'bosses/sewers-rattenjong': () => import('./bosses/sewers-rattenjong/index'),
   // Mission `ams2` (docs/design/ams2.md): level 1 again in the hero method, LAZY and stand-alone:
   // only a direct `?mission=ams2` boot, the art workers and the node tools load it (`isAms2Content`).
   'missions/ams2': () => import('./missions/ams2/index'),
-  // Wave A (INTEGRATE-A): the budget pieces (BUDGET: the statiegeld bin, its cans, DE HAVERBAR) and the
-  // day-to-night score, the sfx and the sample group 'mission:oat' (AUDIO).
-  'oat/budget': () => import('./oat/budget/index'),
-  'music/oat': () => import('./music/oat'),
-  'sfx/oat': () => import('./sfx/oat'),
-  'samples/oat': () => import('./samples/oat'),
 };
 
 /**
  * Manifest ids loaded on demand, not at boot: the first-person mode (`fps`, `fps/…`), the 3D race
- * (`rally`, `rally/…`) and mission `oat` (`isOatContent`).
+ * (`rally`, `rally/…`), mission `sewers` (`isSewersContent`) and mission `ams2`.
  */
 export function isLazyContent(id: string): boolean {
-  return isFpsContent(id) || isRallyContent(id) || isOatContent(id) || isAms2Content(id);
+  return isFpsContent(id) || isRallyContent(id) || isSewersContent(id) || isAms2Content(id);
 }
 
 /** Mission `ams2`'s lazy entry (the boot's direct start, the art workers, the node tools). */
@@ -158,20 +162,20 @@ export function isAms2Content(id: string): boolean {
 }
 
 /**
- * Mission `oat`'s lazy entries (oat-route.ts `loadOatContent`, the boot's direct start, the art
- * workers): `missions/oat`, `missions/oat/…`, `oat/…`, `bosses/oat-…`, `music/oat`, `sfx/oat…`,
- * `samples/oat`.
+ * Mission `sewers`'s lazy entries (sewers-route.ts `loadSewersContent`, the boot's direct start, the
+ * art workers): `missions/sewers`, `missions/sewers/…`, `sewers/…`, `bosses/sewers-…`,
+ * `music/sewers`, `sfx/sewers…`, `samples/sewers`.
  */
-export function isOatContent(id: string): boolean {
+export function isSewersContent(id: string): boolean {
   return (
-    id === 'missions/oat' ||
-    id.startsWith('missions/oat/') ||
-    id === 'oat' ||
-    id.startsWith('oat/') ||
-    id.startsWith('bosses/oat-') ||
-    id === 'music/oat' ||
-    id.startsWith('sfx/oat') ||
-    id === 'samples/oat'
+    id === 'missions/sewers' ||
+    id.startsWith('missions/sewers/') ||
+    id === 'sewers' ||
+    id.startsWith('sewers/') ||
+    id.startsWith('bosses/sewers-') ||
+    id === 'music/sewers' ||
+    id.startsWith('sfx/sewers') ||
+    id === 'samples/sewers'
   );
 }
 
@@ -217,8 +221,8 @@ export async function loadContent(
 
 /**
  * Manifest ids that define sprites (used by `npm run sprites`): the art modules, the missions, the
- * bosses, and mission oat's content folders (`oat/budget` draws its pieces in its own art.ts).
+ * bosses, and mission sewers' content folders (`sewers/…`: the cast draws in its own modules).
  */
 export const ART_MODULE_IDS: readonly string[] = Object.keys(CONTENT_MODULES).filter(
-  (id) => id.endsWith('/art') || id.startsWith('missions/') || id.startsWith('bosses/') || id.startsWith('oat/'),
+  (id) => id.endsWith('/art') || id.startsWith('missions/') || id.startsWith('bosses/') || id.startsWith('sewers/'),
 );

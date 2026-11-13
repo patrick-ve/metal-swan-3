@@ -1,7 +1,7 @@
 /**
- * The live strip store of a section (docs/design/oat.md §8.9: the 03:00 cross-fade). The section view
+ * The live strip store of a section (docs/design/oat.md (deleted; git show eb3316a) §8.9: the 03:00 cross-fade). The section view
  * registers the store it draws (by section id) and drops it when it is disposed; the light pass (or a
- * script) sets the cross-fade through it without a reference to the view: `setStripDarkMix('oat-d',
+ * script) sets the cross-fade through it without a reference to the view: `setStripDarkMix('xyz-d',
  * mix)`. Art only: nothing here is game state.
  */
 import type { StripStoreApi } from './types';

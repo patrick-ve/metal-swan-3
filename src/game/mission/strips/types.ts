@@ -1,7 +1,7 @@
 /**
- * THE STRIPS CONTRACT (mission `oat`, docs/design/oat.md §8.6 "The strips", lever L7; docs/api/
- * oat.md "Strips"). CORE wrote it (wave A); STRIPS implements the store (store.ts) and draws it in
- * the section view (view.ts); GRAMMAR implements a strip source (missions/oat/facade/). Types only.
+ * THE STRIPS CONTRACT (docs/design/oat.md (deleted; git show eb3316a) §8.6 "The strips"; no mission uses
+ * it since 2026-11-12, it stays as a generic piece). The store (store.ts) draws it in the section
+ * view (view.ts); a strip source paints the rows. Types only.
  *
  * The idea: a section's façade rows are not decor sprites but STREAMED STRIPS. The strip source
  * lays out every row once at section load (the lot sequence of the façade grammar, seeded per
@@ -19,7 +19,7 @@
  * THE STRIP SPACE (STRIPS, wave A): a strip is drawn 1:1 — one strip px is one logical px on screen,
  * one art px at density d is one buffer px — so it stays crisp and palette-exact at every res (a
  * resampled façade would shimmer and leave the palette). It scrolls with the façade plane's
- * line-scroll speed `s` (`StripSectionInfo.scale`: the floor's s at `SectionStripsDef.depth`, oat-a
+ * line-scroll speed `s` (`StripSectionInfo.scale`: the floor's s at `SectionStripsDef.depth`, e.g.
  * 0.862; 1 without a floor). So its columns are NOT world x: strip x p and world x u (the floor's u,
  * the decor's x, the lots' u) are tied by p = 192 + (u − 192) · s (space.ts `stripXOfU`, inverse
  * `uOfStripX`; 192 = FLOOR_CX): a feature painted at p shows exactly where a decor item at depth
@@ -34,7 +34,7 @@ import type { PixelBuffer } from '../../../engine/pixel';
 /** The densities a strip chunk is painted at (1 = the snapped 1× version, `Pen` rule). */
 export type StripDensity = 1 | 2 | 4;
 
-/** The light sets of a strip chunk (spec §8.9: the arena of oat-d has a lit and a dark bake). */
+/** The light sets of a strip chunk (a night arena can have a lit and a dark bake). */
 export type StripLightSet = 'lit' | 'dark';
 
 /** Chunk width in logical px (spec §8.6: 256; 1,024 art px at 4×). */
@@ -60,7 +60,7 @@ export const STRIP_KEEP_BEHIND = 2;
  */
 export const STRIP_LEAD_TICKS = 240;
 /**
- * The memory accounting (spec §8.12, decision 50: inside oat's 84 MB dense reserve): every byte of
+ * The memory accounting (inside the mission's dense reserve, `MissionDef.denseReserve`): every byte of
  * the lit set (resident chunks of every density, the stand-ins and the chunks being painted) stays
  * under STRIP_BUDGET_BYTES (18 MB: five 216-px chunks at 4×); the dark set (the 03:00 bake) under
  * STRIP_DARK_BUDGET_BYTES (11 MB: three). Near the cap the store releases what is furthest from the
@@ -87,11 +87,11 @@ export interface StripRowDef {
 
 /** `SectionDef.strips` (opt-in): the façade strips of a section. */
 export interface SectionStripsDef {
-  /** The registered strip source (`defineStripSource`; oat: ids.ts `OAT_STRIP_SOURCE`). */
+  /** The registered strip source (`defineStripSource`). */
   source: string;
   /**
-   * The façade plane's depth: floor depth px behind the walk line on flat ground (oat-a 16: the
-   * façade base at screen y 160; spec §2.1). The view draws the strips at this depth and scrolls
+   * The façade plane's depth: floor depth px behind the walk line on flat ground (e.g. 16: the
+   * façade base at screen y 160). The view draws the strips at this depth and scrolls
    * them with its line-scroll speed (the floor's `s(y)` there; spec §8.2: s = 0.862 at y 160).
    */
   depth: number;
@@ -109,8 +109,8 @@ export interface SectionStripsDef {
    */
   dark?: readonly [number, number];
   /**
-   * World x from which the dark set is prefetched: once the view's centre passes it (oat-d: the
-   * checkpoint at 3,500), the dark chunks of the range are queued after the lit ones.
+   * World x from which the dark set is prefetched: once the view's centre passes it (e.g. a
+   * checkpoint before the arena), the dark chunks of the range are queued after the lit ones.
    */
   darkFrom?: number;
 }
@@ -122,7 +122,7 @@ export interface StripSectionInfo {
   /** The section's art seed (the view's seed: the same section paints the same strips every run). */
   readonly seed: number;
   /**
-   * The façade plane's line-scroll speed s (the floor's s at `SectionStripsDef.depth`; oat-a 0.862):
+   * The façade plane's line-scroll speed s (the floor's s at `SectionStripsDef.depth`; e.g. 0.862):
    * strip px = world px × s (see "THE STRIP SPACE" above; space.ts `stripXOfU`). Absent = 1 (no
    * floor: strip x = world x).
    */

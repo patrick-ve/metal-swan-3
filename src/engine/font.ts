@@ -9,7 +9,7 @@ import type { FontId, TextOpts } from './render';
  *
  * - 'small': proportional, caps 5×7 with lower case (x-height 5, 2-row descenders), digits are
  *   all 5 px wide (tabular, so scores do not wobble), punctuation, arrows ← ↑ → ↓, ∞, ©, ×, ♥, ★,
- *   and the euro sign € (5 px, the budget's notation `€ 1.234,56`; oat wave A).
+ *   and the euro sign € (5 px, the budget's notation `€ 1.234,56`).
  * - 'big': chunky 8-row arcade capitals with 2-px strokes, digits and punctuation (and €). Lower
  *   case falls back to capitals.
  *
@@ -162,7 +162,7 @@ const SMALL: GlyphTable = {
   '…': ['.....', '.....', '.....', '.....', '.....', '.....', '#.#.#'],
   '♥': ['.....', '##.##', '#####', '#####', '.###.', '..#..'],
   '★': ['..#..', '..#..', '#####', '.###.', '.#.#.', '#...#'],
-  // The euro sign (mission `oat`, docs/design/oat.md §7.5: `BUDGET € 1.234,56`). Last in the table,
+  // The euro sign (docs/design/budget.md §7.5: `BUDGET € 1.234,56`). Last in the table,
   // so every older glyph keeps its index (the atlases).
   '€': ['..###', '.#...', '####.', '.#...', '####.', '.#...', '..###'],
 };
@@ -246,7 +246,7 @@ const BIG: GlyphTable = {
   '©': ['.######.', '##....##', '#..###.#', '#.##...#', '#.##...#', '#..###.#', '##....##', '.######.'],
   '♥': ['.##..##.', '########', '########', '########', '.######.', '..####..', '...##...'],
   '★': ['...##...', '...##...', '########', '.######.', '..####..', '.##..##.', '##....##'],
-  // The euro sign (mission `oat`): last in the table, as in 'small'.
+  // The euro sign: last in the table, as in 'small'.
   '€': ['...#####', '..######', '.##.....', '#####...', '.##.....', '#####...', '..######', '...#####'],
 };
 

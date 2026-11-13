@@ -242,6 +242,23 @@ export interface Renderer {
    * draws what is pending too. Optional (the software renderer draws every call at once).
    */
   rowsEnd?(): void;
+  /**
+   * THE LAYER (additive, optional; docs/api/canal.md "A lit section": the lit stack's masked
+   * composite and the entity-only darkness of mission `sewers`). `layerBegin(box)`: every later draw
+   * goes to a reused offscreen layer the size of the backbuffer, cleared to transparent (in `box`,
+   * logical screen px; default the whole view) — draws with `blend: 'add'` to a second, additive
+   * layer — until `layerEnd()` draws the layer over the backbuffer (in `box`) and then adds the
+   * additive layer. A renderer may clip the layer's draws to `box` (only what lies in it shows).
+   * In between: `layerMask` keeps the layer's pixels only where `mask` (a buffer of density `d`,
+   * world space with its top-left at (x, y), as `image`) has alpha > 0; `layerShade` draws `buf`
+   * (density 1, world space at (x, y), as `image`) over the layer's own pixels only (source-atop:
+   * its transparent pixels stay transparent). One layer at a time; `begin()` drops an open one.
+   * Renderers without it: the caller draws as before (no lit composite, darkness over everything).
+   */
+  layerBegin?(box?: SrcRect): void;
+  layerMask?(mask: PixelBuffer, d: number, x: number, y: number, dirty?: SrcRect): void;
+  layerShade?(buf: PixelBuffer, x: number, y: number): void;
+  layerEnd?(): void;
 }
 
 /** The placeholder colours of `Renderer.surface` (sky above, road below the middle). */

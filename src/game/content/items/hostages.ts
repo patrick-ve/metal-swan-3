@@ -157,7 +157,7 @@ const TOURIST: HostageKind = {
   id: 'tourist',
   gagTicks: 40,
   gag(h, t) {
-    if (t === 0) hudOf(h.world).bubble(h, 'SAY CHEESE!', { ticks: 36, kind: 'gag', speaker: 'tourist' });
+    if (t === 0) hudOf(h.world).bubble(h, paramStr(h.params, 'gagLine', 'SAY CHEESE!'), { ticks: 36, kind: 'gag', speaker: 'tourist' });
     if (t === GAG_FLASH_TICK) sayCheese(h);
   },
   gagFrame(h, t) {
@@ -239,6 +239,40 @@ export const KINDS: Readonly<Record<HostageKindId, HostageKind>> = {
   dollop: DOLLOP,
 };
 
+// ---------------------------------------------------------------------------------------------
+// Kinds and looks registered by a mission's own (lazy) module
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A look of a kind, chosen by the spawn param `look` (mission sewers: the stag-party tourist in a
+ * banana costume, `{ kind: 'tourist', look: 'banana' }`): its sprite prefix and its gag line (the
+ * kind's own line when missing; the tourist reads it as `gagLine`). The plain kind stays unchanged.
+ */
+export interface HostageLook {
+  readonly art: string;
+  readonly line?: string;
+}
+
+/** Kinds of a mission's own module (`registerHostageKind`), by id. */
+const EXTRA_KINDS = new Map<string, HostageKind>();
+/** Looks (`registerHostageLook`), by `<kind>/<look>`. */
+const LOOKS = new Map<string, HostageLook>();
+
+/**
+ * Register a hostage kind from a mission's own module (mission sewers' `sewers-worker`): spawned
+ * with `kind: <id>`, sprites under `item/hostage/<id>/…` (or the `art` param). Its default drop is
+ * table A (a `drop` param overrides). The built-in kinds cannot be replaced.
+ */
+export function registerHostageKind(kind: HostageKind): void {
+  if ((HOSTAGE_KINDS as readonly string[]).includes(kind.id)) throw new Error(`hostage kind "${kind.id}" is built in`);
+  EXTRA_KINDS.set(kind.id, kind);
+}
+
+/** Register a look of a kind (spawn param `look`). */
+export function registerHostageLook(kind: string, look: string, l: HostageLook): void {
+  LOOKS.set(`${kind}/${look}`, l);
+}
+
 /** A kind id from a param ('maestro' → 'composer'; unknown → 'critic'). */
 export function kindId(v: string): HostageKindId {
   const k = KIND_ALIASES[v] ?? v;
@@ -313,15 +347,29 @@ export class TurningHostage extends Hostage {
 
 /** Build a hostage from spawn params (also used by tests and tools). */
 export function makeHostage(world: World, x: number, y: number, p: SpawnParams): Hostage {
-  const id = kindId(paramStr(p, 'kind', 'critic'));
-  const art = paramStr(p, 'art', hasSprite(`item/hostage/${id}/tied`) ? `item/hostage/${id}` : 'item/hostage');
+  const raw = paramStr(p, 'kind', 'critic');
+  const extra = EXTRA_KINDS.get(raw);
+  if (extra) return makeExtraHostage(world, x, y, p, extra);
+  const id = kindId(raw);
+  const look = LOOKS.get(`${id}/${paramStr(p, 'look', '')}`);
+  const art = paramStr(p, 'art', look ? look.art : hasSprite(`item/hostage/${id}/tied`) ? `item/hostage/${id}` : 'item/hostage');
   let value = p.drop ?? p.gives ?? p.item;
   if (value === undefined || ((id === 'composer' || id === 'dollop') && value === 'auto')) value = defaultDrop(id, p);
   const item = contentsSpecs(value, world, KIND_TABLES[id] ?? 'table-a')[0] ?? null;
   const bind = makeBind(paramStr(p, 'bind', 'chair'), p, y);
   const o = { kind: KINDS[id], bind };
-  if (hasSprite(`${art}/turn`)) return new TurningHostage(world, x, y, { ...p, art, item }, o);
-  return new Hostage(world, x, y, { ...p, art, item }, o);
+  const params = look?.line ? { ...p, art, item, gagLine: look.line } : { ...p, art, item };
+  if (hasSprite(`${art}/turn`)) return new TurningHostage(world, x, y, params, o);
+  return new Hostage(world, x, y, params, o);
+}
+
+/** A hostage of a registered kind (`registerHostageKind`): its art, the drop (default table A), the bind. */
+function makeExtraHostage(world: World, x: number, y: number, p: SpawnParams, kind: HostageKind): Hostage {
+  const art = paramStr(p, 'art', `item/hostage/${kind.id}`);
+  const value = p.drop ?? p.gives ?? p.item;
+  const item = contentsSpecs(value, world, 'table-a')[0] ?? null;
+  const bind = makeBind(paramStr(p, 'bind', 'chair'), p, y);
+  return new Hostage(world, x, y, { ...p, art, item }, { kind, bind });
 }
 
 defineEntity('hostage', makeHostage, {
@@ -331,5 +379,5 @@ defineEntity('hostage', makeHostage, {
 
 /** Is this entity a hostage of the given kind? (Mission scripts: wait for Mrs. Dollop.) */
 export function isHostage(e: Entity, kind?: string): e is Hostage {
-  return e instanceof Hostage && (kind === undefined || e.kind?.id === kindId(kind));
+  return e instanceof Hostage && (kind === undefined || e.kind?.id === (EXTRA_KINDS.has(kind) ? kind : kindId(kind)));
 }

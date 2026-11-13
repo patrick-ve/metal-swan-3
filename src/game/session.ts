@@ -14,7 +14,7 @@ import { Ledger } from './budget/ledger';
 import type { Cents } from './budget/types';
 import { TUNING } from './tuning';
 
-/** The economy of the play in progress (docs/design/oat.md §7.1): legacy points or the euro budget. */
+/** The economy of the play in progress (docs/design/budget.md §7.1): legacy points or the euro budget. */
 export type Economy = 'points' | 'euro';
 
 // ---------------------------------------------------------------------------------------------
@@ -218,7 +218,7 @@ export class PlayerSlot {
   /** Legacy points: they keep counting in every play (the point missions, the sims; spec §7.10). */
   score = 0;
   /**
-   * The euro budget's ledger (docs/design/oat.md §7.1): signed integer cents from € 100,00, the
+   * The euro budget's ledger (docs/design/budget.md §7.1): signed integer cents from € 100,00, the
    * gross income for the extends, this mission's kassabon categories (budget/ledger.ts).
    */
   readonly ledger = new Ledger();
@@ -423,7 +423,7 @@ export class GameSession {
   /** Cross-section / cross-mission state for this game (see CampaignRecords). */
   readonly records = new CampaignRecords();
   /**
-   * The economy of the play in progress (docs/design/oat.md §7.1; `setEconomy`): the mission runner
+   * The economy of the play in progress (docs/design/budget.md §7.1; `setEconomy`): the mission runner
    * sets it from `MissionDef.economy`, the rally and the fps floors set 'euro'. Default points.
    */
   economy: Economy = 'points';

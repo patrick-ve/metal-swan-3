@@ -4,8 +4,8 @@
  */
 import { artTier } from '../../../engine/sprites';
 import type { SectionDef } from '../types';
-import { canalActive } from './registry';
-import { canalState, releaseCanal, scenesHeld, wantCanal } from './store';
+import { canalActive, canalLitOf } from './registry';
+import { canalLitState, canalState, releaseCanal, scenesHeld, wantCanal } from './store';
 import { canalDrawDensity } from './view';
 
 /**
@@ -17,15 +17,23 @@ export function canalSections(sections: Readonly<Record<string, SectionDef>> | u
   if (!sections) return;
   const keep = new Set<string>();
   const cur = current ? sections[current] : undefined;
-  if (cur?.canal && canalActive(cur)) keep.add(cur.canal.scene);
+  if (cur?.canal && canalActive(cur)) {
+    keep.add(cur.canal.scene);
+    // A lit pair (docs/api/canal.md "A lit section"): its lit stack stays with it.
+    const lit = canalLitOf(cur.canal.scene);
+    if (lit) keep.add(lit);
+  }
   const want = canalDrawDensity() > 0 ? Math.min(canalDrawDensity(), artTier()) : artTier();
   for (const id of next) {
     const def = sections[id];
     if (!def?.canal || !canalActive(def)) continue;
-    keep.add(def.canal.scene);
-    const st = canalState(def.canal.scene, def.canal.skip ?? []);
-    // A scene a view draws already (rank 0) loads at its own camera.
-    if (st && st.rank !== 0) wantCanal(st, want, 0, true);
+    const lit = canalLitOf(def.canal.scene);
+    for (const scene of lit ? [def.canal.scene, lit] : [def.canal.scene]) {
+      keep.add(scene);
+      const st = scene === lit ? canalLitState(scene, def.canal.skip ?? []) : canalState(scene, def.canal.skip ?? []);
+      // A scene a view draws already (rank 0) loads at its own camera.
+      if (st && st.rank !== 0) wantCanal(st, want, 0, true);
+    }
   }
   for (const id of scenesHeld()) if (!keep.has(id)) releaseCanal(id);
 }

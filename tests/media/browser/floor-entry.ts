@@ -272,9 +272,9 @@ const FloorTest = {
    * Render frame `id` at res `r` (drawn again while stand-ins are resident) and count its CRACK
    * pixels in the page: a pixel with alpha < 255 whose two neighbours left and right, or above and
    * below, are opaque (a hole inside the floor's coverage). `first`: up to 8 of them (x, y). A notch
-   * in the band's outline is no hole: a pixel whose neighbour opens into a wide clear area (oat-a's
-   * back edge where the raised pavement meets a bridge deck 2 px lower: the corner pixel between the
-   * two edges) is skipped; a seam crack's pixels open only into each other.
+   * in the band's outline is no hole: a pixel whose neighbour opens into a wide clear area (a back edge
+   * where a raised pavement meets a bridge deck 2 px lower: the corner pixel between the two edges)
+   * is skipped; a seam crack's pixels open only into each other.
    */
   cracks(id: number, r = 0): { w: number; h: number; cracks: number; first: number[]; standIns: number; none: boolean } {
     res = r;

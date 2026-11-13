@@ -1,15 +1,15 @@
 /**
- * Ships the picked candidates: copies them to public/audio/<boot|ams|fps|oldenzaal|ring|rally|oat>/<sfx|music|voice>/ and
+ * Ships the picked candidates: copies them to public/audio/<boot|ams|fps|oldenzaal|ring|rally|sewers>/<sfx|music|voice>/ and
  * regenerates src/game/content/samples/manifest.ts (deterministic order, no timestamps).
  *
  *   npm run audio:ship [-- --dry-run]
  *
  * Reads tmp/audio/picks.json ({ 'sfx:ui/confirm': [1, 3], ... }) and the candidate metas that
  * tools/audio/process.ts wrote (durations, loop points). MP3s under the group folders
- * (public/audio/boot, ams, fps, oldenzaal, ring, rally, oat: lib.ts `GROUP_DIRS`) that are no longer picked are
+ * (public/audio/boot, ams, fps, oldenzaal, ring, rally, sewers: lib.ts `GROUP_DIRS`) that are no longer picked are
  * removed, but only files the tool itself names (`<slug>-<n>.mp3`): a file someone placed there by
  * hand (e.g. a recording named 'Tot ziens.mp3') is kept and reported. The lazy groups 'mode:fps'
- * (the first-person mode), 'mission:oldenzaal', 'mission:ring', 'mission:rally' and 'mission:oat' are
+ * (the first-person mode), 'mission:oldenzaal', 'mission:ring', 'mission:rally' and 'mission:sewers' are
  * written to the manifest only when they have picks (lib.ts `LAZY_GROUPS`). A song whose spec lists
  * `slotBeats` (its parts) gets `marks` (seconds per order slot, `SampleSong.marks`).
  */

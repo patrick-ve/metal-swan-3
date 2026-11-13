@@ -245,7 +245,7 @@ export class OptionsScene implements Scene {
         if (this.confirm === 0) {
           app.highScores.entries = defaultHighScores().entries;
           app.highScores.save(app.store);
-          // The euro runs' table too (docs/design/oat.md §7.7).
+          // The euro runs' table too (docs/design/budget.md §7.7).
           app.budgets.entries = defaultBudgetEntries();
           app.budgets.save(app.store);
           app.audio.sfx('ui/confirm');

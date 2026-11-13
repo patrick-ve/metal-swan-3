@@ -3,7 +3,7 @@
  * CRITICS WERE NOT KIND.` (small, C, y 120), each player's final score (small, C, y 140), music
  * `game-over` and the announcer. After 240 ticks: name entry (when a score qualifies), the high
  * scores, the title. Drawn over the frozen, dimmed world. A euro run shows the budgets and enters
- * the `budgets` table (docs/design/oat.md §7.7; name-entry.ts `finishRun`).
+ * the `budgets` table (docs/design/budget.md §7.7; name-entry.ts `finishRun`).
  */
 import { measure } from '../../engine/font';
 import type { Renderer } from '../../engine/render';
@@ -64,7 +64,7 @@ export class GameOverScene implements Scene {
     if (this.t < WORD.length * LETTER_GAP + FALL) return;
     centerText(r, 'UITGEZWAAND!', 120, UI_WHITE);
     const slots = this.app.session?.slots.filter((s) => s.joined) ?? [];
-    // A euro run shows each player's budget (docs/design/oat.md §7.7).
+    // A euro run shows each player's budget (docs/design/budget.md §7.7).
     const euro = this.app.session?.euroRun === true;
     slots.forEach((s, i) => {
       const tag = slots.length > 1 ? `${s.index === 0 ? '1P' : '2P'} ` : '';

@@ -60,11 +60,15 @@ part of town. The race runs **on** the ring; the prize gets you **inside** it.
 
 ## 1. Flow and numbering
 
-> **2026-10-31 (docs/design/oat.md §1):** the race is **level 3** now. Mission `oat` (OAT OF
+> **2026-10-31 (docs/design/oat.md (deleted; git show eb3316a) §1):** the race is **level 3** now. Mission `oat` (OAT OF
 > CONTROL, level 2) comes between `ams` and the race: ams → its tally → the oat card → oat → the
 > kassabon → the **MISSION 3** card `BINNEN DE RING` (first line `TAXI PAID. NOW THE SQUAD RACES DE
 > RINGRALLY: THREE LAPS OF THE A10.`, announce `MISSION THREE. VOL GAS!`) → the glitch into 3D → …
 > The text below keeps the numbers of 2026-10-22.
+>
+> **2026-11-12 (docs/design/sewers.md §1):** `oat` is deleted; mission `sewers` (RATTENJONG MET DE
+> RATTENITEMS) is level 2 now: ams → its tally → the sewers card → sewers → the newspaper → the
+> MISSION 3 card → the glitch into 3D (`TAXI PAID.` stays true: a taxi waits at dawn).
 
 ams boss → the ams MISSION COMPLETE tally → the MISSION 2 card `BINNEN DE RING` (Gusto voices
 the briefing) → **the glitch into 3D** → the race intro (the camera flies over the grid, FILE FM

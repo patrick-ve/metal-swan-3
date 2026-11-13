@@ -29,7 +29,7 @@ import art40 as X  # noqa: E402
 def outputs(slug, baked, render, out=None):
     """{absolute path: text} of one baked set."""
     d = out or X.canonical_out(slug)
-    files = {os.path.join(d, slug + '.gen.ts'): X.to_ts(baked)}
+    files = {os.path.join(d, slug + '.gen.ts'): X.to_ts(baked, d)}
     if slug.startswith('_'):
         files[os.path.join(d, slug + '.render.json')] = X.to_render_json(render)
     j = X.to_joints_json(baked, render)

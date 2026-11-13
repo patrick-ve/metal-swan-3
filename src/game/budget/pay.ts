@@ -1,7 +1,7 @@
 /**
- * The pay path of the budget (docs/design/oat.md §7.1–§7.5; the contract: ./types.ts). Owner:
+ * The pay path of the budget (docs/design/budget.md §7.1–§7.5; the contract: ./types.ts). Owner:
  * BUDGET. Everything here runs only in a play whose session economy is `'euro'` (MissionDef
- * `economy: 'euro'`: ams, oat, oldenzaal; the rally and the fps floors set it themselves); in a
+ * `economy: 'euro'`: ams, sewers, oldenzaal; the rally and the fps floors set it themselves); in a
  * point play (the dormant ring, m0–m5) every call does nothing.
  *
  * - `pay(world, slot, cents, x, y, category)`: the one signed pay call (books the slot's ledger,
@@ -320,7 +320,7 @@ export function wireBudget(world: World): void {
 // Costs
 // ---------------------------------------------------------------------------------------------
 
-/** A death by a `BOETE` ticket (spec §7.3): − € 95,00 `BOETE`; in oat-d − € 100,00 `BLOWVERBOD`. */
+/** A death by a `BOETE` ticket (docs/design/budget.md §7.3): − € 95,00 `BOETE`. */
 export function chargeFine(world: World, slot: number | undefined, x?: number, y?: number): void {
   if (slot !== 0 && slot !== 1) return;
   const f = fineFor(gameOf(world).session.sectionId);

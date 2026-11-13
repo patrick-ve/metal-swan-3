@@ -1,5 +1,5 @@
 /**
- * The signed ledger of one player slot (docs/design/oat.md §7.1; the contract: ./types.ts
+ * The signed ledger of one player slot (docs/design/budget.md §7.1; the contract: ./types.ts
  * `BudgetLedger`). Integer cents only: the balance (`cents`, may go red: rood staan, §7.4), the
  * run's GROSS income (the extends count it; costs never reduce it), the extends already given, and
  * this mission's fixed category tallies for the kassabon (§7.6: count + cents per category, one

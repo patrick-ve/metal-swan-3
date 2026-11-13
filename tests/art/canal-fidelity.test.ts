@@ -25,7 +25,7 @@ import { decodePngSync } from '../../src/engine/png';
 import { SoftRenderer } from '../../src/engine/render-soft';
 import { setArtTier, setDeferHiArt, setHiArt } from '../../src/engine/sprites';
 import { Terrain } from '../../src/engine/terrain';
-import { loadContent } from '../../src/game/content/index';
+import { isFpsContent, isRallyContent, loadContent } from '../../src/game/content/index';
 import { canalManifest, defineCanalManifest, resetCanalStore, setCanal, setCanalSource, type CanalSectionManifest } from '../../src/game/mission/canal/index';
 import type { SectionDef } from '../../src/game/mission/types';
 import { SectionView } from '../../src/game/mission/view';
@@ -51,7 +51,7 @@ const dirOf = (mission: string): string => (mission === 'ams' ? ROOT : join(ROOT
 function readIndex(dir: string): FixtureEntry[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((f) => /^index(-[a-z0-9]+)?\.json$/.test(f))
+    .filter((f) => /^index(-[a-z0-9][a-z0-9-]*)?\.json$/.test(f))
     .sort()
     .flatMap((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')) as FixtureEntry[]);
 }
@@ -71,7 +71,7 @@ const inflate = (d: Uint8Array): Uint8Array => new Uint8Array(inflateSync(d));
 function envSections(path: string): Record<string, CanalSectionManifest> {
   const files = statSync(path).isDirectory()
     ? readdirSync(path)
-        .filter((f) => /^[a-z0-9]+\.gen\.ts$/.test(f) && f !== 'manifest.gen.ts')
+        .filter((f) => /^[a-z0-9][a-z0-9-]*\.gen\.ts$/.test(f) && f !== 'manifest.gen.ts')
         .map((f) => join(path, f))
     : [path];
   const out: Record<string, CanalSectionManifest> = {};
@@ -86,16 +86,23 @@ function envSections(path: string): Record<string, CanalSectionManifest> {
   return out;
 }
 
-/** The section's def, drawing its scene (a section not opted in yet gets `canal: { scene: '<mission>/<id>' }`). */
+/**
+ * The section's def, drawing its scene (a section not opted in yet gets `canal: { scene: '<mission>/<id>' }`).
+ * A LIT STACK (docs/api/canal.md "A lit section": its manifest names its ambient section, `litOf`) is
+ * drawn alone on its ambient section's def: `canal: { scene: '<mission>/<lit id>' }`.
+ */
 function sectionDef(mission: string, id: string): SectionDef {
-  const def = getMission(mission)?.sections[id];
-  if (!def) throw new Error(`mission ${mission} has no section ${id}`);
+  const litOf = canalManifest(mission)?.sections[id]?.litOf;
+  const def = getMission(mission)?.sections[litOf ?? id];
+  if (!def) throw new Error(`mission ${mission} has no section ${litOf ?? id}`);
+  if (litOf) return { ...def, canal: { scene: `${mission}/${id}` } };
   return def.canal ? def : { ...def, canal: { scene: `${mission}/${id}` } };
 }
 
 describe('canal scenes: the game frame equals the kit frame', () => {
   beforeAll(async () => {
-    await loadContent();
+    // Every 2D mission, the lazy ones too (sewers, ams2): the first-person mode and the race have no canal scenes.
+    await loadContent((id) => !isFpsContent(id) && !isRallyContent(id));
     setHiArt(true);
     setDeferHiArt(false);
     setCanal(true);

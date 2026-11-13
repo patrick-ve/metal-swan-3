@@ -46,7 +46,7 @@ function norm3(x: number, y: number, z: number): readonly [number, number, numbe
 }
 
 /**
- * A key light and its bounce (mission `oat`, docs/design/oat.md §8.3; ADDITIVE): the sun of a
+ * A key light and its bounce (docs/design/oat.md (deleted; git show eb3316a) §8.3; ADDITIVE): the sun of a
  * section for `HdCanvas.render({ sun })`, `diffuse(…, sun)` and `specular(…, sun)`. Unit vectors in
  * this file's frame (x right, y DOWN, z towards the viewer). `DEFAULT_SUN` is today's light (`KEY`,
  * `BOUNCE`, `HALF`, the very same arrays), so every caller that passes no sun lights every px
@@ -96,7 +96,7 @@ export interface LightParams {
 
 export const LIGHT_DEFAULTS: Required<LightParams> = { amb: 0.05, gain: 1, bounce: 0.22, rim: 0.3, spec: 0, shine: 24, wrap: 0.08 };
 
-/** Diffuse tone (0..1-ish) of a unit normal: key (wrapped) + bounce + rim. `sun` (oat): the section's sun. */
+/** Diffuse tone (0..1-ish) of a unit normal: key (wrapped) + bounce + rim. `sun`: the section's sun. */
 export function diffuse(nx: number, ny: number, nz: number, amb: number, gain: number, wrap: number, bounce: number, rim: number, sun: SunDef = DEFAULT_SUN): number {
   const K = sun.key;
   const B = sun.bounce;
@@ -118,7 +118,7 @@ export function diffuse(nx: number, ny: number, nz: number, amb: number, gain: n
   return amb + (1 - amb) * kk * gain + bounce * bb * 0.5 + rim * rr;
 }
 
-/** Specular term 0..1 of a unit normal. `sun` (oat): the section's sun. */
+/** Specular term 0..1 of a unit normal. `sun`: the section's sun. */
 export function specular(nx: number, ny: number, nz: number, shine: number, sun: SunDef = DEFAULT_SUN): number {
   const H = sun.half;
   const h = nx * H[0] + ny * H[1] + nz * H[2];

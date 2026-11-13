@@ -124,6 +124,11 @@ export class World implements PhysicsEnv, ScriptHost {
    * `drawDepth` is not 0 (shifted to its depth). Null (the default): every entity draws itself.
    */
   depthDraw: ((r: Renderer, e: Entity) => void) | null = null;
+  /**
+   * OPT-IN render hook (the lit pairs of the canal scenes, docs/api/canal.md "A lit section"): asked
+   * first for every entity drawn; true = it drew the entity itself. Null (the default): unchanged.
+   */
+  drawHook: ((r: Renderer, e: Entity) => boolean) | null = null;
 
   private readonly pending: Entity[] = [];
   private readonly tagIndex = new Map<string, Entity[]>();
@@ -489,6 +494,7 @@ export class World implements PhysicsEnv, ScriptHost {
         particlesDone = true;
       }
       try {
+        if (this.drawHook !== null && this.drawHook(r, e)) continue;
         if (e.drawDepth !== 0 && this.depthDraw) this.depthDraw(r, e);
         else e.draw(r);
       } catch (err) {

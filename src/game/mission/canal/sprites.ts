@@ -31,6 +31,11 @@ export class CanalSprites implements FrameOverlay {
   private readonly merged = new Map<string, Merged>();
   /** Ids whose baked frames do not fit the game's frames (they keep their own art). */
   private readonly bad = new Set<string>();
+  /**
+   * Asks for a listed id so far (a lit pair's view counts them around each entity's draw: an entity
+   * that draws a canal sprite is drawn like the scenery, docs/api/canal.md "A lit section").
+   */
+  hits = 0;
 
   private constructor(state: CanalSceneState) {
     this.state = state;
@@ -49,6 +54,13 @@ export class CanalSprites implements FrameOverlay {
     return state.sec.sprites?.length ? new CanalSprites(state) : null;
   }
 
+  /** The sprite ids this scene replaces frames of, as a set. */
+  get idSet(): ReadonlySet<string> {
+    return (this.idCache ??= new Set(this.byId.keys()));
+  }
+
+  private idCache: Set<string> | null = null;
+
   /** The sprite ids this scene replaces frames of. */
   ids(): string[] {
     return [...this.byId.keys()];
@@ -66,7 +78,9 @@ export class CanalSprites implements FrameOverlay {
 
   frames(id: string, d: number, base: readonly Frame[]): readonly Frame[] {
     const map = this.byId.get(id);
-    if (!map || this.state.failed || this.bad.has(id)) return base;
+    if (!map) return base;
+    this.hits++;
+    if (this.state.failed || this.bad.has(id)) return base;
     const st = this.tierFor(d);
     if (!st) return base;
     const from = st.sprites as Frame[];

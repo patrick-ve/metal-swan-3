@@ -22,9 +22,9 @@ import type { Scene } from '../engine/scene';
 import { MemoryStore } from '../engine/storage';
 import type { World } from '../engine/world';
 import { createApp, type GameApp } from '../game/app';
-import { isAms2Content, isLazyContent, isOatContent, loadContent } from '../game/content/index';
+import { isAms2Content, isLazyContent, isSewersContent, loadContent } from '../game/content/index';
 import { AMS2_ID } from '../game/content/missions/ams2/ids';
-import { OAT_ID } from '../game/content/missions/oat/ids';
+import { SEWERS_ID } from '../game/content/missions/sewers/ids';
 import type { MissionRunner } from '../game/mission/runner';
 import { DEFAULT_PARAMS } from '../game/params';
 import type { Player } from '../game/player/player';
@@ -313,7 +313,7 @@ class Headless implements HeadlessGame {
       hostages: sum((s) => s.stats.hostages),
       pickups: sum((s) => s.stats.pickups),
       score: sum((s) => s.score),
-      // The euro budget (docs/design/oat.md §7.10): a euro play only; a point play omits the field.
+      // The euro budget (docs/design/budget.md §7.10): a euro play only; a point play omits the field.
       budget: this.session.euroRun ? slots.map((s) => s.cents) : undefined,
       timeouts: this.stats.timeouts,
       maxEntities: this.stats.maxEntities,
@@ -332,15 +332,15 @@ class Headless implements HeadlessGame {
 
 /**
  * Build a headless game (loads the content manifest first unless `loadContent: false`; the lazy
- * mission `oat` too when `missionId` is 'oat', docs/design/oat.md decision 49).
+ * mission `sewers` too when `missionId` is 'sewers', docs/design/sewers.md §1; `ams2` likewise).
  */
 export async function createHeadlessGame(o: HeadlessOptions): Promise<HeadlessGame> {
   applyTuning();
   const capture = o.captureConsole === false ? null : captureConsole(o.echoConsole ?? false);
   let failed: Array<{ id: string; error: string }> = [];
-  const oat = o.missionId === OAT_ID;
+  const sewers = o.missionId === SEWERS_ID;
   const ams2 = o.missionId === AMS2_ID;
-  if (o.loadContent !== false) failed = (await loadContent((id) => !isLazyContent(id) || (oat && isOatContent(id)) || (ams2 && isAms2Content(id)))).failed;
+  if (o.loadContent !== false) failed = (await loadContent((id) => !isLazyContent(id) || (sewers && isSewersContent(id)) || (ams2 && isAms2Content(id)))).failed;
   const game = new Headless(o, capture);
   for (const f of failed) game.stats.add(`content "${f.id}"`, f.error.split('\n')[0], f.error, 0);
   return game;

@@ -1,7 +1,7 @@
 /**
  * Mission oldenzaal in the flow (docs/design/oldenzaal.md §1; docs/api/oldenzaal.md "Flow"):
- * the last first-person floor's tally → the story card → the MISSION 5 intro card (level 5 since the
- * oat wave, docs/design/oat.md §1) → the mission
+ * the last first-person floor's tally → the story card → the MISSION 5 intro card (level 5 since
+ * 2026-10-31) → the mission
  * → its MISSION COMPLETE tally → the TO BE CONTINUED card → today's ending (fps variant) → the
  * final tally. P2 rejoins the 2D runner after the one-slot fps mode; a P1 who went out in the fps
  * mode stays out (P2 plays alone). The m5 trap: m5 still ends the campaign (flow.ts's route guard:
@@ -151,7 +151,7 @@ describe('the route into oldenzaal and out of it', () => {
     expect(game.runner.section.id).toBe('oz-a');
     expect(h.app.session!.missionId).toBe(OLDENZAAL_ID);
     expect(game.runner.players.length).toBe(1);
-    // A game over here would show M5 in the hall of fame (level 5 since the oat wave).
+    // A game over here would show M5 in the hall of fame (level 5 since 2026-10-31).
     expect(missionColumn(entryFor(h.app, h.app.session!.slots[0], false))).toBe('M5');
     completeMission(h, game);
     expect((h.app.scenes.top as MissionCompleteScene).runner.mission.id).toBe(OLDENZAAL_ID);
@@ -221,8 +221,8 @@ describe('the m5 trap and the direct start', () => {
     startNewGame(h.app, { mission: 'm5', characters: ['vincent'] });
     expect(h.until(GameplayScene, 60)).toBe(true);
     const game = h.app.scenes.top as GameplayScene;
-    // `oat` (lazy) is not loaded in this file: m5's sorted next is oldenzaal (with oat loaded it is
-    // oat: tests/game/oat-flow.test.ts). Neither is m5's route successor.
+    // m5's sorted next is oldenzaal (`sewers`, lazy and not loaded here, sorts after it:
+    // tests/game/sewers-flow.test.ts). Oldenzaal is not m5's route successor.
     const next = game.runner.nextMission();
     expect(next).toBe(OLDENZAAL_ID);
     expect(routeAllows(game.runner.mission, next!)).toBe(false);

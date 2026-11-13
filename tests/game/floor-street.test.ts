@@ -29,9 +29,8 @@ import { describe, expect, it } from 'vitest';
 import { sAtDepth, sOfV } from '../../src/engine/floor/cam';
 import type { Frame } from '../../src/engine/render';
 import { getFrame } from '../../src/engine/sprites';
-import { isOatContent, loadContent } from '../../src/game/content/index';
+import { isSewersContent, loadContent } from '../../src/game/content/index';
 import { roadwayAt, type StreetLayout } from '../../src/game/content/missions/ams/floor/index';
-import { OAT_STREET_PAINTER } from '../../src/game/content/missions/oat/floor/painter';
 import { OZ_FLOOR_IDS, townGutter } from '../../src/game/content/missions/oldenzaal/floor/index';
 import { checkFloor } from '../../src/game/mission/floor/index';
 import type { SectionFloor } from '../../src/game/mission/floor/section-floor';
@@ -41,8 +40,8 @@ import { getEntityMeta, getMission, listMissions } from '../../src/game/registry
 import { createHeadlessGame } from '../../src/sim/index';
 
 await loadContent();
-// The lazy oat chunk (decision 49): its floors join like the boot set's.
-await loadContent(isOatContent);
+// The lazy sewers chunk (docs/design/sewers.md §1): its floors join like the boot set's.
+await loadContent(isSewersContent);
 
 /** Depth half-extents (world px) of a decor item, a row's prop and a walk-plane entity. */
 const FOOT = 3;
@@ -52,10 +51,9 @@ const ENTITY_FOOT = 3;
  * The fewest still things the bot run must meet in the walk plane (a sanity floor of the guard: it
  * really saw the script's props, pickups and hostages). Default 3; the river sections have fewer by
  * design: c1's script keeps one on the ground (the bomb crate; the sack tourist hops), c2 none
- * (everything rides the cruise boat or stands on the bridges); oat-d's wave-A proof strip has no
- * script props yet (wave C scripts it).
+ * (everything rides the cruise boat or stands on the bridges).
  */
-const MIN_WALK_PLANE: Readonly<Record<string, number>> = { 'ams/c1': 1, 'ams/c2': 0, 'oat/oat-d': 0 };
+const MIN_WALK_PLANE: Readonly<Record<string, number>> = { 'ams/c1': 1, 'ams/c2': 0 };
 /**
  * Decor that stands in the water by nature: boats, bridges with their portals, arches and railings
  * (`floor-rail-…`: a bridge's front railing), and the canal houses (a row's end house rises from the
@@ -95,10 +93,6 @@ function keepFree(fs: FloorSection, floor: SectionFloor): KeepFree {
     const gutter = townGutter(p.params ?? {}, vAt);
     return () => gutter;
   }
-  // oat's narrow streets are one-way clinker streets with no bike lane (docs/design/oat.md §2.1):
-  // the heroes walk the street itself and only traffic entities drive it, so no range is kept free;
-  // the land rule below still holds (the quay edge, the canal under the bridges).
-  if (p.id === OAT_STREET_PAINTER) return () => null;
   throw new Error(`${fs.key}: no street map for the floor painter '${p.id}' (give its kit a keep-free map in this test)`);
 }
 
@@ -323,8 +317,7 @@ describe('street logic on every floor (spec §11 R2: nothing in the lane or on t
       if (!floor) throw new Error(`${fs.key}: no floor`);
       const free = keepFree(fs, floor);
 
-      // oat's shared clinker streets keep nothing free (keepFree above): no map to guard.
-      it.skipIf(fs.def.painter.id === OAT_STREET_PAINTER)('has a keep-free street to guard (the map is not empty)', () => {
+      it('has a keep-free street to guard (the map is not empty)', () => {
         let n = 0;
         for (let u = 0; u < fs.section.width; u += 8) if (free(u)) n++;
         expect(n).toBeGreaterThan(fs.section.width / 32);

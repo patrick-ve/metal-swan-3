@@ -62,8 +62,8 @@ import { createApp, graphicsMode, type GameApp } from './game/app';
 import { ArtCache } from './game/art-cache';
 import { parseLaunchParams } from './game/params';
 import { setFloorOverlay } from './game/mission/floor/registry';
-import { fetchCanalSource, setCanal, setCanalSource, setCanalTextures } from './game/mission/canal/registry';
-import { canalBytes, canalSceneBytes } from './game/mission/canal/store';
+import { canalBase, fetchCanalSource, setCanal, setCanalSource, setCanalTextures } from './game/mission/canal/registry';
+import { canalBytes, canalSceneBytes, setCanalLoadLog, setCanalLoadPolicy } from './game/mission/canal/store';
 import { canalDrawStats, resetCanalDrawStats, type CanalDrawStats } from './game/mission/canal/view';
 import { artDetailTier } from './game/settings';
 import { BootScene } from './game/scenes/index';
@@ -91,12 +91,16 @@ declare global {
       gl3d?: Gl3dView;
       /** The WebGL2 floor (docs/api/floor.md §7): `stats()` (CPU ms, res, uploads, GPU bytes), `ok`, `reason`. */
       floorGl?: GlFloor;
-      /** The canal scenes (docs/api/canal.md): the draw time, the resident bytes (all, by scene), the stats' reset. */
+      /** The canal scenes (docs/api/canal.md): the draw time, the resident bytes (all, by scene), the stats' reset, the load log. */
       canal?: {
         stats: () => CanalDrawStats;
         bytes: () => { cpu: number; tex: number };
         scenes: () => Record<string, { cpu: number; tex: number }>;
         reset: () => void;
+        /** Start (true) or stop the load log: every pack's bytes, queue wait, read and decode times. */
+        log: (on: boolean) => unknown;
+        /** The loader's policy (reads in flight, the whole-section tier-1 fallback): the old one is { reads: 1, wholeFallback: false }. */
+        policy: (p: { reads?: number; wholeFallback?: boolean }) => unknown;
       };
     };
   }
@@ -183,7 +187,9 @@ function main(): void {
   if (query.get('debug') === 'floor') setFloorOverlay(true);
   // The canal scenes (docs/api/canal.md): the baked scenery files under the site's base, each tile a
   // texture of its own; `?canal=0` draws the old scenery (to compare).
-  setCanalSource(fetchCanalSource(import.meta.env.BASE_URL));
+  // The dev server: from the other loopback name (its own connection pool: the art workers' module
+  // loads fill the page's six connections for seconds, docs/api/canal.md §4).
+  setCanalSource(fetchCanalSource(canalBase(import.meta.env.BASE_URL, window.location, import.meta.env.DEV)));
   setCanalTextures(canvasTexture);
   if (query.get('canal') === '0') setCanal(false);
   const app = createApp({ input, audio, store, params, debug, gesture: false, preloadArt: true, artCache, view3d, floorGpu: floorGl });
@@ -202,7 +208,7 @@ function main(): void {
     tier: artTier,
     gl3d: view3d,
     floorGl,
-    canal: { stats: canalDrawStats, bytes: canalBytes, scenes: canalSceneBytes, reset: resetCanalDrawStats },
+    canal: { stats: canalDrawStats, bytes: canalBytes, scenes: canalSceneBytes, reset: resetCanalDrawStats, log: setCanalLoadLog, policy: setCanalLoadPolicy },
     get rally(): RallyProbe {
       return rallyProbe(app);
     },

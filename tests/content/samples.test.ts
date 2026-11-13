@@ -39,9 +39,9 @@ import { applyShip, type GroupData } from '../../tools/audio/ship';
 
 // 'fps/sound' registers the lazy synth fallbacks of the 'mode:fps' group (docs/design/fps.md §3.6);
 // the mission oldenzaal owners register its 'oz/…' synth fallbacks (sfx/oldenzaal, the area
-// modules without their art, the boss).
+// modules without their art, the boss). Mission sewers: 'sfx/sewers' registers its 'sewers/…' synth fallbacks.
 const ozSound = (id: string): boolean => id === 'sfx/oldenzaal' || id === 'bosses/oldenzaal' || (id.startsWith('oldenzaal/') && !id.endsWith('/art'));
-const report = await loadContent((id) => id === 'sfx' || id.startsWith('music') || id === 'samples' || id === 'fps/sound' || ozSound(id));
+const report = await loadContent((id) => id === 'sfx' || id.startsWith('music') || id === 'samples' || id === 'fps/sound' || ozSound(id) || id === 'sfx/sewers');
 // Mission ring (wave B): the songs on foot `ring-foot` / `ring-boot` register with the foot content
 // (ring/foot/index.ts imports music/ring-foot.ts), which this test does not load.
 await import('../../src/game/content/music/ring-foot');
@@ -233,7 +233,7 @@ describe('sample manifest (src/game/content/samples)', () => {
 
   it('keys are registered sound effect ids and song ids; files exist; loop points are sane', () => {
     const fileOk = (f: string): void => {
-      expect(f, f).toMatch(/^(boot|ams|fps|oldenzaal|ring|rally)\/(sfx|music|voice)\/[a-z0-9._-]+\.mp3$/);
+      expect(f, f).toMatch(/^(boot|ams|fps|oldenzaal|ring|rally|sewers)\/(sfx|music|voice)\/[a-z0-9._-]+\.mp3$/);
       const url = new URL(f, PUBLIC_AUDIO);
       expect(existsSync(url), `missing public/audio/${f}`).toBe(true);
       expect(statSync(url).size, f).toBeGreaterThan(0);
@@ -278,7 +278,7 @@ describe('sample manifest (src/game/content/samples)', () => {
     if (keys.length === 0) return;
     // The lines come from the generation spec (tools/audio/spec.ts), which the manifest is made from.
     const spec = (await import('../../tools/audio/spec')) as { LINES: ReadonlyArray<{ speaker: string; text: string }>; PENDING_RETAKES: ReadonlyArray<{ old: string }> };
-    // The oat route switch (wave A) changed three voiced texts; their old takes stay until wave C.
+    // The route switch of 2026-10-31 changed three voiced texts; their old takes stay until the retakes.
     const known = new Set([...spec.LINES.map((l) => voiceKey(l.text)), ...spec.PENDING_RETAKES.map((r) => voiceKey(r.old))]);
     for (const k of keys) expect(known.has(k), `voice key ${k} is not a line of tools/audio/spec.ts`).toBe(true);
     expect(spec.LINES.filter((l) => /HALSEMA|HASLEMA|MAYOR/i.test(l.speaker))).toEqual([]);
@@ -421,8 +421,8 @@ describe("FILE FM's takes (group 'mission:rally', docs/design/rally.md §8)", ()
       expect(m!.duration, j.id).toBeLessThan(8);
     }
     const boot = SAMPLE_MANIFEST.boot;
-    // The oat route switch (docs/design/oat.md §0 #61) changed the first card line and the announce:
-    // their new takes come in wave C (PENDING_RETAKES); until then the old takes stay shipped.
+    // The route switch of 2026-10-31 changed the first card line and the announce: their new takes
+    // are pending (PENDING_RETAKES); until then the old takes stay shipped.
     const { PENDING_RETAKES } = (await import('../../tools/audio/spec')) as { PENDING_RETAKES: ReadonlyArray<{ old: string; text: string }> };
     for (const t of [...RALLY_CARD_LINES, RALLY_ANNOUNCE]) {
       const pending = PENDING_RETAKES.find((r) => r.text === t);
@@ -446,7 +446,7 @@ describe('audio:ship keeps the files it did not write', () => {
       put('oldenzaal/sfx/oz-env-old-1.mp3');
       const hand = put('ams/voice/Tot ziens.mp3');
       const empty = (): GroupData => ({ sfx: {}, music: {}, voice: {} });
-      const r = applyShip({ groups: { boot: empty(), 'mission:ams': empty(), 'mode:fps': empty(), 'mission:oldenzaal': empty(), 'mission:ring': empty(), 'mission:rally': empty(), 'mission:oat': empty() }, copies: [], errors: [], warnings: [] }, p, true);
+      const r = applyShip({ groups: { boot: empty(), 'mission:ams': empty(), 'mode:fps': empty(), 'mission:oldenzaal': empty(), 'mission:ring': empty(), 'mission:rally': empty(), 'mission:sewers': empty() }, copies: [], errors: [], warnings: [] }, p, true);
       expect(r.removed).toEqual(['public/audio/fps/sfx/fps-old-1.mp3', 'public/audio/oldenzaal/sfx/oz-env-old-1.mp3']);
       expect(r.kept).toEqual(['public/audio/ams/voice/Tot ziens.mp3']);
       expect(existsSync(hand)).toBe(true);
@@ -455,7 +455,7 @@ describe('audio:ship keeps the files it did not write', () => {
       expect(r.manifest).not.toContain('mission:oldenzaal');
       expect(r.manifest).not.toContain('mission:ring');
       expect(r.manifest).not.toContain('mission:rally');
-      expect(r.manifest).not.toContain('mission:oat');
+      expect(r.manifest).not.toContain('mission:sewers');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

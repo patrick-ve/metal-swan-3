@@ -160,7 +160,7 @@ describe('HD glyph tables', () => {
 
 describe('the 1× text path is unchanged', () => {
   it('the bitmap atlases keep their pixels', () => {
-    // The oat wave (docs/design/oat.md §7.5) appended the € glyph to both fonts: the atlas grew by one
+    // The budget wave (docs/design/budget.md §7.5) appended the € glyph to both fonts: the atlas grew by one
     // cell at its right end; every older cell keeps its place and pixels (the hashes of before).
     const old = (id: 'small' | 'big'): PixelBuffer => {
       const f = getFont(id);

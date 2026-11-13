@@ -152,7 +152,7 @@ export interface SubtitleState {
 export interface HudInfo {
   floor: number;
   score: number;
-  /** A euro run (docs/design/oat.md §7.9): the slot's budget in cents shown instead of the score. */
+  /** A euro run (docs/design/budget.md §7.9): the slot's budget in cents shown instead of the score. */
   cents?: number;
   /** The reserve lives (`slot.lives − 1`, as the 2D HUD shows them; spec §4.13). */
   lives: number;

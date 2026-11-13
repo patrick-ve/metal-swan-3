@@ -57,8 +57,8 @@ export interface SimReport {
   pickups: number;
   score: number;
   /**
-   * The euro budget per joined slot in cents (docs/design/oat.md §7.10): only in a euro play
-   * (ams, oat, oldenzaal); absent in a point mission (the report stays as it was).
+   * The euro budget per joined slot in cents (docs/design/budget.md §7.10): only in a euro play
+   * (ams, sewers, oldenzaal); absent in a point mission (the report stays as it was).
    */
   budget?: number[];
   timeouts: number;

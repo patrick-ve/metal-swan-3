@@ -1,4 +1,4 @@
-# DELIVERY RIDER: the meal-delivery courier on his city bike, mission ams (and oat) at 40 px (plan
+# DELIVERY RIDER: the meal-delivery courier on his city bike, mission ams (and sewers) at 40 px (plan
 # docs/design/ams40.md wave 4). The look is the cast spike's approved sample
 # (docs/design/cast40/chars/delivery-rider.py): the black bike helmet, the slate jacket with the
 # green collar and cuffs, black gloves and trousers, the big green cube backpack with a plain

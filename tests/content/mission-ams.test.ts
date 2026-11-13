@@ -36,9 +36,9 @@ describe('mission ams', () => {
     expect(Object.keys(AMS.sections).sort()).toEqual(['a', 'b', 'c', 'c1', 'c2', 'd']);
     expect(AMS.start).toBe('a');
     expect(AMS.bossSection).toBe('d');
-    // After its tally: level 2, the day out in the old city `oat` (docs/design/oat.md §1; lazy: the
-    // card loads it), then the 3D race (level 3). The 2D ring is dormant since 2026-10-22.
-    expect(AMS.next).toBe('oat');
+    // After its tally: level 2, De Wallen by night and the sewer `sewers` (docs/design/sewers.md §1;
+    // lazy: the card loads it), then the 3D race (level 3). The 2D ring is dormant since 2026-10-22.
+    expect(AMS.next).toBe('sewers');
     expect(AMS.after).toBeUndefined();
     expect(AMS.music).toBe('ams');
     expect(AMS.bossMusic).toBe('ams-boss');

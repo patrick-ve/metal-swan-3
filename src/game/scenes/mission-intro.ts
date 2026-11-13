@@ -17,11 +17,10 @@
  * (`preloadRally`: the feature check), and its end glitches into 3D (`RallyGlitchScene` →
  * `RallyScene`, or the no-WebGL2 card).
  *
- * Mission `oat` (docs/design/oat.md §1, decision 49; level 2, a registered but LAZY mission): the
- * card loads the oat chunk (oat-route.ts `loadOatContent`), then preloads its art and sample group,
- * and holds past its time-out until the chunk has registered the mission; a chunk that fails goes
- * on to the rally's card (the run never dead-ends). Its folder look (`MissionCard.look: 'folder'`)
- * is drawn in wave C; until then the default card.
+ * Mission `sewers` (docs/design/sewers.md §1; level 2, a registered but LAZY mission): the card
+ * loads the sewers chunk (sewers-route.ts `loadSewersContent`), then preloads its art and sample
+ * group, and holds past its time-out until the chunk has registered the mission; a chunk that fails
+ * goes on to the rally's card (the run never dead-ends).
  */
 import type { Color } from '../../engine/color';
 import { measure } from '../../engine/font';
@@ -40,7 +39,7 @@ import { isRing, prepareRing, preloadRing, type RingStart } from './ring-route';
 import type { RallyOpts } from '../rally/api';
 import { RallyGlitchScene } from './rally-glitch';
 import { isRally, prepareRally, preloadRally, RALLY_ID } from './rally-route';
-import { isOat, loadOatContent, oatLoadState } from './oat-route';
+import { isSewers, loadSewersContent, sewersLoadState } from './sewers-route';
 
 /** The radio box and the portrait (one screen-art group: HD at the art tier once built). */
 const RADIO_ART: readonly string[] = ['ui/radio', 'ui/portrait-gusto'];
@@ -128,7 +127,7 @@ export class MissionIntroScene implements Scene {
   private ring: RingStart | null = null;
   /** The rally's race (made on enter; null otherwise). */
   private rally: RallyOpts | null = null;
-  /** Mission oat: the card is on screen (the lazy chunk's preload only starts while it is). */
+  /** Mission sewers: the card is on screen (the lazy chunk's preload only starts while it is). */
   private live = false;
 
   constructor(app: GameApp, mission: string) {
@@ -165,11 +164,11 @@ export class MissionIntroScene implements Scene {
       preloadRally(this.app, this.rally);
       return;
     }
-    if (isOat(this.mission)) {
-      // Mission oat is lazy: its chunk first, then its art and samples (while the card still shows).
+    if (isSewers(this.mission)) {
+      // Mission sewers is lazy: its chunk first, then its art and samples (while the card still shows).
       this.live = true;
-      void loadOatContent().then(() => {
-        if (!this.live || !oatLoadState().registered) return;
+      void loadSewersContent().then(() => {
+        if (!this.live || !sewersLoadState().registered) return;
         preloadMissionArt(this.app, getMission(this.mission));
         preloadMissionAudio(this.app, getMission(this.mission));
       });
@@ -215,9 +214,9 @@ export class MissionIntroScene implements Scene {
     const skip = pad.pressed('start') || pad.pressed('fire') || pad2.pressed('start') || app.input.keyPressed('Enter');
     const hold = isRally(this.mission) ? RALLY_VOICE_HOLD : INTRO_VOICE_HOLD;
     const talking = this.spoken > 0 && this.t < INTRO_TICKS + hold && !!app.audio.speaking?.();
-    // Mission oat: the card holds until its lazy chunk has registered the mission (or failed).
-    const oat = isOat(this.mission) ? oatLoadState() : null;
-    if (oat && !oat.registered && !oat.failed) return;
+    // Mission sewers: the card holds until its lazy chunk has registered the mission (or failed).
+    const lazy = isSewers(this.mission) ? sewersLoadState() : null;
+    if (lazy && !lazy.registered && !lazy.failed) return;
     if ((this.t >= INTRO_TICKS && !talking) || (skip && this.t >= INTRO_SKIP_AFTER)) this.go();
   }
 
@@ -226,8 +225,8 @@ export class MissionIntroScene implements Scene {
     if (this.radio) this.app.audio.stopSfx?.('radio');
     this.radio = false;
     if (isRing(this.mission)) this.app.scenes.replace(new RingScene(this.app, { start: this.ring ?? undefined }), { fade: 40 });
-    // A failed oat chunk: on to the rally's card (the run never dead-ends; the error is logged).
-    else if (isOat(this.mission) && !oatLoadState().registered) this.app.scenes.replace(new MissionIntroScene(this.app, RALLY_ID), { fade: 40 });
+    // A failed sewers chunk: on to the rally's card (the run never dead-ends; the error is logged).
+    else if (isSewers(this.mission) && !sewersLoadState().registered) this.app.scenes.replace(new MissionIntroScene(this.app, RALLY_ID), { fade: 40 });
     else if (isRally(this.mission)) this.app.scenes.replace(new RallyGlitchScene(this.app, { start: this.rally ?? prepareRally(this.app), from: this }), { fade: 0 });
     else this.app.scenes.replace(new GameplayScene(this.app, { mission: this.mission }), { fade: 40 });
   }

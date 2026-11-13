@@ -1,14 +1,15 @@
 # The euro budget — API (`src/game/budget/`)
 
-The game-wide budget of the route (spec `docs/design/oat.md` §7; decisions 18–28, 45–48). BUDGET
-built it in oat wave A (2026-11-02). The score of the route missions is a **budget in euros**:
+The game-wide budget of the route (spec `docs/design/budget.md` §7, moved there from the spec of the
+former level 2 `oat` when `oat` was deleted on 2026-11-12; decisions 18–28, 45–48). BUDGET built it
+in oat wave A (2026-11-02). The score of the route missions is a **budget in euros**:
 every player starts with € 100,00; enemies, items and bonuses pay euros; fines, the
 toeristenbelasting, the shop and the city cost euros. The old points keep counting next to it
 (the point missions, the sims' `score`).
 
 | Economy | Missions | What the player sees |
 |---|---|---|
-| `'euro'` | `ams`, `oat`, `oldenzaal` (`MissionDef.economy: 'euro'`), the rally (its prize lines), the fps floors (`FpsScene` sets it) | the bank-app HUD line, euro pop-ups, euro tallies, the `budgets` table |
+| `'euro'` | `ams`, `sewers`, `oldenzaal` (`MissionDef.economy: 'euro'`), the rally (its prize lines), the fps floors (`FpsScene` sets it) | the bank-app HUD line, euro pop-ups, euro tallies, the `budgets` table |
 | `'points'` (default) | the dormant `ring`, `m0`–`m5` by URL | everything as before (7-digit score, point pop-ups, the `highscores` table) |
 
 Rules: integer cents only (`Cents`, signed); no float reaches a ledger; no allocation per tick
@@ -63,8 +64,8 @@ chargeTouristTax(session, slot, world?);             // a continue (the runner a
 startCourtage(world); endCourtage(world, true, x, y); // De Makelaar (wave B): 1,5 % skim, returned at his fall
 ```
 
-- A player killed by a `boete-ticket` pays − € 95,00 `BOETE` (in `oat-d` − € 100,00 `BLOWVERBOD`),
-  in every euro mission (user Q3).
+- A player killed by a `boete-ticket` pays − € 95,00 `BOETE` in every euro mission (user Q3; the
+  `BLOWVERBOD` section rule went with `oat` on 2026-11-12).
 - The toeristenbelasting per continue: 12,5 / 15 / 17,5 / 20 % of a positive budget (at least
   € 5,00), a flat € 12,50 at ≤ € 0 (`MissionRunner.continuePlayer`; the fps continue after the
   floor's restart).
@@ -88,7 +89,7 @@ wave A (the stub; + about € 196), a won race about € 574, fps-1 € 142, fps
 € 1.073. By the fps floors that is about € 4.140 today and about € 5.600 once oat is as full as
 ams (waves B/C). So the first extend stays € 5.000 (late in the rally / the fps floors) and the
 second is € 5.500 (by the fps floors); € 15.000 was never reached. One `ams` run never reaches an
-extend (the identity sims stay SAME+BUDGET). Re-measure with the oat-god baselines after wave C.
+extend (the identity sims stay SAME+BUDGET). Re-measure with the sewers god baselines once its waves are in (docs/design/sewers.md §10).
 
 ## 5. The HUD and the screens
 
@@ -98,8 +99,8 @@ extend (the identity sims stay SAME+BUDGET). Re-measure with the oat-god baselin
 - **The newspaper** (`mission-complete.ts`, ams and oldenzaal): the same page with euro values
   (`HOSTAGES 4 X €20 … € 80,00`), the difficulty factor at the TOTAL, booked as `BONUS`. A tally
   line may carry its own `cents` (`TallyLine.cents`: the rally's prize money → `PRIJZENGELD`).
-- **The kassabon** (`scenes/receipt-tally.ts` `ReceiptTallyScene`, `MissionDef.tally: 'receipt'`:
-  oat): `buildReceipt(runner, slot, mul)` → rows; prints 4 lines a second; books each bonus as it
+- **The kassabon** (`scenes/receipt-tally.ts` `ReceiptTallyScene`, `MissionDef.tally: 'receipt'`;
+  made for `oat`, no mission sets it since 2026-11-12): `buildReceipt(runner, slot, mul)` → rows; prints 4 lines a second; books each bonus as it
   prints; stamps `OVERSCHOT` / `TEKORT` (and `ZUINIGST` for the thriftier player in 2P).
 - **The rally** (`rally/score.ts`): every line has `cents` (`PRIZE`, `placeCents`, `linesCents`):
   PLACE € 500 … € 25, TIME € 0,50 / s under par, BEST LAP € 50, OVERTAKES € 2, NEAR MISSES € 1,
@@ -141,22 +142,8 @@ SAME+BUDGET for the ten euro sims, SAME for m0, m2, ring).
 runner's economy, callouts, the slow world), `screens.test.ts` (the kassabon, the newspaper's euro
 lines, the rally prize money, name entry and the tables, the final tally, the HUD).
 
-## 9. The oat pieces (`src/game/content/oat/budget/`; spec §6.1, §6.2; wave B polishes the art)
+## 9. The oat pieces (deleted)
 
-```ts
-world.spawn('oat-bin', x, floorY, { size: 200 });          // HP 30; 4–8 cans/bottles spill (its own rng)
-world.spawn('oat-haverbar', x, floorY, { greet: false });  // the c kiosk: no morning greeting
-haverbarPrice(slot, 'flatWhite');                         // 445, 490, 540 … (INFLATIE per player per mission)
-buyGood(world, player, 'matcha', x, y);                   // 'bought' | 'refused' | 'have' | 'closed'
-```
-
-- `oat-bin` (`size` 100 | 200): bursts / tips; `oat-can` +€ 0,15, `oat-bottle-s` +€ 0,15,
-  `oat-bottle-l` +€ 0,25 (`pay(…, 'deposit')`, no points); blink at 120, gone at 720 ticks; at most
-  24 alive (the oldest goes). The spill rng is `binRng(world, x, y, salt)` (it reads the world
-  seed; never calls `world.rng`).
-- `oat-haverbar`: stand 20 ticks on a good (`PINNEN...`): FLAT WHITE € 4,45 (`oat-flat-white`: speed
-  ×1.2, fire rate ×1.3, 20 s), MATCHA € 5,20 (`slowWorld(world, 360)`, `MATCHA-MOMENT`), ZUURDESEM
-  € 9,00 (`oat-zuurdesem`: one hit absorbed, `KRUIM!`, never stacked). GEWEIGERD when `refused()`.
-  Closed (`GESLOTEN`) in a point play.
-- Sprites: `decor/oat/piece/bin-100`, `bin-200`, `haverbar`, `haverbar-barista`; `item/oat/can`,
-  `bottle-s`, `bottle-l`, `flat-white`, `matcha`, `zuurdesem`.
+The statiegeld bins, their cans and bottles and DE HAVERBAR (`src/game/content/oat/budget/`) were
+deleted with mission `oat` on 2026-11-12 (`git show eb3316a:src/game/content/oat/budget/`). The
+budget's generic rules they used (`inflated`, `refused`, `slowWorld`, the `deposit` category) stay.

@@ -31,6 +31,34 @@ import type { CanalLayerMeta, CanalManifest, CanalSectionManifest, CanalTierLaye
 
 /** Time slice of the background decode (ms) before it yields to the frame loop. */
 export const SLICE_MS = 4;
+/**
+ * Reads in flight at once (the browser): the network's latency overlaps (a dev server's or a CDN's
+ * round trip per pack), the decode stays one at a time.
+ */
+export const PARALLEL_READS = 4;
+
+/**
+ * The browser loader's policy (`setCanalLoadPolicy`; the browser check compares it with the old one:
+ * one read at a time, the tier-1 fallback by window): reads in flight, the whole-section fallback.
+ */
+const policy = { reads: PARALLEL_READS, wholeFallback: true };
+
+/** The browser check: change the loader's policy (unset fields keep theirs). Returns the policy now. */
+export function setCanalLoadPolicy(p: { reads?: number; wholeFallback?: boolean }): { reads: number; wholeFallback: boolean } {
+  if (p.reads !== undefined) policy.reads = Math.max(1, Math.floor(p.reads));
+  if (p.wholeFallback !== undefined) policy.wholeFallback = p.wholeFallback;
+  return { ...policy };
+}
+/** Camera px the tier-1 fallback's packs come before the wanted tier's of the same window (the queue's order). */
+const FALLBACK_LEAD = 512;
+/**
+ * The highest tier of a LIT stack's layers in the game (docs/api/canal.md "A lit section"; wave P6a,
+ * 2026-11-12): both stacks of sewers-d at tier 4 hold 26.4 M px at their resident peak, over the
+ * largest level 1 section (c2: 19.6 M px); the ambient stack and its canal sprites at tier 4 with the
+ * lit stack (layers and canal sprites) at tier 2 hold 17.96 M px (68.5 MiB). The lit stack is still
+ * baked at 1, 2 and 4 (its fidelity fixtures).
+ */
+export const LIT_LAYER_TIER = 2;
 /** Logical px of slack in the visibility maths (the bake's MARGIN). */
 const MARGIN = 2;
 
@@ -79,6 +107,12 @@ export class CanalTier {
   px = 0;
   /** Is this tier one the scene draws now (the wanted one or the tier-1 fallback)? Others are freed. */
   wanted = false;
+  /**
+   * The WHOLE section stays in (the browser's tier-1 fallback, docs/api/canal.md §4): every pack
+   * loads at the section start and nothing is freed while the tier is wanted (tier 1 is small: 1/16
+   * of tier 4), so a column the wanted tier has not loaded yet always has its tier-1 tile.
+   */
+  whole = false;
   /** The canal sprites' frames at this tier (by entry of the section's `sprites`), null until loaded. */
   sprites: Frame[] | null = null;
   /** 1 while the sprite sheet is queued or loading. */
@@ -123,11 +157,12 @@ export class CanalTier {
 
   /** Is a tile needed at camera x (within the policy's margins)? */
   needed(t: CanalTile, camX: number, ahead: number, behind: number): boolean {
-    return t.n1 >= camX - behind && t.n0 <= camX + ahead + VIEW_W;
+    return this.whole || (t.n1 >= camX - behind && t.n0 <= camX + ahead + VIEW_W);
   }
 
   /** Free the tiles the camera has passed (more than `behind` px). */
   evict(camX: number, behind: number): void {
+    if (this.whole) return;
     for (const t of this.tiles) {
       if (t.img && t.n1 < camX - behind) {
         this.px -= t.w * t.h;
@@ -157,6 +192,12 @@ export class CanalSceneState {
   camX = 0;
   /** Priority rank: 0 = the scene a view draws, 1 = prefetched. */
   rank = 1;
+  /**
+   * The highest tier this scene loads and draws (its layers and its canal sprites): `LIT_LAYER_TIER`
+   * for the lit stack of a pair (`canalLitState`; the memory decision of docs/api/canal.md "A lit
+   * section"), else 4 (a lit stack drawn alone, as the fidelity test does, draws every tier).
+   */
+  layerCap = 4;
 
   constructor(id: string, man: CanalManifest, sec: CanalSectionManifest, skip: readonly string[]) {
     this.id = id;
@@ -212,6 +253,8 @@ interface Job {
   tier: CanalTier;
   /** A pack (index into the tier's files), or SPRITES: the tier's sprite sheet. */
   file: number;
+  /** When it was queued (ms; the load log). */
+  t: number;
 }
 
 /** The job of a tier's sprite sheet. */
@@ -240,6 +283,13 @@ export function canalState(id: string, skip: readonly string[] = []): CanalScene
   return s;
 }
 
+/** The state of the lit stack of a pair (made on first use): its layers capped at `LIT_LAYER_TIER`. */
+export function canalLitState(id: string, skip: readonly string[] = []): CanalSceneState | null {
+  const s = canalState(id, skip);
+  if (s) s.layerCap = LIT_LAYER_TIER;
+  return s;
+}
+
 /**
  * Make sure what scene `s` needs at camera x for density `want` is loaded or coming (and, unless
  * `prefetch`, free what the camera has passed). Loads at once with a synchronous source.
@@ -248,7 +298,8 @@ export function wantCanal(s: CanalSceneState, want: number, camX: number, prefet
   if (s.failed) return;
   const src = canalSource();
   if (!src) return;
-  const top = s.bakedTier(want);
+  // A lit stack draws at `layerCap` at most (its layers and its canal sprites).
+  const top = s.bakedTier(Math.min(want, s.layerCap));
   if (top === null) {
     s.failed = true;
     warnOnce(`${s.id}:tiers`, `[canal] scene ${s.id}: no tier baked at or below ${want}; drawing the section's old scenery`);
@@ -258,7 +309,8 @@ export function wantCanal(s: CanalSceneState, want: number, camX: number, prefet
   if (!prefetch) s.rank = 0;
   const { ahead, behind } = s.man;
   const sync = typeof src.readSync === 'function' && typeof src.inflateSync === 'function';
-  // Tier 1 first (the fallback), then the wanted tier; a synchronous source loads only the wanted one.
+  // Tier 1 first (the fallback, the whole section: `whole`), then the wanted tier; a synchronous source
+  // loads only the wanted one (by its window).
   const tiers = sync || top === 1 ? [top] : [1, top];
   // A tier the scene no longer draws (the density changed) is freed at once.
   for (const st of s.tiers.values()) {
@@ -272,6 +324,7 @@ export function wantCanal(s: CanalSceneState, want: number, camX: number, prefet
     const st = s.tier(t);
     if (!st) continue;
     st.wanted = true;
+    st.whole = !sync && t === 1 && policy.wholeFallback;
     if (!prefetch) st.evict(camX, behind);
     // The canal sprites: the tier's sheet, once (before its packs in the queue).
     const sp = st.man.sprites;
@@ -285,12 +338,12 @@ export function wantCanal(s: CanalSceneState, want: number, camX: number, prefet
         }
       } else {
         st.spriteBusy = 1;
-        queue.push({ scene: s, tier: st, file: SPRITES });
+        queue.push({ scene: s, tier: st, file: SPRITES, t: now() });
       }
     }
     const files = st.man.files;
     for (let f = 0; f < files.length; f++) {
-      if (st.busy[f] || st.man.fileCam[f] > camX + ahead) continue;
+      if (st.busy[f] || (!st.whole && st.man.fileCam[f] > camX + ahead)) continue;
       let missing = false;
       for (const i of st.fileTiles[f]) {
         const t = st.tiles[i];
@@ -309,7 +362,7 @@ export function wantCanal(s: CanalSceneState, want: number, camX: number, prefet
         }
       } else {
         st.busy[f] = 1;
-        queue.push({ scene: s, tier: st, file: f });
+        queue.push({ scene: s, tier: st, file: f, t: now() });
       }
     }
   }
@@ -379,28 +432,99 @@ const yieldNow = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 function nextJob(): Job | null {
   if (queue.length === 0) return null;
   let best = 0;
-  const key = (j: Job): number => j.scene.rank * 1e9 + (j.tier.tier === 1 ? 0 : 1e8) + (j.file === SPRITES ? -1 : j.tier.man.fileCam[j.file]);
+  // The drawn scene first; by window, a sprite sheet first, the tier-1 fallback LEAD px ahead of the wanted tier.
+  const key = (j: Job): number =>
+    j.scene.rank * 1e9 + (j.file === SPRITES ? -1e6 : j.tier.man.fileCam[j.file] - (j.tier.tier === 1 ? FALLBACK_LEAD : 0));
   for (let i = 1; i < queue.length; i++) if (key(queue[i]) < key(queue[best])) best = i;
   return queue.splice(best, 1)[0];
 }
 
-/** The background loader: one pack at a time, the row filters in time slices. */
+/** A file read and waiting for its decode (the loader). */
+interface Fetched {
+  job: Job;
+  bytes: Uint8Array | null;
+  err: unknown;
+  start: number;
+  read: number;
+}
+
+/** Reads in flight and the files read, waiting to be decoded. */
+let reading = 0;
+const fetched: Fetched[] = [];
+/** Wakes the decode loop when a read ends. */
+let wake: (() => void) | null = null;
+
+/** Is a job of no use any more (its scene failed or went, its tier is not drawn)? Clears its busy mark. */
+function stale(job: Job): boolean {
+  const { scene: s, tier: st, file: f } = job;
+  if (!s.failed && scenes.get(s.id) === s && st.wanted) return false;
+  if (f === SPRITES) st.spriteBusy = 0;
+  else st.busy[f] = 0;
+  return true;
+}
+
+/** Start reads of the best queued jobs, up to `PARALLEL_READS` at a time (the network's latency overlaps). */
+function startReads(src: CanalSource): void {
+  while (reading < policy.reads) {
+    const job = nextJob();
+    if (!job) return;
+    if (stale(job)) continue;
+    const name = job.file === SPRITES ? (job.tier.man.sprites?.file ?? '') : job.tier.man.files[job.file];
+    const start = now();
+    reading++;
+    src.read(job.scene.man.base + name).then(
+      (bytes) => {
+        fetched.push({ job, bytes, err: null, start, read: now() });
+      },
+      (err: unknown) => {
+        fetched.push({ job, bytes: null, err, start, read: now() });
+      },
+    ).finally(() => {
+      reading--;
+      const w = wake;
+      wake = null;
+      if (w) w();
+    });
+  }
+}
+
+/** The best read file to decode (the same order as the queue). */
+function nextFetched(): Fetched | null {
+  if (fetched.length === 0) return null;
+  let best = 0;
+  const key = (j: Job): number => j.scene.rank * 1e9 + (j.file === SPRITES ? -1e6 : j.tier.man.fileCam[j.file] - (j.tier.tier === 1 ? FALLBACK_LEAD : 0));
+  for (let i = 1; i < fetched.length; i++) if (key(fetched[i].job) < key(fetched[best].job)) best = i;
+  return fetched.splice(best, 1)[0];
+}
+
+/**
+ * The background loader: up to `PARALLEL_READS` reads at once, one decode at a time (the best read
+ * first), the row filters in time slices.
+ */
 async function pump(src: CanalSource): Promise<void> {
   running = true;
   try {
-    for (let job = nextJob(); job; job = nextJob()) {
-      const { scene: s, tier: st, file: f } = job;
-      if (s.failed || scenes.get(s.id) !== s || !st.wanted) {
-        if (f === SPRITES) st.spriteBusy = 0;
-        else st.busy[f] = 0;
+    for (;;) {
+      startReads(src);
+      const fe = nextFetched();
+      if (!fe) {
+        if (reading === 0 && queue.length === 0) break;
+        await new Promise<void>((r) => {
+          wake = r;
+        });
         continue;
       }
+      const { job, start } = fe;
+      const { scene: s, tier: st, file: f } = job;
       const name = f === SPRITES ? (st.man.sprites?.file ?? '') : st.man.files[f];
+      let px = 0;
       try {
-        const bytes = await src.read(s.man.base + name);
-        const p = parsePng(bytes);
+        if (stale(job)) continue;
+        if (fe.err !== null || !fe.bytes) throw fe.err ?? new Error(`no bytes for ${name}`);
+        const p = parsePng(fe.bytes);
         const raw = await inflateStream(p.data);
         const sheet = new PixelBuffer(p.w, p.h);
+        px = p.w * p.h;
         let y = 0;
         while (y < p.h) {
           const t0 = now();
@@ -422,6 +546,7 @@ async function pump(src: CanalSource): Promise<void> {
       } finally {
         if (f === SPRITES) st.spriteBusy = 0;
         else st.busy[f] = 0;
+        if (loadLog) loadLog.push({ file: name, bytes: fe.bytes?.length ?? 0, px, queued: job.t, start, read: fe.read, done: now(), cam: s.camX });
       }
       await yieldNow();
     }
@@ -430,11 +555,38 @@ async function pump(src: CanalSource): Promise<void> {
   }
 }
 
+/** One loaded file of the load log (`setCanalLoadLog`): times in ms (performance.now). */
+export interface CanalLoadEntry {
+  file: string;
+  bytes: number;
+  /** Decoded px. */
+  px: number;
+  queued: number;
+  start: number;
+  read: number;
+  done: number;
+  /** The scene's camera when it was done. */
+  cam: number;
+}
+
+let loadLog: CanalLoadEntry[] | null = null;
+
+/** The browser check: log every file the background loader loads (null: stop). Returns the log. */
+export function setCanalLoadLog(on: boolean): CanalLoadEntry[] | null {
+  loadLog = on ? [] : null;
+  return loadLog;
+}
+
+export function canalLoadLog(): CanalLoadEntry[] | null {
+  return loadLog;
+}
+
 /** Free a scene's tiles and drop its queued packs (the section is over). */
 export function releaseCanal(id: string): void {
   const s = scenes.get(id);
   if (!s) return;
   for (let i = queue.length - 1; i >= 0; i--) if (queue[i].scene === s) queue.splice(i, 1);
+  for (let i = fetched.length - 1; i >= 0; i--) if (fetched[i].job.scene === s) fetched.splice(i, 1);
   s.clear();
   scenes.delete(id);
 }
@@ -446,7 +598,7 @@ export function scenesHeld(): string[] {
 
 /** Is anything queued or loading (tools, tests)? */
 export function canalBusy(): boolean {
-  return running || queue.length > 0;
+  return running || queue.length > 0 || reading > 0 || fetched.length > 0;
 }
 
 /** Resolves when nothing is queued or loading (tools, tests). */
@@ -478,5 +630,6 @@ export function resetCanalStore(): void {
   for (const s of scenes.values()) s.clear();
   scenes.clear();
   queue.length = 0;
+  fetched.length = 0;
   warned.clear();
 }

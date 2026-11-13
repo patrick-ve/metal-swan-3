@@ -1,16 +1,15 @@
 /**
- * THE LIGHT CONTRACT of the mission light pass (docs/design/oldenzaal.md §10; docs/design/oat.md
- * §8.3, §8.9; docs/api/oldenzaal.md "Light", docs/api/oat.md "Light"). Moved here from
- * `content/oldenzaal/kit/light-api.ts` (oat wave A, CORE), which re-exports it unchanged: a neutral
- * home for every mission (oldenzaal, oat-d, oat-e). LIGHT (oldenzaal) and LIGHT-WATER (oat)
- * implement the pass behind it (pass.ts); the section and entity builders use it. Keep it small:
- * types, two section registries and a few no-op-safe calls.
+ * THE LIGHT CONTRACT of the mission light pass (docs/design/oldenzaal.md §10; docs/api/oldenzaal.md
+ * "Light"; the opt-in flags came with the former level 2, docs/design/oat.md (deleted; git show eb3316a)
+ * §8.3–§8.9). Moved here from `content/oldenzaal/kit/light-api.ts`, which re-exports it unchanged: a
+ * neutral home for every mission (oldenzaal, sewers). The pass behind it is pass.ts; the section and
+ * entity builders use it. Keep it small: types, two section registries and a few no-op-safe calls.
  *
  * 1. A SECTION OPTS IN: `defineSectionLight('oz-a', { darkness: 0.45, tint, fog, lamps, … })`
  *    (the section file does it at import time). A section without a config draws exactly as
  *    today (ams, the ring and every other mission never register one). The pass reads
  *    `sectionLight(section.id)` when a section loads. Section ids are global keys: a mission's
- *    ids must be unique in the game (`oz-…`, `oat-…`; never ams's bare `a` … `d`).
+ *    ids must be unique in the game (`oz-…`, `sewers-…`; never ams's bare `a` … `d`).
  * 2. AN ENTITY GIVES LIGHT: it carries the tag `LIGHT_TAG` ('oz-light': the historical name, kept
  *    for every mission) and implements `LightSource.lightOf(out, tick)`: it fills `out` (world px)
  *    and returns true while it shines. The pass calls it once per drawn frame for every live tagged
@@ -19,16 +18,16 @@
  * 3. STATIC LIGHTS (street lamps, windows, candles, neon in decor) are listed in the config
  *    (`lamps`): no entity needed.
  * 4. SCRIPTS: `lightning(world, strength)` flashes now, `setDarkness(world, d, fadeTicks)` changes
- *    the darkness; the oat opt-ins `lampGroup(world, name, state)` (a group of lamps on, off or
+ *    the darkness; the opt-ins `lampGroup(world, name, state)` (a group of lamps on, off or
  *    flickering out) and `crossFadeLight(world, set, ticks)` (the strips' and floor's lit / dark
  *    bakes, the 03:00 switch). All do nothing while no pass is bound to the world (`bindLightControl`)
  *    or the pass does not implement them.
- * 5. THE SUN (oat, spec §8.3; ADDITIVE): `defineSectionSun('oat-a', { elevation, yaw, color, key })`
+ * 5. THE SUN (ADDITIVE): `defineSectionSun('xyz-a', { elevation, yaw, color, key })`
  *    gives a day section its sun (no light pass needed: painters read it at paint time — the façade
  *    strips, the floor, the backdrops, the contact shadows). A section without one keeps today's
  *    fixed key light. `sunFloorShadow` / `sunWallShadow` are the spec's shadow offsets.
  *
- * The oat flags of `SectionLight` (`glow`, `streaks`, `groups`, `bakes`, `day`, `water`,
+ * The opt-in flags of `SectionLight` (`glow`, `streaks`, `groups`, `bakes`, `day`, `water`,
  * `sunShadows`) and of `StaticLight` (`group`, `streak`) are OPTIONAL with today's behaviour as their
  * default, so oldenzaal's configs (which set none of them) light every frame exactly as before.
  *
@@ -38,9 +37,11 @@
  */
 import type { Color } from '../../../engine/color';
 import type { Entity } from '../../../engine/entity';
+import type { Renderer } from '../../../engine/render';
 import type { World } from '../../../engine/world';
 import type { SunDef } from '../../art/hd/light';
 import type { ReflectConfig } from '../floor/reflect';
+import type { LitMask } from './litmask';
 
 /** The tag of an entity that gives light (oldenzaal ids.ts `OZ_LIGHT.tag`; every mission uses it). */
 export const LIGHT_TAG = 'oz-light';
@@ -59,7 +60,7 @@ export interface LightSpot {
   /** 0 = steady … 1 = a dying fluorescent tube (the pass flickers it with fxRng / the tick). */
   flicker: number;
   /**
-   * OPT-IN (oat, spec §8.8): this light mirrors as a night streak on water and wet floor (a section
+   * OPT-IN: this light mirrors as a night streak on water and wet floor (a section
    * with `streaks`). The pass sets it to false before each `lightOf` call; a source sets it to true.
    */
   streak?: boolean;
@@ -91,10 +92,17 @@ export interface StaticLight {
    * default 0.4). 0 = the light only lifts the darkness (no colour).
    */
   glow?: number;
-  /** OPT-IN (oat, spec §8.9): the lamp group it belongs to (`SectionLight.groups`; default: none, always on). */
+  /** OPT-IN: the lamp group it belongs to (`SectionLight.groups`; default: none, always on). */
   group?: string;
-  /** OPT-IN (oat, spec §8.8): it mirrors as a night streak on water and wet floor (a section with `streaks`). */
+  /** OPT-IN: it mirrors as a night streak on water and wet floor (a section with `streaks`). */
   streak?: boolean;
+  /**
+   * OPT-IN (a lamp painted on a parallax plane of a canal scene, docs/api/canal.md "A lit section"):
+   * the plane's speed s; `x` is the lamp's world x on that plane (the kit's `sec.put` x), and the pass
+   * places it each frame where the plane shows it: camX + 192 + (x − 192 − camX) · s. Default 1 (a
+   * section with a perspective floor uses `FloorLightConfig.lampDepth` instead).
+   */
+  speed?: number;
 }
 
 /** Drifting ground fog (parallax bands in front of the backdrop, behind or over the floor). */
@@ -128,7 +136,7 @@ export interface LightningConfig {
   double?: number;
 }
 
-/** OPT-IN (oat, spec §8.8): the night streaks below lights with `streak: true`. */
+/** OPT-IN: the night streaks below lights with `streak: true`. */
 export interface StreakConfig {
   /** Screen y range where streaks may fall (the water and wet floor quads; default the floor band). */
   y0?: number;
@@ -147,7 +155,7 @@ export interface StreakConfig {
 }
 
 /**
- * OPT-IN (oat, spec §8.4 "Actors"): the cast shadow of every hero, enemy and npc in a day section,
+ * OPT-IN: the cast shadow of every hero, enemy and npc in a day section,
  * a tail from the feet stretched along the sun's floor direction, drawn on the floor before the
  * floor's own contact ovals (which stay: the ambient contact under the feet). Screen px per px of
  * the caster's height; a floor only.
@@ -166,7 +174,7 @@ export interface SunShadowConfig {
 /** The state of a lamp group (spec §6.9: the neon goes out group by group). */
 export type LampGroupState = 'on' | 'off' | 'flicker';
 
-/** OPT-IN (oat, spec §8.9): a named group of lamps (`StaticLight.group`) a script switches. */
+/** OPT-IN: a named group of lamps (`StaticLight.group`) a script switches. */
 export interface LampGroupDef {
   name: string;
   /** The state at section load (default 'on'). */
@@ -178,7 +186,7 @@ export interface LampGroupDef {
 /** The light set of the baked strips and floor (spec §8.9: the 03:00 switch has a lit and a dark bake). */
 export type LightSetId = 'lit' | 'dark';
 
-/** OPT-IN (oat, spec §8.9): the arena's two bakes and their cross-fade. */
+/** OPT-IN: the arena's two bakes and their cross-fade. */
 export interface BakeConfig {
   /** World x range that has a dark bake (the arena view plus its margin). */
   x0: number;
@@ -215,31 +223,72 @@ export interface SectionLight {
    */
   wind?: number;
   /**
-   * OPT-IN (oat, spec §8.9): the glow shape at 2× / 4×. 'block' (default) = today's light map;
+   * OPT-IN: the glow shape at 2× / 4×. 'block' (default) = today's light map;
    * 'smooth' = round, smoothed glows (1× stays per pixel either way).
    */
   glow?: 'block' | 'smooth';
-  /** OPT-IN (oat, spec §8.8): night streaks below the lights marked `streak` (default off). */
+  /** OPT-IN: night streaks below the lights marked `streak` (default off). */
   streaks?: boolean | StreakConfig;
-  /** OPT-IN (oat, spec §8.9): the lamp groups (default none: every lamp is always on). */
+  /** OPT-IN: the lamp groups (default none: every lamp is always on). */
   groups?: readonly LampGroupDef[];
-  /** OPT-IN (oat, spec §8.9): the lit / dark bakes of the strips and floor and their cross-fade (default none). */
+  /** OPT-IN: the lit / dark bakes of the strips and floor and their cross-fade (default none). */
   bakes?: BakeConfig;
   /**
-   * OPT-IN (oat, spec §8.1 steps 6–7): a DAY section: no darkness and no light map at all; the pass
+   * OPT-IN: a DAY section: no darkness and no light map at all; the pass
    * only draws the ground overlays (`water`, `sunShadows`) under the entities. `darkness` is ignored.
    */
   day?: boolean;
-  /** OPT-IN (oat, spec §8.8): dynamic reflections in these water bands (mission/floor/reflect.ts; a floor only). */
+  /** OPT-IN: dynamic reflections in these water bands (mission/floor/reflect.ts; a floor only). */
   water?: ReflectConfig;
-  /** OPT-IN (oat, spec §8.4): sun-stretched cast shadows of the actors (a floor only). */
+  /** OPT-IN: sun-stretched cast shadows of the actors (a floor only). */
   sunShadows?: SunShadowConfig;
+  /**
+   * OPT-IN (mission sewers, docs/design/sewers.md §5.1): every living hero's FLASHLIGHT cone
+   * (./cone.ts: from the muzzle along the aim, the battery's longer cone) cuts the darkness, and
+   * the sim's light test (`flashlightsOn`, cone.ts `litByHeroes`) sees it. `true`: on from the
+   * section start; `{ off: true }`: off until a script calls `setFlashlights(world, true)`.
+   * Default: no cones.
+   */
+  cones?: boolean | ConeConfig;
+  /**
+   * OPT-IN (mission sewers): EMITTERS that skip the darkness, drawn by the pass right after the
+   * darkness and the lights' colour (world space): e.g. the rat eyes, which must stay bright in the
+   * dark. Draw only (never change game state). Default: none.
+   */
+  emissive?: (world: World, r: Renderer) => void;
+  /**
+   * OPT-IN (mission sewers, docs/design/sewers.md §5.1 "Art (L5)", docs/api/canal.md "A lit
+   * section"): 'entities' — the ENTITY-ONLY mode. While the section draws a baked canal scene, the
+   * scenery's darkness is painted (the ambient stack, and the lit stack inside the cones and glows:
+   * the scene asks the pass for the lit mask, `LightControl.litMask`), so the darkness outside the
+   * cones and glows lands on the entities only (they draw into the renderer's layer, the pass
+   * darkens the layer's own pixels and draws it over the scenery, then the `over` layers come), never
+   * on the scenery again; additive draws (fire glow, beams) and the emitters (`emissive`,
+   * `emitSprites`, `emitTags`) skip it. Without a live scene (`?canal=0`, no source, a failed file,
+   * a renderer without the layer) the pass darkens everything as 'all' (the default) does.
+   */
+  scope?: 'all' | 'entities';
+  /**
+   * OPT-IN with scope 'entities': EMITTERS by sprite id prefix (fx and shots: muzzle flashes, the
+   * slime) that the pass draws again after the darkness (full colour), like `emissive`.
+   */
+  emitSprites?: readonly string[];
+  /** OPT-IN with scope 'entities': EMITTERS by tag (the pickups' glints), drawn again after the darkness. */
+  emitTags?: readonly string[];
+}
+
+/** The flashlight cones of a section (`SectionLight.cones`). */
+export interface ConeConfig {
+  /** Off at the section start (a script switches them on: `setFlashlights`). */
+  off?: boolean;
+  /** 0..1 share of the warm colour the cones add on top (default the pass's). */
+  glow?: number;
 }
 
 const sections = new Map<string, SectionLight>();
 
 /**
- * Register (or replace) the light of a section id (`'oz-a'`, `'oat-d'` …; section ids of these
+ * Register (or replace) the light of a section id (`'oz-a'`, `'sewers-c'` …; section ids of these
  * missions are unique in the game). Returns the config.
  */
 export function defineSectionLight(sectionId: string, cfg: SectionLight): SectionLight {
@@ -253,7 +302,7 @@ export function sectionLight(sectionId: string): SectionLight | undefined {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The sun per section (oat, spec §8.3; additive: a section without one keeps today's fixed key)
+// The sun per section (additive: a section without one keeps today's fixed key)
 // ---------------------------------------------------------------------------------------------
 
 /**
@@ -261,15 +310,15 @@ export function sectionLight(sectionId: string): SectionLight | undefined {
  * the façades (the camera side), so its shadows fall right and toward the back.
  */
 export interface SectionSun {
-  /** Elevation e above the horizon, degrees (oat-a 32, oat-b 40, oat-c 18, oat-c1 15 → 11). */
+  /** Elevation e above the horizon, degrees (e.g. 32 for a morning street, 15 for golden hour). */
   elevation: number;
-  /** Yaw from the façade plane toward the camera, degrees (oat-a 40, oat-b 30, oat-c / c1 45). */
+  /** Yaw from the façade plane toward the camera, degrees (e.g. 30–45). */
   yaw: number;
   /** The sun's colour (a guide for the lit tones; spec §8.3 Kelvin column). */
   color: Color;
   /** The HD canvas key light of this sun (`sunFrom(elevation, yaw)`, art/hd/light.ts). */
   key: SunDef;
-  /** Optional: the elevation at the section's end (oat-c1 sinks 15 → 11 during the chase). */
+  /** Optional: the elevation at the section's end (a sun that sinks during an auto-scroll). */
   elevationEnd?: number;
 }
 
@@ -320,12 +369,40 @@ export interface LightControl {
   flash(strength?: number): void;
   /** Move the darkness to `d` over `fadeTicks` (default 60). */
   setDarkness(d: number, fadeTicks?: number): void;
-  /** OPT-IN (oat): switch a lamp group ('flicker' = flicker for the group's ticks, then off). */
+  /** OPT-IN: switch a lamp group ('flicker' = flicker for the group's ticks, then off). */
   group?(name: string, state: LampGroupState): void;
-  /** OPT-IN (oat): cross-fade the strips' and floor's light set over `fadeTicks` (default the bake's 60). */
+  /** OPT-IN: cross-fade the strips' and floor's light set over `fadeTicks` (default the bake's 60). */
   lightSet?(set: LightSetId, fadeTicks?: number): void;
-  /** OPT-IN (oat): the dark bake's share now, 0 (lit) … 1 (dark): the floor's bake reads it. */
+  /** OPT-IN: the dark bake's share now, 0 (lit) … 1 (dark): the floor's bake reads it. */
   bakeMix?(): number;
+  /** The section's light config (the sim's light test reads `cones` and `heroLight`). */
+  readonly cfg?: SectionLight;
+  /** OPT-IN: switch the heroes' flashlight cones on or off (a section with `cones`). */
+  flashlights?(on: boolean): void;
+  /** OPT-IN: are the flashlight cones on now? */
+  flashlightsOn?(): boolean;
+  /**
+   * OPT-IN (scope 'entities'): this frame's LIT MASK at the canal's draw density d (the heroes'
+   * cones, spill and glow; ./litmask.ts), or null (nothing lit, or not this mode). The canal scene
+   * asks for it in its back pass, before the entities.
+   */
+  litMask?(r: Renderer, d: number): LitMask | null;
+  /**
+   * OPT-IN (scope 'entities'): the canal scene's back pass is done: the entities draw into the
+   * renderer's layer from now on. False: no layer (the pass darkens everything later).
+   */
+  entitiesBegin?(r: Renderer, tick?: number, density?: number): boolean;
+  /**
+   * OPT-IN (scope 'entities'): close the entity layer now (the darkness on its pixels, the layer
+   * drawn), so an entity can be drawn like the scenery in between; `entitiesReopen` opens it again.
+   */
+  entitiesFlush?(r: Renderer): void;
+  entitiesReopen?(r: Renderer): void;
+  /**
+   * OPT-IN (scope 'entities'): before the scene's `over` layers: the darkness on the entity layer's
+   * own pixels, the layer over the scenery, the lights' colour. Nothing when no layer is open.
+   */
+  entitiesEnd?(r: Renderer, tick: number, density: number): void;
 }
 
 const controls = new WeakMap<World, LightControl>();
@@ -351,12 +428,12 @@ export function setDarkness(world: World, d: number, fadeTicks = 60): void {
   controls.get(world)?.setDarkness(d, fadeTicks);
 }
 
-/** Switch a lamp group (oat, spec §6.9); nothing without a pass that has groups. */
+/** Switch a lamp group; nothing without a pass that has groups. */
 export function lampGroup(world: World, name: string, state: LampGroupState): void {
   controls.get(world)?.group?.(name, state);
 }
 
-/** Cross-fade to the lit or the dark bake (oat, spec §8.9); nothing without a pass that has bakes. */
+/** Cross-fade to the lit or the dark bake; nothing without a pass that has bakes. */
 export function crossFadeLight(world: World, set: LightSetId, fadeTicks?: number): void {
   controls.get(world)?.lightSet?.(set, fadeTicks);
 }
@@ -367,4 +444,14 @@ export function crossFadeLight(world: World, set: LightSetId, fadeTicks?: number
  */
 export function lightSetMix(world: World): number {
   return controls.get(world)?.bakeMix?.() ?? 0;
+}
+
+/** Switch the heroes' flashlight cones on or off; nothing without a pass with `cones`. */
+export function setFlashlights(world: World, on: boolean): void {
+  controls.get(world)?.flashlights?.(on);
+}
+
+/** Are the heroes' flashlight cones on now (false without a pass with `cones`)? */
+export function flashlightsOn(world: World): boolean {
+  return controls.get(world)?.flashlightsOn?.() ?? false;
 }

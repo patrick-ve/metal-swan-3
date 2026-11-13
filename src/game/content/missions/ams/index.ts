@@ -62,9 +62,10 @@ export const AMS: MissionDef = {
   bossMusic: 'ams-boss',
   start: 'a',
   bossSection: 'd',
-  // After its tally: level 2, the day out in the old city `oat` OAT OF CONTROL (docs/design/oat.md §1;
-  // lazy: flow.ts `missionDone` opens its card by id, the card loads it); after oat the 3D race.
-  next: 'oat',
+  // After its tally: level 2, the night in De Wallen and the sewer `sewers` RATTENJONG MET DE
+  // RATTENITEMS (docs/design/sewers.md §1; lazy: flow.ts `missionDone` opens its card by id, the card
+  // loads it); after sewers the 3D race.
+  next: 'sewers',
   announce: 'MISSION ONE. VLIEG OP, ZWAAN!',
   sections: {
     a: sectionA,
@@ -160,7 +161,7 @@ export const AMS: MissionDef = {
   ],
   // Sampled music, sounds and dialogue (src/game/content/samples), loaded on the intro card.
   audioGroup: 'mission:ams',
-  // The game-wide budget (docs/design/oat.md §7.1, decision 19): the level stays as it is, only the
+  // The game-wide budget (docs/design/budget.md §7.1, decision 19): the level stays as it is, only the
   // score changes (BUDGET reads it; until then nothing changes).
   economy: 'euro',
 };

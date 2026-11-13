@@ -1,13 +1,13 @@
 /**
- * The strip store (docs/design/oat.md §8.6 "The strips", §8.9 the two bakes, §8.12 the memory; the
+ * The strip store (docs/design/oat.md (deleted; git show eb3316a) §8.6 "The strips", §8.9 the two bakes, §8.12 the memory; the
  * contract: ./types.ts `StripStoreApi`, the strip space: ./space.ts). Owner: STRIPS (wave A).
  *
  * A section with `SectionDef.strips` gets one store (the section view makes it on its first frame):
  * it plans the section through its source once, then keeps the chunks around the view resident.
  *
  * - `prepare(viewX, speed, d)` once per drawn frame: the chunks on screen and the ones ahead (by the
- *   scroll speed: at least `prefetch`, more when the view moves fast — the oat-c1 auto-scroll, the
- *   taxi ride), in that order, are queued at d as ART JOBS, one job per band of the source's
+ *   scroll speed: at least `prefetch`, more when the view moves fast — an auto-scroll), in that
+ *   order, are queued at d as ART JOBS, one job per band of the source's
  *   `bands(cx, d)` (each band ≤ STRIP_JOB_MS; the shared per-frame budget HI_ART_FRAME_BUDGET_MS =
  *   STRIP_FRAME_MS runs them: the view calls `runArtJobs` once per frame, the budgeted preload during
  *   the section start). A chunk ON SCREEN with nothing ready gets its 1× now (small, as the floor's;

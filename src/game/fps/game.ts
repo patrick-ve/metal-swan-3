@@ -48,7 +48,7 @@ import { emptyFpsInput } from './run';
 import { WeaponSystem, WEAPONS, WP_IDLE } from './weapons';
 
 
-/** What an fps payer is (docs/design/oat.md §7.9; budget/euro-table.ts `fpsCents`). */
+/** What an fps payer is (docs/design/budget.md §7.9; budget/euro-table.ts `fpsCents`). */
 export type FpsPayKind = 'kill' | 'boss' | 'treasure' | 'other';
 
 /** The kassabon category of each fps payer. */
@@ -575,7 +575,7 @@ export class FpsGame implements PickupHost {
   }
 
   /**
-   * Points through the slot (extends apply; spec §4.13). A euro run (docs/design/oat.md §7.9:
+   * Points through the slot (extends apply; spec §4.13). A euro run (docs/design/budget.md §7.9:
    * `slot.euro`) also pays the euros: a kill by the legacy rule (€ 2–€ 10 by type), a treasure
    * by its row (€ 5–€ 50; the golden record € 50), the boss € 250; the extends then come from the
    * budget's gross income.

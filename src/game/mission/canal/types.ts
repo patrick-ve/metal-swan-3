@@ -82,6 +82,11 @@ export interface CanalSectionManifest {
   readonly layers: readonly CanalLayerMeta[];
   /** The canal sprites (kit paintings of entity frames), sorted by id and frame; none when missing. */
   readonly sprites?: readonly CanalSpriteMeta[];
+  /**
+   * A LIT STACK (docs/api/canal.md "A lit section"): the id of the ambient section this stack pairs
+   * with (the same layers and geometry; what the flashlight shows). The bake checks the pair.
+   */
+  readonly litOf?: string;
   /** By art tier ('1', '2', '4'); a tier not baked yet is missing (the store uses a lower one). */
   readonly tiers: Readonly<Partial<Record<string, CanalTierManifest>>>;
 }

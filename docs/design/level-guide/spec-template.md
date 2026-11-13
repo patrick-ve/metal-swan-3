@@ -2,7 +2,7 @@
 
 Phase 3 of `docs/LEVEL_GUIDE.md`. Copy the skeleton below to `docs/design/<id>.md` and fill it from the approved
 level card and the approved look sample. The spec is the one file a builder reads: a builder with this file, the
-guide and the code can build their part without the chat. `docs/design/oat.md` is a complete spec of this
+guide and the code can build their part without the chat. `docs/design/sewers.md` is a complete spec of this
 project: read its §0–§2 and one section block before you write yours, for the level of detail.
 
 Rules of a spec:

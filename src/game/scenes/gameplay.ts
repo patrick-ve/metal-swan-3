@@ -725,7 +725,7 @@ export class GameplayScene implements Scene, PauseHost, PlayHost {
       else if (handover) handover.onComplete(runner, this);
       // ams → the glitch bridge into the first-person mode (docs/design/fps.md §1.1): no tally page.
       else if (runner.mission.after === 'fps') app.scenes.replace(new GlitchBridgeScene(app, { from: this, runner }), { fade: 0 });
-      // oat's tally is the kassabon (docs/design/oat.md §7.6: `MissionDef.tally: 'receipt'`).
+      // A receipt tally: the kassabon (docs/design/budget.md §7.6: `MissionDef.tally: 'receipt'`).
       else if (runner.mission.tally === 'receipt') app.scenes.replace(new ReceiptTallyScene(app, runner), { fade: 40 });
       else app.scenes.replace(new MissionCompleteScene(app, runner), { fade: 40 });
     });

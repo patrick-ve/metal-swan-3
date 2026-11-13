@@ -1,5 +1,5 @@
 /**
- * The mission light pass (an additive opt-in; docs/design/oldenzaal.md §10.2, docs/design/oat.md
+ * The mission light pass (an additive opt-in; docs/design/oldenzaal.md §10.2, docs/design/oat.md (deleted; git show eb3316a)
  * §8.9): api.ts (the contract: section lights, suns, light sources, script control), pass.ts (the
  * pass the runner makes for a section with a light config) and lightmap.ts (the darkness / glow map).
  */

@@ -1,0 +1,563 @@
+{
+ "d": {
+  "width": 1280,
+  "height": 216,
+  "playerStart": {
+   "x": 48,
+   "y": 176
+  },
+  "checkpoints": [],
+  "background": null,
+  "terrain": {
+   "bounds": {
+    "x": 0,
+    "y": 0,
+    "w": 1280,
+    "h": 216
+   },
+   "ground": [
+    [
+     [
+      0,
+      176
+     ],
+     [
+      1280,
+      176
+     ]
+    ]
+   ],
+   "platforms": [],
+   "solids": [],
+   "hazards": []
+  },
+  "exits": [],
+  "floor": {
+   "camera": {
+    "yh": 60,
+    "f": 210,
+    "back": 146
+   },
+   "painter": {
+    "id": "stub",
+    "seed": 1,
+    "params": {
+     "layout": {
+      "light": "night",
+      "far": null,
+      "near": null,
+      "bulbs": [],
+      "crossings": [],
+      "street": [
+       {
+        "u0": -1000000000,
+        "kind": "tiles"
+       }
+      ],
+      "squares": [],
+      "bays": [],
+      "quays": [],
+      "bridges": [],
+      "canals": [],
+      "bikes": {
+       "every": 220,
+       "phase": 60
+      },
+      "areas": []
+     }
+    }
+   },
+   "features": [],
+   "rows": [],
+   "overhangs": [],
+   "tops": [],
+   "openings": [],
+   "faces": [],
+   "hideDecor": null,
+   "defaultDepth": 0,
+   "keepClear": []
+  },
+  "decor": []
+ },
+ "v1": {
+  "width": 1280,
+  "height": 216,
+  "playerStart": {
+   "x": 48,
+   "y": 176
+  },
+  "checkpoints": [],
+  "background": null,
+  "terrain": {
+   "bounds": {
+    "x": 0,
+    "y": 0,
+    "w": 1280,
+    "h": 216
+   },
+   "ground": [
+    [
+     [
+      0,
+      176
+     ],
+     [
+      1280,
+      176
+     ]
+    ]
+   ],
+   "platforms": [],
+   "solids": [],
+   "hazards": []
+  },
+  "exits": [],
+  "floor": {
+   "camera": {
+    "yh": 60,
+    "f": 210,
+    "back": 146
+   },
+   "painter": {
+    "id": "stub",
+    "seed": 1,
+    "params": {
+     "layout": {
+      "light": "night",
+      "far": null,
+      "near": null,
+      "bulbs": [],
+      "crossings": [],
+      "street": [
+       {
+        "u0": -1000000000,
+        "kind": "tiles"
+       }
+      ],
+      "squares": [],
+      "bays": [],
+      "quays": [],
+      "bridges": [],
+      "canals": [],
+      "bikes": {
+       "every": 220,
+       "phase": 60
+      },
+      "areas": []
+     }
+    }
+   },
+   "features": [],
+   "rows": [],
+   "overhangs": [],
+   "tops": [],
+   "openings": [],
+   "faces": [],
+   "hideDecor": null,
+   "defaultDepth": 0,
+   "keepClear": []
+  },
+  "decor": []
+ },
+ "v2": {
+  "width": 1280,
+  "height": 216,
+  "playerStart": {
+   "x": 48,
+   "y": 176
+  },
+  "checkpoints": [],
+  "background": null,
+  "terrain": {
+   "bounds": {
+    "x": 0,
+    "y": 0,
+    "w": 1280,
+    "h": 216
+   },
+   "ground": [
+    [
+     [
+      0,
+      176
+     ],
+     [
+      1280,
+      176
+     ]
+    ]
+   ],
+   "platforms": [],
+   "solids": [],
+   "hazards": []
+  },
+  "exits": [],
+  "floor": {
+   "camera": {
+    "yh": 60,
+    "f": 210,
+    "back": 146
+   },
+   "painter": {
+    "id": "stub",
+    "seed": 1,
+    "params": {
+     "layout": {
+      "light": "night",
+      "far": null,
+      "near": null,
+      "bulbs": [],
+      "crossings": [],
+      "street": [
+       {
+        "u0": -1000000000,
+        "kind": "tiles"
+       }
+      ],
+      "squares": [],
+      "bays": [],
+      "quays": [],
+      "bridges": [],
+      "canals": [],
+      "bikes": {
+       "every": 220,
+       "phase": 60
+      },
+      "areas": []
+     }
+    }
+   },
+   "features": [],
+   "rows": [],
+   "overhangs": [],
+   "tops": [],
+   "openings": [],
+   "faces": [],
+   "hideDecor": null,
+   "defaultDepth": 0,
+   "keepClear": []
+  },
+  "decor": []
+ },
+ "v3": {
+  "width": 1280,
+  "height": 216,
+  "playerStart": {
+   "x": 48,
+   "y": 176
+  },
+  "checkpoints": [],
+  "background": null,
+  "terrain": {
+   "bounds": {
+    "x": 0,
+    "y": 0,
+    "w": 1280,
+    "h": 216
+   },
+   "ground": [
+    [
+     [
+      0,
+      176
+     ],
+     [
+      1280,
+      176
+     ]
+    ]
+   ],
+   "platforms": [],
+   "solids": [],
+   "hazards": []
+  },
+  "exits": [],
+  "floor": {
+   "camera": {
+    "yh": 60,
+    "f": 210,
+    "back": 146
+   },
+   "painter": {
+    "id": "stub",
+    "seed": 1,
+    "params": {
+     "layout": {
+      "light": "night",
+      "far": null,
+      "near": null,
+      "bulbs": [],
+      "crossings": [],
+      "street": [
+       {
+        "u0": -1000000000,
+        "kind": "tiles"
+       }
+      ],
+      "squares": [],
+      "bays": [],
+      "quays": [],
+      "bridges": [],
+      "canals": [],
+      "bikes": {
+       "every": 220,
+       "phase": 60
+      },
+      "areas": []
+     }
+    }
+   },
+   "features": [],
+   "rows": [],
+   "overhangs": [],
+   "tops": [],
+   "openings": [],
+   "faces": [],
+   "hideDecor": null,
+   "defaultDepth": 0,
+   "keepClear": []
+  },
+  "decor": []
+ },
+ "v1l": {
+  "width": 1280,
+  "height": 216,
+  "playerStart": {
+   "x": 48,
+   "y": 176
+  },
+  "checkpoints": [],
+  "background": null,
+  "terrain": {
+   "bounds": {
+    "x": 0,
+    "y": 0,
+    "w": 1280,
+    "h": 216
+   },
+   "ground": [
+    [
+     [
+      0,
+      176
+     ],
+     [
+      1280,
+      176
+     ]
+    ]
+   ],
+   "platforms": [],
+   "solids": [],
+   "hazards": []
+  },
+  "exits": [],
+  "floor": {
+   "camera": {
+    "yh": 60,
+    "f": 210,
+    "back": 146
+   },
+   "painter": {
+    "id": "stub",
+    "seed": 1,
+    "params": {
+     "layout": {
+      "light": "night",
+      "far": null,
+      "near": null,
+      "bulbs": [],
+      "crossings": [],
+      "street": [
+       {
+        "u0": -1000000000,
+        "kind": "tiles"
+       }
+      ],
+      "squares": [],
+      "bays": [],
+      "quays": [],
+      "bridges": [],
+      "canals": [],
+      "bikes": {
+       "every": 220,
+       "phase": 60
+      },
+      "areas": []
+     }
+    }
+   },
+   "features": [],
+   "rows": [],
+   "overhangs": [],
+   "tops": [],
+   "openings": [],
+   "faces": [],
+   "hideDecor": null,
+   "defaultDepth": 0,
+   "keepClear": []
+  },
+  "decor": []
+ },
+ "v2l": {
+  "width": 1280,
+  "height": 216,
+  "playerStart": {
+   "x": 48,
+   "y": 176
+  },
+  "checkpoints": [],
+  "background": null,
+  "terrain": {
+   "bounds": {
+    "x": 0,
+    "y": 0,
+    "w": 1280,
+    "h": 216
+   },
+   "ground": [
+    [
+     [
+      0,
+      176
+     ],
+     [
+      1280,
+      176
+     ]
+    ]
+   ],
+   "platforms": [],
+   "solids": [],
+   "hazards": []
+  },
+  "exits": [],
+  "floor": {
+   "camera": {
+    "yh": 60,
+    "f": 210,
+    "back": 146
+   },
+   "painter": {
+    "id": "stub",
+    "seed": 1,
+    "params": {
+     "layout": {
+      "light": "night",
+      "far": null,
+      "near": null,
+      "bulbs": [],
+      "crossings": [],
+      "street": [
+       {
+        "u0": -1000000000,
+        "kind": "tiles"
+       }
+      ],
+      "squares": [],
+      "bays": [],
+      "quays": [],
+      "bridges": [],
+      "canals": [],
+      "bikes": {
+       "every": 220,
+       "phase": 60
+      },
+      "areas": []
+     }
+    }
+   },
+   "features": [],
+   "rows": [],
+   "overhangs": [],
+   "tops": [],
+   "openings": [],
+   "faces": [],
+   "hideDecor": null,
+   "defaultDepth": 0,
+   "keepClear": []
+  },
+  "decor": []
+ },
+ "v3l": {
+  "width": 1280,
+  "height": 216,
+  "playerStart": {
+   "x": 48,
+   "y": 176
+  },
+  "checkpoints": [],
+  "background": null,
+  "terrain": {
+   "bounds": {
+    "x": 0,
+    "y": 0,
+    "w": 1280,
+    "h": 216
+   },
+   "ground": [
+    [
+     [
+      0,
+      176
+     ],
+     [
+      1280,
+      176
+     ]
+    ]
+   ],
+   "platforms": [],
+   "solids": [],
+   "hazards": []
+  },
+  "exits": [],
+  "floor": {
+   "camera": {
+    "yh": 60,
+    "f": 210,
+    "back": 146
+   },
+   "painter": {
+    "id": "stub",
+    "seed": 1,
+    "params": {
+     "layout": {
+      "light": "night",
+      "far": null,
+      "near": null,
+      "bulbs": [],
+      "crossings": [],
+      "street": [
+       {
+        "u0": -1000000000,
+        "kind": "tiles"
+       }
+      ],
+      "squares": [],
+      "bays": [],
+      "quays": [],
+      "bridges": [],
+      "canals": [],
+      "bikes": {
+       "every": 220,
+       "phase": 60
+      },
+      "areas": []
+     }
+    }
+   },
+   "features": [],
+   "rows": [],
+   "overhangs": [],
+   "tops": [],
+   "openings": [],
+   "faces": [],
+   "hideDecor": null,
+   "defaultDepth": 0,
+   "keepClear": []
+  },
+  "decor": []
+ },
+ "sprites": {}
+}

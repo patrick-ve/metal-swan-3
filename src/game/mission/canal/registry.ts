@@ -43,6 +43,20 @@ export function canalScene(scene: string): { man: CanalManifest; sec: CanalSecti
   return man && sec ? { man, sec } : null;
 }
 
+/**
+ * The lit stack paired with scene `<id>/<section>` (docs/api/canal.md "A lit section"): the scene
+ * id of the manifest's section whose `litOf` is that section, or null (no lit pair).
+ */
+export function canalLitOf(scene: string): string | null {
+  const i = scene.lastIndexOf('/');
+  if (i <= 0) return null;
+  const man = manifests.get(scene.slice(0, i));
+  if (!man) return null;
+  const sec = scene.slice(i + 1);
+  for (const [id, s] of Object.entries(man.sections)) if (s.litOf === sec) return `${scene.slice(0, i)}/${id}`;
+  return null;
+}
+
 /** The switch (default on): off draws every section's old scenery (`?canal=0`, `--canal 0`). Returns the previous value. */
 export function setCanal(value: boolean): boolean {
   const prev = on;
@@ -74,11 +88,29 @@ export function canalTextureOf(): ((buf: PixelBuffer) => RowsTexture) | null {
   return textureOf;
 }
 
+/**
+ * The base URL of the canal files. On the DEV server only, the other loopback name (`localhost` ↔
+ * `127.0.0.1`, same port; the dev server sends the CORS header for it): the browser keeps six
+ * connections per host, and the art workers' module loads (the whole module graph per worker, over a
+ * thousand requests in flight) hold them for seconds, so the packs on the page's own host waited
+ * 1.7–2.3 s each (measured, 2026-11-13). Production (one bundle per worker) and any other host:
+ * `base` as it is.
+ */
+export function canalBase(base: string, loc: { href: string; hostname: string }, dev: boolean): string {
+  if (!dev) return base;
+  const alt = loc.hostname === 'localhost' ? '127.0.0.1' : loc.hostname === '127.0.0.1' ? 'localhost' : null;
+  if (!alt) return base;
+  const u = new URL(base, loc.href);
+  u.hostname = alt;
+  return u.href;
+}
+
 /** The browser's source: `fetch` under the site's base URL. */
 export function fetchCanalSource(base: string): CanalSource {
   return {
     async read(path: string): Promise<Uint8Array> {
-      const res = await fetch(base + path);
+      // A high priority hint: the drawn scene's packs before other loads of the page (art worker scripts, audio).
+      const res = await fetch(base + path, { priority: 'high' } as RequestInit);
       if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
       return new Uint8Array(await res.arrayBuffer());
     },

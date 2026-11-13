@@ -8,7 +8,7 @@
  * Modes: 'attract' (300 ticks in the title's attract loop, then the title), 'after-game' (new
  * rows blink; a press or 600 ticks → the title) and 'menu' (from the mode select; back returns).
  *
- * Two tables (docs/design/oat.md §7.7): `budgets` (the euro runs: the route) shows the signed
+ * Two tables (docs/design/budget.md §7.7): `budgets` (the euro runs: the route) shows the signed
  * budget (`€ 2.500,00`) right-aligned at x 220; `points` (the dormant ring, m0–m5 by URL) the
  * 7-digit score as before. The attract loop and the menu show the budgets; after a game the
  * table of the game just played.
@@ -27,7 +27,7 @@ import { veil } from './lake';
 
 export type HighScoresMode = 'attract' | 'after-game' | 'menu';
 
-/** Which table (docs/design/oat.md §7.7): the euro runs' `budgets` or the point runs' `points`. */
+/** Which table (docs/design/budget.md §7.7): the euro runs' `budgets` or the point runs' `points`. */
 export type HighScoresTable = 'budgets' | 'points';
 
 export interface HighScoresOpts {
@@ -62,8 +62,8 @@ const AFTER_GAME_TICKS = 600;
 
 /**
  * The mission column: 'ALL' for a finished game, else the mission number (`missionNumber`): on
- * the route 'ams' → 'M1', 'oat' → 'M2', 'rally' → 'M3', 'oldenzaal' → 'M5' (the fps floors count
- * as level 4; docs/design/oat.md §1; the dormant 'ring' is off the route: 'RIN'); the passive campaign missions
+ * the route 'ams' → 'M1', 'sewers' → 'M2', 'rally' → 'M3', 'oldenzaal' → 'M5' (the fps floors count
+ * as level 4; docs/design/sewers.md §1; the dormant 'ring' is off the route: 'RIN'); the passive campaign missions
  * by their old place ('m1' → 'M2' … 'm5' → 'M6'); the fps floors 'fps-N' → 'FN'; other `mN` ids →
  * 'MN'.
  */

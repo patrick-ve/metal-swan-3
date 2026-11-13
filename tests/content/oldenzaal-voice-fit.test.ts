@@ -25,7 +25,7 @@ function ticksOf(text: string): number {
 describe('oldenzaal voice lines (Dutch, shipped)', () => {
   it('every voiced line, the announcer line and the snack callout has a shipped take', () => {
     const texts = [...voicedLines().map((l) => l.text), OLDENZAAL.announce ?? '', SNACK_POWER_CALLOUT];
-    // Level 5 since the oat wave (docs/design/oat.md §0 #61): the announce's new take comes in wave C
+    // Level 5 since 2026-10-31: the announce's new take is pending
     // (PENDING_RETAKES); until then the old take stays shipped.
     for (const t of texts) expect(voices[voiceKey(PENDING_RETAKES.find((r) => r.text === t)?.old ?? t)], t).toBeDefined();
   });

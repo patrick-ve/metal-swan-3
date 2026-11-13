@@ -1,11 +1,11 @@
 /**
- * The euro table (docs/design/oat.md §7.2): what a kill, an item or a bonus pays in cents. Pure.
+ * The euro table (docs/design/budget.md §7.2): what a kill, an item or a bonus pays in cents. Pure.
  *
  * - Every payer without a row: legacy points ÷ 50, rounded to € 0,50, capped at € 25,00
  *   (`pointsToCents`).
- * - The rows by entity id (`EURO_BY_ID`): the ams locals, the stag party, the oat cast, the
- *   oldenzaal dead, the mini-bosses (€ 150,00) and the bosses (€ 250,00), the breakables and
- *   `VERKOCHT` signs (€ 1,00).
+ * - The rows by entity id (`EURO_BY_ID`): the ams locals, the stag party, the sewers cast
+ *   (docs/design/sewers.md §3, §4), the oldenzaal dead, the mini-bosses (€ 150,00) and the bosses
+ *   (€ 250,00), the breakables (€ 1,00).
  * - A knife kill of a soft enemy pays ×2 (`CONTANT`; it was ×5 in points).
  * - The tally and final bonuses: legacy points ÷ 500, × the difficulty factor at the total
  *   (`bonusCents`).
@@ -44,9 +44,9 @@ export function withDifficulty(cents: Cents, factor: number): Cents {
   return Math.round(cents * (Number.isFinite(factor) ? factor : 1));
 }
 
-/** Mini-bosses (§7.2: the ams scan car, the statue, De Makelaar). */
+/** Mini-bosses (§7.2: the ams scan car, the statue, GOUDEN GERRIT). */
 export const MINI_BOSS_CENTS: Cents = 15_000;
-/** Bosses (§7.2: the ams mayor, De Huisjesmelker). */
+/** Bosses (§7.2: the ams mayor, DE RATTENJONG). */
 export const BOSS_CENTS: Cents = 25_000;
 
 /**
@@ -60,12 +60,14 @@ export const EURO_BY_ID: Readonly<Record<string, Cents>> = {
   'delivery-rider': 400,
   seagull: 300,
   'stag-beer-bike': 2500,
-  // oat (docs/design/oat.md §3)
-  'oat-brammobiel': 1500,
-  'oat-bakfiets': 1200,
-  'oat-taxi': 2500,
-  'oat-dealer': 500,
-  'oat-handhaver-scooter': 800,
+  // sewers (docs/design/sewers.md §3): the street and the rats
+  'sewers-dealer': 500,
+  'sewers-pimp': 1200,
+  'sewers-bodyguard': 800,
+  'sewers-rat-runner': 200,
+  'sewers-rat-leaper': 300,
+  'sewers-rat-spitter': 400,
+  'sewers-rat-brute': 1500,
   // oldenzaal: grunt / rifleman / gunner / crawler
   'oz-grunt': 300,
   'oz-rifleman': 400,
@@ -74,15 +76,16 @@ export const EURO_BY_ID: Readonly<Record<string, Cents>> = {
   // mini-bosses and bosses
   'ams-scan-car': MINI_BOSS_CENTS,
   'oz-plechelmus': MINI_BOSS_CENTS,
-  'oat-makelaar': MINI_BOSS_CENTS,
+  'sewers-gerrit': MINI_BOSS_CENTS,
   'ams-mayor': BOSS_CENTS,
-  'oat-huisjesmelker': BOSS_CENTS,
-  // breakables and signs (€ 1,00 each)
+  'sewers-rattenjong': BOSS_CENTS,
+  // breakables (€ 1,00 each)
   'ams-herring-cart': 100,
   'ams-tulip-stall': 100,
   'ams-market-stall': 100,
   'ams-bike-rack': 100,
-  'oat-verkocht-sign': 100,
+  // the sewers fatbergs (the big lock and the small secret one; P2: a breakable wall, not a kill)
+  'sewers-fatberg': 100,
 };
 
 /**

@@ -1,9 +1,9 @@
 import type { Color } from './color';
-import { BLACK, WHITE } from './color';
+import { BLACK, blendAdd, blendOver, WHITE } from './color';
 import { drawText, drawTextPx, glyphDensity, textScale } from './font';
 import type { BlitOpts } from './pixel';
 import { PixelBuffer, traceLine } from './pixel';
-import type { DrawOpts, Frame, ParallaxOpts, Renderer, RowsDraw, RowsTexture, TextOpts } from './render';
+import type { DrawOpts, Frame, ParallaxOpts, Renderer, RowsDraw, RowsTexture, SrcRect, TextOpts } from './render';
 import { SURFACE_ROAD, SURFACE_SKY, VIEW_H, VIEW_W } from './render';
 import type { LineEnds, Part, Placement, SubpixelMode } from './render-common';
 import {
@@ -56,8 +56,11 @@ export class SoftRenderer implements Renderer {
   readonly w: number;
   readonly h: number;
   readonly res: number;
-  /** The image being drawn (opaque after begin()), (w·res) × (h·res). */
-  readonly target: PixelBuffer;
+  /**
+   * The image being drawn (opaque after begin()), (w·res) × (h·res). While a layer is open
+   * (`layerBegin` … `layerEnd`) the draws go to the layer instead: read it after `end()`.
+   */
+  target: PixelBuffer;
   camX = 0;
   camY = 0;
   mode: UpscaleMode;
@@ -83,16 +86,30 @@ export class SoftRenderer implements Renderer {
   private lineFy = 0;
   private readonly plotLine = (x: number, y: number): void => {
     const k = this.res;
+    const t = this.dst(this.lineAdd);
     if (k > 1) {
-      this.target.blendRect(x * k - this.lineFx, y * k - this.lineFy, k, k, this.lineColor, this.lineAlpha, this.lineAdd ? 'add' : 'over');
+      t.blendRect(x * k - this.lineFx, y * k - this.lineFy, k, k, this.lineColor, this.lineAlpha, this.lineAdd ? 'add' : 'over');
       return;
     }
     if (this.lineAlpha >= 1 && !this.lineAdd && (this.lineColor & 255) === 255) {
-      if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.target.data[y * this.w + x] = this.lineColor;
+      if (x >= 0 && y >= 0 && x < this.w && y < this.h) t.data[y * this.w + x] = this.lineColor;
     } else {
-      this.target.blendPixel(x, y, this.lineColor, this.lineAlpha, this.lineAdd ? 'add' : 'over');
+      t.blendPixel(x, y, this.lineColor, this.lineAlpha, this.lineAdd ? 'add' : 'over');
     }
   };
+
+  // THE LAYER (render.ts `layerBegin`): the backbuffer, the layer and its additive twin (made on
+  // first use, the backbuffer's size), the open layer's box and the box the layer was last used in
+  // (backbuffer px: x0, y0, x1, y1), and whether its additive twin was drawn into.
+  private readonly main: PixelBuffer;
+  private layerBuf: PixelBuffer | null = null;
+  private addBuf: PixelBuffer | null = null;
+  private layerOn = false;
+  private addUsed = false;
+  private readonly box = new Int32Array(4);
+  private readonly used = new Int32Array(4);
+  /** Clip the canal rows to the box (a layer opened with one). */
+  private clipRows = false;
 
   constructor(w = VIEW_W, h = VIEW_H, target?: PixelBuffer, opts: SoftRendererOpts = {}) {
     this.w = w;
@@ -101,10 +118,138 @@ export class SoftRenderer implements Renderer {
     this.mode = opts.mode ?? 'pixel';
     this.subpixel = opts.subpixel ?? DEFAULT_SUBPIXEL;
     this.target = target ?? new PixelBuffer(w * this.res, h * this.res);
+    this.main = this.target;
   }
 
   begin(clear: Color | null = BLACK): void {
+    // An open layer is dropped (not drawn).
+    this.target = this.main;
+    this.layerOn = false;
+    this.clipRows = false;
     if (clear !== null) this.target.fill(clear);
+  }
+
+  /** The buffer a draw goes to: the target, or (an additive draw while a layer is open) the additive layer. */
+  private dst(add: boolean): PixelBuffer {
+    if (!add || !this.layerOn) return this.target;
+    this.addUsed = true;
+    return this.addBuf as PixelBuffer;
+  }
+
+  /** Render.ts `layerBegin`: later draws go to the layer (cleared in its last box and in `box`). */
+  layerBegin(box?: SrcRect): void {
+    if (this.layerOn) this.layerEnd();
+    const m = this.main;
+    const k = this.res;
+    if (!this.layerBuf || this.layerBuf.w !== m.w || this.layerBuf.h !== m.h) {
+      this.layerBuf = new PixelBuffer(m.w, m.h);
+      this.addBuf = new PixelBuffer(m.w, m.h);
+      this.used.set([0, 0, m.w, m.h]);
+    }
+    const b = this.box;
+    if (box) {
+      b[0] = Math.max(0, Math.floor(box.x * k));
+      b[1] = Math.max(0, Math.floor(box.y * k));
+      b[2] = Math.min(m.w, Math.ceil((box.x + box.w) * k));
+      b[3] = Math.min(m.h, Math.ceil((box.y + box.h) * k));
+    } else b.set([0, 0, m.w, m.h]);
+    const u = this.used;
+    const L = this.layerBuf.data;
+    const A = (this.addBuf as PixelBuffer).data;
+    // Clear what the last use may have left (its box) and this box; the additive layer whole.
+    for (const r of [u, b]) for (let y = r[1]; y < r[3]; y++) L.fill(0, y * m.w + r[0], y * m.w + r[2]);
+    if (this.addUsed) A.fill(0);
+    u.set(b);
+    this.addUsed = false;
+    this.clipRows = box !== undefined;
+    this.layerOn = true;
+    this.target = this.layerBuf;
+  }
+
+  /** Render.ts `layerMask`: the layer keeps its pixels only where the mask (density d, world space at x, y) is opaque. */
+  layerMask(mask: PixelBuffer, d: number, x: number, y: number): void {
+    if (!this.layerOn) return;
+    const k = this.res;
+    const fine = this.subpixel === 'all';
+    const left = toPx(x, k, fine) - this.cx;
+    const top = toPx(y, k, fine) - this.cy;
+    const L = this.target.data;
+    const W = this.target.w;
+    const M = mask.data;
+    const b = this.box;
+    for (let Y = b[1]; Y < b[3]; Y++) {
+      const my = Math.floor(((Y - top) * d) / k);
+      const row = Y * W;
+      if (my < 0 || my >= mask.h) {
+        L.fill(0, row + b[0], row + b[2]);
+        continue;
+      }
+      const mrow = my * mask.w;
+      for (let X = b[0]; X < b[2]; X++) {
+        if (L[row + X] === 0) continue;
+        const mx = Math.floor(((X - left) * d) / k);
+        if (mx < 0 || mx >= mask.w || (M[mrow + mx] & 255) === 0) L[row + X] = 0;
+      }
+    }
+  }
+
+  /** Render.ts `layerShade`: `buf` (density 1, world space at x, y) over the layer's own pixels only. */
+  layerShade(buf: PixelBuffer, x: number, y: number): void {
+    if (!this.layerOn) return;
+    const k = this.res;
+    const fine = this.subpixel === 'all';
+    const left = toPx(x, k, fine) - this.cx;
+    const top = toPx(y, k, fine) - this.cy;
+    const L = this.target.data;
+    const W = this.target.w;
+    const S = buf.data;
+    const b = this.box;
+    for (let Y = b[1]; Y < b[3]; Y++) {
+      const sy = Math.floor((Y - top) / k);
+      if (sy < 0 || sy >= buf.h) continue;
+      const row = Y * W;
+      const srow = sy * buf.w;
+      for (let X = b[0]; X < b[2]; X++) {
+        const p = L[row + X];
+        const pa = p & 255;
+        if (pa === 0) continue;
+        const sx = Math.floor((X - left) / k);
+        if (sx < 0 || sx >= buf.w) continue;
+        const c = S[srow + sx];
+        if ((c & 255) === 0) continue;
+        // Source-atop: the colour blends as over an opaque pixel, the layer's alpha stays.
+        L[row + X] = ((blendOver((p | 255) >>> 0, c) & 0xffffff00) | pa) >>> 0;
+      }
+    }
+  }
+
+  /** Render.ts `layerEnd`: the layer over the backbuffer in its box, then the additive layer added. */
+  layerEnd(): void {
+    if (!this.layerOn) return;
+    this.layerOn = false;
+    this.clipRows = false;
+    this.target = this.main;
+    const T = this.main.data;
+    const W = this.main.w;
+    const L = (this.layerBuf as PixelBuffer).data;
+    const A = (this.addBuf as PixelBuffer).data;
+    const b = this.box;
+    const add = this.addUsed;
+    for (let Y = b[1]; Y < b[3]; Y++) {
+      const row = Y * W;
+      for (let i = row + b[0], e = row + b[2]; i < e; i++) {
+        const p = L[i];
+        if (p !== 0) T[i] = blendOver(T[i], p);
+      }
+    }
+    // The additive layer is not clipped: all of it.
+    if (add) {
+      for (let i = 0, e = A.length; i < e; i++) {
+        const p = A[i];
+        if (p !== 0) T[i] = blendAdd(T[i], p);
+      }
+    }
+    this.main.version++;
   }
 
   end(): void {
@@ -166,7 +311,7 @@ export class SoftRenderer implements Renderer {
     const fine = !screen && this.subpixel === 'all';
     const left = toPx(x, k, fine) - (screen ? 0 : this.cx);
     const top = toPx(y, k, fine) - (screen ? 0 : this.cy);
-    this.target.blendRect(left, top, Math.round(w) * k, Math.round(h) * k, solidColor(c, o), o?.alpha ?? 1, o?.blend === 'add' ? 'add' : 'over');
+    this.dst(o?.blend === 'add').blendRect(left, top, Math.round(w) * k, Math.round(h) * k, solidColor(c, o), o?.alpha ?? 1, o?.blend === 'add' ? 'add' : 'over');
   }
 
   line(x0: number, y0: number, x1: number, y1: number, c: Color, o?: DrawOpts): void {
@@ -262,11 +407,15 @@ export class SoftRenderer implements Renderer {
     const top = Math.round(y * k);
     const dh = Math.floor((H * k) / d);
     const dw = Math.floor((W * k) / d);
-    const y0 = Math.max(0, top);
-    const y1 = Math.min(t.h, top + dh);
+    const clip = this.clipRows;
+    const b = this.box;
+    const y0 = Math.max(clip ? b[1] : 0, top);
+    const y1 = Math.min(clip ? b[3] : t.h, top + dh);
     const src = img.data;
     const dst = t.data;
     const TW = t.w;
+    const cx0 = clip ? b[0] : 0;
+    const cx1 = clip ? b[2] : TW;
     const whole = k % d === 0;
     const m = k / d;
     let last = -1;
@@ -277,8 +426,8 @@ export class SoftRenderer implements Renderer {
         last = r;
         xl = left - rowShift(o, r, k);
       }
-      const x0 = Math.max(0, xl);
-      const x1 = Math.min(TW, xl + dw);
+      const x0 = Math.max(cx0, xl);
+      const x1 = Math.min(cx1, xl + dw);
       const srow = r * W;
       const drow = Y * TW;
       if (m === 1) {
@@ -361,10 +510,10 @@ export class SoftRenderer implements Renderer {
       bo.sy = (flipY ? lh - p.sy - p.sh : p.sy) * f;
       bo.sw = p.sw * f;
       bo.sh = p.sh * f;
-      this.target.blitScaled(img, p.dx, p.dy, k, f, bo);
+      this.dst(bo.blend === 'add').blitScaled(img, p.dx, p.dy, k, f, bo);
       return;
     }
-    this.target.blitScaled(img, left, top, k, f, bo);
+    this.dst(bo.blend === 'add').blitScaled(img, left, top, k, f, bo);
   }
 
   private upscaledOf(buf: PixelBuffer, mode: UpscaleMode): PixelBuffer {

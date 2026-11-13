@@ -1,5 +1,5 @@
 /**
- * The euro budget's pure parts (docs/design/oat.md §7.1–§7.5, §7.7): the ledger, the notation, the
+ * The euro budget's pure parts (docs/design/budget.md §7.1–§7.5, §7.7): the ledger, the notation, the
  * euro table, the costs and the `budgets` table.
  */
 import { describe, expect, it } from 'vitest';
@@ -146,7 +146,7 @@ describe('budget: the euro table (spec §7.2)', () => {
     expect(killCents('oz-mg', 1000, false)).toBe(1200);
     expect(killCents('ams-scan-car', 0, false)).toBe(MINI_BOSS_CENTS);
     expect(killCents('ams-mayor', 0, false)).toBe(BOSS_CENTS);
-    expect(killCents('oat-huisjesmelker', 0, false)).toBe(25000);
+    expect(killCents('sewers-rattenjong', 0, false)).toBe(25000);
   });
 
   it('a knife kill of a soft enemy pays ×2 (CONTANT)', () => {
@@ -171,10 +171,10 @@ describe('budget: the euro table (spec §7.2)', () => {
 });
 
 describe('budget: the costs (spec §7.3, §6.2, §3)', () => {
-  it('fines a ticket death € 95,00 BOETE, in oat-d € 100,00 BLOWVERBOD', () => {
+  it('fines a ticket death € 95,00 BOETE in every section (the section rule went with the former level 2)', () => {
     expect(fineFor('a')).toEqual({ cents: 9500, category: 'boete' });
     expect(fineFor('oz-a')).toEqual({ cents: 9500, category: 'boete' });
-    expect(fineFor('oat-d')).toEqual({ cents: 10000, category: 'blowverbod' });
+    expect(fineFor('sewers-a')).toEqual({ cents: 9500, category: 'boete' });
   });
 
   it('taxes a continue 12,5 → 15 → 17,5 → 20 % of a positive budget, at least € 5,00; € 12,50 flat at ≤ € 0', () => {
@@ -226,8 +226,8 @@ describe('budget: the budgets table (spec §7.7)', () => {
     expect(t.qualifies(15000)).toBe(false);
     expect(t.qualifies(15001)).toBe(true);
     expect(t.qualifies(-500)).toBe(false);
-    expect(t.submit({ name: 'RED', cents: -500, mission: 'oat', character: 'bob', continues: 3 })).toBe(-1);
-    expect(t.submit({ name: 'NEW', cents: 170000, mission: 'oat', character: 'bob', continues: 0, difficulty: 'hard' })).toBe(2);
+    expect(t.submit({ name: 'RED', cents: -500, mission: 'sewers', character: 'bob', continues: 3 })).toBe(-1);
+    expect(t.submit({ name: 'NEW', cents: 170000, mission: 'sewers', character: 'bob', continues: 0, difficulty: 'hard' })).toBe(2);
     expect(t.entries.length).toBe(10);
     expect(t.entries[9].cents).toBe(25000);
     expect(t.rankOf(300000)).toBe(0);

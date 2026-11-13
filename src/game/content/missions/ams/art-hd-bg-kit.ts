@@ -13,7 +13,7 @@
  *   result snapped to the nearest PAL_HD colour in Oklab. Painters then only pick indices.
  * - `dq` is the ordered dither (Bayer 8 × 8 on the art grid) used ONLY at band borders of large
  *   gradients (sky, clouds, walls, water); sprites never use it.
- * - OPT-IN (mission `oat`, docs/design/oat.md §8.5): a canvas may index ANOTHER colour set
+ * - OPT-IN (mission `oat`, docs/design/oat.md (deleted; git show eb3316a) §8.5): a canvas may index ANOTHER colour set
  *   (`new BgCanvas(w, h, d, bgPalette(oatSet))`, ≤ 255 colours, index 0 = clear): `BgPalette` gives
  *   that set's `ix` / `colourOf` / `nearest` / `tableOf`. The default is `HD_BG_PALETTE` (PAL_HD,
  *   the module functions' own table), so every existing painter indexes and finishes as before.
@@ -513,7 +513,7 @@ export function tableOf(t: (c: Color) => number): Uint8Array {
 /**
  * A colour set a BgCanvas indexes (index i + 1 = `colours[i]`, index 0 = clear; ≤ 255 colours).
  * The module functions above (`ix`, `colourOf`, `nearestHd`, `tableOf`, …) are the PAL_HD set's;
- * a painter of another set (oat: PAL_HD ∪ PAL_HD_OAT) uses its palette's methods instead.
+ * a painter of another set (a mission's own PAL_HD superset) uses its palette's methods instead.
  */
 export interface BgPalette {
   /** The colours, in index order (index 1 = colours[0]). */

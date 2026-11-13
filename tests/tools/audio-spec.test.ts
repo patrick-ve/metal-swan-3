@@ -24,7 +24,8 @@ import { ringVoicedLines } from '../../src/game/content/ring/foot/lines';
 import { DJ_SPEAKER, RADIO_JINGLES, RADIO_LINES, RADIO_SONGS, RALLY_ANNOUNCE, RALLY_CARD_LINES } from '../../src/game/content/rally/radio/lines';
 import '../../src/game/content/music/rally';
 import { itemsOfGroups, items, selectItems } from '../../tools/audio/lib';
-import { LINES, MUSIC, RALLY_SAY, SFX, VOICES } from '../../tools/audio/spec';
+import { LINES, MUSIC, RALLY_SAY, SEWERS_SAY, SEWERS_SPEAKER, SFX, VOICES } from '../../tools/audio/spec';
+import { sewersLineSeconds, sewersVoiceLines } from '../../src/game/content/samples/sewers';
 
 const SRC = new URL('../../src/', import.meta.url).pathname;
 const FPS_SPEC = new URL('../../docs/design/fps.md', import.meta.url).pathname;
@@ -37,10 +38,10 @@ const isOz = (x: { group: string }): boolean => x.group === OZ_AUDIO_GROUP;
 const isRing = (x: { group: string }): boolean => x.group === 'mission:ring';
 /** Mission rally's ids (group 'mission:rally', docs/design/rally.md §8: FILE FM). */
 const isRally = (x: { group: string }): boolean => x.group === 'mission:rally';
-/** Mission oat's ids (group 'mission:oat', docs/design/oat.md §9; checked in tests/content/oat-audio-spec.test.ts). */
-const isOat = (x: { group: string }): boolean => x.group === 'mission:oat';
+/** Mission sewers' ids (group 'mission:sewers', docs/design/sewers.md §7; its synth registers with the lazy chunk). */
+const isSewers = (x: { group: string }): boolean => x.group === 'mission:sewers';
 /** The rest of the game (the start screens and ams). */
-const isBase = (x: { group: string }): boolean => !isFps(x) && !isOz(x) && !isRing(x) && !isRally(x) && !isOat(x);
+const isBase = (x: { group: string }): boolean => !isFps(x) && !isOz(x) && !isRing(x) && !isRally(x) && !isSewers(x);
 
 /** Every backticked `fps/…` sfx id in docs/design/fps.md §9.1. */
 function fpsSpecSfx(): Set<string> {
@@ -119,9 +120,9 @@ describe('audio spec: sfx', () => {
 
 describe('audio spec: music', () => {
   it('every id is a registered song, once', () => {
-    // The fps songs register with the lazy fps content (group fps-sound), not at boot; the oat songs
-    // with the lazy oat content (tests/content/oat-audio-spec.test.ts).
-    for (const m of MUSIC.filter((x) => !isFps(x) && !isOat(x))) expect(hasSong(m.id), m.id).toBe(true);
+    // The fps songs register with the lazy fps content (group fps-sound), not at boot; the sewers songs
+    // with the lazy sewers content (the 'audio spec: mission sewers' block below).
+    for (const m of MUSIC.filter((x) => !isFps(x) && !isSewers(x))) expect(hasSong(m.id), m.id).toBe(true);
     expect(new Set(MUSIC.map((m) => m.id)).size).toBe(MUSIC.length);
     expect(MUSIC.filter(isBase).map((m) => m.id).sort()).toEqual(
       ['ams', 'ams-boss', 'briefing', 'continue', 'game-over', 'high-score', 'mission-complete', 'select', 'title'].sort(),
@@ -151,9 +152,8 @@ describe('audio spec: music', () => {
   });
 
   it('a loop is long enough for its intro, one full loop and 2 s to cut', () => {
-    const loopBars: Record<string, number> = { title: 32, select: 16, briefing: 8, ams: 48, 'ams-boss': 40, continue: 6, 'high-score': 8, 'fps-floor': 32, 'fps-boss': 32, 'fps-bridge': 4, oldenzaal: 24, 'oldenzaal-boss': 24, 'oldenzaal-tower': 32, 'ring-foot': 32, 'ring-boot': 24, 'rally-lap1': 80, 'rally-lap2': 80, 'rally-lap3': 72 };
-    // Mission oat's songs are built from their take forms (tests/content/oat-audio-spec.test.ts).
-    for (const m of MUSIC.filter((x) => x.loop && !isOat(x))) {
+    const loopBars: Record<string, number> = { title: 32, select: 16, briefing: 8, ams: 48, 'ams-boss': 40, continue: 6, 'high-score': 8, 'fps-floor': 32, 'fps-boss': 32, 'fps-bridge': 4, oldenzaal: 24, 'oldenzaal-boss': 24, 'oldenzaal-tower': 32, 'ring-foot': 32, 'ring-boot': 24, 'rally-lap1': 80, 'rally-lap2': 80, 'rally-lap3': 72, 'sewers-street': 16, 'sewers-gerrit': 16, 'sewers-sewer': 8, 'sewers-boss': 16 };
+    for (const m of MUSIC.filter((x) => x.loop)) {
       const bar = (60 / m.bpm) * m.beatsPerBar;
       const need = ((m.introBars ?? 0) + loopBars[m.id]) * bar + 2;
       expect(m.seconds, m.id).toBeGreaterThanOrEqual(need - 0.01);
@@ -500,5 +500,93 @@ describe("audio spec: mission rally (group 'mission:rally', docs/design/rally.md
     expect(rally.filter((it) => it.kind === 'voice').map((it) => it.id)).toEqual([DJ_SPEAKER]);
     expect(rally.filter((it) => it.kind === 'line').length).toBe(RADIO_LINES.length);
     expect(rally.filter((it) => it.kind === 'music').length).toBe(6);
+  });
+});
+
+// ------------------------------------------------------------------------------------------ sewers
+
+describe("audio spec: mission sewers (group 'mission:sewers', docs/design/sewers.md §7)", () => {
+  it('every registered sewers/ sfx recipe and every song of the mission is in the spec once, marked new, with a final prompt', async () => {
+    await loadContent((id) => id === 'sfx/sewers' || id === 'music/sewers');
+    const { SEWERS_SFX_IDS } = await import('../../src/game/content/sfx/sewers');
+    const { SEWERS_SONG } = await import('../../src/game/content/missions/sewers/ids');
+    const { SEWERS_SONGS } = await import('../../src/game/content/music/sewers');
+    const sfx = SFX.filter(isSewers);
+    expect(sfx.map((s) => s.id).sort()).toEqual([...SEWERS_SFX_IDS].sort());
+    expect(listSfx('sewers/').sort()).toEqual([...SEWERS_SFX_IDS].sort());
+    for (const s of sfx) {
+      expect(s.isNew, s.id).toBe(true);
+      expect(s.prompt, s.id).not.toMatch(/TODO/);
+      // Bloodless and cartoon (spec §8): no gore words.
+      expect(s.prompt, s.id).not.toMatch(/blood|gore|guts|scream/i);
+    }
+    for (const id of ['sewers/rain-bed', 'sewers/drip-bed']) expect(sfx.find((s) => s.id === id)?.loop, id).toBe(true);
+    const music = MUSIC.filter(isSewers);
+    expect(music.map((m) => m.id).sort()).toEqual(Object.values(SEWERS_SONG).sort());
+    for (const m of music) {
+      expect(hasSong(m.id), m.id).toBe(true);
+      expect(m.prompt, m.id).not.toMatch(/TODO/);
+      expect(m.prompt, m.id).toMatch(/original composition/i);
+      expect(m.prompt, m.id).toMatch(/no vocals/i);
+      expect(m.prompt, m.id).not.toMatch(/\bin the style of\b|\blike the\b|\bsounds like\b/i);
+      expect(m.bpm, m.id).toBe(SEWERS_SONGS[m.id].bpm);
+      expect(m.prompt, m.id).toContain(`${m.bpm} BPM`);
+    }
+  });
+
+  it('the designed voices: one per speaker of SEWERS_VOICE but the hero, original characters, no origin or accent play', () => {
+    const speakers = [...new Set(sewersVoiceLines().map((l) => l.speaker))].sort();
+    expect(speakers).toEqual(Object.values(SEWERS_SPEAKER).sort());
+    for (const speaker of speakers) {
+      const v = VOICES.find((x) => x.speaker === speaker);
+      // The five heroes are real friends of the user: never voiced, never imitated.
+      if (speaker === SEWERS_SPEAKER.hero) {
+        expect(v, speaker).toBeUndefined();
+        continue;
+      }
+      expect(v, speaker).toBeDefined();
+      expect(v?.description, speaker).toMatch(/original character voice/i);
+      expect(v?.description, speaker).toMatch(/never an imitation/i);
+      if (speaker === SEWERS_SPEAKER.tourist) continue;
+      // Behaviours, not groups (spec §8): plain standard Dutch, nothing about origin or a regional accent.
+      expect(v?.description, speaker).toMatch(/standard Dutch with a neutral accent/i);
+      expect(`${v?.name} ${v?.description}`, speaker).not.toMatch(/moroccan|turkish|surinam|antill|african|arab|eastern europe|street accent|amsterdam accent|migrant|ethnic/i);
+    }
+    // The banana tourist has his own voice (the ams `tourist` is a woman), no caricature.
+    expect(SEWERS_SPEAKER.tourist).not.toBe('tourist');
+    expect(VOICES.find((x) => x.speaker === SEWERS_SPEAKER.tourist)?.description).toMatch(/never a caricature/i);
+  });
+
+  it("every voiced line is in the spec verbatim (Dutch, group 'mission:sewers'); the hero's line stays text-only", () => {
+    const sewers = LINES.filter(isSewers);
+    const voiced = sewersVoiceLines().filter((l) => l.speaker !== SEWERS_SPEAKER.hero);
+    expect(sewers.length).toBe(voiced.length);
+    for (const { speaker, text } of voiced) {
+      const l = sewers.find((x) => x.text === text);
+      expect(l, text).toBeDefined();
+      expect(l?.speaker, text).toBe(speaker);
+      expect(l?.lang, text).toBe('nl');
+      expect(l?.say, text).toBe(SEWERS_SAY[text]);
+      expect(l?.say, text).toMatch(/^\[[^\]]+\]/);
+      expect(l?.maxSeconds, text).toBe(sewersLineSeconds(text));
+      // Barks (the lines every dealer and pimp repeats): 3 takes; the rest 2.
+      expect(l?.takes, text).toBe(speaker === SEWERS_SPEAKER.dealer || speaker === SEWERS_SPEAKER.pimp ? 3 : 2);
+    }
+    for (const l of sewersVoiceLines().filter((x) => x.speaker === SEWERS_SPEAKER.hero)) expect(LINES.some((x) => x.text === l.text), l.text).toBe(false);
+  });
+
+  it('the group filter selects the sewers items and the five voice designs they need', () => {
+    const all = items({ SFX, MUSIC, VOICES, LINES });
+    const voices = [...itemsOfGroups(all, ['mission:sewers'])].filter((it) => it.kind === 'voice').map((it) => it.id).sort();
+    expect(voices).toEqual(Object.values(SEWERS_SPEAKER).filter((s) => s !== SEWERS_SPEAKER.hero).sort());
+  });
+
+  it("the card's lines (Gusto and the announcer) are voiced in group 'boot'", async () => {
+    const { SEWERS_CARD } = await import('../../src/game/content/missions/sewers/card');
+    for (const t of [...SEWERS_CARD.briefing, SEWERS_CARD.announce!]) {
+      const l = LINES.find((x) => x.text === t);
+      expect(l, t).toBeDefined();
+      expect(l?.group, t).toBe('boot');
+    }
   });
 });

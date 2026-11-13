@@ -5,7 +5,7 @@
  * counts the runner's wave-B events. The shape stays (`raceLines(race, car)` → lines with points, or
  * null for a missed bonus); without a book the lines are wave A's (PLACE, TIME).
  *
- * The prize money (docs/design/oat.md §7.8, BUDGET, oat wave A): every line also carries its euros
+ * The prize money (docs/design/budget.md §7.8, BUDGET): every line also carries its euros
  * (`cents`; the tally page shows and books them: mission-complete.ts): PLACE € 500 / 350 / 250 /
  * 150 / 100 / 75 / 50 / 25, TIME € 0,50 per second under par, BEST LAP € 50, OVERTAKES € 2 each,
  * NEAR MISSES € 1 each, FINES − € 120 each (the real red-light fine; the joke column goes), TEAM
@@ -23,7 +23,7 @@ export interface RallyLine {
   cents?: number | null;
 }
 
-/** The prize money (spec oat §7.8), in cents. */
+/** The prize money (docs/design/budget.md §7.8), in cents. */
 export const PRIZE = {
   /** PLACE by place: 1st … 8th. */
   place: [50_000, 35_000, 25_000, 15_000, 10_000, 7_500, 5_000, 2_500] as readonly number[],
@@ -232,7 +232,7 @@ export function scoreLines(race: ScoredRace, car: CarState): RallyLine[] {
   const under = t >= 0 ? Math.floor((race.parTicks - t) / 60) : 0;
   const overtakes = tally?.overtakes ?? 0;
   const nearMisses = tally?.nearMisses ?? 0;
-  // The prize money (spec oat §7.8): every line in cents beside its points.
+  // The prize money (docs/design/budget.md §7.8): every line in cents beside its points.
   const lines: RallyLine[] = [
     { label: `PLACE ${car.place}/${race.carCount}`, points: sc.place, cents: placeCents(car.place) },
     { label: `TIME ${t >= 0 ? raceClock(t) : '-'}`, points: sc.timeBonus > 0 ? sc.timeBonus : null, cents: under > 0 ? under * PRIZE.timePerSecond : null },

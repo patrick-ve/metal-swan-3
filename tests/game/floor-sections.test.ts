@@ -30,7 +30,7 @@ import { SoftRenderer } from '../../src/engine/render-soft';
 import { Terrain } from '../../src/engine/terrain';
 import { World } from '../../src/engine/world';
 import { Entity } from '../../src/engine/entity';
-import { isOatContent, loadContent } from '../../src/game/content/index';
+import { isSewersContent, loadContent } from '../../src/game/content/index';
 import { getMission, listMissions } from '../../src/game/registry';
 import {
   bindWorldFloor,
@@ -64,8 +64,8 @@ import { createHeadlessGame } from '../../src/sim/index';
 import { AMS_WAVE_B } from '../../src/game/content/missions/ams/floor/sections';
 
 await loadContent();
-// The lazy oat chunk (decision 49): its floors join every gate here like the boot set's.
-await loadContent(isOatContent);
+// The lazy sewers chunk (docs/design/sewers.md §1): its floors join every gate here like the boot set's.
+await loadContent(isSewersContent);
 
 /** Every [mission, section] pair with a floor (the sections join these tests by themselves). */
 function floorSections(): Array<[string, SectionDef]> {
@@ -83,7 +83,7 @@ function floorSections(): Array<[string, SectionDef]> {
  * builder turned its switch on — `AMS_WAVE_B`, read from their folders, so no builder edits this file).
  * A floor that disappears fails here instead of silently dropping every check below.
  */
-const EXPECTED_FLOORS = ['ams/a', 'oldenzaal/oz-a', 'oat/oat-a', 'oat/oat-d', ...AMS_WAVE_B.filter((s) => s.on).map((s) => `ams/${s.id}`)];
+const EXPECTED_FLOORS = ['ams/a', 'oldenzaal/oz-a', ...AMS_WAVE_B.filter((s) => s.on).map((s) => `ams/${s.id}`)];
 
 describe('every section with a floor (gates 4 and 5)', () => {
   const list = floorSections();
@@ -561,7 +561,7 @@ function worstStray(series: number[]): number {
 describe('every floor section: the faces and quads move with the world (spec §2.1, §2.3)', () => {
   for (const [m, s] of floorSections()) {
     const def = floorOf(s) as FloorDef;
-    // A floor with no face groups (oat wave A: the strips are the façades) has nothing to sample.
+    // A floor with no face groups (the strips are the façades) has nothing to sample.
     it.skipIf(!def.faces?.length)(`${m}/${s.id}: every face group samples its tiles without aliasing (the footprint left after the mip level ≤ √2, or the one-row mean)`, () => {
       const floor = realFloor(s, 'residual');
       floor.prepare(0, 2);

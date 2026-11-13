@@ -48,7 +48,7 @@ export const PICKUP_MESSAGES: Readonly<Record<string, string>> = {
 /** What a pickup needs from the floor (FpsGame implements it). */
 export interface PickupHost {
   readonly player: FpsPlayer;
-  /** Points (and in a euro run the euros: docs/design/oat.md §7.9; `kind` / `id` name the payer). */
+  /** Points (and in a euro run the euros: docs/design/budget.md §7.9; `kind` / `id` name the payer). */
   addScore(points: number, kind?: 'kill' | 'boss' | 'treasure' | 'other', id?: string): void;
   /** Add a life; false when the lives are full. */
   addLife(): boolean;

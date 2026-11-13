@@ -1,6 +1,6 @@
 /**
- * DYNAMIC REFLECTIONS on the water of a floor (docs/design/oat.md §8.8 "Dynamic reflections",
- * decision 54; docs/api/oat.md "LIGHT-WATER"). Owner: LIGHT-WATER. An ADDITIVE OPT-IN: a section's
+ * DYNAMIC REFLECTIONS on the water of a floor (docs/design/oat.md (deleted; git show eb3316a) §8.8 "Dynamic reflections",
+ * decision 54; docs/api/oat.md (deleted; git show eb3316a) "LIGHT-WATER"). Owner: LIGHT-WATER. An ADDITIVE OPT-IN: a section's
  * light config names its water bands (`SectionLight.water`), and the light pass draws this overlay
  * in its ground hook (`MissionLight.drawGround`: after the floor band, before the contact shadows and
  * the entities). The GL floor shader stays texture-only: the overlay uses only the `Renderer` API, so
@@ -14,7 +14,7 @@
  * at the line to `alpha[1]` at its far end; rows outside the band's water (its screen rows, and in
  * x the band's u range through the floor's row scale s(y)) are not drawn. The static reflections
  * (the far bank, bridges, moored boats, the night lights) are baked in the water tiles
- * (content/missions/oat/light/water.ts); the night streaks are the light pass's.
+ * (the floor's water tiles); the night streaks are the light pass's.
  *
  * Cosmetic only, deterministic (the ripple is a function of world y and the tick), no allocation per
  * frame (one reused spot, one src rect, one DrawOpts).

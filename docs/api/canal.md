@@ -118,8 +118,17 @@ wrapped (`period`, two copies) and drifting (`add` = drift · ticks / 60); `rows
 - `wantCanal(scene, d, camX)` (every back pass and `prepare`): loads each pack whose window
   starts ≤ camX + `ahead` and still has a tile the camera needs; frees tiles more than `behind`
   px behind their last camera, and every tier the scene no longer draws. Sync source: at once.
-  Browser: one pack at a time (fetch, inflate, row filters in 4 ms slices), the drawn scene
-  first, tier 1 first; every tile becomes a canvas texture and its pixels are dropped.
+  Browser: the tier-1 fallback is the WHOLE section (`CanalTier.whole`: every pack queued at the
+  section start, nothing freed; ≤ 1.72 M px a scene), so a column the wanted tier has not loaded
+  yet always has its tier-1 tile; up to `PARALLEL_READS` (4) reads in flight, one decode at a time
+  (inflate, row filters in 4 ms slices), the drawn scene first, by window, tier 1 `FALLBACK_LEAD`
+  (512) camera px ahead; every tile becomes a canvas texture and its pixels are dropped. Until a
+  whole first screen is in, the view draws black (`CanalView.ready`), never part of a picture.
+- The dev server: the packs come from the other loopback name (`canalBase`, main.ts): the art
+  workers' module loads fill the page's six connections per host for seconds (2026-11-13: packs
+  waited 1.7–2.3 s each; the screen's leading edge showed no scenery for seconds).
+- The browser check: `__ms3.canal.log(true)` logs every file (bytes, queue wait, read, decode);
+  `__ms3.canal.policy({ reads: 1, wholeFallback: false })` is the old loader.
 - `canalSections(sections, current, next)` (gameplay: mission preload, `sectionLoaded`):
   prefetches the next sections' first packs, frees the scenes behind.
 - A file that fails: the scene fails, one `[canal]` warning, the section draws its old scenery.
@@ -279,3 +288,65 @@ scene fails, one `[canal]` warning, the section plays on its old scenery
 4. Opt in: `canal: amsCanal('<id>', undefined, { depth: LAMP_GULLS })` in `section-<id>.ts` (drop
    `depth` when no gull sits on a kerbside lamp).
 5. Test: `npx vitest run tests/art/canal-fidelity.test.ts -t "ams <id> "` and the sims of the section.
+
+## 12. A lit section (mission `sewers` c, d, e; wave P6a, 2026-11-12)
+
+The flashlight of `docs/design/sewers.md` §5.1 "Art (L5)": a sewer section is baked twice, the AMBIENT stack (the
+darkness painted in) and the LIT stack (what the flashlight shows), with the same layers and geometry.
+
+- **Kit and bake.** `mission.py` `LIT` names the sections; `two_stacks` gives a module both builds; the lit module
+  (`sw_d_lit.py`) builds section `'<id>-lit'`. The bake writes the lit section's manifest with `litOf: '<id>'` and
+  REFUSES a lit stack that does not pair with its ambient one (`bake_game.py` `pair_faults`: width, camera travel,
+  the layer list with kinds, `over`, frames, drift, depth, front, and per tier each layer's rows, y0, width and
+  speeds). Bake the ambient stack first, then the lit one, at every tier; re-baking the ambient stack alone warns
+  when its lit stack no longer pairs. Section ids may hold `-` (`sewers-d.gen.ts`, key `'sewers-d'`).
+- **Opt in the ambient scene only:** `canal: sewersCanal('sewers-d')` (`missions/sewers/canal/index.ts`). The view
+  finds the lit stack itself (`canalLitOf`), loads both and prefetches both (`canalSections`).
+- **Drawing** (`CanalView`): each pass draws the ambient layers, then the lit layers of the same pass into the
+  renderer's LAYER (`Renderer.layerBegin(box)` … `layerMask(mask)` … `layerEnd()`), clipped to the lit box and
+  kept where the LIT MASK is opaque. The mask (`light/litmask.ts`, `LightMap.maskInto`) is the light of the heroes'
+  cones (`LightMap.addCone`: dithered rim bands, faded end), the muzzle spill and the hero glow: a cell with light
+  ≥ 1 is opaque, a weaker one a 4 × 4 ordered dither of its world px, at the lit layers' tier. The light pass gives
+  it (`LightControl.litMask`); the runner hands the pass to the view (`CanalView.light`).
+- **The entity-only darkness** (`SectionLight.scope: 'entities'`): after the back pass the entities draw into the
+  renderer's layer (`entitiesBegin`); before the `over` layers the pass draws its darkness map over the layer's own
+  pixels (`layerShade`, source-atop), draws the layer over the scenery and adds the lights' colour (`entitiesEnd`).
+  Additive draws (fire glow, beams) go to the layer's additive twin and are never darkened; the emitters are drawn
+  again after it (`emissive`, `emitSprites` by sprite id prefix, `emitTags`). Without a live scene (`?canal=0`, no
+  source, a failed file, the sims) or a renderer without the layer, the pass darkens everything as before.
+- **Canal sprites of a pair are scenery** (P6a follow-up, 2026-11-13): an entity that draws a canal sprite
+  (found once per entity by a draw into a renderer that draws nothing) is drawn by the world's `drawHook`: the
+  entity layer is flushed (`entitiesFlush`), the entity draws its AMBIENT frames on the scenery (no pass darkness:
+  it is baked), then its LIT frames through the lit mask (the same layer composite), and the layer reopens
+  (`entitiesReopen`): the draw order holds. Both stacks' sprite sheets load.
+- **Memory:** the lit stack (its layers and its canal sprites) draws at tier 2 at most (`store.ts`
+  `LIT_LAYER_TIER`). sewers-d at tier 4, resident peak (`canalBytes().cpu`, camera every 16 px): both stacks at tier 4
+  26.43 M px / 100.8 MiB (over the largest level 1 section, c2: 19.63 M px); shipped (ambient + its sprites at 4,
+  lit at 2) 17.96 M px / 68.5 MiB. The lit stack is still baked at 1, 2 and 4 (its fidelity fixtures). Files: d
+  0.24 / 0.70 / 1.98 MB, d-lit 0.27 / 0.79 / 2.21 MB (u1 / u2 / u4).
+- **Painted lamps:** a `StaticLight` with `speed` (the plane of the kit's lamp) sits where its plane shows it:
+  camX + 192 + (x − 192 − camX) · speed. In the entity-only mode give it `glow: 0` (the pool is painted).
+- **Tests:** the fidelity test draws each stack alone (`sewers sewers-d at tier <U>`, `sewers sewers-d-lit at tier
+  <U>`; fixtures in `tests/fixtures/canal/sewers/`); `tests/game/canal-lit.test.ts`: the composite (inside the mask
+  the lit frame, outside the ambient frame, exact) and the entity-only mode (scenery untouched, a dark entity
+  darkened, an emitter in its own colour, the fallback without a layer).
+
+### A porter's recipe (sections a, b, c, e, end)
+
+1. Bake from the repo root, one tier-4 build at a time:
+   - without a lit stack (a, b, end): `for U in 1 2; do U=$U python3 tools/levelkit/lk.py sewers bake sw_<k>; done;
+     python3 tmp/sewers/p4/u4.py sewers bake sw_<k> --stats`;
+   - with a lit stack (c, e): the same with `sw_<k> sw_<k>_lit` (ambient first, in one command).
+2. Opt in: `canal: sewersCanal(SEWERS_SECTION.<k>)` in `section-<k>.ts` (import `./canal/index`); the lit stack
+   needs no line. Every sewers light entry is `scope: 'entities'` (`light.ts`, P6a owns it): report a lamp that
+   has no painted source, or a painted one without a light (world x on its plane and the plane's speed).
+3. What goes by itself with the scene on: the section's `background`, `terrainStyle` and terrain art, and every
+   `decor` stand-in (`decor/sewers-<k>…`: not built, not drawn, not prewarmed). What you must hide yourself: a grey
+   stand-in that is an ENTITY or drawn by an entity (e.g. a's `decor/sewers-a/bridge` if an entity draws it;
+   `c-kit.ts drawCEmitters`' scenery eye pairs and shaft rats, now baked: keep `drawRatEyes`; e's
+   `decor/sewers-e-junk` if drawn outside `decor`) — and give every entity the kit paints a canal sprite
+   (`game_sprites.entity`, §7).
+4. Gates: `npx vitest run tests/art/canal-fidelity.test.ts -t "sewers sewers-<k>"`, the sims of the section
+   (`npm run sim -- --mission sewers --section sewers-<k> --seed 1 --god --quiet`, equal before and after), ten
+   shots at tier 4 (`--res 4 --art 4 --char vincent`, `--bot --cam-x <x>`) and a bot sheet, each beside the kit's
+   frame (`tmp/sewers/p4/<k>/`).

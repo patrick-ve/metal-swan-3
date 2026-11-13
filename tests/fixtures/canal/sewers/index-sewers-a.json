@@ -1,0 +1,146 @@
+[
+ {
+  "cx": 0,
+  "file": "sewers-a-u1-c0.png",
+  "section": "sewers-a",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 200,
+  "file": "sewers-a-u1-c200.png",
+  "section": "sewers-a",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 1180,
+  "file": "sewers-a-u1-c1180.png",
+  "section": "sewers-a",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 1700,
+  "file": "sewers-a-u1-c1700.png",
+  "section": "sewers-a",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 2240,
+  "file": "sewers-a-u1-c2240.png",
+  "section": "sewers-a",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 2688,
+  "file": "sewers-a-u1-c2688.png",
+  "section": "sewers-a",
+  "tier": 1,
+  "w": 384,
+  "x0": 0
+ },
+ {
+  "cx": 0,
+  "file": "sewers-a-u2-c0.png",
+  "section": "sewers-a",
+  "tier": 2,
+  "w": 192,
+  "x0": 96
+ },
+ {
+  "cx": 200,
+  "file": "sewers-a-u2-c200.png",
+  "section": "sewers-a",
+  "tier": 2,
+  "w": 192,
+  "x0": 114
+ },
+ {
+  "cx": 1180,
+  "file": "sewers-a-u2-c1180.png",
+  "section": "sewers-a",
+  "tier": 2,
+  "w": 192,
+  "x0": 134
+ },
+ {
+  "cx": 1700,
+  "file": "sewers-a-u2-c1700.png",
+  "section": "sewers-a",
+  "tier": 2,
+  "w": 192,
+  "x0": 96
+ },
+ {
+  "cx": 2240,
+  "file": "sewers-a-u2-c2240.png",
+  "section": "sewers-a",
+  "tier": 2,
+  "w": 192,
+  "x0": 96
+ },
+ {
+  "cx": 2688,
+  "file": "sewers-a-u2-c2688.png",
+  "section": "sewers-a",
+  "tier": 2,
+  "w": 192,
+  "x0": 164
+ },
+ {
+  "cx": 0,
+  "file": "sewers-a-u4-c0.png",
+  "section": "sewers-a",
+  "tier": 4,
+  "w": 96,
+  "x0": 144
+ },
+ {
+  "cx": 200,
+  "file": "sewers-a-u4-c200.png",
+  "section": "sewers-a",
+  "tier": 4,
+  "w": 96,
+  "x0": 162
+ },
+ {
+  "cx": 1180,
+  "file": "sewers-a-u4-c1180.png",
+  "section": "sewers-a",
+  "tier": 4,
+  "w": 96,
+  "x0": 182
+ },
+ {
+  "cx": 1700,
+  "file": "sewers-a-u4-c1700.png",
+  "section": "sewers-a",
+  "tier": 4,
+  "w": 96,
+  "x0": 144
+ },
+ {
+  "cx": 2240,
+  "file": "sewers-a-u4-c2240.png",
+  "section": "sewers-a",
+  "tier": 4,
+  "w": 96,
+  "x0": 144
+ },
+ {
+  "cx": 2688,
+  "file": "sewers-a-u4-c2688.png",
+  "section": "sewers-a",
+  "tier": 4,
+  "w": 96,
+  "x0": 212
+ }
+]

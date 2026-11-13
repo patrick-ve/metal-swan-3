@@ -1,5 +1,5 @@
 /**
- * The strip space (docs/design/oat.md §8.6, §8.2; the contract: ./types.ts "THE STRIP SPACE"): a
+ * The strip space (docs/design/oat.md (deleted; git show eb3316a) §8.6, §8.2; the contract: ./types.ts "THE STRIP SPACE"): a
  * façade strip is drawn 1:1 and scrolls with its plane's line-scroll speed s, so its columns are
  * strip x p = 192 + (u − 192) · s of the world x u (192 = FLOOR_CX, the eye's column). Pure maths for
  * the store, the view and the strip sources (GRAMMAR maps its lots' world u and world px with these).

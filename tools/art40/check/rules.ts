@@ -18,7 +18,7 @@ export const BUDGETS: readonly number[] = [28, 40, 64];
  * as its own file). 64: the mayor only.
  */
 export const BUDGET_SLUGS: Readonly<Record<number, readonly string[]>> = {
-  40: ['beer-bike', 'ams-scan', 'ams-tow-truck', 'ams-wheel-clamp', 'swan', 'swan-neck', 'swan-water', 'fatbike-youth-pair-0a', 'fatbike-youth-pair-1a', 'fatbike-youth-pair-2a', 'fatbike-youth-pair-3a'],
+  40: ['beer-bike', 'ams-scan', 'ams-tow-truck', 'ams-wheel-clamp', 'swan', 'swan-neck', 'swan-water', 'fatbike-youth-pair-0a', 'fatbike-youth-pair-1a', 'fatbike-youth-pair-2a', 'fatbike-youth-pair-3a', 'sewers-gerrit', 'sewers-rattenjong'],
   64: ['ams-mayor', 'select-vincent', 'select-thom', 'select-dirk', 'select-bob', 'select-patrick'],
 };
 

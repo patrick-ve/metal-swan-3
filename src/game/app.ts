@@ -47,7 +47,7 @@ export interface GameApp {
   readonly params: LaunchParams;
   readonly highScores: HighScoreTable;
   /**
-   * The `budgets` table (docs/design/oat.md §7.7): the euro runs (the route: ams, oat, the rally,
+   * The `budgets` table (docs/design/budget.md §7.7): the euro runs (the route: ams, sewers, the rally,
    * the fps floors, oldenzaal). `highScores` stays for point runs (the dormant ring, m0–m5 by URL).
    */
   readonly budgets: BudgetTable;
@@ -523,7 +523,7 @@ export function drawMenu(r: Renderer, items: readonly string[], selected: number
 }
 
 /**
- * The euro text of the budget screens (docs/design/oat.md §7.5, §7.7): `€ 1.234,56`, `-€ 12,34`
+ * The euro text of the budget screens (docs/design/budget.md §7.5, §7.7): `€ 1.234,56`, `-€ 12,34`
  * (budget/format.ts; beside `scoreText` for the title and mode-select `HI`, the tables, name
  * entry, game over and the tallies).
  */

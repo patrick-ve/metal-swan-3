@@ -55,7 +55,7 @@ export interface HeadlessRallyOptions {
 
 export interface RallySimReport extends RallyReport {
   /**
-   * The euro budget per joined slot in cents after the race's prize money (docs/design/oat.md
+   * The euro budget per joined slot in cents after the race's prize money (docs/design/oat.md (deleted; git show eb3316a)
    * §7.8, §7.10): the slot's budget + the lines' cents × the difficulty factor (what the tally books).
    */
   budget: number[];

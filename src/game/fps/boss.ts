@@ -545,7 +545,7 @@ export class FpsBoss {
     a.pool = 2;
     a.spurt = 9;
     if (a.placed) pool.kills++;
-    // The boss's fall pays the boss's euros (docs/design/oat.md §7.2, §7.9: € 250).
+    // The boss's fall pays the boss's euros (docs/design/budget.md §7.2, §7.9: € 250).
     g.addScore(BOSS_FOOT.score, 'boss');
     g.sound.at('fps/blood', a.x, a.y);
     this.taunt(5);

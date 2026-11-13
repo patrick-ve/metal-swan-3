@@ -1,6 +1,6 @@
 /**
- * THE SMOOTH GLOW of the light pass (docs/design/oat.md §8.9 "smoothed glow at 2× / 4×", §8.13
- * "Night: round glows"; docs/api/oat.md "LIGHT-WATER"). Owner: LIGHT-WATER. An OPT-IN of a section's
+ * THE SMOOTH GLOW of the light pass (docs/design/oat.md (deleted; git show eb3316a) §8.9 "smoothed glow at 2× / 4×", §8.13
+ * "Night: round glows"; docs/api/oat.md (deleted; git show eb3316a) "LIGHT-WATER"). Owner: LIGHT-WATER. An OPT-IN of a section's
  * light (`SectionLight.glow: 'smooth'`), used at res ≥ 2 only (1× stays the light map, per pixel).
  *
  * The darkness keeps the classic 1× light map (lights cut it; a soft alpha ramp, so its 1× cells do

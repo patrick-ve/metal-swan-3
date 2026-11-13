@@ -153,6 +153,15 @@ export interface SectionDef {
    */
   startVehicle?: string;
   /**
+   * OPT-IN (mission sewers, docs/design/sewers.md §5.2 "the fall"): every hero drops into this
+   * section from above (the intro drop, `TUNING.life.introDropTicks`, collisions off, hits absorbed)
+   * onto the walk line at `x` (it wins over `playerStart.x` and an exit's entry x). It runs when the
+   * section is entered (an exit from the last section, a direct `?section=` start), never on a
+   * respawn, an in-world continue, a boss rush, a mission hand-over (`continueMission`) or with a
+   * start vehicle. `chute: false`: no canopy, the hero keeps his weapon, the fall pose. Default: none.
+   */
+  introDrop?: SectionIntroDrop;
+  /**
    * Vehicle ids that may be carried INTO this section by a player who leaves the last one
    * riding (GDD §4.8 "vehicles allowed"). Default: none — the pilot arrives on foot.
    */
@@ -166,7 +175,7 @@ export interface SectionDef {
    */
   floor?: FloorDef;
   /**
-   * OPT-IN (mission `oat`, docs/design/oat.md §8.6; docs/api/oat.md "Strips"): the façade rows of
+   * OPT-IN (mission `oat`, docs/design/oat.md (deleted; git show eb3316a) §8.6; docs/api/oat.md (deleted; git show eb3316a) "Strips"): the façade rows of
    * the section as STREAMED STRIPS (src/game/mission/strips/): a registered strip source (the façade
    * grammar) paints 256 px chunks per density and light set, the strip store keeps a few resident and
    * the section view draws them at the façade depth with the row's line-scroll speed. Art only (the
@@ -194,6 +203,16 @@ export interface SectionDef {
    * in this section's light without a copy of their code. Game logic never sees it. Default: none.
    */
   spriteOverrides?: ReadonlyMap<string, string>;
+}
+
+/** A section's own intro drop (`SectionDef.introDrop`). */
+export interface SectionIntroDrop {
+  /** World x of the landing (feet; player 2 lands 20 px left of it, as at every start). */
+  x: number;
+  /** World y of the feet at the drop's start (above the view, e.g. −40). */
+  fromY: number;
+  /** false: a plain fall (no `fx/chute`, the weapon kept, the fall pose). */
+  chute: boolean;
 }
 
 export type SectionScript = (ctx: SectionContext) => ScriptGen;
@@ -279,13 +298,13 @@ export interface MissionDef {
    */
   denseReserve?: number;
   /**
-   * OPT-IN (docs/design/oat.md §7.1; docs/api/budget.md): 'euro' = the mission pays the game-wide
+   * OPT-IN (docs/design/budget.md §7.1; docs/api/budget.md): 'euro' = the mission pays the game-wide
    * BUDGET (signed integer cents per player, src/game/budget/) besides the old points; default
-   * (undefined) = points only, as before (the dormant ring, m0–m5). Set for ams, oat and oldenzaal.
+   * (undefined) = points only, as before (the dormant ring, m0–m5). Set for ams, sewers and oldenzaal.
    */
   economy?: 'euro';
   /**
-   * OPT-IN (docs/design/oat.md §7.6): the mission's tally page. 'receipt' = the kassabon
+   * OPT-IN (docs/design/budget.md §7.6): the mission's tally page. 'receipt' = the kassabon
    * (scenes/receipt-tally.ts); default (undefined) = the newspaper (MissionCompleteScene), as before.
    */
   tally?: 'receipt';

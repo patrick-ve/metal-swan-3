@@ -39,7 +39,7 @@ declare module '../engine/world' {
   interface WorldEvents {
     score: ScoreEvent;
     /**
-     * The euro budget booked signed cents for a slot (docs/design/oat.md §7.1; budget/pay.ts): a
+     * The euro budget booked signed cents for a slot (docs/design/budget.md §7.1; budget/pay.ts): a
      * reused record — read it in the listener, never keep it.
      */
     pay: PayEvent;
@@ -79,7 +79,7 @@ declare module '../engine/world' {
  * Give points to a player slot (0 / 1; anything else is ignored) and emit 'score'.
  * Use this for every score source so the session and the HUD stay in sync.
  *
- * In a euro play (docs/design/oat.md §7; `session.economy === 'euro'`) the points still count, and
+ * In a euro play (docs/design/budget.md §7; `session.economy === 'euro'`) the points still count, and
  * they also wait as a pending award that the payer's event converts to euros (budget/pay.ts
  * `noteAward`: the kill, the prop, the pickup; the rest by the legacy rule at the tick's end).
  */

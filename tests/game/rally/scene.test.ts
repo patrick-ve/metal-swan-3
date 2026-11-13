@@ -221,7 +221,7 @@ describe('wave C: the card, the announcer and the race sound in the scenes', () 
     startRally(h.app);
     expect(h.until(RallyGlitchScene, 60)).toBe(true);
     const g = h.app.scenes.top as RallyGlitchScene;
-    // Level 3 since the oat wave (docs/design/oat.md §0 #61).
+    // Level 3 since 2026-10-31 (docs/design/rally.md §1; after sewers, docs/design/sewers.md §1).
     expect(audio.lines).toEqual(['MISSION THREE. VOL GAS!']);
     h.step(ANNOUNCE_BREAK - 2);
     expect(g.phase).toBe('hold');

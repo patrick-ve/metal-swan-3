@@ -45,7 +45,7 @@
  * - THE PAINTED FLOOR (`SectionDef.paintedFloor`, mission `ams2`, docs/design/ams2-contract.md): the
  *   section's decor draws the ground, so the terrain chunks have no ground cells (`'all'`: no cells at
  *   all) and there are no pit shafts. Without it none of this runs.
- * - THE FAÇADE STRIPS (`SectionDef.strips`, mission `oat`; docs/design/oat.md §8.6, ./strips/): the
+ * - THE FAÇADE STRIPS (`SectionDef.strips`, mission `oat`; docs/design/oat.md (deleted; git show eb3316a) §8.6, ./strips/): the
  *   view makes the section's strip store on first use (the section start in the browser, else the
  *   first frame drawn: the sims never make one) and draws its chunks 1:1 at the façade depth with that
  *   plane's line-scroll speed s (the floor's s at `strips.depth`; strip x p shows where world x

@@ -3,7 +3,7 @@ import { BLACK, toCss, WHITE } from './color';
 import type { BitmapFont, Glyph, GlyphDensity, HdTextPass } from './font';
 import { GLYPH_ATLAS_COLS, getFont, glyphAtlas, glyphDensity, hdAtlasCell, hdTextPasses, layoutText, textPasses, textScale } from './font';
 import { PixelBuffer, traceLine } from './pixel';
-import type { DrawOpts, Frame, ParallaxOpts, Renderer, RowsDraw, RowsTexture, TextOpts } from './render';
+import type { DrawOpts, Frame, ParallaxOpts, Renderer, RowsDraw, RowsTexture, SrcRect, TextOpts } from './render';
 import { SURFACE_ROAD, SURFACE_SKY, VIEW_H, VIEW_W } from './render';
 import type { LineEnds, Part, Placement, SubpixelMode } from './render-common';
 import {
@@ -235,7 +235,10 @@ export class CanvasRenderer implements Renderer {
   readonly h: number;
   /** The backbuffer, (w · res) × (h · res). */
   readonly canvas: AnyCanvas;
-  readonly ctx: AnyContext;
+  /** The context draws go to: the backbuffer's, or (an open layer, `layerBegin`) the layer's. */
+  ctx: AnyContext;
+  /** The backbuffer's context. */
+  private readonly mainCtx: AnyContext;
   camX = 0;
   camY = 0;
   mode: UpscaleMode;
@@ -371,6 +374,7 @@ export class CanvasRenderer implements Renderer {
     this.canvas.width = w * this.k;
     this.canvas.height = h * this.k;
     this.ctx = context(this.canvas);
+    this.mainCtx = this.ctx;
   }
 
   get res(): number {
@@ -393,6 +397,177 @@ export class CanvasRenderer implements Renderer {
     this.ctx.globalCompositeOperation = 'source-over';
   }
 
+  // ------------------------------------------------------------------ the layer (render.ts `layerBegin`)
+
+  private layerCanvas: AnyCanvas | null = null;
+  private layerCtx: AnyContext | null = null;
+  private addCanvas: AnyCanvas | null = null;
+  private addCtx: AnyContext | null = null;
+  private maskCanvas: AnyCanvas | null = null;
+  private maskCtx: AnyContext | null = null;
+  private maskImg: ImageData | null = null;
+  private maskWords: Uint32Array | null = null;
+  /** The mask buffer and its version last uploaded (the front pass reuses the back pass's mask). */
+  private maskBuf: PixelBuffer | null = null;
+  private maskVersion = -1;
+  /** The mask px uploaded last time (x0, y0, x1, y1; empty: x1 ≤ x0). */
+  private readonly maskUp = [0, 0, 0, 0];
+  private layerOn = false;
+  private layerClip = false;
+  private addUsed = false;
+  /** The open layer's box and the box of its last use (backbuffer px: x, y, w, h). */
+  private readonly lbox = [0, 0, 0, 0];
+  private readonly lused = [0, 0, 0, 0];
+
+  /** Render.ts `layerBegin`: later draws go to the layer (cleared in `box`; clipped to it), additive ones to its twin. */
+  layerBegin(box?: SrcRect): void {
+    if (this.layerOn) this.layerEnd();
+    this.rowsEnd();
+    this.setAlpha(1);
+    this.setAdd(false);
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    if (!this.layerCanvas || this.layerCanvas.width !== W || this.layerCanvas.height !== H) {
+      this.layerCanvas = makeCanvas(W, H);
+      this.layerCtx = context(this.layerCanvas);
+      this.addCanvas = makeCanvas(W, H);
+      this.addCtx = context(this.addCanvas);
+      this.addCtx.globalCompositeOperation = 'lighter';
+      this.lused[0] = 0;
+      this.lused[1] = 0;
+      this.lused[2] = W;
+      this.lused[3] = H;
+    }
+    const k = this.k;
+    const b = this.lbox;
+    if (box) {
+      b[0] = Math.max(0, Math.floor(box.x * k));
+      b[1] = Math.max(0, Math.floor(box.y * k));
+      b[2] = Math.min(W, Math.ceil((box.x + box.w) * k)) - b[0];
+      b[3] = Math.min(H, Math.ceil((box.y + box.h) * k)) - b[1];
+    } else {
+      b[0] = 0;
+      b[1] = 0;
+      b[2] = W;
+      b[3] = H;
+    }
+    const lc = this.layerCtx as AnyContext;
+    lc.setTransform(1, 0, 0, 1, 0, 0);
+    lc.globalAlpha = 1;
+    lc.globalCompositeOperation = 'source-over';
+    const u = this.lused;
+    lc.clearRect(u[0], u[1], u[2], u[3]);
+    lc.clearRect(b[0], b[1], b[2], b[3]);
+    if (this.addUsed) (this.addCtx as AnyContext).clearRect(0, 0, W, H);
+    for (let i = 0; i < 4; i++) u[i] = b[i];
+    this.addUsed = false;
+    this.layerClip = box !== undefined;
+    if (this.layerClip) {
+      lc.save();
+      lc.beginPath();
+      lc.rect(b[0], b[1], b[2], b[3]);
+      lc.clip();
+    }
+    this.layerOn = true;
+    this.ctx = lc;
+  }
+
+  /** Render.ts `layerMask`: keep the layer's pixels where the mask (density d, world space at x, y) is opaque. */
+  layerMask(mask: PixelBuffer, d: number, x: number, y: number, dirty?: SrcRect): void {
+    if (!this.layerOn || mask.w === 0 || mask.h === 0) return;
+    this.rowsEnd();
+    if (!this.maskCanvas || this.maskCanvas.width !== mask.w || this.maskCanvas.height !== mask.h) {
+      this.maskCanvas = makeCanvas(mask.w, mask.h);
+      this.maskCtx = context(this.maskCanvas);
+      this.maskImg = this.maskCtx.createImageData(mask.w, mask.h);
+      this.maskWords = new Uint32Array(this.maskImg.data.buffer, this.maskImg.data.byteOffset, mask.w * mask.h);
+      this.maskVersion = -1;
+      dirty = undefined;
+    }
+    // Upload the changed part only (binary: opaque white or nothing, the same word on any machine):
+    // `dirty` and the part uploaded last time (the mask may have changed on frames without an upload).
+    const u = this.maskUp;
+    const dt = dirty === undefined || this.maskBuf !== mask ? null : dirty;
+    const x0 = dt ? Math.max(0, Math.min(u[0], Math.floor(dt.x))) : 0;
+    const y0 = dt ? Math.max(0, Math.min(u[1], Math.floor(dt.y))) : 0;
+    const x1 = dt ? Math.min(mask.w, Math.max(u[2], Math.ceil(dt.x + dt.w))) : mask.w;
+    const y1 = dt ? Math.min(mask.h, Math.max(u[3], Math.ceil(dt.y + dt.h))) : mask.h;
+    const fresh = this.maskBuf !== mask || this.maskVersion !== mask.version;
+    if (fresh && dirty && dirty.w > 0 && dirty.h > 0) {
+      u[0] = Math.floor(dirty.x);
+      u[1] = Math.floor(dirty.y);
+      u[2] = Math.ceil(dirty.x + dirty.w);
+      u[3] = Math.ceil(dirty.y + dirty.h);
+    } else if (fresh) {
+      u[0] = mask.w;
+      u[1] = mask.h;
+      u[2] = 0;
+      u[3] = 0;
+    }
+    this.maskBuf = mask;
+    this.maskVersion = mask.version;
+    if (fresh && x1 > x0 && y1 > y0) {
+      const src = mask.data;
+      const out = this.maskWords as Uint32Array;
+      const mw = mask.w;
+      for (let yy = y0; yy < y1; yy++) {
+        const row = yy * mw;
+        for (let xx = x0; xx < x1; xx++) out[row + xx] = (src[row + xx] & 255) === 0 ? 0 : 0xffffffff;
+      }
+      (this.maskCtx as AnyContext).putImageData(this.maskImg as ImageData, 0, 0, x0, y0, x1 - x0, y1 - y0);
+    }
+    const k = this.k;
+    const fine = this.subpixel === 'all';
+    const left = toPx(x, k, fine) - this.cx;
+    const top = toPx(y, k, fine) - this.cy;
+    const lc = this.layerCtx as AnyContext;
+    lc.globalAlpha = 1;
+    lc.globalCompositeOperation = 'destination-in';
+    lc.drawImage(this.maskCanvas, left, top, (mask.w * k) / d, (mask.h * k) / d);
+    lc.globalCompositeOperation = 'source-over';
+    lc.globalAlpha = this.ctx === lc ? this.alpha : 1;
+  }
+
+  /** Render.ts `layerShade`: `buf` (density 1, world space at x, y) over the layer's own pixels only (source-atop). */
+  layerShade(buf: PixelBuffer, x: number, y: number): void {
+    if (!this.layerOn || buf.w === 0 || buf.h === 0) return;
+    this.rowsEnd();
+    const k = this.k;
+    const fine = this.subpixel === 'all';
+    const left = toPx(x, k, fine) - this.cx;
+    const top = toPx(y, k, fine) - this.cy;
+    const c = this.streamCanvas(buf);
+    const lc = this.layerCtx as AnyContext;
+    lc.globalAlpha = 1;
+    lc.globalCompositeOperation = 'source-atop';
+    lc.drawImage(c, left, top, buf.w * k, buf.h * k);
+    lc.globalCompositeOperation = 'source-over';
+    lc.globalAlpha = this.ctx === lc ? this.alpha : 1;
+  }
+
+  /** Render.ts `layerEnd`: the layer over the backbuffer in its box, then the additive twin added. */
+  layerEnd(): void {
+    if (!this.layerOn) return;
+    this.rowsEnd();
+    const lc = this.layerCtx as AnyContext;
+    if (this.layerClip) lc.restore();
+    this.layerOn = false;
+    this.layerClip = false;
+    this.ctx = this.mainCtx;
+    const m = this.mainCtx;
+    m.globalAlpha = 1;
+    m.globalCompositeOperation = 'source-over';
+    this.alpha = 1;
+    this.add = false;
+    const b = this.lbox;
+    if (b[2] > 0 && b[3] > 0) m.drawImage(this.layerCanvas as AnyCanvas, b[0], b[1], b[2], b[3], b[0], b[1], b[2], b[3]);
+    if (this.addUsed) {
+      m.globalCompositeOperation = 'lighter';
+      m.drawImage(this.addCanvas as AnyCanvas, 0, 0);
+      m.globalCompositeOperation = 'source-over';
+    }
+  }
+
   setMode(mode: UpscaleMode): void {
     if (mode === this.mode) return;
     this.mode = mode;
@@ -409,6 +584,15 @@ export class CanvasRenderer implements Renderer {
   }
 
   begin(clear: Color | null = BLACK): void {
+    // An open layer is dropped (not drawn).
+    if (this.layerOn) {
+      if (this.layerClip) (this.layerCtx as AnyContext).restore();
+      this.layerOn = false;
+      this.layerClip = false;
+      this.ctx = this.mainCtx;
+      this.ctx.globalAlpha = this.alpha;
+      this.ctx.globalCompositeOperation = this.add ? 'lighter' : 'source-over';
+    }
     const ctx = this.ctx;
     this.frameNo++;
     this.scaleMs = 0;
@@ -1016,6 +1200,17 @@ export class CanvasRenderer implements Renderer {
   }
 
   private setAdd(on: boolean): void {
+    if (this.layerOn) {
+      // An open layer: additive draws go to its twin (its composite stays 'lighter'), the rest to the layer.
+      const want = (on ? this.addCtx : this.layerCtx) as AnyContext;
+      if (on) this.addUsed = true;
+      this.add = on;
+      if (this.ctx !== want) {
+        this.ctx = want;
+        want.globalAlpha = this.alpha;
+      }
+      return;
+    }
     if (on !== this.add) {
       this.add = on;
       this.ctx.globalCompositeOperation = on ? 'lighter' : 'source-over';

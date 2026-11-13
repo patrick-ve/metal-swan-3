@@ -624,7 +624,7 @@ describe('the score (score.ts) and the headline', () => {
     const book = new ScoreBook();
     book.fine('white', 8430);
     const lines = raceLines({ parTicks: 26613, carCount: 8, parLapTicks: 8871, book, cars: [car] }, car);
-    // The tally's FINES line is now prize money (docs/design/oat.md §7.8: − € 120 each); the fines' joke
+    // The tally's FINES line is now prize money (docs/design/budget.md §7.8: − € 120 each); the fines' joke
     // euros stay in the book (the report's finesEuros).
     const fines = lines.find((l) => l.label.startsWith('FINES'))!;
     expect(fines.label).toBe('FINES 9');
