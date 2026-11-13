@@ -11,7 +11,8 @@
 > | [`docs/api/slice.md`](api/slice.md) | the content slice: fx, sfx, music, items, infantry (rifleman), m0, the headless harness, the bot, tools |
 > | [`docs/ART_GUIDE.md`](ART_GUIDE.md) | art direction and the rigs: humanoid, poses, machines, backgrounds, terrain painter |
 > | [`docs/api/fps.md`](api/fps.md) | the first-person mode: ray engine, input actions, fps game, its content and tools (spec: [`docs/design/fps.md`](design/fps.md)) |
-> | [`docs/design/sewers.md`](design/sewers.md) | mission `sewers` (level 2, RATTENJONG MET DE RATTENITEMS; lazy): the spec (flow, sections, cast, bosses, light, sound, files, waves); `docs/api/sewers.md` follows in Phase 7. It replaced the former level 2 `oat`, deleted on 2026-11-12 (`git show eb3316a:docs/api/oat.md`); the game-wide budget moved to [`docs/design/budget.md`](design/budget.md) |
+> | [`docs/api/sewers.md`](api/sewers.md) | mission `sewers` (level 2, RATTENJONG MET DE RATTENITEMS; lazy): the module map, the lazy chunk and its 450 KB figure budget, the sections, the flashlight and the lit pair, the cast and both bosses, the wagon ending, audio, the kit, tests, sims, known limits, the code-vs-spec list (spec: [`docs/design/sewers.md`](design/sewers.md)) |
+> | [`docs/design/sewers.md`](design/sewers.md) | mission `sewers`: the spec (flow, sections, cast, bosses, light, sound, files, waves). It replaced the former level 2 `oat`, deleted on 2026-11-12 (`git show eb3316a:docs/api/oat.md`); the game-wide budget moved to [`docs/design/budget.md`](design/budget.md) |
 > | [`docs/api/rally.md`](api/rally.md) | mission `rally` (level 3, BINNEN DE RING): the WebGL2 3D view with the PS1 look, the pure 3D math (`r3/`), the race (physics, input channel, cameras), the A10 track, the car models, the scenes and the tools (spec: [`docs/design/rally.md`](design/rally.md)) |
 >
 > Content agents: read this file, `docs/ORIGINALITY.md`, then the api docs of the systems you
@@ -46,7 +47,10 @@ multi-part bosses, and 2-player co-op.
   (`src/engine/png.ts` decodes them, exact; `src/game/mission/canal/` stores and draws them) and
   draws the stack in place of that section's generated scenery. `?canal=0` (or a missing file)
   draws the generated scenery. Figures, enemies, pickups and effects stay generated. See
-  `docs/api/canal.md`.
+  `docs/api/canal.md`. A dark section may be baked twice as a LIT PAIR (the lit stack's manifest
+  names its ambient one, `litOf`): the heroes' flashlights show the lit stack through a mask, and
+  the light pass darkens the entities only (`docs/api/canal.md` §12; mission `sewers` c, d, e,
+  `docs/api/sewers.md` §5).
 - All sound effects and music are **synthesized** with Web Audio (no audio files). Exception
   (user decision 2026-10-14): the start screens (with the REPORT FOR DUTY drill callouts), mission
   `ams` and the first-person mode (the `mode:fps` group, user approval 2026-10-16) also ship
@@ -443,6 +447,10 @@ one streaming slot per buffer outside the texture cache instead of caching it; `
 Screen shake is a camera offset, not a renderer feature. Every renderer also has `res` (backbuffer
 px per logical px, §3), `mode` / `setMode()` (sprite filter) and `subpixel` / `setSubpixel()`;
 `w`, `h`, `camX`, `camY` and all draw coordinates stay logical.
+Optional, additive: THE LAYER (`layerBegin(box)`, `layerMask`, `layerShade`, `layerEnd`; both
+renderers have it), an offscreen layer for the lit pair's masked composite and the entity-only
+darkness of mission `sewers`; a caller must work without it (`docs/api/canal.md` §12,
+`docs/api/sewers.md` §5).
 
 ### 5.6 Fonts
 `font.ts`: original bitmap fonts in code — `small` (≈5×7, caps, digits, punctuation) and `big`
@@ -522,6 +530,9 @@ true if the hit was absorbed), `die(d?)`, `onRemove()`, `despawnMargin`.
 `tick`, `events`, `audio`. `spawn(id, x, y, params?)` via the entity registry (unknown id →
 placeholder entity). Queries: `byTag`, `query(rect, filter)`, `nearestPlayer(x, y)`,
 `alivePlayers()`, `onScreen(entity, margin)`. `damageArea(shape, damage, team)` for explosions.
+`drawHook: ((r, e) => boolean) | null` (draw only): when it returns true the world skips that
+entity's own draw; the canal view sets it so an entity with a lit pair's canal sprite draws like
+the scenery (`docs/api/canal.md` §12).
 Tick order: scripts → entities update (insertion order) → projectile vs hurtbox pass (by team) →
 contact damage → particles → camera → cleanup (remove dead, despawn far off-screen).
 

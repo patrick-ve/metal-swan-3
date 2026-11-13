@@ -2883,6 +2883,14 @@ WebGL2: `RallyNoGl` (THIS DEVICE CANNOT SHOW 3D) → the tally with no race line
 High scores: the rally is `M2`, the dormant ring `RIN`. Debug: `?mission=rally` (+ `players`,
 `seed`, `difficulty`, `art`, `lap`, `cam=chase|bumper`, `gl=0`, `debug`: F4 ends the race).
 
+**Since 2026-11-12 (user decision; `docs/design/sewers.md` §1; §21): level 2 is `sewers`** and the
+rally above is level 3 (its card `MISSION 3`, the announcer's `MISSION THREE. VOL GAS!`, high-score
+column `M3`). `Gameplay` (ams) → `MissionComplete` (the ams tally) → `MissionIntro` (`MISSION 2`,
+RATTENJONG MET DE RATTENITEMS; the card loads the lazy sewers chunk) → `Gameplay` (sewers, high-score
+column `M2`) → `MissionComplete` (the newspaper with euros) → `MissionIntro` (`MISSION 3`, BINNEN DE
+RING) → `RallyGlitch` → `Rally` → … as above. The route in code: `flow-data.ts` `FPS_ROUTE` = ams,
+sewers, rally, `fps-1`, `fps-2`, oldenzaal (levels 1, 2, 3, 4, 4, 5).
+
 ### 13.2 Boot
 
 - Black screen; a row of 8 small swan icons (C, y 100) fills in as sprites and sounds pre-render.
@@ -3679,12 +3687,15 @@ controls, numbers, maps, boss, art, audio, tests). Its originality rules and dat
 and `docs/ART_GUIDE.md` §10.
 
 Since 2026-10-20 the ring road (chapter 18) comes between `ams` and this mode: the first-person
-floors are level 3 (ams → ring → glitch bridge → floors → ending).
+floors are level 3 (ams → ring → glitch bridge → floors → ending). Since 2026-11-12 the floors are
+level 4 (ams → `sewers` → `rally` → glitch bridge → floors → `oldenzaal`; §21).
 
 ## 18. Mission `ring` (level 2, the A10 ring road) — see `docs/design/ring.md`
 
 **Dormant since 2026-10-22:** the 3D race `rally` (§20) replaced it as level 2. Its code, art,
-audio and tests stay; `?mission=ring` still runs it; its sims stay byte-identical.
+audio and tests stay; `?mission=ring` still runs it; its sims stay byte-identical. (Since
+2026-11-12 level 2 is `sewers`, §21; the rally is level 3. The ring's own card still says
+`MISSION 2`.)
 
 By the user's decision (2026-10-20), level 2 picks up from the end of `ams`: the players leave the
 city centre and drive the A10 ring road ("de Ring") clockwise from A10 Oost in a 1990s station
@@ -3771,6 +3782,9 @@ exception (real A10 names, the wagon likeness) is in `docs/ORIGINALITY.md`.
 
 ## 19. Mission `oldenzaal` (level 4, the haunted town) — see `docs/design/oldenzaal.md`
 
+(Since 2026-11-12 `oldenzaal` is level 5, card `MISSION 5`: `sewers` (§21) became level 2 and every
+later level moved up by one.)
+
 By the user's decision (2026-10-21), level 4 follows the first-person floors: a typed story card,
 then the card `MISSION 4` — **A HAUNTING IN OTOWN** ("Otown" = Oldenzaal). The squad is
 parachuted over the town of Oldenzaal at dusk. The mood is **spooky, dark and grim**, the
@@ -3811,6 +3825,9 @@ the in-world continue. Revision 2 (the user's feedback after playing wave A) is 
 Winkel, the respect rules, the generated audio) is in `docs/ORIGINALITY.md`.
 
 ## 20. Mission `rally` (level 2, BINNEN DE RING, the 3D race) — see `docs/design/rally.md`
+
+**Since 2026-11-12 the rally is level 3** (card `MISSION 3`; level 2 is `sewers`, §21). The text
+below is as written when it was level 2.
 
 By the user's decision (2026-10-22), level 2 is a **3D racing game on the A10 ring of Amsterdam**
 with the look of the 32-bit console era (the "PS1 look": low-poly models, affine texture warp,
@@ -3869,3 +3886,37 @@ ring. The spec is final; this chapter only points to it.
   lift for a FLITSER escapes the fine while racing flat out stays the main path; the race scene loads
   lazily with the rally content. See `docs/design/rally.md` "Status (wave C)" and `docs/api/rally.md`
   parts C, C.S, C.R and C.I.
+
+## 21. Mission `sewers` (level 2, RATTENJONG MET DE RATTENITEMS) — see `docs/design/sewers.md`
+
+By the user's decision (the level card 2026-11-11, `docs/design/sewers/brainstorm.md`; the spec
+approved 2026-11-12), level 2 is **`sewers`**, card `MISSION 2` — **RATTENJONG MET DE
+RATTENITEMS**. It replaces `oat`, level 2 from 2026-10-31, deleted from the game on 2026-11-12 at
+the user's word (`git show eb3316a:docs/design/oat.md`; its game-wide euro budget lives on in
+`docs/design/budget.md`). The squad, still on shore leave after `ams`, clears De Wallen of crooks by
+night, drops into the sewer under it, fights the giant rats and their king, and climbs out at dawn.
+A normal 2D mission (`defineMission`, lazy: its MISSION 2 card loads it), six sections, 1P and 2P,
+the in-world continue, euros and the newspaper tally. The route in code (`flow-data.ts`
+`FPS_ROUTE`): ams 1 → **sewers 2** → rally 3 → the first-person floors 4 → oldenzaal 5.
+
+- **The flow:** the ams tally → the MISSION 2 card → `sewers-a` DE WALLEN (23:00: dealers, pimps
+  and bodyguards on the quay; the mini-boss **GOUDEN GERRIT** in the sunroof of his white limo) →
+  `sewers-b` DE STEEGJES (01:00: the alleys and the square; THE RAT ERUPTION out of the drain
+  grates; the heroes jump into the burst grate) → `sewers-c` DE PUT (01:30: the fall down the shaft,
+  `FLASHLIGHTS ON`) → `sewers-d` HET RIOOL (02:30: the sewer tunnels, the brute, THE FATBERG) →
+  `sewers-e` DE AFVALHAL (05:00: the trash hall; the boss **DE RATTENJONG** on his trash throne
+  throws bikes, carts and scooters, calls his rats, then fights on foot; the vault cracks and the
+  flood washes him away) → `sewers-end` DAGERAAD (07:15: the heroes climb out of a manhole, slimed;
+  the squad's white ROZZERS wagon picks them up, a squad hero nobody plays at the wheel: `STAP IN,
+  ZWAAN!`) → the tally → the MISSION 3 card of the rally.
+- **The flashlight:** in c, d and e every hero carries a flashlight on the gun; in the dark a rat
+  is only its eyes, in the cone the whole rat. The scenery of c, d and e is baked twice (dark and
+  lit) and the cones show the lit one.
+- **Built:** shipped 2026-11-13 (377c910). The scenery is the level kit's baked canal scenes; the
+  figures are 40 px sets in their own lazy budget; Dutch voices, songs and sfx in the group
+  `mission:sewers` (the squad heroes stay unvoiced).
+
+**`docs/design/sewers.md` is the spec of this mission and, with `docs/api/sewers.md`, wins over
+this document for it** (numbers, sections, cast, bosses, light, sound, files, tests). Where the
+code and the spec differ, `docs/api/sewers.md` §13 lists it. The originality exception is in
+`docs/ORIGINALITY.md`.
